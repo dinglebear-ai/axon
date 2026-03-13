@@ -4,20 +4,23 @@ use tokio::sync::mpsc;
 
 /// Emit a serialized JSON string on `tx`.
 ///
-/// When the channel is at capacity (slow client + high-volume crawl), the send
-/// will fail immediately because all WS-send channels are bounded (`channel(256)`).
-/// Rather than silently discarding the message we emit a visible truncation
-/// sentinel so the browser knows output was lost.  The sentinel send itself is
-/// best-effort — if the channel is still full we accept the loss rather than
-/// blocking indefinitely.
-async fn send_or_sentinel(tx: &mpsc::Sender<String>, msg: String) {
-    if tx.send(msg).await.is_err() {
-        let sentinel = serde_json::json!({
-            "type": "log",
-            "line": "[output truncated — WebSocket channel full]"
-        })
-        .to_string();
-        let _ = tx.send(sentinel).await; // best-effort only
+/// Uses `try_send` instead of `send().await` so that a full channel is detected
+/// immediately as backpressure rather than blocking the caller until capacity
+/// frees up.  When the channel is full we emit a visible truncation sentinel so
+/// the browser knows output was lost.  The sentinel itself is best-effort — if
+/// the channel is still full we accept the loss rather than blocking.
+fn send_or_sentinel(tx: &mpsc::Sender<String>, msg: String) {
+    match tx.try_send(msg) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            let sentinel = serde_json::json!({
+                "type": "log",
+                "line": "[output truncated — WebSocket channel full]"
+            })
+            .to_string();
+            let _ = tx.try_send(sentinel); // best-effort only
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {}
     }
 }
 
@@ -25,7 +28,7 @@ pub(super) async fn send_command_start(tx: &mpsc::Sender<String>, context: &Exec
     if let Some(v2) = serialize_v2_event(WsEventV2::CommandStart {
         ctx: context.to_ws_ctx(),
     }) {
-        send_or_sentinel(tx, v2).await;
+        send_or_sentinel(tx, v2);
     }
 }
 
@@ -38,7 +41,7 @@ pub(super) async fn send_command_output_line(
         ctx: context.clone(),
         line,
     }) {
-        send_or_sentinel(tx, v2).await;
+        send_or_sentinel(tx, v2);
     }
 }
 
@@ -55,7 +58,7 @@ pub(super) async fn send_done_dual(
             elapsed_ms,
         },
     }) {
-        send_or_sentinel(tx, v2).await;
+        send_or_sentinel(tx, v2);
     }
 }
 
@@ -72,6 +75,6 @@ pub(super) async fn send_error_dual(
             elapsed_ms,
         },
     }) {
-        send_or_sentinel(tx, v2).await;
+        send_or_sentinel(tx, v2);
     }
 }

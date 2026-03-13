@@ -51,12 +51,27 @@ pub fn check_auth(
     // Extract token from request headers before falling back to the query
     // parameter. This keeps tokens out of access logs for callers that can
     // set custom headers (e.g. the Next.js proxy and API clients).
+    //
+    // RFC 6750 §2.1: the auth-scheme is case-insensitive, so we accept
+    // "Bearer", "bearer", "BEARER", etc.
     let header_token = headers
         .get("authorization")
-        .or_else(|| headers.get("x-api-key"))
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim_start_matches("Bearer ").trim())
-        .filter(|s| !s.is_empty());
+        .map(str::trim)
+        .and_then(|v| {
+            let (scheme, token) = v.split_once(' ')?;
+            scheme
+                .eq_ignore_ascii_case("Bearer")
+                .then_some(token.trim())
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| {
+            headers
+                .get("x-api-key")
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+        });
 
     let provided_token = header_token.or(query_token);
 
@@ -73,7 +88,13 @@ pub fn check_auth(
 
     #[cfg(any(debug_assertions, test))]
     {
-        log::warn!("[auth] AXON_WEB_API_TOKEN is not set — auth is DISABLED in this debug build");
+        // Warn once per process, not on every check_auth() call.
+        static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        WARNED.get_or_init(|| {
+            log::warn!(
+                "[auth] AXON_WEB_API_TOKEN is not set — auth is DISABLED in this debug build"
+            );
+        });
         AuthOutcome::Token
     }
     #[cfg(not(any(debug_assertions, test)))]
@@ -173,6 +194,14 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-api-key", "correct-token".parse().unwrap());
         let outcome = check_auth(&headers, Some("wrong-token"), Some("correct-token"));
+        assert!(matches!(outcome, AuthOutcome::Token));
+    }
+
+    #[test]
+    fn token_auth_succeeds_for_lowercase_bearer_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "bearer correct-token".parse().unwrap());
+        let outcome = check_auth(&headers, None, Some("correct-token"));
         assert!(matches!(outcome, AuthOutcome::Token));
     }
 

@@ -1,5 +1,4 @@
 use std::env;
-use std::hash::{DefaultHasher, Hasher};
 use std::sync::Arc;
 
 use serde_json::json;
@@ -36,7 +35,7 @@ write to or update the editor.";
 
 use super::super::events::{CommandContext, acp_bridge_event_json, serialize_raw_output_event};
 use super::super::mcp_config::read_axon_mcp_servers;
-use super::acp_adapter::resolve_acp_adapter_command;
+use super::acp_adapter::{AdapterCapabilities, resolve_acp_adapter_command};
 use super::service_calls::send_json_owned;
 use super::types::PulseChatAgent;
 
@@ -158,6 +157,7 @@ async fn get_or_create_acp_connection(
     req: &AcpPromptTurnRequest,
     agent: PulseChatAgent,
     assistant_mode: bool,
+    caps: AdapterCapabilities,
     cfg: &Arc<Config>,
     permission_responders: &acp_svc::PermissionResponderMap,
 ) -> Result<(String, Arc<AcpConnectionHandle>), String> {
@@ -174,7 +174,7 @@ async fn get_or_create_acp_connection(
     }
 
     // Spawn a new adapter subprocess.
-    let adapter = resolve_acp_adapter_command(cfg, agent)?;
+    let adapter = resolve_acp_adapter_command(cfg, agent, caps)?;
     let adapter_name = std::path::Path::new(&adapter.program)
         .file_name()
         .and_then(|n| n.to_str())
@@ -227,11 +227,8 @@ async fn resolve_working_dir(assistant_mode: bool) -> Result<std::path::PathBuf,
 
 fn fingerprint_mcp_servers(
     mcp_servers: &[crate::crates::services::types::AcpMcpServerConfig],
-) -> u64 {
-    let raw = serde_json::to_string(mcp_servers).unwrap_or_default();
-    let mut hasher = DefaultHasher::new();
-    hasher.write(raw.as_bytes());
-    hasher.finish()
+) -> String {
+    serde_json::to_string(mcp_servers).unwrap_or_default()
 }
 
 /// Handle the `pulse_chat` service mode: send a prompt turn to the persistent
@@ -247,6 +244,7 @@ pub(super) async fn handle_pulse_chat(
     blocked_mcp_tools: Vec<String>,
     agent: PulseChatAgent,
     assistant_mode: bool,
+    caps: AdapterCapabilities,
     tx: mpsc::Sender<String>,
     ws_ctx: CommandContext,
     permission_responders: acp_svc::PermissionResponderMap,
@@ -294,9 +292,15 @@ pub(super) async fn handle_pulse_chat(
         mcp_servers,
     };
 
-    let (agent_key, conn_handle) =
-        get_or_create_acp_connection(&req, agent, assistant_mode, &cfg, &permission_responders)
-            .await?;
+    let (agent_key, conn_handle) = get_or_create_acp_connection(
+        &req,
+        agent,
+        assistant_mode,
+        caps,
+        &cfg,
+        &permission_responders,
+    )
+    .await?;
 
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
     let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
@@ -322,11 +326,22 @@ pub(super) async fn handle_pulse_chat(
     let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, &agent_key).await;
 
     if let Err(ref err) = turn_result {
-        // The turn completed with an error (e.g. adapter exited mid-turn, ACP
-        // protocol error, oneshot channel dropped). The cached handle is likely
-        // broken — evict so the next request spawns a clean subprocess.
-        log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
-        SESSION_CACHE.remove(&agent_key);
+        // Only evict if the error indicates the adapter process/channel is
+        // broken.  Per-turn errors (content policy, tool errors, timeouts)
+        // leave the persistent adapter healthy — evicting on those wastes the
+        // warm subprocess and forces a cold spawn on the next turn.
+        let is_fatal = err.contains("channel closed")
+            || err.contains("channel dropped")
+            || err.contains("adapter exited")
+            || err.contains("result unavailable after channel close");
+        if is_fatal {
+            log::warn!(
+                "[acp] session {agent_key} evicted from cache after fatal adapter error: {err}"
+            );
+            SESSION_CACHE.remove(&agent_key);
+        } else {
+            log::debug!("[acp] session {agent_key} turn error (adapter still healthy): {err}");
+        }
     }
 
     turn_result
@@ -345,7 +360,16 @@ pub(super) async fn handle_pulse_chat_probe(
     use crate::crates::services::types::AcpSessionProbeRequest;
 
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
-    let adapter = resolve_acp_adapter_command(&cfg, agent)?;
+    let adapter = resolve_acp_adapter_command(
+        &cfg,
+        agent,
+        AdapterCapabilities {
+            enable_fs: true,
+            enable_terminal: true,
+            permission_timeout_secs: None,
+            adapter_timeout_secs: None,
+        },
+    )?;
     let scaffold = acp_svc::AcpClientScaffold::new(adapter);
     let req = AcpSessionProbeRequest { session_id, model };
     let cwd = env::current_dir().map_err(|e| e.to_string())?;

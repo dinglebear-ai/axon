@@ -163,7 +163,9 @@ mod tests {
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn auto_inline_when_mode_is_none_and_payload_small() {
-        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
         let resp = respond_with_mode("test", "sub", None, "test-artifact", payload.clone())
@@ -181,7 +183,9 @@ mod tests {
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn explicit_path_mode_respected_even_for_small_payload() {
-        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
         let resp = respond_with_mode(
@@ -205,7 +209,9 @@ mod tests {
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn explicit_inline_mode_returns_inline_data() {
-        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"items": [1, 2, 3]});
         let resp = respond_with_mode(
@@ -230,7 +236,9 @@ mod tests {
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn both_mode_returns_inline_and_shape_and_artifact() {
-        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"name": "axon", "count": 42});
         let resp = respond_with_mode(

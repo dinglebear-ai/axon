@@ -38,6 +38,7 @@ static SYNC_MODE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
     let limit = std::env::var("AXON_MAX_SYNC_CONCURRENT")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&limit| limit > 0)
         .unwrap_or(16);
     Semaphore::new(limit)
 });
