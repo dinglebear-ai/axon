@@ -254,6 +254,12 @@ pub(super) async fn dispatch_service(
         enabled_mcp_servers,
         blocked_mcp_tools,
         assistant_mode,
+        // ACP adapter capability fields — extracted from WS flags, threaded here for
+        // future wiring into handle_pulse_chat / resolve_acp_adapter_command_from_values.
+        enable_fs: _enable_fs,
+        enable_terminal: _enable_terminal,
+        permission_timeout_secs: _permission_timeout_secs,
+        adapter_timeout_secs: _adapter_timeout_secs,
     } = params;
 
     if let Some(result) = dispatch_query_modes(

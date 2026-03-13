@@ -93,11 +93,17 @@ pub enum WsEventV2 {
         ctx: CommandContext,
         payload: CommandErrorPayload,
     },
+    /// NOTE: Defined for future push-model implementation.
+    /// As of 2026-03, async job progress is POLL-ONLY via the HTTP /api/jobs/:id endpoint.
+    /// This variant is never emitted at runtime. Do not rely on it.
     #[serde(rename = "job.status")]
     JobStatus {
         ctx: CommandContext,
         payload: JobStatusPayload,
     },
+    /// NOTE: Defined for future push-model implementation.
+    /// As of 2026-03, async job progress is POLL-ONLY via the HTTP /api/jobs/:id endpoint.
+    /// This variant is never emitted at runtime. Do not rely on it.
     #[serde(rename = "job.progress")]
     JobProgress {
         ctx: CommandContext,

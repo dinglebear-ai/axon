@@ -216,15 +216,20 @@ pub async fn resolve_artifact_output_path(raw: &str) -> Result<PathBuf, ErrorDat
     Ok(resolved)
 }
 
+/// Shared mutex for serializing tests that mutate `MCP_ARTIFACT_DIR_ENV` /
+/// `AXON_DATA_DIR`.  Exported so sibling test modules in `artifacts/` can
+/// coordinate without a separate lock.
+#[cfg(test)]
+pub(crate) static ARTIFACT_ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::env;
     use std::fs;
-    use std::sync::Mutex;
     use tempfile::tempdir;
 
-    static ENV_CWD_LOCK: Mutex<()> = Mutex::new(());
+    use super::ARTIFACT_ENV_TEST_LOCK as ENV_CWD_LOCK;
 
     #[allow(unsafe_code)]
     #[test]

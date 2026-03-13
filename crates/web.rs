@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tailscale_auth::{AuthOutcome, DenyReason, auth_log_message, check_auth};
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use cors::{effective_shell_allowed_origins, web_cors_middleware, websocket_origin_is_allowed};
 
@@ -51,6 +52,10 @@ pub(crate) struct AppState {
     api_token: Option<String>,
     /// Base server config — shared across all connections.
     pub(crate) cfg: Arc<Config>,
+    /// Maps ACP session_id → conn_id that originally resumed it (H-8).
+    /// Prevents cross-connection session hijacking: only the originating
+    /// connection may drain replay buffers or route permission responses.
+    pub(crate) session_ownership: Arc<DashMap<String, String>>,
 }
 
 /// State for download routes — lighter than AppState (no WS/stats fields).
@@ -85,6 +90,7 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
         job_dirs: job_dirs.clone(),
         api_token: api_token.clone(),
         cfg: cfg.clone(),
+        session_ownership: Arc::new(DashMap::new()),
     });
 
     tokio::spawn(docker_stats::run_stats_loop(stats_tx));
@@ -248,7 +254,8 @@ async fn ws_upgrade(
         return (StatusCode::UNAUTHORIZED, body).into_response();
     }
 
-    ws.on_upgrade(move |socket| ws_handler::handle_ws(socket, state))
+    let conn_id = Uuid::new_v4().to_string();
+    ws.on_upgrade(move |socket| ws_handler::handle_ws(socket, state, conn_id))
 }
 
 async fn shell_ws_upgrade(

@@ -27,7 +27,7 @@ describe('pulse storage', () => {
     const docs = await listPulseDocs()
     expect(docs.length).toBeGreaterThan(1)
     for (let i = 1; i < docs.length; i += 1) {
-      expect(docs[i - 1].updatedAt >= docs[i].updatedAt).toBe(true)
+      expect(docs[i - 1]!.updatedAt >= docs[i]!.updatedAt).toBe(true)
     }
   })
 

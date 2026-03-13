@@ -36,8 +36,8 @@ describe('useAxonSession', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.messages).toHaveLength(2)
-    expect(result.current.messages[0].role).toBe('user')
-    expect(result.current.messages[0].content).toBe('hello')
+    expect(result.current.messages[0]!.role).toBe('user')
+    expect(result.current.messages[0]!.content).toBe('hello')
   })
 
   it('strips inline system wrapper from user messages', async () => {
@@ -60,7 +60,7 @@ describe('useAxonSession', () => {
 
     const { result } = renderHook(() => useAxonSession('abc-123'))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.messages[0].content).toBe('Hello there')
+    expect(result.current.messages[0]!.content).toBe('Hello there')
   })
 
   it('strips newline marker wrapper from user messages', async () => {
@@ -82,7 +82,7 @@ describe('useAxonSession', () => {
 
     const { result } = renderHook(() => useAxonSession('abc-123'))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.messages[0].content).toBe('Build me a changelog')
+    expect(result.current.messages[0]!.content).toBe('Build me a changelog')
   })
 
   it('sets error on fetch failure', async () => {

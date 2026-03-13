@@ -35,6 +35,12 @@ export interface WsHandlerCallbacks {
   onTurnComplete?: () => void
   onResumeSessionOk?: () => void
   onResumeSessionMiss?: () => void
+  onPermissionRequest?: (params: {
+    session_id: string
+    request_id: string
+    tool_name: string
+    tool_input: unknown
+  }) => void
   onEditorUpdate?: (content: string, operation: 'replace' | 'append') => void
   onShowEditor?: () => void
   flushBufferedStream: () => void
@@ -140,6 +146,16 @@ const AcpResumeResultSchema = z
     ok: z.boolean().optional(),
     replayed: z.number().int().nonnegative().optional(),
     session_id: z.string().optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough()
+const PermissionRequestSchema = z
+  .object({
+    type: z.literal('permission_request'),
+    session_id: z.string(),
+    request_id: z.string(),
+    tool_name: z.string(),
+    tool_input: z.unknown(),
   })
   .passthrough()
 const EditorUpdateSchema = z
@@ -176,6 +192,7 @@ type ParsedAcpWsMessage =
   | z.infer<typeof CommandsUpdateSchema>
   | z.infer<typeof AcpResumeResultSchema>
   | z.infer<typeof EditorUpdateSchema>
+  | z.infer<typeof PermissionRequestSchema>
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -207,7 +224,8 @@ export function isAcpRelevantWsMessage(rawMsg: unknown): boolean {
     type === 'config_options_update' ||
     type === 'config_option_update' ||
     type === 'commands_update' ||
-    type === 'acp_resume_result'
+    type === 'acp_resume_result' ||
+    type === 'permission_request'
   )
 }
 
@@ -265,6 +283,10 @@ function parseAcpWsMessage(rawMsg: unknown): ParsedAcpWsMessage | null {
     }
     case 'acp_resume_result': {
       const parsed = AcpResumeResultSchema.safeParse(msg)
+      return parsed.success ? parsed.data : null
+    }
+    case 'permission_request': {
+      const parsed = PermissionRequestSchema.safeParse(msg)
       return parsed.success ? parsed.data : null
     }
     default:
@@ -481,6 +503,16 @@ export function handleAcpWsMessage(
           /* noop */
         }
       }
+      break
+    }
+
+    case 'permission_request': {
+      callbacks.onPermissionRequest?.({
+        session_id: msg.session_id,
+        request_id: msg.request_id,
+        tool_name: msg.tool_name,
+        tool_input: msg.tool_input,
+      })
       break
     }
   }

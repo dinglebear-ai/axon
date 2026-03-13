@@ -75,7 +75,20 @@ export type WsServerMsg =
       type: 'commands_update'
       commands: Array<{ name: string; description?: string }>
     }
-  | { type: 'acp_resume_result'; ok?: boolean; replayed?: number; session_id?: string }
+  | {
+      type: 'acp_resume_result'
+      ok?: boolean
+      replayed?: number
+      session_id?: string
+      reason?: string
+    }
+  | {
+      type: 'permission_request'
+      session_id: string
+      request_id: string
+      tool_name: string
+      tool_input: unknown
+    }
 
 export interface WsV2CommandContext {
   exec_id: string
@@ -111,6 +124,9 @@ export interface WsV2CommandStartMsg {
   }
 }
 
+// NOTE: These event types are defined for a future push-model implementation.
+// As of 2026-03, async job progress is POLL-ONLY via GET /api/jobs/:id.
+// The server never emits these WS events. Do not rely on them at runtime.
 export interface WsV2JobStatusMsg {
   type: 'job.status'
   data: {
@@ -119,6 +135,9 @@ export interface WsV2JobStatusMsg {
   }
 }
 
+// NOTE: These event types are defined for a future push-model implementation.
+// As of 2026-03, async job progress is POLL-ONLY via GET /api/jobs/:id.
+// The server never emits these WS events. Do not rely on them at runtime.
 export interface WsV2JobProgressMsg {
   type: 'job.progress'
   data: {
@@ -218,6 +237,9 @@ function asPositiveInteger(value: unknown): number | undefined {
   return int >= 0 ? int : undefined
 }
 
+// NOTE: These event types are defined for a future push-model implementation.
+// As of 2026-03, async job progress is POLL-ONLY via GET /api/jobs/:id.
+// The server never emits these WS events. Do not rely on them at runtime.
 export function lifecycleFromJobStatus(
   msg: WsV2JobStatusMsg,
   fallbackJobId: string | null,
@@ -247,6 +269,9 @@ export function lifecycleFromJobStatus(
   }
 }
 
+// NOTE: These event types are defined for a future push-model implementation.
+// As of 2026-03, async job progress is POLL-ONLY via GET /api/jobs/:id.
+// The server never emits these WS events. Do not rely on them at runtime.
 export function lifecycleFromJobProgress(
   msg: WsV2JobProgressMsg,
   fallbackJobId: string | null,

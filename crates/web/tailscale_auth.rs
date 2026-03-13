@@ -38,13 +38,30 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// Determine whether a request is authorized to access the axon web surfaces.
+///
+/// Token resolution order (first non-empty value wins):
+/// 1. `Authorization: Bearer <token>` request header
+/// 2. `x-api-key: <token>` request header
+/// 3. `?token=` query parameter
 pub fn check_auth(
-    _headers: &HeaderMap,
+    headers: &HeaderMap,
     query_token: Option<&str>,
     api_token: Option<&str>,
 ) -> AuthOutcome {
+    // Extract token from request headers before falling back to the query
+    // parameter. This keeps tokens out of access logs for callers that can
+    // set custom headers (e.g. the Next.js proxy and API clients).
+    let header_token = headers
+        .get("authorization")
+        .or_else(|| headers.get("x-api-key"))
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.trim_start_matches("Bearer ").trim())
+        .filter(|s| !s.is_empty());
+
+    let provided_token = header_token.or(query_token);
+
     if let Some(expected) = api_token {
-        let provided = query_token.unwrap_or("").trim();
+        let provided = provided_token.unwrap_or("").trim();
         if provided.is_empty() {
             return AuthOutcome::Denied(DenyReason::NoCredentials);
         }
@@ -56,6 +73,7 @@ pub fn check_auth(
 
     #[cfg(any(debug_assertions, test))]
     {
+        log::warn!("[auth] AXON_WEB_API_TOKEN is not set — auth is DISABLED in this debug build");
         AuthOutcome::Token
     }
     #[cfg(not(any(debug_assertions, test)))]
@@ -129,6 +147,43 @@ mod tests {
         assert!(matches!(
             outcome,
             AuthOutcome::Denied(DenyReason::NoCredentials)
+        ));
+    }
+
+    #[test]
+    fn token_auth_succeeds_via_authorization_bearer_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer correct-token".parse().unwrap());
+        let outcome = check_auth(&headers, None, Some("correct-token"));
+        assert!(matches!(outcome, AuthOutcome::Token));
+    }
+
+    #[test]
+    fn token_auth_succeeds_via_x_api_key_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "correct-token".parse().unwrap());
+        let outcome = check_auth(&headers, None, Some("correct-token"));
+        assert!(matches!(outcome, AuthOutcome::Token));
+    }
+
+    #[test]
+    fn token_auth_header_takes_precedence_over_query_param() {
+        // Header supplies the correct token; query param has a wrong one.
+        // The header must win and produce Token, not InvalidToken.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "correct-token".parse().unwrap());
+        let outcome = check_auth(&headers, Some("wrong-token"), Some("correct-token"));
+        assert!(matches!(outcome, AuthOutcome::Token));
+    }
+
+    #[test]
+    fn token_auth_rejects_wrong_bearer_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer wrong-token".parse().unwrap());
+        let outcome = check_auth(&headers, None, Some("correct-token"));
+        assert!(matches!(
+            outcome,
+            AuthOutcome::Denied(DenyReason::InvalidToken)
         ));
     }
 }

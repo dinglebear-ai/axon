@@ -65,6 +65,18 @@ pub(crate) struct DirectParams {
     pub(super) enabled_mcp_servers: Option<Vec<String>>,
     pub(super) blocked_mcp_tools: Vec<String>,
     pub(super) assistant_mode: bool,
+    /// Whether to grant the ACP adapter filesystem access.
+    /// Sent by `use-axon-acp.ts` as `enable_fs` (default `true`).
+    pub(super) enable_fs: bool,
+    /// Whether to grant the ACP adapter terminal access.
+    /// Sent by `use-axon-acp.ts` as `enable_terminal` (default `true`).
+    pub(super) enable_terminal: bool,
+    /// How long (in seconds) ACP waits for permission approval before timing out.
+    /// Sent by `use-axon-acp.ts` as `permission_timeout_secs` (optional).
+    pub(super) permission_timeout_secs: Option<u64>,
+    /// How long (in seconds) the ACP adapter process is allowed to run.
+    /// Sent by `use-axon-acp.ts` as `adapter_timeout_secs` (optional).
+    pub(super) adapter_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

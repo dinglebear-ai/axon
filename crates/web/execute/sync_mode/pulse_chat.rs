@@ -10,6 +10,30 @@ use crate::crates::services::acp::{self as acp_svc, AcpConnectionHandle, SESSION
 use crate::crates::services::events::{LogLevel, ServiceEvent};
 use crate::crates::services::types::{AcpBridgeEvent, AcpPromptTurnRequest};
 
+/// System prompt preamble injected into the first turn of an editor-integrated
+/// Pulse session (i.e. when `session_id` is `None`).
+///
+/// # Divergence warning
+///
+/// The SSE path (`apps/web/app/api/pulse/chat/route.ts`) constructs its own
+/// system prompt via `buildPulseSystemPrompt()` in TypeScript. These two
+/// construction paths are intentionally separate due to transport-layer
+/// differences (WS vs SSE), but their content must be kept in sync manually.
+///
+/// When updating this constant, also update `buildPulseSystemPrompt()` in
+/// `apps/web/app/api/pulse/chat/route.ts` to reflect the same changes.
+pub(crate) const AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE: &str = "\
+[System context — Axon editor integration]\n\
+You have access to the user's Axon editor. To write content \
+directly into the editor, output a block starting with the \
+XML opening tag `<axon:editor op=\"replace\">` (or op=\"append\" \
+to add to the end), followed by your markdown content, followed \
+by the closing tag `</axon:editor>`. Do NOT show this tag in a \
+code fence or explain it unless the user explicitly asks — \
+just use it. The user will see the editor update in real time. \
+Only use axon:editor tags when the user explicitly asks you to \
+write to or update the editor.";
+
 use super::super::events::{CommandContext, acp_bridge_event_json, serialize_raw_output_event};
 use super::super::mcp_config::read_axon_mcp_servers;
 use super::acp_adapter::resolve_acp_adapter_command;
@@ -256,19 +280,7 @@ pub(super) async fn handle_pulse_chat(
     }
 
     let prompt_input = if session_id.is_none() {
-        format!(
-            "[System context — Axon editor integration]\n\
-             You have access to the user's Axon editor. To write content \
-             directly into the editor, output a block starting with the \
-             XML opening tag `<axon:editor op=\"replace\">` (or op=\"append\" \
-             to add to the end), followed by your markdown content, followed \
-             by the closing tag `</axon:editor>`. Do NOT show this tag in a \
-             code fence or explain it unless the user explicitly asks — \
-             just use it. The user will see the editor update in real time. \
-             Only use axon:editor tags when the user explicitly asks you to \
-             write to or update the editor.\n\
-             [User message]\n{input}"
-        )
+        format!("{AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE}\n[User message]\n{input}")
     } else {
         input
     };
@@ -289,15 +301,35 @@ pub(super) async fn handle_pulse_chat(
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
     let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
 
-    conn_handle
+    let send_result = conn_handle
         .run_turn(acp_svc::TurnRequest {
             req,
             service_tx: Some(event_tx),
             result_tx,
         })
-        .await?;
+        .await;
 
-    drive_turn_events(result_rx, event_rx, tx, ws_ctx, &agent_key).await
+    if let Err(ref err) = send_result {
+        // The adapter channel is closed — the subprocess died before we could
+        // dispatch this turn. Evict immediately so the next call spawns a fresh
+        // adapter rather than retrying against the same dead handle for up to
+        // 30 minutes.
+        log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
+        SESSION_CACHE.remove(&agent_key);
+        return send_result;
+    }
+
+    let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, &agent_key).await;
+
+    if let Err(ref err) = turn_result {
+        // The turn completed with an error (e.g. adapter exited mid-turn, ACP
+        // protocol error, oneshot channel dropped). The cached handle is likely
+        // broken — evict so the next request spawns a clean subprocess.
+        log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
+        SESSION_CACHE.remove(&agent_key);
+    }
+
+    turn_result
 }
 
 /// Handle the `pulse_chat_probe` service mode.

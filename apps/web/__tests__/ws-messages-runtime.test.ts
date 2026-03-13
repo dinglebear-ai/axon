@@ -117,7 +117,7 @@ describe('toScreenshotFiles', () => {
 
   it('extracts name from last path segment', () => {
     const artifacts = [{ path: 'a/b/c/file.png', download_url: '', size_bytes: 0 }]
-    expect(toScreenshotFiles(artifacts)[0].name).toBe('file.png')
+    expect(toScreenshotFiles(artifacts)[0]!.name).toBe('file.png')
   })
 })
 

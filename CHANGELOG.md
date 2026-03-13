@@ -1,5 +1,13 @@
 # Changelog
-Last Modified: 2026-03-13 (session: v0.21.2 — PR review fixes + crawl engine refactoring)
+Last Modified: 2026-03-13 (session: v0.23.0 — web integration security, performance, and protocol fixes)
+
+## [Unreleased] — feat/web-integration-review-fixes
+
+This section documents commits on `feat/web-integration-review-fixes` relative to `main` (`fe11a78d`).
+
+### Highlights
+
+- **Web integration full-review fixes (v0.23.0)** — 5 critical and 12 high findings from a comprehensive `apps/web ↔ crates/web` integration review addressed across 20 files. Security: `check_auth()` now reads `Authorization`/`x-api-key` headers (tokens no longer forced into query strings / access logs); CORS preflight uses an explicit header allowlist instead of reflecting arbitrary client headers; ACP sessions are bound to originating WS connection (cross-session interference prevented); shell PTY input capped at 64 KB; debug-build auth bypass now emits a prominent `log::warn!`. Protocol: `acp_resume_result` field renamed `success` → `ok` to match TypeScript Zod schema (session resume was silently broken); `permission_request` ACP events fully wired through TypeScript WS handler; all `format!()`-based JSON replaced with `serde_json::json!()` (injection-safe); four ACP permission flags (`enable_fs`, `enable_terminal`, `permission_timeout_secs`, `adapter_timeout_secs`) wired through `ALLOWED_FLAGS` → `params.rs` (UI controls now functional). Performance: WS channel-full drops replaced with visible `[output truncated]` sentinel; sync-mode concurrency semaphore added (`AXON_MAX_SYNC_CONCURRENT`, default 16); per-connection WS execute rate limiting (120 req/60s); dead ACP adapter evicted from `SESSION_CACHE` on `run_turn()` error; `axon-ws-exec.ts` singleton sends abort-triggered cancel to server and caps pending map at 100. Code quality: `NO_JSON_MODES` updated to reflect service-layer routing; `pulse_chat_probe`/`mcp_refresh` documented as internal-only; editor system prompt extracted to named constant; 22 pre-existing TypeScript `noUncheckedIndexedAccess` test errors fixed; 862 tests passing.
 
 ## [Unreleased] — fix/pr-review-fixes-crawl-refactor
 

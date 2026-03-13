@@ -100,6 +100,21 @@ pub(super) fn extract_params(
         .get("assistant_mode")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
+    // ACP adapter capability flags.  These are consumed by the pulse_chat direct-service
+    // path (via DirectParams → pulse_chat.rs → acp_adapter.rs) and also forwarded as
+    // CLI args on subprocess paths that accept them (via ALLOWED_FLAGS in constants.rs).
+    let enable_fs = flags
+        .get("enable_fs")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let enable_terminal = flags
+        .get("enable_terminal")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let permission_timeout_secs = flags
+        .get("permission_timeout_secs")
+        .and_then(|v| v.as_u64());
+    let adapter_timeout_secs = flags.get("adapter_timeout_secs").and_then(|v| v.as_u64());
     Some(DirectParams {
         mode,
         input: context.input.clone(),
@@ -114,6 +129,10 @@ pub(super) fn extract_params(
         enabled_mcp_servers,
         blocked_mcp_tools,
         assistant_mode,
+        enable_fs,
+        enable_terminal,
+        permission_timeout_secs,
+        adapter_timeout_secs,
     })
 }
 

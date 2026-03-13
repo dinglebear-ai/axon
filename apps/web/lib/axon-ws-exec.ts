@@ -64,6 +64,12 @@ export interface RunAxonCommandWsStreamOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+
+const MAX_PENDING = 100
+
+// ---------------------------------------------------------------------------
 // Correlation-ID helpers
 // ---------------------------------------------------------------------------
 
@@ -325,7 +331,10 @@ export async function runAxonCommandWsStream(
   const execId = nextExecId()
 
   return new Promise<void>((resolve, reject) => {
-    let ws: WsLike | null = null
+    if (_pending.size >= MAX_PENDING) {
+      reject(new Error('too many in-flight requests — axon-ws-exec pending map full'))
+      return
+    }
 
     const finish = (err?: Error) => {
       settlePending(execId, err)
@@ -333,6 +342,19 @@ export async function runAxonCommandWsStream(
     }
 
     const onAbort = () => {
+      // Send a cancel message to the Rust server so the server-side command is
+      // stopped and does not continue consuming resources until timeout.
+      const currentWs = _ws
+      if (currentWs) {
+        const state = (currentWs as unknown as { readyState?: number }).readyState
+        if (state === undefined || state === 1 /* OPEN */) {
+          try {
+            currentWs.send(JSON.stringify({ type: 'cancel', id: execId }))
+          } catch {
+            /* ignore send errors during abort — we still settle the promise */
+          }
+        }
+      }
       finish(new Error(`axon ${mode} request aborted`))
     }
 
@@ -361,15 +383,17 @@ export async function runAxonCommandWsStream(
       timer,
     }
 
+    // NOTE: We add to _pending BEFORE the connection resolves intentionally.
+    // This ensures that a fast failAllPending() (e.g., on connection error during getConnection())
+    // correctly rejects this entry rather than leaving it dangling.
     _pending.set(execId, pending)
 
     getConnection()
       .then((conn) => {
-        ws = conn
         if (pending.settled) return
         try {
           console.log(`[axon-ws] executing mode=${mode} exec_id=${execId}`)
-          ws.send(JSON.stringify({ type: 'execute', mode, input, flags, exec_id: execId }))
+          conn.send(JSON.stringify({ type: 'execute', mode, input, flags, exec_id: execId }))
         } catch (err) {
           finish(
             new Error(

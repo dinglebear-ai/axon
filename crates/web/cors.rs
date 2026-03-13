@@ -57,19 +57,18 @@ pub(crate) async fn cors_middleware(
     response
 }
 
-fn preflight_cors_response(request: &Request<Body>, allow_origin: HeaderValue) -> Response {
+fn preflight_cors_response(_request: &Request<Body>, allow_origin: HeaderValue) -> Response {
     let mut response = Response::new(Body::empty());
     *response.status_mut() = StatusCode::NO_CONTENT;
     set_cors_response_headers(response.headers_mut(), allow_origin);
 
-    let requested_headers = request
-        .headers()
-        .get(header::ACCESS_CONTROL_REQUEST_HEADERS)
-        .cloned()
-        .unwrap_or_else(|| HeaderValue::from_static(DEFAULT_CORS_ALLOW_HEADERS));
-    response
-        .headers_mut()
-        .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, requested_headers);
+    // Always respond with a static explicit allowlist — never reflect the client-supplied
+    // Access-Control-Request-Headers value, which would grant an effective wildcard for
+    // any allowed origin (CWE-942).
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static(DEFAULT_CORS_ALLOW_HEADERS),
+    );
     response.headers_mut().insert(
         header::ACCESS_CONTROL_ALLOW_METHODS,
         HeaderValue::from_static(DEFAULT_CORS_ALLOW_METHODS),

@@ -133,13 +133,10 @@ fn inline_bytes_threshold() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::super::path::MCP_ARTIFACT_DIR_ENV;
+    use super::super::path::{ARTIFACT_ENV_TEST_LOCK, MCP_ARTIFACT_DIR_ENV};
     use super::*;
     use std::env;
     use tempfile::TempDir;
-    use tokio::sync::Mutex;
-
-    static ARTIFACT_ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
     #[allow(unsafe_code)]
     fn scoped_artifact_root() -> (TempDir, Option<String>) {
@@ -164,8 +161,9 @@ mod tests {
     /// Small payload with no explicit mode should auto-inline.
     #[tokio::test]
     #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
     async fn auto_inline_when_mode_is_none_and_payload_small() {
-        let _guard = ARTIFACT_ENV_LOCK.lock().await;
+        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
         let resp = respond_with_mode("test", "sub", None, "test-artifact", payload.clone())
@@ -181,8 +179,9 @@ mod tests {
     /// write to disk and return a path response.
     #[tokio::test]
     #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
     async fn explicit_path_mode_respected_even_for_small_payload() {
-        let _guard = ARTIFACT_ENV_LOCK.lock().await;
+        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
         let resp = respond_with_mode(
@@ -204,8 +203,9 @@ mod tests {
     /// Explicit Inline mode should return inline data with the artifact on disk.
     #[tokio::test]
     #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
     async fn explicit_inline_mode_returns_inline_data() {
-        let _guard = ARTIFACT_ENV_LOCK.lock().await;
+        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"items": [1, 2, 3]});
         let resp = respond_with_mode(
@@ -228,8 +228,9 @@ mod tests {
     /// Both mode should return inline data, shape preview, and the artifact.
     #[tokio::test]
     #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
     async fn both_mode_returns_inline_and_shape_and_artifact() {
-        let _guard = ARTIFACT_ENV_LOCK.lock().await;
+        let _guard = ARTIFACT_ENV_TEST_LOCK.lock().expect("lock poisoned");
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"name": "axon", "count": 42});
         let resp = respond_with_mode(
