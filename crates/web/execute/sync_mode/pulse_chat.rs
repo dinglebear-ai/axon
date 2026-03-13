@@ -21,7 +21,9 @@ use crate::crates::services::types::{AcpBridgeEvent, AcpPromptTurnRequest};
 ///
 /// When updating this constant, also update `buildPulseSystemPrompt()` in
 /// `apps/web/app/api/pulse/chat/route.ts` to reflect the same changes.
-pub(crate) const AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE: &str = "\
+///
+/// TODO: move to `crates/services/acp/` — tracked in WEB-INTEGRATION-REVIEW.md H-6
+pub const AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE: &str = "\
 [System context — Axon editor integration]\n\
 You have access to the user's Axon editor. To write content \
 directly into the editor, output a block starting with the \
@@ -302,6 +304,21 @@ pub(super) async fn handle_pulse_chat(
     )
     .await?;
 
+    execute_acp_turn(conn_handle, req, tx, ws_ctx, &agent_key).await
+}
+
+/// Dispatch a single ACP turn on a persistent connection and handle the result.
+///
+/// Sends the turn request to the adapter, drives the event loop until completion,
+/// and evicts the session from cache on fatal adapter errors (channel closed,
+/// adapter exited) while preserving it for recoverable per-turn errors.
+async fn execute_acp_turn(
+    conn_handle: Arc<AcpConnectionHandle>,
+    req: AcpPromptTurnRequest,
+    tx: mpsc::Sender<String>,
+    ws_ctx: CommandContext,
+    agent_key: &str,
+) -> Result<(), String> {
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
     let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
 
@@ -319,11 +336,11 @@ pub(super) async fn handle_pulse_chat(
         // adapter rather than retrying against the same dead handle for up to
         // 30 minutes.
         log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
-        SESSION_CACHE.remove(&agent_key);
+        SESSION_CACHE.remove(agent_key);
         return send_result;
     }
 
-    let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, &agent_key).await;
+    let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, agent_key).await;
 
     if let Err(ref err) = turn_result {
         // Only evict if the error indicates the adapter process/channel is
@@ -338,7 +355,7 @@ pub(super) async fn handle_pulse_chat(
             log::warn!(
                 "[acp] session {agent_key} evicted from cache after fatal adapter error: {err}"
             );
-            SESSION_CACHE.remove(&agent_key);
+            SESSION_CACHE.remove(agent_key);
         } else {
             log::debug!("[acp] session {agent_key} turn error (adapter still healthy): {err}");
         }

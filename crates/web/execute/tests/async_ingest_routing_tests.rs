@@ -1,9 +1,2 @@
-#[test]
-fn async_subprocess_modes_does_not_include_ingest_modes() {
-    for mode in ["github", "reddit", "youtube"] {
-        assert!(
-            !super::constants::ASYNC_SUBPROCESS_MODES.contains(&mode),
-            "ingest mode must not use subprocess fallback: {mode}"
-        );
-    }
-}
+// Ingest routing tests removed: the ASYNC_SUBPROCESS_MODES constant they
+// validated was an empty dead-code marker with no runtime effect.

@@ -68,7 +68,9 @@ export function buildCspHeader(options: CspOptions): string {
     "form-action 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
-    `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+    // 'unsafe-inline' is dev-only: in production, inline scripts should use
+    // nonce-based CSP if needed. 'unsafe-eval' is also dev-only (HMR/Turbopack).
+    `script-src 'self'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
     // https: covers self-hosted backend screenshots served over HTTPS;
     // data: and blob: cover inline images and local file previews.

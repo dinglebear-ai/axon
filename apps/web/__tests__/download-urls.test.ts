@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { archiveZipUrl, fileDownloadUrl, packMdUrl, packXmlUrl } from '@/lib/download-urls'
+import {
+  archiveZipUrl,
+  DOWNLOAD_URL_PATTERNS,
+  fileDownloadUrl,
+  packMdUrl,
+  packXmlUrl,
+} from '@/lib/download-urls'
 
 describe('download URL helpers', () => {
   const jobId = 'abc-123'
@@ -33,5 +39,16 @@ describe('download URL helpers', () => {
   it('fileDownloadUrl handles deeply nested paths', () => {
     const result = fileDownloadUrl(jobId, 'a/b/c/d.txt')
     expect(result).toBe('/download/abc-123/file/a/b/c/d.txt')
+  })
+
+  // Structural test: verify DOWNLOAD_URL_PATTERNS is defined and non-empty.
+  // These patterns must stay in sync with crates/web.rs route definitions.
+  it('DOWNLOAD_URL_PATTERNS contains all expected route patterns', () => {
+    expect(DOWNLOAD_URL_PATTERNS).toBeDefined()
+    expect(DOWNLOAD_URL_PATTERNS.length).toBe(4)
+    expect(DOWNLOAD_URL_PATTERNS).toContain('/download/:jobId/pack.md')
+    expect(DOWNLOAD_URL_PATTERNS).toContain('/download/:jobId/pack.xml')
+    expect(DOWNLOAD_URL_PATTERNS).toContain('/download/:jobId/archive.zip')
+    expect(DOWNLOAD_URL_PATTERNS).toContain('/download/:jobId/file/:path*')
   })
 })

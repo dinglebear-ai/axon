@@ -323,18 +323,25 @@ AXON_JOB_STALE_CONFIRM_SECS=60     # additional grace period before stale reclai
 
 ### Web App Security Env (`apps/web`)
 
-One token covers both surfaces: `AXON_WEB_API_TOKEN` (server) and `NEXT_PUBLIC_AXON_API_TOKEN` (client) must be set to the same value.
+Three auth tokens cover two surfaces (`/api/*` and `/ws`):
 
-- `/api/*` routes — `proxy.ts` validates via `Authorization: Bearer <token>` or `x-api-key` header
-- `/ws` — Rust gate (`crates/web.rs`) validates via `?token=` query param, appended by `hooks/use-axon-ws.ts`
+| Token | Scope | Required |
+|-------|-------|----------|
+| `AXON_WEB_API_TOKEN` | Primary token. Gates both `/api/*` (proxy.ts) and `/ws` (Rust WS gate via `?token=`). | Yes |
+| `AXON_WEB_BROWSER_API_TOKEN` | Second-tier token for `/api/*` routes only. Does **not** gate `/ws`. If unset, `AXON_WEB_API_TOKEN` is used for all routes. | No |
+| `NEXT_PUBLIC_AXON_API_TOKEN` | Browser-exposed copy of `AXON_WEB_API_TOKEN`. `apiFetch()` sends it as `x-api-key` on `/api/*`; `use-axon-ws.ts` appends it as `?token=` on the WS URL. Must equal `AXON_WEB_API_TOKEN`. | Yes (when `AXON_WEB_API_TOKEN` is set) |
 
 MCP OAuth (`atk_` tokens) is a separate auth system for MCP clients only — it does not touch `/ws` or `/api/*`.
 
 ```bash
-# Server-side token — activates both the /api/* proxy gate and the /ws Rust gate
+# Primary token — gates both /api/* (proxy.ts) and /ws (Rust WS gate)
 AXON_WEB_API_TOKEN=CHANGE_ME
 
-# Client-side copy — must equal AXON_WEB_API_TOKEN
+# Optional second-tier token — gates /api/* only (does NOT gate /ws).
+# If unset, AXON_WEB_API_TOKEN is used for all routes.
+AXON_WEB_BROWSER_API_TOKEN=
+
+# Browser-exposed copy — must equal AXON_WEB_API_TOKEN
 # apiFetch() sends it as x-api-key on /api/*; use-axon-ws.ts sends it as ?token= on /ws
 NEXT_PUBLIC_AXON_API_TOKEN=
 

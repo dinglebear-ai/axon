@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "0.23.0"
+version = "0.23.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -53,6 +53,7 @@ spider = { version = "2", default-features = false, features = [
 spider_agent = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+subtle = "2"
 text-splitter = { version = "0.29", features = ["code"] }
 tree-sitter-bash = "0.23"
 tree-sitter-go = "0.23"

@@ -59,7 +59,15 @@ async fn poll_next_delivery(
     tokio::select! {
         maybe_done = inflight.next() => {
             if maybe_done.is_some() {
-                return Ok(None);
+                // An inflight job completed but no new delivery is ready yet.
+                // Return Err(Elapsed) — maps to Continue in parse_delivery_result —
+                // so the outer loop re-polls rather than misinterpreting this as the
+                // consumer stream ending (which is the meaning of Ok(None)).
+                return tokio::time::timeout(
+                    Duration::ZERO,
+                    std::future::pending::<Option<Result<lapin::message::Delivery, lapin::Error>>>(),
+                )
+                .await;
             }
             tokio::time::timeout(Duration::from_secs(STALE_SWEEP_INTERVAL_SECS), consumer.next()).await
         }

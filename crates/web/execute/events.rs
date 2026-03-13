@@ -6,33 +6,12 @@
 use crate::crates::services::types::AcpBridgeEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandContext {
     pub exec_id: String,
     pub mode: String,
     pub input: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct JobStatusPayload {
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metrics: Option<BTreeMap<String, Value>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct JobProgressPayload {
-    pub phase: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub percent: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub processed: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -93,22 +72,6 @@ pub enum WsEventV2 {
         ctx: CommandContext,
         payload: CommandErrorPayload,
     },
-    /// NOTE: Defined for future push-model implementation.
-    /// As of 2026-03, async job progress is POLL-ONLY via the HTTP /api/jobs/:id endpoint.
-    /// This variant is never emitted at runtime. Do not rely on it.
-    #[serde(rename = "job.status")]
-    JobStatus {
-        ctx: CommandContext,
-        payload: JobStatusPayload,
-    },
-    /// NOTE: Defined for future push-model implementation.
-    /// As of 2026-03, async job progress is POLL-ONLY via the HTTP /api/jobs/:id endpoint.
-    /// This variant is never emitted at runtime. Do not rely on it.
-    #[serde(rename = "job.progress")]
-    JobProgress {
-        ctx: CommandContext,
-        payload: JobProgressPayload,
-    },
     #[serde(rename = "artifact.list")]
     ArtifactList {
         ctx: CommandContext,
@@ -127,13 +90,13 @@ pub enum WsEventV2 {
     },
 }
 
-pub(super) fn serialize_v2_event(event: WsEventV2) -> Option<String> {
+pub(crate) fn serialize_v2_event(event: WsEventV2) -> Option<String> {
     serde_json::to_string(&event)
         .map_err(|e| log::error!("failed to serialize WsEventV2: {e}"))
         .ok()
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub(super) fn acp_bridge_event_payload(event: &AcpBridgeEvent) -> Value {
     serde_json::to_value(event).unwrap_or_else(|e| {
         log::error!("failed to serialize ACP bridge event payload, sending error placeholder: {e}");

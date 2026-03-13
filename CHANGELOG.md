@@ -1,11 +1,15 @@
 # Changelog
-Last Modified: 2026-03-13 (session: v0.23.0 — web integration security, performance, and protocol fixes)
+Last Modified: 2026-03-13 (session: v0.23.1 — complete crates/web review remediation, embed worker crash fix)
 
 ## [Unreleased] — feat/web-integration-review-fixes
 
 This section documents commits on `feat/web-integration-review-fixes` relative to `main` (`fe11a78d`).
 
 ### Highlights
+
+- **`crates/web` comprehensive review — all 31 findings resolved (v0.23.1)** — complete remediation of all P0/P1/P2/P3 and security findings from the 2026-03-13 review. Security: loopback PTY auth bypass removed (SEC-1); ACP `enable_fs`/`enable_terminal` capability flags now threaded end-to-end (SEC-2); `DefaultHasher` replaced with JSON string key for ACP session cache (SEC-3); empty `session_id` filtered to `None` to prevent system-prompt bypass (SEC-4); `subtle::ConstantTimeEq` replaces hand-rolled token comparison to eliminate length side-channel (SEC-6). Critical/high: `MutexGuard` held across `.await` fixed; `dispatch_search_and_info_modes` split below 120-line hard limit; `ws_handler.rs` reduced 510→432 lines via test module extraction; all `.expect()`/`.unwrap()` in production paths replaced; `JoinSet` cleanup on WS disconnect; `session_ownership` DashMap cleanup on disconnect; rate-limit state moved to process-wide `AppState` `DashMap` keyed by client IP (bypassed reconnect); `docker_stats` task wrapped in restart loop. Medium: `handle_command` refactored to accept `ExecCommandContext` directly (removes 8-param lint suppress); `handle_ws`/`handle_ws_message`/`handle_pulse_chat` all reduced below 80-line warn threshold via helper extraction; `spawn_blocking` for `resolve_exe()` filesystem probes; `LazyLock` for env var caching; page-cache subtracted from Docker memory metrics. Low: `biased;` added to forward task `select!` (output prioritized over stats); `crawl_files` detection changed from fragile substring scan to typed JSON struct; rate-limit errors now use `WsEventV2::CommandError` envelope; `read_file` messages rate-limited; dead `WsEventV2::JobStatus`/`JobProgress` variants removed; `ASYNC_SUBPROCESS_MODES` empty constant removed; `POLL_INTERVAL_MS` corrected 1000→500ms. Also: `ws_handler.rs` new module `crates/web/ws_handler/` with extracted tests; 1266 lib tests passing.
+
+- **Embed worker crash fix** — `poll_next_delivery` in `crates/jobs/worker_lane/amqp.rs` returned `Ok(None)` when an in-flight future completed via `FuturesUnordered::next()`, which `parse_delivery_result` correctly mapped to `DeliveryOutcome::Break` (consumer stream ended), terminating the lane. Fixed by returning `timeout(Duration::ZERO, pending())` → `Err(Elapsed)` → `Continue` instead. Regression test added in `worker_lane.rs`.
 
 - **Web integration full-review fixes (v0.23.0)** — 5 critical and 12 high findings from a comprehensive `apps/web ↔ crates/web` integration review addressed across 20 files. Security: `check_auth()` now reads `Authorization`/`x-api-key` headers (tokens no longer forced into query strings / access logs); CORS preflight uses an explicit header allowlist instead of reflecting arbitrary client headers; ACP sessions are bound to originating WS connection (cross-session interference prevented); shell PTY input capped at 64 KB; debug-build auth bypass now emits a prominent `log::warn!`. Protocol: `acp_resume_result` field renamed `success` → `ok` to match TypeScript Zod schema (session resume was silently broken); `permission_request` ACP events fully wired through TypeScript WS handler; all `format!()`-based JSON replaced with `serde_json::json!()` (injection-safe); four ACP permission flags (`enable_fs`, `enable_terminal`, `permission_timeout_secs`, `adapter_timeout_secs`) wired through `ALLOWED_FLAGS` → `params.rs` (UI controls now functional). Performance: WS channel-full drops replaced with visible `[output truncated]` sentinel; sync-mode concurrency semaphore added (`AXON_MAX_SYNC_CONCURRENT`, default 16); per-connection WS execute rate limiting (120 req/60s); dead ACP adapter evicted from `SESSION_CACHE` on `run_turn()` error; `axon-ws-exec.ts` singleton sends abort-triggered cancel to server and caps pending map at 100. Code quality: `NO_JSON_MODES` updated to reflect service-layer routing; `pulse_chat_probe`/`mcp_refresh` documented as internal-only; editor system prompt extracted to named constant; 22 pre-existing TypeScript `noUncheckedIndexedAccess` test errors fixed; 862 tests passing.
 
@@ -364,6 +368,12 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 | `6f172dbd` | test | add map migration coverage |
 | `3466ddf0` | test | serialize DB-touching integration tests with #[serial] to prevent race conditions |
 | *(this commit v0.3.0)* | feat+chore | v0.3.0; evaluate page; cortex/suggest API; image SHA verification cont-init; CLI help contract test; command docs expansion (20+ files); module consolidation; sidebar simplification; script additions |
+| *(this commit v0.23.1)* | fix(web)+fix(jobs) | complete crates/web review remediation (31 findings); embed worker crash fix; subtle token comparison; process-wide rate limit; ws_handler refactor |
+| b387bf95 | fix(web) | shell WS msg size gate, ACP mode constant, markdown formatting |
+| 57c33133 | fix(web) | session ownership gate, auth consistency, and compilation fixes |
+| ae3382d4 | fix(web) | address TypeScript PR review issues (threads 2,9,12,15) |
+| 6c6b3837 | fix(web) | address P1/P2 Rust PR review issues (threads 4,5,6,7,11,13,14,16,17,19,20,21,22) |
+| f2a7b3b2 | fix(web) | web integration security, protocol, and performance fixes (v0.23.0) |
 | 7fb1100d | feat(mcp)+chore | MCP HTTP transport + Google OAuth; rmcp 0.17; screenshot CDP→Spider migration; engine sitemap backfill; cleanup |
 | `62bdae5e` | test | add scrape migration contract coverage |
 | `2d004e27` | docs | record screenshot migration to spider api |

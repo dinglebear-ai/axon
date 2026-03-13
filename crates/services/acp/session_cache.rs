@@ -82,7 +82,20 @@ impl CachedSession {
         }
     }
 
-    /// Drain and return all buffered events for replay to a reconnecting client.
+    /// Non-destructive read of all buffered events for replay to a reconnecting
+    /// client (M-6). The buffer is preserved so that a second reconnect still
+    /// receives the same events. Use `drain_replay_buffer()` for destructive
+    /// removal on explicit session termination.
+    pub fn read_replay_buffer(&self) -> Vec<String> {
+        let buf = self
+            .replay_buffer
+            .lock()
+            .expect("replay_buffer mutex poisoned");
+        buf.clone()
+    }
+
+    /// Drain and return all buffered events, clearing the buffer.
+    /// Used on explicit session termination — not on resume.
     pub fn drain_replay_buffer(&self) -> Vec<String> {
         let mut bytes = self
             .replay_buffer_bytes

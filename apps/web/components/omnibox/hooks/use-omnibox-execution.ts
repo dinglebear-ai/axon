@@ -144,7 +144,6 @@ export function useOmniboxExecution({
       type: 'cancel',
       id: cancelId,
       mode,
-      job_id: currentJobId ?? undefined,
     })
     isProcessingRef.current = false
     setIsProcessing(false)

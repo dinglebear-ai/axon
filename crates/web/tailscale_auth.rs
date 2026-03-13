@@ -5,6 +5,7 @@
 //! (`AXON_WEB_API_TOKEN`) gates `/ws`, `/output/*`, and `/download/*`.
 
 use axum::http::HeaderMap;
+use subtle::ConstantTimeEq;
 
 /// The result of checking auth on an incoming request.
 #[derive(Debug, PartialEq, Eq)]
@@ -26,15 +27,11 @@ pub enum DenyReason {
 }
 
 /// Constant-time byte comparison to prevent timing attacks on API token checks.
+///
+/// Uses `subtle::ConstantTimeEq` which handles length-mismatch without branching,
+/// preventing token length leakage via response timing.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    a.ct_eq(b).into()
 }
 
 /// Determine whether a request is authorized to access the axon web surfaces.

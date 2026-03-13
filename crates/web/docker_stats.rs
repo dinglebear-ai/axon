@@ -7,7 +7,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::warn;
 
 const CONTAINER_PREFIX: &str = "axon-";
-const POLL_INTERVAL_MS: u64 = 1000;
+const POLL_INTERVAL_MS: u64 = 500;
 
 #[derive(Clone)]
 struct ContainerMetrics {
@@ -219,7 +219,20 @@ fn memory_metrics_from_stats(stats: &bollard::models::ContainerStatsResponse) ->
         .as_ref()
         .and_then(|m| m.usage)
         .unwrap_or(0);
-    let mem_actual = mem_usage;
+    // P2-7: Subtract page cache from raw usage.  In cgroup v1, `usage` includes
+    // the kernel page cache, inflating reported RSS by 2-4x.  The `cache` field
+    // in `stats` (or `total_inactive_file` in some cgroup v2 setups) represents
+    // reclaimable memory that is not true process RSS.
+    let cache = stats
+        .memory_stats
+        .as_ref()
+        .and_then(|m| m.stats.as_ref())
+        .and_then(|s| {
+            // cgroup v1 reports "cache"; cgroup v2 reports "inactive_file"
+            s.get("cache").or_else(|| s.get("inactive_file")).copied()
+        })
+        .unwrap_or(0);
+    let mem_actual = mem_usage.saturating_sub(cache);
     let mem_limit = stats
         .memory_stats
         .as_ref()

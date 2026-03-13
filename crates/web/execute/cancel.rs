@@ -5,7 +5,7 @@
 //! binary discovery required.
 
 use super::events::{self, JobCancelResponsePayload, WsEventV2, serialize_v2_event};
-use super::ws_send::{send_done_dual, send_error_dual};
+use super::ws_send::send_error_dual;
 use crate::crates::core::config::Config;
 use crate::crates::jobs;
 use std::string::ToString;
@@ -133,7 +133,8 @@ pub(super) async fn handle_cancel(
             }
 
             if ok {
-                send_done_dual(&tx, &ws_ctx, 0, None).await;
+                // L-3: job.cancel.response is the sole terminal event for
+                // successful cancels — do NOT also emit command.done.
             } else {
                 send_error_dual(
                     &tx,

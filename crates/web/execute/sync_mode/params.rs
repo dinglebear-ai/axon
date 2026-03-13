@@ -1,10 +1,25 @@
-use std::env;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::crates::core::config::{Config, ConfigOverrides};
 
 use super::super::context::ExecCommandContext;
 use super::types::{DirectParams, PulseChatAgent, ServiceMode, flag_opt_usize, flag_usize};
+
+/// P2-8: Cache ACP adapter env vars at process startup so `derive_cfg` does not
+/// issue OS-level `getenv` syscalls on every WS request.
+static ACP_ADAPTER_CMD: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("AXON_ACP_ADAPTER_CMD")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+});
+
+static ACP_ADAPTER_ARGS: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("AXON_ACP_ADAPTER_ARGS")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+});
 
 /// Build a per-request `Config` wrapped in `Arc` by applying collection + limit
 /// overrides from flags.
@@ -29,19 +44,11 @@ fn derive_cfg(context: &ExecCommandContext, flags: &serde_json::Value) -> Arc<Co
 
     let mut cfg = context.cfg.apply_overrides(&overrides);
 
-    if let Some(cmd) = env::var("AXON_ACP_ADAPTER_CMD")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-    {
-        cfg.acp_adapter_cmd = Some(cmd);
+    if let Some(cmd) = ACP_ADAPTER_CMD.as_deref() {
+        cfg.acp_adapter_cmd = Some(cmd.to_string());
     }
-    if let Some(args) = env::var("AXON_ACP_ADAPTER_ARGS")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-    {
-        cfg.acp_adapter_args = Some(args);
+    if let Some(args) = ACP_ADAPTER_ARGS.as_deref() {
+        cfg.acp_adapter_args = Some(args.to_string());
     }
 
     Arc::new(cfg)
@@ -69,6 +76,7 @@ pub(super) fn extract_params(
     let session_id = flags
         .get("session_id")
         .and_then(serde_json::Value::as_str)
+        .filter(|s| !s.is_empty())
         .map(ToString::to_string);
     let model = flags
         .get("model")

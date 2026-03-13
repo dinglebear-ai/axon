@@ -1,9 +1,13 @@
 //! Session file persistence guard for `pulse_chat`.
-#![allow(dead_code)]
 //!
 //! After a prompt turn completes the Claude Code SDK writes the session `.jsonl`
 //! file asynchronously.  `poll_session_file` polls for the file's appearance so
 //! the frontend is not signalled to load it before it exists on disk.
+//!
+//! NOTE: These functions are not yet wired into the production execution path.
+//! They exist as infrastructure for an upcoming feature that confirms session
+//! file persistence before signalling the frontend.  Individual items are marked
+//! `allow(dead_code)` until they gain callers.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -18,6 +22,7 @@ use std::time::Duration;
 /// function also checks `USERPROFILE` as a fallback so the code remains
 /// correct if ever compiled for Windows, but `HOME` is always expected to be
 /// set in production.
+#[allow(dead_code)]
 fn projects_dir() -> Option<PathBuf> {
     // Try `HOME` first (Linux / macOS); fall back to `USERPROFILE` (Windows).
     let home = std::env::var("HOME")
@@ -35,6 +40,7 @@ fn projects_dir() -> Option<PathBuf> {
 /// We enumerate project slugs rather than computing one from `cwd` because the
 /// slug normalisation algorithm (underscore → dash, etc.) is internal to the
 /// Claude Code SDK and can change.
+#[allow(dead_code)]
 async fn find_session_file(projects_dir: &std::path::Path, filename: &str) -> Option<PathBuf> {
     let mut read_dir = match tokio::fs::read_dir(projects_dir).await {
         Ok(d) => d,
@@ -62,6 +68,7 @@ async fn find_session_file(projects_dir: &std::path::Path, filename: &str) -> Op
 ///
 /// Checks every 100 ms for up to 50 attempts (5 seconds total).
 /// Returns the absolute path on success, `None` on timeout.
+#[allow(dead_code)]
 pub(super) async fn poll_session_file(session_id: &str) -> Option<PathBuf> {
     let projects = match projects_dir() {
         Some(p) => p,

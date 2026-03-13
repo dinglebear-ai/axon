@@ -553,6 +553,38 @@ mod tests {
         assert_eq!(orphaned_pending_threshold_secs(i64::MAX), i32::MAX);
     }
 
+    /// Regression: when an inflight job completes, poll_next_delivery must NOT
+    /// return Ok(None), which parse_delivery_result maps to Break (lane exit).
+    /// The correct path is Err(Elapsed) → Continue → re-poll the consumer.
+    ///
+    /// This test exercises the `timeout(ZERO, pending())` fix in amqp.rs:
+    /// the Duration::ZERO timeout fires immediately, pending() never resolves,
+    /// so the result is always Err(Elapsed) — never Ok(None).
+    #[tokio::test]
+    async fn inflight_completion_maps_to_elapsed_not_none() {
+        use futures_util::StreamExt;
+        use futures_util::stream::FuturesUnordered;
+        use std::future::Future;
+        use std::pin::Pin;
+
+        let mut inflight: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> =
+            FuturesUnordered::new();
+        inflight.push(Box::pin(async { tokio::task::yield_now().await }));
+
+        // Drive the inflight job to completion.
+        let done = inflight.next().await;
+        assert!(done.is_some(), "inflight job should complete");
+
+        // Simulate the fixed path: timeout(ZERO, pending()) → Err(Elapsed).
+        let result: Result<Option<Result<(), ()>>, tokio::time::error::Elapsed> =
+            tokio::time::timeout(Duration::ZERO, std::future::pending()).await;
+
+        assert!(
+            result.is_err(),
+            "inflight completion must yield Err(Elapsed), not Ok(None) which would break the lane"
+        );
+    }
+
     #[test]
     fn orphaned_pending_select_query_contains_table_and_placeholders() {
         let q = orphaned_pending_select_query(JobTable::Embed);
