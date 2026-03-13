@@ -37,9 +37,8 @@ export interface WsHandlerCallbacks {
   onResumeSessionMiss?: () => void
   onPermissionRequest?: (params: {
     session_id: string
-    request_id: string
-    tool_name: string
-    tool_input: unknown
+    tool_call_id: string
+    options: string[]
   }) => void
   onEditorUpdate?: (content: string, operation: 'replace' | 'append') => void
   onShowEditor?: () => void
@@ -153,9 +152,8 @@ const PermissionRequestSchema = z
   .object({
     type: z.literal('permission_request'),
     session_id: z.string(),
-    request_id: z.string(),
-    tool_name: z.string(),
-    tool_input: z.unknown(),
+    tool_call_id: z.string(),
+    options: z.array(z.string()),
   })
   .passthrough()
 const EditorUpdateSchema = z
@@ -509,9 +507,8 @@ export function handleAcpWsMessage(
     case 'permission_request': {
       callbacks.onPermissionRequest?.({
         session_id: msg.session_id,
-        request_id: msg.request_id,
-        tool_name: msg.tool_name,
-        tool_input: msg.tool_input,
+        tool_call_id: msg.tool_call_id,
+        options: msg.options,
       })
       break
     }

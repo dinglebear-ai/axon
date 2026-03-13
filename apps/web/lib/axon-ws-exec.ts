@@ -349,7 +349,7 @@ export async function runAxonCommandWsStream(
         const state = (currentWs as unknown as { readyState?: number }).readyState
         if (state === undefined || state === 1 /* OPEN */) {
           try {
-            currentWs.send(JSON.stringify({ type: 'cancel', id: execId }))
+            currentWs.send(JSON.stringify({ type: 'cancel', id: execId, mode }))
           } catch {
             /* ignore send errors during abort — we still settle the promise */
           }

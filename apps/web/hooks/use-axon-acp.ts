@@ -48,9 +48,8 @@ interface UseAxonAcpOptions {
    * `send` function from `useAxonWs`. */
   onPermissionRequest?: (params: {
     session_id: string
-    request_id: string
-    tool_name: string
-    tool_input: unknown
+    tool_call_id: string
+    options: string[]
   }) => void
   enableFs?: boolean
   enableTerminal?: boolean

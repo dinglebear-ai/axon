@@ -85,9 +85,8 @@ export type WsServerMsg =
   | {
       type: 'permission_request'
       session_id: string
-      request_id: string
-      tool_name: string
-      tool_input: unknown
+      tool_call_id: string
+      options: string[]
     }
 
 export interface WsV2CommandContext {

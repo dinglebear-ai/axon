@@ -130,6 +130,29 @@ export function useAxonShellState() {
     [layout, setEditorMarkdown],
   )
 
+  const { send: wsSend, subscribeByTypes: subscribeWsByTypes } = useAxonWs()
+
+  const onPermissionRequest = useCallback(
+    ({
+      tool_call_id,
+      options,
+    }: {
+      session_id: string
+      tool_call_id: string
+      options: string[]
+    }) => {
+      // Auto-approve the first option until a permission UI is implemented.
+      // This prevents turns from stalling indefinitely on permission prompts.
+      const chosen = options[0]
+      if (!chosen) return
+      console.info(
+        `[acp] auto-responding to permission request tool_call_id=${tool_call_id} with option=${chosen}`,
+      )
+      wsSend({ type: 'permission_response', tool_call_id, option_id: chosen })
+    },
+    [wsSend],
+  )
+
   const { submitPrompt, isStreaming, connected } = useAxonAcp({
     activeSessionId: session.chatSessionId,
     agent: pulseAgent ?? 'claude',
@@ -147,6 +170,7 @@ export function useAxonShellState() {
     onHandoffConsumed: () => setPendingHandoffContext(null),
     onTurnComplete,
     onEditorUpdate,
+    onPermissionRequest,
     enableFs: settings.enableFs,
     enableTerminal: settings.enableTerminal,
     permissionTimeoutSecs: settings.permissionTimeoutSecs,
@@ -159,7 +183,6 @@ export function useAxonShellState() {
     isStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  const { subscribeByTypes: subscribeWsByTypes } = useAxonWs()
   useEffect(() => {
     return subscribeWsByTypes(['command.done', 'command.error'], (msg: WsServerMsg) => {
       if (msg.type === 'command.done' || msg.type === 'command.error') {
