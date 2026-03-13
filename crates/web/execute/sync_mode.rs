@@ -46,7 +46,11 @@ static SYNC_MODE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
 /// Returns `true` for modes that already hold their own concurrency permit
 /// before entering `handle_sync_direct`, so they must be exempted from
 /// `SYNC_MODE_SEMAPHORE` to avoid dual-acquisition.
+///
+/// Mirrors `constants::ACP_MODES` (used by `execute.rs::acquire_acp_permit`)
+/// at the enum level.  If ACP modes change, update both sites and the constant.
 fn is_acp_mode(mode: &ServiceMode) -> bool {
+    // NOTE: keep in sync with super::constants::ACP_MODES
     matches!(mode, ServiceMode::PulseChat | ServiceMode::PulseChatProbe)
 }
 

@@ -7,6 +7,7 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
@@ -67,26 +68,26 @@ struct MsgType<'a> {
 struct WsConnState {
     exec_tx: mpsc::Sender<String>,
     tracking_tx: mpsc::Sender<String>,
-    crawl_job_id: Arc<Mutex<Option<String>>>,
+    /// M-5: Cumulative list of all enqueued job IDs for this connection.
+    /// Implicit cancel (no explicit job_id) iterates and cancels all entries.
+    /// Each execute task creates its own per-task `Arc<Mutex<Option<String>>>` for
+    /// `handle_command`, then propagates the stored ID here after completion.
+    crawl_job_ids: Arc<Mutex<Vec<String>>>,
     crawl_base_dir: Arc<Mutex<Option<PathBuf>>>,
     permission_responders: PermissionResponderMap,
     conn_cfg: Arc<Config>,
-    /// Unique ID for this WS connection — used for session ownership checks (H-8).
     conn_id: String,
-    /// Process-wide map of session_id → conn_id that claimed it (H-8).
     session_ownership: Arc<DashMap<String, String>>,
-    /// Client IP for process-wide rate limiting (P1-2).
     client_ip: IpAddr,
-    /// Process-wide rate limiter — `(execute_count, read_file_count, window_start)`.
     rate_limiter: Arc<DashMap<IpAddr, (u32, u32, Instant)>>,
+    /// M-12: Whether this client has opted in to Docker stats broadcasts.
+    stats_subscribed: Arc<AtomicBool>,
 }
 
-/// Create a fresh `PermissionResponderMap` for a new WS connection.
 fn init_permission_responders() -> PermissionResponderMap {
     Arc::new(DashMap::new())
 }
 
-/// Which rate-limit counter to check/increment.
 enum RateLimitCategory {
     Execute,
     ReadFile,
@@ -105,27 +106,30 @@ pub(super) async fn handle_ws(
     let (tracking_tx, tracking_rx) = mpsc::channel::<String>(256);
 
     let crawl_base_dir: Arc<Mutex<Option<PathBuf>>> = Arc::new(Mutex::new(None));
-    let crawl_job_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let crawl_job_ids: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let permission_responders = init_permission_responders();
+    let stats_subscribed = Arc::new(AtomicBool::new(false));
 
     let stats_rx = state.stats_tx.subscribe();
 
     // Forward task: sends exec output + stats to the WS client (P2-5, P3-1).
     let base_dir_tracker = crawl_base_dir.clone();
     let job_dirs_tracker = state.job_dirs.clone();
+    let stats_sub_flag = stats_subscribed.clone();
     let forward = tokio::spawn(run_forward_task(
         exec_rx,
         tracking_rx,
         stats_rx,
         base_dir_tracker,
         job_dirs_tracker,
+        stats_sub_flag,
         ws_tx,
     ));
 
     let conn = WsConnState {
         exec_tx,
         tracking_tx,
-        crawl_job_id,
+        crawl_job_ids,
         crawl_base_dir,
         permission_responders,
         conn_cfg: state.cfg.clone(),
@@ -133,6 +137,7 @@ pub(super) async fn handle_ws(
         session_ownership: state.session_ownership.clone(),
         client_ip,
         rate_limiter: state.rate_limiter.clone(),
+        stats_subscribed,
     };
 
     let mut tasks: JoinSet<()> = JoinSet::new();
@@ -162,17 +167,22 @@ pub(super) async fn handle_ws(
 }
 
 /// Forward task body: drains exec output, tracking, and stats channels to the WS
-/// sink. Uses `biased` select to prioritize output over stats (P3-1).
-/// Detects `crawl_files` messages via proper type-field parse (P1-8).
+/// sink. Uses `biased` select to prioritize output over stats (M-16, P3-1).
+/// Stats are only forwarded when the client has opted in (M-12).
 async fn run_forward_task(
     mut exec_rx: mpsc::Receiver<String>,
     mut tracking_rx: mpsc::Receiver<String>,
     mut stats_rx: tokio::sync::broadcast::Receiver<String>,
     base_dir_tracker: Arc<Mutex<Option<PathBuf>>>,
     job_dirs_tracker: Arc<DashMap<String, PathBuf>>,
+    stats_subscribed: Arc<AtomicBool>,
     mut ws_tx: impl SinkExt<Message> + Unpin,
 ) {
     loop {
+        // M-16: `biased;` guarantees deterministic poll order:
+        //   1. exec output (highest — user-visible command results)
+        //   2. tracking (mid — read_file responses)
+        //   3. stats (lowest — acceptable to starve during heavy crawl output)
         tokio::select! {
             biased;
             Some(msg) = exec_rx.recv() => {
@@ -187,7 +197,10 @@ async fn run_forward_task(
                 }
             }
             Ok(stats_msg) = stats_rx.recv() => {
-                if ws_tx.send(Message::Text(stats_msg.into())).await.is_err() {
+                // M-12: only forward stats when the client has subscribed.
+                if stats_subscribed.load(Ordering::Relaxed)
+                    && ws_tx.send(Message::Text(stats_msg.into())).await.is_err()
+                {
                     break;
                 }
             }
@@ -196,13 +209,14 @@ async fn run_forward_task(
     }
 }
 
-/// Detect `crawl_files` messages by their `"type"` field (P1-8) and track
+/// Detect `crawl_files` messages by their `"type"` field (L-2, P1-8) and track
 /// `output_dir` / `job_id` for the crawl base dir and job dirs registries.
 async fn track_crawl_files(
     msg: &str,
     base_dir: &Mutex<Option<PathBuf>>,
     job_dirs: &DashMap<String, PathBuf>,
 ) {
+    // L-2: typed deserialization via MsgType — no string scan.
     let is_crawl_files = serde_json::from_str::<MsgType>(msg)
         .map(|m| m.msg_type == "crawl_files")
         .unwrap_or(false);
@@ -258,24 +272,7 @@ async fn handle_ws_message(conn: &WsConnState, client_msg: WsClientMsg, tasks: &
     match client_msg.msg_type.as_str() {
         "execute" => handle_execute_msg(conn, client_msg, tasks).await,
         "acp_resume" => handle_acp_resume(conn, &client_msg.session_id).await,
-        "cancel" => {
-            let tx = conn.exec_tx.clone();
-            let job_id_arc = conn.crawl_job_id.clone();
-            let cancel_mode = client_msg.mode;
-            let cancel_cfg = conn.conn_cfg.clone();
-            let cancel_id = client_msg.id;
-            tasks.spawn(async move {
-                let stored = job_id_arc.lock().await.clone();
-                let id = stored.or(if cancel_id.is_empty() {
-                    None
-                } else {
-                    Some(cancel_id)
-                });
-                if let Some(id) = id {
-                    execute::handle_cancel(&cancel_mode, &id, tx, cancel_cfg).await;
-                }
-            });
-        }
+        "cancel" => handle_cancel_msg(conn, client_msg, tasks),
         "permission_response" => {
             route_permission_response(
                 conn,
@@ -285,8 +282,44 @@ async fn handle_ws_message(conn: &WsConnState, client_msg: WsClientMsg, tasks: &
             );
         }
         "read_file" => handle_read_file_msg(conn, client_msg, tasks).await,
+        // M-12: opt-in / opt-out for Docker stats broadcasting.
+        "subscribe_stats" => {
+            conn.stats_subscribed.store(true, Ordering::Relaxed);
+        }
+        "unsubscribe_stats" => {
+            conn.stats_subscribed.store(false, Ordering::Relaxed);
+        }
         _ => {}
     }
+}
+
+/// M-5: Handle a `cancel` message — cancels an explicit job ID or ALL tracked jobs.
+///
+/// When the client sends an explicit `id`, only that job is canceled and trimmed
+/// from the tracking Vec. When `id` is empty (implicit cancel), every job ID in
+/// `crawl_job_ids` is canceled so that multi-crawl sessions do not silently leave
+/// older jobs running.
+fn handle_cancel_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: &mut JoinSet<()>) {
+    let tx = conn.exec_tx.clone();
+    let job_ids_arc = conn.crawl_job_ids.clone();
+    let cancel_mode = client_msg.mode;
+    let cancel_cfg = conn.conn_cfg.clone();
+    let cancel_id = client_msg.id;
+
+    tasks.spawn(async move {
+        if !cancel_id.is_empty() {
+            // Explicit job ID — cancel only that one.
+            execute::handle_cancel(&cancel_mode, &cancel_id, tx, cancel_cfg).await;
+            job_ids_arc.lock().await.retain(|id| id != &cancel_id);
+        } else {
+            // Implicit cancel — cancel ALL tracked job IDs.
+            let ids: Vec<String> = job_ids_arc.lock().await.clone();
+            for id in &ids {
+                execute::handle_cancel(&cancel_mode, id, tx.clone(), cancel_cfg.clone()).await;
+            }
+            job_ids_arc.lock().await.clear();
+        }
+    });
 }
 
 /// Handle an `execute` message with process-wide rate limiting (P1-2, P1-9, P2-2).
@@ -328,10 +361,18 @@ async fn handle_execute_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: 
     };
 
     let tx = conn.exec_tx.clone();
-    let job_id = conn.crawl_job_id.clone();
+    // M-5: Per-task slot that `handle_command` / `async_mode` writes the enqueued
+    // job ID into. After the command completes, we propagate it to the cumulative Vec.
+    let per_task_job_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let job_ids_vec = conn.crawl_job_ids.clone();
     let perm_map = conn.permission_responders.clone();
+    let task_slot = per_task_job_id.clone();
     tasks.spawn(async move {
-        execute::handle_command(context, tx, job_id, perm_map).await;
+        execute::handle_command(context, tx, task_slot, perm_map).await;
+        // Propagate the job ID (if any) to the cumulative Vec for cancel-all support.
+        if let Some(id) = per_task_job_id.lock().await.take() {
+            job_ids_vec.lock().await.push(id);
+        }
     });
 }
 
@@ -375,94 +416,91 @@ async fn handle_read_file_msg(
     });
 }
 
+/// Build an `acp_resume_result` JSON string.
+fn acp_resume_json(
+    ok: bool,
+    session_id: &str,
+    reason: Option<&str>,
+    replayed: Option<usize>,
+) -> String {
+    let mut v = serde_json::json!({"type": "acp_resume_result", "ok": ok});
+    if !session_id.is_empty() {
+        v["session_id"] = serde_json::json!(session_id);
+    }
+    if let Some(r) = reason {
+        v["reason"] = serde_json::json!(r);
+    }
+    if let Some(n) = replayed {
+        v["replayed"] = serde_json::json!(n);
+    }
+    v.to_string()
+}
+
 /// Handle `acp_resume` — reconnect to a cached ACP session and replay buffered
 /// events.
 ///
-/// Security (H-8): records `conn_id` as the owner of this `session_id` on first
-/// resume. Subsequent resume attempts from a different connection are rejected.
+/// M-6: Uses non-destructive `read_replay_buffer()` so a second reconnect still
+/// receives buffered events. The buffer is only cleared on explicit session
+/// termination, not on resume.
+///
+/// Security (H-8): connection-binds session ownership on first resume.
 async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
     let tx = &conn.exec_tx;
 
     if session_id.is_empty() {
         let _ = tx
-            .send(
-                serde_json::json!({
-                    "type": "acp_resume_result",
-                    "ok": false,
-                    "reason": "missing session_id"
-                })
-                .to_string(),
-            )
+            .send(acp_resume_json(false, "", Some("missing session_id"), None))
             .await;
         return;
     }
 
     let Some(cached) = SESSION_CACHE.get_by_session_id(session_id) else {
         let _ = tx
-            .send(
-                serde_json::json!({
-                    "type": "acp_resume_result",
-                    "ok": false,
-                    "reason": "session not found",
-                    "session_id": session_id
-                })
-                .to_string(),
-            )
+            .send(acp_resume_json(
+                false,
+                session_id,
+                Some("session not found"),
+                None,
+            ))
             .await;
         log::info!("[ws] acp_resume: session_id={session_id} not found in cache");
         return;
     };
 
     // H-8: enforce connection-binding.
-    match conn
+    let owner = conn
         .session_ownership
         .entry(session_id.to_string())
         .or_insert_with(|| conn.conn_id.clone())
         .value()
-        .clone()
-    {
-        ref owner if owner != &conn.conn_id => {
-            log::warn!(
-                "[ws] acp_resume denied: session_id={session_id} bound to different connection"
-            );
-            let _ = tx
-                .send(
-                    serde_json::json!({
-                        "type": "acp_resume_result",
-                        "ok": false,
-                        "reason": "session bound to another connection"
-                    })
-                    .to_string(),
-                )
-                .await;
-            return;
-        }
-        _ => {}
+        .clone();
+    if owner != conn.conn_id {
+        log::warn!("[ws] acp_resume denied: session_id={session_id} bound to different connection");
+        let _ = tx
+            .send(acp_resume_json(
+                false,
+                "",
+                Some("session bound to another connection"),
+                None,
+            ))
+            .await;
+        return;
     }
 
-    let buffered = cached.drain_replay_buffer();
+    // M-6: non-destructive read — buffer survives for subsequent reconnects.
+    let buffered = cached.read_replay_buffer();
     let replayed = buffered.len();
     for msg in buffered {
         let _ = tx.send(msg).await;
     }
     let _ = tx
-        .send(
-            serde_json::json!({
-                "type": "acp_resume_result",
-                "ok": true,
-                "session_id": session_id,
-                "replayed": replayed
-            })
-            .to_string(),
-        )
+        .send(acp_resume_json(true, session_id, None, Some(replayed)))
         .await;
     log::info!("[ws] acp_resume: session_id={session_id}, replayed {replayed} buffered event(s)");
 }
 
-/// Route a `permission_response` message to the waiting ACP session.
-///
-/// Security (H-8): for resumed sessions, validates that the requesting
-/// connection owns the session before routing.
+/// Route a `permission_response` to the waiting ACP session.
+/// Security (H-8): validates connection ownership for resumed sessions.
 fn route_permission_response(
     conn: &WsConnState,
     tool_call_id: String,

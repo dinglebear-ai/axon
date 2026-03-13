@@ -80,6 +80,12 @@ pub(super) const ALLOWED_FLAGS: &[(&str, &str)] = &[
     ("adapter_timeout_secs", "--adapter-timeout-secs"),
 ];
 
+/// ACP modes that hold their own concurrency permit via `ACP_SESSION_SEMAPHORE`.
+///
+/// Both `execute.rs::acquire_acp_permit` and `sync_mode.rs::is_acp_mode` derive
+/// their checks from this constant to prevent the two sites from drifting apart.
+pub(super) const ACP_MODES: &[&str] = &["pulse_chat", "pulse_chat_probe"];
+
 /// Modes that use fire-and-forget direct service enqueue.
 /// These produce job IDs and return immediately without polling.
 pub(super) const ASYNC_MODES: &[&str] =

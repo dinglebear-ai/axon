@@ -94,7 +94,7 @@ pub fn is_valid_cancel_job_id_pub(job_id: &str) -> bool {
 }
 
 use crate::crates::core::config::Config;
-use constants::{ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
+use constants::{ACP_MODES, ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
@@ -238,7 +238,18 @@ async fn acquire_acp_permit(
     tx: &mpsc::Sender<String>,
     ws_ctx: &events::CommandContext,
 ) -> Result<Option<tokio::sync::SemaphorePermit<'static>>, ()> {
-    if matches!(mode, "pulse_chat" | "pulse_chat_probe") {
+    if ACP_MODES.contains(&mode) {
+        // M-11: Notify client before potentially blocking on the semaphore,
+        // so a 30-second hang has visible feedback in the browser.
+        if crate::crates::web::ACP_SESSION_SEMAPHORE.available_permits() == 0 {
+            let queued_msg = serde_json::json!({
+                "type": "status",
+                "phase": "queued",
+                "message": "Waiting for available session slot..."
+            })
+            .to_string();
+            let _ = tx.send(queued_msg).await;
+        }
         const ACP_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
         match tokio::time::timeout(
             ACP_ACQUIRE_TIMEOUT,
