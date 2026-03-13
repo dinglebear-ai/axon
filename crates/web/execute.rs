@@ -40,6 +40,7 @@ mod ws_protocol_tests;
 #[path = "execute/tests/async_ingest_routing_tests.rs"]
 mod async_ingest_routing_tests;
 
+pub(crate) use context::ExecCommandContext;
 pub(crate) use files::handle_read_file;
 
 #[cfg(test)]
@@ -93,14 +94,11 @@ pub fn is_valid_cancel_job_id_pub(job_id: &str) -> bool {
 }
 
 use crate::crates::core::config::Config;
+use constants::{ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc};
-use uuid::Uuid;
-
-use constants::{ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
-use context::ExecCommandContext;
 
 fn resolve_exe() -> Result<std::path::PathBuf, String> {
     exe::resolve_exe()
@@ -162,32 +160,16 @@ pub(super) async fn handle_cancel(
     cancel::handle_cancel(mode, job_id, tx, cfg).await
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn handle_command(
-    mode: String,
-    input: String,
-    flags: serde_json::Value,
-    client_exec_id: String,
+pub(crate) async fn handle_command(
+    context: ExecCommandContext,
     tx: mpsc::Sender<String>,
     crawl_job_id: Arc<Mutex<Option<String>>>,
-    cfg: Arc<Config>,
     permission_responders: crate::crates::services::acp::PermissionResponderMap,
 ) {
-    // All mode/input/flags checks below use `.as_str()` / `.as_ref()` on the
-    // owned values.  These borrows live only within their enclosing expressions
-    // and never cross an `.await` point, so the future remains `Send + 'static`.
-    let context = ExecCommandContext {
-        exec_id: if client_exec_id.trim().is_empty() {
-            format!("exec-{}", Uuid::new_v4())
-        } else {
-            client_exec_id
-        },
-        mode: mode.clone(),
-        input: input.clone(),
-        flags: flags.clone(),
-        cfg: cfg.clone(),
-    };
     let ws_ctx = context.to_ws_ctx();
+    let mode = context.mode.clone();
+    let input = context.input.clone();
+    let flags = context.flags.clone();
 
     if !ALLOWED_MODES.contains(&mode.as_str()) {
         send_error_dual(&tx, &ws_ctx, format!("unknown mode: {mode}"), None).await;
@@ -304,10 +286,22 @@ async fn dispatch_subprocess_fallback(
     tx: mpsc::Sender<String>,
     ws_ctx: events::CommandContext,
 ) {
-    let exe = match resolve_exe() {
-        Ok(p) => p,
-        Err(e) => {
+    // P2-3: resolve_exe() calls std::path::Path::exists() (blocking I/O) on
+    // multiple candidate paths.  Move it off the async runtime thread.
+    let exe = match tokio::task::spawn_blocking(resolve_exe).await {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => {
             send_error_dual(&tx, &ws_ctx, format!("cannot find axon binary: {e}"), None).await;
+            return;
+        }
+        Err(join_err) => {
+            send_error_dual(
+                &tx,
+                &ws_ctx,
+                format!("resolve_exe join error: {join_err}"),
+                None,
+            )
+            .await;
             return;
         }
     };

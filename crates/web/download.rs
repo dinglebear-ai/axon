@@ -36,17 +36,10 @@ fn auth_download(
     query_token: Option<&str>,
     state: &DownloadAuthState,
 ) -> AuthOutcome {
-    // Extract token from x-api-key or Authorization: Bearer header, falling
-    // back to `?token=` query parameter for browser-initiated downloads that
-    // cannot set custom headers.
-    let header_token = headers
-        .get("x-api-key")
-        .or_else(|| headers.get("authorization"))
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim_start_matches("Bearer ").trim())
-        .filter(|s| !s.is_empty());
-    let token = header_token.or(query_token);
-    check_auth(headers, token, state.api_token.as_deref())
+    // Delegate entirely to check_auth so header precedence and Bearer parsing
+    // (case-insensitive per RFC 6750) stay consistent across all routes.
+    // query_token is the `?token=` fallback for browser-initiated downloads.
+    check_auth(headers, query_token, state.api_token.as_deref())
 }
 
 /// `GET /download/{job_id}/pack.md`
