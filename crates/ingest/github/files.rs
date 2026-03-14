@@ -5,9 +5,10 @@ use crate::crates::vector::ops::input::classify::{
 };
 use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
+use anyhow::{Result, bail};
 use futures_util::stream::{self, StreamExt};
-use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use super::meta::{GitHubPayloadParams, build_github_payload};
@@ -34,10 +35,6 @@ fn file_extension(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Clone the repo with `git clone --depth=1` into a temp directory.
-///
-/// Returns the temp directory handle (dropped = cleanup) and the path.
-/// Auth uses `http.extraHeader` via git config env vars — token never appears in process args.
 /// Run `git clone --depth=1` into a temp directory.
 ///
 /// Tries authenticated clone first (if token provided), then falls back to
@@ -48,7 +45,7 @@ async fn clone_repo(
     common: &GitHubCommonFields,
     branch: &str,
     token: Option<&str>,
-) -> Result<tempfile::TempDir, Box<dyn Error>> {
+) -> Result<tempfile::TempDir> {
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
     let clone_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
@@ -73,7 +70,7 @@ async fn clone_repo(
             .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"))
             .output()
             .await
-            .map_err(|e| format!("git not found or failed to start: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("git not found or failed to start: {e}"))?;
 
         if output.status.success() {
             return Ok(tmp);
@@ -86,33 +83,31 @@ async fn clone_repo(
         ));
         // Clean up the failed partial clone before retrying.
         let _ = tokio::fs::remove_dir_all(tmp.path()).await;
-        let _ = tokio::fs::create_dir_all(tmp.path()).await;
+        tokio::fs::create_dir_all(tmp.path()).await.map_err(|e| {
+            anyhow::anyhow!("failed to recreate tmp dir for unauthenticated retry: {e}")
+        })?;
     }
 
     let output = tokio::process::Command::new("git")
         .args(base_args)
         .output()
         .await
-        .map_err(|e| format!("git not found or failed to start: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("git not found or failed to start: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
+        bail!(
             "git clone failed (exit {}): {}",
             output.status,
             stderr.trim()
-        )
-        .into());
+        );
     }
 
     Ok(tmp)
 }
 
 /// Recursively walk a directory and collect file paths relative to `root`.
-async fn collect_indexable_files(
-    root: &Path,
-    include_source: bool,
-) -> Result<Vec<String>, Box<dyn Error>> {
+async fn collect_indexable_files(root: &Path, include_source: bool) -> Result<Vec<String>> {
     let mut files = Vec::new();
     let mut stack = vec![root.to_path_buf()];
 
@@ -144,7 +139,6 @@ async fn collect_indexable_files(
 }
 
 /// Context for per-file embed tasks, built once from the outer scope.
-#[derive(Clone)]
 struct FileEmbedCtx {
     cfg: Config,
     repo_root: PathBuf,
@@ -233,9 +227,30 @@ pub async fn embed_files(
     include_source: bool,
     token: Option<&str>,
     progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<usize> {
+    // Heartbeat: signal activity before git clone (may take minutes on large repos)
+    send_progress(
+        progress_tx,
+        serde_json::json!({
+            "phase": "cloning",
+            "repo": common.repo_slug,
+        }),
+    )
+    .await;
+
     let tmp = clone_repo(common, &common.default_branch, token).await?;
     let repo_root = tmp.path().to_path_buf();
+
+    // Heartbeat: clone complete, about to enumerate files
+    send_progress(
+        progress_tx,
+        serde_json::json!({
+            "phase": "enumerating_files",
+            "repo": common.repo_slug,
+        }),
+    )
+    .await;
+
     let file_items = collect_indexable_files(&repo_root, include_source).await?;
     let files_total = file_items.len();
 
@@ -244,7 +259,7 @@ pub async fn embed_files(
         common.repo_slug
     ));
 
-    let ctx = FileEmbedCtx {
+    let ctx = Arc::new(FileEmbedCtx {
         cfg: cfg.clone(),
         repo_root,
         owner: common.owner.clone(),
@@ -253,7 +268,7 @@ pub async fn embed_files(
         repo_description: common.repo_description.clone(),
         pushed_at: common.pushed_at.clone(),
         is_private: common.is_private,
-    };
+    });
     let mut failed = 0usize;
     let docs = collect_embed_docs(&ctx, file_items, files_total, progress_tx, &mut failed).await;
 
@@ -268,7 +283,9 @@ pub async fn embed_files(
     )
     .await;
 
-    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let chunks_embedded = summary.chunks_embedded;
 
     send_progress(
@@ -289,7 +306,7 @@ pub async fn embed_files(
 }
 
 async fn collect_embed_docs(
-    ctx: &FileEmbedCtx,
+    ctx: &Arc<FileEmbedCtx>,
     file_items: Vec<String>,
     files_total: usize,
     progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
@@ -298,8 +315,8 @@ async fn collect_embed_docs(
     let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
-            let ctx = ctx.clone();
-            async move { read_file_embed_doc(&ctx, &path).await }
+            let ctx = Arc::clone(ctx);
+            async move { read_file_embed_doc(ctx.as_ref(), &path).await }
         })
         .buffer_unordered(concurrency);
 

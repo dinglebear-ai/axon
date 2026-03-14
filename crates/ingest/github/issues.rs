@@ -1,8 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use anyhow::Result;
 use octocrab::Octocrab;
 use octocrab::{models, params};
-use std::error::Error;
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload, issue_state_str};
@@ -15,7 +15,7 @@ pub async fn ingest_issues(
     cfg: &Config,
     octo: &Octocrab,
     common: &GitHubCommonFields,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<usize> {
     let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .issues(&common.owner, &common.name)
@@ -70,10 +70,7 @@ pub async fn ingest_issues(
 
             let chunks = chunk_text(&content);
             if !chunks.is_empty() {
-                let domain = spider::url::Url::parse(&url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "github.com".to_string());
+                let domain = "github.com".to_string();
                 docs.push(PreparedDoc {
                     url,
                     domain,
@@ -92,7 +89,9 @@ pub async fn ingest_issues(
         };
     }
 
-    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
 
@@ -101,7 +100,7 @@ pub async fn ingest_pull_requests(
     cfg: &Config,
     octo: &Octocrab,
     common: &GitHubCommonFields,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<usize> {
     let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .pulls(&common.owner, &common.name)
@@ -153,10 +152,7 @@ pub async fn ingest_pull_requests(
 
             let chunks = chunk_text(&content);
             if !chunks.is_empty() {
-                let domain = spider::url::Url::parse(&url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "github.com".to_string());
+                let domain = "github.com".to_string();
                 docs.push(PreparedDoc {
                     url,
                     domain,
@@ -178,6 +174,8 @@ pub async fn ingest_pull_requests(
         };
     }
 
-    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }

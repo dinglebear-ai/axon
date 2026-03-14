@@ -1,8 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use anyhow::Result;
 use octocrab::Octocrab;
-use std::error::Error;
+use tokio::sync::mpsc;
 
 mod files;
 mod issues;
@@ -23,6 +24,7 @@ pub(crate) struct GitHubCommonFields {
     pub repo_description: Option<String>,
     pub pushed_at: Option<String>,
     pub is_private: Option<bool>,
+    pub has_wiki: bool,
 }
 
 // ── Pure helper functions (re-exported for tests and cli command) ──────────────
@@ -88,7 +90,7 @@ pub fn parse_github_repo(input: &str) -> Option<(String, String)> {
 // ── Octocrab helpers ───────────────────────────────────────────────────────────
 
 /// Build an Octocrab instance — authenticated if a token is set, else default (unauthenticated).
-fn build_octocrab(cfg: &Config) -> Result<Octocrab, Box<dyn Error>> {
+fn build_octocrab(cfg: &Config) -> Result<Octocrab> {
     let builder = Octocrab::builder();
     let octo = if let Some(token) = cfg.github_token.as_deref() {
         builder.personal_token(token.to_string()).build()?
@@ -103,7 +105,7 @@ async fn embed_repo_metadata(
     cfg: &Config,
     repo: &octocrab::models::Repository,
     common: &GitHubCommonFields,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<usize> {
     let owner_name = &common.repo_slug;
     let mut parts: Vec<String> = Vec::new();
 
@@ -157,10 +159,7 @@ async fn embed_repo_metadata(
     if chunks.is_empty() {
         return Ok(0);
     }
-    let domain = spider::url::Url::parse(&url)
-        .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "github.com".to_string());
+    let domain = "github.com".to_string();
     let doc = PreparedDoc {
         url,
         domain,
@@ -170,11 +169,45 @@ async fn embed_repo_metadata(
         title: Some(owner_name.to_string()),
         extra: Some(extra),
     };
-    let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+    let summary = embed_prepared_docs(cfg, vec![doc], None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────
+
+async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: serde_json::Value) {
+    if let Some(tx) = tx
+        && let Err(err) = tx.send(progress).await
+    {
+        log_warn(&format!(
+            "command=ingest_github progress_send_failed err={err}"
+        ));
+    }
+}
+
+fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usize, usize) {
+    let mut total = 0usize;
+    let mut issues_count = 0usize;
+    let mut prs_count = 0usize;
+    for (label, result) in results {
+        match result {
+            Ok(n) => {
+                if label == "issues" {
+                    issues_count = n;
+                } else if label == "prs" {
+                    prs_count = n;
+                }
+                total += n;
+            }
+            Err(e) => log_warn(&format!(
+                "command=ingest_github {label}_failed repo={repo} err={e}"
+            )),
+        }
+    }
+    (total, issues_count, prs_count)
+}
 
 /// Ingest a GitHub repository: files, metadata, issues, PRs, and wiki.
 ///
@@ -192,15 +225,13 @@ pub async fn ingest_github(
     cfg: &Config,
     repo: &str,
     include_source: bool,
-    progress_tx: Option<tokio::sync::mpsc::Sender<serde_json::Value>>,
-) -> Result<usize, Box<dyn Error>> {
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<usize> {
     log_info(&format!("command=ingest source=github repo={repo}"));
     let (owner, name) =
-        parse_github_repo(repo).ok_or_else(|| format!("invalid GitHub repo: {repo}"))?;
+        parse_github_repo(repo).ok_or_else(|| anyhow::anyhow!("invalid GitHub repo: {repo}"))?;
 
     let octo = build_octocrab(cfg)?;
-
-    // Single metadata fetch — provides default_branch for files AND repo struct for embedding
     let repo_info = octo.repos(&owner, &name).get().await?;
     let default_branch = repo_info
         .default_branch
@@ -216,33 +247,18 @@ pub async fn ingest_github(
         repo_description: repo_info.description.clone(),
         pushed_at: repo_info.pushed_at.map(|dt| dt.to_rfc3339()),
         is_private: repo_info.private,
+        has_wiki: repo_info.has_wiki.unwrap_or(false),
     };
 
-    async fn send_ingest_progress(
-        tx: &Option<tokio::sync::mpsc::Sender<serde_json::Value>>,
-        progress: serde_json::Value,
-    ) {
-        if let Some(tx) = tx
-            && let Err(err) = tx.send(progress).await
-        {
-            log_warn(&format!(
-                "command=ingest_github progress_send_failed err={err}"
-            ));
-        }
-    }
-
-    // Send initial progress so status shows activity immediately
-    if let Some(ref tx) = progress_tx {
-        send_ingest_progress(
-            &Some(tx.clone()),
-            serde_json::json!({
-                "phase": "ingesting",
-                "tasks_total": 5,
-                "tasks_done": 0,
-            }),
-        )
-        .await;
-    }
+    send_progress(
+        progress_tx.as_ref(),
+        serde_json::json!({
+            "phase": "ingesting",
+            "tasks_total": 5,
+            "tasks_done": 0,
+        }),
+    )
+    .await;
 
     let (files_result, metadata_result, issues_result, prs_result, wiki_result) = tokio::join!(
         files::embed_files(
@@ -255,47 +271,36 @@ pub async fn ingest_github(
         embed_repo_metadata(cfg, &repo_info, &common),
         issues::ingest_issues(cfg, &octo, &common),
         issues::ingest_pull_requests(cfg, &octo, &common),
-        wiki::ingest_wiki(cfg, &common, cfg.github_token.as_deref()),
+        async {
+            if common.has_wiki {
+                wiki::ingest_wiki(cfg, &common, cfg.github_token.as_deref()).await
+            } else {
+                Ok(0)
+            }
+        },
     );
 
-    let mut total = 0usize;
-    let mut issues_count = 0usize;
-    let mut prs_count = 0usize;
-    for (label, result) in [
-        ("files", files_result),
-        ("metadata", metadata_result),
-        ("issues", issues_result),
-        ("prs", prs_result),
-        ("wiki", wiki_result),
-    ] {
-        match result {
-            Ok(n) => {
-                if label == "issues" {
-                    issues_count = n;
-                } else if label == "prs" {
-                    prs_count = n;
-                }
-                total += n;
-            }
-            Err(e) => log_warn(&format!(
-                "command=ingest_github {label}_failed repo={repo} err={e}"
-            )),
-        }
-    }
+    let (total, issues_count, prs_count) = tally_results(
+        [
+            ("files", files_result),
+            ("metadata", metadata_result),
+            ("issues", issues_result),
+            ("prs", prs_result),
+            ("wiki", wiki_result),
+        ],
+        repo,
+    );
 
-    // Send final progress so completed state shows accurate task counts
-    if let Some(ref tx) = progress_tx {
-        send_ingest_progress(
-            &Some(tx.clone()),
-            serde_json::json!({
-                "tasks_done": 5,
-                "tasks_total": 5,
-                "chunks_embedded": total,
-                "phase": "completed",
-            }),
-        )
-        .await;
-    }
+    send_progress(
+        progress_tx.as_ref(),
+        serde_json::json!({
+            "tasks_done": 5,
+            "tasks_total": 5,
+            "chunks_embedded": total,
+            "phase": "completed",
+        }),
+    )
+    .await;
 
     log_info(&format!(
         "github issues_fetched={issues_count} prs_fetched={prs_count}"
