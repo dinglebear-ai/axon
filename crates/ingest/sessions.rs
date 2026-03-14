@@ -1,8 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
 use crate::crates::jobs::common::make_pool;
-use crate::crates::vector::ops::{EmbedDocument, embed_text_with_metadata};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use sqlx::{PgPool, Row};
 use std::error::Error;
@@ -214,42 +213,29 @@ pub(crate) async fn embed_session_text(
         return Ok(0);
     }
 
-    let docs = vec![EmbedDocument {
-        content: session_text,
+    let chunks = chunk_text(&session_text);
+    if chunks.is_empty() {
+        return Ok(0);
+    }
+
+    let domain = spider::url::Url::parse(&url)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "local".to_string());
+
+    let doc = PreparedDoc {
         url,
+        domain,
+        chunks,
         source_type: source_type.to_string(),
+        content_type: "text",
         title: title.map(str::to_string),
         extra: None,
-        file_extension: None,
-    }];
+    };
 
-    let result = embed_documents_in_batches(
-        cfg,
-        &docs,
-        64,
-        "ingest_sessions",
-        |cfg, doc| {
-            Box::pin(async move {
-                embed_text_with_metadata(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |_| {},
-    )
-    .await;
-    if result.fallback_failures > 0 {
-        return Err(anyhow::anyhow!(
-            "embed batch had {} fallback failures out of {} chunks",
-            result.fallback_failures,
-            result.chunks_embedded + result.fallback_failures
-        ));
-    }
-    Ok(result.chunks_embedded)
+    let summary = embed_prepared_docs(cfg, vec![doc], None)
+        .await
+        .map_err(|e| anyhow::anyhow!("embed_session_text failed: {e}"))?;
+
+    Ok(summary.chunks_embedded)
 }
