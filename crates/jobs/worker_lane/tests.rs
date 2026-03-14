@@ -321,6 +321,49 @@ async fn inflight_completion_returns_inflight_completed_not_idle_timeout() {
 }
 
 #[test]
+fn worker_config_has_heartbeat_interval() {
+    let wc = WorkerConfig {
+        table: JobTable::Embed,
+        queue_name: "test.queue".to_string(),
+        job_kind: "test",
+        consumer_tag_prefix: "test",
+        lane_count: 1,
+        heartbeat_interval_secs: 15,
+    };
+    assert_eq!(wc.heartbeat_interval_secs, 15);
+}
+
+/// Verify `wrap_with_heartbeat` calls the inner `ProcessFn`.
+/// Uses a lazy PgPool (no real DB connection needed) — heartbeat DB calls fail
+/// silently and the stop signal terminates the background task before it retries.
+#[tokio::test]
+async fn wrap_with_heartbeat_calls_inner_fn() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let called = Arc::new(AtomicBool::new(false));
+    let called_clone = called.clone();
+
+    let inner: ProcessFn = Arc::new(move |_cfg, _pool, _id| {
+        let c = called_clone.clone();
+        Box::pin(async move {
+            c.store(true, Ordering::SeqCst);
+        })
+    });
+
+    // connect_lazy: no actual TCP connection until first query — DB errors are
+    // swallowed by the heartbeat task (let _ = touch_running_job(...).await)
+    let pool = PgPool::connect_lazy("postgresql://dummy@127.0.0.1:1/dummy")
+        .expect("connect_lazy should not fail");
+    let cfg = Config::default();
+    let wrapped = wrap_with_heartbeat(inner, JobTable::Embed, 60);
+    wrapped(cfg, pool, uuid::Uuid::new_v4()).await;
+    assert!(
+        called.load(Ordering::SeqCst),
+        "inner fn must be called through the wrap_with_heartbeat wrapper"
+    );
+}
+
+#[test]
 fn orphaned_pending_select_query_contains_table_and_placeholders() {
     let q = orphaned_pending_select_query(JobTable::Embed);
     assert!(

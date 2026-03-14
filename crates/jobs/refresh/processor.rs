@@ -1,14 +1,11 @@
 use super::state::load_target_states;
 use super::url_processor::{RefreshUrlContext, validate_output_dir};
-use super::{
-    REFRESH_HEARTBEAT_INTERVAL_SECS, RefreshJobConfig, RefreshPageResult, RefreshRunSummary,
-    RefreshTargetState, TABLE,
-};
+use super::{RefreshJobConfig, RefreshPageResult, RefreshRunSummary, RefreshTargetState, TABLE};
 use crate::crates::core::config::Config;
 use crate::crates::core::content::to_markdown;
 use crate::crates::core::http::{http_client, validate_url};
 use crate::crates::core::logging::{log_done, log_warn};
-use crate::crates::jobs::common::{mark_job_completed, mark_job_failed, spawn_heartbeat_task};
+use crate::crates::jobs::common::{mark_job_completed, mark_job_failed};
 use crate::crates::jobs::status::JobStatus;
 use reqwest::StatusCode;
 use reqwest::header::{ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
@@ -108,7 +105,7 @@ async fn fetch_and_process_url(
     })
 }
 
-/// Set up context for a refresh job: load config, create directories, start heartbeat.
+/// Set up context for a refresh job: load config and create directories.
 /// Returns `None` if setup failed (job already marked failed).
 async fn setup_refresh_job_context(
     pool: &PgPool,
@@ -118,8 +115,6 @@ async fn setup_refresh_job_context(
     RefreshJobConfig,
     std::path::PathBuf,
     tokio::io::BufWriter<tokio::fs::File>,
-    tokio::sync::watch::Sender<bool>,
-    tokio::task::JoinHandle<()>,
 )> {
     let cfg_row = sqlx::query_scalar::<_, serde_json::Value>(
         "SELECT config_json FROM axon_refresh_jobs WHERE id=$1",
@@ -205,19 +200,10 @@ async fn setup_refresh_job_context(
     };
     let manifest = tokio::io::BufWriter::new(manifest_file);
 
-    let (heartbeat_stop_tx, heartbeat_task) =
-        spawn_heartbeat_task(pool.clone(), TABLE, id, REFRESH_HEARTBEAT_INTERVAL_SECS);
-
-    Some((
-        job_cfg,
-        run_dir,
-        manifest,
-        heartbeat_stop_tx,
-        heartbeat_task,
-    ))
+    Some((job_cfg, run_dir, manifest))
 }
 
-/// Finalize a refresh job: stop heartbeat, write final result to DB.
+/// Finalize a refresh job: write final result to DB.
 #[allow(clippy::too_many_arguments)]
 async fn finalize_refresh_job(
     pool: &PgPool,
@@ -226,16 +212,7 @@ async fn finalize_refresh_job(
     run_dir: &std::path::Path,
     manifest_path: &std::path::Path,
     total: usize,
-    heartbeat_stop_tx: tokio::sync::watch::Sender<bool>,
-    heartbeat_task: tokio::task::JoinHandle<()>,
 ) {
-    let _ = heartbeat_stop_tx.send(true); // receiver dropped; worker already exiting
-    if let Err(err) = heartbeat_task.await {
-        log_warn(&format!(
-            "command=refresh_worker heartbeat_task_panicked job_id={id} err={err:?}"
-        ));
-    }
-
     let final_result = serde_json::json!({
         "phase": "completed",
         "checked": summary.checked,
@@ -309,8 +286,7 @@ async fn maybe_flush_progress(
 }
 
 pub(crate) async fn process_refresh_job(cfg: Config, pool: PgPool, id: Uuid) {
-    let Some((job_cfg, run_dir, mut manifest, heartbeat_stop_tx, heartbeat_task)) =
-        setup_refresh_job_context(&pool, &cfg, id).await
+    let Some((job_cfg, run_dir, mut manifest)) = setup_refresh_job_context(&pool, &cfg, id).await
     else {
         return;
     };
@@ -319,10 +295,6 @@ pub(crate) async fn process_refresh_job(cfg: Config, pool: PgPool, id: Uuid) {
     let client = match http_client() {
         Ok(c) => c,
         Err(err) => {
-            let _ = heartbeat_stop_tx.send(true); // receiver dropped; worker already exiting
-            if let Err(e) = heartbeat_task.await {
-                log_warn(&format!("heartbeat task panicked job_id={id} error={e:?}"));
-            }
             if let Err(e2) =
                 mark_job_failed(&pool, TABLE, id, &format!("http client unavailable: {err}")).await
             {
@@ -335,10 +307,6 @@ pub(crate) async fn process_refresh_job(cfg: Config, pool: PgPool, id: Uuid) {
     let states = match load_target_states(&pool, &job_cfg.urls).await {
         Ok(s) => s,
         Err(err) => {
-            let _ = heartbeat_stop_tx.send(true); // receiver dropped; worker already exiting
-            if let Err(e) = heartbeat_task.await {
-                log_warn(&format!("heartbeat task panicked job_id={id} error={e:?}"));
-            }
             if let Err(e2) = mark_job_failed(
                 &pool,
                 TABLE,
@@ -403,8 +371,6 @@ pub(crate) async fn process_refresh_job(cfg: Config, pool: PgPool, id: Uuid) {
         &run_dir,
         &manifest_path,
         job_cfg.urls.len(),
-        heartbeat_stop_tx,
-        heartbeat_task,
     )
     .await;
 }

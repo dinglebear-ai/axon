@@ -1,5 +1,6 @@
 use super::{
-    TABLE, ensure_schema_once, processor::process_refresh_job, start_refresh_job_with_pool,
+    REFRESH_HEARTBEAT_INTERVAL_SECS, TABLE, ensure_schema_once, processor::process_refresh_job,
+    start_refresh_job_with_pool,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
@@ -25,6 +26,7 @@ pub async fn run_refresh_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         job_kind: "refresh",
         consumer_tag_prefix: "refresh-worker",
         lane_count: resolve_lane_count("AXON_REFRESH_LANES", 1, 4),
+        heartbeat_interval_secs: REFRESH_HEARTBEAT_INTERVAL_SECS,
     };
 
     let process_fn: ProcessFn =

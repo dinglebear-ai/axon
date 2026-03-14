@@ -29,6 +29,7 @@ use self::process::process_ingest_job;
 use self::schema::ensure_schema;
 
 const TABLE: JobTable = JobTable::Ingest;
+const INGEST_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
 pub async fn ingest_doctor(cfg: &Config) -> Result<serde_json::Value, String> {
     use crate::crates::core::health::redis_healthy;
@@ -75,6 +76,7 @@ pub async fn run_ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         job_kind: "ingest",
         consumer_tag_prefix: "ingest-worker",
         lane_count: resolve_lane_count("AXON_INGEST_LANES", 2, 16),
+        heartbeat_interval_secs: INGEST_HEARTBEAT_INTERVAL_SECS,
     };
 
     let process_fn: ProcessFn =

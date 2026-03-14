@@ -1,7 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::ingest;
-use crate::crates::jobs::common::{JobTable, mark_job_failed, spawn_heartbeat_task};
+use crate::crates::jobs::common::{JobTable, mark_job_failed};
 use futures::Future;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use sqlx::PgPool;
@@ -15,7 +15,6 @@ use super::types::{IngestJobConfig, IngestSource};
 type IngestFuture = std::pin::Pin<Box<dyn Future<Output = (String, Result<usize, String>)> + Send>>;
 
 const TABLE: JobTable = JobTable::Ingest;
-const INGEST_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 const PLAYLIST_CONCURRENCY: usize = 5;
 const RETRY_429_BASE_SECS: u64 = 10;
 const RETRY_429_MAX_ATTEMPTS: u8 = 3;
@@ -287,9 +286,6 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
         }
     };
 
-    let (heartbeat_stop_tx, heartbeat_task) =
-        spawn_heartbeat_task(pool.clone(), TABLE, id, INGEST_HEARTBEAT_INTERVAL_SECS);
-
     let result = match &job_cfg.source {
         IngestSource::Github {
             repo,
@@ -332,12 +328,6 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
             ingest::sessions::ingest_sessions(&sessions_cfg).await
         }
     };
-    let _ = heartbeat_stop_tx.send(true); // receiver dropped; worker already exiting
-    if let Err(err) = heartbeat_task.await {
-        log_warn(&format!(
-            "command=ingest_worker heartbeat_task_panicked job_id={id} err={err:?}"
-        ));
-    }
 
     match result {
         Ok(chunks) => {

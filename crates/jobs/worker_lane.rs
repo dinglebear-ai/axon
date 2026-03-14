@@ -6,6 +6,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::jobs::common::{
     JobTable, batch_enqueue_jobs, open_amqp_connection_and_channel, reclaim_stale_running_jobs,
+    spawn_heartbeat_task,
 };
 use crate::crates::jobs::status::JobStatus;
 use sqlx::PgPool;
@@ -54,6 +55,34 @@ pub(crate) struct WorkerConfig {
     pub job_kind: &'static str,
     pub consumer_tag_prefix: &'static str,
     pub lane_count: usize,
+    /// Heartbeat cadence in seconds. Must be well below `AXON_JOB_STALE_TIMEOUT_SECS`
+    /// (default 300s). The runner wraps every `ProcessFn` with a background task
+    /// that calls `touch_running_job` at this interval — no individual worker needs
+    /// to manage heartbeat lifetimes manually.
+    pub heartbeat_interval_secs: u64,
+}
+
+/// Wrap a [`ProcessFn`] so every job it processes automatically gets a background
+/// heartbeat that calls `touch_running_job` every `interval_secs` seconds.
+///
+/// The heartbeat starts immediately before the inner future and is stopped
+/// (gracefully awaited) after the inner future resolves. No individual worker
+/// needs to manage heartbeat lifetimes — the runner handles it centrally.
+pub(crate) fn wrap_with_heartbeat(
+    process_fn: ProcessFn,
+    table: JobTable,
+    interval_secs: u64,
+) -> ProcessFn {
+    Arc::new(move |cfg, pool, id| {
+        let pool_hb = pool.clone();
+        let inner = process_fn(cfg, pool, id);
+        Box::pin(async move {
+            let (stop_tx, hb_task) = spawn_heartbeat_task(pool_hb, table, id, interval_secs);
+            inner.await;
+            let _ = stop_tx.send(true);
+            let _ = hb_task.await;
+        })
+    })
 }
 
 /// Validate that the critical infrastructure environment variables are present
@@ -292,6 +321,11 @@ pub(crate) async fn run_job_worker(
     sweep_stale_jobs(cfg, &pool, wc, "startup", 0).await;
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(wc.lane_count));
+
+    // Wrap process_fn with automatic per-job heartbeat.
+    // Every job run through this runner will keep updated_at fresh without
+    // individual workers needing to manage spawn_heartbeat_task manually.
+    let process_fn = wrap_with_heartbeat(process_fn, wc.table, wc.heartbeat_interval_secs);
 
     let amqp_available = probe_amqp_available(cfg, wc).await;
 

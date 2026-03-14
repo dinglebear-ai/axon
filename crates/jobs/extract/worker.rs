@@ -1,6 +1,5 @@
 use super::*;
 use crate::crates::core::content::ExtractRun;
-use crate::crates::jobs::common::spawn_heartbeat_task;
 use crate::crates::jobs::worker_lane::{
     ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker,
 };
@@ -234,15 +233,7 @@ async fn process_extract_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<()
         let prompt = job_cfg
             .prompt
             .ok_or("extract prompt is required; pass --query")?;
-        let (heartbeat_stop_tx, heartbeat_task) =
-            spawn_heartbeat_task(pool.clone(), TABLE, id, EXTRACT_HEARTBEAT_INTERVAL_SECS);
         let agg = execute_extract_runs(cfg, urls, prompt.clone(), job_cfg.max_pages).await;
-        let _ = heartbeat_stop_tx.send(true);
-        if let Err(err) = heartbeat_task.await {
-            log_warn(&format!(
-                "extract heartbeat_task panicked for job {id}: {err:?}"
-            ));
-        }
         Ok(Some(extract_result_json(
             prompt,
             cfg.openai_model.clone(),
@@ -338,6 +329,7 @@ pub async fn run_extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         job_kind: "extract",
         consumer_tag_prefix: "axon-rust-extract-worker",
         lane_count: resolve_lane_count("AXON_EXTRACT_LANES", 1, 8),
+        heartbeat_interval_secs: EXTRACT_HEARTBEAT_INTERVAL_SECS,
     };
 
     let process_fn: ProcessFn =

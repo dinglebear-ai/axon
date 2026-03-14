@@ -1,7 +1,6 @@
 use super::*;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
-use crate::crates::jobs::common::spawn_heartbeat_task;
 use crate::crates::jobs::graph::enqueue_graph_job;
 use crate::crates::jobs::worker_lane::{
     ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker, validate_worker_env_vars,
@@ -153,23 +152,11 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
         log_info(&format!(
             "embed worker started job {id} input={input_preview}"
         ));
-        let (heartbeat_stop_tx, heartbeat_task) =
-            spawn_heartbeat_task(pool.clone(), TABLE, id, EMBED_HEARTBEAT_INTERVAL_SECS);
-
         if check_embed_canceled(&mut redis_conn, pool, id).await? {
-            let _ = heartbeat_stop_tx.send(true);
-            let _ = heartbeat_task.await;
             return Ok(None);
         }
         let job_cfg: EmbedJobConfig = serde_json::from_value(cfg_json)?;
-        let result = run_embed_core(cfg, pool, id, input_text, job_cfg.collection).await;
-        let _ = heartbeat_stop_tx.send(true);
-        if let Err(err) = heartbeat_task.await {
-            log_warn(&format!(
-                "embed heartbeat_task panicked for job {id}: {err:?}"
-            ));
-        }
-        let result = result?;
+        let result = run_embed_core(cfg, pool, id, input_text, job_cfg.collection).await?;
         Ok(Some(result))
     }
     .await;
@@ -252,6 +239,7 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
         job_kind: "embed",
         consumer_tag_prefix: "axon-rust-embed-worker",
         lane_count: resolve_lane_count("AXON_EMBED_LANES", 2, 32),
+        heartbeat_interval_secs: EMBED_HEARTBEAT_INTERVAL_SECS,
     };
 
     let process_fn: ProcessFn =

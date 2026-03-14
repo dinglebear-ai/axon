@@ -20,6 +20,7 @@ use std::error::Error;
 use uuid::Uuid;
 
 const TABLE: JobTable = JobTable::Graph;
+const GRAPH_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 struct GraphJobConfig {
@@ -458,6 +459,7 @@ pub async fn run_graph_worker(cfg: &Config) -> anyhow::Result<()> {
         job_kind: "graph",
         consumer_tag_prefix: "axon-rust-graph-worker",
         lane_count: cfg.graph_concurrency.max(1),
+        heartbeat_interval_secs: GRAPH_HEARTBEAT_INTERVAL_SECS,
     };
 
     let process_fn: ProcessFn =
