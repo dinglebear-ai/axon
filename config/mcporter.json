@@ -1,12 +1,12 @@
 {
   "mcpServers": {
-    "axon": {
-      "url": "https://axon.tootie.tv/mcp"
-    },
-    "axon-local": {
+    "axon-axon": {
       "type": "stdio",
-      "command": "/home/jmagar/.local/bin/axon",
-      "args": ["mcp"]
+      "command": "axon",
+      "args": ["mcp"],
+      "env": {
+        "AXON_MCP_TRANSPORT": "stdio"
+      }
     },
     "plate": {
       "description": "Plate editors, plugins and components",

@@ -87,7 +87,7 @@ pub(crate) async fn handle_elicit_demo(
 
         Err(e) => {
             tracing::warn!(error = %e, "elicitation failed");
-            Err(internal_error(format!("elicitation error: {e}")))
+            Err(internal_error("elicitation failed".to_string()))
         }
     }
 }

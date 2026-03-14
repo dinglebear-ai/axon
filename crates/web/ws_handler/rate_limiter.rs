@@ -5,7 +5,8 @@
 //! to prevent cross-category reset exploits.
 
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use dashmap::DashMap;
 
@@ -14,6 +15,11 @@ pub(crate) const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 pub(crate) const RATE_LIMIT_MAX_EXECUTES: u32 = 120;
 /// Maximum `read_file` messages per IP per window (P3-4).
 pub(crate) const RATE_LIMIT_MAX_READ_FILE: u32 = 60;
+
+/// Unix timestamp (seconds) of the last TTL eviction sweep.
+/// Updated at most once per `RATE_LIMIT_WINDOW_SECS` to amortize the O(N)
+/// `retain` cost across all callers rather than paying it on every request.
+static LAST_EVICTION_SECS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) enum RateLimitCategory {
     Execute,
@@ -29,8 +35,8 @@ pub(crate) enum RateLimitCategory {
 /// cross-category resets and achieve ~2x the intended throughput.
 ///
 /// After processing the current IP, performs a best-effort sweep to evict stale
-/// entries (both windows older than the rate limit window). This prevents
-/// unbounded DashMap growth from many unique client IPs.
+/// entries (both windows older than the rate limit window). The sweep runs at
+/// most once per window period to avoid O(N) cost on every request.
 pub(crate) fn check_rate_limit(
     rate_limiter: &DashMap<IpAddr, (u32, Instant, u32, Instant)>,
     ip: IpAddr,
@@ -63,12 +69,24 @@ pub(crate) fn check_rate_limit(
     // Drop the entry ref before calling retain (which needs exclusive iteration).
     drop(entry);
 
-    // Best-effort TTL eviction: remove entries where both windows have expired.
-    // This prevents unbounded growth from many unique client IPs over time.
-    rate_limiter.retain(|_, v| {
-        now.duration_since(v.1).as_secs() < RATE_LIMIT_WINDOW_SECS
-            || now.duration_since(v.3).as_secs() < RATE_LIMIT_WINDOW_SECS
-    });
+    // Amortized TTL eviction: only sweep once per window period to avoid paying
+    // the O(N) retain cost on every request. A compare-exchange ensures only one
+    // thread triggers the sweep even under concurrent load.
+    let now_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let last = LAST_EVICTION_SECS.load(Ordering::Relaxed);
+    if now_unix.saturating_sub(last) >= RATE_LIMIT_WINDOW_SECS
+        && LAST_EVICTION_SECS
+            .compare_exchange(last, now_unix, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    {
+        rate_limiter.retain(|_, v| {
+            now.duration_since(v.1).as_secs() < RATE_LIMIT_WINDOW_SECS
+                || now.duration_since(v.3).as_secs() < RATE_LIMIT_WINDOW_SECS
+        });
+    }
 
     allowed
 }

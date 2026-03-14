@@ -125,14 +125,16 @@ When `source_type` is `sessions`, the optional `sessions` object accepts:
 Subactions: `head|grep|wc|read|list|delete|clean|search`
 
 `artifacts` fields:
-- `path` (required)
-- `pattern` (required for `grep`)
+- `path` (required for `head|grep|wc|read|delete`; not required for `list|search|clean`)
+- `pattern` (required for `grep` and `search`)
 - `limit` and `offset` for paginated inspection
 
 ## Enum Values
 
 ### `ResponseMode`
-Values: `path|inline|both`
+Values: `path|inline|both|auto-inline`
+
+`auto-inline` is an output-only value set by the server when a small payload is returned inline because no explicit `response_mode` was requested. Clients should not send `auto-inline` as input.
 
 ### `McpRenderMode`
 Values: `http|chrome|auto_switch`

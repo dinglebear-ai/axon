@@ -32,6 +32,7 @@ coverage/
 docs/sessions/
 docs/reports/
 docs/plans/
+docs/superpowers/
 specs/
 
 # Tool artifacts
@@ -40,6 +41,7 @@ specs/
 .1code/
 .emdash.json
 .docs/
+.config/
 
 # IDE/editor artifacts
 .idea/
@@ -48,6 +50,8 @@ specs/
 *.swo
 *~
 .DS_Store
+.zed
+.windsurf
 
 # Local container/dev overrides
 container/*.local.yml

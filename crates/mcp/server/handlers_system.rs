@@ -284,7 +284,8 @@ impl AxonMcpServer {
                     "domains": ["domains"],
                     "sources": ["sources"],
                     "stats": ["stats"],
-                    "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"]
+                    "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
+                    "elicit_demo": []
                 },
                 "resources": [
                     MCP_TOOL_SCHEMA_URI
