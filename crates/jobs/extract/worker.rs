@@ -1,7 +1,9 @@
 use super::*;
 use crate::crates::core::content::ExtractRun;
 use crate::crates::jobs::common::spawn_heartbeat_task;
-use crate::crates::jobs::worker_lane::{ProcessFn, WorkerConfig, run_job_worker};
+use crate::crates::jobs::worker_lane::{
+    ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker,
+};
 use tokio::time::Duration;
 
 const EXTRACT_HEARTBEAT_INTERVAL_SECS: u64 = 30;
@@ -335,7 +337,7 @@ pub async fn run_extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         queue_name: cfg.extract_queue.clone(),
         job_kind: "extract",
         consumer_tag_prefix: "axon-rust-extract-worker",
-        lane_count: WORKER_CONCURRENCY,
+        lane_count: resolve_lane_count("AXON_EXTRACT_LANES", 1, 8),
     };
 
     let process_fn: ProcessFn =

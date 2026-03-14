@@ -8,7 +8,9 @@ use std::error::Error;
 use uuid::Uuid;
 
 const TABLE: JobTable = JobTable::Crawl;
-const WORKER_CONCURRENCY: usize = 5;
+pub(super) fn worker_concurrency() -> usize {
+    crate::crates::jobs::worker_lane::resolve_lane_count("AXON_CRAWL_WORKER_LANES", 2, 8)
+}
 const STALE_SWEEP_INTERVAL_SECS: u64 = 30;
 const CRAWL_SCHEMA_LOCK_KEY: i64 = 0xA804_0003;
 

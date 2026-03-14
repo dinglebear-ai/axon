@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use super::super::{STALE_SWEEP_INTERVAL_SECS, TABLE, WORKER_CONCURRENCY};
+use super::super::{STALE_SWEEP_INTERVAL_SECS, TABLE, worker_concurrency};
 use super::process::process_job;
 
 /// Type alias — crawl uses the same stats struct as the generic watchdog.
@@ -274,7 +274,9 @@ pub(super) async fn run_amqp_worker_lane(
 
     log_info(&format!(
         "crawl worker lane={} listening on queue={} concurrency={}",
-        lane, cfg.crawl_queue, WORKER_CONCURRENCY
+        lane,
+        cfg.crawl_queue,
+        worker_concurrency()
     ));
 
     let mut sweep_interval = tokio::time::interval(Duration::from_secs(STALE_SWEEP_INTERVAL_SECS));

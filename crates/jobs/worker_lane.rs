@@ -16,6 +16,23 @@ use std::time::Duration;
 
 pub(crate) const STALE_SWEEP_INTERVAL_SECS: u64 = 30;
 
+/// Resolve worker lane count: env-var override takes priority; falls back to a
+/// CPU-based default clamped to `[cpu_min, cpu_max]`.
+///
+/// Example: `resolve_lane_count("AXON_EMBED_LANES", 2, 32)` → number of logical
+/// CPUs (min 2, max 32), overridable at runtime via `AXON_EMBED_LANES=N`.
+pub(crate) fn resolve_lane_count(env_var: &str, cpu_min: usize, cpu_max: usize) -> usize {
+    let cpu_default = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(cpu_min, cpu_max);
+    std::env::var(env_var)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(cpu_default)
+}
+
 /// Polling backoff constants (milliseconds).
 pub(crate) const POLL_BACKOFF_INIT_MS: u64 = 100;
 pub(crate) const POLL_BACKOFF_MAX_MS: u64 = 6400;

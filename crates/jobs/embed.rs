@@ -17,7 +17,6 @@ use uuid::Uuid;
 static SCHEMA_INIT: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
 const TABLE: JobTable = JobTable::Embed;
-const WORKER_CONCURRENCY: usize = 2;
 const EMBED_HEARTBEAT_INTERVAL_SECS: u64 = 15;
 const EMBED_CANCEL_REDIS_TIMEOUT_SECS: u64 = 3;
 const EMBED_SCHEMA_LOCK_KEY: i64 = 0xA804_0002;

@@ -22,7 +22,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 const TABLE: JobTable = JobTable::Extract;
-const WORKER_CONCURRENCY: usize = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ExtractJobConfig {

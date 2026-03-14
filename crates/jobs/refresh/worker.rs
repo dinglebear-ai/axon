@@ -4,7 +4,9 @@ use super::{
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::jobs::common::{claim_pending_by_id, make_pool, reclaim_stale_running_jobs};
-use crate::crates::jobs::worker_lane::{ProcessFn, WorkerConfig, run_job_worker};
+use crate::crates::jobs::worker_lane::{
+    ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker,
+};
 use std::error::Error;
 use std::sync::Arc;
 
@@ -22,7 +24,7 @@ pub async fn run_refresh_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         queue_name: cfg.refresh_queue.clone(),
         job_kind: "refresh",
         consumer_tag_prefix: "refresh-worker",
-        lane_count: 2,
+        lane_count: resolve_lane_count("AXON_REFRESH_LANES", 1, 4),
     };
 
     let process_fn: ProcessFn =

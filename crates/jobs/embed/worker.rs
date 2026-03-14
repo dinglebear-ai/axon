@@ -4,7 +4,7 @@ use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::jobs::common::spawn_heartbeat_task;
 use crate::crates::jobs::graph::enqueue_graph_job;
 use crate::crates::jobs::worker_lane::{
-    ProcessFn, WorkerConfig, run_job_worker, validate_worker_env_vars,
+    ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker, validate_worker_env_vars,
 };
 use crate::crates::vector::ops::{EmbedProgress, embed_path_native_with_progress};
 use tokio::time::Duration;
@@ -251,7 +251,7 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
         queue_name: cfg.embed_queue.clone(),
         job_kind: "embed",
         consumer_tag_prefix: "axon-rust-embed-worker",
-        lane_count: WORKER_CONCURRENCY,
+        lane_count: resolve_lane_count("AXON_EMBED_LANES", 2, 32),
     };
 
     let process_fn: ProcessFn =

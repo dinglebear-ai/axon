@@ -12,7 +12,9 @@ mod tests;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info};
 use crate::crates::jobs::common::{JobTable, make_pool, reclaim_stale_running_jobs};
-use crate::crates::jobs::worker_lane::{ProcessFn, WorkerConfig, run_job_worker};
+use crate::crates::jobs::worker_lane::{
+    ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker,
+};
 use std::error::Error;
 use std::sync::Arc;
 
@@ -72,10 +74,7 @@ pub async fn run_ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         queue_name: cfg.ingest_queue.clone(),
         job_kind: "ingest",
         consumer_tag_prefix: "ingest-worker",
-        lane_count: std::env::var("AXON_INGEST_LANES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(2),
+        lane_count: resolve_lane_count("AXON_INGEST_LANES", 2, 16),
     };
 
     let process_fn: ProcessFn =

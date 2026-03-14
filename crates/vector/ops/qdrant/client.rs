@@ -220,6 +220,10 @@ pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Resu
 /// produced more chunks than the current one. If chunk count did not decrease, the
 /// filter matches zero points and this is a cheap no-op.
 ///
+/// Uses `wait=false` (async delete) — the preceding upsert already guaranteed data
+/// consistency, so these orphan-chunk deletes do not need to block on index rebuild.
+/// This avoids saturating Qdrant's HNSW indexer when many lanes run concurrently.
+///
 /// Never call before the upsert succeeds — doing so risks permanent data loss if the
 /// upsert subsequently fails.
 pub(crate) async fn qdrant_delete_stale_tail(
@@ -229,7 +233,7 @@ pub(crate) async fn qdrant_delete_stale_tail(
 ) -> Result<()> {
     let client = http_client()?;
     let endpoint = format!(
-        "{}/collections/{}/points/delete?wait=true",
+        "{}/collections/{}/points/delete?wait=false",
         qdrant_base(cfg),
         cfg.collection
     );

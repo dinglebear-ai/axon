@@ -21,21 +21,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::super::{
-    STALE_SWEEP_INTERVAL_SECS, TABLE, WORKER_CONCURRENCY, ensure_schema,
-    reenqueue_orphaned_pending_jobs,
+    STALE_SWEEP_INTERVAL_SECS, TABLE, ensure_schema, reenqueue_orphaned_pending_jobs,
+    worker_concurrency,
 };
 use super::amqp_consumer::{reclaim_stale_running_jobs, run_amqp_worker_lane, run_watchdog_sweep};
 use super::process::process_job;
 
 async fn run_worker_polling_loop(cfg: &Config, pool: &PgPool) -> Result<(), Box<dyn Error>> {
     log_warn("amqp unavailable; running crawl worker in postgres polling mode");
-    if WORKER_CONCURRENCY <= 1 {
+    if worker_concurrency() <= 1 {
         return run_worker_polling_lane(cfg, pool, 1).await;
     }
     // Use join_all so a lane failure does not abruptly cancel sibling lanes
     // mid-job (which would leave jobs stuck in 'running' until the watchdog reclaims them).
     let results = futures_util::future::join_all(
-        (1..=WORKER_CONCURRENCY).map(|lane| run_worker_polling_lane(cfg, pool, lane)),
+        (1..=worker_concurrency()).map(|lane| run_worker_polling_lane(cfg, pool, lane)),
     )
     .await;
     for r in results {
@@ -204,7 +204,7 @@ pub(crate) async fn run_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
         )),
     }
     let cfg_arc = Arc::new(cfg.clone());
-    if WORKER_CONCURRENCY <= 1 {
+    if worker_concurrency() <= 1 {
         run_amqp_lane_with_reconnect(cfg_arc, pool, 1).await;
         return Ok(());
     }
@@ -219,7 +219,7 @@ pub(crate) async fn run_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // so tokio::spawn cannot be used here. join_all runs all lanes on the same
     // task, which is correct — each lane has its own reconnect guard.
     futures_util::future::join_all(
-        (1..=WORKER_CONCURRENCY)
+        (1..=worker_concurrency())
             .map(|lane| run_amqp_lane_with_reconnect(Arc::clone(&cfg_arc), pool.clone(), lane)),
     )
     .await;
