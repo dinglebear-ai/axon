@@ -37,7 +37,7 @@ Incoming request map is parsed strictly with serde:
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
 - Lifecycle families: `artifacts`, `crawl`, `embed`, `extract`, `ingest`, `refresh`
-- Direct actions: `ask`, `doctor`, `domains`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`
+- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`. `refresh` also supports `schedule` subaction with `schedule_subaction` param (`list`, `create`, `delete`, `enable`, `disable`):
 
@@ -60,6 +60,7 @@ These actions do not require `subaction`:
 | `ask` | -- | `query`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
+| `elicit_demo` | -- | `message` |
 | `help` | -- | `response_mode` |
 | `map` | -- | `url`, `limit`, `offset`, `response_mode` |
 | `query` | -- | `query`, `limit`, `offset`, `response_mode` |
