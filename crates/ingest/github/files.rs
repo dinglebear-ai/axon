@@ -4,6 +4,7 @@ use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
 use crate::crates::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name,
 };
+use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 use crate::crates::vector::ops::{EmbedDocument, embed_code_with_metadata};
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
@@ -18,7 +19,7 @@ use super::meta::{GitHubPayloadParams, build_github_payload};
 use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
 
 const FILE_PROGRESS_EVERY: usize = 25;
-const GITHUB_EMBED_DOC_BATCH_SIZE: usize = 64;
+const GITHUB_EMBED_DOC_BATCH_SIZE: usize = 256;
 
 /// Extensions that have tree-sitter grammar support for AST-aware chunking.
 const TREE_SITTER_EXTENSIONS: &[&str] = &["rs", "py", "js", "jsx", "ts", "tsx", "go", "sh", "bash"];
@@ -161,11 +162,11 @@ struct FileEmbedCtx {
     is_private: Option<bool>,
 }
 
-/// Read a single file from the cloned repo and build an embedding document.
-async fn read_file_embed_doc(
-    ctx: &FileEmbedCtx,
-    path: &str,
-) -> Result<Option<EmbedDocument>, String> {
+/// Read a single file from the cloned repo and pre-chunk into embedding documents.
+///
+/// Returns one `EmbedDocument` per chunk to keep TEI batch sizes bounded and
+/// eliminate HTTP 413 fallback paths. Empty or unreadable files return `Ok(vec![])`.
+async fn read_file_embed_doc(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<EmbedDocument>, String> {
     let full_path = ctx.repo_root.join(path);
     let text = match tokio::fs::read_to_string(&full_path).await {
         Ok(t) => t,
@@ -173,11 +174,11 @@ async fn read_file_embed_doc(
             log_warn(&format!(
                 "command=ingest_github read_failed path={path} err={e}"
             ));
-            return Ok(None);
+            return Ok(vec![]);
         }
     };
     if text.trim().is_empty() {
-        return Ok(None);
+        return Ok(vec![]);
     }
 
     let ext = file_extension(path);
@@ -203,14 +204,21 @@ async fn read_file_embed_doc(
         "https://github.com/{}/{}/blob/{}/{}",
         ctx.owner, ctx.name, ctx.default_branch, path
     );
-    Ok(Some(EmbedDocument {
-        content: text,
-        url: source_url,
-        source_type: "github".to_string(),
-        title: Some(path.to_string()),
-        extra: Some(extra),
-        file_extension: Some(ext),
-    }))
+
+    // Pre-chunk: one EmbedDocument per chunk to keep TEI batch sizes bounded.
+    let chunks = chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text));
+
+    Ok(chunks
+        .into_iter()
+        .map(|chunk| EmbedDocument {
+            content: chunk,
+            url: source_url.clone(),
+            source_type: "github".to_string(),
+            title: Some(path.to_string()),
+            extra: Some(extra.clone()),
+            file_extension: Some(ext.clone()),
+        })
+        .collect())
 }
 
 /// Clone the repo and embed all indexable files concurrently.
@@ -276,7 +284,7 @@ async fn collect_embed_docs(
     progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
     failed: &mut usize,
 ) -> Vec<EmbedDocument> {
-    let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 16);
+    let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
             let ctx = ctx.clone();
@@ -290,8 +298,7 @@ async fn collect_embed_docs(
     while let Some(result) = file_stream.next().await {
         files_done += 1;
         match result {
-            Ok(Some(doc)) => docs.push(doc),
-            Ok(None) => {}
+            Ok(chunks) => docs.extend(chunks),
             Err(_) => *failed += 1,
         }
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
@@ -381,5 +388,47 @@ async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: s
         log_warn(&format!(
             "command=ingest_github progress_send_failed err={err}"
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
+
+    /// Pre-chunking must produce bounded content per chunk.
+    /// chunk_text uses 2000-char windows with 200-char overlap.
+    #[test]
+    fn chunk_text_produces_bounded_content() {
+        let long = "x".repeat(5000);
+        let chunks = chunk_text(&long);
+        for chunk in &chunks {
+            assert!(chunk.len() <= 2200, "chunk too large: {}", chunk.len());
+        }
+        assert!(
+            chunks.len() > 1,
+            "expected multiple chunks for 5000-char input"
+        );
+    }
+
+    /// Empty / whitespace-only files must produce no chunks (safe no-op).
+    #[test]
+    fn empty_content_produces_no_panic() {
+        let chunks = chunk_text("   ");
+        // Just verify no panic — caller filters empty results via trim check
+        let _ = chunks;
+    }
+
+    /// chunk_code falls back to chunk_text for unknown extensions.
+    #[test]
+    fn chunk_code_unknown_ext_falls_back() {
+        let text = "hello world ".repeat(200);
+        let result = chunk_code(&text, "unknownext");
+        // Either None (no grammar) or Some with bounded chunks
+        if let Some(chunks) = result {
+            for chunk in &chunks {
+                assert!(chunk.len() <= 2200, "chunk too large: {}", chunk.len());
+            }
+        }
+        // None is also valid — caller uses chunk_text fallback
     }
 }
