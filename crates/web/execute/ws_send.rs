@@ -14,12 +14,19 @@ use tokio::sync::mpsc;
 /// under backpressure is acceptable. Terminal events (done, error) must use
 /// [`send_reliable`] to guarantee delivery.
 fn send_or_sentinel(tx: &mpsc::Sender<String>, msg: String) {
-    match tx.try_send(msg) {
+    match tx.try_send(msg.clone()) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(_)) => {
+            // Preserve the original event type in the truncation sentinel so
+            // the client can attribute the loss to the correct stream.
+            let event_type = serde_json::from_str::<serde_json::Value>(&msg)
+                .ok()
+                .and_then(|v| v["type"].as_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "log".to_string());
             let sentinel = serde_json::json!({
-                "type": "log",
-                "line": "[output truncated — WebSocket channel full]"
+                "type": event_type,
+                "line": "[output truncated — WebSocket channel full]",
+                "truncated": true
             })
             .to_string();
             let _ = tx.try_send(sentinel); // best-effort only

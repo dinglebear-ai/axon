@@ -4,11 +4,13 @@
 //! Contains `WsConnState`, the WS read/forward loops, and message routing
 //! (execute, cancel, permission_response, read_file, acp_resume).
 
+mod rate_limiter;
+
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
@@ -20,16 +22,13 @@ use uuid::Uuid;
 
 use crate::crates::core::config::Config;
 use crate::crates::services::acp::{PermissionResponderMap, SESSION_CACHE};
+#[cfg(test)]
+use rate_limiter::{RATE_LIMIT_MAX_EXECUTES, RATE_LIMIT_MAX_READ_FILE, RATE_LIMIT_WINDOW_SECS};
+use rate_limiter::{RateLimitCategory, check_rate_limit};
 
 use super::AppState;
 use super::execute;
 use super::execute::events::{CommandContext, CommandErrorPayload, WsEventV2, serialize_v2_event};
-
-/// Maximum `execute` messages per IP per 60-second window (H-12, P1-2).
-const RATE_LIMIT_WINDOW_SECS: u64 = 60;
-const RATE_LIMIT_MAX_EXECUTES: u32 = 120;
-/// Maximum `read_file` messages per IP per 60-second window (P3-4).
-const RATE_LIMIT_MAX_READ_FILE: u32 = 60;
 
 /// Incoming WS message from the browser.
 #[derive(Deserialize)]
@@ -86,11 +85,6 @@ struct WsConnState {
 
 fn init_permission_responders() -> PermissionResponderMap {
     Arc::new(DashMap::new())
-}
-
-enum RateLimitCategory {
-    Execute,
-    ReadFile,
 }
 
 /// Main WS connection handler — runs the read/forward loops until disconnect.
@@ -234,43 +228,6 @@ async fn track_crawl_files(
         parsed.get("output_dir").and_then(|v| v.as_str()),
     ) {
         job_dirs.insert(job_id.to_string(), PathBuf::from(dir));
-    }
-}
-
-/// Check the process-wide rate limiter for a given message category (P1-2, P3-4).
-/// Returns `true` if the request is allowed, `false` if rate-limited.
-///
-/// Each category has its own independent sliding window `(count, window_start)`.
-/// This prevents a window reset in one category from zeroing the counter for the
-/// other — without this separation, an attacker could time requests to force
-/// cross-category resets and achieve ~2x the intended throughput.
-fn check_rate_limit(
-    rate_limiter: &DashMap<IpAddr, (u32, Instant, u32, Instant)>,
-    ip: IpAddr,
-    category: RateLimitCategory,
-) -> bool {
-    let now = Instant::now();
-    let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
-    let mut entry = rate_limiter.entry(ip).or_insert((0, now, 0, now));
-    let (exec_count, exec_window, read_count, read_window) = entry.value_mut();
-
-    match category {
-        RateLimitCategory::Execute => {
-            if now.duration_since(*exec_window) > window {
-                *exec_count = 0;
-                *exec_window = now;
-            }
-            *exec_count += 1;
-            *exec_count <= RATE_LIMIT_MAX_EXECUTES
-        }
-        RateLimitCategory::ReadFile => {
-            if now.duration_since(*read_window) > window {
-                *read_count = 0;
-                *read_window = now;
-            }
-            *read_count += 1;
-            *read_count <= RATE_LIMIT_MAX_READ_FILE
-        }
     }
 }
 

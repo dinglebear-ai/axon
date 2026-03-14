@@ -3,6 +3,11 @@
     "axon": {
       "url": "https://axon.tootie.tv/mcp"
     },
+    "axon-local": {
+      "type": "stdio",
+      "command": "/home/jmagar/.local/bin/axon",
+      "args": ["mcp"]
+    },
     "plate": {
       "description": "Plate editors, plugins and components",
       "type": "stdio",

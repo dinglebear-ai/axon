@@ -168,6 +168,11 @@ fn amqp_reconnect_backoff_doubles_and_caps() {
 )]
 #[test]
 fn validate_env_vars_passes_when_all_set() {
+    // Save original values before mutation.
+    let old_pg = std::env::var_os("AXON_PG_URL");
+    let old_redis = std::env::var_os("AXON_REDIS_URL");
+    let old_amqp = std::env::var_os("AXON_AMQP_URL");
+
     unsafe {
         std::env::set_var("AXON_PG_URL", "postgresql://localhost/test");
         std::env::set_var("AXON_REDIS_URL", "redis://localhost");
@@ -180,10 +185,20 @@ fn validate_env_vars_passes_when_all_set() {
         "expected env validation success: {result:?}"
     );
 
+    // Restore original env state.
     unsafe {
-        std::env::remove_var("AXON_PG_URL");
-        std::env::remove_var("AXON_REDIS_URL");
-        std::env::remove_var("AXON_AMQP_URL");
+        match old_pg {
+            Some(v) => std::env::set_var("AXON_PG_URL", v),
+            None => std::env::remove_var("AXON_PG_URL"),
+        }
+        match old_redis {
+            Some(v) => std::env::set_var("AXON_REDIS_URL", v),
+            None => std::env::remove_var("AXON_REDIS_URL"),
+        }
+        match old_amqp {
+            Some(v) => std::env::set_var("AXON_AMQP_URL", v),
+            None => std::env::remove_var("AXON_AMQP_URL"),
+        }
     }
 }
 
@@ -195,6 +210,11 @@ fn validate_env_vars_passes_when_all_set() {
 )]
 #[test]
 fn validate_env_vars_requires_canonical_names() {
+    // Save original values before mutation.
+    let old_pg = std::env::var_os("AXON_PG_URL");
+    let old_redis = std::env::var_os("AXON_REDIS_URL");
+    let old_amqp = std::env::var_os("AXON_AMQP_URL");
+
     unsafe {
         std::env::remove_var("AXON_PG_URL");
         std::env::remove_var("AXON_REDIS_URL");
@@ -208,10 +228,20 @@ fn validate_env_vars_requires_canonical_names() {
     assert!(msg.contains("AXON_REDIS_URL"));
     assert!(msg.contains("AXON_AMQP_URL"));
 
+    // Restore original env state.
     unsafe {
-        std::env::remove_var("AXON_PG_URL");
-        std::env::remove_var("AXON_REDIS_URL");
-        std::env::remove_var("AXON_AMQP_URL");
+        match old_pg {
+            Some(v) => std::env::set_var("AXON_PG_URL", v),
+            None => std::env::remove_var("AXON_PG_URL"),
+        }
+        match old_redis {
+            Some(v) => std::env::set_var("AXON_REDIS_URL", v),
+            None => std::env::remove_var("AXON_REDIS_URL"),
+        }
+        match old_amqp {
+            Some(v) => std::env::set_var("AXON_AMQP_URL", v),
+            None => std::env::remove_var("AXON_AMQP_URL"),
+        }
     }
 }
 

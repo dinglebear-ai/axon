@@ -33,6 +33,114 @@ pub(super) fn is_valid_cancel_job_id(job_id: &str) -> bool {
     Uuid::parse_str(job_id).is_ok()
 }
 
+/// Parse and validate a job ID as a UUID, sending error events on failure.
+///
+/// Returns `Some(uuid)` on success, `None` after emitting error events.
+async fn validate_and_parse_job_id(
+    job_id: &str,
+    cancel_mode: &str,
+    tx: &mpsc::Sender<String>,
+    ws_ctx: &events::CommandContext,
+) -> Option<Uuid> {
+    match Uuid::parse_str(job_id) {
+        Ok(u) => Some(u),
+        Err(_) => {
+            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
+                ctx: ws_ctx.clone(),
+                payload: JobCancelResponsePayload {
+                    ok: false,
+                    mode: Some(cancel_mode.to_string()),
+                    job_id: Some(job_id.to_string()),
+                    message: Some("invalid job_id format".to_string()),
+                },
+            }) {
+                let _ = tx.send(v2).await;
+            }
+            send_error_dual(
+                tx,
+                ws_ctx,
+                "cancel failed: invalid job_id format".to_string(),
+                None,
+            )
+            .await;
+            None
+        }
+    }
+}
+
+/// Dispatch a cancel request to the appropriate job table.
+async fn dispatch_cancel(cancel_mode: &str, uuid: Uuid, cfg: &Config) -> Result<bool, String> {
+    match cancel_mode {
+        "crawl" => jobs::crawl::cancel_job(cfg, uuid)
+            .await
+            .map_err(|e| e.to_string()),
+        "extract" => jobs::extract::cancel_extract_job(cfg, uuid)
+            .await
+            .map_err(|e| e.to_string()),
+        "embed" => jobs::embed::cancel_embed_job(cfg, uuid)
+            .await
+            .map_err(|e| e.to_string()),
+        other => Err(format!("cancel not supported for mode '{other}'")),
+    }
+}
+
+/// Send WS events for a cancel result (success or failure).
+async fn handle_cancel_result(
+    cancel_result: Result<bool, String>,
+    cancel_mode: &str,
+    job_id: &str,
+    tx: &mpsc::Sender<String>,
+    ws_ctx: &events::CommandContext,
+) {
+    match cancel_result {
+        Ok(ok) => {
+            let message = if ok {
+                Some("cancel requested".to_string())
+            } else {
+                Some("job not found or already terminal".to_string())
+            };
+
+            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
+                ctx: ws_ctx.clone(),
+                payload: JobCancelResponsePayload {
+                    ok,
+                    mode: Some(cancel_mode.to_string()),
+                    job_id: Some(job_id.to_string()),
+                    message,
+                },
+            }) {
+                let _ = tx.send(v2).await;
+            }
+
+            if ok {
+                send_done_dual(tx, ws_ctx, 0, None).await;
+            } else {
+                send_error_dual(
+                    tx,
+                    ws_ctx,
+                    "cancel failed: job not found or already terminal".to_string(),
+                    None,
+                )
+                .await;
+            }
+        }
+        Err(err_msg) => {
+            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
+                ctx: ws_ctx.clone(),
+                payload: JobCancelResponsePayload {
+                    ok: false,
+                    mode: Some(cancel_mode.to_string()),
+                    job_id: Some(job_id.to_string()),
+                    message: Some(err_msg.clone()),
+                },
+            }) {
+                let _ = tx.send(v2).await;
+            }
+            send_error_dual(tx, ws_ctx, format!("cancel failed: {err_msg}"), None).await;
+        }
+    }
+}
+
 /// Cancel a job via direct service call. No subprocess is spawned.
 ///
 /// The `mode` argument selects which job table to cancel from
@@ -70,100 +178,13 @@ pub(super) async fn handle_cancel(
         input: job_id.to_string(),
     };
 
-    // Validate job_id is a UUID before hitting the DB.
-    let uuid = match Uuid::parse_str(job_id) {
-        Ok(u) => u,
-        Err(_) => {
-            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
-                ctx: ws_ctx.clone(),
-                payload: JobCancelResponsePayload {
-                    ok: false,
-                    mode: Some(cancel_mode.to_string()),
-                    job_id: Some(job_id.to_string()),
-                    message: Some("invalid job_id format".to_string()),
-                },
-            }) {
-                let _ = tx.send(v2).await;
-            }
-            send_error_dual(
-                &tx,
-                &ws_ctx,
-                "cancel failed: invalid job_id format".to_string(),
-                None,
-            )
-            .await;
-            return;
-        }
+    let uuid = match validate_and_parse_job_id(job_id, cancel_mode, &tx, &ws_ctx).await {
+        Some(u) => u,
+        None => return,
     };
 
-    // Dispatch cancel to the appropriate job table.
-    // Map the error to String immediately so no non-Send Box<dyn Error> is held
-    // across the subsequent .await points in the match arms below.
-    let cancel_result: Result<bool, String> = match cancel_mode {
-        "crawl" => jobs::crawl::cancel_job(&cfg, uuid)
-            .await
-            .map_err(|e| e.to_string()),
-        "extract" => jobs::extract::cancel_extract_job(&cfg, uuid)
-            .await
-            .map_err(|e| e.to_string()),
-        "embed" => jobs::embed::cancel_embed_job(&cfg, uuid)
-            .await
-            .map_err(|e| e.to_string()),
-        other => Err(format!("cancel not supported for mode '{other}'")),
-    };
-
-    match cancel_result {
-        Ok(ok) => {
-            let message = if ok {
-                Some("cancel requested".to_string())
-            } else {
-                Some("job not found or already terminal".to_string())
-            };
-
-            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
-                ctx: ws_ctx.clone(),
-                payload: JobCancelResponsePayload {
-                    ok,
-                    mode: Some(cancel_mode.to_string()),
-                    job_id: Some(job_id.to_string()),
-                    message,
-                },
-            }) {
-                let _ = tx.send(v2).await;
-            }
-
-            if ok {
-                // The TypeScript client's `handleCommandDone` clears
-                // `isProcessing` state. `job.cancel.response` alone only sets
-                // `cancelResponse` in the runtime reducer — without a
-                // `command.done` event the UI hangs in "processing" state
-                // indefinitely after a successful cancel.
-                send_done_dual(&tx, &ws_ctx, 0, None).await;
-            } else {
-                send_error_dual(
-                    &tx,
-                    &ws_ctx,
-                    "cancel failed: job not found or already terminal".to_string(),
-                    None,
-                )
-                .await;
-            }
-        }
-        Err(err_msg) => {
-            if let Some(v2) = serialize_v2_event(WsEventV2::JobCancelResponse {
-                ctx: ws_ctx.clone(),
-                payload: JobCancelResponsePayload {
-                    ok: false,
-                    mode: Some(cancel_mode.to_string()),
-                    job_id: Some(job_id.to_string()),
-                    message: Some(err_msg.clone()),
-                },
-            }) {
-                let _ = tx.send(v2).await;
-            }
-            send_error_dual(&tx, &ws_ctx, format!("cancel failed: {err_msg}"), None).await;
-        }
-    }
+    let cancel_result = dispatch_cancel(cancel_mode, uuid, &cfg).await;
+    handle_cancel_result(cancel_result, cancel_mode, job_id, &tx, &ws_ctx).await;
 }
 
 #[cfg(test)]

@@ -246,7 +246,13 @@ async fn serve_output_file(
     }
 
     // Defense-in-depth: quick pre-check before canonicalize — does not replace canonicalization below.
-    if file_path.contains("..") || file_path.contains('\0') {
+    // Uses Path::components() instead of substring matching so that valid filenames
+    // containing ".." (e.g. "report..json") are not incorrectly rejected.
+    if std::path::Path::new(&file_path)
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+        || file_path.contains('\0')
+    {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
     }
 

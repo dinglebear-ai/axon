@@ -241,7 +241,10 @@ async fn resolve_working_dir(assistant_mode: bool) -> Result<std::path::PathBuf,
 fn fingerprint_mcp_servers(
     mcp_servers: &[crate::crates::services::types::AcpMcpServerConfig],
 ) -> String {
-    serde_json::to_string(mcp_servers).unwrap_or_default()
+    use sha2::{Digest, Sha256};
+    let json = serde_json::to_string(mcp_servers).unwrap_or_default();
+    let hash = Sha256::digest(json.as_bytes());
+    format!("{hash:x}")
 }
 
 /// Handle the `pulse_chat` service mode: send a prompt turn to the persistent

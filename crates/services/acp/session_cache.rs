@@ -82,15 +82,10 @@ impl CachedSession {
         }
     }
 
-    /// Read and drain all buffered events for replay to a reconnecting client.
-    ///
-    /// Semantics: the first reconnect receives all buffered events (catch-up),
-    /// then the buffer is cleared. Subsequent reconnects see an empty buffer
-    /// unless new events were buffered in the interim. This prevents duplicate
-    /// replays that would otherwise exhaust the replay cap with stale events.
-    ///
-    /// For explicit session termination, `drain_replay_buffer()` is equivalent.
-    pub fn read_replay_buffer(&self) -> Vec<String> {
+    /// Drain and return all buffered events, clearing the buffer and resetting
+    /// the byte counter. Canonical implementation used by both reconnect replay
+    /// and explicit session termination paths.
+    pub fn drain_replay_buffer(&self) -> Vec<String> {
         let mut bytes = self
             .replay_buffer_bytes
             .lock()
@@ -103,19 +98,17 @@ impl CachedSession {
         std::mem::take(&mut *buf)
     }
 
-    /// Drain and return all buffered events, clearing the buffer.
-    /// Used on explicit session termination — not on resume.
-    pub fn drain_replay_buffer(&self) -> Vec<String> {
-        let mut bytes = self
-            .replay_buffer_bytes
-            .lock()
-            .expect("replay_buffer_bytes mutex poisoned");
-        let mut buf = self
-            .replay_buffer
-            .lock()
-            .expect("replay_buffer mutex poisoned");
-        *bytes = 0;
-        std::mem::take(&mut *buf)
+    /// Read and drain all buffered events for replay to a reconnecting client.
+    ///
+    /// Semantics: the first reconnect receives all buffered events (catch-up),
+    /// then the buffer is cleared. Subsequent reconnects see an empty buffer
+    /// unless new events were buffered in the interim. This prevents duplicate
+    /// replays that would otherwise exhaust the replay cap with stale events.
+    ///
+    /// Delegates to `drain_replay_buffer()` -- both operations have identical
+    /// drain-and-clear semantics.
+    pub fn read_replay_buffer(&self) -> Vec<String> {
+        self.drain_replay_buffer()
     }
 
     fn is_expired(&self) -> bool {

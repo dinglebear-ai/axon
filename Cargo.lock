@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "0.23.1"
+version = "0.23.2"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
@@ -5213,6 +5213,7 @@ dependencies = [
  "tokio-util",
  "tower-service",
  "tracing",
+ "url",
  "uuid",
 ]
 
