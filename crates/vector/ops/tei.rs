@@ -200,7 +200,9 @@ pub(crate) async fn embed_prepared_docs(
     if docs.is_empty() {
         return prepare::emit_empty_embed(progress_tx);
     }
-    pipeline::run_embed_pipeline(cfg, docs, progress_tx).await
+    pipeline::run_embed_pipeline(cfg, docs, progress_tx)
+        .await
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
 }
 
 /// Embed source code with AST-aware chunking, falling back to plain text chunking
@@ -385,7 +387,9 @@ pub async fn embed_path_native_with_progress(
     if prepared.is_empty() {
         return prepare::emit_empty_embed(progress_tx);
     }
-    let summary = pipeline::run_embed_pipeline(cfg, prepared, progress_tx).await?;
+    let summary = pipeline::run_embed_pipeline(cfg, prepared, progress_tx)
+        .await
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
     prepare::emit_embed_summary(cfg, summary.chunks_embedded);
     Ok(summary)
 }

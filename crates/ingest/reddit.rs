@@ -8,8 +8,7 @@ pub use types::{RedditTarget, classify_target};
 
 use crate::crates::core::config::{Config, RedditSort};
 use crate::crates::core::logging::{log_done, log_info, log_warn};
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
-use crate::crates::vector::ops::{EmbedDocument, embed_text_with_extra_payload};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use std::error::Error;
 use std::time::Duration;
 
@@ -98,16 +97,25 @@ async fn ingest_subreddit(cfg: &Config, token: &str, name: &str) -> Result<usize
                     }
 
                     let extra = meta::build_reddit_post_extra_payload(data);
-                    let doc = EmbedDocument {
-                        content,
-                        url: post_url.clone(),
-                        source_type: "reddit".to_string(),
-                        title: Some(title.to_string()),
-                        extra: Some(extra.clone()),
-                        file_extension: None,
-                    };
-                    let embedded = embed_reddit_documents(cfg, &[doc]).await;
-                    count_ref.fetch_add(embedded, Ordering::SeqCst);
+                    let chunks = chunk_text(&content);
+                    if !chunks.is_empty() {
+                        let domain = spider::url::Url::parse(&post_url)
+                            .ok()
+                            .and_then(|u| u.host_str().map(|s| s.to_string()))
+                            .unwrap_or_else(|| "reddit.com".to_string());
+                        let doc = PreparedDoc {
+                            url: post_url.clone(),
+                            domain,
+                            chunks,
+                            source_type: "reddit".to_string(),
+                            content_type: "text",
+                            title: Some(title.to_string()),
+                            extra: Some(extra.clone()),
+                        };
+                        if let Ok(summary) = embed_prepared_docs(cfg, vec![doc], None).await {
+                            count_ref.fetch_add(summary.chunks_embedded, Ordering::SeqCst);
+                        }
+                    }
                 }
             })
             .await;
@@ -170,15 +178,25 @@ async fn ingest_thread(cfg: &Config, token: &str, url: &str) -> Result<usize, Bo
     }
 
     let extra = meta::build_reddit_post_extra_payload(post_data);
-    let doc = EmbedDocument {
-        content,
+    let chunks = chunk_text(&content);
+    if chunks.is_empty() {
+        return Ok(0);
+    }
+    let domain = spider::url::Url::parse(&canonical_url)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "reddit.com".to_string());
+    let doc = PreparedDoc {
         url: canonical_url,
+        domain,
+        chunks,
         source_type: "reddit".to_string(),
+        content_type: "text",
         title: Some(title.to_string()),
         extra: Some(extra.clone()),
-        file_extension: None,
     };
-    Ok(embed_reddit_documents(cfg, &[doc]).await)
+    let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+    Ok(summary.chunks_embedded)
 }
 
 /// Append formatted comments to the content string.
@@ -196,7 +214,7 @@ fn format_comments_into(content: &mut String, title: &str, comments: &[CommentWi
 /// Ingest Reddit content:
 /// - For a subreddit: fetches posts (configurable sort/limit/score/depth) + recursive comments
 /// - For a thread URL: fetches that thread + full recursive comment tree
-/// - Embeds all content into Qdrant via embed_text_with_extra_payload with reddit_* metadata
+/// - Embeds all content into Qdrant via PreparedDoc pipeline with reddit_* metadata
 pub async fn ingest_reddit(cfg: &Config, target: &str) -> Result<usize, Box<dyn Error>> {
     log_info(&format!("command=ingest source=reddit target={target}"));
     let client_id = cfg
@@ -219,31 +237,4 @@ pub async fn ingest_reddit(cfg: &Config, target: &str) -> Result<usize, Box<dyn 
         "command=ingest source=reddit target={target} chunk_count={chunk_count}"
     ));
     Ok(chunk_count)
-}
-
-async fn embed_reddit_documents(cfg: &Config, docs: &[EmbedDocument]) -> usize {
-    let result = embed_documents_in_batches(
-        cfg,
-        docs,
-        64,
-        "ingest_reddit",
-        |cfg, doc| {
-            Box::pin(async move {
-                let extra_owned = doc.extra.clone().unwrap_or_default();
-                embed_text_with_extra_payload(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                    &extra_owned,
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |_| {},
-    )
-    .await;
-    result.chunks_embedded
 }

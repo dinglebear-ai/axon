@@ -6,10 +6,7 @@ pub use vtt::parse_vtt_to_text;
 use crate::crates::core::config::Config;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
-use crate::crates::vector::ops::{
-    EmbedDocument, embed_text_with_extra_payload, embed_text_with_metadata,
-};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use spider::url::Url;
 use std::error::Error;
 
@@ -186,7 +183,7 @@ fn resolve_video_id_and_safe_url(url: &str) -> Result<(String, String), Box<dyn 
 /// Ingest a YouTube video URL (or bare video ID) by:
 /// 1. Running yt-dlp to download VTT subtitle files into a temp directory
 /// 2. Parsing each VTT file into clean text via parse_vtt_to_text
-/// 3. Embedding each transcript into Qdrant via embed_text_with_extra_payload
+/// 3. Embedding each transcript into Qdrant via the PreparedDoc pipeline
 ///
 /// Requires `yt-dlp` to be installed and on PATH.
 pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Error>> {
@@ -277,82 +274,57 @@ pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Er
             .map(|m| m.title.as_str())
             .unwrap_or(vid_id);
 
-        let mut docs = vec![EmbedDocument {
-            content: text,
-            url: source_url.clone(),
-            source_type: "youtube".to_string(),
-            title: Some(title.to_string()),
-            extra: extra.clone(),
-            file_extension: None,
-        }];
+        let mut docs: Vec<PreparedDoc> = Vec::new();
+
+        let transcript_chunks = chunk_text(&text);
+        if !transcript_chunks.is_empty() {
+            let domain = Url::parse(&source_url)
+                .ok()
+                .and_then(|u| u.host_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "youtube.com".to_string());
+            docs.push(PreparedDoc {
+                url: source_url.clone(),
+                domain,
+                chunks: transcript_chunks,
+                source_type: "youtube".to_string(),
+                content_type: "text",
+                title: Some(title.to_string()),
+                extra: extra.clone(),
+            });
+        }
 
         // Embed description as a separate document (often contains commands, links, timestamps)
         if let Some(m) = &video_meta
             && !m.description.trim().is_empty()
         {
             let desc_url = format!("{source_url}?section=description");
-            let desc_title = format!("{} — description", m.title);
-            docs.push(EmbedDocument {
-                content: m.description.clone(),
-                url: desc_url,
-                source_type: "youtube".to_string(),
-                title: Some(desc_title),
-                extra: extra.clone(),
-                file_extension: None,
-            });
+            let desc_chunks = chunk_text(&m.description);
+            if !desc_chunks.is_empty() {
+                let domain = Url::parse(&desc_url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "youtube.com".to_string());
+                docs.push(PreparedDoc {
+                    url: desc_url,
+                    domain,
+                    chunks: desc_chunks,
+                    source_type: "youtube".to_string(),
+                    content_type: "text",
+                    title: Some(format!("{} — description", m.title)),
+                    extra: extra.clone(),
+                });
+            }
         }
 
-        count += embed_youtube_documents(cfg, &docs, vid_id).await;
+        if let Ok(summary) = embed_prepared_docs(cfg, docs, None).await {
+            count += summary.chunks_embedded;
+        }
     }
 
     log_done(&format!(
         "command=ingest source=youtube video_id={video_id} chunk_count={count}"
     ));
     Ok(count)
-}
-
-async fn embed_youtube_documents(cfg: &Config, docs: &[EmbedDocument], video_id: &str) -> usize {
-    let result = embed_documents_in_batches(
-        cfg,
-        docs,
-        64,
-        "ingest_youtube",
-        |cfg, doc| {
-            Box::pin(async move {
-                if let Some(extra) = doc.extra.as_ref() {
-                    embed_text_with_extra_payload(
-                        cfg,
-                        &doc.content,
-                        &doc.url,
-                        &doc.source_type,
-                        doc.title.as_deref(),
-                        extra,
-                    )
-                    .await
-                    .map_err(|err| err.to_string())
-                } else {
-                    embed_text_with_metadata(
-                        cfg,
-                        &doc.content,
-                        &doc.url,
-                        &doc.source_type,
-                        doc.title.as_deref(),
-                    )
-                    .await
-                    .map_err(|err| err.to_string())
-                }
-            })
-        },
-        |_| {},
-    )
-    .await;
-    if result.fallback_failures > 0 {
-        log_warn(&format!(
-            "command=ingest_youtube embed_failed video_id={video_id} failures={}",
-            result.fallback_failures
-        ));
-    }
-    result.chunks_embedded
 }
 
 #[cfg(test)]

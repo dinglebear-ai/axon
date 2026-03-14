@@ -5,6 +5,8 @@ use crate::crates::vector::ops::qdrant::{env_usize_clamped, qdrant_delete_by_url
 use chrono::Utc;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::error::Error;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::OnceLock;
 use std::time::Duration;
 use uuid::Uuid;
@@ -25,10 +27,15 @@ fn strict_predelete() -> bool {
     *STRICT.get_or_init(|| env_bool("AXON_EMBED_STRICT_PREDELETE", true))
 }
 
+// Aliases used for futures that must be Send to work in FuturesUnordered across await points.
+type SendError = Box<dyn Error + Send + Sync>;
+type DocFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(usize, Vec<serde_json::Value>), SendError>> + Send + 'a>>;
+
 async fn embed_prepared_doc(
     cfg: &Config,
     doc: PreparedDoc,
-) -> Result<(usize, Vec<serde_json::Value>), Box<dyn Error>> {
+) -> Result<(usize, Vec<serde_json::Value>), SendError> {
     if let Err(err) = qdrant_delete_by_url_filter(cfg, &doc.url).await {
         if strict_predelete() {
             return Err(format!("embed pre-delete failed for {}: {}", doc.url, err).into());
@@ -38,7 +45,9 @@ async fn embed_prepared_doc(
             doc.url, err
         ));
     }
-    let vectors = tei_embed(cfg, &doc.chunks).await?;
+    let vectors = tei_embed(cfg, &doc.chunks)
+        .await
+        .map_err(|e| -> SendError { e.to_string().into() })?;
     if vectors.is_empty() {
         return Err(format!("TEI returned no vectors for {}", doc.url).into());
     }
@@ -95,7 +104,7 @@ async fn embed_prepared_doc_with_timeout(
     cfg: &Config,
     doc: PreparedDoc,
     timeout_secs: u64,
-) -> Result<(usize, Vec<serde_json::Value>), Box<dyn Error>> {
+) -> Result<(usize, Vec<serde_json::Value>), SendError> {
     let url = doc.url.clone();
     match tokio::time::timeout(
         Duration::from_secs(timeout_secs),
@@ -118,7 +127,7 @@ pub(super) async fn run_embed_pipeline(
     cfg: &Config,
     prepared: Vec<PreparedDoc>,
     progress_tx: Option<tokio::sync::mpsc::Sender<EmbedProgress>>,
-) -> Result<EmbedSummary, Box<dyn Error>> {
+) -> Result<EmbedSummary, SendError> {
     let docs_embedded = prepared.len();
     log_info(&format!("embed_pipeline docs={}", docs_embedded));
     let doc_timeout_secs = env_usize_clamped("AXON_EMBED_DOC_TIMEOUT_SECS", 300, 10, 7200) as u64;
@@ -134,7 +143,7 @@ pub(super) async fn run_embed_pipeline(
     let flush_point_threshold = env_usize_clamped("AXON_QDRANT_POINT_BUFFER", 256, 128, 16384);
 
     let mut work = prepared.into_iter();
-    let mut inflight = FuturesUnordered::new();
+    let mut inflight: FuturesUnordered<DocFuture<'_>> = FuturesUnordered::new();
     if let Some(tx) = &progress_tx {
         let _ = tx
             .send(EmbedProgress {
@@ -146,7 +155,11 @@ pub(super) async fn run_embed_pipeline(
     }
     for _ in 0..doc_concurrency {
         if let Some(doc) = work.next() {
-            inflight.push(embed_prepared_doc_with_timeout(cfg, doc, doc_timeout_secs));
+            inflight.push(Box::pin(embed_prepared_doc_with_timeout(
+                cfg,
+                doc,
+                doc_timeout_secs,
+            )));
         }
     }
 
@@ -160,7 +173,9 @@ pub(super) async fn run_embed_pipeline(
         match collection_dim {
             None => {
                 if qdrant_store::collection_needs_init(&cfg.collection) {
-                    qdrant_store::ensure_collection(cfg, dim).await?;
+                    qdrant_store::ensure_collection(cfg, dim)
+                        .await
+                        .map_err(|e| -> SendError { e.to_string().into() })?;
                 }
                 collection_dim = Some(dim);
             }
@@ -186,16 +201,24 @@ pub(super) async fn run_embed_pipeline(
         }
         pending_points.append(&mut points);
         if pending_points.len() >= flush_point_threshold {
-            qdrant_store::qdrant_upsert(cfg, &pending_points).await?;
+            qdrant_store::qdrant_upsert(cfg, &pending_points)
+                .await
+                .map_err(|e| -> SendError { e.to_string().into() })?;
             pending_points.clear();
         }
 
         if let Some(doc) = work.next() {
-            inflight.push(embed_prepared_doc_with_timeout(cfg, doc, doc_timeout_secs));
+            inflight.push(Box::pin(embed_prepared_doc_with_timeout(
+                cfg,
+                doc,
+                doc_timeout_secs,
+            )));
         }
     }
     if !pending_points.is_empty() {
-        qdrant_store::qdrant_upsert(cfg, &pending_points).await?;
+        qdrant_store::qdrant_upsert(cfg, &pending_points)
+            .await
+            .map_err(|e| -> SendError { e.to_string().into() })?;
     }
 
     Ok(EmbedSummary {
