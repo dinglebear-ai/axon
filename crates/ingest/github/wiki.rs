@@ -1,7 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
-use crate::crates::vector::ops::{EmbedDocument, embed_text_with_extra_payload};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -84,7 +83,7 @@ pub async fn ingest_wiki(
 
     // Recursively walk the cloned directory for text files to embed
     let all_files = walk_dir_recursive(Path::new(&tmp_path)).await?;
-    let mut docs = Vec::new();
+    let mut docs: Vec<PreparedDoc> = Vec::new();
 
     for path in all_files {
         let ext = path
@@ -130,38 +129,24 @@ pub async fn ingest_wiki(
             ..Default::default()
         });
 
-        docs.push(EmbedDocument {
-            content,
-            url: wiki_url,
-            source_type: "github".to_string(),
-            title: Some(title),
-            extra: Some(extra),
-            file_extension: None,
-        });
+        let chunks = chunk_text(&content);
+        if !chunks.is_empty() {
+            let domain = spider::url::Url::parse(&wiki_url)
+                .ok()
+                .and_then(|u| u.host_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "github.com".to_string());
+            docs.push(PreparedDoc {
+                url: wiki_url,
+                domain,
+                chunks,
+                source_type: "github".to_string(),
+                content_type: "text",
+                title: Some(title),
+                extra: Some(extra),
+            });
+        }
     }
 
-    let result = embed_documents_in_batches(
-        cfg,
-        &docs,
-        64,
-        "ingest_github",
-        |cfg, doc| {
-            Box::pin(async move {
-                let extra_owned = doc.extra.clone().unwrap_or_default();
-                embed_text_with_extra_payload(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                    &extra_owned,
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |_| {},
-    )
-    .await;
-    Ok(result.chunks_embedded)
+    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    Ok(summary.chunks_embedded)
 }

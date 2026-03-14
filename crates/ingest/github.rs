@@ -1,7 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
-use crate::crates::vector::ops::{EmbedDocument, embed_text_with_extra_payload};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use octocrab::Octocrab;
 use std::error::Error;
 
@@ -154,38 +153,25 @@ async fn embed_repo_metadata(
         is_archived: repo.archived,
         ..Default::default()
     });
-    let docs = vec![EmbedDocument {
-        content,
+    let chunks = chunk_text(&content);
+    if chunks.is_empty() {
+        return Ok(0);
+    }
+    let domain = spider::url::Url::parse(&url)
+        .ok()
+        .and_then(|u| u.host_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "github.com".to_string());
+    let doc = PreparedDoc {
         url,
+        domain,
+        chunks,
         source_type: "github".to_string(),
+        content_type: "text",
         title: Some(owner_name.to_string()),
         extra: Some(extra),
-        file_extension: None,
-    }];
-    let result = embed_documents_in_batches(
-        cfg,
-        &docs,
-        1,
-        "ingest_github",
-        |cfg, doc| {
-            Box::pin(async move {
-                let extra_owned = doc.extra.clone().unwrap_or_default();
-                embed_text_with_extra_payload(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                    &extra_owned,
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |_| {},
-    )
-    .await;
-    Ok(result.chunks_embedded)
+    };
+    let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+    Ok(summary.chunks_embedded)
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────

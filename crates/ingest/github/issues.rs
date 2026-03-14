@@ -1,6 +1,5 @@
 use crate::crates::core::config::Config;
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
-use crate::crates::vector::ops::{EmbedDocument, embed_text_with_extra_payload};
+use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use octocrab::Octocrab;
 use octocrab::{models, params};
 use std::error::Error;
@@ -17,7 +16,7 @@ pub async fn ingest_issues(
     octo: &Octocrab,
     common: &GitHubCommonFields,
 ) -> Result<usize, Box<dyn Error>> {
-    let mut docs = Vec::new();
+    let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .issues(&common.owner, &common.name)
         .list()
@@ -69,14 +68,22 @@ pub async fn ingest_issues(
                 ..Default::default()
             });
 
-            docs.push(EmbedDocument {
-                content,
-                url,
-                source_type: "github".to_string(),
-                title: Some(title),
-                extra: Some(extra),
-                file_extension: None,
-            });
+            let chunks = chunk_text(&content);
+            if !chunks.is_empty() {
+                let domain = spider::url::Url::parse(&url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "github.com".to_string());
+                docs.push(PreparedDoc {
+                    url,
+                    domain,
+                    chunks,
+                    source_type: "github".to_string(),
+                    content_type: "text",
+                    title: Some(title),
+                    extra: Some(extra),
+                });
+            }
         }
 
         page = match octo.get_page::<models::issues::Issue>(&page.next).await? {
@@ -85,7 +92,8 @@ pub async fn ingest_issues(
         };
     }
 
-    Ok(embed_github_docs(cfg, &docs, "ingest_github").await)
+    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    Ok(summary.chunks_embedded)
 }
 
 /// Ingest all pull requests (open + closed) from a repository.
@@ -94,7 +102,7 @@ pub async fn ingest_pull_requests(
     octo: &Octocrab,
     common: &GitHubCommonFields,
 ) -> Result<usize, Box<dyn Error>> {
-    let mut docs = Vec::new();
+    let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .pulls(&common.owner, &common.name)
         .list()
@@ -143,14 +151,22 @@ pub async fn ingest_pull_requests(
                 ..Default::default()
             });
 
-            docs.push(EmbedDocument {
-                content,
-                url,
-                source_type: "github".to_string(),
-                title: Some(embed_title),
-                extra: Some(extra),
-                file_extension: None,
-            });
+            let chunks = chunk_text(&content);
+            if !chunks.is_empty() {
+                let domain = spider::url::Url::parse(&url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "github.com".to_string());
+                docs.push(PreparedDoc {
+                    url,
+                    domain,
+                    chunks,
+                    source_type: "github".to_string(),
+                    content_type: "text",
+                    title: Some(embed_title),
+                    extra: Some(extra),
+                });
+            }
         }
 
         page = match octo
@@ -162,32 +178,6 @@ pub async fn ingest_pull_requests(
         };
     }
 
-    Ok(embed_github_docs(cfg, &docs, "ingest_github").await)
-}
-
-async fn embed_github_docs(cfg: &Config, docs: &[EmbedDocument], command: &str) -> usize {
-    let result = embed_documents_in_batches(
-        cfg,
-        docs,
-        64,
-        command,
-        |cfg, doc| {
-            Box::pin(async move {
-                let extra_owned = doc.extra.clone().unwrap_or_default();
-                embed_text_with_extra_payload(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                    &extra_owned,
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |_| {},
-    )
-    .await;
-    result.chunks_embedded
+    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    Ok(summary.chunks_embedded)
 }
