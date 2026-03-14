@@ -26,10 +26,17 @@ pub struct EmbedProgress {
 }
 
 #[derive(Debug)]
-pub(super) struct PreparedDoc {
-    url: String,
-    domain: String,
-    chunks: Vec<String>,
+pub(crate) struct PreparedDoc {
+    pub(crate) url: String,
+    pub(crate) domain: String,
+    pub(crate) chunks: Vec<String>,
+    /// "embed" for crawl path, "github"/"reddit"/"youtube"/"sessions" for ingest.
+    pub(crate) source_type: String,
+    /// "markdown" for crawl path, "text" for ingest sources.
+    pub(crate) content_type: &'static str,
+    pub(crate) title: Option<String>,
+    /// Source-specific metadata fields (gh_*, reddit_*, yt_*).
+    pub(crate) extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +182,25 @@ pub async fn embed_text_with_extra_payload(
     extra: &serde_json::Value,
 ) -> Result<usize, Box<dyn Error>> {
     embed_text_impl(cfg, content, url, source_type, title, Some(extra)).await
+}
+
+/// Embed a batch of pre-prepared documents through the unified concurrent pipeline.
+///
+/// Each `PreparedDoc` must already be chunked. The pipeline processes documents
+/// concurrently (AXON_EMBED_DOC_CONCURRENCY), one TEI call per document, and
+/// batches Qdrant upserts at 256 points. This is the single entry point for all
+/// ingest sources and the crawl path.
+// Allow dead_code: callers will be added in subsequent tasks when ingest sources migrate.
+#[allow(dead_code)]
+pub(crate) async fn embed_prepared_docs(
+    cfg: &Config,
+    docs: Vec<PreparedDoc>,
+    progress_tx: Option<tokio::sync::mpsc::Sender<EmbedProgress>>,
+) -> Result<EmbedSummary, Box<dyn Error>> {
+    if docs.is_empty() {
+        return prepare::emit_empty_embed(progress_tx);
+    }
+    pipeline::run_embed_pipeline(cfg, docs, progress_tx).await
 }
 
 /// Embed source code with AST-aware chunking, falling back to plain text chunking

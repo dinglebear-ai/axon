@@ -72,6 +72,10 @@ pub(super) async fn prepare_embed_docs(
             url,
             domain,
             chunks,
+            source_type: "embed".to_string(),
+            content_type: "markdown",
+            title: None,
+            extra: None,
         });
     }
     Ok(prepared)

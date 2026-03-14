@@ -64,18 +64,28 @@ async fn embed_prepared_doc(
             &Uuid::NAMESPACE_URL,
             format!("{}:{}", doc.url, idx).as_bytes(),
         );
+        let mut payload = serde_json::json!({
+            "url": doc.url,
+            "domain": doc.domain,
+            "source_type": doc.source_type,
+            "source_command": doc.source_type,
+            "content_type": doc.content_type,
+            "chunk_index": idx,
+            "chunk_text": chunk,
+            "scraped_at": timestamp,
+        });
+        if let Some(t) = &doc.title {
+            payload["title"] = serde_json::Value::String(t.clone());
+        }
+        if let Some(serde_json::Value::Object(map)) = &doc.extra {
+            for (k, v) in map {
+                payload[k] = v.clone();
+            }
+        }
         points.push(serde_json::json!({
             "id": point_id.to_string(),
             "vector": vecv,
-            "payload": {
-                "url": doc.url,
-                "domain": doc.domain,
-                "source_command": "embed",
-                "content_type": "markdown",
-                "chunk_index": idx,
-                "chunk_text": chunk,
-                "scraped_at": timestamp,
-            }
+            "payload": payload,
         }));
     }
     Ok((dim, points))

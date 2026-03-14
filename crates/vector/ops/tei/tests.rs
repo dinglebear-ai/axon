@@ -176,6 +176,26 @@ async fn tei_embed_retries_on_500() {
     assert_eq!(result.len(), 1, "must return one embedding vector");
 }
 
+/// Compile-time check: PreparedDoc must expose all four ingest metadata fields.
+#[test]
+fn prepared_doc_with_ingest_metadata_compiles() {
+    // Compile-time check: all four new fields must exist on PreparedDoc.
+    // This test FAILS before Step 3 adds them (unknown field errors).
+    let doc = super::PreparedDoc {
+        url: "https://github.com/owner/repo/blob/main/src/lib.rs".to_string(),
+        domain: "github.com".to_string(),
+        chunks: vec!["fn main() {}".to_string()],
+        source_type: "github".to_string(),
+        content_type: "text",
+        title: Some("src/lib.rs".to_string()),
+        extra: Some(serde_json::json!({"gh_owner": "owner", "gh_repo": "repo"})),
+    };
+    assert_eq!(doc.source_type, "github");
+    assert_eq!(doc.content_type, "text");
+    assert!(doc.title.is_some());
+    assert!(doc.extra.is_some());
+}
+
 /// Hard client errors should fail fast (no retry storm).
 #[tokio::test]
 async fn tei_embed_fails_fast_on_404() {
