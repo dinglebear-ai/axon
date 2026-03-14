@@ -1,25 +1,19 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
-use crate::crates::ingest::embed_pipeline::embed_documents_in_batches;
 use crate::crates::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name,
 };
 use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
-use crate::crates::vector::ops::{EmbedDocument, embed_code_with_metadata};
+use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
 use tokio::sync::mpsc;
 
 use super::meta::{GitHubPayloadParams, build_github_payload};
 use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
 
 const FILE_PROGRESS_EVERY: usize = 25;
-const GITHUB_EMBED_DOC_BATCH_SIZE: usize = 256;
 
 /// Extensions that have tree-sitter grammar support for AST-aware chunking.
 const TREE_SITTER_EXTENSIONS: &[&str] = &["rs", "py", "js", "jsx", "ts", "tsx", "go", "sh", "bash"];
@@ -162,11 +156,15 @@ struct FileEmbedCtx {
     is_private: Option<bool>,
 }
 
-/// Read a single file from the cloned repo and pre-chunk into embedding documents.
+/// Read a single file from the cloned repo and build a PreparedDoc with all chunks.
 ///
-/// Returns one `EmbedDocument` per chunk to keep TEI batch sizes bounded and
-/// eliminate HTTP 413 fallback paths. Empty or unreadable files return `Ok(vec![])`.
-async fn read_file_embed_doc(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<EmbedDocument>, String> {
+/// Returns one `PreparedDoc` per file — all chunks for the file are in
+/// `PreparedDoc.chunks`. The unified pipeline issues one TEI call per PreparedDoc.
+/// Empty or unreadable files return `Ok(None)`.
+async fn read_file_embed_doc(
+    ctx: &FileEmbedCtx,
+    path: &str,
+) -> Result<Option<PreparedDoc>, String> {
     let full_path = ctx.repo_root.join(path);
     let text = match tokio::fs::read_to_string(&full_path).await {
         Ok(t) => t,
@@ -174,14 +172,19 @@ async fn read_file_embed_doc(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Embed
             log_warn(&format!(
                 "command=ingest_github read_failed path={path} err={e}"
             ));
-            return Ok(vec![]);
+            return Ok(None);
         }
     };
     if text.trim().is_empty() {
-        return Ok(vec![]);
+        return Ok(None);
     }
 
     let ext = file_extension(path);
+    let chunks = chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text));
+    if chunks.is_empty() {
+        return Ok(None);
+    }
+
     let extra = build_github_payload(&GitHubPayloadParams {
         repo: ctx.name.clone(),
         owner: ctx.owner.clone(),
@@ -205,20 +208,15 @@ async fn read_file_embed_doc(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Embed
         ctx.owner, ctx.name, ctx.default_branch, path
     );
 
-    // Pre-chunk: one EmbedDocument per chunk to keep TEI batch sizes bounded.
-    let chunks = chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text));
-
-    Ok(chunks
-        .into_iter()
-        .map(|chunk| EmbedDocument {
-            content: chunk,
-            url: source_url.clone(),
-            source_type: "github".to_string(),
-            title: Some(path.to_string()),
-            extra: Some(extra.clone()),
-            file_extension: Some(ext.clone()),
-        })
-        .collect())
+    Ok(Some(PreparedDoc {
+        url: source_url,
+        domain: "github.com".to_string(),
+        chunks,
+        source_type: "github".to_string(),
+        content_type: "text",
+        title: Some(path.to_string()),
+        extra: Some(extra),
+    }))
 }
 
 /// Clone the repo and embed all indexable files concurrently.
@@ -258,8 +256,21 @@ pub async fn embed_files(
     };
     let mut failed = 0usize;
     let docs = collect_embed_docs(&ctx, file_items, files_total, progress_tx, &mut failed).await;
-    let chunks_embedded =
-        embed_collected_docs(&ctx, &docs, files_total, progress_tx, &mut failed).await;
+
+    send_progress(
+        progress_tx,
+        serde_json::json!({
+            "files_done": files_total,
+            "files_total": files_total,
+            "chunks_embedded": 0,
+            "phase": "embedding",
+        }),
+    )
+    .await;
+
+    let summary = embed_prepared_docs(cfg, docs, None).await?;
+    let chunks_embedded = summary.chunks_embedded;
+
     send_progress(
         progress_tx,
         serde_json::json!({
@@ -283,7 +294,7 @@ async fn collect_embed_docs(
     files_total: usize,
     progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
     failed: &mut usize,
-) -> Vec<EmbedDocument> {
+) -> Vec<PreparedDoc> {
     let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
@@ -292,13 +303,14 @@ async fn collect_embed_docs(
         })
         .buffer_unordered(concurrency);
 
-    let mut docs = Vec::new();
+    let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut files_done = 0usize;
 
     while let Some(result) = file_stream.next().await {
         files_done += 1;
         match result {
-            Ok(chunks) => docs.extend(chunks),
+            Ok(Some(doc)) => docs.push(doc),
+            Ok(None) => {}
             Err(_) => *failed += 1,
         }
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
@@ -316,69 +328,6 @@ async fn collect_embed_docs(
     }
 
     docs
-}
-
-async fn embed_collected_docs(
-    ctx: &FileEmbedCtx,
-    docs: &[EmbedDocument],
-    files_total: usize,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
-    failed: &mut usize,
-) -> usize {
-    let chunks_progress = Arc::new(AtomicUsize::new(0));
-
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "files_done": files_total,
-            "files_total": files_total,
-            "chunks_embedded": chunks_progress.load(Ordering::Relaxed),
-            "phase": "embedding",
-        }),
-    )
-    .await;
-
-    let chunks_progress_for_callback = Arc::clone(&chunks_progress);
-    let result = embed_documents_in_batches(
-        &ctx.cfg,
-        docs,
-        GITHUB_EMBED_DOC_BATCH_SIZE,
-        "ingest_github",
-        |cfg, doc| {
-            Box::pin(async move {
-                let ext = doc.file_extension.as_deref().unwrap_or("");
-                embed_code_with_metadata(
-                    cfg,
-                    &doc.content,
-                    &doc.url,
-                    &doc.source_type,
-                    doc.title.as_deref(),
-                    ext,
-                    doc.extra.as_ref(),
-                )
-                .await
-                .map_err(|err| err.to_string())
-            })
-        },
-        |total_chunks| {
-            chunks_progress_for_callback.store(total_chunks, Ordering::Relaxed);
-        },
-    )
-    .await;
-    *failed += result.fallback_failures;
-
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "files_done": files_total,
-            "files_total": files_total,
-            "chunks_embedded": chunks_progress.load(Ordering::Relaxed),
-            "phase": "embedding",
-        }),
-    )
-    .await;
-
-    result.chunks_embedded
 }
 
 async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: serde_json::Value) {
