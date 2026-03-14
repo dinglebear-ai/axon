@@ -8,6 +8,7 @@ use crate::crates::services::types::{
 
 use super::super::events::CommandContext;
 use super::super::files;
+use super::acp_adapter::AdapterCapabilities;
 use super::pulse_chat::{handle_pulse_chat, handle_pulse_chat_probe};
 use super::service_calls::{
     call_ask, call_debug, call_dedupe, call_doctor, call_domains, call_evaluate, call_map,
@@ -179,6 +180,19 @@ async fn dispatch_search_and_info_modes(
             };
             send_json_owned(tx, ws_ctx, json!({ "urls": result.urls })).await;
         }
+        _ => return dispatch_diagnostic_modes(mode, cfg, input, tx, ws_ctx).await,
+    }
+    Some(Ok(()))
+}
+
+async fn dispatch_diagnostic_modes(
+    mode: &ServiceMode,
+    cfg: std::sync::Arc<crate::crates::core::config::Config>,
+    input: String,
+    tx: mpsc::Sender<String>,
+    ws_ctx: CommandContext,
+) -> Option<Result<(), SvcError>> {
+    match mode {
         ServiceMode::Evaluate => {
             let result = match call_evaluate(cfg, input).await {
                 Ok(r) => r,
@@ -254,6 +268,10 @@ pub(super) async fn dispatch_service(
         enabled_mcp_servers,
         blocked_mcp_tools,
         assistant_mode,
+        enable_fs,
+        enable_terminal,
+        permission_timeout_secs,
+        adapter_timeout_secs,
     } = params;
 
     if let Some(result) = dispatch_query_modes(
@@ -299,6 +317,12 @@ pub(super) async fn dispatch_service(
                 blocked_mcp_tools,
                 agent,
                 assistant_mode,
+                AdapterCapabilities {
+                    enable_fs,
+                    enable_terminal,
+                    permission_timeout_secs,
+                    adapter_timeout_secs,
+                },
                 tx,
                 ws_ctx,
                 permission_responders,

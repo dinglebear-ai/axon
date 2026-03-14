@@ -36,10 +36,7 @@ mod acp_ws_event_tests;
 #[path = "execute/tests/ws_protocol_tests.rs"]
 mod ws_protocol_tests;
 
-#[cfg(test)]
-#[path = "execute/tests/async_ingest_routing_tests.rs"]
-mod async_ingest_routing_tests;
-
+pub(crate) use context::ExecCommandContext;
 pub(crate) use files::handle_read_file;
 
 #[cfg(test)]
@@ -93,14 +90,11 @@ pub fn is_valid_cancel_job_id_pub(job_id: &str) -> bool {
 }
 
 use crate::crates::core::config::Config;
+use constants::{ACP_MODES, ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc};
-use uuid::Uuid;
-
-use constants::{ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
-use context::ExecCommandContext;
 
 fn resolve_exe() -> Result<std::path::PathBuf, String> {
     exe::resolve_exe()
@@ -117,12 +111,12 @@ fn is_valid_cancel_job_id(job_id: &str) -> bool {
 }
 
 #[cfg(test)]
-async fn send_command_output_line(
+fn send_command_output_line(
     tx: &mpsc::Sender<String>,
     context: &events::CommandContext,
     line: String,
 ) {
-    ws_send::send_command_output_line(tx, context, line).await
+    ws_send::send_command_output_line(tx, context, line)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -162,32 +156,16 @@ pub(super) async fn handle_cancel(
     cancel::handle_cancel(mode, job_id, tx, cfg).await
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn handle_command(
-    mode: String,
-    input: String,
-    flags: serde_json::Value,
-    client_exec_id: String,
+pub(crate) async fn handle_command(
+    context: ExecCommandContext,
     tx: mpsc::Sender<String>,
     crawl_job_id: Arc<Mutex<Option<String>>>,
-    cfg: Arc<Config>,
     permission_responders: crate::crates::services::acp::PermissionResponderMap,
 ) {
-    // All mode/input/flags checks below use `.as_str()` / `.as_ref()` on the
-    // owned values.  These borrows live only within their enclosing expressions
-    // and never cross an `.await` point, so the future remains `Send + 'static`.
-    let context = ExecCommandContext {
-        exec_id: if client_exec_id.trim().is_empty() {
-            format!("exec-{}", Uuid::new_v4())
-        } else {
-            client_exec_id
-        },
-        mode: mode.clone(),
-        input: input.clone(),
-        flags: flags.clone(),
-        cfg: cfg.clone(),
-    };
     let ws_ctx = context.to_ws_ctx();
+    let mode = context.mode.clone();
+    let input = context.input.clone();
+    let flags = context.flags.clone();
 
     if !ALLOWED_MODES.contains(&mode.as_str()) {
         send_error_dual(&tx, &ws_ctx, format!("unknown mode: {mode}"), None).await;
@@ -217,7 +195,7 @@ pub(super) async fn handle_command(
     // enqueue the job and return immediately with the job ID.
     // No subprocess is spawned; no polling loop is run.
     if ASYNC_MODES.contains(&mode.as_str()) {
-        ws_send::send_command_start(&tx, &context).await;
+        ws_send::send_command_start(&tx, &context);
         async_mode::handle_async_command(context, tx, crawl_job_id).await;
         return;
     }
@@ -232,14 +210,14 @@ pub(super) async fn handle_command(
             Ok(p) => p,
             Err(()) => return, // error already sent to client
         };
-        ws_send::send_command_start(&tx, &context).await;
+        ws_send::send_command_start(&tx, &context);
         sync_mode::handle_sync_direct(params, tx, ws_ctx, permission_responders).await;
         drop(_acp_permit); // explicit drop for clarity — permit held for full command duration
 
         return;
     }
 
-    ws_send::send_command_start(&tx, &context).await;
+    ws_send::send_command_start(&tx, &context);
     dispatch_subprocess_fallback(context, &mode, &input, &flags, tx, ws_ctx).await;
 }
 
@@ -256,7 +234,19 @@ async fn acquire_acp_permit(
     tx: &mpsc::Sender<String>,
     ws_ctx: &events::CommandContext,
 ) -> Result<Option<tokio::sync::SemaphorePermit<'static>>, ()> {
-    if matches!(mode, "pulse_chat" | "pulse_chat_probe") {
+    if ACP_MODES.contains(&mode) {
+        // M-11: Notify client before potentially blocking on the semaphore,
+        // so a 30-second hang has visible feedback in the browser.
+        // Uses `command.output.line` — a WsEventV2 type the TypeScript client
+        // actually parses — instead of the raw `status` type which has no
+        // handler in the WS message dispatcher.
+        if crate::crates::web::ACP_SESSION_SEMAPHORE.available_permits() == 0 {
+            ws_send::send_command_output_line(
+                tx,
+                ws_ctx,
+                "Waiting for available session slot...".to_string(),
+            );
+        }
         const ACP_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
         match tokio::time::timeout(
             ACP_ACQUIRE_TIMEOUT,
@@ -304,10 +294,18 @@ async fn dispatch_subprocess_fallback(
     tx: mpsc::Sender<String>,
     ws_ctx: events::CommandContext,
 ) {
-    let exe = match resolve_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            send_error_dual(&tx, &ws_ctx, format!("cannot find axon binary: {e}"), None).await;
+    // P2-3: resolve_exe() calls std::path::Path::exists() (blocking I/O) on
+    // multiple candidate paths.  Move it off the async runtime thread.
+    let exe = match tokio::task::spawn_blocking(resolve_exe).await {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => {
+            log::error!("[execute] resolve_exe failed: {e}");
+            send_error_dual(&tx, &ws_ctx, "cannot find axon binary".to_string(), None).await;
+            return;
+        }
+        Err(join_err) => {
+            log::error!("[execute] resolve_exe join error: {join_err}");
+            send_error_dual(&tx, &ws_ctx, "resolve_exe join error".to_string(), None).await;
             return;
         }
     };

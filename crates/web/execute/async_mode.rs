@@ -157,6 +157,11 @@ async fn dispatch_async(
     };
 
     // Emit the job ID to the browser and store it for cancel support.
+    //
+    // NOTE (H-5): As of 2026-03, async job progress is POLL-ONLY.
+    // Job lifecycle updates (pending → running → completed/failed) are
+    // observed by clients polling the HTTP /api/jobs/:id endpoint, not via
+    // WebSocket push events.
     match result {
         EnqueueResult::JobIds(ids) => {
             let first = ids.first().cloned();

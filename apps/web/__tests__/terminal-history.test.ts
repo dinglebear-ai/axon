@@ -105,7 +105,7 @@ describe('TerminalHistory', () => {
     const h = new TerminalHistory()
     h.push('git status')
     expect(s.mock.setItem).toHaveBeenCalledWith(HISTORY_KEY, expect.any(String))
-    const saved = JSON.parse(s.data[HISTORY_KEY])
+    const saved = JSON.parse(s.data[HISTORY_KEY]!)
     expect(saved).toEqual(['git status'])
   })
 

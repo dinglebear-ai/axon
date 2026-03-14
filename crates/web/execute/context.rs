@@ -4,16 +4,16 @@ use std::sync::Arc;
 use super::events;
 
 #[derive(Debug, Clone)]
-pub(super) struct ExecCommandContext {
-    pub(super) exec_id: String,
-    pub(super) mode: String,
-    pub(super) input: String,
+pub(crate) struct ExecCommandContext {
+    pub(crate) exec_id: String,
+    pub(crate) mode: String,
+    pub(crate) input: String,
     /// Raw flags from the WS request.  Both `sync_mode` and `async_mode` call
     /// `cfg.apply_overrides(...)` with values derived from these flags to
     /// produce a per-request `Config` for direct service dispatch.
-    pub(super) flags: serde_json::Value,
+    pub(crate) flags: serde_json::Value,
     /// Base server config from `AppState`.
-    pub(super) cfg: Arc<Config>,
+    pub(crate) cfg: Arc<Config>,
 }
 
 impl ExecCommandContext {

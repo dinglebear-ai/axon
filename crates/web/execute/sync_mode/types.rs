@@ -65,6 +65,18 @@ pub(crate) struct DirectParams {
     pub(super) enabled_mcp_servers: Option<Vec<String>>,
     pub(super) blocked_mcp_tools: Vec<String>,
     pub(super) assistant_mode: bool,
+    /// Whether to grant the ACP adapter filesystem access.
+    /// Sent by `use-axon-acp.ts` as `enable_fs` (default `true`).
+    pub(super) enable_fs: bool,
+    /// Whether to grant the ACP adapter terminal access.
+    /// Sent by `use-axon-acp.ts` as `enable_terminal` (default `true`).
+    pub(super) enable_terminal: bool,
+    /// How long (in seconds) ACP waits for permission approval before timing out.
+    /// Sent by `use-axon-acp.ts` as `permission_timeout_secs` (optional).
+    pub(super) permission_timeout_secs: Option<u64>,
+    /// How long (in seconds) the ACP adapter process is allowed to run.
+    /// Sent by `use-axon-acp.ts` as `adapter_timeout_secs` (optional).
+    pub(super) adapter_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +133,33 @@ pub(super) enum ServiceMode {
 }
 
 impl ServiceMode {
+    /// Return the canonical string representation of this mode.
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Scrape => "scrape",
+            Self::Map => "map",
+            Self::Query => "query",
+            Self::Retrieve => "retrieve",
+            Self::Ask => "ask",
+            Self::Search => "search",
+            Self::Research => "research",
+            Self::Stats => "stats",
+            Self::Sources => "sources",
+            Self::Domains => "domains",
+            Self::Doctor => "doctor",
+            Self::Status => "status",
+            Self::Suggest => "suggest",
+            Self::Evaluate => "evaluate",
+            Self::Dedupe => "dedupe",
+            Self::Screenshot => "screenshot",
+            Self::Debug => "debug",
+            Self::Sessions => "sessions",
+            Self::McpRefresh => "mcp_refresh",
+            Self::PulseChat => "pulse_chat",
+            Self::PulseChatProbe => "pulse_chat_probe",
+        }
+    }
+
     /// Classify a mode string.  Returns `None` for unknown modes.
     pub(super) fn from_str(s: &str) -> Option<Self> {
         match s {

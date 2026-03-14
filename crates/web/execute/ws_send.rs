@@ -2,15 +2,55 @@ use super::context::ExecCommandContext;
 use super::events::{CommandDonePayload, CommandErrorPayload, WsEventV2, serialize_v2_event};
 use tokio::sync::mpsc;
 
-pub(super) async fn send_command_start(tx: &mpsc::Sender<String>, context: &ExecCommandContext) {
-    if let Some(v2) = serialize_v2_event(WsEventV2::CommandStart {
-        ctx: context.to_ws_ctx(),
-    }) {
-        let _ = tx.send(v2).await;
+/// Emit a serialized JSON string on `tx` using best-effort `try_send`.
+///
+/// Uses `try_send` instead of `send().await` so that a full channel is detected
+/// immediately as backpressure rather than blocking the caller until capacity
+/// frees up.  When the channel is full we emit a visible truncation sentinel so
+/// the browser knows output was lost.  The sentinel itself is best-effort — if
+/// the channel is still full we accept the loss rather than blocking.
+///
+/// Appropriate for non-terminal events (start, output lines) where dropping
+/// under backpressure is acceptable. Terminal events (done, error) must use
+/// [`send_reliable`] to guarantee delivery.
+fn send_or_sentinel(tx: &mpsc::Sender<String>, msg: String) {
+    match tx.try_send(msg.clone()) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            // Always emit the sentinel as type "log" so the client can display
+            // it without requiring the full command.* envelope (which includes
+            // required ctx fields that a sentinel cannot provide).
+            let sentinel = serde_json::json!({
+                "type": "log",
+                "line": "[output truncated — WebSocket channel full]",
+                "truncated": true
+            })
+            .to_string();
+            let _ = tx.try_send(sentinel); // best-effort only
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {}
     }
 }
 
-pub(super) async fn send_command_output_line(
+/// Reliably send a terminal event via async `.send().await`.
+///
+/// Terminal events (`command.done`, `command.error`) must not be dropped under
+/// backpressure — a lost terminal event causes the client to hang indefinitely,
+/// never clearing `isProcessing` state.  This function blocks until channel
+/// capacity is available (or the receiver is dropped).
+async fn send_reliable(tx: &mpsc::Sender<String>, msg: String) {
+    let _ = tx.send(msg).await;
+}
+
+pub(super) fn send_command_start(tx: &mpsc::Sender<String>, context: &ExecCommandContext) {
+    if let Some(v2) = serialize_v2_event(WsEventV2::CommandStart {
+        ctx: context.to_ws_ctx(),
+    }) {
+        send_or_sentinel(tx, v2);
+    }
+}
+
+pub(super) fn send_command_output_line(
     tx: &mpsc::Sender<String>,
     context: &super::events::CommandContext,
     line: String,
@@ -19,7 +59,7 @@ pub(super) async fn send_command_output_line(
         ctx: context.clone(),
         line,
     }) {
-        let _ = tx.send(v2).await;
+        send_or_sentinel(tx, v2);
     }
 }
 
@@ -36,7 +76,7 @@ pub(super) async fn send_done_dual(
             elapsed_ms,
         },
     }) {
-        let _ = tx.send(v2).await;
+        send_reliable(tx, v2).await;
     }
 }
 
@@ -53,6 +93,6 @@ pub(super) async fn send_error_dual(
             elapsed_ms,
         },
     }) {
-        let _ = tx.send(v2).await;
+        send_reliable(tx, v2).await;
     }
 }

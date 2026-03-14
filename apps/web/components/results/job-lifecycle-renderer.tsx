@@ -112,7 +112,6 @@ function JobCard({ job, commandMode }: { job: JobState; commandMode: string | nu
       type: 'cancel',
       id: job.jobId,
       mode: commandMode,
-      job_id: job.jobId,
     })
     setCancelSent(true)
   }, [cancelSent, commandMode, job.jobId, send])

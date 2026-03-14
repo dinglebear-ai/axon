@@ -54,18 +54,18 @@ describe('handleWsMessage dispatcher', () => {
     handleWsMessage({ type: 'log', line: 'test line' } as WsServerMsg, makeRefs(), setters)
     expect(setLogLines).toHaveBeenCalledOnce()
     // Invoke the updater function to verify it produces the right shape
-    const updater = setLogLines.mock.calls[0][0]
+    const updater = setLogLines.mock.calls[0]![0]
     const result = updater([])
     expect(result).toHaveLength(1)
-    expect(result[0].content).toBe('test line')
-    expect(result[0].timestamp).toBeTypeOf('number')
+    expect(result[0]!.content).toBe('test line')
+    expect(result[0]!.timestamp).toBeTypeOf('number')
   })
 
   it('caps log lines when array is at MAX_STDOUT_ITEMS', () => {
     const setLogLines = vi.fn()
     const setters = makeSetters({ setLogLines })
     handleWsMessage({ type: 'log', line: 'overflow' } as WsServerMsg, makeRefs(), setters)
-    const updater = setLogLines.mock.calls[0][0]
+    const updater = setLogLines.mock.calls[0]![0]
     const largeArray = Array.from({ length: MAX_STDOUT_ITEMS }, (_, i) => ({
       content: `line-${i}`,
       timestamp: i,

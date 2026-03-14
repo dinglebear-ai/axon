@@ -1,7 +1,12 @@
 {
   "mcpServers": {
-    "axon": {
-      "url": "https://axon.tootie.tv/mcp"
+    "axon-axon": {
+      "type": "stdio",
+      "command": "axon",
+      "args": ["mcp"],
+      "env": {
+        "AXON_MCP_TRANSPORT": "stdio"
+      }
     },
     "plate": {
       "description": "Plate editors, plugins and components",

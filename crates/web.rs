@@ -8,7 +8,7 @@ pub mod tailscale_auth;
 mod ws_handler;
 
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_info;
+use crate::crates::core::logging::{log_info, log_warn};
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{ConnectInfo, Query, State};
@@ -19,11 +19,13 @@ use axum::routing::get;
 use dashmap::DashMap;
 use serde::Deserialize;
 use std::error::Error;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tailscale_auth::{AuthOutcome, DenyReason, auth_log_message, check_auth};
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use cors::{effective_shell_allowed_origins, web_cors_middleware, websocket_origin_is_allowed};
 
@@ -40,6 +42,49 @@ pub(crate) static ACP_SESSION_SEMAPHORE: std::sync::LazyLock<tokio::sync::Semaph
         tokio::sync::Semaphore::new(max)
     });
 
+// Connection limit infrastructure for L-7/L-12.
+static WS_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+fn max_ws_connections() -> usize {
+    static CACHED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        std::env::var("AXON_MAX_WS_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+    })
+}
+static SHELL_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+fn max_shell_connections() -> usize {
+    static CACHED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        std::env::var("AXON_MAX_SHELL_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(10)
+    })
+}
+
+/// Atomically acquire a connection slot if under `limit`.
+///
+/// Uses `fetch_update` (CAS loop) so the check-and-increment is a single
+/// atomic operation — no TOCTOU race between separate `load()` and `fetch_add()`.
+fn try_acquire_connection(counter: &'static AtomicUsize, limit: usize) -> bool {
+    counter
+        .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+            (current < limit).then_some(current + 1)
+        })
+        .is_ok()
+}
+
+struct ConnectionGuard {
+    counter: &'static AtomicUsize,
+}
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Release);
+    }
+}
+
 /// Shared state across all WS connections.
 pub(crate) struct AppState {
     /// Docker stats broadcast — poller sends, every WS client subscribes.
@@ -51,6 +96,16 @@ pub(crate) struct AppState {
     api_token: Option<String>,
     /// Base server config — shared across all connections.
     pub(crate) cfg: Arc<Config>,
+    /// Maps ACP session_id → conn_id that originally resumed it (H-8).
+    /// Prevents cross-connection session hijacking: only the originating
+    /// connection may drain replay buffers or route permission responses.
+    pub(crate) session_ownership: Arc<DashMap<String, String>>,
+    /// Process-wide rate limiter keyed by client IP (P1-2).
+    /// Value is (exec_count, exec_window, read_count, read_window) — each category
+    /// has its own independent sliding window to prevent cross-category reset exploits.
+    /// Prevents bypass via WebSocket reconnect — state survives across connections.
+    pub(crate) rate_limiter:
+        Arc<DashMap<std::net::IpAddr, (u32, std::time::Instant, u32, std::time::Instant)>>,
 }
 
 /// State for download routes — lighter than AppState (no WS/stats fields).
@@ -85,9 +140,24 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
         job_dirs: job_dirs.clone(),
         api_token: api_token.clone(),
         cfg: cfg.clone(),
+        session_ownership: Arc::new(DashMap::new()),
+        rate_limiter: Arc::new(DashMap::new()),
     });
 
-    tokio::spawn(docker_stats::run_stats_loop(stats_tx));
+    // P2-1: Wrap docker stats in a restart loop so a failure or unexpected
+    // return does not permanently kill stats broadcasting for all WS clients.
+    tokio::spawn({
+        let stats_tx_restart = stats_tx.clone();
+        async move {
+            loop {
+                docker_stats::run_stats_loop(stats_tx_restart.clone()).await;
+                // run_stats_loop returns () — if it exits, something went wrong
+                // (Docker unavailable, channel closed, etc.).  Restart after a delay.
+                log_warn("docker stats loop exited unexpectedly; restarting in 5s");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    });
 
     let download_state = Arc::new(DownloadAuthState {
         job_dirs: job_dirs.clone(),
@@ -135,9 +205,15 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
 }
 
 async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to listen for ctrl+c");
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {}
+        Err(e) => {
+            log_warn(&format!(
+                "ctrl+c handler failed: {e}; server requires SIGKILL to stop"
+            ));
+            std::future::pending::<()>().await;
+        }
+    }
 }
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
@@ -169,7 +245,14 @@ async fn serve_output_file(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
-    if file_path.contains("..") || file_path.contains('\0') {
+    // Defense-in-depth: quick pre-check before canonicalize — does not replace canonicalization below.
+    // Uses Path::components() instead of substring matching so that valid filenames
+    // containing ".." (e.g. "report..json") are not incorrectly rejected.
+    if std::path::Path::new(&file_path)
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+        || file_path.contains('\0')
+    {
         return (StatusCode::BAD_REQUEST, "invalid path").into_response();
     }
 
@@ -204,10 +287,13 @@ async fn serve_output_file(
     };
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    resp_headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(content_type),
+    );
     resp_headers.insert(
         header::CACHE_CONTROL,
-        "public, max-age=300".parse().unwrap(),
+        header::HeaderValue::from_static("public, max-age=300"),
     );
 
     (resp_headers, bytes).into_response()
@@ -226,6 +312,24 @@ async fn ws_upgrade(
         return (StatusCode::FORBIDDEN, "forbidden: origin not allowed").into_response();
     }
 
+    // L-7: enforce WS connection limit to prevent file descriptor exhaustion.
+    // Uses atomic CAS via try_acquire_connection to avoid TOCTOU race between
+    // separate load() + fetch_add() calls (Thread 10).
+    if !try_acquire_connection(&WS_CONNECTION_COUNT, max_ws_connections()) {
+        log::warn!(
+            "[ws] connection limit reached ({}/{}), rejecting upgrade from {}",
+            WS_CONNECTION_COUNT.load(Ordering::Relaxed),
+            max_ws_connections(),
+            addr.ip()
+        );
+        return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
+    }
+    // Pre-acquired a slot; if auth fails or upgrade never fires we must release it.
+    // The ConnectionGuard handles decrement on drop in all paths.
+    let pre_guard = ConnectionGuard {
+        counter: &WS_CONNECTION_COUNT,
+    };
+
     let outcome = http_auth(
         &headers,
         params.token.as_deref(),
@@ -239,6 +343,8 @@ async fn ws_upgrade(
     }
 
     if matches!(outcome, AuthOutcome::Denied(_)) {
+        // pre_guard drops here, releasing the slot
+        drop(pre_guard);
         let body = match outcome {
             AuthOutcome::Denied(DenyReason::NoAuthConfigured) => {
                 "unauthorized: configure AXON_WEB_API_TOKEN"
@@ -248,7 +354,19 @@ async fn ws_upgrade(
         return (StatusCode::UNAUTHORIZED, body).into_response();
     }
 
-    ws.on_upgrade(move |socket| ws_handler::handle_ws(socket, state))
+    let conn_id = Uuid::new_v4().to_string();
+    let client_ip = addr.ip();
+    // Move the guard into the on_upgrade callback so it lives for the
+    // duration of the WS connection. If the HTTP upgrade handshake fails
+    // (client disconnects), axum drops the future — the guard drops with
+    // it, releasing the slot. (Thread 21)
+    ws.on_upgrade(move |socket| {
+        let _guard = pre_guard;
+        async move {
+            ws_handler::handle_ws(socket, state, conn_id, client_ip).await;
+            drop(_guard);
+        }
+    })
 }
 
 async fn shell_ws_upgrade(
@@ -266,32 +384,53 @@ async fn shell_ws_upgrade(
         return (StatusCode::FORBIDDEN, "forbidden: shell origin not allowed").into_response();
     }
 
-    let is_loopback = match addr.ip() {
-        IpAddr::V4(v4) => v4.is_loopback(),
-        IpAddr::V6(v6) => {
-            v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
-        }
+    // L-12: enforce shell WS connection limit.
+    // Uses atomic CAS via try_acquire_connection — same pattern as ws_upgrade (Thread 10/20).
+    if !try_acquire_connection(&SHELL_CONNECTION_COUNT, max_shell_connections()) {
+        log::warn!(
+            "[shell ws] connection limit reached ({}/{}), rejecting upgrade from {}",
+            SHELL_CONNECTION_COUNT.load(Ordering::Relaxed),
+            max_shell_connections(),
+            addr.ip()
+        );
+        return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
+    }
+    let pre_guard = ConnectionGuard {
+        counter: &SHELL_CONNECTION_COUNT,
     };
 
-    if !is_loopback {
-        let outcome = http_auth(
-            &headers,
-            params.token.as_deref(),
-            state.api_token.as_deref(),
-        );
-        let log_msg = auth_log_message(&outcome, addr);
-        match &outcome {
-            AuthOutcome::Token => log::info!("shell ws: {log_msg}"),
-            AuthOutcome::Denied(_) => log::warn!("shell ws: {log_msg}"),
-        }
-        if matches!(outcome, AuthOutcome::Denied(_)) {
-            return (
-                StatusCode::FORBIDDEN,
-                "shell access denied — set AXON_WEB_API_TOKEN",
-            )
-                .into_response();
-        }
+    let outcome = http_auth(
+        &headers,
+        params.token.as_deref(),
+        state.api_token.as_deref(),
+    );
+    let log_msg = auth_log_message(&outcome, addr);
+    match &outcome {
+        AuthOutcome::Token => log::info!("shell ws: {log_msg}"),
+        AuthOutcome::Denied(_) => log::warn!("shell ws: {log_msg}"),
+    }
+    if matches!(outcome, AuthOutcome::Denied(_)) {
+        drop(pre_guard);
+        return (
+            StatusCode::FORBIDDEN,
+            "shell access denied — set AXON_WEB_API_TOKEN",
+        )
+            .into_response();
     }
 
-    ws.on_upgrade(shell::handle_shell_ws)
+    // Q92M: cap inbound message size at the upgrade level so axum rejects
+    // oversized frames before allocating them — the per-message check inside
+    // handle_shell_ws still guards PTY writes but is no longer the sole
+    // allocation defence.
+    const MAX_SHELL_WS_MSG: usize = 65_536; // 64 KiB
+    // Move guard into the on_upgrade callback — if the HTTP upgrade handshake
+    // fails, axum drops the future and the guard releases the slot. (Thread 20)
+    ws.max_message_size(MAX_SHELL_WS_MSG)
+        .on_upgrade(move |socket| {
+            let _guard = pre_guard;
+            async move {
+                shell::handle_shell_ws(socket).await;
+                drop(_guard);
+            }
+        })
 }

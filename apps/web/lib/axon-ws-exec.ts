@@ -64,6 +64,12 @@ export interface RunAxonCommandWsStreamOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+
+const MAX_PENDING = 100
+
+// ---------------------------------------------------------------------------
 // Correlation-ID helpers
 // ---------------------------------------------------------------------------
 
@@ -84,6 +90,8 @@ interface PendingRequest {
   reject: (err: Error) => void
   settled: boolean
   timer: ReturnType<typeof setTimeout> | undefined
+  /** Backend job UUID, set when the server echoes back a job_id in an enqueued response. */
+  backendJobId: string | null
 }
 
 const _pending = new Map<string, PendingRequest>()
@@ -168,6 +176,18 @@ function handleIncomingMessage(event: WsMessageEvent): void {
 
     if (type === 'command.output.json') {
       const outputData = data && data.data !== undefined ? data.data : data
+      // Capture backend job UUID from enqueued responses for cancel support.
+      if (
+        outputData &&
+        typeof outputData === 'object' &&
+        !Array.isArray(outputData) &&
+        (outputData as Record<string, unknown>).enqueued === true
+      ) {
+        const jobId = (outputData as Record<string, unknown>).job_id
+        if (typeof jobId === 'string' && jobId.length > 0) {
+          pending.backendJobId = jobId
+        }
+      }
       pending.options.onJson?.(outputData)
       return
     }
@@ -325,7 +345,10 @@ export async function runAxonCommandWsStream(
   const execId = nextExecId()
 
   return new Promise<void>((resolve, reject) => {
-    let ws: WsLike | null = null
+    if (_pending.size >= MAX_PENDING) {
+      reject(new Error('too many in-flight requests — axon-ws-exec pending map full'))
+      return
+    }
 
     const finish = (err?: Error) => {
       settlePending(execId, err)
@@ -333,6 +356,22 @@ export async function runAxonCommandWsStream(
     }
 
     const onAbort = () => {
+      // Send a cancel message to the Rust server so the server-side command is
+      // stopped and does not continue consuming resources until timeout.
+      // Use the backend job UUID when available; the server's cancel handler
+      // expects a real job UUID, not the frontend correlation exec_id.
+      const currentWs = _ws
+      if (currentWs) {
+        const state = (currentWs as unknown as { readyState?: number }).readyState
+        if (state === undefined || state === 1 /* OPEN */) {
+          try {
+            const cancelId = pending.backendJobId ?? ''
+            currentWs.send(JSON.stringify({ type: 'cancel', id: cancelId, mode }))
+          } catch {
+            /* ignore send errors during abort — we still settle the promise */
+          }
+        }
+      }
       finish(new Error(`axon ${mode} request aborted`))
     }
 
@@ -359,17 +398,20 @@ export async function runAxonCommandWsStream(
       },
       settled: false,
       timer,
+      backendJobId: null,
     }
 
+    // NOTE: We add to _pending BEFORE the connection resolves intentionally.
+    // This ensures that a fast failAllPending() (e.g., on connection error during getConnection())
+    // correctly rejects this entry rather than leaving it dangling.
     _pending.set(execId, pending)
 
     getConnection()
       .then((conn) => {
-        ws = conn
         if (pending.settled) return
         try {
           console.log(`[axon-ws] executing mode=${mode} exec_id=${execId}`)
-          ws.send(JSON.stringify({ type: 'execute', mode, input, flags, exec_id: execId }))
+          conn.send(JSON.stringify({ type: 'execute', mode, input, flags, exec_id: execId }))
         } catch (err) {
           finish(
             new Error(

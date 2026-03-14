@@ -1,9 +1,6 @@
-use super::events::{
-    ArtifactEntry, CommandContext, JobProgressPayload, JobStatusPayload, WsEventV2,
-};
+use super::events::{ArtifactEntry, CommandContext, WsEventV2};
 use crate::crates::core::config::Config;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::process::Command;
@@ -50,104 +47,6 @@ fn command_start_serializes_v2_schema_with_ctx() {
             .and_then(|ctx| ctx.get("input"))
             .and_then(Value::as_str),
         Some("https://example.com")
-    );
-}
-
-#[test]
-fn job_status_serializes_v2_schema_with_optional_fields() {
-    let mut metrics = BTreeMap::new();
-    metrics.insert("pages_crawled".to_string(), json!(2));
-    metrics.insert("thin_pages".to_string(), json!(0));
-
-    let event = WsEventV2::JobStatus {
-        ctx: sample_ctx(),
-        payload: JobStatusPayload {
-            status: "running".to_string(),
-            error: Some("none".to_string()),
-            metrics: Some(metrics),
-        },
-    };
-    let serialized = serde_json::to_value(event).expect("event should serialize");
-
-    assert_eq!(
-        serialized.get("type").and_then(Value::as_str),
-        Some("job.status")
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("status"))
-            .and_then(Value::as_str),
-        Some("running")
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("error"))
-            .and_then(Value::as_str),
-        Some("none")
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("metrics"))
-            .and_then(|metrics| metrics.get("pages_crawled"))
-            .and_then(Value::as_i64),
-        Some(2)
-    );
-}
-
-#[test]
-fn job_progress_serializes_v2_schema_with_counters() {
-    let event = WsEventV2::JobProgress {
-        ctx: sample_ctx(),
-        payload: JobProgressPayload {
-            phase: "fetching".to_string(),
-            percent: Some(25.0),
-            processed: Some(50),
-            total: Some(200),
-        },
-    };
-    let serialized = serde_json::to_value(event).expect("event should serialize");
-
-    assert_eq!(
-        serialized.get("type").and_then(Value::as_str),
-        Some("job.progress")
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("phase"))
-            .and_then(Value::as_str),
-        Some("fetching")
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("percent"))
-            .and_then(Value::as_f64),
-        Some(25.0)
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("processed"))
-            .and_then(Value::as_u64),
-        Some(50)
-    );
-    assert_eq!(
-        serialized
-            .get("data")
-            .and_then(|data| data.get("payload"))
-            .and_then(|payload| payload.get("total"))
-            .and_then(Value::as_u64),
-        Some(200)
     );
 }
 
@@ -239,7 +138,7 @@ async fn sync_output_line_emits_v2_only() {
     let (tx, mut rx) = mpsc::channel::<String>(8);
     let ctx = sample_ctx();
 
-    super::send_command_output_line(&tx, &ctx, "hello world".to_string()).await;
+    super::send_command_output_line(&tx, &ctx, "hello world".to_string());
 
     let first =
         serde_json::from_str::<Value>(&rx.recv().await.expect("v2 message")).expect("valid json");

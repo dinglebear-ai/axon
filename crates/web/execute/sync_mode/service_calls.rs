@@ -104,6 +104,17 @@ pub(super) async fn send_error_owned(
 //
 // `Arc<Config>` (not `Config`) is used so `.clone()` inside each wrapper is a
 // cheap reference-count bump, not a full struct copy.
+//
+// M-10 / CWE-209: All `map_err` closures below log the full internal error
+// server-side and return a generic "Internal service error" to the client.
+// This prevents leaking file paths, SQL queries, AMQP URIs, or other
+// infrastructure details to the browser.
+
+/// Log a service error at warn level and return a sanitized generic error for the client.
+fn sanitize_svc_error(context: &str, e: impl std::fmt::Display) -> SvcError {
+    tracing::warn!("service error in {context} (not sent to client): {e}");
+    "Internal service error".into()
+}
 
 pub(super) fn call_scrape(
     cfg: Arc<Config>,
@@ -112,7 +123,7 @@ pub(super) fn call_scrape(
     Box::pin(async move {
         scrape_svc::scrape(&cfg, &url)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("scrape", e))
     })
 }
 
@@ -124,7 +135,7 @@ pub(super) fn call_map(
     Box::pin(async move {
         map_svc::discover(&cfg, &url, opts, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("map", e))
     })
 }
 
@@ -136,7 +147,7 @@ pub(super) fn call_query(
     Box::pin(async move {
         query_svc::query(&cfg, &text, pagination)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("query", e))
     })
 }
 
@@ -148,7 +159,7 @@ pub(super) fn call_retrieve(
     Box::pin(async move {
         query_svc::retrieve(&cfg, &url, opts)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("retrieve", e))
     })
 }
 
@@ -159,7 +170,7 @@ pub(super) fn call_ask(
     Box::pin(async move {
         query_svc::ask(&cfg, &question, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("ask", e))
     })
 }
 
@@ -171,7 +182,7 @@ pub(super) fn call_search(
     Box::pin(async move {
         search_svc::search(&cfg, &query, opts, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("search", e))
     })
 }
 
@@ -183,7 +194,7 @@ pub(super) fn call_research(
     Box::pin(async move {
         search_svc::research(&cfg, &query, opts, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("research", e))
     })
 }
 
@@ -193,7 +204,7 @@ pub(super) fn call_stats(
     Box::pin(async move {
         system_svc::stats(&cfg)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("stats", e))
     })
 }
 
@@ -204,7 +215,7 @@ pub(super) fn call_sources(
     Box::pin(async move {
         system_svc::sources(&cfg, pagination)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("sources", e))
     })
 }
 
@@ -215,7 +226,7 @@ pub(super) fn call_domains(
     Box::pin(async move {
         system_svc::domains(&cfg, pagination)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("domains", e))
     })
 }
 
@@ -225,7 +236,7 @@ pub(super) fn call_doctor(
     Box::pin(async move {
         system_svc::doctor(&cfg)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("doctor", e))
     })
 }
 
@@ -235,7 +246,7 @@ pub(super) fn call_status(
     Box::pin(async move {
         system_svc::full_status(&cfg)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("status", e))
     })
 }
 
@@ -246,7 +257,7 @@ pub(super) fn call_suggest(
     Box::pin(async move {
         query_svc::suggest(&cfg, focus.as_deref())
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("suggest", e))
     })
 }
 
@@ -261,15 +272,21 @@ pub(super) fn call_evaluate(
     Box::pin(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
+            let rt = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("evaluate runtime");
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send(Err(sanitize_svc_error("evaluate runtime build", e)));
+                    return;
+                }
+            };
             let local = tokio::task::LocalSet::new();
             local.block_on(&rt, async move {
                 let result = query_svc::evaluate(&cfg, &question)
                     .await
-                    .map_err(|e| -> SvcError { format!("{e}").into() });
+                    .map_err(|e| sanitize_svc_error("evaluate", e));
                 let _ = tx.send(result);
             });
         });
@@ -284,7 +301,7 @@ pub(super) fn call_dedupe(
     Box::pin(async move {
         system_svc::dedupe(&cfg, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("dedupe", e))
     })
 }
 
@@ -295,7 +312,7 @@ pub(super) fn call_screenshot(
     Box::pin(async move {
         screenshot_svc::screenshot_capture(&cfg, &url)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("screenshot", e))
     })
 }
 
@@ -306,7 +323,7 @@ pub(super) fn call_debug(
     Box::pin(async move {
         debug_svc::debug_report(&cfg, &context)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("debug", e))
     })
 }
 
@@ -316,6 +333,6 @@ pub(super) fn call_sessions(
     Box::pin(async move {
         ingest_svc::ingest_sessions(&cfg, None)
             .await
-            .map_err(|e| -> SvcError { format!("{e}").into() })
+            .map_err(|e| sanitize_svc_error("sessions", e))
     })
 }

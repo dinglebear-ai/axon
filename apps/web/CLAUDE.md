@@ -259,7 +259,12 @@ The `axon-web` container runs a `pnpm-watcher` s6 service that polls `pnpm-lock.
 ### WS Auth Gate
 `/ws` is a Next.js rewrite (raw TCP proxy) — Next.js middleware never runs for WS upgrade requests. Auth is enforced at the Rust layer (`crates/web.rs`).
 
-One token, one gate: `AXON_WEB_API_TOKEN` (server) and `NEXT_PUBLIC_AXON_API_TOKEN` (client) must be set to the same value. The browser sends it as `?token=` on the WS URL. The same secret is used by `proxy.ts` for `/api/*` — no separate WS token.
+Three tokens, two surfaces:
+- `AXON_WEB_API_TOKEN` — primary token, gates both `/api/*` and `/ws`
+- `AXON_WEB_BROWSER_API_TOKEN` — optional second-tier token for `/api/*` only (does NOT gate `/ws`)
+- `NEXT_PUBLIC_AXON_API_TOKEN` — browser-exposed copy of `AXON_WEB_API_TOKEN` (must be set to the same value)
+
+The browser sends `NEXT_PUBLIC_AXON_API_TOKEN` as `?token=` on the WS URL and as `x-api-key` on `/api/*`. `proxy.ts` accepts either `AXON_WEB_API_TOKEN` or `AXON_WEB_BROWSER_API_TOKEN` for `/api/*` routes.
 
 MCP OAuth `atk_` tokens do **not** work for `/ws`. MCP clients use the MCP tool API.
 

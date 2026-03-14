@@ -151,9 +151,9 @@ describe('saveSession', () => {
     const result = saveSession('ses-1', history, '# Doc', 'My Doc')
 
     expect(result).not.toBeNull()
-    const stored = JSON.parse(storage[SESSIONS_KEY]) as SavedPulseSession[]
+    const stored = JSON.parse(storage[SESSIONS_KEY]!) as SavedPulseSession[]
     expect(stored).toHaveLength(1)
-    expect(stored[0].sessionId).toBe('ses-1')
+    expect(stored[0]!.sessionId).toBe('ses-1')
   })
 
   it('derives title from first user message (≤60 chars)', () => {
@@ -256,7 +256,7 @@ describe('saveSession', () => {
 
     expect(result!.chatHistory).toHaveLength(250)
     // Keeps the LAST 250 (slice(-250))
-    expect(result!.chatHistory[0].content).toBe('msg-50')
+    expect(result!.chatHistory[0]!.content).toBe('msg-50')
   })
 
   it('updates an existing session entry in place', () => {
@@ -266,10 +266,10 @@ describe('saveSession', () => {
     const history2 = makeHistory([['user', 'question two']])
     saveSession('ses-update', history2, '', 'Doc')
 
-    const stored = JSON.parse(storage[SESSIONS_KEY]) as SavedPulseSession[]
+    const stored = JSON.parse(storage[SESSIONS_KEY]!) as SavedPulseSession[]
     // Only one entry for the same sessionId
     expect(stored.filter((s) => s.sessionId === 'ses-update')).toHaveLength(1)
-    expect(stored[0].title).toBe('question two')
+    expect(stored[0]!.title).toBe('question two')
   })
 
   it('returns the saved session object', () => {
@@ -303,7 +303,7 @@ describe('deleteSession', () => {
 
     deleteSession('ses-remove')
 
-    const stored = JSON.parse(storage[SESSIONS_KEY]) as SavedPulseSession[]
+    const stored = JSON.parse(storage[SESSIONS_KEY]!) as SavedPulseSession[]
     expect(stored.find((s) => s.sessionId === 'ses-remove')).toBeUndefined()
   })
 
@@ -313,9 +313,9 @@ describe('deleteSession', () => {
 
     deleteSession('ses-del')
 
-    const stored = JSON.parse(storage[SESSIONS_KEY]) as SavedPulseSession[]
+    const stored = JSON.parse(storage[SESSIONS_KEY]!) as SavedPulseSession[]
     expect(stored).toHaveLength(1)
-    expect(stored[0].sessionId).toBe('ses-keep')
+    expect(stored[0]!.sessionId).toBe('ses-keep')
   })
 
   it('does not write to storage when session did not exist', () => {
@@ -374,8 +374,8 @@ describe('state isolation — sessions do not bleed into each other', () => {
     const a = getSession('ses-A')
     const b = getSession('ses-B')
 
-    expect(a!.chatHistory[0].content).toBe('question A')
-    expect(b!.chatHistory[0].content).toBe('question B')
+    expect(a!.chatHistory[0]!.content).toBe('question A')
+    expect(b!.chatHistory[0]!.content).toBe('question B')
   })
 
   it('deleting one session does not affect others', () => {

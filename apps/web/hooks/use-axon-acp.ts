@@ -43,6 +43,14 @@ interface UseAxonAcpOptions {
   /** Called when an `editor_update` message is received. Use this to make the editor
    * pane visible on mobile viewports when the agent writes to the document. */
   onShowEditor?: () => void
+  /** Called when the ACP bridge emits a `permission_request` event. The consumer
+   * should use the provided ids to send a `permission_response` back via the
+   * `send` function from `useAxonWs`. */
+  onPermissionRequest?: (params: {
+    session_id: string
+    tool_call_id: string
+    options: string[]
+  }) => void
   enableFs?: boolean
   enableTerminal?: boolean
   permissionTimeoutSecs?: number | null
@@ -70,6 +78,7 @@ export function useAxonAcp({
   onTurnComplete,
   onEditorUpdate,
   onShowEditor,
+  onPermissionRequest,
   enableFs = true,
   enableTerminal = true,
   permissionTimeoutSecs = null,
@@ -167,6 +176,7 @@ export function useAxonAcp({
         'config_option_update',
         'commands_update',
         'acp_resume_result',
+        'permission_request',
         'command.output.json',
       ],
       (rawMsg) => {
@@ -218,6 +228,7 @@ export function useAxonAcp({
                 'resume_miss',
               )
             },
+            onPermissionRequest,
             onEditorUpdate,
             onShowEditor,
             flushBufferedStream,
@@ -248,6 +259,7 @@ export function useAxonAcp({
     onAcpConfigOptionsUpdate,
     onCommandsUpdate,
     onTurnComplete,
+    onPermissionRequest,
     onEditorUpdate,
     onShowEditor,
     flushBufferedStream,

@@ -4,6 +4,8 @@ pub(super) mod artifacts;
 pub mod common;
 #[path = "server/handlers_crawl_extract.rs"]
 mod handlers_crawl_extract;
+#[path = "server/handlers_elicit.rs"]
+mod handlers_elicit;
 #[path = "server/handlers_embed_ingest.rs"]
 mod handlers_embed_ingest;
 #[path = "server/handlers_graph.rs"]
@@ -75,10 +77,11 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot."
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo."
     )]
     async fn axon<'a>(
         &'a self,
+        peer: rmcp::Peer<RoleServer>,
         Parameters(raw): Parameters<serde_json::Map<String, serde_json::Value>>,
     ) -> Result<String, ErrorData> {
         let action = raw
@@ -111,6 +114,7 @@ impl AxonMcpServer {
             AxonRequest::Sources(req) => self.handle_sources(req).await?,
             AxonRequest::Stats(req) => self.handle_stats(req).await?,
             AxonRequest::Help(req) => self.handle_help(req).await?,
+            AxonRequest::ElicitDemo(req) => handlers_elicit::handle_elicit_demo(&peer, req).await?,
             AxonRequest::Artifacts(req) => self.handle_artifacts(req).await?,
             AxonRequest::Scrape(req) => self.handle_scrape(req).await?,
             AxonRequest::Research(req) => self.handle_research(req).await?,

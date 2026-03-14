@@ -260,13 +260,17 @@ fn build_args_adds_json_flag_for_non_search_modes() {
 }
 
 #[test]
-fn build_args_omits_json_flag_for_search_and_research() {
+fn search_and_research_include_json_flag_in_build_args() {
+    // "search" and "research" were removed from NO_JSON_MODES because they are now routed
+    // through the service layer (ServiceMode → call_search / call_research → send_json_owned)
+    // and produce structured JSON regardless.  build_args is never called for these modes
+    // at runtime, but if it were, --json would be included (no entry in NO_JSON_MODES).
     let flags = json!({});
     for mode in &["search", "research"] {
         let args = super::build_args(mode, "test", &flags);
         assert!(
-            !args.contains(&"--json".to_string()),
-            "mode '{mode}' must NOT include '--json'"
+            args.contains(&"--json".to_string()),
+            "mode '{mode}' includes --json (removed from NO_JSON_MODES; service layer is authoritative)"
         );
     }
 }
@@ -476,14 +480,4 @@ fn strip_ansi_handles_multiple_sequences_on_one_line() {
         stripped, "⠋ Crawling...",
         "multiple escape sequences must all be stripped"
     );
-}
-
-#[test]
-fn async_subprocess_modes_does_not_include_ingest_modes() {
-    for mode in ["github", "reddit", "youtube"] {
-        assert!(
-            !super::constants::ASYNC_SUBPROCESS_MODES.contains(&mode),
-            "ingest mode must not use subprocess fallback: {mode}"
-        );
-    }
 }

@@ -1,10 +1,25 @@
-use std::env;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::crates::core::config::{Config, ConfigOverrides};
 
 use super::super::context::ExecCommandContext;
 use super::types::{DirectParams, PulseChatAgent, ServiceMode, flag_opt_usize, flag_usize};
+
+/// P2-8: Cache ACP adapter env vars at process startup so `derive_cfg` does not
+/// issue OS-level `getenv` syscalls on every WS request.
+static ACP_ADAPTER_CMD: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("AXON_ACP_ADAPTER_CMD")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+});
+
+static ACP_ADAPTER_ARGS: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("AXON_ACP_ADAPTER_ARGS")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+});
 
 /// Build a per-request `Config` wrapped in `Arc` by applying collection + limit
 /// overrides from flags.
@@ -29,19 +44,11 @@ fn derive_cfg(context: &ExecCommandContext, flags: &serde_json::Value) -> Arc<Co
 
     let mut cfg = context.cfg.apply_overrides(&overrides);
 
-    if let Some(cmd) = env::var("AXON_ACP_ADAPTER_CMD")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-    {
-        cfg.acp_adapter_cmd = Some(cmd);
+    if let Some(cmd) = ACP_ADAPTER_CMD.as_deref() {
+        cfg.acp_adapter_cmd = Some(cmd.to_string());
     }
-    if let Some(args) = env::var("AXON_ACP_ADAPTER_ARGS")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-    {
-        cfg.acp_adapter_args = Some(args);
+    if let Some(args) = ACP_ADAPTER_ARGS.as_deref() {
+        cfg.acp_adapter_args = Some(args.to_string());
     }
 
     Arc::new(cfg)
@@ -100,6 +107,21 @@ pub(super) fn extract_params(
         .get("assistant_mode")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
+    // ACP adapter capability flags.  These are consumed by the pulse_chat direct-service
+    // path (via DirectParams → pulse_chat.rs → acp_adapter.rs) and also forwarded as
+    // CLI args on subprocess paths that accept them (via ALLOWED_FLAGS in constants.rs).
+    let enable_fs = flags
+        .get("enable_fs")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let enable_terminal = flags
+        .get("enable_terminal")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let permission_timeout_secs = flags
+        .get("permission_timeout_secs")
+        .and_then(|v| v.as_u64());
+    let adapter_timeout_secs = flags.get("adapter_timeout_secs").and_then(|v| v.as_u64());
     Some(DirectParams {
         mode,
         input: context.input.clone(),
@@ -114,6 +136,10 @@ pub(super) fn extract_params(
         enabled_mcp_servers,
         blocked_mcp_tools,
         assistant_mode,
+        enable_fs,
+        enable_terminal,
+        permission_timeout_secs,
+        adapter_timeout_secs,
     })
 }
 
@@ -301,5 +327,81 @@ mod tests {
         let flags = serde_json::json!({});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
         assert!(!params.assistant_mode);
+    }
+
+    // ── ACP capability field tests ──────────────────────────────────────────
+
+    #[test]
+    fn extract_params_acp_defaults_when_no_flags() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert!(params.enable_fs, "enable_fs should default to true");
+        assert!(
+            params.enable_terminal,
+            "enable_terminal should default to true"
+        );
+        assert_eq!(params.permission_timeout_secs, None);
+        assert_eq!(params.adapter_timeout_secs, None);
+        assert_eq!(params.session_id, None);
+    }
+
+    #[test]
+    fn extract_params_acp_explicit_values_parse() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({
+            "enable_fs": false,
+            "enable_terminal": false,
+            "permission_timeout_secs": 120,
+            "adapter_timeout_secs": 600,
+        });
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert!(!params.enable_fs);
+        assert!(!params.enable_terminal);
+        assert_eq!(params.permission_timeout_secs, Some(120));
+        assert_eq!(params.adapter_timeout_secs, Some(600));
+    }
+
+    #[test]
+    fn extract_params_session_id_nonempty_is_some() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({"session_id": "sess-abc"});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert_eq!(params.session_id.as_deref(), Some("sess-abc"));
+    }
+
+    #[test]
+    fn extract_params_session_id_empty_string_is_preserved() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({"session_id": ""});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        // After the Thread-35 fix, an explicit empty string is preserved as
+        // Some("") so downstream code can reject it rather than silently
+        // starting a new session.
+        assert_eq!(params.session_id.as_deref(), Some(""));
     }
 }

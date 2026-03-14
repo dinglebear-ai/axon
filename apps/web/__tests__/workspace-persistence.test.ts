@@ -135,7 +135,7 @@ describe('parsePersistedWorkspaceState', () => {
     const result = parsePersistedWorkspaceState(JSON.stringify(state))
     expect(result!.chatHistory).toHaveLength(250)
     // Should keep the last 250
-    expect(result!.chatHistory[0].content).toBe('msg-50')
+    expect(result!.chatHistory[0]!.content).toBe('msg-50')
   })
 
   it('caps indexedSources at 50 entries', () => {

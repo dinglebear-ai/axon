@@ -100,6 +100,16 @@ async fn run_shell(
                 match msg {
                     Message::Text(text) => match serde_json::from_str::<ShellClientMsg>(&text) {
                         Ok(ShellClientMsg::Input { data }) => {
+                            // Guard against unbounded PTY stdin writes (CWE-400).
+                            // 64 KiB is generous for any legitimate terminal input.
+                            const MAX_SHELL_INPUT_BYTES: usize = 65_536;
+                            if data.len() > MAX_SHELL_INPUT_BYTES {
+                                tracing::warn!(
+                                    "[shell ws] input message too large ({} bytes), dropping",
+                                    data.len()
+                                );
+                                continue;
+                            }
                             let _ = pty_in_tx.send(data.into_bytes()).await;
                         }
                         Ok(ShellClientMsg::Resize { cols, rows }) => {

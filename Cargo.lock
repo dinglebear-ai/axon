@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "0.21.2"
+version = "0.23.3"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
@@ -623,6 +623,7 @@ dependencies = [
  "spider_agent",
  "spider_transformations",
  "sqlx",
+ "subtle",
  "tempfile",
  "text-splitter",
  "tokio",
@@ -5212,6 +5213,7 @@ dependencies = [
  "tokio-util",
  "tower-service",
  "tracing",
+ "url",
  "uuid",
 ]
 

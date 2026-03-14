@@ -130,6 +130,40 @@ export function useAxonShellState() {
     [layout, setEditorMarkdown],
   )
 
+  const { send: wsSend, subscribeByTypes: subscribeWsByTypes } = useAxonWs()
+
+  // When true, permission requests are auto-approved by picking the first
+  // option. When false (default), the request is ignored and the backend
+  // permission prompt times out -- making the problem visible instead of
+  // silently approving potentially destructive operations.
+  const enableAutoApprove = false
+
+  const onPermissionRequest = useCallback(
+    ({
+      session_id,
+      tool_call_id,
+      options,
+    }: {
+      session_id: string
+      tool_call_id: string
+      options: string[]
+    }) => {
+      if (!enableAutoApprove) {
+        console.warn(
+          `[acp] permission request ignored (auto-approve disabled) tool_call_id=${tool_call_id}`,
+        )
+        return
+      }
+      const chosen = options[0]
+      if (!chosen) return
+      console.info(
+        `[acp] auto-responding to permission request tool_call_id=${tool_call_id} with option=${chosen}`,
+      )
+      wsSend({ type: 'permission_response', session_id, tool_call_id, option_id: chosen })
+    },
+    [wsSend],
+  )
+
   const { submitPrompt, isStreaming, connected } = useAxonAcp({
     activeSessionId: session.chatSessionId,
     agent: pulseAgent ?? 'claude',
@@ -147,6 +181,7 @@ export function useAxonShellState() {
     onHandoffConsumed: () => setPendingHandoffContext(null),
     onTurnComplete,
     onEditorUpdate,
+    onPermissionRequest,
     enableFs: settings.enableFs,
     enableTerminal: settings.enableTerminal,
     permissionTimeoutSecs: settings.permissionTimeoutSecs,
@@ -159,7 +194,6 @@ export function useAxonShellState() {
     isStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  const { subscribeByTypes: subscribeWsByTypes } = useAxonWs()
   useEffect(() => {
     return subscribeWsByTypes(['command.done', 'command.error'], (msg: WsServerMsg) => {
       if (msg.type === 'command.done' || msg.type === 'command.error') {

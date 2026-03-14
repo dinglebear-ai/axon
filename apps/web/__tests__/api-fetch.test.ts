@@ -109,7 +109,7 @@ describe('apiFetch — with API token', () => {
   it('injects x-api-key header for /api/ path strings', async () => {
     await apiFetch('/api/cortex/stats')
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('x-api-key')).toBe('test-secret-token')
   })
@@ -119,7 +119,7 @@ describe('apiFetch — with API token', () => {
       headers: { 'x-api-key': 'caller-provided-key' },
     })
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     // The caller's key must be preserved, not overwritten
     expect(headers.get('x-api-key')).toBe('caller-provided-key')
@@ -130,7 +130,7 @@ describe('apiFetch — with API token', () => {
       headers: { 'content-type': 'application/json' },
     })
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('x-api-key')).toBe('test-secret-token')
     expect(headers.get('content-type')).toBe('application/json')
@@ -142,7 +142,7 @@ describe('apiFetch — with API token', () => {
     })
     await apiFetch(req, { headers: { authorization: 'from-init' } })
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('authorization')).toBe('from-init')
     expect(headers.get('x-custom')).toBe('from-request')
@@ -154,7 +154,7 @@ describe('apiFetch — with API token', () => {
     // for relative paths — use an absolute URL with the /api/ prefix
     await apiFetch(new URL('http://localhost/api/jobs'))
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('x-api-key')).toBe('test-secret-token')
   })
@@ -163,7 +163,7 @@ describe('apiFetch — with API token', () => {
     const req = new Request('http://localhost/api/mcp')
     await apiFetch(req)
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('x-api-key')).toBe('test-secret-token')
   })
@@ -175,7 +175,7 @@ describe('apiFetch — with API token', () => {
       headers: { 'content-type': 'application/json' },
     })
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(calledInit.method).toBe('POST')
     expect(calledInit.body).toBe(JSON.stringify({ title: 'My Doc' }))
     const headers = new Headers(calledInit.headers)
@@ -232,7 +232,7 @@ describe('apiFetch — shouldInjectToken edge cases', () => {
     // In node, `new URL('/api/foo', undefined)` throws — exercises the catch branch
     await apiFetch('/api/foo')
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     const headers = new Headers(calledInit.headers)
     expect(headers.get('x-api-key')).toBe('edge-token')
   })
@@ -241,7 +241,7 @@ describe('apiFetch — shouldInjectToken edge cases', () => {
     // shouldInjectToken returns false for '/other/path' in the catch branch
     await apiFetch('/other/path')
 
-    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, calledInit] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     // Headers object will be present but x-api-key should not be injected
     const headers = new Headers(calledInit?.headers ?? {})
     expect(headers.get('x-api-key')).toBeNull()

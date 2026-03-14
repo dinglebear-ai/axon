@@ -68,6 +68,12 @@ export function buildCspHeader(options: CspOptions): string {
     "form-action 'self'",
     "frame-ancestors 'none'",
     "object-src 'none'",
+    // 'unsafe-inline' is required in all environments: Next.js App Router
+    // generates inline hydration scripts that would be blocked without it.
+    // 'unsafe-eval' is dev-only (HMR/Turbopack). A future improvement could
+    // replace 'unsafe-inline' with per-request nonces, but that requires
+    // middleware integration to inject the nonce into both the CSP header
+    // and each inline <script> tag.
     `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
     // https: covers self-hosted backend screenshots served over HTTPS;

@@ -26,6 +26,7 @@ pub enum AxonRequest {
     Screenshot(ScreenshotRequest),
     Refresh(RefreshRequest),
     Graph(GraphRequest),
+    ElicitDemo(ElicitDemoRequest),
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
@@ -372,6 +373,15 @@ pub struct GraphRequest {
     pub domain: Option<String>,
     pub all: Option<bool>,
     pub entity: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+/// Request parameters for the elicit_demo action.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ElicitDemoRequest {
+    /// Optional prompt message shown to the user above the elicitation form.
+    pub message: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

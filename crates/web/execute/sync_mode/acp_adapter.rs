@@ -22,9 +22,18 @@ fn parse_acp_adapter_args(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// Capability flags threaded from the client WS request into the ACP adapter command.
+pub(super) struct AdapterCapabilities {
+    pub enable_fs: bool,
+    pub enable_terminal: bool,
+    pub permission_timeout_secs: Option<u64>,
+    pub adapter_timeout_secs: Option<u64>,
+}
+
 fn resolve_acp_adapter_command_from_values(
     cmd_value: Option<&str>,
     args_value: Option<&str>,
+    caps: AdapterCapabilities,
 ) -> Result<AcpAdapterCommand, String> {
     let program = cmd_value
         .map(str::trim)
@@ -41,10 +50,10 @@ fn resolve_acp_adapter_command_from_values(
         program,
         args,
         cwd: None,
-        enable_fs: true,
-        enable_terminal: true,
-        permission_timeout_secs: None,
-        adapter_timeout_secs: None,
+        enable_fs: caps.enable_fs,
+        enable_terminal: caps.enable_terminal,
+        permission_timeout_secs: caps.permission_timeout_secs,
+        adapter_timeout_secs: caps.adapter_timeout_secs,
     })
 }
 
@@ -131,6 +140,7 @@ fn resolve_local_executable_path(program: &str, args_value: Option<&str>) -> Opt
 pub(super) fn resolve_acp_adapter_command(
     cfg: &Config,
     agent: PulseChatAgent,
+    caps: AdapterCapabilities,
 ) -> Result<AcpAdapterCommand, String> {
     let (cmd_env_key, args_env_key) = match agent {
         PulseChatAgent::Claude => (
@@ -158,6 +168,7 @@ pub(super) fn resolve_acp_adapter_command(
             .filter(|v| !v.trim().is_empty())
             .or(cfg.acp_adapter_args.as_deref())
             .or(default_args),
+        caps,
     )?;
 
     // Run the shell-blocklist and path validation eagerly here so callers that
@@ -184,11 +195,21 @@ mod tests {
         assert!(parsed.is_empty());
     }
 
+    fn default_caps() -> AdapterCapabilities {
+        AdapterCapabilities {
+            enable_fs: true,
+            enable_terminal: true,
+            permission_timeout_secs: None,
+            adapter_timeout_secs: None,
+        }
+    }
+
     #[test]
     fn resolve_acp_adapter_command_reads_required_cmd_and_optional_args() {
         let cmd = resolve_acp_adapter_command_from_values(
             Some("/usr/local/bin/acp-adapter-test"),
             Some("--stdio|--model|gpt-5-mini"),
+            default_caps(),
         )
         .expect("env values should resolve");
         assert_eq!(cmd.program, "/usr/local/bin/acp-adapter-test");
@@ -198,7 +219,7 @@ mod tests {
 
     #[test]
     fn resolve_acp_adapter_command_requires_non_empty_cmd() {
-        let err = resolve_acp_adapter_command_from_values(Some("   "), None)
+        let err = resolve_acp_adapter_command_from_values(Some("   "), None, default_caps())
             .expect_err("blank cmd should fail");
         assert!(
             err.contains("AXON_ACP_ADAPTER_CMD"),
@@ -208,12 +229,32 @@ mod tests {
 
     #[test]
     fn resolve_acp_adapter_command_requires_cmd_env_var() {
-        let err = resolve_acp_adapter_command_from_values(None, None)
+        let err = resolve_acp_adapter_command_from_values(None, None, default_caps())
             .expect_err("missing cmd should fail");
         assert!(
             err.contains("AXON_ACP_ADAPTER_CMD"),
             "error should mention missing/invalid env var: {err}"
         );
+    }
+
+    #[test]
+    fn resolve_acp_adapter_command_threads_capability_flags() {
+        let caps = AdapterCapabilities {
+            enable_fs: false,
+            enable_terminal: false,
+            permission_timeout_secs: Some(120),
+            adapter_timeout_secs: Some(600),
+        };
+        let cmd = resolve_acp_adapter_command_from_values(
+            Some("/usr/local/bin/acp-adapter-test"),
+            None,
+            caps,
+        )
+        .expect("env values should resolve");
+        assert!(!cmd.enable_fs);
+        assert!(!cmd.enable_terminal);
+        assert_eq!(cmd.permission_timeout_secs, Some(120));
+        assert_eq!(cmd.adapter_timeout_secs, Some(600));
     }
 
     #[test]

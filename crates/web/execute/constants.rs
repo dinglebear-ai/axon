@@ -27,9 +27,9 @@ pub(super) const ALLOWED_MODES: &[&str] = &[
     "youtube",
     "sessions",
     "screenshot",
-    "mcp_refresh",
+    "mcp_refresh", // INTERNAL — not exposed in apps/web/lib/ws-protocol.ts MODES array
     "pulse_chat",
-    "pulse_chat_probe",
+    "pulse_chat_probe", // INTERNAL — not exposed in apps/web/lib/ws-protocol.ts MODES array
 ];
 
 pub(super) const ALLOWED_FLAGS: &[(&str, &str)] = &[
@@ -72,22 +72,31 @@ pub(super) const ALLOWED_FLAGS: &[(&str, &str)] = &[
     ("blocked_mcp_tools", "--blocked-mcp-tools"),
     ("session_id", "--session-id"),
     ("assistant_mode", "--assistant-mode"),
+    // ACP adapter capability flags — consumed by the pulse_chat direct-service path via
+    // DirectParams; also forwarded as CLI args on subprocess paths that accept them.
+    ("enable_fs", "--enable-fs"),
+    ("enable_terminal", "--enable-terminal"),
+    ("permission_timeout_secs", "--permission-timeout-secs"),
+    ("adapter_timeout_secs", "--adapter-timeout-secs"),
 ];
+
+/// ACP modes that hold their own concurrency permit via `ACP_SESSION_SEMAPHORE`.
+///
+/// Both `execute.rs::acquire_acp_permit` and `sync_mode.rs::is_acp_mode` derive
+/// their checks from this constant to prevent the two sites from drifting apart.
+pub(super) const ACP_MODES: &[&str] = &["pulse_chat", "pulse_chat_probe"];
 
 /// Modes that use fire-and-forget direct service enqueue.
 /// These produce job IDs and return immediately without polling.
 pub(super) const ASYNC_MODES: &[&str] =
     &["crawl", "extract", "embed", "github", "reddit", "youtube"];
 
-/// Modes whose operations produce async job IDs but are handled via subprocess.
-/// Kept as an empty marker list while direct async routing is authoritative.
-#[allow(dead_code)]
-pub(super) const ASYNC_SUBPROCESS_MODES: &[&str] = &[];
-
-/// Commands that produce streaming/non-JSON output and must NOT receive --json.
-/// When adding a new command, the default is to receive --json. Add here only if
-/// the command's output format is inherently non-JSON (e.g., streaming text synthesis).
-pub(super) const NO_JSON_MODES: &[&str] = &[
-    "search", // Tavily streaming output — results are printed as plain text, not structured JSON
-    "research", // Spider agent streaming synthesis — narrative text output, not structured JSON
-];
+/// Modes that must NOT receive --json because their output format is inherently non-JSON.
+///
+/// "search" and "research" were previously listed here but are now routed through
+/// `call_search`/`call_research` → `send_json_owned` in `dispatch.rs`, so they
+/// produce structured JSON regardless.  They have been removed.
+///
+/// The only remaining use-case is `evaluate` in events mode, which is handled via
+/// the `disable_json_for_evaluate_events` guard in `args.rs` rather than this list.
+pub(super) const NO_JSON_MODES: &[&str] = &[];

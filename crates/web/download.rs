@@ -27,39 +27,35 @@ use super::tailscale_auth::{AuthOutcome, check_auth};
 /// Query parameters for download routes — mirrors `WsQuery` in `web.rs`.
 #[derive(Deserialize)]
 pub(crate) struct DownloadQuery {
+    /// Retained for future signed-token support (HMAC-based, scoped, with expiry).
+    /// Currently unused — download auth is header-only.
+    #[allow(dead_code)]
     token: Option<String>,
 }
 
 /// Authenticate a download request with the shared API token.
-fn auth_download(
-    headers: &HeaderMap,
-    query_token: Option<&str>,
-    state: &DownloadAuthState,
-) -> AuthOutcome {
-    // Extract token from x-api-key or Authorization: Bearer header, falling
-    // back to `?token=` query parameter for browser-initiated downloads that
-    // cannot set custom headers.
-    let header_token = headers
-        .get("x-api-key")
-        .or_else(|| headers.get("authorization"))
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim_start_matches("Bearer ").trim())
-        .filter(|s| !s.is_empty());
-    let token = header_token.or(query_token);
-    check_auth(headers, token, state.api_token.as_deref())
+///
+/// Downloads require header-based auth only (Bearer or x-api-key).
+/// The `?token=` query parameter is intentionally NOT accepted here because
+/// the shared API token would leak into browser history, copied links, server
+/// access logs, and `Referer` headers. (Thread 12 / PRRT_kwDORS2O8s50RyMu)
+///
+/// If browser-initiated downloads without header auth are needed in the future,
+/// the right approach is short-lived signed download tokens (HMAC-based, scoped
+/// to a specific job_id, with expiry) — not reusing the long-lived shared token.
+fn auth_download(headers: &HeaderMap, state: &DownloadAuthState) -> AuthOutcome {
+    // Pass None for query_token — only header-based auth is accepted for downloads.
+    check_auth(headers, None, state.api_token.as_deref())
 }
 
 /// `GET /download/{job_id}/pack.md`
 pub async fn serve_pack_md(
     AxumPath(job_id): AxumPath<String>,
     headers: HeaderMap,
-    Query(params): Query<DownloadQuery>,
+    Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(
-        auth_download(&headers, params.token.as_deref(), &state),
-        AuthOutcome::Denied(_)
-    ) {
+    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
@@ -97,13 +93,10 @@ pub async fn serve_pack_md(
 pub async fn serve_pack_xml(
     AxumPath(job_id): AxumPath<String>,
     headers: HeaderMap,
-    Query(params): Query<DownloadQuery>,
+    Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(
-        auth_download(&headers, params.token.as_deref(), &state),
-        AuthOutcome::Denied(_)
-    ) {
+    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
@@ -141,13 +134,10 @@ pub async fn serve_pack_xml(
 pub async fn serve_zip(
     AxumPath(job_id): AxumPath<String>,
     headers: HeaderMap,
-    Query(params): Query<DownloadQuery>,
+    Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(
-        auth_download(&headers, params.token.as_deref(), &state),
-        AuthOutcome::Denied(_)
-    ) {
+    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
@@ -200,13 +190,10 @@ pub async fn serve_zip(
 pub async fn serve_file(
     AxumPath((job_id, file_path)): AxumPath<(String, String)>,
     headers: HeaderMap,
-    Query(params): Query<DownloadQuery>,
+    Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(
-        auth_download(&headers, params.token.as_deref(), &state),
-        AuthOutcome::Denied(_)
-    ) {
+    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
 
@@ -215,8 +202,14 @@ pub async fn serve_file(
         Err((status, msg)) => return (status, msg).into_response(),
     };
 
-    // Reject obvious traversal attempts before touching the filesystem
-    if file_path.contains("..") || file_path.contains('\0') {
+    // Reject obvious traversal attempts before touching the filesystem.
+    // Uses Path::components() instead of substring matching so that valid filenames
+    // containing ".." (e.g. "report..json") are not incorrectly rejected.
+    if std::path::Path::new(&file_path)
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+        || file_path.contains('\0')
+    {
         return (StatusCode::BAD_REQUEST, "invalid file path").into_response();
     }
 

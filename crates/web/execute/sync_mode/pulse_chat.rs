@@ -1,5 +1,4 @@
 use std::env;
-use std::hash::{DefaultHasher, Hasher};
 use std::sync::Arc;
 
 use serde_json::json;
@@ -10,9 +9,35 @@ use crate::crates::services::acp::{self as acp_svc, AcpConnectionHandle, SESSION
 use crate::crates::services::events::{LogLevel, ServiceEvent};
 use crate::crates::services::types::{AcpBridgeEvent, AcpPromptTurnRequest};
 
+/// System prompt preamble injected into the first turn of an editor-integrated
+/// Pulse session (i.e. when `session_id` is `None`).
+///
+/// # Divergence warning
+///
+/// The SSE path (`apps/web/app/api/pulse/chat/route.ts`) constructs its own
+/// system prompt via `buildPulseSystemPrompt()` in TypeScript. These two
+/// construction paths are intentionally separate due to transport-layer
+/// differences (WS vs SSE), but their content must be kept in sync manually.
+///
+/// When updating this constant, also update `buildPulseSystemPrompt()` in
+/// `apps/web/app/api/pulse/chat/route.ts` to reflect the same changes.
+///
+/// TODO: move to `crates/services/acp/` — tracked in WEB-INTEGRATION-REVIEW.md H-6
+pub const AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE: &str = "\
+[System context — Axon editor integration]\n\
+You have access to the user's Axon editor. To write content \
+directly into the editor, output a block starting with the \
+XML opening tag `<axon:editor op=\"replace\">` (or op=\"append\" \
+to add to the end), followed by your markdown content, followed \
+by the closing tag `</axon:editor>`. Do NOT show this tag in a \
+code fence or explain it unless the user explicitly asks — \
+just use it. The user will see the editor update in real time. \
+Only use axon:editor tags when the user explicitly asks you to \
+write to or update the editor.";
+
 use super::super::events::{CommandContext, acp_bridge_event_json, serialize_raw_output_event};
 use super::super::mcp_config::read_axon_mcp_servers;
-use super::acp_adapter::resolve_acp_adapter_command;
+use super::acp_adapter::{AdapterCapabilities, resolve_acp_adapter_command};
 use super::service_calls::send_json_owned;
 use super::types::PulseChatAgent;
 
@@ -134,14 +159,26 @@ async fn get_or_create_acp_connection(
     req: &AcpPromptTurnRequest,
     agent: PulseChatAgent,
     assistant_mode: bool,
+    caps: AdapterCapabilities,
     cfg: &Arc<Config>,
     permission_responders: &acp_svc::PermissionResponderMap,
 ) -> Result<(String, Arc<AcpConnectionHandle>), String> {
     let mcp_fingerprint = fingerprint_mcp_servers(&req.mcp_servers);
+    // Include capability flags in the cache key so that requests with different
+    // ACP capabilities (enable_fs, enable_terminal, timeouts) are routed to
+    // separate adapter sessions.  Without this, a reused session would silently
+    // retain the capabilities from the original spawn, ignoring updated flags.
+    let caps_fingerprint = format!(
+        "fs={},term={},ptimeout={:?},atimeout={:?}",
+        caps.enable_fs,
+        caps.enable_terminal,
+        caps.permission_timeout_secs,
+        caps.adapter_timeout_secs,
+    );
     let agent_key = if assistant_mode {
-        format!("{agent:?}:assistant:mcp={mcp_fingerprint}")
+        format!("{agent:?}:assistant:mcp={mcp_fingerprint}:{caps_fingerprint}")
     } else {
-        format!("{agent:?}:mcp={mcp_fingerprint}")
+        format!("{agent:?}:mcp={mcp_fingerprint}:{caps_fingerprint}")
     };
 
     // Check global cache first.
@@ -150,7 +187,7 @@ async fn get_or_create_acp_connection(
     }
 
     // Spawn a new adapter subprocess.
-    let adapter = resolve_acp_adapter_command(cfg, agent)?;
+    let adapter = resolve_acp_adapter_command(cfg, agent, caps)?;
     let adapter_name = std::path::Path::new(&adapter.program)
         .file_name()
         .and_then(|n| n.to_str())
@@ -203,11 +240,11 @@ async fn resolve_working_dir(assistant_mode: bool) -> Result<std::path::PathBuf,
 
 fn fingerprint_mcp_servers(
     mcp_servers: &[crate::crates::services::types::AcpMcpServerConfig],
-) -> u64 {
-    let raw = serde_json::to_string(mcp_servers).unwrap_or_default();
-    let mut hasher = DefaultHasher::new();
-    hasher.write(raw.as_bytes());
-    hasher.finish()
+) -> String {
+    use sha2::{Digest, Sha256};
+    let json = serde_json::to_string(mcp_servers).unwrap_or_default();
+    let hash = Sha256::digest(json.as_bytes());
+    format!("{hash:x}")
 }
 
 /// Handle the `pulse_chat` service mode: send a prompt turn to the persistent
@@ -223,6 +260,7 @@ pub(super) async fn handle_pulse_chat(
     blocked_mcp_tools: Vec<String>,
     agent: PulseChatAgent,
     assistant_mode: bool,
+    caps: AdapterCapabilities,
     tx: mpsc::Sender<String>,
     ws_ctx: CommandContext,
     permission_responders: acp_svc::PermissionResponderMap,
@@ -256,19 +294,7 @@ pub(super) async fn handle_pulse_chat(
     }
 
     let prompt_input = if session_id.is_none() {
-        format!(
-            "[System context — Axon editor integration]\n\
-             You have access to the user's Axon editor. To write content \
-             directly into the editor, output a block starting with the \
-             XML opening tag `<axon:editor op=\"replace\">` (or op=\"append\" \
-             to add to the end), followed by your markdown content, followed \
-             by the closing tag `</axon:editor>`. Do NOT show this tag in a \
-             code fence or explain it unless the user explicitly asks — \
-             just use it. The user will see the editor update in real time. \
-             Only use axon:editor tags when the user explicitly asks you to \
-             write to or update the editor.\n\
-             [User message]\n{input}"
-        )
+        format!("{AXON_EDITOR_SYSTEM_PROMPT_PREAMBLE}\n[User message]\n{input}")
     } else {
         input
     };
@@ -282,22 +308,74 @@ pub(super) async fn handle_pulse_chat(
         mcp_servers,
     };
 
-    let (agent_key, conn_handle) =
-        get_or_create_acp_connection(&req, agent, assistant_mode, &cfg, &permission_responders)
-            .await?;
+    let (agent_key, conn_handle) = get_or_create_acp_connection(
+        &req,
+        agent,
+        assistant_mode,
+        caps,
+        &cfg,
+        &permission_responders,
+    )
+    .await?;
 
+    execute_acp_turn(conn_handle, req, tx, ws_ctx, &agent_key).await
+}
+
+/// Dispatch a single ACP turn on a persistent connection and handle the result.
+///
+/// Sends the turn request to the adapter, drives the event loop until completion,
+/// and evicts the session from cache on fatal adapter errors (channel closed,
+/// adapter exited) while preserving it for recoverable per-turn errors.
+async fn execute_acp_turn(
+    conn_handle: Arc<AcpConnectionHandle>,
+    req: AcpPromptTurnRequest,
+    tx: mpsc::Sender<String>,
+    ws_ctx: CommandContext,
+    agent_key: &str,
+) -> Result<(), String> {
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
     let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
 
-    conn_handle
+    let send_result = conn_handle
         .run_turn(acp_svc::TurnRequest {
             req,
             service_tx: Some(event_tx),
             result_tx,
         })
-        .await?;
+        .await;
 
-    drive_turn_events(result_rx, event_rx, tx, ws_ctx, &agent_key).await
+    if let Err(ref err) = send_result {
+        // The adapter channel is closed — the subprocess died before we could
+        // dispatch this turn. Evict immediately so the next call spawns a fresh
+        // adapter rather than retrying against the same dead handle for up to
+        // 30 minutes.
+        log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
+        SESSION_CACHE.remove(agent_key);
+        return send_result;
+    }
+
+    let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, agent_key).await;
+
+    if let Err(ref err) = turn_result {
+        // Only evict if the error indicates the adapter process/channel is
+        // broken.  Per-turn errors (content policy, tool errors, timeouts)
+        // leave the persistent adapter healthy — evicting on those wastes the
+        // warm subprocess and forces a cold spawn on the next turn.
+        let is_fatal = err.contains("channel closed")
+            || err.contains("channel dropped")
+            || err.contains("adapter exited")
+            || err.contains("result unavailable after channel close");
+        if is_fatal {
+            log::warn!(
+                "[acp] session {agent_key} evicted from cache after fatal adapter error: {err}"
+            );
+            SESSION_CACHE.remove(agent_key);
+        } else {
+            log::debug!("[acp] session {agent_key} turn error (adapter still healthy): {err}");
+        }
+    }
+
+    turn_result
 }
 
 /// Handle the `pulse_chat_probe` service mode.
@@ -313,7 +391,16 @@ pub(super) async fn handle_pulse_chat_probe(
     use crate::crates::services::types::AcpSessionProbeRequest;
 
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
-    let adapter = resolve_acp_adapter_command(&cfg, agent)?;
+    let adapter = resolve_acp_adapter_command(
+        &cfg,
+        agent,
+        AdapterCapabilities {
+            enable_fs: true,
+            enable_terminal: true,
+            permission_timeout_secs: None,
+            adapter_timeout_secs: None,
+        },
+    )?;
     let scaffold = acp_svc::AcpClientScaffold::new(adapter);
     let req = AcpSessionProbeRequest { session_id, model };
     let cwd = env::current_dir().map_err(|e| e.to_string())?;
