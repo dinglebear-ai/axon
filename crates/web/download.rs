@@ -31,15 +31,22 @@ pub(crate) struct DownloadQuery {
 }
 
 /// Authenticate a download request with the shared API token.
+///
+/// Downloads require header-based auth only (Bearer or x-api-key).
+/// The `?token=` query parameter is intentionally NOT accepted here because
+/// the shared API token would leak into browser history, copied links, server
+/// access logs, and `Referer` headers. (Thread 12 / PRRT_kwDORS2O8s50RyMu)
+///
+/// If browser-initiated downloads without header auth are needed in the future,
+/// the right approach is short-lived signed download tokens (HMAC-based, scoped
+/// to a specific job_id, with expiry) — not reusing the long-lived shared token.
 fn auth_download(
     headers: &HeaderMap,
-    query_token: Option<&str>,
+    _query_token: Option<&str>,
     state: &DownloadAuthState,
 ) -> AuthOutcome {
-    // Delegate entirely to check_auth so header precedence and Bearer parsing
-    // (case-insensitive per RFC 6750) stay consistent across all routes.
-    // query_token is the `?token=` fallback for browser-initiated downloads.
-    check_auth(headers, query_token, state.api_token.as_deref())
+    // Pass None for query_token — only header-based auth is accepted for downloads.
+    check_auth(headers, None, state.api_token.as_deref())
 }
 
 /// `GET /download/{job_id}/pack.md`

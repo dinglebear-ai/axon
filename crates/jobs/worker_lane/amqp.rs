@@ -14,6 +14,23 @@ use std::time::Duration;
 use super::delivery::claim_delivery;
 use super::{ProcessFn, STALE_SWEEP_INTERVAL_SECS, WorkerConfig, sweep_stale_jobs};
 
+/// Result of polling the consumer + inflight set. Distinguishes between a real
+/// idle timeout (no deliveries for `STALE_SWEEP_INTERVAL_SECS`) and an inflight
+/// job completing without a new delivery being ready. Only the former should
+/// trigger a stale-job sweep.
+#[derive(Debug)]
+pub(crate) enum PollOutcome {
+    /// A delivery arrived from the AMQP consumer.
+    Delivery(Box<Result<lapin::message::Delivery, lapin::Error>>),
+    /// The consumer stream ended (broker closed the channel).
+    ConsumerClosed,
+    /// No delivery arrived within the sweep interval — trigger a stale sweep.
+    IdleTimeout,
+    /// An inflight job completed but no new delivery is ready. Re-poll without
+    /// sweeping — the sweep cadence is maintained by the idle timeout path.
+    InflightCompleted,
+}
+
 /// Open an AMQP connection, set QoS, declare a consumer, and log startup.
 /// Returns `(Connection, Channel, Consumer)` ready to receive deliveries.
 async fn setup_amqp_consumer(
@@ -45,34 +62,50 @@ async fn setup_amqp_consumer(
     Ok((conn, ch, consumer))
 }
 
-async fn poll_next_delivery(
+pub(crate) async fn poll_next_delivery(
     inflight: &mut FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>>,
     consumer: &mut lapin::Consumer,
-) -> Result<Option<Result<lapin::message::Delivery, lapin::Error>>, tokio::time::error::Elapsed> {
+) -> PollOutcome {
     if inflight.is_empty() {
-        return tokio::time::timeout(
+        return match tokio::time::timeout(
             Duration::from_secs(STALE_SWEEP_INTERVAL_SECS),
             consumer.next(),
         )
-        .await;
+        .await
+        {
+            Ok(Some(delivery)) => PollOutcome::Delivery(Box::new(delivery)),
+            Ok(None) => PollOutcome::ConsumerClosed,
+            Err(_elapsed) => PollOutcome::IdleTimeout,
+        };
     }
     tokio::select! {
         maybe_done = inflight.next() => {
             if maybe_done.is_some() {
                 // An inflight job completed but no new delivery is ready yet.
-                // Return Err(Elapsed) — maps to Continue in parse_delivery_result —
-                // so the outer loop re-polls rather than misinterpreting this as the
-                // consumer stream ending (which is the meaning of Ok(None)).
-                return tokio::time::timeout(
-                    Duration::ZERO,
-                    std::future::pending::<Option<Result<lapin::message::Delivery, lapin::Error>>>(),
-                )
-                .await;
+                // Signal InflightCompleted so the outer loop re-polls WITHOUT
+                // triggering a stale sweep — the sweep cadence is maintained
+                // solely by IdleTimeout.
+                return PollOutcome::InflightCompleted;
             }
-            tokio::time::timeout(Duration::from_secs(STALE_SWEEP_INTERVAL_SECS), consumer.next()).await
+            // FuturesUnordered returned None — set is now empty. Fall through
+            // to a normal consumer poll with sweep-interval timeout.
+            match tokio::time::timeout(
+                Duration::from_secs(STALE_SWEEP_INTERVAL_SECS),
+                consumer.next(),
+            )
+            .await
+            {
+                Ok(Some(delivery)) => PollOutcome::Delivery(Box::new(delivery)),
+                Ok(None) => PollOutcome::ConsumerClosed,
+                Err(_elapsed) => PollOutcome::IdleTimeout,
+            }
         }
         delivery = tokio::time::timeout(Duration::from_secs(STALE_SWEEP_INTERVAL_SECS), consumer.next()) => {
-            delivery
+            match delivery {
+                Ok(Some(d)) => PollOutcome::Delivery(Box::new(d)),
+                Ok(None) => PollOutcome::ConsumerClosed,
+                Err(_elapsed) => PollOutcome::IdleTimeout,
+            }
         }
     }
 }
@@ -84,29 +117,29 @@ enum DeliveryOutcome {
 }
 
 async fn parse_delivery_result(
-    timed: Result<
-        Option<Result<lapin::message::Delivery, lapin::Error>>,
-        tokio::time::error::Elapsed,
-    >,
+    outcome: PollOutcome,
     cfg: &Config,
     pool: &PgPool,
     wc: &WorkerConfig,
     lane: usize,
 ) -> DeliveryOutcome {
-    match timed {
-        Ok(Some(Ok(d))) => DeliveryOutcome::Delivery(Box::new(d)),
-        Ok(Some(Err(e))) => {
-            log_warn(&format!(
-                "{} worker lane={lane} AMQP delivery error: {e}",
-                wc.job_kind
-            ));
-            DeliveryOutcome::Continue
-        }
-        Ok(None) => DeliveryOutcome::Break,
-        Err(_) => {
+    match outcome {
+        PollOutcome::Delivery(result) => match *result {
+            Ok(d) => DeliveryOutcome::Delivery(Box::new(d)),
+            Err(e) => {
+                log_warn(&format!(
+                    "{} worker lane={lane} AMQP delivery error: {e}",
+                    wc.job_kind
+                ));
+                DeliveryOutcome::Continue
+            }
+        },
+        PollOutcome::ConsumerClosed => DeliveryOutcome::Break,
+        PollOutcome::IdleTimeout => {
             sweep_stale_jobs(cfg, pool, wc, "amqp", lane).await;
             DeliveryOutcome::Continue
         }
+        PollOutcome::InflightCompleted => DeliveryOutcome::Continue,
     }
 }
 
@@ -163,8 +196,8 @@ pub(crate) async fn run_amqp_lane(
             continue;
         }
 
-        let timed = poll_next_delivery(&mut inflight, &mut consumer).await;
-        let delivery = match parse_delivery_result(timed, cfg, &pool, wc, lane).await {
+        let poll_outcome = poll_next_delivery(&mut inflight, &mut consumer).await;
+        let delivery = match parse_delivery_result(poll_outcome, cfg, &pool, wc, lane).await {
             DeliveryOutcome::Delivery(d) => *d,
             DeliveryOutcome::Continue => continue,
             DeliveryOutcome::Break => break,

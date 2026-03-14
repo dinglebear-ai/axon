@@ -278,7 +278,7 @@ pub(super) fn call_evaluate(
             {
                 Ok(rt) => rt,
                 Err(e) => {
-                    let _ = tx.send(Err(format!("evaluate runtime build failed: {e}").into()));
+                    let _ = tx.send(Err(sanitize_svc_error("evaluate runtime build", e)));
                     return;
                 }
             };

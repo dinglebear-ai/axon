@@ -47,11 +47,11 @@ static SYNC_MODE_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| {
 /// before entering `handle_sync_direct`, so they must be exempted from
 /// `SYNC_MODE_SEMAPHORE` to avoid dual-acquisition.
 ///
-/// Mirrors `constants::ACP_MODES` (used by `execute.rs::acquire_acp_permit`)
-/// at the enum level.  If ACP modes change, update both sites and the constant.
+/// Derives the check from `constants::ACP_MODES` (shared with
+/// `execute.rs::acquire_acp_permit`) via `ServiceMode::as_str` to prevent
+/// the two sites from drifting apart.
 fn is_acp_mode(mode: &ServiceMode) -> bool {
-    // NOTE: keep in sync with super::constants::ACP_MODES
-    matches!(mode, ServiceMode::PulseChat | ServiceMode::PulseChatProbe)
+    super::constants::ACP_MODES.contains(&mode.as_str())
 }
 
 /// Classify a mode string and extract all request parameters into owned values.

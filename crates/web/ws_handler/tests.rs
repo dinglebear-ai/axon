@@ -74,19 +74,22 @@ fn cancel_message_still_accepts_id_field() {
 #[test]
 fn acp_resume_result_ok_key_is_serialized_correctly() {
     // Regression for C-1: verify "ok" (not "success") is emitted.
-    let msg = serde_json::json!({
-        "type": "acp_resume_result",
-        "ok": true,
-        "session_id": "sess-123",
-        "replayed": 5
-    })
-    .to_string();
+    // Uses the production acp_resume_json() serializer so the test catches
+    // any key rename (e.g. "ok" → "success") in the actual code path.
+    let msg = acp_resume_json(true, "sess-123", None, Some(5));
 
     assert!(msg.contains("\"ok\":true"), "must use 'ok' key, got: {msg}");
     assert!(
         !msg.contains("\"success\""),
         "must NOT use 'success' key, got: {msg}"
     );
+
+    // Verify all expected fields are present.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&msg).expect("acp_resume_json must produce valid JSON");
+    assert_eq!(parsed["type"], "acp_resume_result");
+    assert_eq!(parsed["session_id"], "sess-123");
+    assert_eq!(parsed["replayed"], 5);
 }
 
 #[test]
@@ -98,7 +101,7 @@ fn rate_limit_constants_are_sane() {
 
 #[test]
 fn check_rate_limit_resets_after_window() {
-    let limiter: DashMap<IpAddr, (u32, u32, Instant)> = DashMap::new();
+    let limiter: DashMap<IpAddr, (u32, Instant, u32, Instant)> = DashMap::new();
     let ip: IpAddr = "127.0.0.1".parse().unwrap();
 
     // Fill up execute quota.
@@ -108,10 +111,12 @@ fn check_rate_limit_resets_after_window() {
     // Next one should be denied.
     assert!(!check_rate_limit(&limiter, ip, RateLimitCategory::Execute));
 
-    // Simulate window expiry by backdating the window start.
-    limiter.entry(ip).and_modify(|(_, _, start)| {
-        *start = Instant::now() - Duration::from_secs(RATE_LIMIT_WINDOW_SECS + 1);
-    });
+    // Simulate window expiry by backdating the execute window start.
+    limiter
+        .entry(ip)
+        .and_modify(|(_, exec_start, _, _read_start)| {
+            *exec_start = Instant::now() - Duration::from_secs(RATE_LIMIT_WINDOW_SECS + 1);
+        });
 
     // After window reset, should be allowed again.
     assert!(check_rate_limit(&limiter, ip, RateLimitCategory::Execute));
@@ -119,7 +124,7 @@ fn check_rate_limit_resets_after_window() {
 
 #[test]
 fn check_rate_limit_separate_counters_per_category() {
-    let limiter: DashMap<IpAddr, (u32, u32, Instant)> = DashMap::new();
+    let limiter: DashMap<IpAddr, (u32, Instant, u32, Instant)> = DashMap::new();
     let ip: IpAddr = "127.0.0.1".parse().unwrap();
 
     // Exhaust execute quota.

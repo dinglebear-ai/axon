@@ -42,10 +42,8 @@ pub(crate) static ACP_SESSION_SEMAPHORE: std::sync::LazyLock<tokio::sync::Semaph
         tokio::sync::Semaphore::new(max)
     });
 
-// Connection limit infrastructure — scaffolded for L-7/L-12, not yet wired to upgrade handlers.
-#[allow(dead_code)]
+// Connection limit infrastructure for L-7/L-12.
 static WS_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
-#[allow(dead_code)]
 fn max_ws_connections() -> usize {
     static CACHED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *CACHED.get_or_init(|| {
@@ -55,9 +53,7 @@ fn max_ws_connections() -> usize {
             .unwrap_or(100)
     })
 }
-#[allow(dead_code)]
 static SHELL_CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
-#[allow(dead_code)]
 fn max_shell_connections() -> usize {
     static CACHED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *CACHED.get_or_init(|| {
@@ -67,13 +63,25 @@ fn max_shell_connections() -> usize {
             .unwrap_or(10)
     })
 }
-#[allow(dead_code)]
+
+/// Atomically acquire a connection slot if under `limit`.
+///
+/// Uses `fetch_update` (CAS loop) so the check-and-increment is a single
+/// atomic operation — no TOCTOU race between separate `load()` and `fetch_add()`.
+fn try_acquire_connection(counter: &'static AtomicUsize, limit: usize) -> bool {
+    counter
+        .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+            (current < limit).then_some(current + 1)
+        })
+        .is_ok()
+}
+
 struct ConnectionGuard {
     counter: &'static AtomicUsize,
 }
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
-        self.counter.fetch_sub(1, Ordering::Relaxed);
+        self.counter.fetch_sub(1, Ordering::Release);
     }
 }
 
@@ -93,9 +101,11 @@ pub(crate) struct AppState {
     /// connection may drain replay buffers or route permission responses.
     pub(crate) session_ownership: Arc<DashMap<String, String>>,
     /// Process-wide rate limiter keyed by client IP (P1-2).
-    /// Value is (execute_count, read_file_count, window_start).
+    /// Value is (exec_count, exec_window, read_count, read_window) — each category
+    /// has its own independent sliding window to prevent cross-category reset exploits.
     /// Prevents bypass via WebSocket reconnect — state survives across connections.
-    pub(crate) rate_limiter: Arc<DashMap<std::net::IpAddr, (u32, u32, std::time::Instant)>>,
+    pub(crate) rate_limiter:
+        Arc<DashMap<std::net::IpAddr, (u32, std::time::Instant, u32, std::time::Instant)>>,
 }
 
 /// State for download routes — lighter than AppState (no WS/stats fields).
@@ -297,15 +307,22 @@ async fn ws_upgrade(
     }
 
     // L-7: enforce WS connection limit to prevent file descriptor exhaustion.
-    let current = WS_CONNECTION_COUNT.load(Ordering::Relaxed);
-    if current >= max_ws_connections() {
+    // Uses atomic CAS via try_acquire_connection to avoid TOCTOU race between
+    // separate load() + fetch_add() calls (Thread 10).
+    if !try_acquire_connection(&WS_CONNECTION_COUNT, max_ws_connections()) {
         log::warn!(
-            "[ws] connection limit reached ({current}/{}), rejecting upgrade from {}",
+            "[ws] connection limit reached ({}/{}), rejecting upgrade from {}",
+            WS_CONNECTION_COUNT.load(Ordering::Relaxed),
             max_ws_connections(),
             addr.ip()
         );
         return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
     }
+    // Pre-acquired a slot; if auth fails or upgrade never fires we must release it.
+    // The ConnectionGuard handles decrement on drop in all paths.
+    let pre_guard = ConnectionGuard {
+        counter: &WS_CONNECTION_COUNT,
+    };
 
     let outcome = http_auth(
         &headers,
@@ -320,6 +337,8 @@ async fn ws_upgrade(
     }
 
     if matches!(outcome, AuthOutcome::Denied(_)) {
+        // pre_guard drops here, releasing the slot
+        drop(pre_guard);
         let body = match outcome {
             AuthOutcome::Denied(DenyReason::NoAuthConfigured) => {
                 "unauthorized: configure AXON_WEB_API_TOKEN"
@@ -329,13 +348,14 @@ async fn ws_upgrade(
         return (StatusCode::UNAUTHORIZED, body).into_response();
     }
 
-    WS_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
     let conn_id = Uuid::new_v4().to_string();
     let client_ip = addr.ip();
+    // Move the guard into the on_upgrade callback so it lives for the
+    // duration of the WS connection. If the HTTP upgrade handshake fails
+    // (client disconnects), axum drops the future — the guard drops with
+    // it, releasing the slot. (Thread 21)
     ws.on_upgrade(move |socket| {
-        let _guard = ConnectionGuard {
-            counter: &WS_CONNECTION_COUNT,
-        };
+        let _guard = pre_guard;
         async move {
             ws_handler::handle_ws(socket, state, conn_id, client_ip).await;
             drop(_guard);
@@ -359,15 +379,19 @@ async fn shell_ws_upgrade(
     }
 
     // L-12: enforce shell WS connection limit.
-    let current = SHELL_CONNECTION_COUNT.load(Ordering::Relaxed);
-    if current >= max_shell_connections() {
+    // Uses atomic CAS via try_acquire_connection — same pattern as ws_upgrade (Thread 10/20).
+    if !try_acquire_connection(&SHELL_CONNECTION_COUNT, max_shell_connections()) {
         log::warn!(
-            "[shell ws] connection limit reached ({current}/{}), rejecting upgrade from {}",
+            "[shell ws] connection limit reached ({}/{}), rejecting upgrade from {}",
+            SHELL_CONNECTION_COUNT.load(Ordering::Relaxed),
             max_shell_connections(),
             addr.ip()
         );
         return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
     }
+    let pre_guard = ConnectionGuard {
+        counter: &SHELL_CONNECTION_COUNT,
+    };
 
     let outcome = http_auth(
         &headers,
@@ -380,6 +404,7 @@ async fn shell_ws_upgrade(
         AuthOutcome::Denied(_) => log::warn!("shell ws: {log_msg}"),
     }
     if matches!(outcome, AuthOutcome::Denied(_)) {
+        drop(pre_guard);
         return (
             StatusCode::FORBIDDEN,
             "shell access denied — set AXON_WEB_API_TOKEN",
@@ -392,12 +417,11 @@ async fn shell_ws_upgrade(
     // handle_shell_ws still guards PTY writes but is no longer the sole
     // allocation defence.
     const MAX_SHELL_WS_MSG: usize = 65_536; // 64 KiB
-    SHELL_CONNECTION_COUNT.fetch_add(1, Ordering::Relaxed);
+    // Move guard into the on_upgrade callback — if the HTTP upgrade handshake
+    // fails, axum drops the future and the guard releases the slot. (Thread 20)
     ws.max_message_size(MAX_SHELL_WS_MSG)
         .on_upgrade(move |socket| {
-            let _guard = ConnectionGuard {
-                counter: &SHELL_CONNECTION_COUNT,
-            };
+            let _guard = pre_guard;
             async move {
                 shell::handle_shell_ws(socket).await;
                 drop(_guard);

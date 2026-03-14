@@ -10,7 +10,7 @@ export type WsClientMsg =
   | { type: 'read_file'; path: string }
   | { type: 'acp_resume'; session_id: string }
   // TODO: Wire permission response to Rust AcpBridgeClient when leaving container mode
-  | { type: 'permission_response'; tool_call_id: string; option_id: string }
+  | { type: 'permission_response'; session_id: string; tool_call_id: string; option_id: string }
 
 // Server → Client
 export type WsServerMsg =

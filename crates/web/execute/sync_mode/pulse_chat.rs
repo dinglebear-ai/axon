@@ -164,10 +164,21 @@ async fn get_or_create_acp_connection(
     permission_responders: &acp_svc::PermissionResponderMap,
 ) -> Result<(String, Arc<AcpConnectionHandle>), String> {
     let mcp_fingerprint = fingerprint_mcp_servers(&req.mcp_servers);
+    // Include capability flags in the cache key so that requests with different
+    // ACP capabilities (enable_fs, enable_terminal, timeouts) are routed to
+    // separate adapter sessions.  Without this, a reused session would silently
+    // retain the capabilities from the original spawn, ignoring updated flags.
+    let caps_fingerprint = format!(
+        "fs={},term={},ptimeout={:?},atimeout={:?}",
+        caps.enable_fs,
+        caps.enable_terminal,
+        caps.permission_timeout_secs,
+        caps.adapter_timeout_secs,
+    );
     let agent_key = if assistant_mode {
-        format!("{agent:?}:assistant:mcp={mcp_fingerprint}")
+        format!("{agent:?}:assistant:mcp={mcp_fingerprint}:{caps_fingerprint}")
     } else {
-        format!("{agent:?}:mcp={mcp_fingerprint}")
+        format!("{agent:?}:mcp={mcp_fingerprint}:{caps_fingerprint}")
     };
 
     // Check global cache first.

@@ -79,7 +79,7 @@ struct WsConnState {
     conn_id: String,
     session_ownership: Arc<DashMap<String, String>>,
     client_ip: IpAddr,
-    rate_limiter: Arc<DashMap<IpAddr, (u32, u32, Instant)>>,
+    rate_limiter: Arc<DashMap<IpAddr, (u32, Instant, u32, Instant)>>,
     /// M-12: Whether this client has opted in to Docker stats broadcasts.
     stats_subscribed: Arc<AtomicBool>,
 }
@@ -239,28 +239,35 @@ async fn track_crawl_files(
 
 /// Check the process-wide rate limiter for a given message category (P1-2, P3-4).
 /// Returns `true` if the request is allowed, `false` if rate-limited.
+///
+/// Each category has its own independent sliding window `(count, window_start)`.
+/// This prevents a window reset in one category from zeroing the counter for the
+/// other — without this separation, an attacker could time requests to force
+/// cross-category resets and achieve ~2x the intended throughput.
 fn check_rate_limit(
-    rate_limiter: &DashMap<IpAddr, (u32, u32, Instant)>,
+    rate_limiter: &DashMap<IpAddr, (u32, Instant, u32, Instant)>,
     ip: IpAddr,
     category: RateLimitCategory,
 ) -> bool {
     let now = Instant::now();
     let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
-    let mut entry = rate_limiter.entry(ip).or_insert((0, 0, now));
-    let (exec_count, read_count, window_start) = entry.value_mut();
-
-    if now.duration_since(*window_start) > window {
-        *exec_count = 0;
-        *read_count = 0;
-        *window_start = now;
-    }
+    let mut entry = rate_limiter.entry(ip).or_insert((0, now, 0, now));
+    let (exec_count, exec_window, read_count, read_window) = entry.value_mut();
 
     match category {
         RateLimitCategory::Execute => {
+            if now.duration_since(*exec_window) > window {
+                *exec_count = 0;
+                *exec_window = now;
+            }
             *exec_count += 1;
             *exec_count <= RATE_LIMIT_MAX_EXECUTES
         }
         RateLimitCategory::ReadFile => {
+            if now.duration_since(*read_window) > window {
+                *read_count = 0;
+                *read_window = now;
+            }
             *read_count += 1;
             *read_count <= RATE_LIMIT_MAX_READ_FILE
         }
@@ -439,9 +446,9 @@ fn acp_resume_json(
 /// Handle `acp_resume` — reconnect to a cached ACP session and replay buffered
 /// events.
 ///
-/// M-6: Uses non-destructive `read_replay_buffer()` so a second reconnect still
-/// receives buffered events. The buffer is only cleared on explicit session
-/// termination, not on resume.
+/// M-6: Uses `read_replay_buffer()` which drains the buffer after the first
+/// replay. The first reconnect receives all catch-up events; subsequent
+/// reconnects see only events buffered after the previous replay.
 ///
 /// Security (H-8): connection-binds session ownership on first resume.
 async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
@@ -487,7 +494,7 @@ async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
         return;
     }
 
-    // M-6: non-destructive read — buffer survives for subsequent reconnects.
+    // M-6: drain-on-read — first reconnect gets catch-up, buffer cleared after.
     let buffered = cached.read_replay_buffer();
     let replayed = buffered.len();
     for msg in buffered {

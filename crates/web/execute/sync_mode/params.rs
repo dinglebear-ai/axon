@@ -76,7 +76,6 @@ pub(super) fn extract_params(
     let session_id = flags
         .get("session_id")
         .and_then(serde_json::Value::as_str)
-        .filter(|s| !s.is_empty())
         .map(ToString::to_string);
     let model = flags
         .get("model")
@@ -328,5 +327,81 @@ mod tests {
         let flags = serde_json::json!({});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
         assert!(!params.assistant_mode);
+    }
+
+    // ── ACP capability field tests ──────────────────────────────────────────
+
+    #[test]
+    fn extract_params_acp_defaults_when_no_flags() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert!(params.enable_fs, "enable_fs should default to true");
+        assert!(
+            params.enable_terminal,
+            "enable_terminal should default to true"
+        );
+        assert_eq!(params.permission_timeout_secs, None);
+        assert_eq!(params.adapter_timeout_secs, None);
+        assert_eq!(params.session_id, None);
+    }
+
+    #[test]
+    fn extract_params_acp_explicit_values_parse() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({
+            "enable_fs": false,
+            "enable_terminal": false,
+            "permission_timeout_secs": 120,
+            "adapter_timeout_secs": 600,
+        });
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert!(!params.enable_fs);
+        assert!(!params.enable_terminal);
+        assert_eq!(params.permission_timeout_secs, Some(120));
+        assert_eq!(params.adapter_timeout_secs, Some(600));
+    }
+
+    #[test]
+    fn extract_params_session_id_nonempty_is_some() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({"session_id": "sess-abc"});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        assert_eq!(params.session_id.as_deref(), Some("sess-abc"));
+    }
+
+    #[test]
+    fn extract_params_session_id_empty_string_is_preserved() {
+        let context = ExecCommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+            flags: serde_json::Value::Null,
+            cfg: Arc::new(Config::default()),
+        };
+        let flags = serde_json::json!({"session_id": ""});
+        let params = extract_params(&context, &flags).expect("recognised mode");
+        // After the Thread-35 fix, an explicit empty string is preserved as
+        // Some("") so downstream code can reject it rather than silently
+        // starting a new session.
+        assert_eq!(params.session_id.as_deref(), Some(""));
     }
 }

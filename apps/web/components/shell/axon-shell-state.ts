@@ -132,8 +132,15 @@ export function useAxonShellState() {
 
   const { send: wsSend, subscribeByTypes: subscribeWsByTypes } = useAxonWs()
 
+  // When true, permission requests are auto-approved by picking the first
+  // option. When false (default), the request is ignored and the backend
+  // permission prompt times out -- making the problem visible instead of
+  // silently approving potentially destructive operations.
+  const enableAutoApprove = false
+
   const onPermissionRequest = useCallback(
     ({
+      session_id,
       tool_call_id,
       options,
     }: {
@@ -141,14 +148,18 @@ export function useAxonShellState() {
       tool_call_id: string
       options: string[]
     }) => {
-      // Auto-approve the first option until a permission UI is implemented.
-      // This prevents turns from stalling indefinitely on permission prompts.
+      if (!enableAutoApprove) {
+        console.warn(
+          `[acp] permission request ignored (auto-approve disabled) tool_call_id=${tool_call_id}`,
+        )
+        return
+      }
       const chosen = options[0]
       if (!chosen) return
       console.info(
         `[acp] auto-responding to permission request tool_call_id=${tool_call_id} with option=${chosen}`,
       )
-      wsSend({ type: 'permission_response', tool_call_id, option_id: chosen })
+      wsSend({ type: 'permission_response', session_id, tool_call_id, option_id: chosen })
     },
     [wsSend],
   )

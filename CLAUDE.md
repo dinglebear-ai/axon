@@ -327,9 +327,9 @@ Three auth tokens cover two surfaces (`/api/*` and `/ws`):
 
 | Token | Scope | Required |
 |-------|-------|----------|
-| `AXON_WEB_API_TOKEN` | Primary token. Gates both `/api/*` (proxy.ts) and `/ws` (Rust WS gate via `?token=`). | Yes |
-| `AXON_WEB_BROWSER_API_TOKEN` | Second-tier token for `/api/*` routes only. Does **not** gate `/ws`. If unset, `AXON_WEB_API_TOKEN` is used for all routes. | No |
-| `NEXT_PUBLIC_AXON_API_TOKEN` | Browser-exposed copy of `AXON_WEB_API_TOKEN`. `apiFetch()` sends it as `x-api-key` on `/api/*`; `use-axon-ws.ts` appends it as `?token=` on the WS URL. Must equal `AXON_WEB_API_TOKEN`. | Yes (when `AXON_WEB_API_TOKEN` is set) |
+| `AXON_WEB_API_TOKEN` | Primary token. **Server-only** — do NOT expose to the browser. Gates both `/api/*` (proxy.ts) and `/ws` (Rust WS gate via `?token=`). The `?token=` query param is a necessary limitation: WebSocket upgrade requests cannot carry custom headers. | Yes |
+| `AXON_WEB_BROWSER_API_TOKEN` | Optional second-tier token for `/api/*` routes only. Does **not** gate `/ws`. If unset, `AXON_WEB_API_TOKEN` is used for all `/api/*` routes. Use this to keep the browser-exposed token separate from the primary WS gate token. | No |
+| `NEXT_PUBLIC_AXON_API_TOKEN` | Browser-exposed token. `apiFetch()` sends it as `x-api-key` on `/api/*`; `use-axon-ws.ts` appends it as `?token=` on the WS URL. **Must equal `AXON_WEB_BROWSER_API_TOKEN`** when that is set, or `AXON_WEB_API_TOKEN` otherwise. Do not set this to `AXON_WEB_API_TOKEN` when `AXON_WEB_BROWSER_API_TOKEN` is configured. | Yes (when `AXON_WEB_API_TOKEN` is set) |
 
 MCP OAuth (`atk_` tokens) is a separate auth system for MCP clients only — it does not touch `/ws` or `/api/*`.
 
@@ -341,7 +341,7 @@ AXON_WEB_API_TOKEN=CHANGE_ME
 # If unset, AXON_WEB_API_TOKEN is used for all routes.
 AXON_WEB_BROWSER_API_TOKEN=
 
-# Browser-exposed copy — must equal AXON_WEB_API_TOKEN
+# Browser-exposed token — must equal AXON_WEB_BROWSER_API_TOKEN when set, else AXON_WEB_API_TOKEN
 # apiFetch() sends it as x-api-key on /api/*; use-axon-ws.ts sends it as ?token= on /ws
 NEXT_PUBLIC_AXON_API_TOKEN=
 

@@ -138,7 +138,7 @@ async fn sync_output_line_emits_v2_only() {
     let (tx, mut rx) = mpsc::channel::<String>(8);
     let ctx = sample_ctx();
 
-    super::send_command_output_line(&tx, &ctx, "hello world".to_string()).await;
+    super::send_command_output_line(&tx, &ctx, "hello world".to_string());
 
     let first =
         serde_json::from_str::<Value>(&rx.recv().await.expect("v2 message")).expect("valid json");

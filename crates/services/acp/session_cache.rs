@@ -82,16 +82,25 @@ impl CachedSession {
         }
     }
 
-    /// Non-destructive read of all buffered events for replay to a reconnecting
-    /// client (M-6). The buffer is preserved so that a second reconnect still
-    /// receives the same events. Use `drain_replay_buffer()` for destructive
-    /// removal on explicit session termination.
+    /// Read and drain all buffered events for replay to a reconnecting client.
+    ///
+    /// Semantics: the first reconnect receives all buffered events (catch-up),
+    /// then the buffer is cleared. Subsequent reconnects see an empty buffer
+    /// unless new events were buffered in the interim. This prevents duplicate
+    /// replays that would otherwise exhaust the replay cap with stale events.
+    ///
+    /// For explicit session termination, `drain_replay_buffer()` is equivalent.
     pub fn read_replay_buffer(&self) -> Vec<String> {
-        let buf = self
+        let mut bytes = self
+            .replay_buffer_bytes
+            .lock()
+            .expect("replay_buffer_bytes mutex poisoned");
+        let mut buf = self
             .replay_buffer
             .lock()
             .expect("replay_buffer mutex poisoned");
-        buf.clone()
+        *bytes = 0;
+        std::mem::take(&mut *buf)
     }
 
     /// Drain and return all buffered events, clearing the buffer.
@@ -349,6 +358,42 @@ mod tests {
         // Drain again — should be empty after first drain.
         let events = session.drain_replay_buffer();
         assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_replay_buffer_drains_after_first_read() {
+        let cache = AcpSessionCache::new();
+        let handle = test_handle();
+        let responders = test_responder_map();
+
+        let session = cache.insert("agent:read_drain".into(), handle, responders);
+
+        session.buffer_event(r#"{"type":"alpha"}"#.into());
+        session.buffer_event(r#"{"type":"beta"}"#.into());
+
+        // First read returns both buffered events.
+        let first = session.read_replay_buffer();
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0], r#"{"type":"alpha"}"#);
+        assert_eq!(first[1], r#"{"type":"beta"}"#);
+
+        // Second read returns empty — buffer was drained on first read.
+        let second = session.read_replay_buffer();
+        assert!(
+            second.is_empty(),
+            "expected empty buffer after first read, got {}",
+            second.len()
+        );
+
+        // drain_replay_buffer on an already-empty buffer is a no-op.
+        let drained = session.drain_replay_buffer();
+        assert!(drained.is_empty());
+
+        // New events buffered after drain are returned on next read.
+        session.buffer_event(r#"{"type":"gamma"}"#.into());
+        let third = session.read_replay_buffer();
+        assert_eq!(third.len(), 1);
+        assert_eq!(third[0], r#"{"type":"gamma"}"#);
     }
 
     #[tokio::test]

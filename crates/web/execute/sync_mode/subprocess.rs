@@ -59,7 +59,7 @@ async fn read_stdout(
                 }
             }
             Ok(_) | Err(_) => {
-                send_command_output_line(&tx, &ctx, clean).await;
+                send_command_output_line(&tx, &ctx, clean);
             }
         }
     }

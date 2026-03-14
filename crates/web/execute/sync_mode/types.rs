@@ -133,6 +133,33 @@ pub(super) enum ServiceMode {
 }
 
 impl ServiceMode {
+    /// Return the canonical string representation of this mode.
+    pub(super) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Scrape => "scrape",
+            Self::Map => "map",
+            Self::Query => "query",
+            Self::Retrieve => "retrieve",
+            Self::Ask => "ask",
+            Self::Search => "search",
+            Self::Research => "research",
+            Self::Stats => "stats",
+            Self::Sources => "sources",
+            Self::Domains => "domains",
+            Self::Doctor => "doctor",
+            Self::Status => "status",
+            Self::Suggest => "suggest",
+            Self::Evaluate => "evaluate",
+            Self::Dedupe => "dedupe",
+            Self::Screenshot => "screenshot",
+            Self::Debug => "debug",
+            Self::Sessions => "sessions",
+            Self::McpRefresh => "mcp_refresh",
+            Self::PulseChat => "pulse_chat",
+            Self::PulseChatProbe => "pulse_chat_probe",
+        }
+    }
+
     /// Classify a mode string.  Returns `None` for unknown modes.
     pub(super) fn from_str(s: &str) -> Option<Self> {
         match s {

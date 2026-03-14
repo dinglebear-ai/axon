@@ -36,10 +36,6 @@ mod acp_ws_event_tests;
 #[path = "execute/tests/ws_protocol_tests.rs"]
 mod ws_protocol_tests;
 
-#[cfg(test)]
-#[path = "execute/tests/async_ingest_routing_tests.rs"]
-mod async_ingest_routing_tests;
-
 pub(crate) use context::ExecCommandContext;
 pub(crate) use files::handle_read_file;
 
@@ -115,12 +111,12 @@ fn is_valid_cancel_job_id(job_id: &str) -> bool {
 }
 
 #[cfg(test)]
-async fn send_command_output_line(
+fn send_command_output_line(
     tx: &mpsc::Sender<String>,
     context: &events::CommandContext,
     line: String,
 ) {
-    ws_send::send_command_output_line(tx, context, line).await
+    ws_send::send_command_output_line(tx, context, line)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -199,7 +195,7 @@ pub(crate) async fn handle_command(
     // enqueue the job and return immediately with the job ID.
     // No subprocess is spawned; no polling loop is run.
     if ASYNC_MODES.contains(&mode.as_str()) {
-        ws_send::send_command_start(&tx, &context).await;
+        ws_send::send_command_start(&tx, &context);
         async_mode::handle_async_command(context, tx, crawl_job_id).await;
         return;
     }
@@ -214,14 +210,14 @@ pub(crate) async fn handle_command(
             Ok(p) => p,
             Err(()) => return, // error already sent to client
         };
-        ws_send::send_command_start(&tx, &context).await;
+        ws_send::send_command_start(&tx, &context);
         sync_mode::handle_sync_direct(params, tx, ws_ctx, permission_responders).await;
         drop(_acp_permit); // explicit drop for clarity — permit held for full command duration
 
         return;
     }
 
-    ws_send::send_command_start(&tx, &context).await;
+    ws_send::send_command_start(&tx, &context);
     dispatch_subprocess_fallback(context, &mode, &input, &flags, tx, ws_ctx).await;
 }
 
@@ -241,14 +237,15 @@ async fn acquire_acp_permit(
     if ACP_MODES.contains(&mode) {
         // M-11: Notify client before potentially blocking on the semaphore,
         // so a 30-second hang has visible feedback in the browser.
+        // Uses `command.output.line` — a WsEventV2 type the TypeScript client
+        // actually parses — instead of the raw `status` type which has no
+        // handler in the WS message dispatcher.
         if crate::crates::web::ACP_SESSION_SEMAPHORE.available_permits() == 0 {
-            let queued_msg = serde_json::json!({
-                "type": "status",
-                "phase": "queued",
-                "message": "Waiting for available session slot..."
-            })
-            .to_string();
-            let _ = tx.send(queued_msg).await;
+            ws_send::send_command_output_line(
+                tx,
+                ws_ctx,
+                "Waiting for available session slot...".to_string(),
+            );
         }
         const ACP_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
         match tokio::time::timeout(

@@ -220,16 +220,22 @@ fn memory_metrics_from_stats(stats: &bollard::models::ContainerStatsResponse) ->
         .and_then(|m| m.usage)
         .unwrap_or(0);
     // P2-7: Subtract page cache from raw usage.  In cgroup v1, `usage` includes
-    // the kernel page cache, inflating reported RSS by 2-4x.  The `cache` field
-    // in `stats` (or `total_inactive_file` in some cgroup v2 setups) represents
-    // reclaimable memory that is not true process RSS.
+    // the kernel page cache, inflating reported RSS by 2-4x.  The reclaimable
+    // memory field varies by cgroup version:
+    //   - cgroup v2: `inactive_file`
+    //   - cgroup v1 (modern): `total_inactive_file`
+    //   - cgroup v1 (older): `cache`
+    // Priority order matters — `cache` includes active file pages on modern
+    // kernels, so prefer `inactive_file` / `total_inactive_file` first.
     let cache = stats
         .memory_stats
         .as_ref()
         .and_then(|m| m.stats.as_ref())
         .and_then(|s| {
-            // cgroup v1 reports "cache"; cgroup v2 reports "inactive_file"
-            s.get("cache").or_else(|| s.get("inactive_file")).copied()
+            s.get("inactive_file")
+                .or_else(|| s.get("total_inactive_file"))
+                .or_else(|| s.get("cache"))
+                .copied()
         })
         .unwrap_or(0);
     let mem_actual = mem_usage.saturating_sub(cache);
