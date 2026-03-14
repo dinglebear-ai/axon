@@ -77,3 +77,6 @@ __pycache__/
 /package.json
 /pnpm-lock.yaml
 .mcp.json
+
+# Git worktrees
+.worktrees/
