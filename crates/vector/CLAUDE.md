@@ -30,7 +30,10 @@ vector/ops/
 `tei_embed()` auto-splits batches on HTTP 413 (Payload Too Large). Controlled by `TEI_MAX_CLIENT_BATCH_SIZE` env var (default: 64, max: 128). Do not manually split batches before calling `tei_embed()` — it handles this internally.
 
 ### TEI 429 / Rate Limiting
-On 429 or 503, `tei_embed()` retries up to **10 times** with exponential backoff starting at 1s (1, 2, 4, 8 … 512s) + jitter. A saturated TEI queue will retry for up to ~17 minutes before failing. No manual intervention needed.
+On 429 or 503, `tei_embed()` retries up to **5 times** with exponential backoff starting at 1s (1, 2, 4, 8, 16s) + jitter. Override with `TEI_MAX_RETRIES` env var. The default is tuned so worst-case retry budget (~181s) fits inside the 300s doc timeout.
+
+### Pipeline Resilience
+`run_embed_pipeline()` in `tei/pipeline.rs` processes docs concurrently with per-doc timeouts. Individual doc failures (TEI timeout, transport error) are **logged and skipped** — they do not abort the remaining batch. `EmbedSummary.docs_failed` reports how many docs failed. The pipeline uses **upsert-first** (deterministic UUID v5 point IDs overwrite existing) then **stale-tail cleanup** after successful upsert — no data is deleted until the replacement is safely stored.
 
 ### ensure_collection() — GET First
 `ensure_collection()` does **GET first, PUT only on 404**. Safe to call on every embed — no 409 Conflict on existing collections. If collection exists (GET 200), returns early without touching it.

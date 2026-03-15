@@ -93,6 +93,7 @@ pub(super) fn emit_empty_embed(
     }
     Ok(EmbedSummary {
         docs_embedded: 0,
+        docs_failed: 0,
         chunks_embedded: 0,
     })
 }

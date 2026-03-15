@@ -42,12 +42,49 @@ use uuid::Uuid;
 
 use super::JobTable;
 
+/// Maximum number of times a stale job is reset to `pending` before it is
+/// permanently marked `failed`. Prevents a job that always crashes at the
+/// same point from looping indefinitely.
+pub const MAX_WATCHDOG_RECLAIM_ATTEMPTS: u64 = 3;
+
+/// Extract the current reclaim attempt count from `result_json._reclaim.count`.
+fn watchdog_reclaim_count(result_json: &Value) -> u64 {
+    result_json
+        .get("_reclaim")
+        .and_then(|r| r.get("count"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0)
+}
+
+/// Build the `result_json` payload for a job being reset to `pending` after
+/// watchdog reclaim. Removes the `_watchdog` marker and increments `_reclaim.count`.
+fn watchdog_reclaim_payload(mut result_json: Value, current_count: u64) -> Value {
+    if !result_json.is_object() {
+        result_json = serde_json::json!({});
+    }
+    if let Some(obj) = result_json.as_object_mut() {
+        obj.remove("_watchdog");
+        obj.insert(
+            "_reclaim".to_string(),
+            serde_json::json!({
+                "count": current_count + 1,
+                "last_reclaimed_at": Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+    result_json
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct WatchdogSweepStats {
     pub stale_candidates: u64,
     pub marked_candidates: u64,
+    /// Jobs reset to `pending` and re-enqueued (caller must publish to AMQP).
     pub reclaimed_jobs: u64,
     pub reclaimed_ids: Vec<Uuid>,
+    /// Jobs permanently marked `failed` after exhausting reclaim attempts.
+    pub exhausted_jobs: u64,
+    pub exhausted_ids: Vec<Uuid>,
 }
 
 pub(crate) fn stale_watchdog_payload(
@@ -160,7 +197,9 @@ pub async fn reclaim_stale_running_jobs(
     };
 
     // Partition into confirmed (ready to reclaim) vs candidates (need marking).
-    let mut reclaim_ids: Vec<Uuid> = Vec::new();
+    // Confirmed jobs are further split: retry (reset to pending) vs exhausted (mark failed).
+    let mut retry_batch: Vec<(Uuid, Value)> = Vec::new();
+    let mut exhausted_ids: Vec<Uuid> = Vec::new();
     let mut mark_batch: Vec<(Uuid, Value)> = Vec::new();
 
     for row in &rows {
@@ -170,17 +209,47 @@ pub async fn reclaim_stale_running_jobs(
         let current_json = result_json.unwrap_or_else(|| serde_json::json!({}));
 
         if stale_watchdog_confirmed(&current_json, updated_at, confirm_secs) {
-            reclaim_ids.push(id);
+            let count = watchdog_reclaim_count(&current_json);
+            if count >= MAX_WATCHDOG_RECLAIM_ATTEMPTS {
+                exhausted_ids.push(id);
+            } else {
+                let new_json = watchdog_reclaim_payload(current_json, count);
+                retry_batch.push((id, new_json));
+            }
         } else {
             let marked = stale_watchdog_payload(current_json, updated_at);
             mark_batch.push((id, marked));
         }
     }
 
-    // Batch reclaim: single UPDATE for all confirmed-stale jobs (O(1) queries).
-    if !reclaim_ids.is_empty() {
+    // Reset retryable jobs to `pending` so the worker lane re-picks them up.
+    // Caller is responsible for re-publishing IDs to AMQP via batch_enqueue_jobs.
+    for (id, new_json) in retry_batch {
+        let retry_query = format!(
+            "UPDATE {} SET status='{pending}', updated_at=NOW(), \
+             started_at=NULL, finished_at=NULL, error_text=NULL, result_json=$2 \
+             WHERE id=$1 AND status='{running}' \
+             RETURNING id",
+            table.as_str(),
+            pending = JobStatus::Pending.as_str(),
+            running = JobStatus::Running.as_str(),
+        );
+        let maybe_row = sqlx::query(&retry_query)
+            .bind(id)
+            .bind(new_json)
+            .fetch_optional(pool)
+            .await?;
+        if maybe_row.is_some() {
+            stats.reclaimed_jobs += 1;
+            stats.reclaimed_ids.push(id);
+        }
+    }
+
+    // Permanently fail jobs that have exhausted reclaim attempts.
+    if !exhausted_ids.is_empty() {
         let msg = format!(
-            "watchdog reclaimed stale running {} job (marker={})",
+            "watchdog: max reclaim attempts ({MAX_WATCHDOG_RECLAIM_ATTEMPTS}) exceeded \
+             for {} job (marker={})",
             job_kind, marker
         );
         let fail_query = format!(
@@ -191,13 +260,13 @@ pub async fn reclaim_stale_running_jobs(
             failed = JobStatus::Failed.as_str(),
             running = JobStatus::Running.as_str(),
         );
-        let reclaimed: Vec<(Uuid,)> = sqlx::query_as(&fail_query)
-            .bind(&reclaim_ids)
+        let exhausted: Vec<(Uuid,)> = sqlx::query_as(&fail_query)
+            .bind(&exhausted_ids)
             .bind(&msg)
             .fetch_all(pool)
             .await?;
-        stats.reclaimed_jobs = reclaimed.len() as u64;
-        stats.reclaimed_ids = reclaimed.into_iter().map(|(id,)| id).collect();
+        stats.exhausted_jobs = exhausted.len() as u64;
+        stats.exhausted_ids = exhausted.into_iter().map(|(id,)| id).collect();
     }
 
     // Mark candidates individually (each gets a unique payload with timestamps).

@@ -7,6 +7,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use sqlx::PgPool;
 use std::collections::HashSet;
 use std::time::Duration;
+use tracing::Instrument as _;
 use uuid::Uuid;
 
 use super::ops::mark_completed;
@@ -286,6 +287,25 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
         }
     };
 
+    let source_label = match &job_cfg.source {
+        IngestSource::Github { .. } => "github",
+        IngestSource::Reddit { .. } => "reddit",
+        IngestSource::Youtube { .. } => "youtube",
+        IngestSource::Sessions { .. } => "sessions",
+    };
+    let target_label: String = match &job_cfg.source {
+        IngestSource::Github { repo, .. } => repo.clone(),
+        IngestSource::Reddit { target } | IngestSource::Youtube { target } => target.clone(),
+        IngestSource::Sessions { .. } => "sessions".to_string(),
+    };
+    let _job_span = tracing::info_span!(
+        "ingest_job",
+        job_id = %id,
+        source = source_label,
+        target = %target_label,
+    )
+    .entered();
+
     let result = match &job_cfg.source {
         IngestSource::Github {
             repo,
@@ -295,11 +315,14 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
                 tokio::sync::mpsc::channel::<serde_json::Value>(256);
             let progress_pool = pool.clone();
             let progress_id = id;
-            let progress_task = tokio::spawn(async move {
-                while let Some(progress) = progress_rx.recv().await {
-                    update_ingest_progress(&progress_pool, progress_id, &progress).await;
+            let progress_task = tokio::spawn(
+                async move {
+                    while let Some(progress) = progress_rx.recv().await {
+                        update_ingest_progress(&progress_pool, progress_id, &progress).await;
+                    }
                 }
-            });
+                .instrument(tracing::Span::current()),
+            );
             let r =
                 ingest::github::ingest_github(&cfg, repo, *include_source, Some(progress_tx)).await;
             // Wait for final DB write to complete before marking done

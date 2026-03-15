@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tracing::Instrument as _;
 use uuid::Uuid;
 
 use super::super::{latest_completed_result_for_url, resolve_initial_mode, write_audit_diff};
@@ -33,6 +34,7 @@ async fn process_job_impl(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), B
     let Some(ctx) = load_job_execution_context(cfg, pool, id).await? else {
         return Ok(());
     };
+    let _job_span = tracing::info_span!("crawl_job", job_id = %id, url = %ctx.url).entered();
 
     // Re-validate URL from DB before passing to engine — defense-in-depth against
     // stored injection via a compromised DB row.
@@ -243,35 +245,38 @@ fn spawn_progress_task(
     let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<CrawlSummary>(256);
     let progress_pool = pool.clone();
     let progress_job_id = id;
-    let progress_task = tokio::spawn(async move {
-        let mut last_update = std::time::Instant::now();
-        while let Some(progress) = progress_rx.recv().await {
-            if last_update.elapsed() < Duration::from_millis(500) {
-                continue; // drain channel, skip DB write
-            }
-            let pages_crawled = progress.pages_seen as u64;
-            let filtered_urls = pages_crawled.saturating_sub(progress.markdown_files as u64);
+    let progress_task = tokio::spawn(
+        async move {
+            let mut last_update = std::time::Instant::now();
+            while let Some(progress) = progress_rx.recv().await {
+                if last_update.elapsed() < Duration::from_millis(500) {
+                    continue; // drain channel, skip DB write
+                }
+                let pages_crawled = progress.pages_seen as u64;
+                let filtered_urls = pages_crawled.saturating_sub(progress.markdown_files as u64);
 
-            let progress_json = serde_json::json!({
-                "phase": "crawling",
-                "md_created": progress.markdown_files,
-                "thin_md": progress.thin_pages,
-                "filtered_urls": filtered_urls,
-                "pages_crawled": pages_crawled,
-                "pages_discovered": progress.pages_discovered,
-                "crawl_stream_pages": progress.pages_seen,
-            });
-            let _ = sqlx::query(
-                "UPDATE axon_crawl_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
-            )
-            .bind(progress_job_id)
-            .bind(progress_json)
-            .bind(JobStatus::Running.as_str())
-            .execute(&progress_pool)
-            .await;
-            last_update = std::time::Instant::now();
+                let progress_json = serde_json::json!({
+                    "phase": "crawling",
+                    "md_created": progress.markdown_files,
+                    "thin_md": progress.thin_pages,
+                    "filtered_urls": filtered_urls,
+                    "pages_crawled": pages_crawled,
+                    "pages_discovered": progress.pages_discovered,
+                    "crawl_stream_pages": progress.pages_seen,
+                });
+                let _ = sqlx::query(
+                    "UPDATE axon_crawl_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
+                )
+                .bind(progress_job_id)
+                .bind(progress_json)
+                .bind(JobStatus::Running.as_str())
+                .execute(&progress_pool)
+                .await;
+                last_update = std::time::Instant::now();
+            }
         }
-    });
+        .instrument(tracing::Span::current()),
+    );
 
     (progress_tx, progress_task)
 }

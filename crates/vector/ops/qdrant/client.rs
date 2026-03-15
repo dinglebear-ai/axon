@@ -227,6 +227,7 @@ pub(crate) async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result
 }
 
 /// Delete all Qdrant points matching `url` via payload filter.
+#[cfg(test)]
 pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Result<()> {
     let client = http_client()?;
     let endpoint = format!(

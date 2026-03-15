@@ -132,7 +132,7 @@ Defines the stable JSON API shapes for `--json` output across all job commands:
 
 | Function | Purpose |
 |----------|---------|
-| `maybe_handle_ingest_subcommand(cfg, cmd)` | Routes ingest subcommands (same pattern as crawl). Known gap: `"errors"` arm is unhandled — falls through to "requires subcommand" error |
+| `maybe_handle_ingest_subcommand(cfg, cmd)` | Routes ingest subcommands (same pattern as crawl): status, cancel, errors, list, cleanup, clear, worker |
 | `parse_ingest_job_id(cfg, cmd, action)` | Parses `cfg.positional[1]` as UUID; descriptive error if missing |
 | `enqueue_ingest_job(cfg, source)` | Enqueues job, prints job ID (JSON or human) |
 | `print_ingest_sync_result(cfg, cmd, chunks, target)` | Prints sync completion summary |

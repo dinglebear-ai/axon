@@ -14,7 +14,7 @@ pub use utils::{
 };
 
 pub(crate) use client::{
-    qdrant_delete_by_url_filter, qdrant_delete_stale_tail, qdrant_domain_facets,
-    qdrant_retrieve_by_url, qdrant_scroll_pages, qdrant_search,
+    qdrant_delete_stale_tail, qdrant_domain_facets, qdrant_retrieve_by_url, qdrant_scroll_pages,
+    qdrant_search,
 };
 pub(crate) use utils::{env_usize_clamped, payload_domain, payload_url};

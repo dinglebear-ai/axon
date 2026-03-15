@@ -6,7 +6,9 @@ use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::fmt::writer::MakeWriter;
-use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields, format::Writer};
+use tracing_subscriber::fmt::{
+    FmtContext, FormatEvent, FormatFields, FormattedFields, format::Writer,
+};
 use tracing_subscriber::registry::LookupSpan;
 
 #[derive(Debug)]
@@ -237,7 +239,7 @@ where
 {
     fn format_event(
         &self,
-        _ctx: &FmtContext<'_, S, N>,
+        ctx: &FmtContext<'_, S, N>,
         mut writer: Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> fmt::Result {
@@ -317,6 +319,34 @@ where
                 )?;
             } else {
                 write!(writer, "  {key}={val}")?;
+            }
+        }
+
+        // Span context fields (job_id, source, target, etc.) ─────────────────
+        // Performance note: this span walk runs on every console-emitted event. At the
+        // default WARN filter this is negligible. If the console filter is ever lowered
+        // to INFO (e.g. via RUST_LOG=info), high-throughput paths (embed batches, crawl
+        // pages) will walk spans on every emit. Consider gating on Level if observed.
+        let mut span_fields: Vec<String> = Vec::new();
+        let mut current = ctx.lookup_current();
+        while let Some(span) = current {
+            if let Some(fields) = span.extensions().get::<FormattedFields<N>>()
+                && !fields.fields.is_empty()
+            {
+                span_fields.push(fields.fields.clone());
+            }
+            current = span.parent();
+        }
+        span_fields.reverse(); // root → leaf order
+        for fields_str in &span_fields {
+            if ansi {
+                write!(
+                    writer,
+                    "  {}",
+                    Style::new().dim().apply_to(fields_str.as_str())
+                )?;
+            } else {
+                write!(writer, "  {fields_str}")?;
             }
         }
 

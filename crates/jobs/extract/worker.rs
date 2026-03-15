@@ -299,6 +299,7 @@ async fn process_extract_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<()
 }
 
 async fn process_claimed_extract_job(cfg: Config, pool: PgPool, id: Uuid) {
+    let _job_span = tracing::info_span!("extract_job", job_id = %id).entered();
     let fail_msg = match process_extract_job(&cfg, &pool, id).await {
         Ok(()) => None,
         Err(err) => Some(err.to_string()),

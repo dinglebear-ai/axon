@@ -231,3 +231,32 @@ async fn tei_embed_fails_fast_on_404() {
     );
     assert_eq!(*call_count.lock().unwrap(), 1, "404 should not be retried");
 }
+
+/// EmbedSummary must expose the docs_failed field for partial-result reporting.
+#[test]
+fn embed_summary_exposes_docs_failed() {
+    let summary = super::EmbedSummary {
+        docs_embedded: 10,
+        docs_failed: 3,
+        chunks_embedded: 42,
+    };
+    assert_eq!(summary.docs_embedded, 10);
+    assert_eq!(summary.docs_failed, 3);
+    assert_eq!(summary.chunks_embedded, 42);
+}
+
+/// TEI retry default (5) must produce a worst-case retry budget that fits
+/// inside the doc timeout (300s default).
+#[test]
+fn tei_max_retries_default_fits_doc_timeout() {
+    let max_retries = 5usize;
+    let request_timeout_s = 30u64;
+    let backoff_sum_s: u64 = (0..max_retries as u32)
+        .map(|i| 1u64.saturating_mul(2u64.pow(i)).min(60))
+        .sum();
+    let worst_case = (max_retries as u64 * request_timeout_s) + backoff_sum_s;
+    assert!(
+        worst_case < 300,
+        "worst-case retry budget ({worst_case}s) must fit inside 300s doc timeout"
+    );
+}

@@ -107,7 +107,6 @@ All three functions follow the same pipeline:
 
 | Gap | Status |
 |-----|--------|
-| `axon ingest errors <uuid>` | Silently unhandled — `maybe_handle_ingest_subcommand` doesn't match `"errors"`, falls through to "requires subcommand" error. Fix: add `"errors"` arm to the match in `ingest_jobs.rs`. |
 | YouTube age-restricted / private videos | `yt-dlp` exits non-zero; error is a per-video skip warning in playlist mode, job failure in single-video mode. No friendly message. |
 | YouTube manual captions | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not requested. Videos with manual but no auto-generated captions will fail. |
 

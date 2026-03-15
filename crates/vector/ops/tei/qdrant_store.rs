@@ -32,12 +32,13 @@ async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
         cfg.collection
     );
     // Code-specific indexes enable filtered searches without full collection scans
+    // chunking_method: universal field present on all chunk types (not just GitHub)
     for field in &[
         "url",
         "domain",
         "source_type",
         "gh_file_language",
-        "gh_chunking_method",
+        "chunking_method",
     ] {
         client
             .put(&index_url)

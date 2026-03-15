@@ -1,12 +1,14 @@
+mod batch;
+mod line_range;
+
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
+use crate::crates::vector::ops::PreparedDoc;
 use crate::crates::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name,
 };
 use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
-use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::{Result, bail};
-use futures_util::stream::{self, StreamExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -14,25 +16,12 @@ use tokio::sync::mpsc;
 use super::meta::{GitHubPayloadParams, build_github_payload};
 use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
 
-const FILE_PROGRESS_EVERY: usize = 25;
+use batch::{collect_and_embed_batched, send_progress};
+use line_range::line_range_for_chunk;
 
-/// Skip files larger than 5 MB to avoid memory spikes from generated/minified blobs.
-const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
-
-/// Flush accumulated PreparedDocs to the embed pipeline every N docs to bound memory.
-const EMBED_BATCH_SIZE: usize = 50;
-
-/// Extensions that have tree-sitter grammar support for AST-aware chunking.
-const TREE_SITTER_EXTENSIONS: &[&str] = &["rs", "py", "js", "jsx", "ts", "tsx", "go", "sh", "bash"];
-
-/// Determine the chunking method based on file extension.
-fn chunking_method(ext: &str) -> &'static str {
-    if TREE_SITTER_EXTENSIONS.contains(&ext) {
-        "tree-sitter"
-    } else {
-        "prose"
-    }
-}
+/// Skip files larger than 50 MB — guards against true binary blobs and multi-GB generated files
+/// while allowing large-but-legitimate source files (generated impls, large grammar tables, etc.).
+const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Extract the file extension from a path (lowercase, no dot).
 fn file_extension(path: &str) -> String {
@@ -156,23 +145,6 @@ struct FileEmbedCtx {
     is_private: Option<bool>,
 }
 
-/// Compute line range (1-indexed, inclusive) for a chunk within content.
-///
-/// Finds the chunk's byte offset via substring search, then counts newlines
-/// preceding the start and within the chunk to derive start/end lines.
-fn line_range_for_chunk(content: &str, chunk: &str) -> (u32, u32) {
-    let byte_offset = content.find(chunk).unwrap_or(0);
-    // Lines before this chunk (1-indexed).
-    let start_line = content[..byte_offset]
-        .bytes()
-        .filter(|&b| b == b'\n')
-        .count() as u32
-        + 1;
-    let lines_in_chunk = chunk.bytes().filter(|&b| b == b'\n').count() as u32;
-    let end_line = start_line + lines_in_chunk;
-    (start_line, end_line)
-}
-
 /// Read a single file from the cloned repo and build one `PreparedDoc` per chunk.
 ///
 /// Each doc carries its own `gh_line_start`/`gh_line_end` metadata so the embed
@@ -228,7 +200,6 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
     let lang = language_name(&ext).to_string();
     let ftype = classify_file_type(path).to_string();
     let is_test = is_test_path(path);
-    let method = chunking_method(&ext).to_string();
     let file_size = text.len();
 
     // One PreparedDoc per chunk so each carries its own line range metadata.
@@ -251,7 +222,6 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
                 file_type: Some(ftype.clone()),
                 is_test: Some(is_test),
                 file_size_bytes: Some(file_size),
-                chunking_method: Some(method.clone()),
                 gh_line_start: Some(line_start),
                 gh_line_end: Some(line_end),
                 ..Default::default()
@@ -352,98 +322,8 @@ pub async fn embed_files(
     Ok(chunks_embedded)
 }
 
-/// Stream file reads and flush accumulated docs to the embed pipeline every
-/// `EMBED_BATCH_SIZE` docs, bounding peak memory instead of buffering all files.
-async fn collect_and_embed_batched(
-    ctx: &Arc<FileEmbedCtx>,
-    file_items: Vec<String>,
-    files_total: usize,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
-) -> Result<(usize, usize)> {
-    let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
-    let mut file_stream = stream::iter(file_items)
-        .map(|path| {
-            let ctx = Arc::clone(ctx);
-            async move { read_file_embed_docs(ctx.as_ref(), &path).await }
-        })
-        .buffer_unordered(concurrency);
-
-    let mut batch: Vec<PreparedDoc> = Vec::with_capacity(EMBED_BATCH_SIZE);
-    let mut files_done = 0usize;
-    let mut failed = 0usize;
-    let mut total_chunks = 0usize;
-
-    while let Some(result) = file_stream.next().await {
-        files_done += 1;
-        match result {
-            Ok(docs) => batch.extend(docs),
-            Err(_) => failed += 1,
-        }
-
-        // Flush when the batch is large enough to keep memory bounded.
-        if batch.len() >= EMBED_BATCH_SIZE {
-            total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
-        }
-
-        if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
-            send_progress(
-                progress_tx,
-                serde_json::json!({
-                    "files_done": files_done,
-                    "files_total": files_total,
-                    "chunks_embedded": total_chunks,
-                    "phase": "collecting_files",
-                }),
-            )
-            .await;
-        }
-    }
-
-    // Flush any remaining docs.
-    if !batch.is_empty() {
-        total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
-    }
-
-    Ok((total_chunks, failed))
-}
-
-/// Send a batch of docs to the embed pipeline and clear the buffer.
-async fn flush_batch(
-    cfg: &Config,
-    batch: &mut Vec<PreparedDoc>,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
-) -> Result<usize> {
-    let docs = std::mem::take(batch);
-    let count = docs.len();
-
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "phase": "embedding_batch",
-            "batch_size": count,
-        }),
-    )
-    .await;
-
-    let summary = embed_prepared_docs(cfg, docs, None)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    Ok(summary.chunks_embedded)
-}
-
-async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: serde_json::Value) {
-    if let Some(tx) = tx
-        && let Err(err) = tx.send(progress).await
-    {
-        log_warn(&format!(
-            "command=ingest_github progress_send_failed err={err}"
-        ));
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::line_range_for_chunk;
     use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 
     /// Pre-chunking must produce bounded content per chunk.
@@ -481,31 +361,5 @@ mod tests {
             }
         }
         // None is also valid — caller uses chunk_text fallback
-    }
-
-    #[test]
-    fn line_range_first_line() {
-        let content = "hello world";
-        let (start, end) = line_range_for_chunk(content, "hello world");
-        assert_eq!(start, 1);
-        assert_eq!(end, 1);
-    }
-
-    #[test]
-    fn line_range_multi_line_content() {
-        let content = "line1\nline2\nline3\nline4\nline5";
-        // Chunk spanning lines 3-4
-        let (start, end) = line_range_for_chunk(content, "line3\nline4");
-        assert_eq!(start, 3);
-        assert_eq!(end, 4);
-    }
-
-    #[test]
-    fn line_range_chunk_not_found_defaults_to_start() {
-        let content = "fn main() {}";
-        let (start, end) = line_range_for_chunk(content, "not_in_content");
-        // Falls back to byte_offset=0, so line 1
-        assert_eq!(start, 1);
-        assert_eq!(end, 1);
     }
 }

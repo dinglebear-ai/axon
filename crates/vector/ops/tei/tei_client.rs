@@ -7,7 +7,7 @@ use reqwest::StatusCode;
 use std::error::Error;
 use std::time::Duration;
 
-const TEI_MAX_RETRIES_DEFAULT: usize = 10;
+const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;
 const TEI_REQUEST_TIMEOUT_MS_MAX: u64 = 600_000;

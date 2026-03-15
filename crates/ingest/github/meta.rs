@@ -51,19 +51,20 @@ pub struct GitHubPayloadParams {
     pub is_draft: Option<bool>,
 
     // File
+    // NOTE: gh_chunking_method is intentionally absent — chunking_method is set universally
+    // by the TEI embed layer (code_embed.rs / text_embed.rs); no GitHub-specific field needed.
     pub file_path: Option<String>,
     pub file_language: Option<String>,
     pub file_type: Option<String>,
     pub is_test: Option<bool>,
     pub file_size_bytes: Option<usize>,
-    pub chunking_method: Option<String>,
 
     // Chunk line range (1-indexed, inclusive)
     pub gh_line_start: Option<u32>,
     pub gh_line_end: Option<u32>,
 }
 
-/// Build a Qdrant extra payload with all 33 `gh_*` keys.
+/// Build a Qdrant extra payload with all 32 `gh_*` keys.
 ///
 /// Null `Option` fields become JSON `null`, ensuring every chunk has the same
 /// schema regardless of content kind.
@@ -106,7 +107,6 @@ pub fn build_github_payload(params: &GitHubPayloadParams) -> Value {
         "gh_file_type": params.file_type,
         "gh_is_test": params.is_test,
         "gh_file_size_bytes": params.file_size_bytes,
-        "gh_chunking_method": params.chunking_method,
 
         // Chunk line range (1-indexed, inclusive)
         "gh_line_start": params.gh_line_start,
@@ -135,7 +135,7 @@ mod tests {
         let params = make_common_params();
         let payload = build_github_payload(&params);
         let obj = payload.as_object().expect("payload is an object");
-        assert_eq!(obj.len(), 33, "expected 33 gh_* keys, got {}", obj.len());
+        assert_eq!(obj.len(), 32, "expected 32 gh_* keys, got {}", obj.len());
     }
 
     #[test]
@@ -159,7 +159,6 @@ mod tests {
             file_type: Some("source".into()),
             is_test: Some(false),
             file_size_bytes: Some(1024),
-            chunking_method: Some("tree-sitter".into()),
             ..Default::default()
         };
         let payload = build_github_payload(&params);
@@ -168,7 +167,6 @@ mod tests {
         assert_eq!(payload["gh_file_type"], "source");
         assert_eq!(payload["gh_is_test"], false);
         assert_eq!(payload["gh_file_size_bytes"], 1024);
-        assert_eq!(payload["gh_chunking_method"], "tree-sitter");
     }
 
     #[test]
@@ -222,7 +220,6 @@ mod tests {
         assert_eq!(payload["gh_is_pr"], false);
         // File fields should be null for issue chunks
         assert!(payload["gh_file_path"].is_null());
-        assert!(payload["gh_chunking_method"].is_null());
     }
 
     #[test]

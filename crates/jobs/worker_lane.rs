@@ -137,19 +137,37 @@ pub(crate) async fn sweep_stale_jobs(
     .await
     {
         Ok(stats) => {
-            if stats.stale_candidates > 0 || stats.reclaimed_jobs > 0 {
+            if stats.stale_candidates > 0 || stats.reclaimed_jobs > 0 || stats.exhausted_jobs > 0 {
                 log_info(&format!(
-                    "watchdog {} sweep lane={} candidates={} marked={} reclaimed={}",
+                    "watchdog {} sweep lane={} candidates={} marked={} reclaimed={} exhausted={}",
                     wc.job_kind,
                     lane,
                     stats.stale_candidates,
                     stats.marked_candidates,
-                    stats.reclaimed_jobs
+                    stats.reclaimed_jobs,
+                    stats.exhausted_jobs,
                 ));
                 for id in &stats.reclaimed_ids {
                     log_warn(&format!(
-                        "watchdog stale_{}_job job_id={id} reclaimed=true",
+                        "watchdog stale_{}_job job_id={id} action=requeued",
                         wc.job_kind
+                    ));
+                }
+                for id in &stats.exhausted_ids {
+                    log_warn(&format!(
+                        "watchdog stale_{}_job job_id={id} action=exhausted_permanently_failed",
+                        wc.job_kind
+                    ));
+                }
+                // Re-publish reclaimed jobs to AMQP so the worker picks them up.
+                if !stats.reclaimed_ids.is_empty()
+                    && let Err(e) =
+                        batch_enqueue_jobs(cfg, &wc.queue_name, &stats.reclaimed_ids).await
+                {
+                    log_warn(&format!(
+                        "watchdog {}: re-enqueue failed for {} reclaimed job(s): {e}",
+                        wc.job_kind,
+                        stats.reclaimed_ids.len()
                     ));
                 }
             } else {

@@ -1,5 +1,34 @@
 # Changelog
-Last Modified: 2026-03-14 (session: v0.23.3 — secondary violation fixes: rate-limit eviction, sentinel type, elicit error, mcporter path, docs)
+Last Modified: 2026-03-15 (session: v0.24.1 — embed pipeline resilience, TEI retry tuning, unified PreparedDoc pipeline)
+
+## [0.24.1] — fix/embed-pipeline-resilience
+
+This section documents commits on `fix/embed-pipeline-resilience` relative to `main` (`e9353d67`).
+
+### Highlights
+
+- **Embed pipeline resilience (v0.24.1)** — three structural fixes for the embed pipeline identified via systematic debugging of production ingest failures: (1) pipeline skip-and-continue — `run_embed_pipeline` now catches per-doc errors and continues instead of aborting the entire batch, tracking failures in `EmbedSummary.docs_failed`; (2) upsert-first pattern — removed pre-delete step that caused permanent data loss when TEI timed out mid-embed, replaced with deterministic UUID v5 point IDs (overwrite on upsert) followed by `qdrant_delete_stale_tail` only after successful upsert; (3) TEI retry budget tuning — `TEI_MAX_RETRIES_DEFAULT` reduced from 10 to 5, worst-case budget 181s fits inside 300s doc timeout. Two new tests: `embed_summary_exposes_docs_failed` and `tei_max_retries_default_fits_doc_timeout`.
+
+### Commits since `main` (`e9353d67`)
+
+| SHA | Message |
+|-----|---------|
+| (pending) | fix(embed): pipeline resilience — skip failed docs, upsert-first, tune retry budget (v0.24.1) |
+
+## [0.24.0] — main
+
+This section documents commits on `main` relative to `fe11a78d`.
+
+### Highlights
+
+- **Scrape format params, search pagination, TEI chunking metadata, Qdrant retry (`e9353d67`)** — MCP scrape format parameters, search result pagination, TEI chunking metadata fields, and Qdrant upsert retry logic.
+- **GitHub ingest code review fixes (`954f480c`)** — all code review findings addressed for ingest/github module.
+- **Centralized heartbeat (`a8fae674`)** — heartbeat logic moved into `worker_lane` via `wrap_with_heartbeat`, eliminating per-worker duplication.
+- **Batch pipeline deletion (`89c4011d`)** — removed `EmbedDocument`, `embed_documents_batch`, and `embed_pipeline.rs` in favor of unified `PreparedDoc` pipeline.
+- **Unified PreparedDoc pipeline (`8d22e7f5`–`99dfb55d`)** — migrated sessions, reddit, youtube, github issues/PRs/wiki/metadata, and github files to the unified `PreparedDoc` embed pipeline.
+- **PreparedDoc metadata fields (`95add431`)** — `source_type`, `content_type`, `title`, `extra` fields added to `PreparedDoc`, exposed `embed_prepared_docs` entry point.
+- **Pre-chunking optimization (`1a78dc82`)** — github files pre-chunked before TEI batching, eliminating 413 fallback path.
+- **Worker CPU tuning (`5802ff62`)** — CPU-based lane defaults and async stale-tail deletes for better throughput.
 
 ## [Unreleased] — feat/web-integration-review-fixes
 

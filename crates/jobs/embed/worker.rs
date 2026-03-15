@@ -204,6 +204,7 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
 }
 
 async fn process_claimed_embed_job(cfg: Config, pool: PgPool, id: Uuid) {
+    let _job_span = tracing::info_span!("embed_job", job_id = %id).entered();
     let fail_msg = match process_embed_job(&cfg, &pool, id).await {
         Ok(()) => None,
         Err(err) => Some(err.to_string()),

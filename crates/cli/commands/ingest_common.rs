@@ -89,6 +89,20 @@ pub fn parse_ingest_job_id(
     Ok(Uuid::parse_str(id)?)
 }
 
+/// Extract a reclaim label if this job has been watchdog-reclaimed at least once.
+fn ingest_reclaim_label(result_json: &Option<serde_json::Value>) -> Option<String> {
+    let count = result_json
+        .as_ref()?
+        .get("_reclaim")?
+        .get("count")?
+        .as_u64()?;
+    if count > 0 {
+        Some(format!("⟳ reclaimed {count}x"))
+    } else {
+        None
+    }
+}
+
 /// Extract a progress string from an ingest job's `result_json`.
 ///
 /// Handles YouTube playlists (`videos_done/videos_total`) and GitHub repos
@@ -168,6 +182,9 @@ async fn handle_ingest_status(
             if let Some(progress) = ingest_progress(&job.result_json) {
                 println!("  {} {}", muted("Progress:"), progress);
             }
+            if let Some(reclaim) = ingest_reclaim_label(&job.result_json) {
+                println!("  {} {}", muted("Reclaimed:"), accent(&reclaim));
+            }
             if let Some(err) = job.error_text.as_deref() {
                 println!("  {} {}", muted("Error:"), err);
             }
@@ -190,8 +207,11 @@ async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Bo
                 let progress = ingest_progress(&job.result_json)
                     .map(|p| format!(" [{p}]"))
                     .unwrap_or_default();
+                let reclaim = ingest_reclaim_label(&job.result_json)
+                    .map(|r| format!(" {}", muted(&format!("({r})"))))
+                    .unwrap_or_default();
                 println!(
-                    "  {} {} {}/{}{progress}",
+                    "  {} {} {}/{}{progress}{reclaim}",
                     symbol_for_status(&job.status),
                     accent(&job.id().to_string()),
                     job.source_type,

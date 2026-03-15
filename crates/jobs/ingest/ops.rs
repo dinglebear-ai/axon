@@ -67,7 +67,15 @@ pub async fn list_ingest_jobs(
     ensure_schema(&pool).await?;
     Ok(sqlx::query_as::<_, IngestJob>(
         "SELECT id,status,source_type,target,created_at,updated_at,started_at,finished_at,\
-         error_text,result_json,config_json FROM axon_ingest_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+         error_text,result_json,config_json FROM axon_ingest_jobs \
+         ORDER BY CASE status \
+           WHEN 'running' THEN 0 \
+           WHEN 'pending' THEN 1 \
+           WHEN 'failed'  THEN 2 \
+           WHEN 'completed' THEN 3 \
+           ELSE 4 \
+         END, created_at DESC \
+         LIMIT $1 OFFSET $2",
     )
     .bind(limit)
     .bind(offset)
