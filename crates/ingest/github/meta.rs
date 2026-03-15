@@ -52,7 +52,7 @@ pub struct GitHubPayloadParams {
 
     // File
     // NOTE: gh_chunking_method is intentionally absent — chunking_method is set universally
-    // by the TEI embed layer (code_embed.rs / text_embed.rs); no GitHub-specific field needed.
+    // by the TEI embed layer (pipeline.rs); no GitHub-specific field needed.
     pub file_path: Option<String>,
     pub file_language: Option<String>,
     pub file_type: Option<String>,

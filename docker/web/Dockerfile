@@ -74,8 +74,7 @@ WORKDIR /app
 # Pre-create dirs that anonymous volumes will mount over.
 RUN mkdir -p /app/.next /app/node_modules
 
-# Copy dep manifests only — source is bind-mounted at runtime for hot reload.
-# Build context is apps/web so paths are relative to that directory.
+# Copy dep manifests first for install-layer reuse.
 COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Run pnpm install as node so the anonymous volume inherits node-owned files.
 # pnpm-dev and Next.js auto-install both run as node; ownership must match.
@@ -84,6 +83,8 @@ COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # uid=1000,gid=1000 matches the node user so pnpm (running as node) can write to the mount.
 RUN --mount=type=cache,target=/home/node/.local/share/pnpm/store,uid=1000,gid=1000 \
     chown -R node:node /app && su node -s /bin/sh -c "pnpm install --frozen-lockfile"
+
+COPY --chown=node:node . ./
 
 # s6 service definitions injected via additional_contexts (web-s6: docker/web/s6-rc.d)
 COPY --from=web-s6 . /etc/s6-overlay/s6-rc.d/

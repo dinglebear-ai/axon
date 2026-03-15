@@ -1,5 +1,30 @@
 # Changelog
-Last Modified: 2026-03-15 (session: v0.24.1 — embed pipeline resilience, TEI retry tuning, unified PreparedDoc pipeline)
+Last Modified: 2026-03-15 (session: v0.25.0 — Pulse shell redesign, AI elements, hybrid search, new API routes)
+
+## [0.25.0] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` relative to `main` (`96773a08`).
+
+### Highlights
+
+- **Pulse shell redesign** — comprehensive overhaul of all shell components: `axon-shell.tsx`, `axon-shell-state.ts`, `axon-sidebar.tsx`, `axon-prompt-composer.tsx`, `axon-message-list.tsx`, `axon-mcp-pane.tsx`, `axon-settings-pane.tsx`, `axon-terminal-pane.tsx`, `axon-logs-dialog.tsx`, `axon-pane-handle.tsx`, `axon-shell-resize-divider.tsx`, mobile pane switcher, density selector, and canvas profile selector.
+- **AI elements components** — new structured components for AI conversation rendering: `conversation.tsx`, `confirmation.tsx`, `message.tsx`, `queue.tsx`, `tool.tsx` for displaying ACP turn results in the shell.
+- **Hybrid vector+sparse search** — new `crates/vector/ops/qdrant/hybrid.rs` combining dense embedding and sparse BM25 retrieval for improved recall; sparse query support added to `ops/sparse.rs` and wired into `query.rs`.
+- **New API routes** — `/api/ai/chat` (SSE LLM streaming), `/api/ai/command` (Plate.js editor AI), `/api/logs` (Docker container log SSE stream), `/api/workspace` (filesystem browser).
+- **New UI primitives** — `alert-dialog.tsx`, `card.tsx`, `progress.tsx`, `sheet.tsx`, `skeleton.tsx` from shadcn/ui added to component library.
+- **TEI pipeline refactor** — `qdrant_store.rs` split into `qdrant_store/` module, `code_embed.rs` deleted (logic merged into pipeline), `text_embed.rs` consolidated; `pipeline.rs` restructured for clearer chunking + embed + upsert flow.
+- **DB migration** — `migrations/002_job_status_indexes.sql` adds composite indexes on job status columns for query performance.
+- **Server-side jobs lib** — `apps/web/lib/server/jobs.ts` extracted as shared server-side job querying layer; `/api/jobs` and `/api/jobs/[id]` routes updated to use it.
+- **Shell-store** — `lib/shell-store.ts` and `axon-shell-state.ts` refactored; `use-is-mobile.ts` hook added.
+- **CLI/crawl improvements** — crawl audit manifest, job contracts, `crates/cli/commands/common.rs` hardening.
+- **Config** — `build_config.rs`, `config.rs`, `config_impls.rs` updated for new feature flags.
+- **Docs** — `ARCHITECTURE.md`, `JOB-LIFECYCLE.md`, all ingest docs updated; `CLAUDE.md` files refreshed for `crates/ingest`, `crates/vector`, `crates/cli`, and `apps/web`.
+
+### Commits since `main` (`96773a08`)
+
+| SHA | Message |
+|-----|---------|
+| (pending) | feat(web,vector): Pulse shell redesign, AI elements, hybrid search, new API routes (v0.25.0) |
 
 ## [0.24.1] — fix/embed-pipeline-resilience
 
@@ -13,7 +38,7 @@ This section documents commits on `fix/embed-pipeline-resilience` relative to `m
 
 | SHA | Message |
 |-----|---------|
-| (pending) | fix(embed): pipeline resilience — skip failed docs, upsert-first, tune retry budget (v0.24.1) |
+| 96773a08 | fix(embed): pipeline resilience — skip failed docs, upsert-first, tune retry budget (v0.24.1) |
 
 ## [0.24.0] — main
 

@@ -150,10 +150,10 @@ mod tests {
     use crate::crates::jobs::watch::list_watch_defs_with_pool;
 
     #[tokio::test]
-    async fn watch_create_emits_json_with_id() -> Result<(), Box<dyn Error>> {
-        let Some(pg_url) = resolve_test_pg_url() else {
-            return Ok(());
-        };
+    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
+    async fn cli_watch_create_emits_json_with_id() -> Result<(), Box<dyn Error>> {
+        let pg_url = resolve_test_pg_url()
+            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url.clone();
         cfg.json_output = true;
@@ -167,10 +167,6 @@ mod tests {
             "--task-payload".to_string(),
             "{\"urls\":[\"https://example.com\"]}".to_string(),
         ];
-        if sqlx::PgPool::connect(&pg_url).await.is_err() {
-            return Ok(());
-        }
-
         run_watch(&cfg).await?;
         let pool = sqlx::PgPool::connect(&pg_url).await?;
         let defs = list_watch_defs_with_pool(&pool, 500).await?;
@@ -179,25 +175,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn watch_list_returns_definitions() -> Result<(), Box<dyn Error>> {
-        let Some(pg_url) = resolve_test_pg_url() else {
-            return Ok(());
-        };
+    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
+    async fn cli_watch_list_returns_definitions() -> Result<(), Box<dyn Error>> {
+        let pg_url = resolve_test_pg_url()
+            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url;
-        if sqlx::PgPool::connect(&cfg.pg_url).await.is_err() {
-            return Ok(());
-        }
         cfg.positional = vec!["list".to_string()];
         run_watch(&cfg).await?;
         Ok(())
     }
 
     #[tokio::test]
-    async fn watch_run_now_dispatches_task_and_returns_run_id() -> Result<(), Box<dyn Error>> {
-        let Some(pg_url) = resolve_test_pg_url() else {
-            return Ok(());
-        };
+    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
+    async fn cli_watch_run_now_dispatches_task_and_returns_run_id() -> Result<(), Box<dyn Error>> {
+        let pg_url = resolve_test_pg_url()
+            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url.clone();
         cfg.positional = vec![
@@ -210,9 +203,6 @@ mod tests {
             "--task-payload".to_string(),
             "{\"urls\":[\"https://example.com\"]}".to_string(),
         ];
-        if sqlx::PgPool::connect(&pg_url).await.is_err() {
-            return Ok(());
-        }
         run_watch(&cfg).await?;
 
         let pool = sqlx::PgPool::connect(&pg_url).await?;

@@ -88,7 +88,7 @@
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.25rem;
-  --text-2xs: 0.625rem;
+  --text-2xs: 0.6875rem;
   --text-xs: 0.6875rem;
   --text-sm: 0.75rem;
   --text-md: 0.8125rem;
@@ -104,6 +104,24 @@
   --density-compact-cell-x: 0.5rem;
   --density-comfortable-cell-x: 0.75rem;
 
+  /* ── H-1: Extracted rgba tokens ──
+   * These are the ~10 most repeated hardcoded rgba values across
+   * the component codebase, extracted here as semantic custom properties.
+   * Components should migrate to using these tokens instead of raw rgba(). */
+  --border-hover: rgba(175, 215, 255, 0.14);
+  --border-active-hover: rgba(175, 215, 255, 0.26);
+  --border-active: rgba(175, 215, 255, 0.46);
+  --surface-active-start: rgba(135, 175, 255, 0.28);
+  --surface-active-end: rgba(135, 175, 255, 0.1);
+  --surface-primary-strong: rgba(135, 175, 255, 0.34);
+  --accent-pink-bg: rgba(255, 135, 175, 0.28);
+  --glass-overlay-strong: rgba(15, 23, 42, 0.95);
+  --glass-overlay-menu: rgba(3, 7, 18, 0.92);
+  --shadow-heavy: rgba(0, 0, 0, 0.5);
+
+  /* ── M-2: Sunken surface — darker than --surface-base ── */
+  --surface-sunken: rgba(2, 5, 14, 0.8);
+
   /* ── Density Overrides ── */
 }
 
@@ -114,7 +132,7 @@
   --space-3: 0.6rem;
   --space-4: 0.8rem;
   --space-5: 1rem;
-  --text-xs: 0.625rem;
+  --text-xs: 0.6875rem;
   --text-sm: 0.6875rem;
   --text-md: 0.75rem;
   --text-base: 0.8125rem;
@@ -133,6 +151,7 @@
 
   /* Brand palette — named correctly */
   --axon-primary: #87afff;
+  --axon-primary-bg: rgba(135, 175, 255, 0.08);
   --axon-primary-strong: #afd7ff;
   --axon-secondary: #ff87af;
   --axon-secondary-strong: #ff9ec0;
@@ -156,7 +175,7 @@
   --text-primary: #e8f4f8;
   --text-secondary: #b8cfe0;
   --text-muted: #7a96b8;
-  --text-dim: #4d6a8a;
+  --text-dim: #6a8aaa;
 
   /* Shadows */
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.2);
@@ -188,39 +207,54 @@
 }
 
 .dark {
-  --background: oklch(0.08 0.02 250);
-  --foreground: oklch(0.9 0.01 250);
-  --card: oklch(0.12 0.02 250);
-  --card-foreground: oklch(0.9 0.01 250);
-  --popover: oklch(0.12 0.02 250);
-  --popover-foreground: oklch(0.9 0.01 250);
-  --primary: oklch(0.7 0.15 200);
-  --primary-foreground: oklch(0.08 0.02 250);
+  /* ── H-2: shadcn tokens aligned to Axon design tokens ──
+   * --primary → matches --axon-primary (#87afff)
+   * --destructive → matches --axon-secondary (#ff87af) instead of orange-red
+   * --background → matches --surface-base / --axon-bg (#030712)
+   * --foreground → matches --text-primary (#e8f4f8)
+   * --muted-foreground → matches --text-muted (#7a96b8)
+   * --border/--input → matches --border-subtle at oklch
+   * --ring → derived from --focus-ring-color */
+  --background: #030712;
+  --foreground: #e8f4f8;
+  --card: rgba(10, 18, 35, 0.85);
+  --card-foreground: #e8f4f8;
+  --popover: rgba(6, 12, 26, 0.95);
+  --popover-foreground: #e8f4f8;
+  --primary: #87afff;
+  --primary-foreground: #030712;
   --secondary: oklch(0.15 0.02 250);
-  --secondary-foreground: oklch(0.85 0.01 250);
+  --secondary-foreground: #b8cfe0;
   --muted: oklch(0.15 0.02 250);
-  --muted-foreground: oklch(0.55 0.02 250);
+  --muted-foreground: #7a96b8;
   --accent: oklch(0.18 0.03 250);
-  --accent-foreground: oklch(0.9 0.01 250);
-  --destructive: oklch(0.704 0.191 22.216);
+  --accent-foreground: #e8f4f8;
+  --destructive: #ff87af;
   --border: oklch(0.2 0.03 250);
   --input: oklch(0.2 0.03 250);
-  --ring: oklch(0.6 0.12 200);
-  --chart-1: oklch(0.7 0.15 200);
+  --ring: rgba(135, 175, 255, 0.5);
+  --chart-1: #87afff;
   --chart-2: oklch(0.65 0.18 160);
   --chart-3: oklch(0.6 0.12 280);
   --chart-4: oklch(0.75 0.15 140);
   --chart-5: oklch(0.55 0.2 300);
   --sidebar: oklch(0.1 0.02 250);
-  --sidebar-foreground: oklch(0.9 0.01 250);
-  --sidebar-primary: oklch(0.7 0.15 200);
-  --sidebar-primary-foreground: oklch(0.9 0.01 250);
+  --sidebar-foreground: #e8f4f8;
+  --sidebar-primary: #87afff;
+  --sidebar-primary-foreground: #e8f4f8;
   --sidebar-accent: oklch(0.15 0.02 250);
-  --sidebar-accent-foreground: oklch(0.9 0.01 250);
+  --sidebar-accent-foreground: #e8f4f8;
   --sidebar-border: oklch(0.2 0.03 250);
-  --sidebar-ring: oklch(0.6 0.12 200);
-  --brand: oklch(0.7 0.15 200);
-  --highlight: oklch(0.8 0.18 160);
+  --sidebar-ring: rgba(135, 175, 255, 0.5);
+  --brand: #87afff;
+  --highlight: #afd7ff;
+}
+
+/* ── Sonner toast theming ── */
+[data-sonner-toaster] [data-sonner-toast] {
+  background: var(--glass-overlay);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
 }
 
 .axon-mission-control {
@@ -273,7 +307,14 @@
     z-index: 0;
   }
 
-  /* Global accessible focus ring */
+  /* ── M-10: Canonical focus ring ──
+   * All interactive elements use this pattern for keyboard focus.
+   * Components may suppress outline and use ring utilities instead
+   * (e.g. shadcn's focus-visible:ring-[3px] focus-visible:ring-ring/50),
+   * but this base rule ensures nothing is ever invisible to keyboard users.
+   *
+   * Pattern: 2px solid outline, 2px offset, --focus-ring-color
+   * Override: set outline:none and apply a visible box-shadow/ring instead. */
   :focus-visible {
     outline: 2px solid var(--focus-ring-color);
     outline-offset: 2px;
@@ -465,6 +506,14 @@ h4 {
   font-optical-sizing: auto;
 }
 
+/* ── M-3: Shared AXON wordmark gradient ── */
+.axon-wordmark {
+  background: linear-gradient(135deg, #afd7ff 0%, #ff87af 50%, #8787af 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 /* Themed scrollbars — outside @layer for specificity over Tailwind resets */
 * {
   scrollbar-width: thin;
@@ -486,34 +535,210 @@ h4 {
   background: rgba(135, 175, 255, 0.45);
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
+/* ── M-11: prefers-reduced-motion ──
+ * All @keyframes defined inside a no-preference guard so users who
+ * request reduced motion get static, non-animated UI by default.
+ * The @utility rules reference these keyframes — when the keyframes
+ * don't exist (reduced-motion), the animation property is a no-op. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  @keyframes omnibox-sweep {
+    0% {
+      transform: translateX(-150%);
+      opacity: 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    92% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(250%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes omnibox-progress {
+    0% {
+      transform: translateX(-300%);
+    }
+    100% {
+      transform: translateX(500%);
+    }
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes badge-glow {
+    0%,
+    100% {
+      filter: drop-shadow(0 0 3px rgba(135, 175, 255, 0.1));
+    }
+    50% {
+      filter: drop-shadow(0 0 8px rgba(135, 175, 255, 0.3));
+    }
+  }
+
+  @keyframes breathing {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes check-bounce {
+    0% {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.15);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes divider-glow {
+    from {
+      box-shadow: none;
+    }
+    to {
+      box-shadow: 0 0 12px rgba(135, 175, 255, 0.3);
+    }
+  }
+
+  @keyframes slide-down-reveal {
+    from {
+      max-height: 0;
+      opacity: 0;
+    }
+    to {
+      max-height: 600px;
+      opacity: 1;
+    }
+  }
+
+  @keyframes cmdk-palette-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -52%) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  @keyframes slide-up-fade {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes submit-ready {
+    0% {
+      box-shadow: 0 0 0 0 rgba(135, 175, 255, 0.4);
+      transform: scale(1);
+    }
+    50% {
+      box-shadow: 0 0 12px 2px rgba(135, 175, 255, 0.25);
+      transform: scale(1.05);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(135, 175, 255, 0);
+      transform: scale(1);
+    }
+  }
+
+  @keyframes crossfade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes typing-dot {
+    0%,
+    80%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    40% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+  }
+}
+
 .animate-shimmer {
   animation: shimmer 2s ease-in-out infinite;
 }
 
-@keyframes omnibox-sweep {
-  0% {
-    transform: translateX(-150%);
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(250%);
-    opacity: 0;
-  }
-}
 .animate-omnibox-sweep {
   background: linear-gradient(
     90deg,
@@ -526,14 +751,6 @@ h4 {
   animation: omnibox-sweep 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-@keyframes omnibox-progress {
-  0% {
-    transform: translateX(-300%);
-  }
-  100% {
-    transform: translateX(500%);
-  }
-}
 .animate-omnibox-progress {
   background: linear-gradient(
     90deg,
@@ -547,91 +764,6 @@ h4 {
 }
 
 /* ── Motion Library v1 ── */
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes badge-glow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 3px rgba(135, 175, 255, 0.1));
-  }
-  50% {
-    filter: drop-shadow(0 0 8px rgba(135, 175, 255, 0.3));
-  }
-}
-
-@keyframes breathing {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes check-bounce {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes divider-glow {
-  from {
-    box-shadow: none;
-  }
-  to {
-    box-shadow: 0 0 12px rgba(135, 175, 255, 0.3);
-  }
-}
-
-@keyframes slide-down-reveal {
-  from {
-    max-height: 0;
-    opacity: 0;
-  }
-  to {
-    max-height: 600px;
-    opacity: 1;
-  }
-}
 
 @utility animate-fade-in-up {
   animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -662,81 +794,20 @@ h4 {
   overflow: hidden;
 }
 
-@keyframes cmdk-palette-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -52%) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
 @utility animate-cmdk-in {
   animation: cmdk-palette-in 180ms ease-out forwards;
-}
-
-@keyframes slide-up-fade {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @utility animate-slide-up {
   animation: slide-up-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes submit-ready {
-  0% {
-    box-shadow: 0 0 0 0 rgba(135, 175, 255, 0.4);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 12px 2px rgba(135, 175, 255, 0.25);
-    transform: scale(1.05);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(135, 175, 255, 0);
-    transform: scale(1);
-  }
-}
-
 @utility animate-submit-ready {
   animation: submit-ready 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes crossfade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @utility animate-crossfade-in {
   animation: crossfade-in 0.25s ease-out forwards;
-}
-
-@keyframes typing-dot {
-  0%,
-  80%,
-  100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  40% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
 }
 
 @utility animate-typing-dot {

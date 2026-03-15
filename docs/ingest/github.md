@@ -32,7 +32,7 @@ Source code files are chunked via **tree-sitter AST-aware splitting** when a gra
 
 Files in unsupported languages fall back to standard 2000-char prose chunking with 200-char overlap.
 
-Implementation: `chunk_code()` in `crates/vector/ops/input/code.rs`, called via `embed_code_with_metadata()` in `crates/vector/ops/tei.rs`.
+Implementation: `chunk_code()` in `crates/vector/ops/input/code.rs`, used to pre-chunk code files before passing to `embed_prepared_docs()` via `PreparedDoc`.
 
 ### File Classification
 
@@ -78,7 +78,7 @@ The argument accepts:
 3. Fetches the full file tree via `GET /repos/{owner}/{repo}/git/trees/{sha}?recursive=1`
 4. Filters files through `is_indexable_doc_path()` (always) and `is_indexable_source_path()` (unless `--no-source`)
 5. Fetches file contents in parallel via `GET /repos/{owner}/{repo}/contents/{path}`
-6. Code files are chunked via `embed_code_with_metadata()` (tree-sitter AST when available, prose fallback); doc files use standard `embed_text_with_extra_payload()`
+6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. All are embedded via `embed_prepared_docs()` with `PreparedDoc`
 7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
 8. Clones the wiki via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files
 9. All chunk types carry unified `gh_*` metadata payload via `build_github_payload()` in `crates/ingest/github/meta.rs`

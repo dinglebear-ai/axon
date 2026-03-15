@@ -1,8 +1,8 @@
 [package]
 name = "axon"
-version = "0.24.1"
+version = "0.25.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
 authors = ["jmagar"]
 license = "MIT"

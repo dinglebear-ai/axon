@@ -338,6 +338,14 @@ pub struct Config {
     /// Env: `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` (clamped 1–5). Default: 2.
     pub ask_min_citations_nontrivial: usize,
 
+    /// Enable hybrid search (dense + BM42 sparse + RRF) for Named-mode collections.
+    /// Env: `AXON_HYBRID_SEARCH` (true/false/1/0). Default: true.
+    pub hybrid_search_enabled: bool,
+
+    /// Candidates fetched per prefetch arm (dense + sparse) before RRF fusion.
+    /// Env: `AXON_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
+    pub hybrid_search_candidates: usize,
+
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,
 

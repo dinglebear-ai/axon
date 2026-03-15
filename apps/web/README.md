@@ -79,6 +79,10 @@ The web application follows a strict performance-first architecture to ensure a 
 - `GET /api/pulse/source` enforces URL SSRF protections and returns `code: "ssrf_blocked"` when blocked.
 - Shared error envelope: `{ error, code?, errorId?, detail? }`.
 
+### Jobs API Docs
+
+- Jobs API route and helper documentation: `apps/web/docs/jobs-api.md`
+
 ## Omnibox Behavior
 
 The omnibox supports keyboard-first operation with explicit visual state feedback.
@@ -166,6 +170,55 @@ Route safety:
 - path traversal (`..`) is rejected.
 - resolved paths must stay under source roots.
 
+## Environment Variables
+
+### Web Runtime
+
+- `AXON_BACKEND_URL`: backend HTTP/WS origin used by rewrites and server routes
+- `NEXT_PUBLIC_AXON_WS_URL`: optional client-side websocket override
+- `SHELL_SERVER_PORT`: shell websocket port used by `/ws/shell`
+- `AXON_BIN`: optional binary override for `/api/cortex/*`
+- `AXON_WORKSPACE`: workspace root path used by web-side helpers
+- `AXON_DATA_DIR`: runtime data root for persisted web artifacts and config
+- `AXON_OUTPUT_DIR`: output root consumed by `/api/docs`
+
+### Web Auth
+
+- `AXON_WEB_API_TOKEN`: required API token enforced by `proxy.ts`
+- `NEXT_PUBLIC_AXON_API_TOKEN`: browser token used by client API helpers
+- `AXON_WEB_BROWSER_API_TOKEN`: optional browser-only API token accepted by `proxy.ts`
+- `AXON_WEB_ALLOWED_ORIGINS`: comma-separated origin allowlist for `/api/*`
+- `AXON_WEB_ALLOW_INSECURE_DEV`: localhost-only auth bypass for development
+- `AXON_WEB_ALLOW_QUERY_TOKEN`: enables `?token=` auth for `/api/*` when explicitly enabled
+- `AXON_SHELL_WS_TOKEN`: optional shell websocket token override
+- `AXON_SHELL_ALLOWED_ORIGINS`: optional shell websocket origin allowlist
+- `NEXT_PUBLIC_SHELL_WS_TOKEN`: optional browser token for `/ws/shell`
+
+### Shell Server Hardening
+
+- `SHELL_SERVER_MAX_CONNECTIONS`: maximum concurrent shell websocket clients
+- `SHELL_SERVER_IDLE_TIMEOUT_MS`: idle timeout for shell sessions
+- `SHELL_SERVER_MAX_PAYLOAD_BYTES`: maximum inbound websocket payload size
+- `SHELL_SERVER_MAX_RESIZE_COLS`: resize column clamp
+- `SHELL_SERVER_MAX_RESIZE_ROWS`: resize row clamp
+
+### AI Routes
+
+- `OPENAI_BASE_URL`: upstream OpenAI-compatible base URL for `/api/ai/chat`
+- `OPENAI_API_KEY`: upstream key for `/api/ai/chat`
+- `OPENAI_MODEL`: default model for `/api/ai/chat`
+- `AI_GATEWAY_API_KEY`: gateway key for `/api/ai/command` and `/api/ai/copilot`
+- `AXON_ALLOWED_CLAUDE_BETAS`: allowlist for Pulse chat `--betas`
+
+### Logs and Docker
+
+- `AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS`: enables `/api/logs`
+- `AXON_WEB_DOCKER_SOCKET_PATH`: Docker socket path used by `/api/logs`
+
+### Jobs and Docs
+
+- `AXON_COLLECTION`: default collection used by Pulse docs and jobs views
+
 ## Key Files
 
 - `components/omnibox.tsx`: omnibox interaction/state UI
@@ -176,5 +229,6 @@ Route safety:
 - `proxy.ts`: API authentication + origin enforcement
 - `shell-server.mjs`: authenticated node-pty websocket bridge with restricted child env
 - `lib/command-options.ts`: shared omnibox command-option type (no component-layer coupling)
+- `docs/jobs-api.md`: jobs list/detail route behavior and shared helper boundaries
 - `app/evaluate/page.tsx`: side-by-side evaluate rendering showcase
 - `__tests__/omnibox.test.ts`: omnibox helper unit tests

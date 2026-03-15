@@ -195,6 +195,43 @@ describe('GET /api/workspace', () => {
   // action=read — file content
   // -------------------------------------------------------------------------
   describe('action=read (file content)', () => {
+    it('returns 403 for sensitive .env file reads', async () => {
+      fsMock.realpath.mockImplementation((p: string) => Promise.resolve(p))
+
+      const { GET } = await import('@/app/api/workspace/route')
+      const req = makeReq({ action: 'read', path: '.env' })
+      const res = await GET(req)
+      expect(res.status).toBe(403)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toMatch(/access denied/i)
+    })
+
+    it('returns 403 for sensitive .env.* file reads', async () => {
+      fsMock.realpath.mockImplementation((p: string) => Promise.resolve(p))
+
+      const { GET } = await import('@/app/api/workspace/route')
+      const req = makeReq({ action: 'read', path: '.env.local' })
+      const res = await GET(req)
+      expect(res.status).toBe(403)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toMatch(/access denied/i)
+    })
+
+    it('still allows .env.example reads', async () => {
+      fsMock.realpath.mockImplementation((p: string) => Promise.resolve(p))
+      fsMock.stat.mockResolvedValue(makeStatFile(64))
+      fsMock.readFile.mockResolvedValue('AXON_WEB_API_TOKEN=CHANGE_ME')
+
+      const { GET } = await import('@/app/api/workspace/route')
+      const req = makeReq({ action: 'read', path: '.env.example' })
+      const res = await GET(req)
+      expect(res.status).toBe(200)
+
+      const body = (await res.json()) as { type: string; content: string }
+      expect(body.type).toBe('text')
+      expect(body.content).toContain('AXON_WEB_API_TOKEN')
+    })
+
     it('returns 200 with text content for a supported text file', async () => {
       // realpath must echo back the resolved path so basename/extname work correctly
       fsMock.realpath.mockImplementation((p: string) => Promise.resolve(p))

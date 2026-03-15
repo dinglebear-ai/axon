@@ -7,7 +7,7 @@ import { useAxonWs } from '@/hooks/use-axon-ws'
 import { getAcpModelConfigOption } from '@/lib/pulse/acp-config'
 import { probePulseConfigOptions } from '@/lib/pulse/config-api'
 import type { AcpConfigOption } from '@/lib/pulse/types'
-import { useShellStore } from '@/lib/shell-store'
+import { usePulseSlice, useWorkspaceSlice } from '@/lib/shell-store'
 import type { CrawlFile, WsLifecycleEntry, WsServerMsg } from '@/lib/ws-protocol'
 import { handleWsMessage, isRuntimeRelevantWsMessage } from './handlers'
 import { makeInitialRuntimeState } from './runtime'
@@ -68,26 +68,45 @@ export function useWsMessagesProvider() {
   const currentJobIdRef = useRef<string | null>(null)
   const [lifecycleEntries, setLifecycleEntries] = useState<WsLifecycleEntry[]>([])
   const [cancelResponse, setCancelResponse] = useState<CancelResponseState | null>(null)
-  const [workspaceMode, setWorkspaceMode] = useState<string | null>('pulse')
-  const [workspacePrompt, setWorkspacePrompt] = useState<string | null>(null)
-  const [workspacePromptVersion, setWorkspacePromptVersion] = useState(0)
-  const [workspaceResumeSessionId, setWorkspaceResumeSessionId] = useState<string | null>(null)
-  const [workspaceResumeVersion, setWorkspaceResumeVersion] = useState(0)
-  const [workspaceContext, setWorkspaceContext] = useState<WorkspaceContextState | null>(null)
 
   // ACP-related state — grouped together since they are logically coupled
   // and frequently updated as a set (agent change triggers config probe,
   // config probe updates options, options influence model selection).
-  const pulseAgent = useShellStore((s) => s.pulseAgent) as PulseWorkspaceAgent
-  const pulseModel = useShellStore((s) => s.pulseModel) as PulseWorkspaceModel
-  const pulsePermissionLevel = useShellStore(
-    (s) => s.pulsePermissionLevel,
-  ) as PulseWorkspacePermission
-  const acpConfigOptions = useShellStore((s) => s.acpConfigOptions) as AcpConfigOption[]
-  const setPulseAgent = useShellStore((s) => s.setPulseAgent)
-  const setPulseModel = useShellStore((s) => s.setPulseModel)
-  const setPulsePermissionLevel = useShellStore((s) => s.setPulsePermissionLevel)
-  const setAcpConfigOptions = useShellStore((s) => s.setAcpConfigOptions)
+  const {
+    pulseAgent,
+    pulseModel,
+    pulsePermissionLevel,
+    acpConfigOptions,
+    setPulseAgent,
+    setPulseModel,
+    setPulsePermissionLevel,
+    setAcpConfigOptions,
+  } = usePulseSlice() as {
+    pulseAgent: PulseWorkspaceAgent
+    pulseModel: PulseWorkspaceModel
+    pulsePermissionLevel: PulseWorkspacePermission
+    acpConfigOptions: AcpConfigOption[]
+    setPulseAgent: (agent: PulseWorkspaceAgent) => void
+    setPulseModel: (model: PulseWorkspaceModel) => void
+    setPulsePermissionLevel: (level: PulseWorkspacePermission) => void
+    setAcpConfigOptions: (options: AcpConfigOption[]) => void
+  }
+  const {
+    workspaceMode,
+    workspacePrompt,
+    workspacePromptVersion,
+    workspaceResumeSessionId,
+    workspaceResumeVersion,
+    workspaceContext,
+    setWorkspaceMode,
+    setWorkspacePrompt,
+    setWorkspacePromptVersion,
+    bumpWorkspacePromptVersion,
+    setWorkspaceResumeSessionId,
+    setWorkspaceResumeVersion,
+    bumpWorkspaceResumeVersion,
+    setWorkspaceContext,
+  } = useWorkspaceSlice()
 
   const selectedFileRef = useRef<string | null>(null)
   const crawlFilesRef = useRef<CrawlFile[]>([])
@@ -266,7 +285,13 @@ export function useWsMessagesProvider() {
       setRecentRuns,
       setWorkspaceMode,
       setWorkspacePrompt,
-      setWorkspacePromptVersion,
+      setWorkspacePromptVersion: (action: React.SetStateAction<number>) => {
+        if (typeof action === 'function') {
+          setWorkspacePromptVersion(action(workspacePromptVersion))
+          return
+        }
+        setWorkspacePromptVersion(action)
+      },
       setCurrentJobIdTracked,
     }
     return subscribeByTypes(
@@ -299,6 +324,10 @@ export function useWsMessagesProvider() {
     setStdoutJsonTracked,
     setVirtualFileContentByPathTracked,
     subscribeByTypes,
+    setWorkspaceMode,
+    setWorkspacePrompt,
+    setWorkspacePromptVersion,
+    workspacePromptVersion,
   ])
 
   const selectFile = useCallback(
@@ -348,12 +377,15 @@ export function useWsMessagesProvider() {
     ],
   )
 
-  const resetWorkspaceRuntime = useCallback((mode: string | null) => {
-    setWorkspaceMode(mode)
-    setWorkspacePrompt(null)
-    setWorkspacePromptVersion(0)
-    setWorkspaceContext(null)
-  }, [])
+  const resetWorkspaceRuntime = useCallback(
+    (mode: string | null) => {
+      setWorkspaceMode(mode)
+      setWorkspacePrompt(null)
+      setWorkspacePromptVersion(0)
+      setWorkspaceContext(null)
+    },
+    [setWorkspaceContext, setWorkspaceMode, setWorkspacePrompt, setWorkspacePromptVersion],
+  )
 
   const startExecution = useCallback(
     (mode: string, input?: string, options?: { preserveWorkspace?: boolean }) => {
@@ -380,28 +412,48 @@ export function useWsMessagesProvider() {
     [resetExecutionRuntime, resetWorkspaceRuntime],
   )
 
-  const submitWorkspacePrompt = useCallback((prompt: string) => {
-    setWorkspaceMode('pulse')
-    setHasResults(true)
-    setWorkspaceResumeSessionId(null)
-    setWorkspaceResumeVersion(0)
-    setWorkspacePrompt(prompt)
-    setWorkspacePromptVersion((prev) => prev + 1)
-  }, [])
+  const submitWorkspacePrompt = useCallback(
+    (prompt: string) => {
+      setWorkspaceMode('pulse')
+      setHasResults(true)
+      setWorkspaceResumeSessionId(null)
+      setWorkspaceResumeVersion(0)
+      setWorkspacePrompt(prompt)
+      bumpWorkspacePromptVersion()
+    },
+    [
+      bumpWorkspacePromptVersion,
+      setHasResults,
+      setWorkspaceMode,
+      setWorkspacePrompt,
+      setWorkspaceResumeSessionId,
+      setWorkspaceResumeVersion,
+    ],
+  )
 
-  const resumeWorkspaceSession = useCallback((sessionId: string) => {
-    setWorkspaceMode('pulse')
-    setHasResults(true)
-    setWorkspacePrompt(null)
-    setWorkspacePromptVersion(0)
-    setWorkspaceResumeSessionId(sessionId)
-    setWorkspaceResumeVersion((prev) => prev + 1)
-  }, [])
+  const resumeWorkspaceSession = useCallback(
+    (sessionId: string) => {
+      setWorkspaceMode('pulse')
+      setHasResults(true)
+      setWorkspacePrompt(null)
+      setWorkspacePromptVersion(0)
+      setWorkspaceResumeSessionId(sessionId)
+      bumpWorkspaceResumeVersion()
+    },
+    [
+      bumpWorkspaceResumeVersion,
+      setHasResults,
+      setWorkspaceMode,
+      setWorkspacePrompt,
+      setWorkspacePromptVersion,
+      setWorkspaceResumeSessionId,
+    ],
+  )
 
   const clearWorkspaceResumeSession = useCallback(() => {
     setWorkspaceResumeSessionId(null)
     setWorkspaceResumeVersion(0)
-  }, [])
+  }, [setWorkspaceResumeSessionId, setWorkspaceResumeVersion])
 
   const deactivateWorkspace = useCallback(() => {
     currentModeRef.current = ''
@@ -414,11 +466,21 @@ export function useWsMessagesProvider() {
     setWorkspaceResumeSessionId(null)
     setWorkspaceResumeVersion(0)
     setWorkspaceContext(null)
-  }, [])
+  }, [
+    setWorkspaceContext,
+    setWorkspaceMode,
+    setWorkspacePrompt,
+    setWorkspacePromptVersion,
+    setWorkspaceResumeSessionId,
+    setWorkspaceResumeVersion,
+  ])
 
-  const updateWorkspaceContext = useCallback((context: WorkspaceContextState | null) => {
-    setWorkspaceContext(context)
-  }, [])
+  const updateWorkspaceContext = useCallback(
+    (context: WorkspaceContextState | null) => {
+      setWorkspaceContext(context)
+    },
+    [setWorkspaceContext],
+  )
 
   const executionState = useMemo<WsMessagesExecutionState>(
     () => ({

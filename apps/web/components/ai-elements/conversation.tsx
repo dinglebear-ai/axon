@@ -79,6 +79,7 @@ export function ConversationScrollButton({ className, ...props }: ComponentProps
         'absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-[rgba(135,175,255,0.2)] bg-[rgba(4,8,20,0.92)]',
         className,
       )}
+      aria-label="Scroll to bottom"
       onClick={handleScrollToBottom}
       size="icon"
       type="button"

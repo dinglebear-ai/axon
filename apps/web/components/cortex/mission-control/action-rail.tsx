@@ -1,4 +1,5 @@
 import { Command, RefreshCw, ShieldCheck, Telescope } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { MissionControlModel } from '@/lib/cortex/mission-control-model'
 
 interface ActionRailProps {
@@ -31,40 +32,44 @@ export function ActionRail({
       <section className="axon-mission-card">
         <h2 className="text-sm font-semibold text-[var(--text-primary)]">Control Rail</h2>
         <div className="mt-3 grid gap-2">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onRefresh}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border-standard)] bg-[var(--surface-primary)] px-3 py-2 text-xs font-medium text-[var(--mc-accent-cyan)] hover:bg-[var(--surface-primary-active)]"
+            className="w-full justify-center gap-2 border-[var(--border-standard)] bg-[var(--surface-primary)] text-xs font-medium text-[var(--mc-accent-cyan)] hover:bg-[var(--surface-primary-active)]"
           >
             <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh Overview
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onDoctorSweep}
             disabled={doctorBusy}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-float)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
+            className="w-full justify-center gap-2 border-[var(--border-subtle)] bg-[var(--surface-float)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
           >
             <ShieldCheck className={`size-3.5 ${doctorBusy ? 'animate-pulse' : ''}`} />
-            {doctorBusy ? 'Running Doctor Sweep…' : 'Run Doctor Sweep'}
-          </button>
-          <button
-            type="button"
+            {doctorBusy ? 'Running Doctor Sweep...' : 'Run Doctor Sweep'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onInspectSources}
             disabled={sourcesBusy}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-float)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
+            className="w-full justify-center gap-2 border-[var(--border-subtle)] bg-[var(--surface-float)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
           >
             <Telescope className={`size-3.5 ${sourcesBusy ? 'animate-pulse' : ''}`} />
-            {sourcesBusy ? 'Inspecting Sources…' : 'Inspect Sources'}
-          </button>
-          <button
-            type="button"
+            {sourcesBusy ? 'Inspecting Sources...' : 'Inspect Sources'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onOpenJobsConsole}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-float)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
+            className="w-full justify-center gap-2 border-[var(--border-subtle)] bg-[var(--surface-float)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-standard)]"
           >
             <Command className="size-3.5" />
             {jobsConsoleOpen ? 'Jobs Console Open' : 'Open Jobs Console'}
-          </button>
+          </Button>
         </div>
         {railMessage && <p className="mt-3 text-xs text-[var(--text-secondary)]">{railMessage}</p>}
       </section>

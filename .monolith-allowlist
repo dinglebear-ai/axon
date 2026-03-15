@@ -9,3 +9,9 @@
 # Format:
 #   crates/core/massive_module.rs  # expires: 2026-03-09
 
+# Pulse shell redesign — split pending, needs extraction sprint
+apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-03-22
+apps/web/components/shell/axon-shell-state.ts  # expires: 2026-03-22
+crates/cli/commands/common.rs  # expires: 2026-03-22
+crates/jobs/refresh/url_processor.rs  # expires: 2026-03-22
+apps/web/hooks/ws-messages/provider.ts  # expires: 2026-03-22

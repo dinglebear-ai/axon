@@ -1,3 +1,4 @@
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   AlertCircle,
   ArrowLeft,
@@ -14,8 +15,10 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import type React from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { JobDetail } from '@/app/api/jobs/[id]/route'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   flattenJsonEntries,
   fmtDate,
@@ -68,22 +71,24 @@ function StatusBadge({ status }: { status: JobDetail['status'] }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
   const Icon = cfg.icon
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium ${cfg.color} ${cfg.bg}`}
+    <Badge
+      variant="outline"
+      className={`gap-1.5 rounded-full border-transparent text-xs font-medium ${cfg.color} ${cfg.bg}`}
     >
       <Icon className={`size-3.5 ${status === 'running' ? 'animate-spin' : ''}`} />
       {cfg.label}
-    </span>
+    </Badge>
   )
 }
 
 function TypeBadge({ type }: { type: string }) {
   return (
-    <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wider ${TYPE_COLORS[type] ?? ''}`}
+    <Badge
+      variant="outline"
+      className={`rounded-full border-transparent text-xs font-semibold uppercase tracking-wider ${TYPE_COLORS[type] ?? ''}`}
     >
       {type}
-    </span>
+    </Badge>
   )
 }
 
@@ -154,8 +159,8 @@ function ShowMoreList<T>({
   title,
   items,
   emptyText,
-  initial = 200,
-  step = 500,
+  initial = 100,
+  step = 100,
   renderItem,
 }: {
   title: string
@@ -168,6 +173,16 @@ function ShowMoreList<T>({
   const [visible, setVisible] = useState(initial)
   const shown = items.slice(0, visible)
   const hasMore = visible < items.length
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count: shown.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 32,
+    overscan: 15,
+  })
+
+  const useVirtual = shown.length > 100
 
   return (
     <div className="space-y-2">
@@ -183,21 +198,46 @@ function ShowMoreList<T>({
         <div className="rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.35)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
           {emptyText}
         </div>
+      ) : useVirtual ? (
+        <div
+          ref={scrollRef}
+          className="max-h-[400px] overflow-y-auto rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.35)] p-2"
+        >
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {renderItem(shown[virtualRow.index]!, virtualRow.index)}
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
-        <ul className="max-h-[22rem] space-y-1 overflow-auto rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.35)] p-2">
+        <ul className="max-h-[400px] space-y-1 overflow-y-auto rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.35)] p-2">
           {shown.map((item, idx) => (
             <li key={idx}>{renderItem(item, idx)}</li>
           ))}
         </ul>
       )}
       {hasMore && (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setVisible((prev) => prev + step)}
-          className="rounded border border-[var(--border-subtle)] px-2 py-1 text-[11px] text-[var(--axon-primary)] hover:bg-[rgba(135,175,255,0.1)]"
+          className="border-[var(--border-subtle)] text-[11px] text-[var(--axon-primary)] hover:bg-[rgba(135,175,255,0.1)]"
         >
-          Show {Math.min(step, items.length - visible).toLocaleString()} More
-        </button>
+          Show {Math.min(step, items.length - visible).toLocaleString()} more
+        </Button>
       )}
     </div>
   )
@@ -217,13 +257,15 @@ export function JobDetailErrorState({ error }: { error: string | null }) {
     <div className="flex h-full flex-col items-center justify-center gap-4 text-[var(--text-muted)]">
       <AlertCircle className="size-10 text-[var(--axon-secondary)]" />
       <p className="text-sm">{error ?? 'Job not found'}</p>
-      <Link
-        href="/jobs"
-        className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs text-[var(--axon-primary)] hover:bg-[rgba(135,175,255,0.1)] transition-colors"
-      >
-        <ArrowLeft className="size-3.5" />
-        Back to Jobs
-      </Link>
+      <Button variant="ghost" size="sm" asChild>
+        <Link
+          href="/"
+          className="gap-1.5 text-xs text-[var(--axon-primary)] hover:bg-[rgba(135,175,255,0.1)]"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to Dashboard
+        </Link>
+      </Button>
     </div>
   )
 }
@@ -237,13 +279,15 @@ export function JobDetailView({ job }: { job: JobDetail }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-5 py-3">
-        <Link
-          href="/jobs"
-          className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[rgba(135,175,255,0.08)] hover:text-[var(--text-secondary)] transition-colors"
-        >
-          <ArrowLeft className="size-3.5" />
-          Jobs
-        </Link>
+        <Button variant="ghost" size="sm" asChild>
+          <Link
+            href="/"
+            className="gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+          >
+            <ArrowLeft className="size-3.5" />
+            Dashboard
+          </Link>
+        </Button>
         <span className="text-[var(--text-dim)]">/</span>
         <TypeBadge type={job.type} />
         <StatusBadge status={job.status} />

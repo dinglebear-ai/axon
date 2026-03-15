@@ -239,12 +239,15 @@ services:
       HOST: "0.0.0.0"
       HOME: /home/node
       PORT: "49010"
+      AXON_WEB_APP_MODE: ${AXON_WEB_APP_MODE:-dev}
       AXON_ENFORCE_IMAGE_SHA: ${AXON_ENFORCE_IMAGE_SHA:-false}
       AXON_BACKEND_URL: "http://axon-workers:49000"
       NEXT_PUBLIC_AXON_PORT: "49000"
       AXON_WORKSPACE: /workspace
       AXON_DATA_DIR: /data
       AXON_OUTPUT_DIR: /data/axon/output
+      AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS: "true"
+      AXON_WEB_DOCKER_SOCKET_PATH: /var/run/docker.sock
       AXON_BIN: ${AXON_BIN:-}        # override binary path for /api/cortex/* routes (see .env.example)
       # Set WATCHPACK_POLLING=true in .env if file-watch events don't propagate
     volumes:
@@ -265,9 +268,7 @@ services:
       # Uncomment to mount host SSH keys (opt-in — exposes keys to the container):
       # - ${HOST_HOME:-${HOME}}/.ssh:/home/node/.ssh:ro
       - ${AXON_WORKSPACE:-${HOME}/workspace}:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # required for /api/logs (dockerode)
-    group_add:
-      - "981"  # host docker group GID — grants node user socket access
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       axon-workers:
         condition: service_healthy

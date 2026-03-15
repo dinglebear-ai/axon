@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import type { LocalDocFile } from '@/lib/omnibox'
 import { listPulseDocs } from '@/lib/pulse/storage'
 import { getWorkspaceRoot } from '@/lib/pulse/workspace-root'
+import { logError } from '@/lib/server/logger'
 
 type LocalDocSource = LocalDocFile['source']
 
@@ -115,7 +116,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ files: [...pulseFiles, ...docsFiles] })
   } catch (err) {
-    console.error('[Omnibox] Files route error:', err)
+    logError('api.omnibox.files.failed', {
+      message: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

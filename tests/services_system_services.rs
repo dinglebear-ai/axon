@@ -1,5 +1,6 @@
 use axon::crates::services::system::{
     map_doctor_payload, map_domains_payload, map_sources_payload, map_stats_payload,
+    summarize_detailed_domains,
 };
 
 #[test]
@@ -41,6 +42,25 @@ fn maps_domain_facets_to_domains_result() {
     assert_eq!(result.domains.len(), 2);
     assert_eq!(result.domains[0].domain, "example.com");
     assert_eq!(result.domains[0].vectors, 4);
+}
+
+#[test]
+fn summarizes_detailed_domains_with_unique_url_counts() {
+    let payloads = vec![
+        serde_json::json!({"domain": "example.com", "url": "https://example.com/a"}),
+        serde_json::json!({"domain": "example.com", "url": "https://example.com/a"}),
+        serde_json::json!({"domain": "example.com", "url": "https://example.com/b"}),
+        serde_json::json!({"domain": "docs.example.com", "url": "https://docs.example.com/guide"}),
+    ];
+
+    let result = summarize_detailed_domains(&payloads);
+    assert_eq!(result.domains.len(), 2);
+    assert_eq!(result.domains[0].domain, "docs.example.com");
+    assert_eq!(result.domains[0].vectors, 1);
+    assert_eq!(result.domains[0].urls, 1);
+    assert_eq!(result.domains[1].domain, "example.com");
+    assert_eq!(result.domains[1].vectors, 3);
+    assert_eq!(result.domains[1].urls, 2);
 }
 
 #[test]

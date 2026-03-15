@@ -62,7 +62,7 @@ export function DockerStats({ onStats, visible = false }: DockerStatsProps) {
 
   if (!data) {
     return (
-      <div className="p-6 text-center text-muted-foreground text-sm">
+      <div className="p-6 text-center text-[var(--text-muted)] text-sm">
         Waiting for Docker stats...
       </div>
     )
@@ -89,13 +89,18 @@ export function DockerStats({ onStats, visible = false }: DockerStatsProps) {
             const m = containers[name]!
             const shortName = name.replace(/^axon-/, '')
             return (
-              <div key={name} className="flex items-center gap-3 px-2 py-1 rounded bg-card/30">
-                <span className="text-primary font-medium min-w-[80px] truncate">{shortName}</span>
-                <span className="text-muted-foreground">CPU {m.cpu_percent.toFixed(1)}%</span>
-                <span className="text-muted-foreground">
+              <div
+                key={name}
+                className="flex items-center gap-3 px-2 py-1 rounded bg-[var(--surface-base)]"
+              >
+                <span className="text-[var(--text-primary)] font-medium min-w-[80px] truncate">
+                  {shortName}
+                </span>
+                <span className="text-[var(--text-muted)]">CPU {m.cpu_percent.toFixed(1)}%</span>
+                <span className="text-[var(--text-muted)]">
                   MEM {m.memory_usage_mb.toFixed(0)}MB/{m.memory_limit_mb.toFixed(0)}MB
                 </span>
-                <span className="text-muted-foreground">
+                <span className="text-[var(--text-muted)]">
                   NET {'\u2191'}
                   {formatBytes(m.net_tx_rate)}/s {'\u2193'}
                   {formatBytes(m.net_rx_rate)}/s
@@ -111,9 +116,9 @@ export function DockerStats({ onStats, visible = false }: DockerStatsProps) {
 
 function StatCard({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-lg border border-border/50 bg-card/30 p-3 text-center">
-      <div className="text-lg font-semibold text-foreground">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+    <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] p-3 text-center">
+      <div className="text-lg font-semibold text-[var(--text-primary)]">{value}</div>
+      <div className="text-xs text-[var(--text-muted)]">{label}</div>
     </div>
   )
 }

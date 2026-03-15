@@ -275,7 +275,7 @@ flowchart TD
   C --> F[crates/ingest/reddit.rs]
   D --> G[crates/ingest/youtube.rs]
   E --> H[crates/ingest/github.rs]
-  F --> I[embed_text_with_metadata -> Qdrant]
+  F --> I[embed_prepared_docs -> Qdrant]
   G --> I
   H --> I
 ```

@@ -69,6 +69,12 @@ const IGNORE_DIRS = new Set([
   'coverage',
 ])
 
+function isBlockedSecretFile(filePath: string): boolean {
+  const name = path.basename(filePath).toLowerCase()
+  if (name === '.env.example') return false
+  return name === '.env' || name.startsWith('.env.')
+}
+
 /** Returns safe resolved path + which root it belongs to, or an error string */
 function validatePath(raw: string): { safe: string; isClaudeRoot: boolean } | { error: string } {
   // Claude config paths: "__claude" or "__claude/..."
@@ -174,6 +180,12 @@ export async function GET(req: NextRequest) {
 
   if (action === 'read') {
     try {
+      if (isBlockedSecretFile(safePath)) {
+        return NextResponse.json(
+          { error: 'Access denied for sensitive environment files' },
+          { status: 403 },
+        )
+      }
       const stat = await fs.stat(safePath)
       if (stat.isDirectory()) {
         return NextResponse.json({ error: 'Is a directory' }, { status: 400 })

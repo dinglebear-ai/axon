@@ -4,7 +4,8 @@ use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_filename;
 use crate::crates::core::logging::log_warn;
 use crate::crates::crawl::manifest::ManifestEntry;
-use crate::crates::vector::ops::embed_text_with_metadata;
+use crate::crates::vector::ops::input::chunk_text;
+use crate::crates::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use sqlx::PgPool;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
@@ -141,17 +142,40 @@ pub(crate) async fn process_single_refresh_url(
                     }
 
                     if ctx.embed {
-                        match embed_text_with_metadata(ctx.cfg, markdown, url, "refresh", None)
-                            .await
-                        {
-                            Ok(chunks) => {
-                                summary.embedded_chunks += chunks;
-                            }
-                            Err(err) => {
-                                log_warn(&format!(
-                                    "refresh embed failed for url={} job_id={}: {}",
-                                    url, ctx.job_id, err
-                                ));
+                        let domain = spider::url::Url::parse(url)
+                            .ok()
+                            .and_then(|u| u.host_str().map(|s| s.to_string()))
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let chunks = chunk_text(markdown);
+                        if chunks.is_empty() {
+                            log_warn(&format!("refresh embed skipped (no chunks) for url={url}"));
+                        } else {
+                            let doc = PreparedDoc {
+                                url: url.to_string(),
+                                domain,
+                                chunks,
+                                source_type: "refresh".to_string(),
+                                content_type: "markdown",
+                                title: None,
+                                extra: None,
+                            };
+                            match embed_prepared_docs(ctx.cfg, vec![doc], None).await {
+                                Ok(result) => {
+                                    summary.embedded_chunks += result.chunks_embedded;
+                                    if result.docs_failed > 0 {
+                                        log_warn(&format!(
+                                            "refresh embed partial failure for url={url} \
+                                             job_id={}: {}/{} docs failed",
+                                            ctx.job_id, result.docs_failed, 1
+                                        ));
+                                    }
+                                }
+                                Err(err) => {
+                                    log_warn(&format!(
+                                        "refresh embed failed for url={} job_id={}: {}",
+                                        url, ctx.job_id, err
+                                    ));
+                                }
                             }
                         }
                     }

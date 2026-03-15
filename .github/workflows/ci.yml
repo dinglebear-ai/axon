@@ -152,7 +152,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.1
+          toolchain: 1.94.0
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: cargo fmt check
@@ -179,7 +179,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.87.0
+          toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (MSRV)
         run: cargo check --all-targets --locked
@@ -191,7 +191,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.93.1
+          toolchain: 1.94.0
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
@@ -243,7 +243,10 @@ jobs:
           toolchain: 1.93.1
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
-        run: cargo test --all --locked --features test-helpers
+        run: cargo test --all --locked --features test-helpers -- --skip worker_e2e
+
+      - name: cargo test ignored cli infra tests
+        run: cargo test --locked cli_ --features test-helpers -- --ignored
 
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh

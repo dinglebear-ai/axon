@@ -1,3 +1,7 @@
+use crate::crates::cli::commands::common::{
+    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
+    handle_job_recover, handle_job_status,
+};
 use crate::crates::cli::commands::status::metrics::{
     collection_from_config, display_embed_input, embed_metrics_suffix, format_error,
     job_runtime_text,
@@ -5,8 +9,7 @@ use crate::crates::cli::commands::status::metrics::{
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{
-    accent, confirm_destructive, error, muted, primary, status_label, status_text, subtle,
-    symbol_for_status,
+    accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
 };
 use crate::crates::services::embed as embed_service;
 use std::error::Error;
@@ -79,101 +82,26 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
 
 async fn handle_embed_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "status")?;
-    match crate::crates::jobs::embed::get_embed_job(cfg, id).await? {
-        Some(job) => {
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&job)?);
-            } else {
-                println!(
-                    "{} {}",
-                    primary("Embed Status for"),
-                    accent(&job.id.to_string())
-                );
-                println!(
-                    "  {} {}",
-                    symbol_for_status(&job.status),
-                    status_text(&job.status)
-                );
-                println!("  {} {}", muted("Input:"), job.input_text);
-                if let Some(err) = job.error_text.as_deref() {
-                    println!("  {} {}", muted("Error:"), err);
-                }
-                println!("Job ID: {}", job.id);
-            }
-        }
-        None => println!(
-            "{} {}",
-            symbol_for_status("error"),
-            muted(&format!("job not found: {id}"))
-        ),
-    }
-    Ok(())
+    let job = crate::crates::jobs::embed::get_embed_job(cfg, id).await?;
+    handle_job_status(cfg, job, id, "Embed")
 }
 
 async fn handle_embed_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "cancel")?;
     let canceled = embed_service::embed_cancel(cfg, id).await?;
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({"id": id, "canceled": canceled, "source": "rust"})
-        );
-    } else if canceled {
-        println!(
-            "{} canceled embed job {}",
-            symbol_for_status("canceled"),
-            accent(&id.to_string())
-        );
-        println!("Job ID: {id}");
-    } else {
-        println!(
-            "{} no cancellable embed job found for {}",
-            symbol_for_status("error"),
-            accent(&id.to_string())
-        );
-        println!("Job ID: {id}");
-    }
-    Ok(())
+    handle_job_cancel(cfg, id, canceled, "embed")
 }
 
 async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "errors")?;
-    match crate::crates::jobs::embed::get_embed_job(cfg, id).await? {
-        Some(job) => {
-            if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({"id": id, "status": job.status, "error": job.error_text})
-                );
-            } else {
-                println!(
-                    "{} {} {}",
-                    symbol_for_status(&job.status),
-                    accent(&id.to_string()),
-                    status_text(&job.status)
-                );
-                println!(
-                    "  {} {}",
-                    muted("Error:"),
-                    job.error_text.unwrap_or_else(|| "None".to_string())
-                );
-                println!("Job ID: {id}");
-            }
-        }
-        None => println!(
-            "{} {}",
-            symbol_for_status("error"),
-            muted(&format!("job not found: {id}"))
-        ),
-    }
-    Ok(())
+    let job = crate::crates::jobs::embed::get_embed_job(cfg, id).await?;
+    handle_job_errors(cfg, job, id, "embed")
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let jobs = crate::crates::jobs::embed::list_embed_jobs(cfg, 50, 0).await?;
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&jobs)?);
-        return Ok(());
+        return handle_job_list(cfg, jobs, "Embed");
     }
 
     println!("{}", primary("Embed Jobs"));
@@ -224,16 +152,7 @@ async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 async fn handle_embed_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let removed = embed_service::embed_cleanup(cfg).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::json!({"removed": removed}));
-    } else {
-        println!(
-            "{} removed {} embed jobs",
-            symbol_for_status("completed"),
-            removed
-        );
-    }
-    Ok(())
+    handle_job_cleanup(cfg, removed, "embed")
 }
 
 async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -250,33 +169,12 @@ async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     let removed = embed_service::embed_clear(cfg).await?;
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({"removed": removed, "queue_purged": true})
-        );
-    } else {
-        println!(
-            "{} cleared {} embed jobs and purged queue",
-            symbol_for_status("completed"),
-            removed
-        );
-    }
-    Ok(())
+    handle_job_clear(cfg, removed, "embed")
 }
 
 async fn handle_embed_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let reclaimed = embed_service::embed_recover(cfg).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::json!({"reclaimed": reclaimed}));
-    } else {
-        println!(
-            "{} reclaimed {} stale embed jobs",
-            symbol_for_status("completed"),
-            reclaimed
-        );
-    }
-    Ok(())
+    handle_job_recover(cfg, reclaimed, "embed")
 }
 
 fn resolve_embed_input(cfg: &Config) -> String {

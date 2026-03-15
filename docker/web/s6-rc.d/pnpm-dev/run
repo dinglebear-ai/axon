@@ -3,4 +3,7 @@
 # Next.js dev server. Source is bind-mounted at /app at runtime.
 # next dev binds to all interfaces when HOST=0.0.0.0 (set in docker-compose env).
 cd /app
+if [ "${AXON_WEB_APP_MODE:-dev}" = "production" ]; then
+    exec s6-setuidgid node env NODE_ENV=production pnpm run start
+fi
 exec s6-setuidgid node pnpm run dev

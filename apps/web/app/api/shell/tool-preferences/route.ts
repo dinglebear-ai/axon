@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { logError } from '@/lib/server/logger'
 import {
   loadToolPreferences,
   saveToolPreferences,
@@ -24,7 +25,9 @@ export async function GET() {
     const prefs = await loadToolPreferences()
     return NextResponse.json(prefs)
   } catch (error) {
-    console.error('[tool-preferences] GET failed:', error)
+    logError('api.shell.tool_preferences.get_failed', {
+      message: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'failed_to_load' }, { status: 500 })
   }
 }
@@ -50,7 +53,9 @@ export async function PUT(request: Request) {
     } satisfies ToolPreferencesRecord)
     return NextResponse.json(saved)
   } catch (error) {
-    console.error('[tool-preferences] PUT failed:', error)
+    logError('api.shell.tool_preferences.put_failed', {
+      message: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'failed_to_save' }, { status: 500 })
   }
 }

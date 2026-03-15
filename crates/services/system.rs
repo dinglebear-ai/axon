@@ -7,11 +7,15 @@ use crate::crates::jobs::ingest::{IngestJob, list_ingest_jobs};
 use crate::crates::jobs::refresh::{RefreshJob, list_refresh_jobs};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{
-    DedupeResult, DoctorResult, DomainFacet, DomainsResult, Pagination, SourcesResult, StatsResult,
-    StatusResult,
+    DedupeResult, DetailedDomainFacet, DetailedDomainsResult, DoctorResult, DomainFacet,
+    DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
 };
-use crate::crates::vector::ops::qdrant::{dedupe_payload, domains_payload, sources_payload};
+use crate::crates::vector::ops::qdrant::{
+    dedupe_payload, domains_payload, payload_domain, payload_url, qdrant_scroll_pages,
+    sources_payload,
+};
 use crate::crates::vector::ops::stats::stats_payload;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use tokio::sync::mpsc;
@@ -134,6 +138,43 @@ pub async fn domains(
 ) -> Result<DomainsResult, Box<dyn Error>> {
     let payload = domains_payload(cfg, pagination.limit, pagination.offset).await?;
     Ok(map_domains_payload(&payload)?)
+}
+
+pub fn summarize_detailed_domains(payloads: &[serde_json::Value]) -> DetailedDomainsResult {
+    let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
+    for payload in payloads {
+        let domain = payload_domain(payload);
+        let url = payload_url(payload);
+        let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
+        entry.0 += 1;
+        if !url.is_empty() {
+            entry.1.insert(url);
+        }
+    }
+
+    let mut domains: Vec<DetailedDomainFacet> = by_domain
+        .into_iter()
+        .map(|(domain, (vectors, urls))| DetailedDomainFacet {
+            domain,
+            vectors,
+            urls: urls.len(),
+        })
+        .collect();
+    domains.sort_by(|a, b| a.domain.cmp(&b.domain));
+    DetailedDomainsResult { domains }
+}
+
+pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box<dyn Error>> {
+    let mut payloads = Vec::new();
+    qdrant_scroll_pages(cfg, |points| {
+        for point in points {
+            if let Some(payload) = point.get("payload") {
+                payloads.push(payload.clone());
+            }
+        }
+    })
+    .await?;
+    Ok(summarize_detailed_domains(&payloads))
 }
 
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {

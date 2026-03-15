@@ -1,7 +1,8 @@
 'use client'
 
 import { Settings2, Shield, Timer } from 'lucide-react'
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -31,6 +32,53 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
   adapterTimeoutSecs: number | null
   onAdapterTimeoutSecsChange: (val: number | null) => void
 }) {
+  const handleFsChange = useCallback(
+    (val: boolean) => {
+      onEnableFsChange(val)
+      toast.success(`Filesystem access ${val ? 'enabled' : 'disabled'}`)
+    },
+    [onEnableFsChange],
+  )
+
+  const handleTerminalChange = useCallback(
+    (val: boolean) => {
+      onEnableTerminalChange(val)
+      toast.success(`Terminal access ${val ? 'enabled' : 'disabled'}`)
+    },
+    [onEnableTerminalChange],
+  )
+
+  const handlePermissionTimeout = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.value) {
+        onPermissionTimeoutSecsChange(null)
+        return
+      }
+      const n = parseInt(e.target.value, 10)
+      if (Number.isNaN(n)) return
+      onPermissionTimeoutSecsChange(n)
+    },
+    [onPermissionTimeoutSecsChange],
+  )
+
+  const handleAdapterTimeout = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.value) {
+        onAdapterTimeoutSecsChange(null)
+        return
+      }
+      const n = parseInt(e.target.value, 10)
+      if (Number.isNaN(n)) return
+      onAdapterTimeoutSecsChange(n)
+    },
+    [onAdapterTimeoutSecsChange],
+  )
+
+  const permissionOutOfRange =
+    permissionTimeoutSecs !== null && (permissionTimeoutSecs < 1 || permissionTimeoutSecs > 3600)
+  const adapterOutOfRange =
+    adapterTimeoutSecs !== null && (adapterTimeoutSecs < 1 || adapterTimeoutSecs > 86400)
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5">
@@ -71,7 +119,7 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
               <Switch
                 id="enable-fs"
                 checked={enableFs}
-                onCheckedChange={onEnableFsChange}
+                onCheckedChange={handleFsChange}
                 aria-label="Toggle filesystem access"
               />
             </div>
@@ -87,7 +135,7 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
               <Switch
                 id="enable-terminal"
                 checked={enableTerminal}
-                onCheckedChange={onEnableTerminalChange}
+                onCheckedChange={handleTerminalChange}
                 aria-label="Toggle terminal access"
               />
             </div>
@@ -113,13 +161,17 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
                 inputMode="numeric"
                 placeholder="Default: 60"
                 value={permissionTimeoutSecs ?? ''}
-                onChange={(e) =>
-                  onPermissionTimeoutSecsChange(
-                    e.target.value ? parseInt(e.target.value, 10) : null,
-                  )
-                }
-                className="h-8 text-xs bg-[var(--surface-sunken)] border-[var(--border-subtle)] focus-visible:ring-1 focus-visible:ring-[var(--axon-primary-strong)]"
+                onChange={handlePermissionTimeout}
+                aria-invalid={permissionOutOfRange || undefined}
+                className={`h-8 text-xs bg-[var(--surface-sunken)] border-[var(--border-subtle)] focus-visible:ring-1 focus-visible:ring-[var(--axon-primary-strong)] ${
+                  permissionOutOfRange ? 'border-destructive focus-visible:ring-destructive/50' : ''
+                }`}
               />
+              {permissionOutOfRange && (
+                <p className="text-[10px] text-destructive">
+                  Value must be between 1 and 3600 seconds
+                </p>
+              )}
               <p className="text-[10px] text-[var(--text-dim)]">
                 How long to wait for your approval before auto-cancelling
               </p>
@@ -136,11 +188,17 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
                 inputMode="numeric"
                 placeholder="Default: 300"
                 value={adapterTimeoutSecs ?? ''}
-                onChange={(e) =>
-                  onAdapterTimeoutSecsChange(e.target.value ? parseInt(e.target.value, 10) : null)
-                }
-                className="h-8 text-xs bg-[var(--surface-sunken)] border-[var(--border-subtle)] focus-visible:ring-1 focus-visible:ring-[var(--axon-primary-strong)]"
+                onChange={handleAdapterTimeout}
+                aria-invalid={adapterOutOfRange || undefined}
+                className={`h-8 text-xs bg-[var(--surface-sunken)] border-[var(--border-subtle)] focus-visible:ring-1 focus-visible:ring-[var(--axon-primary-strong)] ${
+                  adapterOutOfRange ? 'border-destructive focus-visible:ring-destructive/50' : ''
+                }`}
               />
+              {adapterOutOfRange && (
+                <p className="text-[10px] text-destructive">
+                  Value must be between 1 and 86400 seconds
+                </p>
+              )}
               <p className="text-[10px] text-[var(--text-dim)]">
                 Maximum execution time for any single agent request
               </p>

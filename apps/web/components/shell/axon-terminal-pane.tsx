@@ -1,9 +1,11 @@
 'use client'
 
+import { X } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { TerminalHandle } from '@/components/terminal/terminal-emulator'
 import { TerminalEmulatorWrapper } from '@/components/terminal/terminal-emulator-wrapper'
 import { TerminalToolbar } from '@/components/terminal/terminal-toolbar'
+import { Button } from '@/components/ui/button'
 import { useShellSession } from '@/hooks/use-shell-session'
 
 export const AxonTerminalPane = memo(function AxonTerminalPane() {
@@ -65,18 +67,20 @@ export const AxonTerminalPane = memo(function AxonTerminalPane() {
               className="w-40 bg-transparent font-mono text-xs text-[var(--text-primary)] outline-none"
               aria-label="Terminal search"
             />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => {
                 setSearchVisible(false)
                 setSearchQuery('')
                 terminalRef.current?.focus()
               }}
-              className="ml-1 text-xs text-[var(--text-muted)]"
+              className="ml-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               aria-label="Close search"
             >
-              ✕
-            </button>
+              <X className="size-3" />
+            </Button>
           </div>
         ) : null}
 

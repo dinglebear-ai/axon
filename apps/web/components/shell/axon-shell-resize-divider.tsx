@@ -11,9 +11,12 @@ export function AxonShellResizeDivider({
 }) {
   return (
     <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-valuenow={0}
+      role="slider"
+      aria-orientation="horizontal"
+      aria-valuenow={50}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="Resize panel divider"
       title="Drag to resize · Double-click to reset · Arrow keys to nudge"
       tabIndex={0}
       className="group relative z-10 flex w-1.5 shrink-0 cursor-col-resize items-stretch focus-visible:outline-none"

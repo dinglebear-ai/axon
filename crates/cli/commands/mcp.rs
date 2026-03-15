@@ -27,7 +27,7 @@ mod tests {
     fn config_defaults_to_http_transport() {
         let cfg = Config::default();
         assert_eq!(cfg.mcp_transport, McpTransport::Http);
-        assert_eq!(cfg.mcp_http_host, "0.0.0.0");
+        assert_eq!(cfg.mcp_http_host, "127.0.0.1");
         assert_eq!(cfg.mcp_http_port, 8001);
     }
 }

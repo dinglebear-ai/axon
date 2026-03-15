@@ -1,0 +1,16 @@
+#!/command/with-contenv sh
+
+MODE="${AXON_WEB_APP_MODE:-dev}"
+
+if [ "$MODE" != "production" ]; then
+    echo "[25-next-build] AXON_WEB_APP_MODE=$MODE — skipping Next.js production build" >&2
+    exit 0
+fi
+
+echo "[25-next-build] building Next.js app for production" >&2
+if cd /app && CI=true NODE_ENV=production s6-setuidgid node pnpm run build >&2; then
+    echo "[25-next-build] build completed" >&2
+else
+    echo "[25-next-build] build failed" >&2
+    exit 1
+fi

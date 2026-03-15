@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertCircle, Bot, Check, Copy, FileCode2, Loader2, Pencil, RotateCcw } from 'lucide-react'
+import { AlertCircle, Bot, Check, Copy, FileCode2, Pencil, RotateCcw } from 'lucide-react'
 import { memo } from 'react'
 import {
   ChainOfThought,
@@ -14,6 +14,7 @@ import { QueueItemAttachment } from '@/components/ai-elements/queue'
 import { Tool, ToolContent, ToolHeader } from '@/components/ai-elements/tool'
 import { AssistantMessageBody } from '@/components/shell/axon-editor-artifact'
 import { buildToolHeader, toolStatusText } from '@/components/shell/tool-call-metadata'
+import { Button } from '@/components/ui/button'
 import type { AxonMessage } from '@/hooks/use-axon-session'
 import type { PulseToolUse } from '@/lib/pulse/types'
 
@@ -53,7 +54,7 @@ function ToolCallCard({ tool, isMobile }: { tool: PulseToolUse; isMobile: boolea
                 {tool.locations.map((loc) => (
                   <span
                     key={loc}
-                    className="inline-flex items-center gap-1 rounded bg-[var(--axon-primary-bg)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--axon-primary-strong)] border border-[rgba(135,175,255,0.08)]"
+                    className="inline-flex items-center gap-1 rounded border border-[var(--axon-primary-bg)] bg-[var(--axon-primary-bg)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--axon-primary-strong)]"
                   >
                     <FileCode2 className="size-3" />
                     {loc}
@@ -208,21 +209,85 @@ export const AxonMessageList = memo(function AxonMessageList({
       className="axon-message-list-container animate-crossfade-in gap-3 px-0 py-0"
     >
       {loading && messages.length === 0 ? (
-        <div className="flex h-full items-center justify-center animate-fade-in">
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--text-dim)]" />
+        <div
+          role="status"
+          className="flex flex-col gap-3 px-2 py-4 animate-fade-in"
+          aria-busy="true"
+          aria-label="Loading messages"
+        >
+          {/* Skeleton: user bubble (right-aligned) */}
+          <div className="flex justify-end">
+            <div
+              className={`${bubbleRounding} ${userMaxWidth} w-3/5 space-y-2 border border-[rgba(175,215,255,0.12)] bg-[rgba(135,175,255,0.06)] px-3 py-3`}
+            >
+              <div className="h-2 w-16 animate-pulse rounded-full bg-[rgba(175,215,255,0.15)]" />
+              <div
+                className="h-2.5 w-full animate-pulse rounded-full bg-[rgba(175,215,255,0.1)]"
+                style={{ animationDelay: '75ms' }}
+              />
+              <div
+                className="h-2.5 w-4/5 animate-pulse rounded-full bg-[rgba(175,215,255,0.08)]"
+                style={{ animationDelay: '150ms' }}
+              />
+            </div>
+          </div>
+          {/* Skeleton: assistant bubble (left-aligned) */}
+          <div className="flex justify-start">
+            <div
+              className={`${bubbleRounding} ${assistantMaxWidth} w-4/5 space-y-2 border border-[rgba(255,135,175,0.1)] bg-[rgba(255,135,175,0.04)] px-3 py-3`}
+            >
+              <div className="h-2 w-20 animate-pulse rounded-full bg-[rgba(255,135,175,0.12)]" />
+              <div
+                className="h-2.5 w-full animate-pulse rounded-full bg-[rgba(255,135,175,0.08)]"
+                style={{ animationDelay: '100ms' }}
+              />
+              <div
+                className="h-2.5 w-11/12 animate-pulse rounded-full bg-[rgba(255,135,175,0.06)]"
+                style={{ animationDelay: '175ms' }}
+              />
+              <div
+                className="h-2.5 w-3/5 animate-pulse rounded-full bg-[rgba(255,135,175,0.06)]"
+                style={{ animationDelay: '250ms' }}
+              />
+            </div>
+          </div>
+          {/* Skeleton: user bubble (right-aligned) */}
+          <div className="flex justify-end">
+            <div
+              className={`${bubbleRounding} ${userMaxWidth} w-2/5 space-y-2 border border-[rgba(175,215,255,0.12)] bg-[rgba(135,175,255,0.06)] px-3 py-3`}
+            >
+              <div className="h-2 w-16 animate-pulse rounded-full bg-[rgba(175,215,255,0.15)]" />
+              <div
+                className="h-2.5 w-full animate-pulse rounded-full bg-[rgba(175,215,255,0.1)]"
+                style={{ animationDelay: '125ms' }}
+              />
+            </div>
+          </div>
+          {/* Skeleton: assistant bubble (left-aligned, longer) */}
+          <div className="flex justify-start">
+            <div
+              className={`${bubbleRounding} ${assistantMaxWidth} w-3/4 space-y-2 border border-[rgba(255,135,175,0.1)] bg-[rgba(255,135,175,0.04)] px-3 py-3`}
+            >
+              <div className="h-2 w-20 animate-pulse rounded-full bg-[rgba(255,135,175,0.12)]" />
+              <div
+                className="h-2.5 w-full animate-pulse rounded-full bg-[rgba(255,135,175,0.08)]"
+                style={{ animationDelay: '150ms' }}
+              />
+              <div
+                className="h-2.5 w-5/6 animate-pulse rounded-full bg-[rgba(255,135,175,0.06)]"
+                style={{ animationDelay: '225ms' }}
+              />
+            </div>
+          </div>
         </div>
       ) : error && messages.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-2 animate-fade-in">
           <AlertCircle className="h-5 w-5 text-destructive opacity-70" />
           <p className="text-sm text-destructive">{error}</p>
           {onRetry ? (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-1 rounded px-3 py-1 text-xs text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[rgba(255,255,255,0.04)] transition-colors"
-            >
+            <Button variant="outline" size="sm" onClick={onRetry} className="mt-1 text-xs">
               Retry
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : messages.length === 0 ? (
@@ -337,17 +402,19 @@ export const AxonMessageList = memo(function AxonMessageList({
               {message.files?.length ? (
                 <QueueItemAttachment className="mt-1 gap-1.5">
                   {message.files.map((file) => (
-                    <button
+                    <Button
                       key={file}
-                      type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => onOpenFile(file)}
                       aria-label={`Open ${file} in editor`}
+                      className="h-auto px-2 py-1"
                     >
-                      <span className="inline-flex items-center gap-1.5 rounded border border-[rgba(135,175,255,0.14)] bg-[rgba(255,255,255,0.04)] px-2 py-1 font-mono text-xs leading-none text-[var(--text-secondary)]">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-xs leading-none text-[var(--text-secondary)]">
                         <FileCode2 className="size-3.5 shrink-0" />
                         <span className={`${fileTruncate} truncate`}>{file}</span>
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </QueueItemAttachment>
               ) : null}

@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::http::http_client;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::core::ui::{accent, muted, symbol_for_status};
 use crate::crates::jobs::refresh::{
@@ -15,6 +16,31 @@ use super::schedule::tier_to_seconds;
 
 const REFRESH_TIER_MEDIUM_SECONDS: i64 = 21600;
 
+fn validate_github_repo(repo: &str) -> Result<&str, Box<dyn Error>> {
+    let trimmed = repo.trim();
+    let mut parts = trimmed.split('/');
+    let Some(owner) = parts.next() else {
+        return Err("Invalid GitHub target. Expected owner/repo".into());
+    };
+    let Some(name) = parts.next() else {
+        return Err("Invalid GitHub target. Expected owner/repo".into());
+    };
+    if parts.next().is_some() || owner.is_empty() || name.is_empty() {
+        return Err("Invalid GitHub target. Expected owner/repo".into());
+    }
+    let valid_segment = |segment: &str| {
+        segment
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+            && !segment.starts_with('.')
+            && !segment.ends_with('.')
+    };
+    if !valid_segment(owner) || !valid_segment(name) {
+        return Err("Invalid GitHub target. Expected owner/repo".into());
+    }
+    Ok(trimmed)
+}
+
 /// Create a GitHub repo re-ingest schedule.
 ///
 /// Parses `--every-seconds` and `--tier` from remaining positional args (same as URL schedules).
@@ -24,6 +50,7 @@ pub(crate) async fn handle_refresh_schedule_add_github(
     repo: &str,
     raw_name: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let repo = validate_github_repo(repo)?;
     let mut every_seconds: Option<i64> = None;
     let mut tier_seconds: Option<i64> = None;
 
@@ -97,8 +124,9 @@ pub(crate) async fn check_github_pushed_at(
     cfg: &Config,
     repo: &str,
 ) -> Result<String, Box<dyn Error>> {
+    let repo = validate_github_repo(repo)?;
     let url = format!("https://api.github.com/repos/{repo}");
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let mut req = client.get(&url).header("User-Agent", "axon-refresh");
     if let Some(token) = cfg.github_token.as_deref()
         && !token.is_empty()
@@ -122,6 +150,7 @@ pub(crate) async fn dispatch_github_refresh(
     schedule: &RefreshSchedule,
     target: &str,
 ) -> Result<Option<Uuid>, Box<dyn Error>> {
+    let target = validate_github_repo(target)?;
     let next_run_at = Utc::now() + Duration::seconds(schedule.every_seconds);
 
     match check_github_pushed_at(cfg, target).await {
@@ -169,5 +198,26 @@ pub(crate) async fn dispatch_github_refresh(
             ));
             Err(err)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_github_repo;
+
+    #[test]
+    fn validate_github_repo_accepts_owner_repo_slug() {
+        assert_eq!(
+            validate_github_repo("owner/repo").expect("valid repo"),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn validate_github_repo_rejects_non_slug_inputs() {
+        assert!(validate_github_repo("https://github.com/owner/repo").is_err());
+        assert!(validate_github_repo("owner").is_err());
+        assert!(validate_github_repo("owner/repo/extra").is_err());
+        assert!(validate_github_repo("../repo").is_err());
     }
 }

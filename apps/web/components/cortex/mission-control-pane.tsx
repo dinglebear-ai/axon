@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertCircle, BrainCircuit, Loader2 } from 'lucide-react'
+import { AlertCircle, BrainCircuit } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api-fetch'
 import {
@@ -137,9 +137,64 @@ export function MissionControlPane() {
       </header>
 
       {loading && (
-        <div className="axon-mission-card flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-          <Loader2 className="size-4 animate-spin" />
-          Loading mission telemetry…
+        <div
+          role="status"
+          className="space-y-3 animate-fade-in"
+          aria-busy="true"
+          aria-label="Loading mission telemetry"
+        >
+          {/* Skeleton: KPI strip */}
+          <div className="axon-mission-card grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="space-y-2 rounded-lg border border-[rgba(175,215,255,0.08)] bg-[rgba(7,12,26,0.4)] p-3"
+              >
+                <div
+                  className="h-2 w-16 animate-pulse rounded-full bg-[rgba(175,215,255,0.1)]"
+                  style={{ animationDelay: `${i * 75}ms` }}
+                />
+                <div
+                  className="h-5 w-20 animate-pulse rounded bg-[rgba(175,215,255,0.12)]"
+                  style={{ animationDelay: `${i * 75 + 50}ms` }}
+                />
+              </div>
+            ))}
+          </div>
+          {/* Skeleton: Health strip */}
+          <div className="axon-mission-card grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-md border border-[rgba(175,215,255,0.06)] bg-[rgba(7,12,26,0.3)] px-2 py-2"
+              >
+                <div
+                  className="size-2 animate-pulse rounded-full bg-[rgba(175,215,255,0.15)]"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                />
+                <div
+                  className="h-2 w-14 animate-pulse rounded-full bg-[rgba(175,215,255,0.08)]"
+                  style={{ animationDelay: `${i * 50 + 30}ms` }}
+                />
+              </div>
+            ))}
+          </div>
+          {/* Skeleton: Queue / content area */}
+          <div className="axon-mission-card space-y-2 rounded-lg border border-[rgba(175,215,255,0.06)] bg-[rgba(7,12,26,0.3)] p-4">
+            <div className="h-3 w-28 animate-pulse rounded-full bg-[rgba(175,215,255,0.1)]" />
+            <div
+              className="h-2.5 w-full animate-pulse rounded-full bg-[rgba(175,215,255,0.06)]"
+              style={{ animationDelay: '100ms' }}
+            />
+            <div
+              className="h-2.5 w-4/5 animate-pulse rounded-full bg-[rgba(175,215,255,0.05)]"
+              style={{ animationDelay: '175ms' }}
+            />
+            <div
+              className="h-2.5 w-3/5 animate-pulse rounded-full bg-[rgba(175,215,255,0.04)]"
+              style={{ animationDelay: '250ms' }}
+            />
+          </div>
         </div>
       )}
 

@@ -16,7 +16,7 @@
 # ── Stage 0: chef — pre-built cargo-chef image (no compilation needed) ────────
 # lukemathwalker/cargo-chef has cargo-chef pre-installed on top of the official
 # rust image, eliminating the `cargo install cargo-chef` step entirely.
-FROM lukemathwalker/cargo-chef:0.1.77-rust-1.93-bookworm AS chef
+FROM lukemathwalker/cargo-chef:0.1.77-rust-1.94-bookworm AS chef
 
 # ── Stage 1: planner ──────────────────────────────────────────────────────────
 FROM chef AS planner

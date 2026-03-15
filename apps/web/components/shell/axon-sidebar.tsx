@@ -114,14 +114,15 @@ const RailContent = React.memo(function RailContent({
                 Start one from the + button above.
               </p>
               {onNewSession ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={onNewSession}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[rgba(175,215,255,0.32)] bg-[linear-gradient(145deg,rgba(135,175,255,0.24),rgba(135,175,255,0.1))] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)]"
+                  className="mt-2 inline-flex h-auto items-center gap-1.5 rounded-md border border-[rgba(175,215,255,0.32)] bg-[linear-gradient(145deg,rgba(135,175,255,0.24),rgba(135,175,255,0.1))] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)]"
                 >
                   <Plus className="size-3" />
                   New session
-                </button>
+                </Button>
               ) : null}
             </div>
           </li>
@@ -136,7 +137,7 @@ const RailContent = React.memo(function RailContent({
                 type="button"
                 onClick={() => onSelectSession(session.id)}
                 aria-current={isActive ? 'true' : undefined}
-                className={`axon-sidebar-item w-full rounded-md border-l-2 px-0 text-left transition-colors ${rowClass} ${railItemClass(isActive)}`}
+                className={`axon-sidebar-item w-full rounded-md border-l-2 px-0 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-0 ${rowClass} ${railItemClass(isActive)}`}
                 title={title}
               >
                 <div className="px-3">
@@ -208,14 +209,15 @@ const RailContent = React.memo(function RailContent({
                 Kick one off with the + button above.
               </p>
               {onNewSession ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={onNewSession}
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[rgba(255,135,175,0.34)] bg-[linear-gradient(145deg,rgba(255,135,175,0.24),rgba(255,135,175,0.08))] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)]"
+                  className="mt-2 inline-flex h-auto items-center gap-1.5 rounded-md border border-[rgba(255,135,175,0.34)] bg-[linear-gradient(145deg,rgba(255,135,175,0.24),rgba(255,135,175,0.08))] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)]"
                 >
                   <Plus className="size-3" />
                   New assistant chat
-                </button>
+                </Button>
               ) : null}
             </div>
           </li>
@@ -230,7 +232,7 @@ const RailContent = React.memo(function RailContent({
                 type="button"
                 onClick={() => onSelectAssistantSession(session.id)}
                 aria-current={isActive ? 'true' : undefined}
-                className={`axon-sidebar-item w-full rounded-md border-l-2 px-0 text-left transition-colors ${rowClass} ${railItemClass(isActive)}`}
+                className={`axon-sidebar-item w-full rounded-md border-l-2 px-0 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-0 ${rowClass} ${railItemClass(isActive)}`}
                 title={session.preview ?? title}
               >
                 <div className="px-3">
@@ -338,30 +340,23 @@ export const AxonSidebar = React.memo(function AxonSidebar({
             </>
           ) : null}
           {isDesktop ? (
-            <span
-              className="axon-sidebar-title select-none pl-1 text-sm font-extrabold tracking-[3px]"
-              style={{
-                background: 'linear-gradient(135deg, #afd7ff 0%, #ff87af 50%, #8787af 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
+            <span className="axon-wordmark axon-sidebar-title select-none pl-1 text-sm font-extrabold tracking-[3px]">
               AXON
             </span>
           ) : null}
           {!isDesktop ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
                   type="button"
-                  className="flex items-center gap-1.5 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
+                  variant="ghost"
+                  className="flex h-auto items-center gap-1.5 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
                 >
                   <ActiveModeIcon className="size-3.5 text-[var(--axon-primary)]" />
                   <span>{activeMode.label}</span>
                   <span className="text-[11px] font-normal text-[var(--text-dim)]">{subtitle}</span>
                   <ChevronDown className="size-3 text-[var(--text-dim)]" />
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
@@ -386,23 +381,26 @@ export const AxonSidebar = React.memo(function AxonSidebar({
         </div>
         <div className="flex items-center gap-1">
           {isDesktop ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={onNewSession}
               className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[rgba(175,215,255,0.34)] bg-[linear-gradient(145deg,rgba(135,175,255,0.28),rgba(135,175,255,0.1))] px-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)] shadow-[0_0_14px_rgba(135,175,255,0.2)] transition-colors hover:border-[rgba(175,215,255,0.48)] hover:bg-[linear-gradient(145deg,rgba(135,175,255,0.36),rgba(135,175,255,0.14))]"
             >
               <Plus className="size-3.5" />
               New
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               onClick={onNewSession}
-              className={`inline-flex ${isDesktop ? 'size-6' : 'size-8'} items-center justify-center rounded-md border border-[rgba(175,215,255,0.34)] bg-[linear-gradient(145deg,rgba(135,175,255,0.28),rgba(135,175,255,0.1))] text-[var(--text-primary)] shadow-[0_0_14px_rgba(135,175,255,0.2)]`}
+              className="inline-flex size-8 items-center justify-center rounded-md border border-[rgba(175,215,255,0.34)] bg-[linear-gradient(145deg,rgba(135,175,255,0.28),rgba(135,175,255,0.1))] text-[var(--text-primary)] shadow-[0_0_14px_rgba(135,175,255,0.2)]"
             >
               <Plus className="size-3.5" />
               <span className="sr-only">New session</span>
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -411,15 +409,16 @@ export const AxonSidebar = React.memo(function AxonSidebar({
         <div className="axon-toolbar flex items-center justify-between px-2 py-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="flex items-center gap-1.5 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
+                variant="ghost"
+                className="flex h-auto items-center gap-1.5 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
               >
                 <ActiveModeIcon className="size-3.5 text-[var(--axon-primary)]" />
                 <span>{activeMode.label}</span>
                 <span className="text-[11px] font-normal text-[var(--text-dim)]">{subtitle}</span>
                 <ChevronDown className="size-3 text-[var(--text-dim)]" />
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"

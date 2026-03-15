@@ -24,13 +24,8 @@ export const SERVICES = [
 
 const ALLOWED_SERVICES = new Set<string>(SERVICES)
 
-/**
- * SECURITY: Docker socket grants full Docker API access. This route is scoped
- * to read-only container log streaming (getContainer().logs()) against the
- * ALLOWED_SERVICES allowlist. No exec, stop, remove, or image operations.
- * Auth is enforced by middleware.ts (AXON_WEB_API_TOKEN).
- */
-const docker = new Dockerode({ socketPath: '/var/run/docker.sock' })
+const ENABLE_DOCKER_SOCKET_LOGS = process.env.AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS === 'true'
+const DOCKER_SOCKET_PATH = process.env.AXON_WEB_DOCKER_SOCKET_PATH ?? '/var/run/docker.sock'
 
 type SendLine = (line: string, service?: string) => void
 
@@ -38,6 +33,7 @@ function attachContainerStream(
   svc: string,
   tail: number,
   sendLine: SendLine,
+  docker: Dockerode,
   logStreams: Readable[],
   onEnd: () => void,
 ): void {
@@ -80,6 +76,10 @@ export async function GET(req: NextRequest) {
   const limited = enforceRateLimit('api.logs', req, { max: 30, windowMs: 60_000 })
   if (limited) return limited
 
+  if (!ENABLE_DOCKER_SOCKET_LOGS) {
+    return new Response('Docker socket log streaming is disabled', { status: 503 })
+  }
+
   const service = req.nextUrl.searchParams.get('service') ?? 'axon-workers'
   const tail = Math.min(Number(req.nextUrl.searchParams.get('tail') ?? '200'), 1000)
   const isAll = service === 'all'
@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
   const targets: string[] = isAll ? [...SERVICES] : [service]
   const encoder = new TextEncoder()
   const logStreams: Readable[] = []
+  const docker = new Dockerode({ socketPath: DOCKER_SOCKET_PATH })
 
   const stream = new ReadableStream({
     start(controller) {
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
       }
 
       for (const svc of targets) {
-        attachContainerStream(svc, tail, sendLine, logStreams, onStreamEnd)
+        attachContainerStream(svc, tail, sendLine, docker, logStreams, onStreamEnd)
       }
 
       req.signal.addEventListener('abort', () => {

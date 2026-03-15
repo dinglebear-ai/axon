@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { Toaster } from 'sonner'
 import { AppShell } from '@/components/app-shell'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AxonWsContext, useAxonWsProvider } from '@/hooks/use-axon-ws'
@@ -30,6 +31,7 @@ function WsMessagesProvider({ children }: { children: ReactNode }) {
           <WsMessagesContext value={messages.value}>
             <TooltipProvider>
               <AppShell>{children}</AppShell>
+              <Toaster theme="dark" position="bottom-right" />
             </TooltipProvider>
           </WsMessagesContext>
         </WsMessagesActionsContext>

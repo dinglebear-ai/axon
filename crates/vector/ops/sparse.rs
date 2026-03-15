@@ -16,6 +16,7 @@
 //! tokenizer vocabulary would eliminate collisions but requires an external dependency.
 //! Qdrant's IDF weighting mitigates the impact — high-IDF terms are unlikely to collide.
 
+use crate::crates::core::logging::log_debug;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -89,6 +90,10 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
         *bucket_tf.entry(idx).or_insert(0) += 1;
     }
     if bucket_tf.is_empty() {
+        log_debug(&format!(
+            "compute_sparse_vector: no indexable terms (len={}) — hybrid search will use dense-only",
+            text.len()
+        ));
         return SparseVector::default();
     }
     let mut indices = Vec::with_capacity(bucket_tf.len());

@@ -44,6 +44,11 @@ const ALLOWED_ORIGINS = (
   .map((value) => value.trim())
   .filter(Boolean)
 const ALLOW_INSECURE_LOCAL_DEV = process.env.AXON_WEB_ALLOW_INSECURE_DEV === 'true'
+const MAX_CONNECTIONS = Number(process.env.SHELL_SERVER_MAX_CONNECTIONS ?? 8)
+const IDLE_TIMEOUT_MS = Number(process.env.SHELL_SERVER_IDLE_TIMEOUT_MS ?? 15 * 60 * 1000)
+const WS_MAX_PAYLOAD_BYTES = Number(process.env.SHELL_SERVER_MAX_PAYLOAD_BYTES ?? 64 * 1024)
+const MAX_RESIZE_COLS = Number(process.env.SHELL_SERVER_MAX_RESIZE_COLS ?? 400)
+const MAX_RESIZE_ROWS = Number(process.env.SHELL_SERVER_MAX_RESIZE_ROWS ?? 160)
 
 // Bind module-level config into the pure functions from shell-auth.mjs
 function isAllowedOrigin(req) {
@@ -57,9 +62,15 @@ const server = createServer((_req, res) => {
   res.writeHead(200).end('axon shell-server ok')
 })
 
-const wss = new WebSocketServer({ noServer: true })
+const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD_BYTES })
+const activeConnections = new Set()
 
 server.on('upgrade', (req, socket, head) => {
+  if (activeConnections.size >= MAX_CONNECTIONS) {
+    socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n')
+    socket.destroy()
+    return
+  }
   if (!isAllowedOrigin(req)) {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
     socket.destroy()
@@ -76,6 +87,8 @@ server.on('upgrade', (req, socket, head) => {
 })
 
 wss.on('connection', (ws) => {
+  activeConnections.add(ws)
+
   const term = pty.spawn(SHELL, [], {
     name: 'xterm-256color',
     cols: 80,
@@ -90,27 +103,62 @@ wss.on('connection', (ws) => {
     }
   })
 
+  let idleTimer = setTimeout(() => {
+    if (ws.readyState === ws.OPEN) ws.close(1000, 'idle timeout')
+    term.kill()
+  }, IDLE_TIMEOUT_MS)
+
+  function resetIdleTimer() {
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => {
+      if (ws.readyState === ws.OPEN) ws.close(1000, 'idle timeout')
+      term.kill()
+    }, IDLE_TIMEOUT_MS)
+  }
+
   term.onExit(() => {
     if (ws.readyState === ws.OPEN) ws.close()
   })
 
   ws.on('message', (raw) => {
+    resetIdleTimer()
     try {
       const msg = JSON.parse(String(raw))
       if (msg.type === 'input' && typeof msg.data === 'string') {
         term.write(msg.data)
       } else if (msg.type === 'resize' && msg.cols && msg.rows) {
-        term.resize(Number(msg.cols), Number(msg.rows))
+        const cols = Math.max(1, Math.min(MAX_RESIZE_COLS, Number(msg.cols)))
+        const rows = Math.max(1, Math.min(MAX_RESIZE_ROWS, Number(msg.rows)))
+        term.resize(cols, rows)
       }
     } catch {
       /* ignore malformed messages */
     }
   })
 
-  ws.on('close', () => term.kill())
-  ws.on('error', () => term.kill())
+  function cleanup() {
+    clearTimeout(idleTimer)
+    activeConnections.delete(ws)
+    term.kill()
+  }
+
+  ws.on('close', cleanup)
+  ws.on('error', cleanup)
 })
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[shell-server] listening on 127.0.0.1:${PORT}`)
+})
+
+process.on('SIGTERM', () => {
+  for (const ws of activeConnections) {
+    try {
+      ws.close(1001, 'server shutting down')
+    } catch {
+      // ignore
+    }
+  }
+  wss.close(() => {
+    server.close(() => process.exit(0))
+  })
 })

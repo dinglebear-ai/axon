@@ -12,7 +12,13 @@ import {
   TAIL_OPTIONS,
   type TailLines,
 } from '@/components/logs/logs-toolbar'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useLogStream } from '@/hooks/use-log-stream'
 
 const MAX_LINES = 1200
@@ -115,6 +121,9 @@ export function AxonLogsDialog({
             <ScrollText className="size-4 text-[var(--axon-primary-strong)]" />
             Docker Logs
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Live Docker container log viewer with filtering and service selection
+          </DialogDescription>
         </DialogHeader>
 
         <div className="shrink-0 border-b border-[var(--border-subtle)] px-3 py-2">

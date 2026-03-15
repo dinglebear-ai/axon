@@ -43,7 +43,7 @@ On each run, a file is skipped if its mtime **and** size match the tracked value
 2. For each file, checks the state tracker — skips unchanged files
 3. Dispatches to the matching parser based on path/provider
 4. Parser extracts message turns and formats them as text chunks
-5. Chunks embedded via `embed_text_with_metadata()` → TEI → Qdrant
+5. Chunks embedded via `embed_prepared_docs()` → TEI → Qdrant
 6. State tracker updated with new mtime/size
 
 Sessions defaults to **async queued execution** when `--wait false` (default): it enqueues an ingest job and returns a job ID.

@@ -1,7 +1,13 @@
 'use client'
 
 import { Settings2 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { NeuralCanvasProfile } from '@/lib/pulse/neural-canvas-presets'
 import { CanvasProfileSelector } from './canvas-profile-selector'
 
@@ -24,6 +30,9 @@ export function AxonSettingsDialog({
             <Settings2 className="size-4" />
             Settings
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Application settings and preferences
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <CanvasProfileSelector

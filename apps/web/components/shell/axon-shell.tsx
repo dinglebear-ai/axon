@@ -10,9 +10,11 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { memo } from 'react'
 import { Conversation, ConversationScrollButton } from '@/components/ai-elements/conversation'
 import { DockerStats } from '@/components/docker-stats'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/use-is-mobile'
 import { AxonCortexPane } from './axon-cortex-pane'
 import { AxonFrame } from './axon-frame'
@@ -52,7 +54,7 @@ const DESKTOP_TOOL_BUTTON_CLASS =
 
 export { shouldReloadSessionOnTurnComplete }
 
-export function AxonShell() {
+export const AxonShell = memo(function AxonShell() {
   const shell = useAxonShellState()
   // Mount only the active layout tree — avoids reconciling both mobile and
   // desktop subtrees simultaneously. Initialises to false (SSR-safe) and
@@ -69,20 +71,14 @@ export function AxonShell() {
         {isMobile ? (
           <section className="flex min-h-0 flex-1 flex-col">
             <div className="axon-toolbar flex h-14 items-center justify-between bg-[rgba(7,12,26,0.62)] px-3">
-              <span
-                className="select-none text-sm font-extrabold tracking-[3px]"
-                style={{
-                  background: 'linear-gradient(135deg, #afd7ff 0%, #ff87af 50%, #8787af 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
-              >
+              <span className="axon-wordmark select-none text-sm font-extrabold tracking-[3px]">
                 AXON
               </span>
               <div className="flex items-center gap-1.5">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => shell.setMobilePaneTracked('sidebar')}
                   aria-label="Sidebar pane"
                   aria-pressed={shell.mobilePane === 'sidebar'}
@@ -93,7 +89,7 @@ export function AxonShell() {
                   }`}
                 >
                   <PanelLeft className="size-3.5" />
-                </button>
+                </Button>
                 <AxonMobilePaneSwitcher
                   mobilePane={shell.mobilePane === 'sidebar' ? 'chat' : shell.mobilePane}
                   onMobilePaneChange={(pane) => shell.setMobilePaneTracked(pane)}
@@ -197,22 +193,26 @@ export function AxonShell() {
               </aside>
             ) : (
               <div className="flex h-full w-11 shrink-0 flex-col items-center border-r border-[var(--border-subtle)] bg-[linear-gradient(180deg,rgba(9,17,35,0.82),rgba(6,12,26,0.9))] pt-2">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => shell.persistSidebarOpen(true)}
                   aria-label="Expand sidebar"
                   className="axon-icon-btn flex size-8 items-center justify-center"
                 >
                   <PanelLeft className="size-4" />
-                </button>
+                </Button>
                 <div className="my-1.5 w-5 border-t border-[var(--border-subtle)]" />
                 {RAIL_MODES.map((mode) => {
                   const Icon = mode.icon
                   const isActive = shell.railMode === mode.id
                   return (
-                    <button
+                    <Button
                       key={mode.id}
                       type="button"
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => {
                         shell.setRailModeTracked(mode.id)
                         shell.persistSidebarOpen(true)
@@ -226,7 +226,7 @@ export function AxonShell() {
                       }`}
                     >
                       <Icon className="size-4" />
-                    </button>
+                    </Button>
                   )
                 })}
               </div>
@@ -265,95 +265,134 @@ export function AxonShell() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'cortex'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'cortex' ? null : 'cortex')
-                      }
-                    >
-                      <Brain className="size-4" />
-                      <span className="sr-only">Toggle cortex</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'terminal'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'terminal' ? null : 'terminal')
-                      }
-                    >
-                      <TerminalSquare className="size-4" />
-                      <span className="sr-only">Toggle terminal</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'logs'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'logs' ? null : 'logs')
-                      }
-                    >
-                      <ScrollText className="size-4" />
-                      <span className="sr-only">Toggle logs</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'mcp'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'mcp' ? null : 'mcp')
-                      }
-                    >
-                      <McpIcon className="size-4" />
-                      <span className="sr-only">Toggle MCP servers</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'settings'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'settings' ? null : 'settings')
-                      }
-                    >
-                      <Settings2 className="size-4" />
-                      <span className="sr-only">Toggle settings</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.chatOpen}
-                      onClick={() => shell.persistChatOpen(!shell.chatOpen)}
-                    >
-                      <MessageSquareText className="size-4" />
-                      <span className="sr-only">Toggle chat</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={DESKTOP_TOOL_BUTTON_CLASS}
-                      data-active={shell.rightPane === 'editor'}
-                      onClick={() =>
-                        shell.persistRightPane(shell.rightPane === 'editor' ? null : 'editor')
-                      }
-                    >
-                      <PanelRight className="size-4" />
-                      <span className="sr-only">Toggle editor</span>
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'cortex'}
+                          onClick={() =>
+                            shell.persistRightPane(shell.rightPane === 'cortex' ? null : 'cortex')
+                          }
+                        >
+                          <Brain className="size-4" />
+                          <span className="sr-only">Cortex</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Cortex</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'terminal'}
+                          onClick={() =>
+                            shell.persistRightPane(
+                              shell.rightPane === 'terminal' ? null : 'terminal',
+                            )
+                          }
+                        >
+                          <TerminalSquare className="size-4" />
+                          <span className="sr-only">Terminal</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Terminal</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'logs'}
+                          onClick={() =>
+                            shell.persistRightPane(shell.rightPane === 'logs' ? null : 'logs')
+                          }
+                        >
+                          <ScrollText className="size-4" />
+                          <span className="sr-only">Logs</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Logs</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'mcp'}
+                          onClick={() =>
+                            shell.persistRightPane(shell.rightPane === 'mcp' ? null : 'mcp')
+                          }
+                        >
+                          <McpIcon className="size-4" />
+                          <span className="sr-only">MCP Servers</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">MCP Servers</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'settings'}
+                          onClick={() =>
+                            shell.persistRightPane(
+                              shell.rightPane === 'settings' ? null : 'settings',
+                            )
+                          }
+                        >
+                          <Settings2 className="size-4" />
+                          <span className="sr-only">Settings</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Settings</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.chatOpen}
+                          onClick={() => shell.persistChatOpen(!shell.chatOpen)}
+                        >
+                          <MessageSquareText className="size-4" />
+                          <span className="sr-only">Chat</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Chat</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={DESKTOP_TOOL_BUTTON_CLASS}
+                          data-active={shell.rightPane === 'editor'}
+                          onClick={() =>
+                            shell.persistRightPane(shell.rightPane === 'editor' ? null : 'editor')
+                          }
+                        >
+                          <PanelRight className="size-4" />
+                          <span className="sr-only">Toggle Panel</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Toggle Panel</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
 
@@ -442,4 +481,6 @@ export function AxonShell() {
       </div>
     </AxonFrame>
   )
-}
+})
+
+AxonShell.displayName = 'AxonShell'

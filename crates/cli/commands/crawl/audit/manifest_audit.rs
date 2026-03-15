@@ -39,6 +39,34 @@ fn fnv1a64_hex(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
+enum ManifestEntryPathResolution {
+    Valid(PathBuf),
+    Missing,
+    Rejected,
+}
+
+async fn resolve_manifest_entry_path(
+    canonical_output_dir: &Path,
+    file_path: &str,
+) -> ManifestEntryPathResolution {
+    if file_path.contains('\0') {
+        return ManifestEntryPathResolution::Rejected;
+    }
+    let raw_path = Path::new(file_path);
+    let candidate = if raw_path.is_absolute() {
+        raw_path.to_path_buf()
+    } else {
+        canonical_output_dir.join(raw_path)
+    };
+    match tokio::fs::canonicalize(&candidate).await {
+        Ok(canonical) if canonical.starts_with(canonical_output_dir) => {
+            ManifestEntryPathResolution::Valid(canonical)
+        }
+        Ok(_) => ManifestEntryPathResolution::Rejected,
+        Err(_) => ManifestEntryPathResolution::Missing,
+    }
+}
+
 /// Reads every manifest entry and computes a content fingerprint for each
 /// referenced file. This performs one file read per entry, so large manifests
 /// will incur significant I/O. A future improvement could make fingerprinting
@@ -51,6 +79,7 @@ async fn read_manifest_entries(
         return Ok(Vec::new());
     }
     let file = tokio::fs::File::open(&manifest_path).await?;
+    let canonical_output_dir = tokio::fs::canonicalize(output_dir).await?;
     let mut reader = BufReader::new(file).lines();
     let mut entries = Vec::new();
     while let Some(line) = reader.next_line().await? {
@@ -76,9 +105,15 @@ async fn read_manifest_entries(
         let fingerprint = if file_path.is_empty() {
             "no-file-path".to_string()
         } else {
-            match tokio::fs::read(&file_path).await {
-                Ok(bytes) => fnv1a64_hex(&bytes),
-                Err(_) => "file-not-found".to_string(),
+            match resolve_manifest_entry_path(&canonical_output_dir, &file_path).await {
+                ManifestEntryPathResolution::Valid(canonical_path) => {
+                    match tokio::fs::read(&canonical_path).await {
+                        Ok(bytes) => fnv1a64_hex(&bytes),
+                        Err(_) => "file-not-found".to_string(),
+                    }
+                }
+                ManifestEntryPathResolution::Missing => "file-not-found".to_string(),
+                ManifestEntryPathResolution::Rejected => "path-outside-output-dir".to_string(),
             }
         };
         entries.push(ManifestAuditEntry {
@@ -114,4 +149,53 @@ pub(super) async fn persist_audit_snapshot(
     let path = audit_dir.join(format!("audit-{now}.json"));
     tokio::fs::write(&path, serde_json::to_string_pretty(&snapshot)?).await?;
     Ok((path, snapshot))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fnv1a64_hex, read_manifest_entries};
+
+    #[tokio::test]
+    async fn read_manifest_entries_rejects_out_of_bounds_file_paths() {
+        let output_dir = tempfile::TempDir::new().expect("output tempdir");
+        let outside_dir = tempfile::TempDir::new().expect("outside tempdir");
+        let markdown_dir = output_dir.path().join("markdown");
+        tokio::fs::create_dir_all(&markdown_dir)
+            .await
+            .expect("create markdown dir");
+
+        let in_bounds = markdown_dir.join("page.md");
+        let outside = outside_dir.path().join("secret.md");
+        tokio::fs::write(&in_bounds, "inside")
+            .await
+            .expect("write in-bounds file");
+        tokio::fs::write(&outside, "outside")
+            .await
+            .expect("write out-of-bounds file");
+
+        let manifest = format!(
+            "{}\n{}\n",
+            serde_json::json!({
+                "url": "https://example.com/in",
+                "file_path": in_bounds.to_string_lossy(),
+                "markdown_chars": 6
+            }),
+            serde_json::json!({
+                "url": "https://example.com/out",
+                "file_path": outside.to_string_lossy(),
+                "markdown_chars": 7
+            })
+        );
+        tokio::fs::write(output_dir.path().join("manifest.jsonl"), manifest)
+            .await
+            .expect("write manifest");
+
+        let entries = read_manifest_entries(output_dir.path())
+            .await
+            .expect("read manifest entries");
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].fingerprint, fnv1a64_hex(b"inside"));
+        assert_eq!(entries[1].fingerprint, "path-outside-output-dir");
+    }
 }

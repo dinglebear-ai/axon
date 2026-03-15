@@ -1,5 +1,5 @@
 # crates/cli — Command Orchestration Layer
-Last Modified: 2026-03-02
+Last Modified: 2026-03-15
 
 Translates parsed `Config` state into command execution. Delegates all business logic to `crates/jobs`, `crates/crawl`, `crates/vector`, and `crates/ingest`. This crate owns routing, output formatting, and job lifecycle UX — not business logic.
 
@@ -10,13 +10,37 @@ cli/
 ├── commands.rs                   # Module declarations + pub use exports (NOT dispatch)
 └── commands/
     ├── common.rs                 # Shared URL parsing, job output, handle_job_* helpers
+    ├── ask.rs                    # RAG ask command via services layer
+    ├── completions.rs            # Shell completion script generation
+    ├── crawl.rs                  # Crawl entry: sync/async dispatch + URL validation
+    ├── debug.rs                  # doctor + LLM-assisted troubleshooting
+    ├── dedupe.rs                 # Dedupe command entry point
+    ├── doctor.rs                 # Service connectivity diagnostics
+    ├── domains.rs                # Indexed-domain summaries
+    ├── embed.rs                  # Embed files/dirs/URLs into Qdrant
+    ├── evaluate.rs               # RAG evaluation command
+    ├── extract.rs                # LLM-powered structured data extraction
+    ├── graph.rs                  # Graph command CLI shim
+    ├── ingest.rs                 # Unified ingest: classify_target → enqueue or run_ingest_sync
     ├── job_contracts.rs          # Stable JSON output types for all job commands
     ├── ingest_common.rs          # Shared ingest subcommand routing + enqueue helpers
-    ├── probe.rs                  # HTTP probing utilities used by doctor command
-    │
-    ├── scrape.rs                 # Scrape URLs to markdown/html/json
     ├── map.rs                    # Discover all URLs without scraping
-    ├── crawl.rs                  # Crawl entry: sync/async dispatch + URL validation
+    ├── mcp.rs                    # MCP HTTP server entry point
+    ├── probe.rs                  # HTTP probing utilities used by doctor command
+    ├── query.rs                  # Semantic/vector query command
+    ├── refresh.rs                # Refresh command entry point
+    ├── research.rs               # Tavily AI research + LLM synthesis
+    ├── retrieve.rs               # Retrieve stored document chunks
+    ├── scrape.rs                 # Scrape URLs to markdown/html/json
+    ├── screenshot.rs             # Screenshot entry: URL loop, Chrome requirement check
+    ├── search.rs                 # Web search via Tavily API
+    ├── serve.rs                  # axum web UI + WebSocket server entry point
+    ├── sessions.rs               # Ingest AI session exports (Claude/Codex/Gemini)
+    ├── sources.rs                # Indexed source listing
+    ├── stats.rs                  # Qdrant/stats command entry point
+    ├── status.rs                 # System/job status entry point
+    ├── suggest.rs                # Suggested crawl target discovery
+    ├── watch.rs                  # Watch definition and run management
     ├── crawl/
     │   ├── subcommands.rs        # Job lifecycle routing: status/cancel/errors/list/cleanup/clear/worker/recover/audit/diff
     │   ├── runtime.rs            # Chrome bootstrap: CDP discovery, WS URL pre-resolution
@@ -26,29 +50,26 @@ cli/
     │       ├── audit_diff.rs     # Diff computation (added/removed/changed URLs)
     │       ├── manifest_audit.rs # Snapshot persistence to disk
     │       └── sitemap.rs        # Sitemap + robots.txt URL discovery (adapter over engine)
-    ├── refresh.rs                # Refresh command entry point
     ├── refresh/
     │   ├── resolve.rs            # URL resolution from manifest or CLI args
-    │   └── schedule.rs           # Scheduled refresh job management
-    ├── extract.rs                # LLM-powered structured data extraction
-    ├── embed.rs                  # Embed files/dirs/URLs into Qdrant
-    ├── search.rs                 # Web search via Tavily API
-    ├── research.rs               # Tavily AI research + LLM synthesis
-    ├── screenshot.rs             # Screenshot entry: URL loop, Chrome requirement check
+    │   ├── schedule.rs           # Scheduled refresh job management dispatcher
+    │   └── schedule/             # Refresh schedule subcommands
+    │       ├── add.rs            # Create/update refresh schedules
+    │       ├── run_due.rs        # Run due schedules immediately
+    │       └── worker.rs         # Refresh schedule worker loop
     ├── screenshot/
     │   ├── screenshot_migration_tests.rs  # Migration tests for screenshot command refactor
     │   └── util.rs               # Filename generation, require_chrome()
-    ├── sessions.rs               # Ingest AI session exports (Claude/Codex/Gemini)
-    ├── ingest.rs                 # Unified ingest: classify_target → enqueue or run_ingest_sync
+    ├── scrape/
+    │   ├── scrape_migration_tests.rs      # Migration/regression tests for scrape
+    │   └── tests.rs               # Scrape unit tests
     ├── status/
     │   ├── metrics.rs            # Postgres metrics: job counts, rates, stale jobs
     │   └── presentation.rs       # Status output rendering (JSON + human text)
-    ├── doctor.rs                 # Service connectivity diagnostics
     ├── doctor/
     │   └── render.rs             # Doctor report rendering (human + JSON)
-    ├── debug.rs                  # doctor + LLM-assisted troubleshooting
-    ├── mcp.rs                    # MCP HTTP server entry point
-    └── serve.rs                  # axum web UI + WebSocket server entry point
+    └── map/
+        └── map_migration_tests.rs # Migration/regression tests for map command
 ```
 
 ## Dispatch
@@ -82,7 +103,8 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
 ```
 
 `maybe_handle_subcommand()` inspects `cfg.positional.first()`:
-- Matches `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`, `"audit"`, `"diff"` → executes, returns `Ok(true)`
+- Crawl matches `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`, `"audit"`, `"diff"` → executes, returns `Ok(true)`
+- Refresh has its own handler and also reserves `"schedule"` plus the standard job lifecycle tokens
 - Anything else → returns `Ok(false)` (caller proceeds)
 
 **Gotcha:** If a user tries to crawl a URL whose path happens to match a subcommand name (e.g., `axon crawl https://example.com/status`), it will be intercepted as a subcommand. This is a known, accepted limitation.
@@ -97,13 +119,20 @@ pub fn start_url_from_cfg(cfg: &Config) -> String
 
 This function guards against subcommand names leaking into URL extraction. It returns `cfg.positional[0]` only if it is NOT a known subcommand token. Otherwise falls back to `cfg.start_url`.
 
+Current guard list:
+- Crawl: `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`, `"audit"`, `"diff"`
+- Refresh: `"schedule"`, `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`
+- Extract/Embed: `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`
+
+`"doctor"` is not part of the `start_url_from_cfg()` guard list.
+
 ## `commands/common.rs` — Shared Helpers
 
 | Function | Purpose |
 |----------|---------|
 | `truncate_chars(s, n)` | UTF-8-safe truncation at char boundary (no mid-codepoint panic) |
 | `parse_urls(cfg)` | Collects URLs from `urls_csv`, `url_glob`, and `positional`; expands `{a,b}` and `{1..10}` brace syntax; dedupes; normalizes |
-| `expand_url_glob_seed(seed)` | Expands single URL glob string into `Vec<String>` (capped at depth 10) |
+| `expand_url_glob_seed(seed)` | Expands single URL glob string into `Vec<String>` (capped at depth 10 and 10,000 total outputs) |
 | `start_url_from_cfg(cfg)` | Subcommand-aware URL extraction — always use this, never raw `positional[0]` |
 | `handle_job_status(cfg, job, id, cmd)` | Renders job status (JSON or human) |
 | `handle_job_cancel(cfg, id, canceled, cmd)` | Renders cancel result |

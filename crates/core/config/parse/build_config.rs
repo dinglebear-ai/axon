@@ -12,6 +12,15 @@ use super::performance;
 use clap::ValueEnum;
 use std::env;
 
+fn env_bool(key: &str, default: bool) -> bool {
+    match env::var(key).ok().as_deref().map(str::trim) {
+        None | Some("") => default,
+        Some("true" | "1" | "yes") => true,
+        Some("false" | "0" | "no") => false,
+        Some(_) => default,
+    }
+}
+
 fn parse_origin_allowlist(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(str::trim)
@@ -461,6 +470,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             2,
             1,
             5,
+        ),
+        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true),
+        hybrid_search_candidates: performance::env_usize_clamped(
+            "AXON_HYBRID_CANDIDATES",
+            100,
+            10,
+            500,
         ),
         cron_every_seconds: global.cron_every_seconds.filter(|value| *value > 0),
         cron_max_runs: global.cron_max_runs.filter(|value| *value > 0),

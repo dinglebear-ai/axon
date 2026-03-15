@@ -173,7 +173,11 @@ export async function POST(request: Request) {
                         },
                       }),
                     },
-                  ).catch((err) => console.error('[Pulse] Pre-delete failed (continuing):', err))
+                  ).catch((err) =>
+                    logError('api.pulse.save.predelete_failed', {
+                      message: err instanceof Error ? err.message : String(err),
+                    }),
+                  )
                 : Promise.resolve(),
               fetch(`${teiUrl}/embed`, {
                 method: 'POST',

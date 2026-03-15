@@ -114,6 +114,8 @@ impl Default for Config {
             ask_authoritative_boost: 0.0,
             ask_authoritative_allowlist: vec![],
             ask_min_citations_nontrivial: 2,
+            hybrid_search_enabled: true,
+            hybrid_search_candidates: 100,
             cron_every_seconds: None,
             cron_max_runs: None,
             watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
@@ -149,7 +151,7 @@ impl Default for Config {
             viewport_height: 1080,
             serve_port: 49000,
             mcp_transport: McpTransport::Http,
-            mcp_http_host: "0.0.0.0".to_string(),
+            mcp_http_host: "127.0.0.1".to_string(),
             mcp_http_port: 8001,
             custom_headers: vec![],
         }
@@ -293,6 +295,8 @@ impl fmt::Debug for Config {
                 "ask_min_citations_nontrivial",
                 &self.ask_min_citations_nontrivial,
             )
+            .field("hybrid_search_enabled", &self.hybrid_search_enabled)
+            .field("hybrid_search_candidates", &self.hybrid_search_candidates)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)
             .field(

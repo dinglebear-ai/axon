@@ -6,7 +6,7 @@
  */
 
 import type { NextRequest } from 'next/server'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -42,8 +42,6 @@ async function loadRoute() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TEST_API_TOKEN = 'test-api-token-abc123'
-
 /** Simulate a Next.js Request with a JSON body and optional headers. */
 function makeRequest(body: unknown, headers: Record<string, string> = {}): NextRequest {
   return {
@@ -52,11 +50,6 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}): NextR
       get: (key: string) => headers[key.toLowerCase()] ?? null,
     },
   } as unknown as NextRequest
-}
-
-/** Simulate a request that includes a valid API token. */
-function makeAuthedRequest(body: unknown): NextRequest {
-  return makeRequest(body, { authorization: `Bearer ${TEST_API_TOKEN}` })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -118,28 +111,11 @@ describe('PUT /api/mcp', () => {
     vi.clearAllMocks()
     fsMock.writeFile.mockResolvedValue(undefined)
     fsMock.mkdir.mockResolvedValue(undefined)
-    process.env.AXON_WEB_API_TOKEN = TEST_API_TOKEN
-  })
-
-  afterEach(() => {
-    delete process.env.AXON_WEB_API_TOKEN
-  })
-
-  it('returns 401 when Authorization header is absent', async () => {
-    const config = { mcpServers: { 'my-server': { command: 'node' } } }
-    const req = makeRequest(config) // no auth token
-
-    const { PUT } = await loadRoute()
-    const response = await PUT(req)
-
-    expect(response.status).toBe(401)
-    const body = await response.json()
-    expect(body).toHaveProperty('error')
   })
 
   it('writes pretty-printed JSON and returns { ok: true } for valid body', async () => {
     const config = { mcpServers: { 'my-server': { command: 'node' } } }
-    const req = makeAuthedRequest(config)
+    const req = makeRequest(config)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -154,7 +130,7 @@ describe('PUT /api/mcp', () => {
   })
 
   it('returns 400 when body is missing mcpServers field', async () => {
-    const req = makeAuthedRequest({ notMcpServers: {} })
+    const req = makeRequest({ notMcpServers: {} })
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -165,7 +141,7 @@ describe('PUT /api/mcp', () => {
   })
 
   it('returns 400 when body is null', async () => {
-    const req = makeAuthedRequest(null)
+    const req = makeRequest(null)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -174,7 +150,7 @@ describe('PUT /api/mcp', () => {
   })
 
   it('returns 400 when mcpServers is not an object', async () => {
-    const req = makeAuthedRequest({ mcpServers: 'not-an-object' })
+    const req = makeRequest({ mcpServers: 'not-an-object' })
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -184,7 +160,7 @@ describe('PUT /api/mcp', () => {
 
   it('returns 400 when command contains path traversal (../../bin/bash)', async () => {
     const config = { mcpServers: { 'evil-server': { command: '../../bin/bash' } } }
-    const req = makeAuthedRequest(config)
+    const req = makeRequest(config)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -196,7 +172,17 @@ describe('PUT /api/mcp', () => {
 
   it('returns 400 when command contains shell metacharacters', async () => {
     const config = { mcpServers: { 'evil-server': { command: 'node; rm -rf /' } } }
-    const req = makeAuthedRequest(config)
+    const req = makeRequest(config)
+
+    const { PUT } = await loadRoute()
+    const response = await PUT(req)
+
+    expect(response.status).toBe(400)
+  })
+
+  it('returns 400 when command contains path separators', async () => {
+    const config = { mcpServers: { 'evil-server': { command: '/usr/bin/node' } } }
+    const req = makeRequest(config)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -213,7 +199,7 @@ describe('PUT /api/mcp', () => {
         },
       },
     }
-    const req = makeAuthedRequest(config)
+    const req = makeRequest(config)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -232,7 +218,7 @@ describe('PUT /api/mcp', () => {
         },
       },
     }
-    const req = makeAuthedRequest(config)
+    const req = makeRequest(config)
 
     const { PUT } = await loadRoute()
     const response = await PUT(req)
@@ -247,22 +233,6 @@ describe('DELETE /api/mcp', () => {
     vi.clearAllMocks()
     fsMock.writeFile.mockResolvedValue(undefined)
     fsMock.mkdir.mockResolvedValue(undefined)
-    process.env.AXON_WEB_API_TOKEN = TEST_API_TOKEN
-  })
-
-  afterEach(() => {
-    delete process.env.AXON_WEB_API_TOKEN
-  })
-
-  it('returns 401 when Authorization header is absent', async () => {
-    const req = makeRequest({ name: 'some-server' }) // no auth token
-
-    const { DELETE } = await loadRoute()
-    const response = await DELETE(req)
-
-    expect(response.status).toBe(401)
-    const body = await response.json()
-    expect(body).toHaveProperty('error')
   })
 
   it('removes an existing server and returns { ok: true }', async () => {
@@ -274,7 +244,7 @@ describe('DELETE /api/mcp', () => {
     }
     fsMock.readFile.mockResolvedValue(JSON.stringify(existing))
 
-    const req = makeAuthedRequest({ name: 'delete-me' })
+    const req = makeRequest({ name: 'delete-me' })
     const { DELETE } = await loadRoute()
     const response = await DELETE(req)
 
@@ -294,7 +264,7 @@ describe('DELETE /api/mcp', () => {
     const existing = { mcpServers: { 'keep-me': { command: 'node' } } }
     fsMock.readFile.mockResolvedValue(JSON.stringify(existing))
 
-    const req = makeAuthedRequest({ name: 'nonexistent' })
+    const req = makeRequest({ name: 'nonexistent' })
     const { DELETE } = await loadRoute()
     const response = await DELETE(req)
 
@@ -303,7 +273,7 @@ describe('DELETE /api/mcp', () => {
   })
 
   it('returns 400 when body is missing name field', async () => {
-    const req = makeAuthedRequest({ notName: 'something' })
+    const req = makeRequest({ notName: 'something' })
 
     const { DELETE } = await loadRoute()
     const response = await DELETE(req)
@@ -314,7 +284,7 @@ describe('DELETE /api/mcp', () => {
   })
 
   it('returns 400 when name is not a string', async () => {
-    const req = makeAuthedRequest({ name: 42 })
+    const req = makeRequest({ name: 42 })
 
     const { DELETE } = await loadRoute()
     const response = await DELETE(req)
@@ -323,7 +293,7 @@ describe('DELETE /api/mcp', () => {
   })
 
   it('returns 400 when body is null', async () => {
-    const req = makeAuthedRequest(null)
+    const req = makeRequest(null)
 
     const { DELETE } = await loadRoute()
     const response = await DELETE(req)

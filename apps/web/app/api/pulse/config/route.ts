@@ -3,6 +3,7 @@ import { runAxonCommandWsStream } from '@/lib/axon-ws-exec'
 import { ensureRepoRootEnvLoaded } from '@/lib/pulse/server-env'
 import { AcpConfigOption, PulseAgent } from '@/lib/pulse/types'
 import { apiError, makeErrorId } from '@/lib/server/api-error'
+import { logError } from '@/lib/server/logger'
 
 const PulseConfigProbeRequestSchema = z.object({
   agent: PulseAgent.default('codex'),
@@ -120,10 +121,9 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const errorId = makeErrorId('pulse-config')
     const message = error instanceof Error ? error.message : String(error)
-    console.error('[pulse/config] probe failed', {
+    logError('api.pulse.config.probe_failed', {
       errorId,
       message,
-      error,
       agent: req.agent,
       sessionId: req.sessionId ?? null,
       model: req.model ?? null,

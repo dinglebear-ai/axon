@@ -9,7 +9,9 @@ pub use crate::crates::jobs::refresh::{
     RefreshJob, RefreshSchedule, RefreshScheduleCreate, create_refresh_schedule,
     delete_refresh_schedule, list_refresh_jobs as schedule_list_jobs,
 };
-use crate::crates::services::types::{RefreshRunResult, RefreshStartResult};
+use crate::crates::services::types::{
+    RefreshJobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
+};
 use std::error::Error;
 use uuid::Uuid;
 
@@ -35,22 +37,18 @@ pub async fn refresh_start(
 pub async fn refresh_status(
     cfg: &Config,
     job_id: Uuid,
-) -> Result<Option<RefreshRunResult>, Box<dyn Error>> {
+) -> Result<RefreshJobResult, Box<dyn Error>> {
     let job = get_refresh_job(cfg, job_id).await?;
-    Ok(job.map(|job| RefreshRunResult {
-        payload: serde_json::to_value(job).unwrap_or(serde_json::Value::Null),
-    }))
+    Ok(RefreshJobResult { job })
 }
 
 pub async fn refresh_list(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<RefreshRunResult, Box<dyn Error>> {
+) -> Result<RefreshJobListResult, Box<dyn Error>> {
     let jobs = list_refresh_jobs(cfg, limit, offset).await?;
-    Ok(RefreshRunResult {
-        payload: serde_json::to_value(jobs)?,
-    })
+    Ok(RefreshJobListResult { jobs })
 }
 
 pub async fn refresh_cancel(cfg: &Config, job_id: Uuid) -> Result<bool, Box<dyn Error>> {
@@ -97,4 +95,47 @@ pub async fn refresh_schedule_enable(cfg: &Config, name: &str) -> Result<bool, B
 
 pub async fn refresh_schedule_disable(cfg: &Config, name: &str) -> Result<bool, Box<dyn Error>> {
     set_refresh_schedule_enabled(cfg, name, false).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::services::types::{RefreshJobListResult, RefreshJobResult};
+    use chrono::{TimeZone, Utc};
+
+    fn test_refresh_job() -> RefreshJob {
+        RefreshJob {
+            id: Uuid::parse_str("88888888-8888-8888-8888-888888888888").expect("valid uuid"),
+            status: "completed".to_string(),
+            created_at: Utc
+                .with_ymd_and_hms(2026, 3, 15, 12, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            updated_at: Utc
+                .with_ymd_and_hms(2026, 3, 15, 12, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            started_at: None,
+            finished_at: None,
+            error_text: None,
+            urls_json: serde_json::json!(["https://example.com"]),
+            result_json: Some(serde_json::json!({"checked": 1})),
+            config_json: serde_json::json!({"embed": true}),
+        }
+    }
+
+    #[test]
+    fn typed_refresh_result_wrappers_hold_refresh_jobs() {
+        let job = test_refresh_job();
+        let status = RefreshJobResult {
+            job: Some(job.clone()),
+        };
+        let list = RefreshJobListResult {
+            jobs: vec![job.clone()],
+        };
+
+        assert_eq!(status.job.expect("job").id, job.id);
+        assert_eq!(list.jobs.len(), 1);
+        assert_eq!(list.jobs[0].id, job.id);
+    }
 }

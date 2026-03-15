@@ -24,13 +24,15 @@ export function DensitySelector({
       <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-dim)]">
         Display Density
       </span>
-      <div className="mt-2 flex flex-col gap-2">
+      <div className="mt-2 flex flex-col gap-2" role="radiogroup" aria-label="Display density">
         {DENSITY_OPTIONS.map(({ value, label, description }) => (
           <button
             key={value}
             type="button"
+            role="radio"
+            aria-checked={density === value}
             onClick={() => onDensityChange(value)}
-            className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors ${
+            className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-0 ${
               density === value
                 ? 'border-[rgba(175,215,255,0.35)] bg-[rgba(175,215,255,0.08)] shadow-[0_0_12px_rgba(135,175,255,0.05)]'
                 : 'border-[var(--border-subtle)] bg-[rgba(10,18,35,0.2)] hover:border-[rgba(175,215,255,0.2)] hover:bg-[rgba(135,175,255,0.04)]'

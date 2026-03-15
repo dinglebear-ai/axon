@@ -1,5 +1,6 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
 import type { CommandOptionValues } from '@/lib/command-options'
 import type { LocalDocFile, MentionKind } from '@/lib/omnibox'
 import type { ModeCategory, ModeDefinition, ModeId } from '@/lib/ws-protocol'
@@ -57,11 +58,12 @@ export function ModeDropdown({
             </div>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-0.5">
               {visibleItems.map((m, idx) => (
-                <button
+                <Button
                   key={m.id}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => selectMode(m.id)}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition-all duration-150 animate-fade-in-up ${
+                  className={`justify-start gap-2 text-xs font-medium animate-fade-in-up ${
                     m.id === mode
                       ? 'bg-[rgba(175,215,255,0.12)] text-[var(--axon-primary-strong)]'
                       : 'text-[var(--text-muted)] hover:bg-[var(--surface-float)] hover:text-[var(--axon-secondary)]'
@@ -80,7 +82,7 @@ export function ModeDropdown({
                     <path d={m.icon} />
                   </svg>
                   <span>{m.label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -144,21 +146,22 @@ export function FileSuggestionsPanel({
       </div>
       <div className="flex flex-wrap gap-1.5">
         {fileSuggestions.map((candidate, idx) => (
-          <button
+          <Button
             key={candidate.id}
-            type="button"
+            variant="outline"
+            size="xs"
             onClick={() => {
               setMentionSelectionIndex(idx)
               void applyFileMentionCandidate(candidate)
             }}
-            className={`rounded-md border px-2 py-1 text-[length:var(--text-xs)] font-semibold transition-all ${
+            className={`font-semibold ${
               idx === mentionSelectionIndex
                 ? 'border-[rgba(175,215,255,0.5)] bg-[rgba(175,215,255,0.18)] text-[var(--axon-primary)]'
                 : 'border-[rgba(255,135,175,0.25)] bg-[rgba(255,135,175,0.08)] text-[var(--axon-secondary)] hover:bg-[rgba(255,135,175,0.14)]'
             }`}
           >
             @{candidate.label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="ui-meta mt-1">Tab/Enter apply · up/down change</div>
@@ -182,14 +185,15 @@ export function AttachedContextPanel({
       <div className="ui-label mb-1">Attached Context</div>
       <div className="flex flex-wrap gap-1.5">
         {entries.map(([label]) => (
-          <button
+          <Button
             key={label}
-            type="button"
+            variant="outline"
+            size="xs"
             onClick={() => onRemoveMention(label)}
-            className="rounded-md border border-[rgba(95,135,175,0.45)] bg-[rgba(95,135,175,0.12)] px-2 py-1 text-[length:var(--text-xs)] font-semibold text-[var(--axon-secondary)]"
+            className="border-[rgba(95,135,175,0.45)] bg-[rgba(95,135,175,0.12)] font-semibold text-[var(--axon-secondary)]"
           >
             @{label} x
-          </button>
+          </Button>
         ))}
       </div>
     </div>

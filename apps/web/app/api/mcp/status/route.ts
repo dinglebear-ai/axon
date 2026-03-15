@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { NextResponse } from 'next/server'
+import { logError } from '@/lib/server/logger'
 
 const execFileAsync = promisify(execFile)
 
@@ -101,11 +102,10 @@ async function checkHttpServer(
     if (res.status >= 300 && res.status < 400) return 'auth-required'
     return res.status < 600 ? 'online' : 'offline'
   } catch (err) {
-    console.error(
-      '[mcp-status] checkHttpServer error for',
+    logError('api.mcp.status.http_check_failed', {
       name,
-      err instanceof Error ? err.message : String(err),
-    )
+      message: err instanceof Error ? err.message : String(err),
+    })
     return 'offline'
   }
 }
@@ -130,11 +130,10 @@ async function checkStdioServer(name: string, command: string): Promise<ServerSt
     await execFileAsync('which', [command], { timeout: 3_000 })
     return 'online'
   } catch (err) {
-    console.error(
-      '[mcp-status] checkStdioServer error for',
+    logError('api.mcp.status.stdio_check_failed', {
       name,
-      err instanceof Error ? err.message : String(err),
-    )
+      message: err instanceof Error ? err.message : String(err),
+    })
     return 'offline'
   }
 }
@@ -166,7 +165,9 @@ export async function GET() {
 
     return NextResponse.json({ servers })
   } catch (err) {
-    console.error('[MCP status] GET failed:', err)
+    logError('api.mcp.status.get_failed', {
+      message: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json({ error: 'Failed to check MCP server status' }, { status: 500 })
   }
 }

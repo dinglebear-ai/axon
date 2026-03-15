@@ -1,9 +1,138 @@
 use crate::crates::jobs::crawl::CrawlJob;
+use crate::crates::jobs::embed::EmbedJob;
 use crate::crates::jobs::extract::ExtractJob;
 use crate::crates::jobs::ingest::IngestJob;
+use crate::crates::jobs::refresh::RefreshJob;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+struct SharedJobRecord {
+    id: Uuid,
+    status: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    finished_at: Option<DateTime<Utc>>,
+    error: Option<String>,
+    error_text: Option<String>,
+    url: Option<String>,
+    source_type: Option<String>,
+    target: Option<String>,
+    urls: Option<serde_json::Value>,
+    urls_json: Option<serde_json::Value>,
+    metrics: Option<serde_json::Value>,
+    result_json: Option<serde_json::Value>,
+    config_json: Option<serde_json::Value>,
+}
+
+impl SharedJobRecord {
+    fn crawl(job: &CrawlJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error: job.error_text.clone(),
+            error_text: job.error_text.clone(),
+            url: Some(job.url.clone()),
+            source_type: None,
+            target: None,
+            urls: None,
+            urls_json: None,
+            metrics: job.result_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: None,
+        }
+    }
+
+    fn extract(job: &ExtractJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error: job.error_text.clone(),
+            error_text: job.error_text.clone(),
+            url: None,
+            source_type: None,
+            target: None,
+            urls: Some(job.urls_json.clone()),
+            urls_json: Some(job.urls_json.clone()),
+            metrics: job.result_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: None,
+        }
+    }
+
+    fn ingest(job: &IngestJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error: job.error_text.clone(),
+            error_text: job.error_text.clone(),
+            url: None,
+            source_type: Some(job.source_type.clone()),
+            target: Some(job.target.clone()),
+            urls: None,
+            urls_json: None,
+            metrics: job.result_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: Some(job.config_json.clone()),
+        }
+    }
+
+    fn embed(job: &EmbedJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error: job.error_text.clone(),
+            error_text: job.error_text.clone(),
+            url: None,
+            source_type: None,
+            target: Some(job.input_text.clone()),
+            urls: None,
+            urls_json: None,
+            metrics: job.result_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: Some(job.config_json.clone()),
+        }
+    }
+
+    fn refresh(job: &RefreshJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error: job.error_text.clone(),
+            error_text: job.error_text.clone(),
+            url: None,
+            source_type: None,
+            target: None,
+            urls: Some(job.urls_json.clone()),
+            urls_json: Some(job.urls_json.clone()),
+            metrics: job.result_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: Some(job.config_json.clone()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JobStatusResponse {
@@ -36,66 +165,23 @@ pub struct JobStatusResponse {
 
 impl JobStatusResponse {
     pub fn from_crawl(job: &CrawlJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: Some(job.url.clone()),
-            source_type: None,
-            target: None,
-            urls: None,
-            urls_json: None,
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
+        SharedJobRecord::crawl(job).into()
     }
 
     pub fn from_extract(job: &ExtractJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: None,
-            target: None,
-            urls: Some(job.urls_json.clone()),
-            urls_json: Some(job.urls_json.clone()),
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
+        SharedJobRecord::extract(job).into()
     }
 
     pub fn from_ingest(job: &IngestJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: Some(job.source_type.clone()),
-            target: Some(job.target.clone()),
-            urls: None,
-            urls_json: None,
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: Some(job.config_json.clone()),
-        }
+        SharedJobRecord::ingest(job).into()
+    }
+
+    pub fn from_embed(job: &EmbedJob) -> Self {
+        SharedJobRecord::embed(job).into()
+    }
+
+    pub fn from_refresh(job: &RefreshJob) -> Self {
+        SharedJobRecord::refresh(job).into()
     }
 }
 
@@ -160,65 +246,68 @@ pub struct JobSummaryEntry {
 
 impl JobSummaryEntry {
     pub fn from_crawl(job: &CrawlJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: Some(job.url.clone()),
-            source_type: None,
-            target: None,
-            urls: None,
-            urls_json: None,
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
+        SharedJobRecord::crawl(job).into()
     }
 
     pub fn from_extract(job: &ExtractJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: None,
-            target: None,
-            urls: Some(job.urls_json.clone()),
-            urls_json: Some(job.urls_json.clone()),
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: None,
-        }
+        SharedJobRecord::extract(job).into()
     }
 
     pub fn from_ingest(job: &IngestJob) -> Self {
+        SharedJobRecord::ingest(job).into()
+    }
+
+    pub fn from_embed(job: &EmbedJob) -> Self {
+        SharedJobRecord::embed(job).into()
+    }
+
+    pub fn from_refresh(job: &RefreshJob) -> Self {
+        SharedJobRecord::refresh(job).into()
+    }
+}
+
+impl From<SharedJobRecord> for JobStatusResponse {
+    fn from(value: SharedJobRecord) -> Self {
         Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error: job.error_text.clone(),
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: Some(job.source_type.clone()),
-            target: Some(job.target.clone()),
-            urls: None,
-            urls_json: None,
-            metrics: job.result_json.clone(),
-            result_json: job.result_json.clone(),
-            config_json: Some(job.config_json.clone()),
+            id: value.id,
+            status: value.status,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            started_at: value.started_at,
+            finished_at: value.finished_at,
+            error: value.error,
+            error_text: value.error_text,
+            url: value.url,
+            source_type: value.source_type,
+            target: value.target,
+            urls: value.urls,
+            urls_json: value.urls_json,
+            metrics: value.metrics,
+            result_json: value.result_json,
+            config_json: value.config_json,
+        }
+    }
+}
+
+impl From<SharedJobRecord> for JobSummaryEntry {
+    fn from(value: SharedJobRecord) -> Self {
+        Self {
+            id: value.id,
+            status: value.status,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            started_at: value.started_at,
+            finished_at: value.finished_at,
+            error: value.error,
+            error_text: value.error_text,
+            url: value.url,
+            source_type: value.source_type,
+            target: value.target,
+            urls: value.urls,
+            urls_json: value.urls_json,
+            metrics: value.metrics,
+            result_json: value.result_json,
+            config_json: value.config_json,
         }
     }
 }
@@ -226,6 +315,8 @@ impl JobSummaryEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::jobs::embed::EmbedJob;
+    use crate::crates::jobs::refresh::RefreshJob;
     use chrono::TimeZone;
 
     fn test_ts() -> DateTime<Utc> {
@@ -275,6 +366,36 @@ mod tests {
             error_text: None,
             result_json: Some(serde_json::json!({"chunks": 99})),
             config_json: serde_json::json!({"collection": "cortex"}),
+        }
+    }
+
+    fn test_embed_job() -> EmbedJob {
+        EmbedJob {
+            id: Uuid::parse_str("44444444-4444-4444-4444-444444444444").expect("valid uuid"),
+            status: "running".to_string(),
+            created_at: test_ts(),
+            updated_at: test_ts(),
+            started_at: Some(test_ts()),
+            finished_at: None,
+            error_text: None,
+            input_text: "/tmp/embed-input".to_string(),
+            result_json: Some(serde_json::json!({"chunks_embedded": 7})),
+            config_json: serde_json::json!({"collection": "cortex"}),
+        }
+    }
+
+    fn test_refresh_job() -> RefreshJob {
+        RefreshJob {
+            id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").expect("valid uuid"),
+            status: "completed".to_string(),
+            created_at: test_ts(),
+            updated_at: test_ts(),
+            started_at: Some(test_ts()),
+            finished_at: Some(test_ts()),
+            error_text: None,
+            urls_json: serde_json::json!(["https://example.com/a", "https://example.com/b"]),
+            result_json: Some(serde_json::json!({"checked": 2, "changed": 1})),
+            config_json: serde_json::json!({"embed": true}),
         }
     }
 
@@ -353,6 +474,37 @@ mod tests {
         assert_eq!(
             item["config_json"],
             serde_json::json!({"collection": "cortex"})
+        );
+    }
+
+    #[test]
+    fn embed_status_contract_includes_input_and_metrics() {
+        let json = serde_json::to_value(JobStatusResponse::from_embed(&test_embed_job()))
+            .expect("serialize");
+        assert_eq!(json["status"], "running");
+        assert_eq!(json["target"], "/tmp/embed-input");
+        assert_eq!(json["metrics"], serde_json::json!({"chunks_embedded": 7}));
+        assert_eq!(
+            json["result_json"],
+            serde_json::json!({"chunks_embedded": 7})
+        );
+    }
+
+    #[test]
+    fn refresh_summary_contract_includes_urls_and_result_metrics() {
+        let payload = serialize_list(vec![JobSummaryEntry::from_refresh(&test_refresh_job())]);
+        let item = &payload[0];
+        assert_eq!(
+            item["urls"],
+            serde_json::json!(["https://example.com/a", "https://example.com/b"])
+        );
+        assert_eq!(
+            item["metrics"],
+            serde_json::json!({"checked": 2, "changed": 1})
+        );
+        assert_eq!(
+            item["result_json"],
+            serde_json::json!({"checked": 2, "changed": 1})
         );
     }
 

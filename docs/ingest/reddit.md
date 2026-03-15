@@ -36,7 +36,7 @@ REDDIT_CLIENT_SECRET=your_client_secret
 3. Fetches posts from `https://oauth.reddit.com/r/<subreddit>/<sort>?limit=100`; paginates until `--max-posts` reached
 4. For each post, fetches the comment tree at `https://oauth.reddit.com<permalink>.json?limit=100&depth=<n>`
 5. Recursively traverses comments up to `--depth` levels, skipping entries below `--min-score`
-6. Posts and comments embedded via `embed_text_with_metadata()` → TEI → Qdrant
+6. Posts and comments embedded via `embed_prepared_docs()` → TEI → Qdrant
 
 **User-Agent:** `axon-ingest/1.0 by /u/axon_bot` (Reddit requires a descriptive UA string per their API terms)
 

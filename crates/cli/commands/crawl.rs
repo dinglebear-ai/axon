@@ -30,7 +30,7 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
     for url in &urls {
         validate_url(url)?;
-        warn_if_url_looks_like_local_file(url);
+        warn_if_url_looks_like_local_file(url).await;
     }
     let start_url = urls.first().map(String::as_str).unwrap_or("");
     log_info(&format!(
@@ -54,22 +54,31 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn local_filename_exists_case_insensitive(file_name: &str) -> bool {
-    if Path::new(file_name).exists() {
+async fn local_filename_exists_case_insensitive(file_name: &str) -> bool {
+    if tokio::fs::try_exists(file_name).await.unwrap_or(false) || Path::new(file_name).exists() {
         return true;
     }
-    let Ok(entries) = std::fs::read_dir(".") else {
+    let Ok(mut entries) = tokio::fs::read_dir(".").await else {
         return false;
     };
-    entries.flatten().any(|entry| {
-        entry
+    loop {
+        let Ok(next) = entries.next_entry().await else {
+            return false;
+        };
+        let Some(entry) = next else {
+            return false;
+        };
+        if entry
             .file_name()
             .to_string_lossy()
             .eq_ignore_ascii_case(file_name)
-    })
+        {
+            return true;
+        }
+    }
 }
 
-fn warn_if_url_looks_like_local_file(target: &str) {
+async fn warn_if_url_looks_like_local_file(target: &str) {
     let Ok(parsed) = Url::parse(target) else {
         return;
     };
@@ -94,7 +103,7 @@ fn warn_if_url_looks_like_local_file(target: &str) {
     if !looks_like_docish_tld {
         return;
     }
-    if !local_filename_exists_case_insensitive(host) {
+    if !local_filename_exists_case_insensitive(host).await {
         return;
     }
     log_warn(&format!(
@@ -224,4 +233,42 @@ async fn run_async_enqueue_multi(cfg: &Config, urls: &[String]) -> Result<(), Bo
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::local_filename_exists_case_insensitive;
+    use serial_test::serial;
+    use std::env;
+    use std::path::{Path, PathBuf};
+
+    struct CurrentDirGuard {
+        original: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn change_to(path: &Path) -> Self {
+            let original = env::current_dir().expect("current dir");
+            env::set_current_dir(path).expect("set current dir");
+            Self { original }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = env::set_current_dir(&self.original);
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn local_filename_exists_matches_case_insensitively() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let _guard = CurrentDirGuard::change_to(temp.path());
+        tokio::fs::write(temp.path().join("README.MD"), "test")
+            .await
+            .expect("write file");
+
+        assert!(local_filename_exists_case_insensitive("readme.md").await);
+    }
 }

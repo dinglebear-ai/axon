@@ -9,7 +9,6 @@ import {
   TerminalSquareIcon,
 } from 'lucide-react'
 import type { ComponentProps } from 'react'
-import { useState } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 
@@ -86,8 +85,8 @@ export function ToolHeader({
   status,
   meta,
   badges,
-  ...props
-}: ComponentProps<'button'> & {
+}: {
+  className?: string
   title: string
   description?: string
   kind?: ToolKind
@@ -95,7 +94,6 @@ export function ToolHeader({
   meta?: string
   badges?: string[]
 }) {
-  const [open, setOpen] = useState(true)
   const displayKind = kind ?? inferToolKind(title)
   const normalizedStatus = (status ?? '').toLowerCase()
   const statusTone =
@@ -106,62 +104,54 @@ export function ToolHeader({
         : 'bg-[rgba(175,215,255,0.08)] text-[var(--text-dim)]'
 
   return (
-    <CollapsibleTrigger asChild>
-      <button
-        className={cn(
-          'flex w-full items-center justify-between gap-2 border-b border-[var(--border-subtle)] text-left px-3 py-2',
-          className,
-        )}
-        type="button"
-        {...props}
-        onClick={(event) => {
-          setOpen((prev) => !prev)
-          props.onClick?.(event)
-        }}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <ToolKindIcon kind={displayKind} />
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <p className={cn('truncate font-medium text-[var(--text-primary)] text-[13px]')}>
-                {title}
-              </p>
-              <span className="shrink-0 rounded border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-dim)]">
-                {toolKindLabel(displayKind)}
+    <CollapsibleTrigger
+      className={cn(
+        'group flex w-full items-center justify-between gap-2 border-b border-[var(--border-subtle)] text-left px-3 py-2',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ToolKindIcon kind={displayKind} />
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className={cn('truncate font-medium text-[var(--text-primary)] text-[13px]')}>
+              {title}
+            </p>
+            <span className="shrink-0 rounded border border-[var(--border-subtle)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-dim)]">
+              {toolKindLabel(displayKind)}
+            </span>
+            {status ? (
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${statusTone}`}
+              >
+                {status}
               </span>
-              {status ? (
-                <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${statusTone}`}
-                >
-                  {status}
-                </span>
-              ) : null}
-            </div>
-            {description ? (
-              <p className="text-xs text-[var(--text-secondary)]">{description}</p>
             ) : null}
-            {badges?.length ? (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                {badges.map((badge) => (
-                  <span
-                    key={badge}
-                    className="rounded border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.02)] px-1.5 py-0.5 text-[10px] leading-none text-[var(--text-dim)]"
-                  >
-                    {badge}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {meta ? <p className="text-[11px] text-[var(--text-dim)]">{meta}</p> : null}
           </div>
+          {description ? (
+            <p className="text-xs text-[var(--text-secondary)]">{description}</p>
+          ) : null}
+          {badges?.length ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {badges.map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.02)] px-1.5 py-0.5 text-[10px] leading-none text-[var(--text-dim)]"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {meta ? <p className="text-[11px] text-[var(--text-dim)]">{meta}</p> : null}
         </div>
-        <ChevronDownIcon
-          className={cn(
-            'size-4 shrink-0 text-[var(--text-dim)] transition-transform',
-            !open && '-rotate-90',
-          )}
-        />
-      </button>
+      </div>
+      <ChevronDownIcon
+        className={cn(
+          'size-4 shrink-0 text-[var(--text-dim)] transition-transform',
+          'group-data-[state=closed]:-rotate-90',
+        )}
+      />
     </CollapsibleTrigger>
   )
 }

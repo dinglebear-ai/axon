@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { parseOpenAiSseChunk } from '@/app/api/ai/copilot/route'
 import { ensureRepoRootEnvLoaded } from '@/lib/pulse/server-env'
 import { apiError } from '@/lib/server/api-error'
+import { logError } from '@/lib/server/logger'
 
 const AIChatRequestSchema = z.object({
   prompt: z.string().min(1).max(16_000),
@@ -103,7 +104,9 @@ export async function POST(request: Request) {
       },
     )
   } catch (err) {
-    console.error('[AI Chat] Unhandled error:', err)
+    logError('api.ai.chat.unhandled_error', {
+      message: err instanceof Error ? err.message : String(err),
+    })
     return apiError(500, 'AI chat request failed', { code: 'ai_chat_internal' })
   }
 }

@@ -22,13 +22,15 @@ export function CanvasProfileSelector({
       <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-dim)]">
         Canvas Profile
       </span>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <div className="mt-1.5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Canvas profile">
         {CANVAS_PROFILES.map(({ value, label }) => (
           <button
             key={value}
             type="button"
+            role="radio"
+            aria-checked={canvasProfile === value}
             onClick={() => onCanvasProfileChange(value)}
-            className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+            className={`rounded-md border px-3 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-0 ${
               canvasProfile === value
                 ? 'border-[rgba(175,215,255,0.35)] bg-[rgba(175,215,255,0.12)] text-[var(--axon-primary-strong)]'
                 : 'border-[var(--border-subtle)] text-[var(--text-dim)] hover:border-[rgba(175,215,255,0.2)] hover:text-[var(--text-secondary)]'

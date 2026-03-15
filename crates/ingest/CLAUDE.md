@@ -47,7 +47,7 @@ ingest/
 - **Both** `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are **required** — command fails immediately if either is missing
 - Fetches subreddit posts + recursive comments; depth configurable via `--depth`
 - Rate limit: 100 req/min authenticated; uses `reqwest` directly (not spider)
-- **Metadata**: `reddit/meta.rs` builds `reddit_*` fields (author, score, num_comments, upvote_ratio, subreddit, domain, is_video, distinguished, gilded, flair) merged into every post's Qdrant payload via `embed_text_with_extra_payload`
+- **Metadata**: `reddit/meta.rs` builds `reddit_*` fields (author, score, num_comments, upvote_ratio, subreddit, domain, is_video, distinguished, gilded, flair) merged into every post's Qdrant payload via `PreparedDoc.extra`
 
 ### YouTube (`youtube.rs` + `youtube/`)
 - Invokes `yt-dlp` as a **subprocess** (not a library) — `yt-dlp` must be installed and on `$PATH`
@@ -57,7 +57,7 @@ ingest/
 - `extract_video_id()` handles full URLs, short URLs (`youtu.be/`), path patterns, and bare IDs
 - **Resume**: `completed_urls` in `result_json` JSONB lets a restarted job skip already-done videos
 - **429 retry**: 3 attempts with 10s → 20s → 40s backoff per video; non-429 errors skip the video
-- **Metadata**: `YoutubeVideoMeta` (in `youtube/meta.rs`) captures title, channel, channel_url, uploader_id, upload_date, duration, view_count, like_count, tags, categories — merged into every chunk's Qdrant payload via `embed_text_with_extra_payload`
+- **Metadata**: `YoutubeVideoMeta` (in `youtube/meta.rs`) captures title, channel, channel_url, uploader_id, upload_date, duration, view_count, like_count, tags, categories — merged into every chunk's Qdrant payload via `PreparedDoc.extra`
 - No API key needed; yt-dlp handles auth for publicly accessible videos
 
 ### Sessions (`sessions/`)
@@ -80,22 +80,41 @@ cargo test -- --nocapture # show parsed output
 All ingest unit tests run without live services (pure logic: parsing, classification, ID extraction). Tests for `ingest_github`, `ingest_reddit`, `ingest_youtube` that hit real APIs require credentials set in env.
 
 ## Embedding Pattern
-All ingest handlers call one of three embedding functions from `crates/vector/ops/tei.rs` (re-exported from `vector/ops.rs`):
 
-| Function | Used by | Chunking |
-|----------|---------|----------|
-| `embed_text_with_metadata()` | Sessions (plain text) | 2000-char prose |
-| `embed_text_with_extra_payload()` | GitHub issues/PRs/wiki, Reddit, YouTube | 2000-char prose + extra `gh_*`/`reddit_*`/`yt_*` fields |
-| `embed_code_with_metadata()` | GitHub source code files | tree-sitter AST first, prose fallback + extra `gh_*` fields |
+All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedDoc`. The legacy per-function API (`embed_text_with_metadata`, `embed_text_with_extra_payload`, `embed_code_with_metadata`) has been removed — there is now a single entry point for all embedding.
 
-All three functions follow the same pipeline:
-1. **Pre-delete** all existing Qdrant points for the source URL (`qdrant_delete_by_url_filter`) — prevents stale orphan chunks on re-ingest
-2. Chunk the content (AST-aware for code, 2000-char for prose)
-3. Attach source metadata (URL/source_type, title, etc.) plus any extra payload fields
-4. Call `tei_embed()` with auto-split on 413
-5. Upsert to Qdrant
+### Canonical Pattern
 
-`embed_code_with_metadata` tries `chunk_code()` (tree-sitter, 500–2000 char AST boundaries) first; if the file extension has no grammar or parsing fails, falls back to standard `chunk_text()` (2000-char with 200-char overlap).
+```rust
+use crate::crates::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
+use crate::crates::vector::ops::input::chunk_text;       // prose: 2000-char with 200-char overlap
+use crate::crates::vector::ops::input::code::chunk_code;  // tree-sitter AST-aware chunking
+
+let doc = PreparedDoc {
+    url: url.to_string(),
+    domain,                          // extracted from URL host
+    chunks,                          // pre-chunked via chunk_text() or chunk_code()
+    source_type: "github".to_string(), // "github"/"reddit"/"youtube"/"sessions"/"refresh"/"embed"
+    content_type: "markdown",        // or "text"
+    title: Some("...".to_string()),  // optional
+    extra: Some(serde_json::json!({  // source-specific gh_*/reddit_*/yt_* fields
+        "gh_owner": "rust-lang",
+    })),
+};
+let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+```
+
+### Pipeline behavior
+1. Documents processed concurrently (`AXON_EMBED_DOC_CONCURRENCY`)
+2. Per-doc TEI embedding with auto-split on 413 and retry on 429/503
+3. **Upsert-first** — deterministic UUID v5 point IDs overwrite existing chunks
+4. **Stale-tail cleanup** — orphan chunks with `chunk_index >= new_count` deleted after upsert
+5. Individual doc failures are logged and skipped (reported via `EmbedSummary.docs_failed`)
+
+### Chunking
+- **Prose** (`chunk_text`): 2000-char chunks with 200-char overlap
+- **Code** (`chunk_code`): tree-sitter AST-aware (Rust, Python, JS, TS, Go, Bash); falls back to `chunk_text` for unsupported extensions
+- Callers must chunk content **before** building `PreparedDoc` — the pipeline expects pre-chunked `chunks: Vec<String>`
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:

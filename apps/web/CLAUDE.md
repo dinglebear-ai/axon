@@ -1,5 +1,5 @@
 # apps/web — Axon Next.js UI
-Last Modified: 2026-03-11
+Last Modified: 2026-03-15
 
 Next.js 16 App Router frontend for the Axon RAG system. Runs on port `49010` in Docker via the `axon-web` service.
 
@@ -45,6 +45,7 @@ There are only **two Next.js page routes**:
 | `/api/ai/copilot` | POST | Yes | Plate.js ghost-text copilot completions |
 | `/api/cortex/doctor` | GET | Yes | Service health check (proxied from Rust backend) |
 | `/api/cortex/domains` | GET | Yes | Indexed domain list (proxied from Rust backend) |
+| `/api/cortex/overview` | GET | Yes | Aggregated dashboard overview payload (domains/sources/stats/status summary) |
 | `/api/cortex/sources` | GET | Yes | Indexed URL list (proxied from Rust backend) |
 | `/api/cortex/stats` | GET | Yes | Qdrant + Postgres metrics (proxied from Rust backend) |
 | `/api/cortex/status` | GET | Yes | Job queue status (proxied from Rust backend) |
@@ -53,7 +54,7 @@ There are only **two Next.js page routes**:
 | `/api/jobs` | GET | Yes | Job list with strict filter validation (`type`, `status`) |
 | `/api/jobs/[id]` | GET | Yes | Job detail — searches all job tables in parallel; `?includeArtifacts=1` for manifest files |
 | `/api/logs` | GET | Yes | SSE stream of Docker container logs; `?service=<name>` or `?service=all`, `?tail=N` (max 1000) |
-| `/api/mcp` | GET, POST | Yes | MCP server config read/write (`mcp.json`); hot-reloaded by ACP |
+| `/api/mcp` | GET, PUT, DELETE | Yes | MCP server config read/write/delete (`mcp.json`); hot-reloaded by ACP |
 | `/api/mcp/status` | GET | Yes | Probe reachability of each configured MCP server (HTTP ping or `which` check for stdio) |
 | `/api/omnibox/files` | GET | Yes | List/read local doc files (Pulse docs + `docs/` dir) for omnibox completion; `?id=<source:path>` to read one |
 | `/api/pulse/chat` | POST | Yes | Stream ACP chat turns via WebSocket to the Rust bridge (`runAxonCommandWsStream`) |
@@ -168,15 +169,28 @@ SHELL_SERVER_PORT=49011                    # default
 # API auth token required by middleware.ts (unless insecure dev bypass is enabled)
 AXON_WEB_API_TOKEN=CHANGE_ME
 
+# Optional browser-only API token accepted by proxy.ts for /api/* (not /ws)
+AXON_WEB_BROWSER_API_TOKEN=
+
 # Comma-separated allowed origins for /api and /ws/shell (optional)
 AXON_WEB_ALLOWED_ORIGINS=
 
 # Development-only localhost bypass for auth gates (do not enable in production)
 AXON_WEB_ALLOW_INSECURE_DEV=false
 
+# Allow ?token= query auth for /api/* routes in proxy.ts (off by default)
+AXON_WEB_ALLOW_QUERY_TOKEN=false
+
 # Optional shell-specific token/origin overrides
 AXON_SHELL_WS_TOKEN=
 AXON_SHELL_ALLOWED_ORIGINS=
+
+# Shell-server hardening controls
+SHELL_SERVER_MAX_CONNECTIONS=8
+SHELL_SERVER_IDLE_TIMEOUT_MS=900000
+SHELL_SERVER_MAX_PAYLOAD_BYTES=65536
+SHELL_SERVER_MAX_RESIZE_COLS=400
+SHELL_SERVER_MAX_RESIZE_ROWS=160
 
 # Optional client-side tokens used by shell websocket URL wiring
 NEXT_PUBLIC_AXON_API_TOKEN=
@@ -193,6 +207,13 @@ AXON_COLLECTION=cortex                    # default
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key
 OPENAI_MODEL=your-model-name
+
+# AI Gateway (required by /api/ai/command and /api/ai/copilot)
+AI_GATEWAY_API_KEY=your-ai-gateway-key
+
+# /api/logs docker socket access (disabled by default)
+AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS=false
+AXON_WEB_DOCKER_SOCKET_PATH=/var/run/docker.sock
 ```
 
 ## Code Style

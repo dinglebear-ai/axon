@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import type React from 'react'
+import { Badge } from '@/components/ui/badge'
 import type { DoctorResult, DoctorServiceStatus } from '@/lib/result-types'
 import { fmtMs as formatDurationMs } from './shared'
 
@@ -58,8 +59,9 @@ function MetricTile({
 
 function StatusPill({ ok }: { ok: boolean }) {
   return (
-    <span
-      className={`ui-chip-status ${
+    <Badge
+      variant="outline"
+      className={`gap-1 rounded-full border-transparent text-[10px] ${
         ok
           ? 'bg-[var(--axon-success-bg)] text-[var(--axon-success)]'
           : 'bg-[rgba(255,135,175,0.2)] text-[var(--axon-secondary)]'
@@ -67,7 +69,7 @@ function StatusPill({ ok }: { ok: boolean }) {
     >
       <span className="text-[length:var(--text-2xs)]">{'\u25CF'}</span>
       {ok ? 'ok' : 'fail'}
-    </span>
+    </Badge>
   )
 }
 

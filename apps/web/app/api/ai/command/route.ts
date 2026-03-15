@@ -15,6 +15,7 @@ import { BaseEditorKit } from '@/components/editor/editor-base-kit'
 import type { ChatMessage, ToolName } from '@/components/editor/use-chat'
 import { markdownJoinerTransform } from '@/lib/markdown-joiner-transform'
 import { apiError, makeErrorId } from '@/lib/server/api-error'
+import { logError } from '@/lib/server/logger'
 
 import {
   buildEditTableMultiCellPrompt,
@@ -191,7 +192,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorId = makeErrorId('ai-command')
     const message = error instanceof Error ? error.message : String(error)
-    console.error('[ai/command] unhandled error', { errorId, message, error })
+    logError('api.ai.command.unhandled_error', { errorId, message })
     return apiError(500, 'Failed to process AI request', {
       code: 'ai_command_internal',
       errorId,
@@ -236,7 +237,9 @@ const getCommentTool = (
           })
         }
       } catch (err) {
-        console.error('[ai/command] comment tool error:', err)
+        logError('api.ai.command.comment_tool_error', {
+          message: err instanceof Error ? err.message : String(err),
+        })
       } finally {
         writer.write({
           id: nanoid(),
@@ -279,7 +282,9 @@ const getTableTool = (
           })
         }
       } catch (err) {
-        console.error('[ai/command] table tool error:', err)
+        logError('api.ai.command.table_tool_error', {
+          message: err instanceof Error ? err.message : String(err),
+        })
       } finally {
         writer.write({
           id: nanoid(),

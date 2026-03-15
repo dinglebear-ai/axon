@@ -1,6 +1,15 @@
 'use client'
 
 import { Pause, Play, Trash2, WrapText } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export const SERVICES = [
   'axon-workers',
@@ -35,14 +44,6 @@ interface LogsToolbarProps {
   onClear: () => void
 }
 
-const SELECT_CLASS =
-  'rounded-md border px-2 py-1 text-[11px] font-medium focus:outline-none focus:ring-1 focus:ring-[var(--axon-primary)] transition-colors cursor-pointer'
-const SELECT_STYLE = {
-  background: 'rgba(10,18,35,0.7)',
-  borderColor: 'var(--border-subtle)',
-  color: 'var(--text-secondary)',
-}
-
 export function LogsToolbar({
   service,
   tailLines,
@@ -66,20 +67,23 @@ export function LogsToolbar({
         <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
           Service
         </span>
-        <select
-          className={SELECT_CLASS}
-          style={SELECT_STYLE}
-          value={service}
-          onChange={(e) => onServiceChange(e.target.value as ServiceName)}
-          aria-label="Select service"
-        >
-          <option value="all">All services</option>
-          {SERVICES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <Select value={service} onValueChange={(v) => onServiceChange(v as ServiceName)}>
+          <SelectTrigger
+            size="sm"
+            className="h-7 w-auto min-w-[120px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] font-medium text-[var(--text-secondary)]"
+            aria-label="Select service"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All services</SelectItem>
+            {SERVICES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Tail selector */}
@@ -87,93 +91,95 @@ export function LogsToolbar({
         <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
           Tail
         </span>
-        <select
-          className={SELECT_CLASS}
-          style={SELECT_STYLE}
-          value={tailLines}
-          onChange={(e) => onTailChange(Number(e.target.value) as TailLines)}
-          aria-label="Select tail lines"
+        <Select
+          value={String(tailLines)}
+          onValueChange={(v) => onTailChange(Number(v) as TailLines)}
         >
-          {TAIL_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            size="sm"
+            className="h-7 w-auto min-w-[70px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] font-medium text-[var(--text-secondary)]"
+            aria-label="Select tail lines"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TAIL_OPTIONS.map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {n}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Filter input */}
-      <input
+      <Input
         type="text"
-        placeholder="Filter logs…"
+        placeholder="Filter logs..."
         value={filter}
         onChange={(e) => onFilterChange(e.target.value)}
-        className="min-w-[140px] rounded-md border px-2 py-1 text-[11px] placeholder:text-[var(--text-dim)] focus:outline-none focus:ring-1 focus:ring-[var(--axon-primary)] transition-colors"
-        style={{
-          background: 'rgba(10,18,35,0.7)',
-          borderColor: 'var(--border-subtle)',
-          color: 'var(--text-secondary)',
-        }}
+        className="h-7 min-w-[140px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-dim)]"
         aria-label="Filter log lines"
       />
 
       {/* Auto-scroll toggle */}
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onAutoScrollToggle}
-        className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-[var(--border-standard)] hover:text-[var(--text-primary)]"
-        style={{
-          background: autoScroll ? 'rgba(135,175,255,0.12)' : 'rgba(10,18,35,0.7)',
-          borderColor: autoScroll ? 'var(--border-standard)' : 'var(--border-subtle)',
-          color: autoScroll ? 'var(--axon-primary)' : 'var(--text-dim)',
-        }}
+        className={`h-7 gap-1.5 text-[11px] font-medium ${
+          autoScroll
+            ? 'border-[var(--border-standard)] bg-[rgba(135,175,255,0.12)] text-[var(--axon-primary)]'
+            : 'border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[var(--text-dim)]'
+        }`}
         aria-pressed={autoScroll}
         title={autoScroll ? 'Pause auto-scroll' : 'Resume auto-scroll'}
       >
         {autoScroll ? <Pause className="size-3" /> : <Play className="size-3" />}
         Auto-scroll
-      </button>
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onCompactToggle}
-        className="rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-[var(--border-standard)] hover:text-[var(--text-primary)]"
-        style={{
-          background: compact ? 'rgba(135,175,255,0.12)' : 'rgba(10,18,35,0.7)',
-          borderColor: compact ? 'var(--border-standard)' : 'var(--border-subtle)',
-          color: compact ? 'var(--axon-primary)' : 'var(--text-dim)',
-        }}
+        className={`h-7 text-[11px] font-medium ${
+          compact
+            ? 'border-[var(--border-standard)] bg-[rgba(135,175,255,0.12)] text-[var(--axon-primary)]'
+            : 'border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[var(--text-dim)]'
+        }`}
         aria-pressed={compact}
         title={compact ? 'Switch to comfortable spacing' : 'Switch to compact spacing'}
       >
         Compact
-      </button>
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onWrapToggle}
-        className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-[var(--border-standard)] hover:text-[var(--text-primary)]"
-        style={{
-          background: wrapLines ? 'rgba(135,175,255,0.12)' : 'rgba(10,18,35,0.7)',
-          borderColor: wrapLines ? 'var(--border-standard)' : 'var(--border-subtle)',
-          color: wrapLines ? 'var(--axon-primary)' : 'var(--text-dim)',
-        }}
+        className={`h-7 gap-1.5 text-[11px] font-medium ${
+          wrapLines
+            ? 'border-[var(--border-standard)] bg-[rgba(135,175,255,0.12)] text-[var(--axon-primary)]'
+            : 'border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[var(--text-dim)]'
+        }`}
         aria-pressed={wrapLines}
         title={wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
       >
         <WrapText className="size-3" />
         Wrap
-      </button>
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onClear}
-        className="flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-dim)] transition-colors hover:border-[var(--border-standard)] hover:text-[var(--text-primary)]"
+        className="h-7 gap-1.5 border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] font-medium text-[var(--text-dim)]"
         title="Clear visible log buffer"
       >
         <Trash2 className="size-3" />
         Clear
-      </button>
+      </Button>
 
       {/* Connection status */}
       <div className="ml-auto flex items-center gap-1.5">

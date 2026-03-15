@@ -10,6 +10,11 @@ POLL_INTERVAL=3
 
 log() { echo "[pnpm-watcher] $*" >&2; }
 
+if [ "${AXON_WEB_APP_MODE:-dev}" != "dev" ]; then
+    log "AXON_WEB_APP_MODE=${AXON_WEB_APP_MODE:-dev} — watcher disabled"
+    exit 0
+fi
+
 sync_packages() {
     log "pnpm-lock.yaml changed — running pnpm install"
     if cd /app && CI=true s6-setuidgid node pnpm install --frozen-lockfile >&2; then

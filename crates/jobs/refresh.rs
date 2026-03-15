@@ -91,7 +91,7 @@ pub(crate) struct RefreshRunSummary {
     pub embedded_chunks: usize,
 }
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, FromRow, Serialize, Deserialize)]
 pub struct RefreshJob {
     pub id: Uuid,
     pub status: String,

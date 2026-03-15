@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { type NextRequest, NextResponse } from 'next/server'
+import { logWarn } from '@/lib/server/logger'
 
 // Normalize once — strips trailing slashes, resolves canonical path
 const OUTPUT_ROOT = path.resolve(
@@ -52,7 +53,10 @@ async function readManifest(manifestPath: string): Promise<ManifestLine[]> {
       }
     }
   } catch (err) {
-    console.warn(`[docs] Could not read manifest ${manifestPath}:`, err)
+    logWarn('api.docs.manifest_read_failed', {
+      manifestPath,
+      message: err instanceof Error ? err.message : String(err),
+    })
   }
   return entries
 }

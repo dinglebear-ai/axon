@@ -3,6 +3,9 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type React from 'react'
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { fmtNum } from './shared'
 
 export type SortDir = 'asc' | 'desc'
@@ -31,13 +34,14 @@ export function TopNToggle({
           ? `All ${totalRows.toLocaleString()} rows`
           : `Top ${DISPLAY_LIMIT} of ${totalRows.toLocaleString()} rows`}
       </span>
-      <button
-        type="button"
+      <Button
+        variant="link"
+        size="sm"
         onClick={onToggle}
-        className="text-xs text-[var(--axon-primary)] hover:text-[var(--axon-primary-strong)] transition-colors"
+        className="h-auto p-0 text-xs text-[var(--axon-primary)] hover:text-[var(--axon-primary-strong)]"
       >
         {showAll ? 'Show top 100' : `Show all ${totalRows.toLocaleString()}`}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -48,13 +52,12 @@ export function TopNToggle({
 
 export function FilterInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <input
+    <Input
       type="text"
       placeholder="Filter..."
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="mb-3 w-full rounded-md border border-[var(--border-subtle)] px-3 py-1.5 text-sm text-[var(--text-secondary)] placeholder-[var(--text-dim)] outline-none transition-colors focus:border-[var(--border-accent)]"
-      style={{ background: 'var(--surface-base)' }}
+      className="mb-3 w-full border-[var(--border-subtle)] bg-[var(--surface-base)] text-sm text-[var(--text-secondary)] placeholder-[var(--text-dim)]"
     />
   )
 }
@@ -118,22 +121,20 @@ export function UrlCell({ url }: { url: string }) {
 // Status badge
 // ---------------------------------------------------------------------------
 
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  completed: 'bg-[var(--axon-success-bg)] text-[var(--axon-success)] border-transparent',
+  running: 'bg-[rgba(135,175,255,0.14)] text-[var(--axon-primary-strong)] border-transparent',
+  pending: 'bg-[var(--axon-warning-bg)] text-[var(--axon-warning)] border-transparent',
+  failed: 'bg-[rgba(255,135,175,0.14)] text-[var(--axon-secondary)] border-transparent',
+  canceled: 'bg-[rgba(147,170,202,0.14)] text-[var(--text-muted)] border-transparent',
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { color: string; background: string }> = {
-    completed: { color: 'var(--axon-success)', background: 'var(--axon-success-bg)' },
-    running: { color: 'var(--axon-primary-strong)', background: 'rgba(135,175,255,0.14)' },
-    pending: { color: 'var(--axon-warning)', background: 'var(--axon-warning-bg)' },
-    failed: { color: 'var(--axon-secondary)', background: 'rgba(255,135,175,0.14)' },
-    canceled: { color: 'var(--text-muted)', background: 'rgba(147,170,202,0.14)' },
-  }
-  const style = colors[status] ?? {
-    color: 'var(--text-muted)',
-    background: 'rgba(147,170,202,0.14)',
-  }
+  const statusClass = STATUS_BADGE_STYLES[status] ?? STATUS_BADGE_STYLES.canceled
   return (
-    <span className="ui-chip-status" style={style}>
+    <Badge variant="outline" className={`rounded-full text-[10px] font-medium ${statusClass}`}>
       {status}
-    </span>
+    </Badge>
   )
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { Plus, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { EditorTab } from '@/hooks/use-tabs'
 
 interface EditorTabBarProps {
@@ -65,36 +66,38 @@ export function EditorTabBar({
             <span className="truncate font-mono">{tab.title || 'Untitled'}</span>
 
             {/* Close button */}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label={`Close ${tab.title || 'Untitled'}`}
               title={`Close ${tab.title || 'Untitled'}`}
               onClick={(e) => {
                 e.stopPropagation()
                 onClose(tab.id)
               }}
-              className={`ml-0.5 shrink-0 rounded p-0.5 transition-opacity ${
+              className={`ml-0.5 size-4 shrink-0 transition-opacity ${
                 isActive
                   ? 'opacity-50 hover:opacity-100'
                   : 'opacity-0 group-hover:opacity-40 hover:!opacity-80'
               }`}
             >
               <X className="size-3" />
-            </button>
+            </Button>
           </div>
         )
       })}
 
       {/* New tab button */}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         aria-label="New tab"
         title="New tab"
         onClick={onNewTab}
-        className="flex shrink-0 items-center justify-center px-2.5 py-2 text-[var(--text-dim)] transition-colors hover:bg-[var(--surface-float)] hover:text-[var(--text-muted)]"
+        className="shrink-0 px-2.5 py-2 text-[var(--text-dim)] hover:bg-[var(--surface-float)] hover:text-[var(--text-muted)]"
       >
         <Plus className="size-3.5" />
-      </button>
+      </Button>
     </div>
   )
 }

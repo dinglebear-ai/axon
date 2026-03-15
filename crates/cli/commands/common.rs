@@ -47,61 +47,105 @@ fn expand_numeric_range(start: i64, end: i64, step: i64) -> Vec<String> {
     out
 }
 
-fn expand_brace_token(token: &str) -> Vec<String> {
+fn expand_numeric_range_limited(
+    start: i64,
+    end: i64,
+    step: i64,
+    limit: usize,
+) -> (Vec<String>, bool) {
+    let mut values = expand_numeric_range(start, end, step);
+    let truncated = values.len() > limit;
+    if truncated {
+        values.truncate(limit);
+    }
+    (values, truncated)
+}
+
+fn expand_brace_token(token: &str, limit: usize) -> (Vec<String>, bool) {
     let trimmed = token.trim();
     if let Some((lhs, rhs)) = trimmed.split_once("..") {
         let lhs = lhs.trim();
         let rhs = rhs.trim();
         if let (Ok(start), Ok(end)) = (lhs.parse::<i64>(), rhs.parse::<i64>()) {
             let step = if start <= end { 1 } else { -1 };
-            let values = expand_numeric_range(start, end, step);
+            let (values, truncated) = expand_numeric_range_limited(start, end, step, limit);
             if !values.is_empty() {
-                return values;
+                return (values, truncated);
             }
         }
     }
-    trimmed
+    let mut values: Vec<String> = trimmed
         .split(',')
         .map(str::trim)
         .filter(|part| !part.is_empty())
         .map(str::to_string)
-        .collect()
+        .collect();
+    let truncated = values.len() > limit;
+    if truncated {
+        values.truncate(limit);
+    }
+    (values, truncated)
 }
 
 const MAX_EXPANSION_DEPTH: usize = 10;
+const MAX_EXPANSION_TOTAL: usize = 10_000;
 
 fn expand_url_glob_seed(seed: &str) -> Vec<String> {
-    expand_url_glob_seed_inner(seed, 0)
+    let mut out = Vec::new();
+    let mut warned = false;
+    expand_url_glob_seed_inner(seed, 0, &mut out, &mut warned);
+    out
 }
 
-fn expand_url_glob_seed_inner(seed: &str, depth: usize) -> Vec<String> {
+fn expand_url_glob_seed_inner(seed: &str, depth: usize, out: &mut Vec<String>, warned: &mut bool) {
+    if out.len() >= MAX_EXPANSION_TOTAL {
+        if !*warned {
+            log_warn(&format!(
+                "URL glob expansion reached MAX_EXPANSION_TOTAL ({MAX_EXPANSION_TOTAL}) for seed: {seed}. Truncating."
+            ));
+            *warned = true;
+        }
+        return;
+    }
     if depth >= MAX_EXPANSION_DEPTH {
         log_warn(&format!(
             "URL glob expansion reached MAX_EXPANSION_DEPTH ({MAX_EXPANSION_DEPTH}) for seed: {seed}. Truncating."
         ));
-        return vec![seed.to_string()];
+        out.push(seed.to_string());
+        return;
     }
     let Some(open_idx) = seed.find('{') else {
-        return vec![seed.to_string()];
+        out.push(seed.to_string());
+        return;
     };
     let Some(close_rel) = seed[open_idx + 1..].find('}') else {
-        return vec![seed.to_string()];
+        out.push(seed.to_string());
+        return;
     };
     let close_idx = open_idx + 1 + close_rel;
     let prefix = &seed[..open_idx];
     let token = &seed[open_idx + 1..close_idx];
     let suffix = &seed[close_idx + 1..];
-    let choices = expand_brace_token(token);
+    let remaining = MAX_EXPANSION_TOTAL.saturating_sub(out.len());
+    let (choices, truncated) = expand_brace_token(token, remaining);
+    if truncated && !*warned {
+        log_warn(&format!(
+            "URL glob expansion reached MAX_EXPANSION_TOTAL ({MAX_EXPANSION_TOTAL}) for seed: {seed}. Truncating."
+        ));
+        *warned = true;
+    }
     if choices.is_empty() {
-        return vec![seed.to_string()];
+        out.push(seed.to_string());
+        return;
     }
 
-    let mut out = Vec::new();
     for choice in choices {
         let next = format!("{prefix}{choice}{suffix}");
-        out.extend(expand_url_glob_seed_inner(&next, depth + 1));
+        expand_url_glob_seed_inner(&next, depth + 1, out, warned);
+        if out.len() >= MAX_EXPANSION_TOTAL {
+            break;
+        }
     }
-    out
 }
 
 pub fn parse_urls(cfg: &Config) -> Vec<String> {
@@ -143,13 +187,11 @@ pub fn parse_urls(cfg: &Config) -> Vec<String> {
 }
 
 pub fn start_url_from_cfg(cfg: &Config) -> String {
-    if matches!(
-        cfg.command,
-        CommandKind::Crawl | CommandKind::Refresh | CommandKind::Extract | CommandKind::Embed
-    ) && matches!(
-        cfg.positional.first().map(|s| s.as_str()),
-        Some("status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "worker" | "doctor")
-    ) {
+    if cfg
+        .positional
+        .first()
+        .is_some_and(|token| is_guarded_start_url_subcommand(cfg.command, token))
+    {
         return cfg.start_url.clone();
     }
 
@@ -174,6 +216,41 @@ pub fn start_url_from_cfg(cfg: &Config) -> String {
     cfg.start_url.clone()
 }
 
+fn is_guarded_start_url_subcommand(command: CommandKind, token: &str) -> bool {
+    match command {
+        CommandKind::Crawl => matches!(
+            token,
+            "status"
+                | "cancel"
+                | "errors"
+                | "list"
+                | "cleanup"
+                | "clear"
+                | "worker"
+                | "recover"
+                | "audit"
+                | "diff"
+        ),
+        CommandKind::Refresh => matches!(
+            token,
+            "schedule"
+                | "status"
+                | "cancel"
+                | "errors"
+                | "list"
+                | "cleanup"
+                | "clear"
+                | "worker"
+                | "recover"
+        ),
+        CommandKind::Extract | CommandKind::Embed => matches!(
+            token,
+            "status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "worker" | "recover"
+        ),
+        _ => false,
+    }
+}
+
 pub trait JobStatus {
     fn id(&self) -> uuid::Uuid;
     fn status(&self) -> &str;
@@ -185,101 +262,67 @@ pub trait JobStatus {
     fn to_errors_response_json(&self) -> serde_json::Value;
 }
 
-impl JobStatus for crate::crates::jobs::crawl::CrawlJob {
-    fn id(&self) -> uuid::Uuid {
-        self.id
-    }
-    fn status(&self) -> &str {
-        &self.status
-    }
-    fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.created_at
-    }
-    fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.updated_at
-    }
-    fn error_text(&self) -> Option<&str> {
-        self.error_text.as_deref()
-    }
-    fn to_status_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobStatusResponse::from_crawl(self)).unwrap_or_default()
-    }
-    fn to_summary_entry_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobSummaryEntry::from_crawl(self)).unwrap_or_default()
-    }
-    fn to_errors_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobErrorsResponse::from_job(
-            self.id,
-            self.status.clone(),
-            self.error_text.clone(),
-        ))
-        .unwrap_or_default()
-    }
+macro_rules! impl_job_status {
+    ($ty:path, $status_ctor:path, $summary_ctor:path) => {
+        impl JobStatus for $ty {
+            fn id(&self) -> uuid::Uuid {
+                self.id
+            }
+            fn status(&self) -> &str {
+                &self.status
+            }
+            fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
+                self.created_at
+            }
+            fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
+                self.updated_at
+            }
+            fn error_text(&self) -> Option<&str> {
+                self.error_text.as_deref()
+            }
+            fn to_status_response_json(&self) -> serde_json::Value {
+                serde_json::to_value($status_ctor(self)).unwrap_or_default()
+            }
+            fn to_summary_entry_json(&self) -> serde_json::Value {
+                serde_json::to_value($summary_ctor(self)).unwrap_or_default()
+            }
+            fn to_errors_response_json(&self) -> serde_json::Value {
+                serde_json::to_value(JobErrorsResponse::from_job(
+                    self.id,
+                    self.status.clone(),
+                    self.error_text.clone(),
+                ))
+                .unwrap_or_default()
+            }
+        }
+    };
 }
 
-impl JobStatus for crate::crates::jobs::extract::ExtractJob {
-    fn id(&self) -> uuid::Uuid {
-        self.id
-    }
-    fn status(&self) -> &str {
-        &self.status
-    }
-    fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.created_at
-    }
-    fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.updated_at
-    }
-    fn error_text(&self) -> Option<&str> {
-        self.error_text.as_deref()
-    }
-    fn to_status_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobStatusResponse::from_extract(self)).unwrap_or_default()
-    }
-    fn to_summary_entry_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobSummaryEntry::from_extract(self)).unwrap_or_default()
-    }
-    fn to_errors_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobErrorsResponse::from_job(
-            self.id,
-            self.status.clone(),
-            self.error_text.clone(),
-        ))
-        .unwrap_or_default()
-    }
-}
-
-impl JobStatus for crate::crates::jobs::ingest::IngestJob {
-    fn id(&self) -> uuid::Uuid {
-        self.id
-    }
-    fn status(&self) -> &str {
-        &self.status
-    }
-    fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.created_at
-    }
-    fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.updated_at
-    }
-    fn error_text(&self) -> Option<&str> {
-        self.error_text.as_deref()
-    }
-    fn to_status_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobStatusResponse::from_ingest(self)).unwrap_or_default()
-    }
-    fn to_summary_entry_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobSummaryEntry::from_ingest(self)).unwrap_or_default()
-    }
-    fn to_errors_response_json(&self) -> serde_json::Value {
-        serde_json::to_value(JobErrorsResponse::from_job(
-            self.id,
-            self.status.clone(),
-            self.error_text.clone(),
-        ))
-        .unwrap_or_default()
-    }
-}
+impl_job_status!(
+    crate::crates::jobs::crawl::CrawlJob,
+    JobStatusResponse::from_crawl,
+    JobSummaryEntry::from_crawl
+);
+impl_job_status!(
+    crate::crates::jobs::extract::ExtractJob,
+    JobStatusResponse::from_extract,
+    JobSummaryEntry::from_extract
+);
+impl_job_status!(
+    crate::crates::jobs::ingest::IngestJob,
+    JobStatusResponse::from_ingest,
+    JobSummaryEntry::from_ingest
+);
+impl_job_status!(
+    crate::crates::jobs::embed::EmbedJob,
+    JobStatusResponse::from_embed,
+    JobSummaryEntry::from_embed
+);
+impl_job_status!(
+    crate::crates::jobs::refresh::RefreshJob,
+    JobStatusResponse::from_refresh,
+    JobSummaryEntry::from_refresh
+);
 
 pub fn handle_job_status<T: JobStatus + serde::Serialize>(
     cfg: &Config,
@@ -492,8 +535,14 @@ pub fn handle_job_recover(
 
 #[cfg(test)]
 mod tests {
-    use super::expand_url_glob_seed;
-    use super::truncate_chars;
+    use super::{
+        JobStatus, MAX_EXPANSION_TOTAL, expand_url_glob_seed, start_url_from_cfg, truncate_chars,
+    };
+    use crate::crates::core::config::{CommandKind, Config};
+    use crate::crates::jobs::embed::EmbedJob;
+    use crate::crates::jobs::refresh::RefreshJob;
+    use chrono::{TimeZone, Utc};
+    use uuid::Uuid;
 
     #[test]
     fn truncate_chars_multibyte() {
@@ -534,5 +583,90 @@ mod tests {
                 "https://example.com/docs/b".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn expands_url_glob_with_total_cap() {
+        let expanded = expand_url_glob_seed("https://example.com/page/{1..20000}");
+        assert_eq!(expanded.len(), MAX_EXPANSION_TOTAL);
+        assert_eq!(
+            expanded.first().map(String::as_str),
+            Some("https://example.com/page/1")
+        );
+        assert_eq!(
+            expanded.last().map(String::as_str),
+            Some("https://example.com/page/10000")
+        );
+    }
+
+    #[test]
+    fn start_url_from_cfg_guards_crawl_audit_tokens() {
+        let cfg = Config {
+            command: CommandKind::Crawl,
+            start_url: "https://fallback.example".to_string(),
+            positional: vec!["audit".to_string(), "https://target.example".to_string()],
+            ..Config::default()
+        };
+
+        assert_eq!(start_url_from_cfg(&cfg), "https://fallback.example");
+    }
+
+    #[test]
+    fn start_url_from_cfg_guards_refresh_schedule_tokens() {
+        let cfg = Config {
+            command: CommandKind::Refresh,
+            start_url: "https://fallback.example".to_string(),
+            positional: vec!["schedule".to_string(), "list".to_string()],
+            ..Config::default()
+        };
+
+        assert_eq!(start_url_from_cfg(&cfg), "https://fallback.example");
+    }
+
+    fn test_ts() -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 3, 15, 12, 0, 0)
+            .single()
+            .expect("valid timestamp")
+    }
+
+    fn assert_job_status_trait<T: JobStatus>(job: &T, expected_status: &str) {
+        assert_eq!(job.status(), expected_status);
+        assert_eq!(job.updated_at(), test_ts());
+    }
+
+    #[test]
+    fn embed_job_implements_shared_job_status_trait() {
+        let job = EmbedJob {
+            id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").expect("valid uuid"),
+            status: "running".to_string(),
+            created_at: test_ts(),
+            updated_at: test_ts(),
+            started_at: Some(test_ts()),
+            finished_at: None,
+            error_text: None,
+            input_text: "/tmp/embed-input".to_string(),
+            result_json: Some(serde_json::json!({"chunks_embedded": 3})),
+            config_json: serde_json::json!({"collection": "cortex"}),
+        };
+
+        assert_job_status_trait(&job, "running");
+    }
+
+    #[test]
+    fn refresh_job_implements_shared_job_status_trait() {
+        let job = RefreshJob {
+            id: Uuid::parse_str("77777777-7777-7777-7777-777777777777").expect("valid uuid"),
+            status: "completed".to_string(),
+            created_at: test_ts(),
+            updated_at: test_ts(),
+            started_at: Some(test_ts()),
+            finished_at: Some(test_ts()),
+            error_text: None,
+            urls_json: serde_json::json!(["https://example.com"]),
+            result_json: Some(serde_json::json!({"checked": 1})),
+            config_json: serde_json::json!({"embed": true}),
+        };
+
+        assert_job_status_trait(&job, "completed");
     }
 }

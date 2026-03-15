@@ -95,9 +95,10 @@ export function ConfirmationContent({
     <>
       <button
         type="button"
-        className="fixed inset-0 z-10 w-full h-full cursor-default"
+        className="fixed inset-0 z-10 h-full w-full cursor-default bg-transparent"
         onClick={() => setOpen(false)}
-        aria-label="Close panel"
+        aria-label="Close confirmation"
+        tabIndex={-1}
       />
       <div
         ref={panelRef}

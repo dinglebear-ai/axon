@@ -4,11 +4,11 @@ import type { FileUIPart, UIMessage } from 'ai'
 import { ChevronLeftIcon, ChevronRightIcon, PaperclipIcon, XIcon } from 'lucide-react'
 import Image from 'next/image'
 import type { ComponentProps, HTMLAttributes, ReactElement } from 'react'
-import { createContext, memo, useContext, useEffect, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 export function Message({
@@ -70,14 +70,12 @@ export function MessageAction({
   if (!tooltip) return button
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -110,42 +108,48 @@ export function MessageBranch({
   const [currentBranch, setCurrentBranch] = useState(defaultBranch)
   const [branches, setBranches] = useState<ReactElement[]>([])
 
-  const handleBranchChange = (nextBranch: number) => {
-    setCurrentBranch(nextBranch)
-    onBranchChange?.(nextBranch)
-  }
+  const handleBranchChange = useCallback(
+    (nextBranch: number) => {
+      setCurrentBranch(nextBranch)
+      onBranchChange?.(nextBranch)
+    },
+    [onBranchChange],
+  )
 
-  const goToPrevious = () => {
+  const goToPrevious = useCallback(() => {
     handleBranchChange(currentBranch > 0 ? currentBranch - 1 : branches.length - 1)
-  }
+  }, [handleBranchChange, currentBranch, branches.length])
 
-  const goToNext = () => {
+  const goToNext = useCallback(() => {
     handleBranchChange(currentBranch < branches.length - 1 ? currentBranch + 1 : 0)
-  }
+  }, [handleBranchChange, currentBranch, branches.length])
+
+  const contextValue = useMemo(
+    () => ({
+      currentBranch,
+      totalBranches: branches.length,
+      goToNext,
+      goToPrevious,
+      branches,
+      setBranches,
+    }),
+    [currentBranch, branches, goToNext, goToPrevious, setBranches],
+  )
 
   return (
-    <MessageBranchContext.Provider
-      value={{
-        currentBranch,
-        totalBranches: branches.length,
-        goToNext,
-        goToPrevious,
-        branches,
-        setBranches,
-      }}
-    >
+    <MessageBranchContext.Provider value={contextValue}>
       <div className={cn('grid w-full gap-2 [&>div]:pb-0', className)} {...props} />
     </MessageBranchContext.Provider>
   )
 }
 
 export function MessageBranchContent({ children, ...props }: HTMLAttributes<HTMLDivElement>) {
-  const { currentBranch, setBranches, branches } = useMessageBranch()
-  const childrenArray = Array.isArray(children) ? children : [children]
+  const { currentBranch, setBranches } = useMessageBranch()
+  const childrenArray = useMemo(() => (Array.isArray(children) ? children : [children]), [children])
 
   useEffect(() => {
-    if (branches.length !== childrenArray.length) setBranches(childrenArray as ReactElement[])
-  }, [branches.length, childrenArray, setBranches])
+    setBranches(childrenArray as ReactElement[])
+  }, [childrenArray.length, setBranches])
 
   return childrenArray.map((branch, index) => (
     <div
@@ -265,18 +269,16 @@ export function MessageAttachment({
           ) : null}
         </>
       ) : (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex size-full items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <PaperclipIcon className="size-4" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{attachmentLabel}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex size-full items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <PaperclipIcon className="size-4" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{attachmentLabel}</p>
+          </TooltipContent>
+        </Tooltip>
       )}
     </div>
   )

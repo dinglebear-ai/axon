@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import type { Job, JobStatus, JobType, StatusCounts } from '@/app/api/jobs/route'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -81,12 +83,13 @@ const TYPE_STYLES: Record<JobType, { chip: string; dot: string }> = {
 export function TypeChip({ type }: { type: JobType }) {
   const s = TYPE_STYLES[type]
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest ${s.chip}`}
+    <Badge
+      variant="outline"
+      className={`gap-1 rounded-full text-[9px] font-bold uppercase tracking-widest ${s.chip}`}
     >
       <span className="size-1.5 flex-shrink-0 rounded-full" style={{ background: s.dot }} />
       {type}
-    </span>
+    </Badge>
   )
 }
 
@@ -95,48 +98,54 @@ export function TypeChip({ type }: { type: JobType }) {
 export function StatusBadge({ status }: { status: JobStatus }) {
   if (status === 'running') {
     return (
-      <span className="inline-flex items-center gap-2">
+      <Badge variant="outline" className="gap-2 rounded-full border-transparent bg-transparent">
         <span className="relative flex size-2.5 flex-shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#38bdf8] opacity-60" />
           <span className="relative inline-flex size-2.5 rounded-full bg-[#38bdf8]" />
         </span>
         <span className="text-[10px] font-semibold text-[#38bdf8]">Active</span>
-        {/* 8. RUNNING PROGRESS — indeterminate shimmer bar */}
+        {/* 8. RUNNING PROGRESS -- indeterminate shimmer bar */}
         <span className="h-1 w-10 overflow-hidden rounded-full bg-[rgba(56,189,248,0.15)]">
           <span className="block h-full w-full animate-shimmer bg-[linear-gradient(90deg,transparent_25%,rgba(56,189,248,0.7)_50%,transparent_75%)] [background-size:200%_100%]" />
         </span>
-      </span>
+      </Badge>
     )
   }
   if (status === 'pending') {
     return (
-      <span className="inline-flex items-center gap-1.5">
+      <Badge variant="outline" className="gap-1.5 rounded-full border-transparent bg-transparent">
         <Clock className="size-3 text-[var(--text-dim)]" />
         <span className="text-[10px] font-medium text-[var(--text-dim)]">Pending</span>
-      </span>
+      </Badge>
     )
   }
   if (status === 'completed') {
     return (
-      <span className="inline-flex items-center gap-1.5 opacity-40">
+      <Badge
+        variant="outline"
+        className="gap-1.5 rounded-full border-transparent bg-transparent opacity-40"
+      >
         <CheckCircle2 className="size-3 text-[var(--axon-success)]" />
         <span className="text-[10px] font-medium text-[var(--axon-success)]">Done</span>
-      </span>
+      </Badge>
     )
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1.5">
+      <Badge variant="outline" className="gap-1.5 rounded-full border-transparent bg-transparent">
         <AlertCircle className="size-3 text-red-400" />
         <span className="text-[10px] font-semibold text-red-400">Failed</span>
-      </span>
+      </Badge>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1.5 opacity-60">
+    <Badge
+      variant="outline"
+      className="gap-1.5 rounded-full border-transparent bg-transparent opacity-60"
+    >
       <Ban className="size-3 text-yellow-400" />
       <span className="text-[10px] font-medium text-yellow-400">Canceled</span>
-    </span>
+    </Badge>
   )
 }
 
@@ -201,14 +210,13 @@ export function SortableHeader({
 }) {
   const active = sort.column === column
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       onClick={() => onSort(column)}
-      className={[
-        'flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest transition-colors',
-        'hover:text-[var(--text-secondary)]',
-        active ? 'text-[var(--axon-primary)]' : 'text-[var(--text-dim)]',
-      ].join(' ')}
+      className={`gap-1 text-[10px] font-semibold uppercase tracking-widest ${
+        active ? 'text-[var(--axon-primary)]' : 'text-[var(--text-dim)]'
+      } hover:text-[var(--text-secondary)]`}
     >
       {label}
       {active ? (
@@ -220,7 +228,7 @@ export function SortableHeader({
       ) : (
         <ArrowUpDown className="size-3 opacity-30" />
       )}
-    </button>
+    </Button>
   )
 }
 

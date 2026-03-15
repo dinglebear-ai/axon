@@ -3,7 +3,8 @@ use super::heuristics::{
     query_requests_low_signal_sources, top_domains, url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
-use crate::crates::vector::ops::{qdrant, ranking, tei};
+use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
+use crate::crates::vector::ops::{qdrant, ranking, sparse, tei};
 use anyhow::{Result, anyhow};
 
 pub(super) struct AskRetrieval {
@@ -17,6 +18,31 @@ pub(super) struct AskRetrieval {
     pub(super) dropped_by_allowlist: usize,
 }
 
+/// Dispatch vector search based on collection mode and hybrid config.
+async fn dispatch_ask_search(
+    cfg: &Config,
+    vector: &[f32],
+    query: &str,
+    limit: usize,
+) -> Result<Vec<qdrant::QdrantSearchHit>> {
+    let mode = get_or_fetch_vector_mode(cfg)
+        .await
+        .map_err(|e| anyhow!(e.to_string()))?;
+    match mode {
+        VectorMode::Named => {
+            let sv = sparse::compute_sparse_vector(query);
+            if cfg.hybrid_search_enabled && !sv.is_empty() {
+                qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit).await
+            } else {
+                qdrant::qdrant_named_dense_search(cfg, vector, limit).await
+            }
+        }
+        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit)
+            .await
+            .map_err(|e| anyhow!(e.to_string())),
+    }
+}
+
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let mut ask_vectors = tei::tei_embed(cfg, &[query.to_string()])
@@ -28,9 +54,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let vecq = ask_vectors.remove(0);
     let query_tokens = ranking::tokenize_query(query);
     let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
-    let hits = qdrant::qdrant_search(cfg, &vecq, cfg.ask_candidate_limit)
-        .await
-        .map_err(|e| anyhow!(e.to_string()))?;
+    let hits = dispatch_ask_search(cfg, &vecq, query, cfg.ask_candidate_limit).await?;
     let mut candidates = Vec::new();
     let mut dropped_by_allowlist = 0usize;
     for hit in hits {

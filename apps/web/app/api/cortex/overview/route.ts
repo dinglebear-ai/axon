@@ -10,6 +10,7 @@ import type {
 } from '@/lib/result-types'
 import { apiError } from '@/lib/server/api-error'
 import { type JobType, safeStatus } from '@/lib/server/job-types'
+import { logError } from '@/lib/server/logger'
 import { getJobsPgPool } from '@/lib/server/pg-pool'
 
 export const dynamic = 'force-dynamic'
@@ -152,7 +153,9 @@ export async function GET() {
       failures,
     })
   } catch (err) {
-    console.error('[cortex/overview] failed', err)
+    logError('api.cortex.overview.failed', {
+      message: err instanceof Error ? err.message : String(err),
+    })
     return apiError(500, 'Failed to build Cortex overview', { code: 'cortex_overview' })
   }
 }

@@ -59,6 +59,18 @@ pub struct DomainsResult {
     pub offset: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetailedDomainFacet {
+    pub domain: String,
+    pub vectors: usize,
+    pub urls: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetailedDomainsResult {
+    pub domains: Vec<DetailedDomainFacet>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatsResult {
     pub payload: serde_json::Value,
@@ -226,6 +238,16 @@ pub struct IngestJobResult {
 pub struct RefreshStartResult {
     pub job_id: String,
     pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefreshJobResult {
+    pub job: Option<crate::crates::jobs::refresh::RefreshJob>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RefreshJobListResult {
+    pub jobs: Vec<crate::crates::jobs::refresh::RefreshJob>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

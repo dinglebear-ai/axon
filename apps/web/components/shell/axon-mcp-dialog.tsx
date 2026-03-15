@@ -2,6 +2,7 @@
 
 import { Network, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import {
   configToForm,
   EMPTY_FORM,
@@ -12,52 +13,27 @@ import {
   McpServerForm,
   type McpServerStatus,
 } from '@/app/settings/mcp/components'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { apiFetch } from '@/lib/api-fetch'
 import { McpIcon } from './mcp-config'
-
-function DeleteConfirmModal({
-  name,
-  onConfirm,
-  onCancel,
-}: {
-  name: string
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[rgba(3,7,18,0.75)] backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-[var(--border-standard)] bg-[var(--surface-base)] p-4 shadow-[var(--shadow-xl)]">
-        <div className="mb-1 flex items-center gap-2">
-          <Trash2 className="size-4 text-[var(--axon-secondary)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            Delete &ldquo;{name}&rdquo;?
-          </h3>
-        </div>
-        <p className="mb-3 text-xs text-[var(--text-muted)]">
-          This MCP server configuration will be permanently removed.
-        </p>
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-[var(--border-subtle)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-float)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="rounded-md border border-[var(--border-accent)] bg-[rgba(255,135,175,0.15)] px-3 py-1.5 text-xs text-[var(--axon-secondary)] transition-colors hover:bg-[rgba(255,135,175,0.25)]"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
@@ -71,14 +47,15 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           MCP servers extend Claude&apos;s capabilities with external tools, APIs, and data sources.
         </p>
       </div>
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onAdd}
-        className="flex items-center gap-1.5 rounded-lg border border-[var(--border-standard)] bg-[rgba(135,175,255,0.15)] px-3 py-1.5 text-[12px] font-semibold text-[var(--axon-primary)] transition-colors hover:bg-[rgba(135,175,255,0.25)]"
+        className="gap-1.5 border-[var(--border-standard)] bg-[rgba(135,175,255,0.15)] text-[12px] font-semibold text-[var(--axon-primary)] hover:bg-[rgba(135,175,255,0.25)]"
       >
         <Plus className="size-3.5" />
         Add your first server
-      </button>
+      </Button>
     </div>
   )
 }
@@ -136,23 +113,28 @@ function McpDialogContent() {
   }, [loadConfig])
 
   async function saveServer(name: string, cfg: McpServerConfig) {
-    // Compute mergedConfig synchronously from current state BEFORE calling
-    // setConfig — the updater callback may be deferred/batched, so using a
-    // variable captured from inside the updater risks sending an empty config
-    // to the API if the state flush hasn't happened yet.
     const previousConfig: McpConfig = config
     const mergedConfig: McpConfig = { mcpServers: { ...config.mcpServers, [name]: cfg } }
     setConfig(mergedConfig)
     setFormOpen(false)
     setEditTarget(null)
-    const res = await apiFetch('/api/mcp', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Pulse-Request': '1' },
-      body: JSON.stringify(mergedConfig),
-    })
-    if (!res.ok) {
+    try {
+      const res = await apiFetch('/api/mcp', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Pulse-Request': '1' },
+        body: JSON.stringify(mergedConfig),
+      })
+      if (!res.ok) {
+        setConfig(previousConfig)
+        setError('Save failed')
+        toast.error('Failed to save server configuration')
+      } else {
+        toast.success(`Server "${name}" saved`)
+      }
+    } catch (_err) {
       setConfig(previousConfig)
-      setError('Save failed')
+      setError('Network failure: Save aborted')
+      toast.error('Network failure: Save aborted')
     }
   }
 
@@ -164,8 +146,10 @@ function McpDialogContent() {
     })
     if (!res.ok) {
       setError('Delete failed')
+      toast.error(`Failed to delete "${name}"`)
       return
     }
+    toast.success(`Server "${name}" deleted`)
     const controller = new AbortController()
     await loadConfig(controller.signal)
   }
@@ -189,14 +173,15 @@ function McpDialogContent() {
     >
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 py-2">
         {error ? <span className="text-xs text-red-400">{error}</span> : <span />}
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={openAdd}
-          className="flex items-center gap-1.5 rounded-lg border border-[rgba(175,215,255,0.18)] bg-[rgba(175,215,255,0.07)] px-3 py-1.5 text-[12px] font-semibold text-[var(--axon-primary-strong)] transition-colors hover:bg-[rgba(175,215,255,0.13)]"
+          className="gap-1.5 border-[rgba(175,215,255,0.18)] bg-[rgba(175,215,255,0.07)] text-[12px] font-semibold text-[var(--axon-primary-strong)] hover:bg-[rgba(175,215,255,0.13)]"
         >
           <Plus className="size-3.5" />
           Add Server
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -241,16 +226,39 @@ function McpDialogContent() {
         )}
       </div>
 
-      {deleteModal && (
-        <DeleteConfirmModal
-          name={deleteModal}
-          onConfirm={() => {
-            void deleteServer(deleteModal)
-            setDeleteModal(null)
-          }}
-          onCancel={() => setDeleteModal(null)}
-        />
-      )}
+      <AlertDialog
+        open={deleteModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteModal(null)
+        }}
+      >
+        <AlertDialogContent className="border-[var(--border-standard)] bg-[var(--surface-base)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+              <Trash2 className="size-4 text-[var(--axon-secondary)]" />
+              Delete &ldquo;{deleteModal}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[var(--text-muted)]">
+              This MCP server configuration will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="text-xs"
+              onClick={() => {
+                if (deleteModal) {
+                  void deleteServer(deleteModal)
+                }
+                setDeleteModal(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -273,6 +281,9 @@ export function AxonMcpDialog({
             <McpIcon className="size-4 text-[var(--axon-primary-strong)]" />
             MCP Servers
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Manage MCP server configurations
+          </DialogDescription>
         </DialogHeader>
         <ErrorBoundary>
           <McpDialogContent />

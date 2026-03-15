@@ -101,7 +101,7 @@ impl AxonMcpServer {
             "status",
             response_mode,
             &format!("refresh-status-{id}"),
-            serde_json::json!({ "job": job.map(|j| j.payload) }),
+            serde_json::json!({ "job": job.job }),
         )
         .await
     }
@@ -137,7 +137,7 @@ impl AxonMcpServer {
             "list",
             response_mode,
             "refresh-list",
-            serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            serde_json::json!({ "jobs": jobs.jobs, "limit": limit, "offset": offset }),
         )
         .await
     }

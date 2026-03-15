@@ -10,6 +10,7 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { Button } from '@/components/ui/button'
 import type { MobilePane } from '@/hooks/use-split-pane'
 
 interface AxonMobilePaneSwitcherProps {
@@ -84,19 +85,21 @@ export function AxonMobilePaneSwitcher({
   return (
     <div role="tablist" aria-label="Workspace pane" className="inline-flex items-center gap-0.5">
       {PANE_BUTTONS.map(({ id, Icon, label, activeClass }) => (
-        <button
+        <Button
           key={id}
           type="button"
+          variant="ghost"
+          size="icon-sm"
           role="tab"
           aria-selected={mobilePane === id}
           aria-label={label}
           onClick={() => onMobilePaneChange(id)}
-          className={`inline-flex size-6 items-center justify-center rounded border transition-colors duration-200 backdrop-blur-sm ${
+          className={`inline-flex size-10 items-center justify-center rounded border transition-colors duration-200 backdrop-blur-sm ${
             mobilePane === id ? activeClass : INACTIVE_CLASS
           }`}
         >
-          <Icon className="size-3" />
-        </button>
+          <Icon className="size-4" />
+        </Button>
       ))}
     </div>
   )

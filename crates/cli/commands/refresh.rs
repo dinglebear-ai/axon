@@ -2,9 +2,13 @@ mod github;
 mod resolve;
 mod schedule;
 
+use crate::crates::cli::commands::common::{
+    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
+    handle_job_recover, handle_job_status,
+};
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::confirm_destructive;
-use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
+use crate::crates::core::ui::{accent, muted, primary, symbol_for_status};
 use crate::crates::services::refresh as refresh_service;
 use resolve::resolve_refresh_urls;
 use schedule::handle_refresh_schedule;
@@ -105,150 +109,30 @@ fn parse_refresh_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Erro
 
 async fn handle_refresh_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "status")?;
-    match refresh_service::refresh_status(cfg, id).await? {
-        Some(result) => {
-            let job = result.payload;
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&job)?);
-            } else {
-                println!(
-                    "{} {}",
-                    primary("Refresh Status for"),
-                    accent(job["id"].as_str().unwrap_or_default())
-                );
-                println!(
-                    "  {} {}",
-                    symbol_for_status(job["status"].as_str().unwrap_or_default()),
-                    status_text(job["status"].as_str().unwrap_or_default())
-                );
-                if let Some(result) = job.get("result_json") {
-                    let checked = result.get("checked").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let changed = result.get("changed").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let unchanged = result
-                        .get("unchanged")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let failed = result.get("failed").and_then(|v| v.as_u64()).unwrap_or(0);
-                    println!(
-                        "  {} checked={} changed={} unchanged={} failed={}",
-                        muted("Progress:"),
-                        checked,
-                        changed,
-                        unchanged,
-                        failed
-                    );
-                }
-                if let Some(err) = job.get("error_text").and_then(|v| v.as_str()) {
-                    println!("  {} {}", muted("Error:"), err);
-                }
-                println!("Job ID: {}", job["id"].as_str().unwrap_or_default());
-            }
-        }
-        None => println!(
-            "{} {}",
-            symbol_for_status("error"),
-            muted(&format!("job not found: {id}"))
-        ),
-    }
-    Ok(())
+    let job = refresh_service::refresh_status(cfg, id).await?.job;
+    handle_job_status(cfg, job, id, "Refresh")
 }
 
 async fn handle_refresh_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "cancel")?;
     let canceled = refresh_service::refresh_cancel(cfg, id).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::json!({"id": id, "canceled": canceled}));
-    } else if canceled {
-        println!(
-            "{} canceled refresh job {}",
-            symbol_for_status("canceled"),
-            accent(&id.to_string())
-        );
-        println!("Job ID: {id}");
-    } else {
-        println!(
-            "{} no cancellable refresh job found for {}",
-            symbol_for_status("error"),
-            accent(&id.to_string())
-        );
-        println!("Job ID: {id}");
-    }
-    Ok(())
+    handle_job_cancel(cfg, id, canceled, "refresh")
 }
 
 async fn handle_refresh_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "errors")?;
-    match refresh_service::refresh_status(cfg, id).await? {
-        Some(result) => {
-            let job = result.payload;
-            if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({"id": id, "status": job["status"], "error": job["error_text"]})
-                );
-            } else {
-                println!(
-                    "{} {} {}",
-                    symbol_for_status(job["status"].as_str().unwrap_or_default()),
-                    accent(&id.to_string()),
-                    status_text(job["status"].as_str().unwrap_or_default())
-                );
-                println!(
-                    "  {} {}",
-                    muted("Error:"),
-                    job["error_text"].as_str().unwrap_or("None")
-                );
-                println!("Job ID: {id}");
-            }
-        }
-        None => println!(
-            "{} {}",
-            symbol_for_status("error"),
-            muted(&format!("job not found: {id}"))
-        ),
-    }
-    Ok(())
+    let job = refresh_service::refresh_status(cfg, id).await?.job;
+    handle_job_errors(cfg, job, id, "refresh")
 }
 
 async fn handle_refresh_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = refresh_service::refresh_list(cfg, 50, 0).await?.payload;
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&jobs)?);
-        return Ok(());
-    }
-
-    println!("{}", primary("Refresh Jobs"));
-    let jobs = jobs
-        .as_array()
-        .ok_or("refresh list payload should be an array")?;
-    if jobs.is_empty() {
-        println!("  {}", muted("No refresh jobs found."));
-        return Ok(());
-    }
-
-    for job in jobs {
-        println!(
-            "  {} {} {}",
-            symbol_for_status(job["status"].as_str().unwrap_or_default()),
-            accent(job["id"].as_str().unwrap_or_default()),
-            status_text(job["status"].as_str().unwrap_or_default())
-        );
-    }
-    Ok(())
+    let jobs = refresh_service::refresh_list(cfg, 50, 0).await?.jobs;
+    handle_job_list(cfg, jobs, "Refresh")
 }
 
 async fn handle_refresh_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let removed = refresh_service::refresh_cleanup(cfg).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::json!({"removed": removed}));
-    } else {
-        println!(
-            "{} removed {} refresh jobs",
-            symbol_for_status("completed"),
-            removed
-        );
-    }
-    Ok(())
+    handle_job_cleanup(cfg, removed, "refresh")
 }
 
 async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -265,33 +149,12 @@ async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     let removed = refresh_service::refresh_clear(cfg).await?;
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({"removed": removed, "queue_purged": true})
-        );
-    } else {
-        println!(
-            "{} cleared {} refresh jobs and purged queue",
-            symbol_for_status("completed"),
-            removed
-        );
-    }
-    Ok(())
+    handle_job_clear(cfg, removed, "refresh")
 }
 
 async fn handle_refresh_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let reclaimed = refresh_service::refresh_recover(cfg).await?;
-    if cfg.json_output {
-        println!("{}", serde_json::json!({"reclaimed": reclaimed}));
-    } else {
-        println!(
-            "{} reclaimed {} stale refresh jobs",
-            symbol_for_status("completed"),
-            reclaimed
-        );
-    }
-    Ok(())
+    handle_job_recover(cfg, reclaimed, "refresh")
 }
 
 #[cfg(test)]
@@ -322,29 +185,23 @@ mod tests {
         assert_eq!(refresh_schedule_tick_secs_default(), 30);
     }
 
-    fn pg_url() -> Option<String> {
-        // Do not fall through to AXON_PG_URL — that is the production database.
-        // If AXON_TEST_PG_URL is not set, tests that require Postgres are skipped.
+    fn pg_url() -> String {
         env::var("AXON_TEST_PG_URL")
             .ok()
             .filter(|v| !v.trim().is_empty())
+            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests")
     }
 
     #[tokio::test]
-    async fn schedule_run_due_uses_seed_manifest_when_urls_missing() -> Result<(), Box<dyn Error>> {
-        let Some(pg_url) = pg_url() else {
-            return Ok(());
-        };
+    #[ignore = "requires Postgres infra; run with cargo test cli_refresh_ -- --ignored"]
+    async fn cli_refresh_schedule_run_due_uses_seed_manifest_when_urls_missing()
+    -> Result<(), Box<dyn Error>> {
+        let pg_url = pg_url();
 
         let temp_dir = TempDir::new()?;
         let mut cfg = test_config(&pg_url);
         cfg.output_dir = temp_dir.path().to_path_buf();
-
-        // Skip when AXON_TEST_PG_URL is set but unavailable/misconfigured in this env.
-        let pool = match make_pool(&cfg).await {
-            Ok(pool) => pool,
-            Err(_) => return Ok(()),
-        };
+        let pool = make_pool(&cfg).await?;
 
         let seed_url = "https://example.com";
         let manifest_urls = vec![

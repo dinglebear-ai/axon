@@ -191,7 +191,7 @@ Refresh jobs re-check previously crawled URLs for content changes using HTTP con
    - HTTP request sent with `If-None-Match` (ETag) and `If-Modified-Since` headers when previous state exists.
    - **304 Not Modified**: counted as `not_modified` + `unchanged`. No content fetched.
    - **2xx with matching content hash**: counted as `unchanged`. Content was fetched but SHA-256 hash matches previous.
-   - **2xx with different hash**: counted as `changed`. Markdown is extracted, written to disk, manifest entry appended. If `embed = true`, content is embedded into Qdrant via `embed_text_with_metadata()`.
+   - **2xx with different hash**: counted as `changed`. Markdown is extracted, written to disk, manifest entry appended. If `embed = true`, content is embedded into Qdrant via `embed_prepared_docs()` with a `PreparedDoc`.
    - **4xx/5xx**: counted as `failed`. Error text stored in `axon_refresh_targets`.
    - **Network error**: counted as `failed`. Previous state preserved via COALESCE upsert.
 5. After each URL, `result_json` is updated with a `"phase": "refreshing"` progress snapshot containing running totals.

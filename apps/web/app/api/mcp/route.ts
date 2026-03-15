@@ -1,16 +1,16 @@
-import { timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { logError } from '@/lib/server/logger'
 import { validateStatusUrl } from './status/route'
 
 const McpServerConfigSchema = z.object({
   command: z
     .string()
-    // Allow only safe path characters and reject path-traversal sequences (..)
-    .regex(/^(?!.*\.\.)([/a-zA-Z0-9._-]+)$/)
+    // Allow only bare executable names; deny path separators and traversal.
+    .regex(/^[a-zA-Z0-9._-]+$/)
     .optional(),
   args: z.array(z.string().max(500)).max(20).optional(),
   env: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(1000)).optional(),
@@ -26,32 +26,6 @@ const McpConfigSchema = z.object({
 
 type McpConfig = z.infer<typeof McpConfigSchema>
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-function extractToken(request: NextRequest): string {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.slice('Bearer '.length).trim()
-  }
-  const key = request.headers.get('x-api-key')
-  if (key?.trim()) return key.trim()
-  return ''
-}
-
-/**
- * Returns true when the request carries a valid API token.
- * Reads AXON_WEB_API_TOKEN at call time (not module-init) so that
- * tests can set/change the env var between calls.
- * Uses constant-time comparison to prevent timing side-channels.
- */
-function isAuthorized(request: NextRequest): boolean {
-  const apiToken = process.env.AXON_WEB_API_TOKEN?.trim() || null
-  if (!apiToken) return false
-  const token = extractToken(request)
-  if (token.length === 0 || token.length !== apiToken.length) return false
-  return timingSafeEqual(Buffer.from(token, 'utf-8'), Buffer.from(apiToken, 'utf-8'))
-}
-
 // ── Config path ───────────────────────────────────────────────────────────────
 
 const MCP_JSON_PATH = process.env.AXON_DATA_DIR
@@ -64,7 +38,7 @@ async function readMcpConfig(): Promise<McpConfig> {
     const json = JSON.parse(raw) as unknown
     const result = McpConfigSchema.safeParse(json)
     if (!result.success) {
-      console.error('[mcp] Config validation failed on read:', result.error)
+      logError('api.mcp.config_validation_failed', { error: result.error.flatten() })
       return { mcpServers: {} }
     }
     return result.data
@@ -87,15 +61,12 @@ export async function GET() {
     const config = await readMcpConfig()
     return NextResponse.json(config)
   } catch (err) {
-    console.error('[MCP] GET failed:', err)
+    logError('api.mcp.get_failed', { message: err instanceof Error ? err.message : String(err) })
     return NextResponse.json({ error: 'Failed to read mcp.json' }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
   try {
     const body = (await request.json()) as unknown
     const result = McpConfigSchema.safeParse(body)
@@ -120,15 +91,12 @@ export async function PUT(request: NextRequest) {
     await writeMcpConfig(result.data)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[MCP] PUT failed:', err)
+    logError('api.mcp.put_failed', { message: err instanceof Error ? err.message : String(err) })
     return NextResponse.json({ error: 'Failed to write mcp.json' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
   try {
     const body = (await request.json()) as unknown
     if (
@@ -147,7 +115,7 @@ export async function DELETE(request: NextRequest) {
     await writeMcpConfig(updated)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[MCP] DELETE failed:', err)
+    logError('api.mcp.delete_failed', { message: err instanceof Error ? err.message : String(err) })
     return NextResponse.json({ error: 'Failed to delete server from mcp.json' }, { status: 500 })
   }
 }

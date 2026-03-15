@@ -24,6 +24,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -50,13 +51,15 @@ const AXON_COMPOSER_PANEL_CLASS =
 
 function ComposerDropdownTrigger({ children, ...props }: React.ComponentProps<'button'>) {
   return (
-    <button
+    <Button
       type="button"
-      className="axon-icon-btn inline-flex size-7 items-center justify-center"
+      variant="ghost"
+      size="icon-xs"
+      className="axon-icon-btn size-7"
       {...props}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -79,14 +82,16 @@ function AxonAttachmentPill({ file, onRemove }: { file: PromptInputFile; onRemov
       <FileCode2 className="size-3.5 shrink-0 text-[var(--axon-primary)]" />
       <span className="truncate">{file.filename ?? file.url}</span>
       {onRemove ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           onClick={onRemove}
-          className="ml-0.5 inline-flex size-4 items-center justify-center rounded text-[var(--text-dim)] transition-colors hover:text-[var(--text-primary)]"
+          className="ml-0.5 size-4 rounded text-[var(--text-dim)] hover:text-[var(--text-primary)]"
           aria-label={`Remove ${file.filename ?? file.url}`}
         >
           <X className="size-3" />
-        </button>
+        </Button>
       ) : null}
     </span>
   )
@@ -270,9 +275,11 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                           {serverTools.length > 0 ? (
                             <div className="pb-1 pl-6 pr-2">
                               <div className="mb-1 flex items-center gap-1">
-                                <button
+                                <Button
                                   type="button"
-                                  className="rounded border border-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
+                                  variant="outline"
+                                  size="xs"
+                                  className="h-auto px-1.5 py-0.5 text-[10px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
                                   onClick={(event) => {
                                     event.preventDefault()
                                     event.stopPropagation()
@@ -280,10 +287,12 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                                   }}
                                 >
                                   All on
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   type="button"
-                                  className="rounded border border-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
+                                  variant="outline"
+                                  size="xs"
+                                  className="h-auto px-1.5 py-0.5 text-[10px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
                                   onClick={(event) => {
                                     event.preventDefault()
                                     event.stopPropagation()
@@ -291,7 +300,7 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                                   }}
                                 >
                                   All off
-                                </button>
+                                </Button>
                               </div>
                               {serverTools.map((toolName) => {
                                 const shortName = toolName.split('__').slice(2).join('__')
@@ -331,9 +340,11 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                         placeholder="Preset name"
                         className="h-7 min-w-0 flex-1 rounded border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-2 text-xs text-[var(--text-primary)] outline-none"
                       />
-                      <button
+                      <Button
                         type="button"
-                        className="h-7 rounded border border-[var(--border-subtle)] px-2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
@@ -344,15 +355,17 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                         }}
                       >
                         Save
-                      </button>
+                      </Button>
                     </div>
                     {toolPresets.length > 0 ? (
                       <div className="max-h-36 space-y-1 overflow-y-auto">
                         {toolPresets.map((preset) => (
                           <div key={preset.id} className="flex items-center gap-1">
-                            <button
+                            <Button
                               type="button"
-                              className="h-7 min-w-0 flex-1 truncate rounded border border-[var(--border-subtle)] px-2 text-left text-xs text-[var(--text-primary)] hover:bg-[rgba(175,215,255,0.08)]"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 min-w-0 flex-1 justify-start truncate px-2 text-left text-xs text-[var(--text-primary)] hover:bg-[rgba(175,215,255,0.08)]"
                               onClick={(event) => {
                                 event.preventDefault()
                                 event.stopPropagation()
@@ -360,10 +373,12 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                               }}
                             >
                               {preset.name}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
-                              className="h-7 rounded border border-[var(--border-subtle)] px-2 text-[11px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="h-7 w-7 text-[11px] text-[var(--text-dim)] hover:text-[var(--text-primary)]"
                               onClick={(event) => {
                                 event.preventDefault()
                                 event.stopPropagation()
@@ -371,7 +386,7 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
                               }}
                             >
                               ×
-                            </button>
+                            </Button>
                           </div>
                         ))}
                       </div>

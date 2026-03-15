@@ -22,3 +22,48 @@ export function useIsMobile(): boolean {
 
   return isMobile
 }
+
+/** Returns true only for phone-sized viewports (< 640px). */
+export function useIsPhone(): boolean {
+  const [isPhone, setIsPhone] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 639px)')
+    const update = () => setIsPhone(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isPhone
+}
+
+/** Returns true for tablet-sized viewports (640px - 1023px). */
+export function useIsTablet(): boolean {
+  const [isTablet, setIsTablet] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 640px) and (max-width: 1023px)')
+    const update = () => setIsTablet(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isTablet
+}
+
+/** Returns true for desktop-sized viewports (>= 1024px). */
+export function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)')
+    const update = () => setIsDesktop(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isDesktop
+}

@@ -16,7 +16,7 @@ vector/ops/
 ├── ranking.rs       # BM25-style reranking module root
 ├── ranking/         # snippet.rs (helpers used by ranking.rs)
 ├── stats/           # display.rs, pg.rs, qdrant_fetch.rs
-├── tei.rs           # tei_embed(), embed_text_with_metadata(), embed_code_with_metadata()
+├── tei.rs           # tei_embed(), PreparedDoc, EmbedSummary, embed_prepared_docs()
 ├── tei/             # tei_manifest.rs
 └── source_display.rs
 ```
@@ -48,7 +48,7 @@ On 429 or 503, `tei_embed()` retries up to **5 times** with exponential backoff 
 Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A full scroll on a 2M+ point collection takes 60-80 seconds.
 
 ### Code Chunking (tree-sitter)
-`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars. `embed_code_with_metadata()` in `tei.rs` wraps this with the fallback logic built in.
+`chunk_code()` in `input/code.rs` splits source code at AST boundaries (functions, structs, classes) using tree-sitter grammars. Returns `Option<Vec<String>>` — `None` means no grammar for the extension, caller should fall back to `chunk_text()`. Supported: Rust, Python, JavaScript, TypeScript/TSX, Go, Bash. Chunk range: 500–2000 chars. GitHub ingest builds `PreparedDoc` with code chunks and embeds via `embed_prepared_docs`.
 
 `classify_file_type()` in `input/classify.rs` tags files as `test`/`config`/`doc`/`source` for metadata enrichment. Pure function, no I/O.
 

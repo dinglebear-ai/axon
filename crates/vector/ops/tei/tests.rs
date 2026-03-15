@@ -260,3 +260,71 @@ fn tei_max_retries_default_fits_doc_timeout() {
         "worst-case retry budget ({worst_case}s) must fit inside 300s doc timeout"
     );
 }
+
+// -- build_point format tests --
+
+#[test]
+fn build_point_unnamed_emits_flat_vector() {
+    use super::qdrant_store::VectorMode;
+    let point = super::build_point_for_test(
+        vec![0.1, 0.2, 0.3],
+        "hello world",
+        "https://example.com/page",
+        0,
+        VectorMode::Unnamed,
+    );
+    // Unnamed mode: vector is a flat array, not an object
+    assert!(
+        point["vector"].is_array(),
+        "Unnamed mode must emit flat vector array, got: {}",
+        point["vector"]
+    );
+    assert_eq!(point["vector"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn build_point_named_emits_dense_and_bm42() {
+    use super::qdrant_store::VectorMode;
+    let point = super::build_point_for_test(
+        vec![0.1, 0.2, 0.3],
+        "qdrant vector search embedding",
+        "https://example.com/page",
+        0,
+        VectorMode::Named,
+    );
+    // Named mode: vector is an object with "dense" and "bm42" keys
+    assert!(
+        point["vector"].is_object(),
+        "Named mode must emit vector object, got: {}",
+        point["vector"]
+    );
+    assert!(
+        point["vector"]["dense"].is_array(),
+        "Named mode must have 'dense' key"
+    );
+    assert!(
+        point["vector"]["bm42"].is_object(),
+        "Named mode must have 'bm42' key with indices/values"
+    );
+    assert!(point["vector"]["bm42"]["indices"].is_array());
+    assert!(point["vector"]["bm42"]["values"].is_array());
+}
+
+#[test]
+fn build_point_named_sparse_has_nonzero_entries_for_real_text() {
+    use super::qdrant_store::VectorMode;
+    let point = super::build_point_for_test(
+        vec![0.5, 0.6],
+        "rust programming language systems performance",
+        "https://rust-lang.org/learn",
+        1,
+        VectorMode::Named,
+    );
+    let indices = point["vector"]["bm42"]["indices"]
+        .as_array()
+        .expect("bm42 indices");
+    assert!(
+        !indices.is_empty(),
+        "real text must produce non-empty sparse vector"
+    );
+}

@@ -34,7 +34,7 @@ export function QueueSectionTrigger({ children, className, ...props }: Component
     <CollapsibleTrigger asChild>
       <button
         className={cn(
-          'group flex w-full items-center justify-between rounded-2xl bg-[rgba(255,255,255,0.04)] px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-[rgba(255,255,255,0.08)]',
+          'group flex w-full items-center justify-between rounded-2xl bg-[rgba(255,255,255,0.04)] px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-[rgba(255,255,255,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] focus-visible:ring-offset-0',
           className,
         )}
         type="button"

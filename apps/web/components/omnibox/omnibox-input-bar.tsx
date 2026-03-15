@@ -16,6 +16,7 @@ import {
 import Link from 'next/link'
 import type React from 'react'
 import { useEffect, useMemo } from 'react'
+import { Button } from '@/components/ui/button'
 import type {
   PulseWorkspaceAgent,
   PulseWorkspaceModel,
@@ -229,16 +230,18 @@ export function OmniboxInputBar(props: OmniboxInputBarProps) {
             @
           </kbd>{' '}
           to attach a file
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => {
               setMentionTipSeen(true)
               localStorage.setItem(MENTION_TIP_SEEN_KEY, '1')
             }}
-            className="ml-2 text-[var(--text-dim)] hover:text-[var(--text-muted)]"
+            className="ml-2 size-4 text-[var(--text-dim)] hover:text-[var(--text-muted)]"
+            aria-label="Dismiss tip"
           >
             x
-          </button>
+          </Button>
         </div>
       )}
       {/* Inline status */}
@@ -337,14 +340,15 @@ export function OmniboxInputBar(props: OmniboxInputBarProps) {
         <>
           <div className="h-[20px] w-px shrink-0 bg-[var(--border-subtle)]" />
           <div ref={toolsRef} className="relative flex shrink-0 items-center">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setToolsOpen((prev: boolean) => !prev)
                 setDropdownOpen(false)
                 setOptionsOpen(false)
               }}
-              className={`relative flex items-center justify-center bg-transparent px-2 py-1.5 text-[var(--axon-secondary)] transition-colors duration-150 hover:text-white ${
+              className={`relative h-auto bg-transparent px-2 py-1.5 text-[var(--axon-secondary)] transition-colors duration-150 hover:bg-transparent hover:text-white ${
                 toolsOpen ? 'text-white' : ''
               }`}
               title={`Pulse tools · ${pulseAgent} · ${pulseModel} · ${pulsePermissionLevel}`}
@@ -360,7 +364,7 @@ export function OmniboxInputBar(props: OmniboxInputBarProps) {
               {isProcessingWithCurrentMode && (
                 <span className="pointer-events-none absolute -right-0.5 -top-0.5 inline-flex size-1.5 animate-pulse rounded-full bg-[var(--axon-primary-strong)]" />
               )}
-            </button>
+            </Button>
             {toolsOpen && (
               <div
                 className={[
@@ -432,13 +436,14 @@ export function OmniboxInputBar(props: OmniboxInputBarProps) {
       {hasOptions && (
         <>
           <div className="h-[20px] w-px shrink-0 bg-[var(--border-subtle)]" />
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setOptionsOpen((prev: boolean) => !prev)
               setDropdownOpen(false)
             }}
-            className={`relative flex shrink-0 items-center justify-center bg-transparent px-2 py-1.5 transition-colors duration-150 ${
+            className={`relative h-auto shrink-0 bg-transparent px-2 py-1.5 transition-colors duration-150 hover:bg-transparent ${
               optionsOpen
                 ? 'text-[var(--axon-primary)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--axon-secondary)]'
@@ -451,39 +456,41 @@ export function OmniboxInputBar(props: OmniboxInputBarProps) {
                 {activeOptionCount}
               </span>
             )}
-          </button>
+          </Button>
         </>
       )}
       {/* Divider before send/cancel */}
       <div className="h-[20px] w-px shrink-0 bg-[var(--border-subtle)]" />
       {/* Send / cancel */}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={isProcessing ? cancel : execute}
         disabled={!isProcessing && !input.trim() && !NO_INPUT_MODES.has(mode)}
-        className={`flex shrink-0 items-center justify-center bg-transparent px-2.5 py-1.5 transition-all duration-200 ${
+        className={`h-auto shrink-0 bg-transparent px-2.5 py-1.5 transition-all duration-200 hover:bg-transparent ${
           modeAppliedLabel
             ? 'text-[var(--axon-primary-strong)] drop-shadow-[0_0_8px_rgba(175,215,255,0.55)]'
             : input.trim().length > 0 && !isProcessing
               ? 'text-[var(--axon-secondary)] drop-shadow-[0_0_10px_rgba(255,135,175,0.5)] hover:text-white hover:drop-shadow-[0_0_14px_rgba(255,135,175,0.7)]'
               : 'text-[var(--axon-secondary)] hover:text-white'
-        } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--axon-secondary)]`}
+        }`}
         title={isProcessing ? 'Cancel' : 'Execute'}
       >
         {isProcessing ? <Square className="size-3.5" /> : <SendHorizontal className="size-3.5" />}
-      </button>
+      </Button>
       {/* Chevron — mode dropdown toggle */}
       {showModeSelector && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setDropdownOpen((prev: boolean) => !prev)}
-          className="flex shrink-0 items-center justify-center rounded-r-[10px] bg-transparent px-2 py-1.5 text-[var(--text-muted)] transition-colors duration-150 hover:text-[var(--axon-secondary)]"
+          className="h-auto shrink-0 rounded-r-[10px] bg-transparent px-2 py-1.5 text-[var(--text-muted)] transition-colors duration-150 hover:bg-transparent hover:text-[var(--axon-secondary)]"
           title="Select mode"
         >
           <ChevronRight
             className={`size-3.5 transition-transform duration-200 ${effectiveDropdownOpen ? 'rotate-90' : ''}`}
           />
-        </button>
+        </Button>
       )}
     </div>
   )

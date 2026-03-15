@@ -1,67 +1,7 @@
 use crate::crates::core::config::Config;
-use crate::crates::vector::ops::input;
 use std::error::Error;
 
 use super::{EmbedProgress, EmbedSummary, PreparedDoc, prepare};
-
-/// Shared implementation for text embedding with optional extra payload fields.
-pub(crate) async fn embed_text_impl(
-    cfg: &Config,
-    content: &str,
-    url: &str,
-    source_type: &str,
-    title: Option<&str>,
-    extra: Option<&serde_json::Value>,
-) -> Result<usize, Box<dyn Error>> {
-    if content.trim().is_empty() {
-        return Ok(0);
-    }
-    let chunks = input::chunk_text(content);
-    if chunks.is_empty() {
-        return Ok(0);
-    }
-    // Text paths always use prose chunking; merge into extra payload
-    let merged_extra = {
-        let method_val = serde_json::json!({"chunking_method": "prose"});
-        match extra {
-            Some(serde_json::Value::Object(map)) => {
-                let mut combined = map.clone();
-                combined.insert(
-                    "chunking_method".to_string(),
-                    serde_json::Value::String("prose".to_string()),
-                );
-                Some(serde_json::Value::Object(combined))
-            }
-            _ => Some(method_val),
-        }
-    };
-    super::embed_chunks_impl(cfg, chunks, url, source_type, title, merged_extra.as_ref()).await
-}
-
-/// Embed arbitrary text content with explicit source metadata into Qdrant.
-pub async fn embed_text_with_metadata(
-    cfg: &Config,
-    content: &str,
-    url: &str,
-    source_type: &str,
-    title: Option<&str>,
-) -> Result<usize, Box<dyn Error>> {
-    embed_text_impl(cfg, content, url, source_type, title, None).await
-}
-
-/// Like `embed_text_with_metadata` but merges `extra` fields into every chunk's Qdrant payload.
-/// `extra` must be a JSON object; non-object values are ignored.
-/// Use this for source-specific metadata (e.g. YouTube channel, upload date, tags).
-pub async fn embed_text_with_extra_payload(
-    cfg: &Config,
-    content: &str,
-    url: &str,
-    source_type: &str,
-    title: Option<&str>,
-    extra: &serde_json::Value,
-) -> Result<usize, Box<dyn Error>> {
-    embed_text_impl(cfg, content, url, source_type, title, Some(extra)).await
-}
 
 /// Embed a batch of pre-prepared documents through the unified concurrent pipeline.
 ///

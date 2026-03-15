@@ -1,6 +1,16 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { AXON_COMMAND_OPTIONS, type AxonOptionSpec, getCommandSpec } from '@/lib/axon-command-map'
 import type { CommandOptionValues } from '@/lib/command-options'
 
@@ -41,85 +51,77 @@ function OptionControl({
   switch (spec.value) {
     case 'bool':
       return (
-        <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-[var(--surface-float)]">
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={!!value}
-            onClick={() => onUpdate(optionKey, !value)}
-            className={`flex size-4 shrink-0 items-center justify-center rounded border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--focus-ring-color)] ${
-              value
-                ? 'border-[var(--axon-secondary)] bg-[rgba(255,135,175,0.18)]'
-                : 'border-[var(--border-accent)] bg-transparent hover:border-[var(--border-strong)]'
-            }`}
-          >
-            {value && (
-              <svg
-                className="size-3 text-[var(--axon-primary-strong)]"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={3}
-              >
-                <path d="M5 12l5 5L20 7" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </button>
+        <div className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-[var(--surface-float)]">
+          <Checkbox
+            checked={!!value}
+            onCheckedChange={(checked) => onUpdate(optionKey, !!checked)}
+            aria-label={label}
+          />
           <span className="text-xs text-[var(--text-muted)]">{label}</span>
-        </label>
+        </div>
       )
 
     case 'number':
       return (
-        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
           <span className="shrink-0 text-xs text-[var(--text-muted)]">{label}</span>
-          <input
+          <Input
             type="number"
             value={value !== undefined ? String(value) : ''}
             onChange={(e) => {
               const n = Number.parseInt(e.target.value, 10)
               if (!Number.isNaN(n)) onUpdate(optionKey, n)
             }}
-            placeholder="—"
-            className="w-20 rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] px-2 py-1 font-mono text-xs text-[var(--axon-secondary)] outline-none placeholder:text-[var(--text-dim)] focus:border-[var(--focus-ring-color)]"
+            aria-label={label}
+            placeholder="--"
+            className="h-7 w-20 border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] font-mono text-xs text-[var(--axon-secondary)] placeholder:text-[var(--text-dim)]"
           />
-        </label>
+        </div>
       )
 
     case 'enum': {
       const options = parseEnumValues(spec.notes)
       return (
-        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
           <span className="shrink-0 text-xs text-[var(--text-muted)]">{label}</span>
-          <select
+          <Select
             value={value !== undefined ? String(value) : ''}
-            onChange={(e) => onUpdate(optionKey, e.target.value)}
-            className="rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] px-2 py-1 font-mono text-xs text-[var(--axon-secondary)] outline-none focus:border-[var(--focus-ring-color)]"
+            onValueChange={(v) => onUpdate(optionKey, v)}
           >
-            <option value="">default</option>
-            {options.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SelectTrigger
+              size="sm"
+              aria-label={label}
+              className="h-7 w-auto min-w-[80px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] font-mono text-xs text-[var(--axon-secondary)]"
+            >
+              <SelectValue placeholder="default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">default</SelectItem>
+              {options.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )
     }
 
     case 'string':
     case 'list':
       return (
-        <label className="flex items-center gap-2.5 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
           <span className="shrink-0 text-xs text-[var(--text-muted)]">{label}</span>
-          <input
+          <Input
             type="text"
             value={value !== undefined ? String(value) : ''}
             onChange={(e) => onUpdate(optionKey, e.target.value)}
-            placeholder={spec.value === 'list' ? 'comma-separated' : '—'}
-            className="w-40 rounded border border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] px-2 py-1 font-mono text-xs text-[var(--axon-secondary)] outline-none placeholder:text-[var(--text-dim)] focus:border-[var(--focus-ring-color)]"
+            aria-label={label}
+            placeholder={spec.value === 'list' ? 'comma-separated' : '--'}
+            className="h-7 w-40 border-[var(--border-subtle)] bg-[rgba(10,18,35,0.5)] font-mono text-xs text-[var(--axon-secondary)] placeholder:text-[var(--text-dim)]"
           />
-        </label>
+        </div>
       )
 
     default:
@@ -153,10 +155,12 @@ export function CommandOptionsPanel({ mode, values, onChange }: CommandOptionsPa
       className="overflow-hidden rounded-lg border border-[var(--border-subtle)] transition-all duration-200"
       style={{ background: 'rgba(10, 18, 35, 0.45)' }}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setExpanded((prev) => !prev)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--surface-float)]"
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-float)]"
       >
         <svg
           className={`size-3 shrink-0 text-[var(--text-dim)] transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
@@ -170,7 +174,7 @@ export function CommandOptionsPanel({ mode, values, onChange }: CommandOptionsPa
           Options
         </span>
         <span className="text-[10px] text-[var(--text-dim)]">({resolvedOptions.length})</span>
-      </button>
+      </Button>
 
       {expanded && (
         <div className="flex flex-wrap gap-x-2 gap-y-0.5 border-t border-[var(--border-subtle)] px-1 pb-2 pt-1">

@@ -114,7 +114,7 @@ Pipeline:
    - Strips `WEBVTT` header, timestamp lines, numeric cue identifiers, HTML tags
    - Deduplicates consecutive identical lines (overlapping subtitle windows)
 5. All existing Qdrant points for this URL deleted (`qdrant_delete_by_url_filter`) before upsert — prevents orphan chunks on re-ingest
-6. Cleaned transcript embedded via `embed_text_with_extra_payload()` → TEI → Qdrant, with YouTube metadata merged into every chunk's payload
+6. Cleaned transcript embedded via `embed_prepared_docs()` → TEI → Qdrant, with YouTube metadata merged into every chunk's payload
 7. Description (from `.info.json`) embedded as a separate document at `?section=description`
 8. Temp directory cleaned up automatically on drop
 
@@ -156,7 +156,7 @@ On final completion, `completed_urls` is discarded and the standard `{"chunks_em
 
 ## Deduplication
 
-All ingest methods (single video and playlist) call `embed_text_with_extra_payload` or `embed_text_with_metadata`, both of which pre-delete existing Qdrant points for the source URL before upserting new chunks. This means:
+All ingest methods (single video and playlist) use `embed_prepared_docs` via `PreparedDoc`, which upserts with deterministic UUID v5 point IDs and then deletes stale tail chunks. This means:
 
 - Re-ingesting a video overwrites it cleanly — no duplicate chunks
 - If transcript length changes between runs (e.g. better captions, yt-dlp update), old chunk count is fully replaced

@@ -1,12 +1,14 @@
-/* High Resolution (Dense) */
+/* High Resolution (Dense)
+ * L-2: No text size below 0.6875rem (11px) — accessibility floor.
+ * --text-2xs and --text-xs clamped to 0.6875rem minimum. */
 [data-density="high"] {
   --space-1: 0.125rem;
   --space-2: 0.25rem;
   --space-3: 0.4rem;
   --space-4: 0.6rem;
   --space-5: 0.8rem;
-  --text-2xs: 0.55rem;
-  --text-xs: 0.625rem;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.6875rem;
   --text-sm: 0.7rem;
   --text-md: 0.775rem;
   --text-base: 0.85rem;
@@ -63,11 +65,11 @@
 }
 
 [data-density="high"] .axon-sidebar-item .text-\[11px\] {
-  font-size: 0.68rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-sidebar-item .text-\[10px\] {
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-message-bubble {
@@ -90,7 +92,7 @@
 [data-density="high"] .axon-input {
   padding-top: 0.15rem;
   padding-bottom: 0.15rem;
-  font-size: 0.675rem;
+  font-size: 0.6875rem;
   border-radius: 0.45rem;
 }
 
@@ -143,12 +145,12 @@
 }
 
 [data-density="high"] .axon-terminal-container {
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-cortex-tab {
   padding: 0.2rem 0.4rem;
-  font-size: 0.65rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-cortex-tab svg {
@@ -199,7 +201,7 @@
 
 [data-density="high"] .axon-tool-header {
   padding: 0.2rem 0.45rem;
-  font-size: 0.65rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-tool-content {
@@ -236,19 +238,19 @@
 
 [data-density="high"] .axon-sidebar-search-input {
   height: 1.4rem;
-  font-size: 0.65rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-sidebar-search-icon {
-  width: 0.65rem;
-  height: 0.65rem;
+  width: 0.6875rem;
+  height: 0.6875rem;
   left: 0.35rem;
 }
 
 [data-density="high"] .axon-rail-item {
   height: 1.4rem;
   padding: 0 0.35rem;
-  font-size: 0.65rem;
+  font-size: 0.6875rem;
 }
 
 [data-density="high"] .axon-rail-item svg {
@@ -258,7 +260,7 @@
 
 [data-density="high"] pre,
 [data-density="high"] code {
-  font-size: 0.64rem;
+  font-size: 0.6875rem;
   line-height: 1.25;
   padding: 0.15rem 0.25rem;
 }

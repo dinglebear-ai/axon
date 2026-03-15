@@ -17,6 +17,7 @@
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { useShallow } from 'zustand/shallow'
 import type {
   AxonDensity,
   AxonMobilePane,
@@ -24,6 +25,7 @@ import type {
 } from '@/components/shell/axon-shell-state-helpers'
 import type { RailMode } from '@/components/shell/axon-ui-config'
 import type { AxonMessage } from '@/hooks/use-axon-session'
+import type { WorkspaceContextState } from '@/hooks/ws-messages/types'
 import {
   DEFAULT_NEURAL_CANVAS_PROFILE,
   type NeuralCanvasProfile,
@@ -140,6 +142,26 @@ export type PulseSlice = {
 }
 
 // ---------------------------------------------------------------------------
+// Slice: workspace
+// ---------------------------------------------------------------------------
+export type WorkspaceSlice = {
+  workspaceMode: string | null
+  workspacePrompt: string | null
+  workspacePromptVersion: number
+  workspaceResumeSessionId: string | null
+  workspaceResumeVersion: number
+  workspaceContext: WorkspaceContextState | null
+  setWorkspaceMode: (mode: string | null) => void
+  setWorkspacePrompt: (prompt: string | null) => void
+  setWorkspacePromptVersion: (version: number) => void
+  bumpWorkspacePromptVersion: () => void
+  setWorkspaceResumeSessionId: (sessionId: string | null) => void
+  setWorkspaceResumeVersion: (version: number) => void
+  bumpWorkspaceResumeVersion: () => void
+  setWorkspaceContext: (context: WorkspaceContextState | null) => void
+}
+
+// ---------------------------------------------------------------------------
 // Combined store type
 // ---------------------------------------------------------------------------
 export type ShellStore = MessagesSlice &
@@ -148,7 +170,8 @@ export type ShellStore = MessagesSlice &
   EditorSlice &
   LayoutSlice &
   SettingsSlice &
-  PulseSlice
+  PulseSlice &
+  WorkspaceSlice
 
 // ---------------------------------------------------------------------------
 // Store implementation
@@ -242,6 +265,24 @@ export const useShellStore = create<ShellStore>()(
     setPulseModel: (pulseModel) => set({ pulseModel }),
     setPulsePermissionLevel: (pulsePermissionLevel) => set({ pulsePermissionLevel }),
     setAcpConfigOptions: (acpConfigOptions) => set({ acpConfigOptions }),
+
+    // --- workspace ---
+    workspaceMode: 'pulse',
+    workspacePrompt: null,
+    workspacePromptVersion: 0,
+    workspaceResumeSessionId: null,
+    workspaceResumeVersion: 0,
+    workspaceContext: null,
+    setWorkspaceMode: (workspaceMode) => set({ workspaceMode }),
+    setWorkspacePrompt: (workspacePrompt) => set({ workspacePrompt }),
+    setWorkspacePromptVersion: (workspacePromptVersion) => set({ workspacePromptVersion }),
+    bumpWorkspacePromptVersion: () =>
+      set((state) => ({ workspacePromptVersion: state.workspacePromptVersion + 1 })),
+    setWorkspaceResumeSessionId: (workspaceResumeSessionId) => set({ workspaceResumeSessionId }),
+    setWorkspaceResumeVersion: (workspaceResumeVersion) => set({ workspaceResumeVersion }),
+    bumpWorkspaceResumeVersion: () =>
+      set((state) => ({ workspaceResumeVersion: state.workspaceResumeVersion + 1 })),
+    setWorkspaceContext: (workspaceContext) => set({ workspaceContext }),
   })),
 )
 
@@ -251,97 +292,132 @@ export const useShellStore = create<ShellStore>()(
 
 /** Subscribe to only the messages slice */
 export const useMessagesSlice = () =>
-  useShellStore((s) => ({
-    liveMessages: s.liveMessages,
-    liveMessagesHydrated: s.liveMessagesHydrated,
-    setLiveMessages: s.setLiveMessages,
-    setLiveMessagesHydrated: s.setLiveMessagesHydrated,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      liveMessages: s.liveMessages,
+      liveMessagesHydrated: s.liveMessagesHydrated,
+      setLiveMessages: s.setLiveMessages,
+      setLiveMessagesHydrated: s.setLiveMessagesHydrated,
+    })),
+  )
 
 /** Subscribe to only the streaming slice */
 export const useStreamingSlice = () =>
-  useShellStore((s) => ({
-    isStreaming: s.isStreaming,
-    connected: s.connected,
-    setIsStreaming: s.setIsStreaming,
-    setConnected: s.setConnected,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      isStreaming: s.isStreaming,
+      connected: s.connected,
+      setIsStreaming: s.setIsStreaming,
+      setConnected: s.setConnected,
+    })),
+  )
 
 /** Subscribe to only the session slice */
 export const useSessionSlice = () =>
-  useShellStore((s) => ({
-    activeSessionId: s.activeSessionId,
-    activeAssistantSessionId: s.activeAssistantSessionId,
-    sessionKey: s.sessionKey,
-    pendingHandoffContext: s.pendingHandoffContext,
-    sessionMode: s.sessionMode,
-    setActiveSessionId: s.setActiveSessionId,
-    setActiveAssistantSessionId: s.setActiveAssistantSessionId,
-    incrementSessionKey: s.incrementSessionKey,
-    setPendingHandoffContext: s.setPendingHandoffContext,
-    setSessionMode: s.setSessionMode,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      activeSessionId: s.activeSessionId,
+      activeAssistantSessionId: s.activeAssistantSessionId,
+      sessionKey: s.sessionKey,
+      pendingHandoffContext: s.pendingHandoffContext,
+      sessionMode: s.sessionMode,
+      setActiveSessionId: s.setActiveSessionId,
+      setActiveAssistantSessionId: s.setActiveAssistantSessionId,
+      incrementSessionKey: s.incrementSessionKey,
+      setPendingHandoffContext: s.setPendingHandoffContext,
+      setSessionMode: s.setSessionMode,
+    })),
+  )
 
 /** Subscribe to only the editor slice */
 export const useEditorSlice = () =>
-  useShellStore((s) => ({
-    editorMarkdown: s.editorMarkdown,
-    activeFile: s.activeFile,
-    setEditorMarkdown: s.setEditorMarkdown,
-    setActiveFile: s.setActiveFile,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      editorMarkdown: s.editorMarkdown,
+      activeFile: s.activeFile,
+      setEditorMarkdown: s.setEditorMarkdown,
+      setActiveFile: s.setActiveFile,
+    })),
+  )
 
 /** Subscribe to only the layout slice */
 export const useLayoutSlice = () =>
-  useShellStore((s) => ({
-    railMode: s.railMode,
-    mobilePane: s.mobilePane,
-    sidebarOpen: s.sidebarOpen,
-    chatOpen: s.chatOpen,
-    rightPane: s.rightPane,
-    density: s.density,
-    canvasProfile: s.canvasProfile,
-    sidebarWidth: s.sidebarWidth,
-    chatFlex: s.chatFlex,
-    isDragging: s.isDragging,
-    layoutRestored: s.layoutRestored,
-    railQuery: s.railQuery,
-    setRailMode: s.setRailMode,
-    setMobilePane: s.setMobilePane,
-    setSidebarOpen: s.setSidebarOpen,
-    setChatOpen: s.setChatOpen,
-    setRightPane: s.setRightPane,
-    setDensity: s.setDensity,
-    setCanvasProfile: s.setCanvasProfile,
-    setSidebarWidth: s.setSidebarWidth,
-    setChatFlex: s.setChatFlex,
-    setIsDragging: s.setIsDragging,
-    setLayoutRestored: s.setLayoutRestored,
-    setRailQuery: s.setRailQuery,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      railMode: s.railMode,
+      mobilePane: s.mobilePane,
+      sidebarOpen: s.sidebarOpen,
+      chatOpen: s.chatOpen,
+      rightPane: s.rightPane,
+      density: s.density,
+      canvasProfile: s.canvasProfile,
+      sidebarWidth: s.sidebarWidth,
+      chatFlex: s.chatFlex,
+      isDragging: s.isDragging,
+      layoutRestored: s.layoutRestored,
+      railQuery: s.railQuery,
+      setRailMode: s.setRailMode,
+      setMobilePane: s.setMobilePane,
+      setSidebarOpen: s.setSidebarOpen,
+      setChatOpen: s.setChatOpen,
+      setRightPane: s.setRightPane,
+      setDensity: s.setDensity,
+      setCanvasProfile: s.setCanvasProfile,
+      setSidebarWidth: s.setSidebarWidth,
+      setChatFlex: s.setChatFlex,
+      setIsDragging: s.setIsDragging,
+      setLayoutRestored: s.setLayoutRestored,
+      setRailQuery: s.setRailQuery,
+    })),
+  )
 
 /** Subscribe to only the settings slice */
 export const useSettingsSlice = () =>
-  useShellStore((s) => ({
-    enableFs: s.enableFs,
-    enableTerminal: s.enableTerminal,
-    permissionTimeoutSecs: s.permissionTimeoutSecs,
-    adapterTimeoutSecs: s.adapterTimeoutSecs,
-    setEnableFs: s.setEnableFs,
-    setEnableTerminal: s.setEnableTerminal,
-    setPermissionTimeoutSecs: s.setPermissionTimeoutSecs,
-    setAdapterTimeoutSecs: s.setAdapterTimeoutSecs,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      enableFs: s.enableFs,
+      enableTerminal: s.enableTerminal,
+      permissionTimeoutSecs: s.permissionTimeoutSecs,
+      adapterTimeoutSecs: s.adapterTimeoutSecs,
+      setEnableFs: s.setEnableFs,
+      setEnableTerminal: s.setEnableTerminal,
+      setPermissionTimeoutSecs: s.setPermissionTimeoutSecs,
+      setAdapterTimeoutSecs: s.setAdapterTimeoutSecs,
+    })),
+  )
 
 /** Subscribe to only the pulse slice */
 export const usePulseSlice = () =>
-  useShellStore((s) => ({
-    pulseAgent: s.pulseAgent,
-    pulseModel: s.pulseModel,
-    pulsePermissionLevel: s.pulsePermissionLevel,
-    acpConfigOptions: s.acpConfigOptions,
-    setPulseAgent: s.setPulseAgent,
-    setPulseModel: s.setPulseModel,
-    setPulsePermissionLevel: s.setPulsePermissionLevel,
-    setAcpConfigOptions: s.setAcpConfigOptions,
-  }))
+  useShellStore(
+    useShallow((s) => ({
+      pulseAgent: s.pulseAgent,
+      pulseModel: s.pulseModel,
+      pulsePermissionLevel: s.pulsePermissionLevel,
+      acpConfigOptions: s.acpConfigOptions,
+      setPulseAgent: s.setPulseAgent,
+      setPulseModel: s.setPulseModel,
+      setPulsePermissionLevel: s.setPulsePermissionLevel,
+      setAcpConfigOptions: s.setAcpConfigOptions,
+    })),
+  )
+
+/** Subscribe to only the workspace slice */
+export const useWorkspaceSlice = () =>
+  useShellStore(
+    useShallow((s) => ({
+      workspaceMode: s.workspaceMode,
+      workspacePrompt: s.workspacePrompt,
+      workspacePromptVersion: s.workspacePromptVersion,
+      workspaceResumeSessionId: s.workspaceResumeSessionId,
+      workspaceResumeVersion: s.workspaceResumeVersion,
+      workspaceContext: s.workspaceContext,
+      setWorkspaceMode: s.setWorkspaceMode,
+      setWorkspacePrompt: s.setWorkspacePrompt,
+      setWorkspacePromptVersion: s.setWorkspacePromptVersion,
+      bumpWorkspacePromptVersion: s.bumpWorkspacePromptVersion,
+      setWorkspaceResumeSessionId: s.setWorkspaceResumeSessionId,
+      setWorkspaceResumeVersion: s.setWorkspaceResumeVersion,
+      bumpWorkspaceResumeVersion: s.bumpWorkspaceResumeVersion,
+      setWorkspaceContext: s.setWorkspaceContext,
+    })),
+  )
