@@ -11,6 +11,10 @@ storage:
   optimizers:
     memmap_threshold_kb: 20000
     indexing_threshold_kb: 20000
+    # Limit concurrent HNSW index rebuild threads. Default is CPU count, which
+    # causes runaway CPU spikes when many ingest lanes fire simultaneous deletes.
+    # 2 threads keeps rebuilds bounded while allowing reasonable throughput.
+    max_optimization_threads: 2
 
   hnsw_index:
     on_disk: true

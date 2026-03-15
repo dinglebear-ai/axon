@@ -315,7 +315,7 @@ impl AxonMcpServer {
         &self,
         req: DomainsRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit.or(Some(25)), req.offset);
+        let pagination = to_pagination(req.limit.or(Some(25)), req.offset, 25);
         let response_mode = req.response_mode;
         let result = system::domains(self.cfg.as_ref(), pagination)
             .await
@@ -335,7 +335,7 @@ impl AxonMcpServer {
         &self,
         req: SourcesRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit.or(Some(25)), req.offset);
+        let pagination = to_pagination(req.limit.or(Some(25)), req.offset, 25);
         let response_mode = req.response_mode;
         let result = system::sources(self.cfg.as_ref(), pagination)
             .await

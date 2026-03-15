@@ -40,7 +40,7 @@ pub enum ResponseMode {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CrawlRequest {
-    pub subaction: CrawlSubaction,
+    pub subaction: Option<CrawlSubaction>,
     pub urls: Option<Vec<String>>,
     pub job_id: Option<String>,
     pub limit: Option<i64>,
@@ -56,7 +56,7 @@ pub struct CrawlRequest {
     pub delay_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CrawlSubaction {
     Start,
@@ -76,19 +76,29 @@ pub enum McpRenderMode {
     AutoSwitch,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpScrapeFormat {
+    Markdown,
+    Html,
+    RawHtml,
+    Json,
+}
+
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractRequest {
-    pub subaction: ExtractSubaction,
+    pub subaction: Option<ExtractSubaction>,
     pub urls: Option<Vec<String>>,
     pub prompt: Option<String>,
+    pub max_pages: Option<u32>,
     pub job_id: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<usize>,
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractSubaction {
     Start,
@@ -103,7 +113,7 @@ pub enum ExtractSubaction {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EmbedRequest {
-    pub subaction: EmbedSubaction,
+    pub subaction: Option<EmbedSubaction>,
     pub input: Option<String>,
     pub job_id: Option<String>,
     pub limit: Option<i64>,
@@ -111,7 +121,7 @@ pub struct EmbedRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EmbedSubaction {
     Start,
@@ -126,7 +136,7 @@ pub enum EmbedSubaction {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IngestRequest {
-    pub subaction: IngestSubaction,
+    pub subaction: Option<IngestSubaction>,
     pub source_type: Option<IngestSourceType>,
     pub target: Option<String>,
     pub include_source: Option<bool>,
@@ -137,7 +147,7 @@ pub struct IngestRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IngestSubaction {
     Start,
@@ -295,6 +305,12 @@ pub struct StatsRequest {
 #[serde(deny_unknown_fields)]
 pub struct ScrapeRequest {
     pub url: Option<String>,
+    /// Rendering engine override (http | chrome | auto_switch). Overrides cfg.render_mode.
+    pub render_mode: Option<McpRenderMode>,
+    /// Output format (markdown | html | raw_html | json). Overrides cfg.format.
+    pub format: Option<McpScrapeFormat>,
+    /// Whether to embed the scraped content into Qdrant. Overrides cfg.embed.
+    pub embed: Option<bool>,
     pub response_mode: Option<ResponseMode>,
     /// CSS selector to scope content extraction (e.g. "article, main, .content").
     pub root_selector: Option<String>,
@@ -316,6 +332,10 @@ pub struct ResearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
+    /// Enable graph-enhanced retrieval (requires Neo4j). Overrides cfg.ask_graph.
+    pub graph: Option<bool>,
+    /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
+    pub diagnostics: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 
@@ -329,7 +349,7 @@ pub struct ScreenshotRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RefreshSubaction {
     Start,
@@ -345,7 +365,7 @@ pub enum RefreshSubaction {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RefreshRequest {
-    pub subaction: RefreshSubaction,
+    pub subaction: Option<RefreshSubaction>,
     pub url: Option<String>,
     pub urls: Option<Vec<String>>,
     pub job_id: Option<String>,
@@ -473,7 +493,7 @@ mod tests {
         let result = parse_axon_request(raw);
         assert!(result.is_ok(), "crawl start should parse successfully");
         if let Ok(AxonRequest::Crawl(c)) = result {
-            assert!(matches!(c.subaction, CrawlSubaction::Start));
+            assert!(matches!(c.subaction, Some(CrawlSubaction::Start)));
             assert_eq!(
                 c.urls.as_deref(),
                 Some(&["https://example.com".to_string()][..])
@@ -505,7 +525,7 @@ mod tests {
         let result = parse_axon_request(raw);
         assert!(result.is_ok(), "embed start should parse successfully");
         if let Ok(AxonRequest::Embed(e)) = result {
-            assert!(matches!(e.subaction, EmbedSubaction::Start));
+            assert!(matches!(e.subaction, Some(EmbedSubaction::Start)));
             assert_eq!(e.input.as_deref(), Some("https://docs.example.com"));
         } else {
             panic!("expected Embed variant");
@@ -588,7 +608,7 @@ mod tests {
         let result = parse_axon_request(raw);
         assert!(result.is_ok(), "ingest start github should parse");
         if let Ok(AxonRequest::Ingest(i)) = result {
-            assert!(matches!(i.subaction, IngestSubaction::Start));
+            assert!(matches!(i.subaction, Some(IngestSubaction::Start)));
             assert!(matches!(i.source_type, Some(IngestSourceType::Github)));
             assert_eq!(i.target.as_deref(), Some("owner/repo"));
         } else {
@@ -606,7 +626,7 @@ mod tests {
         let result = parse_axon_request(raw);
         assert!(result.is_ok(), "refresh start with url should parse");
         if let Ok(AxonRequest::Refresh(r)) = result {
-            assert!(matches!(r.subaction, RefreshSubaction::Start));
+            assert!(matches!(r.subaction, Some(RefreshSubaction::Start)));
             assert_eq!(r.url.as_deref(), Some("https://example.com/docs"));
         } else {
             panic!("expected Refresh variant");
@@ -659,34 +679,46 @@ mod tests {
     // --- missing required field → validation error ---
 
     #[test]
-    fn crawl_missing_subaction_returns_error() {
-        // crawl requires subaction; omitting it must fail.
+    fn crawl_missing_subaction_defaults_to_start() {
+        // subaction is optional; omitting it should default to Start in the handler.
         let raw = obj(json!({
             "action": "crawl",
             "urls": ["https://example.com"]
         }));
         let result = parse_axon_request(raw);
         assert!(
-            result.is_err(),
-            "crawl without subaction must return an error"
+            result.is_ok(),
+            "crawl without subaction should parse successfully"
         );
+        if let Ok(AxonRequest::Crawl(c)) = result {
+            assert!(
+                c.subaction.is_none(),
+                "subaction should be None when omitted"
+            );
+        }
     }
 
     #[test]
-    fn embed_missing_subaction_returns_error() {
+    fn embed_missing_subaction_defaults_to_start() {
         let raw = obj(json!({
             "action": "embed",
             "input": "https://docs.example.com"
         }));
         let result = parse_axon_request(raw);
         assert!(
-            result.is_err(),
-            "embed without subaction must return an error"
+            result.is_ok(),
+            "embed without subaction should parse successfully"
         );
+        if let Ok(AxonRequest::Embed(e)) = result {
+            assert!(
+                e.subaction.is_none(),
+                "subaction should be None when omitted"
+            );
+        }
     }
 
     #[test]
-    fn ingest_missing_subaction_returns_error() {
+    fn ingest_missing_subaction_defaults_to_start() {
         let raw = obj(json!({
             "action": "ingest",
             "source_type": "github",
@@ -694,9 +726,15 @@ mod tests {
         }));
         let result = parse_axon_request(raw);
         assert!(
-            result.is_err(),
-            "ingest without subaction must return an error"
+            result.is_ok(),
+            "ingest without subaction should parse successfully"
         );
+        if let Ok(AxonRequest::Ingest(i)) = result {
+            assert!(
+                i.subaction.is_none(),
+                "subaction should be None when omitted"
+            );
+        }
     }
 
     #[test]
@@ -849,6 +887,81 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "ingest source_type '{src}' should parse successfully"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_ask_with_graph_and_diagnostics() {
+        let raw = obj(json!({
+            "action": "ask",
+            "query": "test question",
+            "graph": true,
+            "diagnostics": false
+        }));
+        let result = parse_axon_request(raw);
+        assert!(result.is_ok(), "ask with graph/diagnostics should parse");
+        if let Ok(AxonRequest::Ask(a)) = result {
+            assert_eq!(a.query.as_deref(), Some("test question"));
+            assert_eq!(a.graph, Some(true));
+            assert_eq!(a.diagnostics, Some(false));
+        } else {
+            panic!("expected Ask variant");
+        }
+    }
+
+    #[test]
+    fn parse_scrape_with_render_mode_format_embed() {
+        let raw = obj(json!({
+            "action": "scrape",
+            "url": "https://example.com",
+            "render_mode": "chrome",
+            "format": "html",
+            "embed": false
+        }));
+        let result = parse_axon_request(raw);
+        assert!(
+            result.is_ok(),
+            "scrape with render_mode/format/embed should parse"
+        );
+        if let Ok(AxonRequest::Scrape(s)) = result {
+            assert_eq!(s.url.as_deref(), Some("https://example.com"));
+            assert!(matches!(s.render_mode, Some(McpRenderMode::Chrome)));
+            assert!(matches!(s.format, Some(McpScrapeFormat::Html)));
+            assert_eq!(s.embed, Some(false));
+        } else {
+            panic!("expected Scrape variant");
+        }
+    }
+
+    #[test]
+    fn parse_extract_with_max_pages() {
+        let raw = obj(json!({
+            "action": "extract",
+            "subaction": "start",
+            "urls": ["https://example.com"],
+            "max_pages": 5
+        }));
+        let result = parse_axon_request(raw);
+        assert!(result.is_ok(), "extract with max_pages should parse");
+        if let Ok(AxonRequest::Extract(e)) = result {
+            assert_eq!(e.max_pages, Some(5));
+        } else {
+            panic!("expected Extract variant");
+        }
+    }
+
+    #[test]
+    fn serde_scrape_format_variants() {
+        for fmt in ["markdown", "html", "raw_html", "json"] {
+            let raw = obj(json!({
+                "action": "scrape",
+                "format": fmt
+            }));
+            let result = parse_axon_request(raw);
+            assert!(
+                result.is_ok(),
+                "scrape format '{fmt}' should parse successfully"
             );
         }
     }

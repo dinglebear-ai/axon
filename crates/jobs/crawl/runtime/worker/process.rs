@@ -2,7 +2,7 @@ use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::crawl::engine::{CrawlSummary, run_crawl_once, should_fallback_to_chrome};
-use crate::crates::jobs::common::{JobTable, mark_job_completed};
+use crate::crates::jobs::common::{JobTable, mark_job_completed, spawn_heartbeat_task};
 use crate::crates::jobs::status::JobStatus;
 use redis::AsyncCommands;
 use sqlx::PgPool;
@@ -19,6 +19,7 @@ use super::postprocess::{maybe_append_backfills, maybe_reconcile_stale_urls, upd
 use super::result_builder::{CompletedResultContext, build_completed_result};
 
 const TABLE: JobTable = JobTable::Crawl;
+const CRAWL_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
 pub(super) async fn process_job(
     cfg: &Config,
@@ -42,7 +43,13 @@ async fn process_job_impl(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), B
 
     let job_start = std::time::Instant::now();
     log_info(&format!("crawl worker started job {} url={}", id, ctx.url));
+
+    let (heartbeat_stop_tx, heartbeat_task) =
+        spawn_heartbeat_task(pool.clone(), TABLE, id, CRAWL_HEARTBEAT_INTERVAL_SECS);
+
     if maybe_complete_cache_hit(pool, id, &ctx).await? {
+        let _ = heartbeat_stop_tx.send(true);
+        let _ = heartbeat_task.await;
         return Ok(());
     }
 
@@ -51,6 +58,10 @@ async fn process_job_impl(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), B
     let result = run_active_crawl_job(pool, id, &ctx)
         .await
         .map_err(|e| e.to_string());
+
+    let _ = heartbeat_stop_tx.send(true);
+    let _ = heartbeat_task.await;
+
     match result {
         Ok(result_json) => {
             mark_job_completed(pool, TABLE, id, Some(&result_json)).await?;

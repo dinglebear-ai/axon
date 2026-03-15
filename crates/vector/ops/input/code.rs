@@ -7,6 +7,13 @@ use text_splitter::{ChunkConfig, CodeSplitter};
 use tree_sitter_language::LanguageFn;
 
 /// Map a file extension to its tree-sitter language grammar.
+///
+/// NOTE: Only grammars with crates in Cargo.toml are supported. Common languages
+/// like C, C++, Java, Ruby, Kotlin, Swift, Scala, and C# are missing because their
+/// tree-sitter grammar crates are not yet dependencies.
+// TODO: add tree-sitter-java, tree-sitter-c, tree-sitter-cpp, tree-sitter-c-sharp,
+// tree-sitter-ruby, tree-sitter-kotlin, tree-sitter-swift, tree-sitter-scala,
+// tree-sitter-toml when ready
 fn language_for_extension(ext: &str) -> Option<LanguageFn> {
     match ext {
         "rs" => Some(tree_sitter_rust::LANGUAGE),
@@ -23,11 +30,17 @@ fn language_for_extension(ext: &str) -> Option<LanguageFn> {
 /// Split source code into AST-aware chunks.
 ///
 /// Returns `None` for unsupported file extensions. Empty chunks are filtered
-/// from the output. Chunk sizes target 500–2000 characters, splitting at
-/// structural boundaries (functions, blocks, statements) when possible.
+/// from the output. Chunk sizes target 500–2000 characters with 200-char
+/// overlap between adjacent chunks, splitting at structural boundaries
+/// (functions, blocks, statements) when possible. The overlap ensures that
+/// a function signature split across chunk boundaries appears in both chunks,
+/// matching the 200-char overlap used by `chunk_text()`.
 pub fn chunk_code(content: &str, file_extension: &str) -> Option<Vec<String>> {
     let lang = language_for_extension(file_extension)?;
-    let config = ChunkConfig::new(500..2000);
+    // 200-char overlap matches chunk_text() — ensures context continuity at boundaries
+    let config = ChunkConfig::new(500..2000)
+        .with_overlap(200)
+        .expect("overlap 200 < desired capacity 2000");
     let splitter = CodeSplitter::new(lang, config).expect("valid language");
 
     let chunks: Vec<String> = splitter

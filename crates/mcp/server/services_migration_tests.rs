@@ -55,7 +55,7 @@ async fn refresh_schedule_unknown_subaction_returns_invalid_params() {
 
     let server = super::AxonMcpServer::new(Config::default());
     let req = RefreshRequest {
-        subaction: RefreshSubaction::Schedule,
+        subaction: Some(RefreshSubaction::Schedule),
         url: None,
         urls: None,
         job_id: None,
@@ -96,7 +96,7 @@ async fn ingest_start_missing_source_type_returns_invalid_params() {
 
     let server = super::AxonMcpServer::new(Config::default());
     let req = IngestRequest {
-        subaction: IngestSubaction::Start,
+        subaction: Some(IngestSubaction::Start),
         source_type: None, // intentionally omitted
         target: None,
         include_source: None,

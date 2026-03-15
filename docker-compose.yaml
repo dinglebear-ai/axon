@@ -92,8 +92,10 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '4.0'
           memory: 4G
         reservations:
+          cpus: '0.5'
           memory: 1G
     healthcheck:
       test:

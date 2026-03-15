@@ -78,6 +78,8 @@ pub(super) const ALLOWED_FLAGS: &[(&str, &str)] = &[
     ("enable_terminal", "--enable-terminal"),
     ("permission_timeout_secs", "--permission-timeout-secs"),
     ("adapter_timeout_secs", "--adapter-timeout-secs"),
+    ("offset", "--offset"),
+    ("max_points", "--max-points"),
 ];
 
 /// ACP modes that hold their own concurrency permit via `ACP_SESSION_SEMAPHORE`.

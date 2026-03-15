@@ -1,7 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
-    invalid_params, logged_internal_error, paginate_vec, parse_offset, respond_with_mode, slugify,
-    to_map_options, to_pagination, to_retrieve_options, to_search_options,
+    invalid_params, logged_internal_error, map_render_mode, map_scrape_format, paginate_vec,
+    parse_offset, respond_with_mode, slugify, to_map_options, to_pagination, to_retrieve_options,
+    to_search_options,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -20,10 +21,10 @@ impl AxonMcpServer {
         let query = req
             .query
             .ok_or_else(|| invalid_params("query is required for query"))?;
-        let limit = req.limit.unwrap_or(self.cfg.search_limit).clamp(1, 100);
+        let limit = req.limit.unwrap_or(self.cfg.search_limit).clamp(1, 500);
         let offset = parse_offset(req.offset);
         let response_mode = req.response_mode;
-        let pagination = to_pagination(Some(limit), Some(offset));
+        let pagination = to_pagination(Some(limit), Some(offset), self.cfg.search_limit);
         let result = query_svc::query(self.cfg.as_ref(), &query, pagination)
             .await
             .map_err(|e| logged_internal_error("operation", e))?;
@@ -103,7 +104,12 @@ impl AxonMcpServer {
             .into_iter()
             .filter_map(|v| v.as_str().map(ToString::to_string))
             .collect::<Vec<_>>();
-        let paged_urls = paginate_vec(&urls, offset, limit);
+        // limit=0 means "no limit" (return all); positive values paginate normally.
+        let paged_urls = if limit == 0 {
+            urls.clone()
+        } else {
+            paginate_vec(&urls, offset, limit)
+        };
         respond_with_mode(
             "map",
             "map",
@@ -131,7 +137,12 @@ impl AxonMcpServer {
             .query
             .ok_or_else(|| invalid_params("query is required for search"))?;
         let response_mode = req.response_mode;
-        let opts = to_search_options(req.limit, req.offset, req.search_time_range);
+        let opts = to_search_options(
+            req.limit,
+            req.offset,
+            req.search_time_range,
+            self.cfg.search_limit,
+        );
         if self.cfg.tavily_api_key.is_empty() {
             return Err(invalid_params("TAVILY_API_KEY is required for search"));
         }
@@ -161,13 +172,32 @@ impl AxonMcpServer {
         let url = req
             .url
             .ok_or_else(|| invalid_params("url is required for scrape"))?;
-        let result = scrape_svc::scrape(self.cfg.as_ref(), &url)
+        let response_mode = req.response_mode;
+
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(rm) = req.render_mode {
+            cfg.render_mode = map_render_mode(rm);
+        }
+        if let Some(fmt) = req.format {
+            cfg.format = map_scrape_format(fmt);
+        }
+        if let Some(embed) = req.embed {
+            cfg.embed = embed;
+        }
+        if let Some(sel) = req.root_selector {
+            cfg.root_selector = Some(sel);
+        }
+        if let Some(sel) = req.exclude_selector {
+            cfg.exclude_selector = Some(sel);
+        }
+
+        let result = scrape_svc::scrape(&cfg, &url)
             .await
             .map_err(|e| logged_internal_error("operation", e))?;
         respond_with_mode(
             "scrape",
             "scrape",
-            req.response_mode,
+            response_mode,
             &format!("scrape-{}", slugify(&url, 56)),
             result.payload,
         )
@@ -190,7 +220,12 @@ impl AxonMcpServer {
             .query
             .ok_or_else(|| invalid_params("query is required for research"))?;
         let response_mode = req.response_mode;
-        let opts = to_search_options(req.limit, req.offset, req.search_time_range);
+        let opts = to_search_options(
+            req.limit,
+            req.offset,
+            req.search_time_range,
+            self.cfg.search_limit,
+        );
 
         let result = search_svc::research(self.cfg.as_ref(), &query, opts, None)
             .await
@@ -212,7 +247,15 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("query is required for ask"))?;
         let response_mode = req.response_mode;
 
-        let result = query_svc::ask(self.cfg.as_ref(), &query, None)
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(graph) = req.graph {
+            cfg.ask_graph = graph;
+        }
+        if let Some(diagnostics) = req.diagnostics {
+            cfg.ask_diagnostics = diagnostics;
+        }
+
+        let result = query_svc::ask(&cfg, &query, None)
             .await
             .map_err(|e| logged_internal_error("operation", e))?;
 

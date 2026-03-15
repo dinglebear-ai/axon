@@ -69,9 +69,48 @@ async fn qdrant_delete_with_retry(
     ))
 }
 
+/// Fetch one scroll page with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
+async fn scroll_page_with_retry(
+    client: &reqwest::Client,
+    endpoint: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    const MAX_ATTEMPTS: usize = 4;
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client.post(endpoint).json(body).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if retryable && attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "scroll_pages_raw: retrying after status={status} attempt={attempt}/{MAX_ATTEMPTS}"
+                    ));
+                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                    last_err = Some(anyhow!("qdrant scroll status={status} attempt={attempt}"));
+                    continue;
+                }
+                let val = resp.error_for_status()?.json::<serde_json::Value>().await?;
+                return Ok(val);
+            }
+            Err(err) => {
+                if attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "scroll_pages_raw: retrying after transport error attempt={attempt}/{MAX_ATTEMPTS}: {err}"
+                    ));
+                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                }
+                last_err = Some(err.into());
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("scroll_pages_raw: unknown failure")))
+}
+
 /// Shared scroll pagination loop. POSTs to the given `endpoint` with `initial_body`,
 /// reads `result.points` as raw JSON, and invokes `on_page` for each non-empty page.
 /// The callback returns `true` to continue scrolling or `false` to stop early.
+/// Each page request is retried up to 4 times on 429/5xx.
 async fn scroll_pages_raw(
     client: &reqwest::Client,
     endpoint: &str,
@@ -80,14 +119,7 @@ async fn scroll_pages_raw(
 ) -> Result<()> {
     let mut body = initial_body;
     loop {
-        let val = client
-            .post(endpoint)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<serde_json::Value>()
-            .await?;
+        let val = scroll_page_with_retry(client, endpoint, &body).await?;
 
         let points = val["result"]["points"]
             .as_array()

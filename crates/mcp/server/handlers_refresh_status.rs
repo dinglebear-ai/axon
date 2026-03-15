@@ -38,7 +38,7 @@ impl AxonMcpServer {
         req: RefreshRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let response_mode = req.response_mode;
-        match req.subaction {
+        match req.subaction.unwrap_or(RefreshSubaction::Start) {
             RefreshSubaction::Start => self.handle_refresh_start(req.urls, req.url).await,
             RefreshSubaction::Status => {
                 self.handle_refresh_status(req.job_id.as_ref(), response_mode)

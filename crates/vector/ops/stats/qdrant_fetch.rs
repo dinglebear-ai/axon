@@ -23,7 +23,7 @@ pub(super) async fn fetch_qdrant_snapshots(
             qdrant_base(cfg),
             cfg.collection
         ))
-        .json(&serde_json::json!({"exact": true}))
+        .json(&serde_json::json!({"exact": false}))
         .send()
         .await?
         .error_for_status()?
@@ -36,7 +36,7 @@ pub(super) async fn fetch_qdrant_snapshots(
             cfg.collection
         ))
         .json(&serde_json::json!({
-            "exact": true,
+            "exact": false,
             "filter": {"must": [{"key": "chunk_index", "match": { "value": 0 }}]}
         }))
         .send()

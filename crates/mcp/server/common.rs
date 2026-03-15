@@ -1,5 +1,5 @@
-use crate::crates::core::config::{Config, RenderMode};
-use crate::crates::mcp::schema::{CrawlRequest, McpRenderMode, SearchTimeRange};
+use crate::crates::core::config::{Config, RenderMode, ScrapeFormat};
+use crate::crates::mcp::schema::{CrawlRequest, McpRenderMode, McpScrapeFormat, SearchTimeRange};
 use crate::crates::services::types::{
     MapOptions, Pagination, RetrieveOptions, SearchOptions, ServiceTimeRange,
 };
@@ -116,20 +116,32 @@ pub(super) fn map_render_mode(mode: McpRenderMode) -> RenderMode {
     }
 }
 
+pub(super) fn map_scrape_format(f: McpScrapeFormat) -> ScrapeFormat {
+    match f {
+        McpScrapeFormat::Markdown => ScrapeFormat::Markdown,
+        McpScrapeFormat::Html => ScrapeFormat::Html,
+        McpScrapeFormat::RawHtml => ScrapeFormat::RawHtml,
+        McpScrapeFormat::Json => ScrapeFormat::Json,
+    }
+}
+
 // --- Pagination helpers ---
 
 /// Map MCP limit/offset params to service `Pagination`, clamping limit to [1, 500].
-pub fn to_pagination(limit: Option<usize>, offset: Option<usize>) -> Pagination {
+/// `default` is used when `limit` is `None`; callers should pass `cfg.search_limit`.
+pub fn to_pagination(limit: Option<usize>, offset: Option<usize>, default: usize) -> Pagination {
     Pagination {
-        limit: limit.unwrap_or(10).clamp(1, 500),
+        limit: limit.unwrap_or(default).clamp(1, 500),
         offset: offset.unwrap_or(0),
     }
 }
 
-/// Map MCP limit/offset params to service `MapOptions`, clamping limit to [1, 500].
+/// Map MCP limit/offset params to service `MapOptions`.
+/// `limit=0` (or `None`) means "no limit" — matches the CLI default.
+/// Any positive value is honored as-is (no upper clamp) so callers can request large sets.
 pub fn to_map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions {
     MapOptions {
-        limit: limit.unwrap_or(10).clamp(1, 500),
+        limit: limit.unwrap_or(0),
         offset: offset.unwrap_or(0),
     }
 }
@@ -150,13 +162,15 @@ pub fn to_service_time_range(tr: SearchTimeRange) -> ServiceTimeRange {
 }
 
 /// Map MCP search params to service `SearchOptions`.
+/// `default` is used when `limit` is `None`; callers should pass `cfg.search_limit`.
 pub fn to_search_options(
     limit: Option<usize>,
     offset: Option<usize>,
     time_range: Option<SearchTimeRange>,
+    default: usize,
 ) -> SearchOptions {
     SearchOptions {
-        limit: limit.unwrap_or(10).clamp(1, 500),
+        limit: limit.unwrap_or(default).clamp(1, 500),
         offset: offset.unwrap_or(0),
         time_range: time_range.map(to_service_time_range),
     }

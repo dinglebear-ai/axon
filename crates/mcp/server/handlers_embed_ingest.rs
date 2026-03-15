@@ -10,7 +10,10 @@ use crate::crates::mcp::schema::{
 use crate::crates::services::ingest::IngestSource;
 use rmcp::ErrorData;
 
-fn parse_ingest_source(req: &mut IngestRequest) -> Result<IngestSource, ErrorData> {
+fn parse_ingest_source(
+    req: &mut IngestRequest,
+    cfg: &crate::crates::core::config::Config,
+) -> Result<IngestSource, ErrorData> {
     let source_type = req
         .source_type
         .take()
@@ -23,7 +26,7 @@ fn parse_ingest_source(req: &mut IngestRequest) -> Result<IngestSource, ErrorDat
                 .ok_or_else(|| invalid_params("target repo is required for github ingest"))?;
             Ok(IngestSource::Github {
                 repo,
-                include_source: req.include_source.unwrap_or(false),
+                include_source: req.include_source.unwrap_or(cfg.github_include_source),
             })
         }
         IngestSourceType::Reddit => {
@@ -101,7 +104,7 @@ impl AxonMcpServer {
         req: EmbedRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let response_mode = req.response_mode;
-        match req.subaction {
+        match req.subaction.unwrap_or(EmbedSubaction::Start) {
             EmbedSubaction::Start => self.handle_embed_start(req.input).await,
             EmbedSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_ref())?;
@@ -169,7 +172,7 @@ impl AxonMcpServer {
         &self,
         req: &mut IngestRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let source = parse_ingest_source(req)?;
+        let source = parse_ingest_source(req, self.cfg.as_ref())?;
         let result = crate::crates::services::ingest::ingest_start(self.cfg.as_ref(), source)
             .await
             .map_err(|e| logged_internal_error("ingest.start", e))?;
@@ -207,7 +210,7 @@ impl AxonMcpServer {
         mut req: IngestRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let response_mode = req.response_mode;
-        match req.subaction {
+        match req.subaction.unwrap_or(IngestSubaction::Start) {
             IngestSubaction::Start => self.handle_ingest_start(&mut req).await,
             IngestSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_ref())?;

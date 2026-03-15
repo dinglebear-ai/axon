@@ -25,27 +25,27 @@ use axon::crates::services::types::{
 
 #[test]
 fn pagination_default_values_when_both_none() {
-    let p = to_pagination(None, None);
+    let p = to_pagination(None, None, 10);
     assert_eq!(p.limit, 10, "default limit should be 10");
     assert_eq!(p.offset, 0, "default offset should be 0");
 }
 
 #[test]
 fn pagination_custom_values_pass_through() {
-    let p = to_pagination(Some(42), Some(100));
+    let p = to_pagination(Some(42), Some(100), 10);
     assert_eq!(p.limit, 42);
     assert_eq!(p.offset, 100);
 }
 
 #[test]
 fn pagination_limit_clamped_to_minimum_one() {
-    let p = to_pagination(Some(0), None);
+    let p = to_pagination(Some(0), None, 10);
     assert_eq!(p.limit, 1, "zero limit should be clamped to 1");
 }
 
 #[test]
 fn pagination_limit_clamped_to_maximum_500() {
-    let p = to_pagination(Some(9999), None);
+    let p = to_pagination(Some(9999), None, 10);
     assert_eq!(p.limit, 500, "limit above 500 should be clamped to 500");
 }
 
@@ -88,7 +88,7 @@ fn time_range_all_variants_map_correctly() {
 
 #[test]
 fn search_options_defaults_when_all_none() {
-    let opts = to_search_options(None, None, None);
+    let opts = to_search_options(None, None, None, 10);
     assert_eq!(opts.limit, 10);
     assert_eq!(opts.offset, 0);
     assert!(opts.time_range.is_none());
@@ -96,7 +96,7 @@ fn search_options_defaults_when_all_none() {
 
 #[test]
 fn search_options_time_range_forwarded() {
-    let opts = to_search_options(Some(5), Some(2), Some(SearchTimeRange::Week));
+    let opts = to_search_options(Some(5), Some(2), Some(SearchTimeRange::Week), 10);
     assert_eq!(opts.limit, 5);
     assert_eq!(opts.offset, 2);
     assert_eq!(opts.time_range, Some(ServiceTimeRange::Week));
@@ -104,20 +104,22 @@ fn search_options_time_range_forwarded() {
 
 #[test]
 fn map_options_default_values_when_both_none() {
+    // limit=None → 0 (no limit), matching CLI default.
     let m = to_map_options(None, None);
     assert_eq!(
         m,
         MapOptions {
-            limit: 10,
+            limit: 0,
             offset: 0
         }
     );
 }
 
 #[test]
-fn map_options_limit_clamped_at_500() {
+fn map_options_large_limit_honored_without_clamp() {
+    // Values are passed through as-is; no 500-cap is applied.
     let m = to_map_options(Some(100_000), Some(5));
-    assert_eq!(m.limit, 500);
+    assert_eq!(m.limit, 100_000);
     assert_eq!(m.offset, 5);
 }
 
@@ -326,7 +328,7 @@ fn mcp_ingest_start_requires_source_type() {
             "source_type must be None when omitted from request"
         );
         assert!(
-            matches!(req.subaction, IngestSubaction::Start),
+            matches!(req.subaction, Some(IngestSubaction::Start)),
             "subaction must be Start"
         );
     } else {
@@ -366,7 +368,7 @@ fn mcp_refresh_schedule_unknown_subaction_returns_invalid_params() {
     // handler's match arm `other => Err(invalid_params(...))` will receive.
     if let Ok(AxonRequest::Refresh(req)) = parsed {
         assert!(
-            matches!(req.subaction, RefreshSubaction::Schedule),
+            matches!(req.subaction, Some(RefreshSubaction::Schedule)),
             "subaction must be Schedule"
         );
         assert_eq!(

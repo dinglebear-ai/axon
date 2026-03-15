@@ -304,7 +304,8 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
                 ingest::github::ingest_github(&cfg, repo, *include_source, Some(progress_tx)).await;
             // Wait for final DB write to complete before marking done
             let _ = progress_task.await;
-            r
+            // ingest_github returns anyhow::Result; map to Box<dyn Error> for unified match type.
+            r.map_err(|e| -> Box<dyn std::error::Error> { e.into() })
         }
         IngestSource::Reddit { target } => ingest::reddit::ingest_reddit(&cfg, target).await,
         IngestSource::Youtube { target } => {

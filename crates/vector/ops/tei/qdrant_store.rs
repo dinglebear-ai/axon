@@ -31,7 +31,14 @@ async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
         qdrant_base(cfg),
         cfg.collection
     );
-    for field in &["url", "domain"] {
+    // Code-specific indexes enable filtered searches without full collection scans
+    for field in &[
+        "url",
+        "domain",
+        "source_type",
+        "gh_file_language",
+        "gh_chunking_method",
+    ] {
         client
             .put(&index_url)
             .json(&serde_json::json!({

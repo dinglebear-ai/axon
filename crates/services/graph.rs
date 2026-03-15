@@ -86,9 +86,9 @@ pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Err
         counts.insert(status, count);
     }
 
-    let recent = sqlx::query_as::<_, (Uuid, String, String, Option<serde_json::Value>)>(
+    let recent = sqlx::query_as::<_, (Uuid, String, String, i32, i32, i32, Option<String>)>(
         r#"
-        SELECT id, url, status, result_json
+        SELECT id, url, status, chunk_count, entity_count, relation_count, error_text
         FROM axon_graph_jobs
         ORDER BY created_at DESC
         LIMIT 20
@@ -100,12 +100,15 @@ pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Err
     Ok(GraphStatusResult {
         payload: serde_json::json!({
             "counts": counts,
-            "recent": recent.into_iter().map(|(id, url, status, result_json)| {
+            "recent": recent.into_iter().map(|(id, url, status, chunk_count, entity_count, relation_count, error_text)| {
                 serde_json::json!({
                     "id": id,
                     "url": url,
                     "status": status,
-                    "result": result_json,
+                    "chunk_count": chunk_count,
+                    "entity_count": entity_count,
+                    "relation_count": relation_count,
+                    "error": error_text,
                 })
             }).collect::<Vec<_>>(),
         }),

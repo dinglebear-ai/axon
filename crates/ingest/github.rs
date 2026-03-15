@@ -32,14 +32,29 @@ pub(crate) struct GitHubCommonFields {
 /// Returns true if a file path should be indexed when --include-source is set.
 /// Excludes lock files, generated files, binaries, and non-code files.
 pub fn is_indexable_source_path(path: &str) -> bool {
-    // Reject build artifact directories
-    if path.starts_with("target/")
-        || path.contains("/target/")
-        || path.starts_with("node_modules/")
-        || path.contains("/node_modules/")
-        || path.starts_with("dist/")
-        || path.contains("/dist/")
-        || path.contains("__pycache__")
+    // Reject build artifact and tool cache directories
+    let excluded_dirs = [
+        "target/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        "out/",
+        "coverage/",
+        "vendor/",
+        ".gradle/",
+        ".terraform/",
+        ".next/",
+        ".nuxt/",
+        "venv/",
+        ".venv/",
+        "env/",
+        "__pycache__/",
+        ".pytest_cache/",
+        ".mypy_cache/",
+    ];
+    if excluded_dirs
+        .iter()
+        .any(|dir| path.starts_with(dir) || path.contains(&format!("/{dir}")))
     {
         return false;
     }
@@ -49,18 +64,26 @@ pub fn is_indexable_source_path(path: &str) -> bool {
         return false;
     }
 
-    // Accept known source extensions (MVP scope — covers most common languages;
-    // expand as needed for additional language support)
+    // Accept known source extensions
     let accepted = [
-        ".rs", ".py", ".go", ".ts", ".js", ".tsx", ".jsx", ".toml", ".c", ".cpp", ".h", ".hpp",
-        ".java", ".kt", ".rb", ".php", ".sh", ".yaml", ".yml", ".json", ".md", ".swift", ".cs",
+        // Systems languages
+        ".rs", ".c", ".cpp", ".h", ".hpp", ".zig", // JVM / .NET
+        ".java", ".kt", ".kts", ".cs", ".gradle", // Scripting
+        ".py", ".rb", ".php", ".lua", ".sh", // Web / frontend
+        ".ts", ".js", ".tsx", ".jsx", // Go / Swift
+        ".go", ".swift", // BEAM (Elixir / Erlang)
+        ".ex", ".exs", ".erl", // Data science
+        ".r", ".R", ".ipynb", // Config / schema / IaC
+        ".toml", ".yaml", ".yml", ".json", ".proto", ".sql", ".tf", ".nix",
+        // Documentation (also caught by is_indexable_doc_path)
+        ".md", ".adoc",
     ];
     accepted.iter().any(|ext| path.ends_with(ext))
 }
 
 /// Returns true if a file path should always be indexed (markdown/docs), regardless of --include-source.
 pub fn is_indexable_doc_path(path: &str) -> bool {
-    let accepted = [".md", ".mdx", ".rst", ".txt"];
+    let accepted = [".md", ".mdx", ".rst", ".txt", ".adoc"];
     accepted.iter().any(|ext| path.ends_with(ext))
 }
 

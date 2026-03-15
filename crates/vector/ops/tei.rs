@@ -55,7 +55,22 @@ async fn embed_text_impl(
     if chunks.is_empty() {
         return Ok(0);
     }
-    embed_chunks_impl(cfg, chunks, url, source_type, title, extra).await
+    // Text paths always use prose chunking; merge into extra payload
+    let merged_extra = {
+        let method_val = serde_json::json!({"chunking_method": "prose"});
+        match extra {
+            Some(serde_json::Value::Object(map)) => {
+                let mut combined = map.clone();
+                combined.insert(
+                    "chunking_method".to_string(),
+                    serde_json::Value::String("prose".to_string()),
+                );
+                Some(serde_json::Value::Object(combined))
+            }
+            _ => Some(method_val),
+        }
+    };
+    embed_chunks_impl(cfg, chunks, url, source_type, title, merged_extra.as_ref()).await
 }
 
 /// Embed pre-chunked text into Qdrant. Shared by text and code embedding paths.
@@ -94,11 +109,11 @@ async fn embed_chunks_impl(
             &uuid::Uuid::NAMESPACE_URL,
             format!("{url}:{idx}").as_bytes(),
         );
+        // source_command removed — duplicated source_type
         let mut payload = serde_json::json!({
             "url": url,
             "domain": domain,
             "source_type": source_type,
-            "source_command": source_type,
             "content_type": "text",
             "chunk_index": idx,
             "chunk_text": chunk,
@@ -195,13 +210,33 @@ pub async fn embed_code_with_metadata(
     if content.trim().is_empty() {
         return Ok(0);
     }
-    let chunks = input::code::chunk_code(content, file_extension)
-        .filter(|c| !c.is_empty())
-        .unwrap_or_else(|| input::chunk_text(content));
+    // chunk_code() already filters empty chunks internally
+    let tree_sitter_chunks = input::code::chunk_code(content, file_extension);
+    let chunking_method = if tree_sitter_chunks.is_some() {
+        "tree-sitter"
+    } else {
+        "prose"
+    };
+    let chunks = tree_sitter_chunks.unwrap_or_else(|| input::chunk_text(content));
     if chunks.is_empty() {
         return Ok(0);
     }
-    embed_chunks_impl(cfg, chunks, url, source_type, title, extra).await
+    // Merge chunking_method into extra payload so every chunk carries it
+    let merged_extra = {
+        let method_val = serde_json::json!({"chunking_method": chunking_method});
+        match extra {
+            Some(serde_json::Value::Object(map)) => {
+                let mut combined = map.clone();
+                combined.insert(
+                    "chunking_method".to_string(),
+                    serde_json::Value::String(chunking_method.to_string()),
+                );
+                Some(serde_json::Value::Object(combined))
+            }
+            _ => Some(method_val),
+        }
+    };
+    embed_chunks_impl(cfg, chunks, url, source_type, title, merged_extra.as_ref()).await
 }
 
 pub async fn embed_path_native(cfg: &Config, input: &str) -> Result<EmbedSummary, Box<dyn Error>> {

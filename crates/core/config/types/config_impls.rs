@@ -3,6 +3,7 @@ use super::enums::{
     CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort, RedditTime,
     RenderMode, ScrapeFormat,
 };
+use std::env;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -115,8 +116,14 @@ impl Default for Config {
             ask_min_citations_nontrivial: 2,
             cron_every_seconds: None,
             cron_max_runs: None,
-            watchdog_stale_timeout_secs: 300,
-            watchdog_confirm_secs: 60,
+            watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300),
+            watchdog_confirm_secs: env::var("AXON_JOB_STALE_CONFIRM_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(60),
             json_output: false,
             reclaimed_status_only: false,
             normalize: false,

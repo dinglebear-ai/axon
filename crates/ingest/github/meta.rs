@@ -57,9 +57,13 @@ pub struct GitHubPayloadParams {
     pub is_test: Option<bool>,
     pub file_size_bytes: Option<usize>,
     pub chunking_method: Option<String>,
+
+    // Chunk line range (1-indexed, inclusive)
+    pub gh_line_start: Option<u32>,
+    pub gh_line_end: Option<u32>,
 }
 
-/// Build a Qdrant extra payload with all 31 `gh_*` keys.
+/// Build a Qdrant extra payload with all 33 `gh_*` keys.
 ///
 /// Null `Option` fields become JSON `null`, ensuring every chunk has the same
 /// schema regardless of content kind.
@@ -103,6 +107,10 @@ pub fn build_github_payload(params: &GitHubPayloadParams) -> Value {
         "gh_is_test": params.is_test,
         "gh_file_size_bytes": params.file_size_bytes,
         "gh_chunking_method": params.chunking_method,
+
+        // Chunk line range (1-indexed, inclusive)
+        "gh_line_start": params.gh_line_start,
+        "gh_line_end": params.gh_line_end,
     })
 }
 
@@ -127,7 +135,7 @@ mod tests {
         let params = make_common_params();
         let payload = build_github_payload(&params);
         let obj = payload.as_object().expect("payload is an object");
-        assert_eq!(obj.len(), 31, "expected 31 gh_* keys, got {}", obj.len());
+        assert_eq!(obj.len(), 33, "expected 33 gh_* keys, got {}", obj.len());
     }
 
     #[test]

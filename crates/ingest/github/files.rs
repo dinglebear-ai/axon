@@ -16,6 +16,12 @@ use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path}
 
 const FILE_PROGRESS_EVERY: usize = 25;
 
+/// Skip files larger than 5 MB to avoid memory spikes from generated/minified blobs.
+const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Flush accumulated PreparedDocs to the embed pipeline every N docs to bound memory.
+const EMBED_BATCH_SIZE: usize = 50;
+
 /// Extensions that have tree-sitter grammar support for AST-aware chunking.
 const TREE_SITTER_EXTENSIONS: &[&str] = &["rs", "py", "js", "jsx", "ts", "tsx", "go", "sh", "bash"];
 
@@ -150,67 +156,123 @@ struct FileEmbedCtx {
     is_private: Option<bool>,
 }
 
-/// Read a single file from the cloned repo and build a PreparedDoc with all chunks.
+/// Compute line range (1-indexed, inclusive) for a chunk within content.
 ///
-/// Returns one `PreparedDoc` per file — all chunks for the file are in
-/// `PreparedDoc.chunks`. The unified pipeline issues one TEI call per PreparedDoc.
-/// Empty or unreadable files return `Ok(None)`.
-async fn read_file_embed_doc(
-    ctx: &FileEmbedCtx,
-    path: &str,
-) -> Result<Option<PreparedDoc>, String> {
+/// Finds the chunk's byte offset via substring search, then counts newlines
+/// preceding the start and within the chunk to derive start/end lines.
+fn line_range_for_chunk(content: &str, chunk: &str) -> (u32, u32) {
+    let byte_offset = content.find(chunk).unwrap_or(0);
+    // Lines before this chunk (1-indexed).
+    let start_line = content[..byte_offset]
+        .bytes()
+        .filter(|&b| b == b'\n')
+        .count() as u32
+        + 1;
+    let lines_in_chunk = chunk.bytes().filter(|&b| b == b'\n').count() as u32;
+    let end_line = start_line + lines_in_chunk;
+    (start_line, end_line)
+}
+
+/// Read a single file from the cloned repo and build one `PreparedDoc` per chunk.
+///
+/// Each doc carries its own `gh_line_start`/`gh_line_end` metadata so the embed
+/// pipeline writes per-chunk line ranges into Qdrant. This enables linking chunks
+/// directly to the GitHub source view (`#L<start>-L<end>`).
+///
+/// Empty or unreadable files return `Ok(vec![])`.
+async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<PreparedDoc>, String> {
     let full_path = ctx.repo_root.join(path);
+
+    // Guard against huge generated/minified files that would spike memory.
+    match tokio::fs::metadata(&full_path).await {
+        Ok(meta) if meta.len() > MAX_FILE_BYTES => {
+            log_warn(&format!(
+                "command=ingest_github skip_large_file path={path} size_bytes={}",
+                meta.len()
+            ));
+            return Ok(Vec::new());
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "command=ingest_github stat_failed path={path} err={e}"
+            ));
+            return Ok(Vec::new());
+        }
+        _ => {}
+    }
+
     let text = match tokio::fs::read_to_string(&full_path).await {
         Ok(t) => t,
         Err(e) => {
             log_warn(&format!(
                 "command=ingest_github read_failed path={path} err={e}"
             ));
-            return Ok(None);
+            return Ok(Vec::new());
         }
     };
     if text.trim().is_empty() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
 
     let ext = file_extension(path);
     let chunks = chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text));
     if chunks.is_empty() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
 
-    let extra = build_github_payload(&GitHubPayloadParams {
-        repo: ctx.name.clone(),
-        owner: ctx.owner.clone(),
-        content_kind: "file".into(),
-        branch: Some(ctx.default_branch.clone()),
-        default_branch: Some(ctx.default_branch.clone()),
-        repo_description: ctx.repo_description.clone(),
-        pushed_at: ctx.pushed_at.clone(),
-        is_private: ctx.is_private,
-        file_path: Some(path.to_string()),
-        file_language: Some(language_name(&ext).to_string()),
-        file_type: Some(classify_file_type(path).to_string()),
-        is_test: Some(is_test_path(path)),
-        file_size_bytes: Some(text.len()),
-        chunking_method: Some(chunking_method(&ext).to_string()),
-        ..Default::default()
-    });
-
-    let source_url = format!(
+    let base_url = format!(
         "https://github.com/{}/{}/blob/{}/{}",
         ctx.owner, ctx.name, ctx.default_branch, path
     );
 
-    Ok(Some(PreparedDoc {
-        url: source_url,
-        domain: "github.com".to_string(),
-        chunks,
-        source_type: "github".to_string(),
-        content_type: "text",
-        title: Some(path.to_string()),
-        extra: Some(extra),
-    }))
+    let lang = language_name(&ext).to_string();
+    let ftype = classify_file_type(path).to_string();
+    let is_test = is_test_path(path);
+    let method = chunking_method(&ext).to_string();
+    let file_size = text.len();
+
+    // One PreparedDoc per chunk so each carries its own line range metadata.
+    let docs = chunks
+        .iter()
+        .map(|chunk| {
+            let (line_start, line_end) = line_range_for_chunk(&text, chunk);
+
+            let extra = build_github_payload(&GitHubPayloadParams {
+                repo: ctx.name.clone(),
+                owner: ctx.owner.clone(),
+                content_kind: "file".into(),
+                branch: Some(ctx.default_branch.clone()),
+                default_branch: Some(ctx.default_branch.clone()),
+                repo_description: ctx.repo_description.clone(),
+                pushed_at: ctx.pushed_at.clone(),
+                is_private: ctx.is_private,
+                file_path: Some(path.to_string()),
+                file_language: Some(lang.clone()),
+                file_type: Some(ftype.clone()),
+                is_test: Some(is_test),
+                file_size_bytes: Some(file_size),
+                chunking_method: Some(method.clone()),
+                gh_line_start: Some(line_start),
+                gh_line_end: Some(line_end),
+                ..Default::default()
+            });
+
+            // Append GitHub line-range fragment for direct linking.
+            let url = format!("{base_url}#L{line_start}-L{line_end}");
+
+            PreparedDoc {
+                url,
+                domain: "github.com".to_string(),
+                chunks: vec![chunk.clone()],
+                source_type: "github".to_string(),
+                content_type: "text",
+                title: Some(path.to_string()),
+                extra: Some(extra),
+            }
+        })
+        .collect();
+
+    Ok(docs)
 }
 
 /// Clone the repo and embed all indexable files concurrently.
@@ -269,24 +331,9 @@ pub async fn embed_files(
         pushed_at: common.pushed_at.clone(),
         is_private: common.is_private,
     });
-    let mut failed = 0usize;
-    let docs = collect_embed_docs(&ctx, file_items, files_total, progress_tx, &mut failed).await;
 
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "files_done": files_total,
-            "files_total": files_total,
-            "chunks_embedded": 0,
-            "phase": "embedding",
-        }),
-    )
-    .await;
-
-    let summary = embed_prepared_docs(cfg, docs, None)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let chunks_embedded = summary.chunks_embedded;
+    let (chunks_embedded, failed) =
+        collect_and_embed_batched(&ctx, file_items, files_total, progress_tx).await?;
 
     send_progress(
         progress_tx,
@@ -305,38 +352,46 @@ pub async fn embed_files(
     Ok(chunks_embedded)
 }
 
-async fn collect_embed_docs(
+/// Stream file reads and flush accumulated docs to the embed pipeline every
+/// `EMBED_BATCH_SIZE` docs, bounding peak memory instead of buffering all files.
+async fn collect_and_embed_batched(
     ctx: &Arc<FileEmbedCtx>,
     file_items: Vec<String>,
     files_total: usize,
     progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
-    failed: &mut usize,
-) -> Vec<PreparedDoc> {
+) -> Result<(usize, usize)> {
     let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
             let ctx = Arc::clone(ctx);
-            async move { read_file_embed_doc(ctx.as_ref(), &path).await }
+            async move { read_file_embed_docs(ctx.as_ref(), &path).await }
         })
         .buffer_unordered(concurrency);
 
-    let mut docs: Vec<PreparedDoc> = Vec::new();
+    let mut batch: Vec<PreparedDoc> = Vec::with_capacity(EMBED_BATCH_SIZE);
     let mut files_done = 0usize;
+    let mut failed = 0usize;
+    let mut total_chunks = 0usize;
 
     while let Some(result) = file_stream.next().await {
         files_done += 1;
         match result {
-            Ok(Some(doc)) => docs.push(doc),
-            Ok(None) => {}
-            Err(_) => *failed += 1,
+            Ok(docs) => batch.extend(docs),
+            Err(_) => failed += 1,
         }
+
+        // Flush when the batch is large enough to keep memory bounded.
+        if batch.len() >= EMBED_BATCH_SIZE {
+            total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
+        }
+
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
             send_progress(
                 progress_tx,
                 serde_json::json!({
                     "files_done": files_done,
                     "files_total": files_total,
-                    "chunks_embedded": 0,
+                    "chunks_embedded": total_chunks,
                     "phase": "collecting_files",
                 }),
             )
@@ -344,7 +399,36 @@ async fn collect_embed_docs(
         }
     }
 
-    docs
+    // Flush any remaining docs.
+    if !batch.is_empty() {
+        total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
+    }
+
+    Ok((total_chunks, failed))
+}
+
+/// Send a batch of docs to the embed pipeline and clear the buffer.
+async fn flush_batch(
+    cfg: &Config,
+    batch: &mut Vec<PreparedDoc>,
+    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
+) -> Result<usize> {
+    let docs = std::mem::take(batch);
+    let count = docs.len();
+
+    send_progress(
+        progress_tx,
+        serde_json::json!({
+            "phase": "embedding_batch",
+            "batch_size": count,
+        }),
+    )
+    .await;
+
+    let summary = embed_prepared_docs(cfg, docs, None)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(summary.chunks_embedded)
 }
 
 async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: serde_json::Value) {
@@ -359,6 +443,7 @@ async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: s
 
 #[cfg(test)]
 mod tests {
+    use super::line_range_for_chunk;
     use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 
     /// Pre-chunking must produce bounded content per chunk.
@@ -396,5 +481,31 @@ mod tests {
             }
         }
         // None is also valid — caller uses chunk_text fallback
+    }
+
+    #[test]
+    fn line_range_first_line() {
+        let content = "hello world";
+        let (start, end) = line_range_for_chunk(content, "hello world");
+        assert_eq!(start, 1);
+        assert_eq!(end, 1);
+    }
+
+    #[test]
+    fn line_range_multi_line_content() {
+        let content = "line1\nline2\nline3\nline4\nline5";
+        // Chunk spanning lines 3-4
+        let (start, end) = line_range_for_chunk(content, "line3\nline4");
+        assert_eq!(start, 3);
+        assert_eq!(end, 4);
+    }
+
+    #[test]
+    fn line_range_chunk_not_found_defaults_to_start() {
+        let content = "fn main() {}";
+        let (start, end) = line_range_for_chunk(content, "not_in_content");
+        // Falls back to byte_offset=0, so line 1
+        assert_eq!(start, 1);
+        assert_eq!(end, 1);
     }
 }

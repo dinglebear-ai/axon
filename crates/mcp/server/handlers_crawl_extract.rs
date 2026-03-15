@@ -80,6 +80,7 @@ impl AxonMcpServer {
         &self,
         urls: Option<Vec<String>>,
         prompt: Option<String>,
+        max_pages: Option<u32>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let urls = urls.ok_or_else(|| invalid_params("urls is required for extract.start"))?;
         if urls.is_empty() {
@@ -90,6 +91,9 @@ impl AxonMcpServer {
         }
         let mut cfg = self.cfg.as_ref().clone();
         cfg.query = prompt;
+        if let Some(mp) = max_pages {
+            cfg.max_pages = mp;
+        }
         let result = extract_svc::extract_start(&cfg, &urls, None)
             .await
             .map_err(|e| logged_internal_error("extract.start", e))?;
@@ -127,7 +131,7 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let cfg = apply_crawl_overrides(self.cfg.as_ref(), &req);
         let response_mode = req.response_mode;
-        match req.subaction {
+        match req.subaction.unwrap_or(CrawlSubaction::Start) {
             CrawlSubaction::Start => self.handle_crawl_start(&cfg, req.urls).await,
             CrawlSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_ref())?;
@@ -197,8 +201,11 @@ impl AxonMcpServer {
         req: ExtractRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let response_mode = req.response_mode;
-        match req.subaction {
-            ExtractSubaction::Start => self.handle_extract_start(req.urls, req.prompt).await,
+        match req.subaction.unwrap_or(ExtractSubaction::Start) {
+            ExtractSubaction::Start => {
+                self.handle_extract_start(req.urls, req.prompt, req.max_pages)
+                    .await
+            }
             ExtractSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_ref())?;
                 let job = extract_svc::extract_status(self.cfg.as_ref(), id)

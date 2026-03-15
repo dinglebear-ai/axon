@@ -73,11 +73,11 @@ async fn embed_prepared_doc(
             &Uuid::NAMESPACE_URL,
             format!("{}:{}", doc.url, idx).as_bytes(),
         );
+        // source_command removed — duplicated source_type
         let mut payload = serde_json::json!({
             "url": doc.url,
             "domain": doc.domain,
             "source_type": doc.source_type,
-            "source_command": doc.source_type,
             "content_type": doc.content_type,
             "chunk_index": idx,
             "chunk_text": chunk,
