@@ -118,7 +118,7 @@ export function LogsToolbar({
         placeholder="Filter logs..."
         value={filter}
         onChange={(e) => onFilterChange(e.target.value)}
-        className="h-7 min-w-[140px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-dim)]"
+        className="h-7 w-40 min-w-[140px] border-[var(--border-subtle)] bg-[rgba(10,18,35,0.7)] text-[11px] text-[var(--text-secondary)] placeholder:text-[var(--text-dim)]"
         aria-label="Filter log lines"
       />
 

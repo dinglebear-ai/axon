@@ -350,7 +350,7 @@ export const AxonSidebar = React.memo(function AxonSidebar({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="flex h-auto items-center gap-1.5 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
+                  className="flex h-auto items-center gap-1.5 px-2 py-1 pl-1 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--axon-primary)]"
                 >
                   <ActiveModeIcon className="size-3.5 text-[var(--axon-primary)]" />
                   <span>{activeMode.label}</span>

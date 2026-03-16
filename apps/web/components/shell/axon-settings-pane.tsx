@@ -56,7 +56,7 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
       }
       const n = parseInt(e.target.value, 10)
       if (Number.isNaN(n)) return
-      onPermissionTimeoutSecsChange(n)
+      onPermissionTimeoutSecsChange(Math.max(1, Math.min(3600, n)))
     },
     [onPermissionTimeoutSecsChange],
   )
@@ -69,7 +69,7 @@ export const AxonSettingsPane = memo(function AxonSettingsPane({
       }
       const n = parseInt(e.target.value, 10)
       if (Number.isNaN(n)) return
-      onAdapterTimeoutSecsChange(n)
+      onAdapterTimeoutSecsChange(Math.max(1, Math.min(86400, n)))
     },
     [onAdapterTimeoutSecsChange],
   )

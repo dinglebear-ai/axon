@@ -214,11 +214,7 @@ function McpContent() {
   return (
     <div className="flex flex-col gap-0.5">
       {servers.map((s) => (
-        <Link
-          key={s.name}
-          href="/settings/mcp"
-          className="flex items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-[var(--surface-float)]"
-        >
+        <div key={s.name} className="flex items-center justify-between rounded px-2 py-1.5">
           <span className="flex min-w-0 items-center gap-1.5">
             <span
               className="size-1.5 shrink-0 rounded-full"
@@ -243,7 +239,7 @@ function McpContent() {
           >
             {s.type}
           </Badge>
-        </Link>
+        </div>
       ))}
     </div>
   )
@@ -264,12 +260,7 @@ export function LandingCards() {
       >
         <FilesContent />
       </LandingCard>
-      <LandingCard
-        icon={<Network />}
-        title="MCP"
-        href="/settings/mcp"
-        storageKey="axon.landing.card.mcp"
-      >
+      <LandingCard icon={<Network />} title="MCP" storageKey="axon.landing.card.mcp">
         <McpContent />
       </LandingCard>
     </div>
