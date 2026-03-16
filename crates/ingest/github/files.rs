@@ -215,8 +215,17 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
                 .unwrap_or(search_start);
             // Advance by chunk length minus overlap so the next search starts
             // within the overlap window. chunk_text() uses 200-char overlap.
+            // Saturating subtraction of 200 bytes can land mid-char for non-ASCII
+            // content (e.g. box-drawing chars are 3 bytes). Snap back to the
+            // nearest valid char boundary to prevent panics on the next iteration.
             const CHUNK_OVERLAP: usize = 200;
-            search_start = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
+            let mut raw_next = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
+            // Walk back to a char boundary (at most 3 steps for any UTF-8 char).
+            raw_next = raw_next.min(text.len());
+            while raw_next > 0 && !text.is_char_boundary(raw_next) {
+                raw_next -= 1;
+            }
+            search_start = raw_next;
             let (line_start, line_end) = line_range_for_chunk(&text, chunk, byte_offset);
 
             let extra = build_github_payload(&GitHubPayloadParams {
@@ -362,6 +371,47 @@ mod tests {
         let chunks = chunk_text("   ");
         // Just verify no panic — caller filters empty results via trim check
         let _ = chunks;
+    }
+
+    /// search_start advancement must not land mid-char when content has
+    /// multi-byte UTF-8 characters (e.g. box-drawing chars like ─).
+    /// Regression test for the panic: "byte index N is not a char boundary".
+    #[test]
+    fn search_start_stays_on_char_boundary_with_multibyte_content() {
+        // Build a string with box-drawing chars (3 bytes each in UTF-8) so that
+        // naive byte arithmetic places search_start inside one of them.
+        let mut text = String::new();
+        // Fill ~2200 bytes with ASCII then add a multi-byte sequence at the boundary.
+        text.push_str(&"a".repeat(2000));
+        text.push_str("─".repeat(200).as_str()); // 200 × 3 = 600 extra bytes
+        text.push_str(&"b".repeat(500));
+
+        let chunks = chunk_text(&text);
+        assert!(
+            chunks.len() > 1,
+            "need multiple chunks to exercise search_start"
+        );
+
+        // Simulate the search_start advancement loop that was panicking.
+        let mut search_start = 0usize;
+        const CHUNK_OVERLAP: usize = 200;
+        for chunk in &chunks {
+            let byte_offset = text[search_start..]
+                .find(chunk.as_str())
+                .map(|pos| search_start + pos)
+                .unwrap_or(search_start);
+            let mut raw_next = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
+            raw_next = raw_next.min(text.len());
+            while raw_next > 0 && !text.is_char_boundary(raw_next) {
+                raw_next -= 1;
+            }
+            search_start = raw_next;
+            // Must be a valid boundary — this was the panic site.
+            assert!(
+                text.is_char_boundary(search_start),
+                "search_start {search_start} is not a char boundary"
+            );
+        }
     }
 
     /// chunk_code falls back to chunk_text for unknown extensions.

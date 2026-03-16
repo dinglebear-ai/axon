@@ -119,10 +119,15 @@ pub(super) async fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        emit_nonblocking(service_tx, ServiceEvent::EditorWrite { content, operation });
+        emit_with_timeout(
+            service_tx,
+            ServiceEvent::EditorWrite { content, operation },
+            std::time::Duration::from_secs(5),
+        )
+        .await;
     }
 
-    emit_nonblocking(
+    emit_with_timeout(
         service_tx,
         ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
@@ -131,7 +136,9 @@ pub(super) async fn finalize_successful_turn(
                 result: text,
             }),
         },
-    );
+        std::time::Duration::from_secs(5),
+    )
+    .await;
     let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
     crate::crates::core::logging::log_info(&msg);
     emit_nonblocking(

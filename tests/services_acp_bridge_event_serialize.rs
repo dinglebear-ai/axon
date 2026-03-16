@@ -74,10 +74,12 @@ fn acpbridgeevent_usage_update_wire_shape() {
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "usage_update");
     assert_eq!(v["session_id"], "s-usage");
-    assert_eq!(v["used"], 1000);
+    assert_eq!(v["usage"]["total_tokens"], 1000);
     assert_eq!(v["size"], 8000);
     assert_eq!(v["costAmount"], "0.05");
     assert_eq!(v["costCurrency"], "USD");
+    // "used" must NOT appear at top level — web client expects nested "usage" object
+    assert!(v.get("used").is_none(), "used must not appear at top level");
 }
 
 #[test]
@@ -91,10 +93,11 @@ fn acpbridgeevent_usage_update_without_cost() {
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "usage_update");
-    assert_eq!(v["used"], 500);
+    assert_eq!(v["usage"]["total_tokens"], 500);
     assert_eq!(v["size"], 4000);
     assert!(v.get("costAmount").is_none());
     assert!(v.get("costCurrency").is_none());
+    assert!(v.get("used").is_none(), "used must not appear at top level");
 }
 
 // ── AcpBridgeEvent::PermissionRequest ─────────────────────────────────────

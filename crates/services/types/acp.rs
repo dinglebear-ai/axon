@@ -450,10 +450,20 @@ fn serialize_usage_update<S: serde::Serializer>(
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeMap;
+
+    // Build the nested "usage" object that the web client Zod schema expects:
+    //   { total_tokens?: int, input_tokens?: int, output_tokens?: int }
+    // We only have `used` (total tokens in context), so map it to `total_tokens`.
+    let mut usage_obj = serde_json::Map::new();
+    usage_obj.insert(
+        "total_tokens".to_string(),
+        serde_json::Value::Number(usage.used.into()),
+    );
+
     let mut map = serializer.serialize_map(None)?;
     map.serialize_entry("type", "usage_update")?;
     map.serialize_entry("session_id", &usage.session_id)?;
-    map.serialize_entry("used", &usage.used)?;
+    map.serialize_entry("usage", &usage_obj)?;
     map.serialize_entry("size", &usage.size)?;
     if let Some(ref amount) = usage.cost_amount {
         map.serialize_entry("costAmount", amount)?;

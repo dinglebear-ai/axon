@@ -177,7 +177,7 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
         "AXON_DOMAINS_DETAILED_LIMIT",
         DEFAULT_DOMAINS_DETAILED_LIMIT,
         1,
-        1_000_000,
+        10_000_000,
     );
     // Aggregate directly inside the scroll callback to avoid buffering all payloads.
     // Previous implementation cloned every payload into a Vec before summarizing,

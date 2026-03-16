@@ -103,7 +103,8 @@ pub async fn emit_with_timeout(
     if let Some(sender) = tx {
         tokio::time::timeout(timeout, sender.send(event))
             .await
-            .is_ok()
+            .map(|r| r.is_ok())
+            .unwrap_or(false)
     } else {
         false
     }
