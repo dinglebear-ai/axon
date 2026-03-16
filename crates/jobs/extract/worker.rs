@@ -134,6 +134,7 @@ async fn execute_extract_runs(
     urls: Vec<String>,
     prompt: String,
     max_pages: u32,
+    render_mode: crate::crates::core::config::RenderMode,
 ) -> ExtractAggregation {
     let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
 
@@ -150,7 +151,7 @@ async fn execute_extract_runs(
                 openai_api_key: cfg.openai_api_key.clone(),
                 openai_model: cfg.openai_model.clone(),
                 custom_headers: custom_headers.clone(),
-                render_mode: cfg.render_mode,
+                render_mode,
                 chrome_remote_url: cfg.chrome_remote_url.clone(),
                 chrome_stealth: cfg.chrome_stealth,
                 chrome_anti_bot: cfg.chrome_anti_bot,
@@ -160,6 +161,7 @@ async fn execute_extract_runs(
                 request_timeout_ms: cfg.request_timeout_ms,
                 fetch_retries: cfg.fetch_retries,
                 user_agent: cfg.chrome_user_agent.clone(),
+                chrome_network_idle_timeout_secs: cfg.chrome_network_idle_timeout_secs,
             };
             async move {
                 log_debug(&format!("extract llm_call url={url}"));
@@ -243,7 +245,14 @@ async fn process_extract_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<()
         let prompt = job_cfg
             .prompt
             .ok_or("extract prompt is required; pass --query")?;
-        let agg = execute_extract_runs(cfg, urls, prompt.clone(), job_cfg.max_pages).await;
+        let agg = execute_extract_runs(
+            cfg,
+            urls,
+            prompt.clone(),
+            job_cfg.max_pages,
+            job_cfg.render_mode,
+        )
+        .await;
         Ok(Some(extract_result_json(
             prompt,
             cfg.openai_model.clone(),

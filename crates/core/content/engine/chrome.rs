@@ -3,19 +3,79 @@ use super::{
     ExtractWebConfig, FallbackConfig, PageCollectResult, collect_page_results,
     run_single_url_extract,
 };
-use crate::crates::core::http::{http_client, ssrf_blacklist_patterns};
+use crate::crates::core::config::parse::is_docker_service_host;
+use crate::crates::core::http::{cdp_discovery_url, http_client, ssrf_blacklist_patterns};
 use spider::features::chrome_common::RequestInterceptConfiguration;
+use spider::url::Url;
 use spider::website::Website;
 use std::error::Error;
+use std::path::Path;
 use std::sync::Arc;
+
+/// Pre-resolve the Chrome CDP WebSocket URL, mirroring the logic in
+/// `crates/crawl/engine/runtime.rs::resolve_cdp_ws_url`.
+///
+/// - Already a `ws://`/`wss://` URL → return as-is (no extra round-trip).
+/// - Inside Docker (`/.dockerenv` exists) → return the raw management URL;
+///   spider resolves the WS URL itself on the Docker bridge network.
+/// - Otherwise → fetch `/json/version`, extract `webSocketDebuggerUrl`, and
+///   rewrite any Docker service hostname to `127.0.0.1` so the host CLI can
+///   reach the Chrome proxy.
+///
+/// Falls back to `remote_url` unchanged when any step fails, so callers always
+/// get a usable string even when the probe errors.
+async fn resolve_chrome_url(remote_url: &str) -> String {
+    if remote_url.starts_with("ws://") || remote_url.starts_with("wss://") {
+        return remote_url.to_string();
+    }
+
+    if Path::new("/.dockerenv").exists() {
+        return remote_url.to_string();
+    }
+
+    let Some(discovery_url) = cdp_discovery_url(remote_url) else {
+        return remote_url.to_string();
+    };
+
+    let Ok(client) = http_client() else {
+        return remote_url.to_string();
+    };
+
+    let Ok(resp) = client.get(&discovery_url).send().await else {
+        return remote_url.to_string();
+    };
+
+    let Ok(body) = resp.json::<serde_json::Value>().await else {
+        return remote_url.to_string();
+    };
+
+    let Some(ws_url) = body.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) else {
+        return remote_url.to_string();
+    };
+
+    let Ok(mut parsed) = Url::parse(ws_url) else {
+        return ws_url.to_string();
+    };
+
+    if let Some(host) = parsed.host_str() {
+        let host = host.to_string();
+        if is_docker_service_host(&host) {
+            let _ = parsed.set_host(Some("127.0.0.1"));
+        }
+    }
+
+    parsed.to_string()
+}
 
 /// Build a spider `Website` configured for single-page Chrome extraction.
 ///
-/// Applies Chrome stealth, fingerprint patching, network intercept, and CDP
-/// connection. Returns `None` when `chrome_remote_url` is absent — callers
-/// must fall back to the HTTP path in that case.
-fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Option<Website> {
+/// Applies Chrome stealth, fingerprint patching, network intercept, CDP
+/// connection, and network-idle wait. Returns `None` when `chrome_remote_url`
+/// is absent — callers must fall back to the HTTP path in that case.
+async fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Option<Website> {
     let chrome_url = wcfg.chrome_remote_url.as_deref()?;
+
+    let resolved_url = resolve_chrome_url(chrome_url).await;
 
     let ssrf_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
         .iter()
@@ -34,8 +94,14 @@ fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Option<We
         .with_stealth(wcfg.chrome_stealth || wcfg.chrome_anti_bot)
         .with_fingerprint(true)
         .with_dismiss_dialogs(true)
+        // `idle_network0` waits until the network is fully quiet for 500 ms —
+        // essential for CSR frameworks (React/Vue) that run XHR/fetch after the
+        // initial HTML load. `idle_network` (EventLoadingFinished) fires too early.
+        .with_wait_for_idle_network0(Some(spider::configuration::WaitForIdleNetwork::new(Some(
+            std::time::Duration::from_secs(wcfg.chrome_network_idle_timeout_secs),
+        ))))
         .with_chrome_intercept(RequestInterceptConfiguration::new(wcfg.chrome_intercept))
-        .with_chrome_connection(Some(chrome_url.to_string()));
+        .with_chrome_connection(Some(resolved_url));
 
     if wcfg.bypass_csp {
         website.with_csp_bypass(true);
@@ -68,7 +134,7 @@ pub(super) async fn run_single_url_extract_chrome(
     cfg: &ExtractWebConfig,
     fallback_cfg: FallbackConfig,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    let Some(mut website) = build_chrome_extract_website(url, cfg) else {
+    let Some(mut website) = build_chrome_extract_website(url, cfg).await else {
         // No Chrome configured — delegate to the HTTP path.
         return run_single_url_extract(url, http_client()?.clone(), engine, fallback_cfg).await;
     };

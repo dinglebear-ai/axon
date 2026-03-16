@@ -63,6 +63,9 @@ pub struct ExtractWebConfig {
     pub fetch_retries: usize,
     /// User-Agent string (from `AXON_CHROME_USER_AGENT`).
     pub user_agent: Option<String>,
+    /// Seconds to wait for network idle after initial page load (Chrome path only).
+    /// Passed to `with_wait_for_idle_network0`. Maps to `cfg.chrome_network_idle_timeout_secs`.
+    pub chrome_network_idle_timeout_secs: u64,
 }
 
 struct FallbackConfig {
@@ -427,6 +430,7 @@ mod tests {
             request_timeout_ms: Some(1000),
             fetch_retries: 0,
             user_agent: None,
+            chrome_network_idle_timeout_secs: 0,
         };
         // Should not panic. The URL is intentionally invalid so we get a network
         // error, which is expected. We only care it falls back to HTTP, not Chrome.

@@ -23,10 +23,18 @@ use uuid::Uuid;
 
 const TABLE: JobTable = JobTable::Extract;
 
+fn default_render_mode() -> crate::crates::core::config::RenderMode {
+    crate::crates::core::config::RenderMode::Http
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ExtractJobConfig {
     prompt: Option<String>,
     max_pages: u32,
+    /// Render mode (http/chrome/auto-switch). Defaults to `http` for backward
+    /// compatibility with existing DB rows that pre-date this field.
+    #[serde(default = "default_render_mode")]
+    render_mode: crate::crates::core::config::RenderMode,
 }
 
 #[derive(Debug, FromRow, Serialize)]
@@ -120,6 +128,7 @@ pub(crate) async fn start_extract_job_with_pool(
     let cfg_json = serde_json::to_value(ExtractJobConfig {
         prompt,
         max_pages: cfg.max_pages,
+        render_mode: cfg.render_mode,
     })?;
     if let Some(existing_id) = sqlx::query_scalar::<_, Uuid>(
         r#"

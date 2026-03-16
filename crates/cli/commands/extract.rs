@@ -215,6 +215,7 @@ async fn execute_extract_runs(
             request_timeout_ms: cfg.request_timeout_ms,
             fetch_retries: cfg.fetch_retries,
             user_agent: cfg.chrome_user_agent.clone(),
+            chrome_network_idle_timeout_secs: cfg.chrome_network_idle_timeout_secs,
         };
         pending_runs.push(async move {
             let run = run_extract_with_engine(wcfg, engine).await;
