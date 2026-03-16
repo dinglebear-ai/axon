@@ -1,5 +1,5 @@
 use super::super::cli::{
-    JobSubcommand, RefreshScheduleSubcommand, RefreshSubcommand, WatchSubcommand,
+    GraphSubcommand, JobSubcommand, RefreshScheduleSubcommand, RefreshSubcommand, WatchSubcommand,
 };
 
 pub(super) fn positional_from_job(job: JobSubcommand) -> Vec<String> {
@@ -12,6 +12,35 @@ pub(super) fn positional_from_job(job: JobSubcommand) -> Vec<String> {
         JobSubcommand::Clear => vec!["clear".to_string()],
         JobSubcommand::Worker => vec!["worker".to_string()],
         JobSubcommand::Recover => vec!["recover".to_string()],
+    }
+}
+
+pub(super) fn positional_from_graph_subcommand(action: GraphSubcommand) -> Vec<String> {
+    match action {
+        GraphSubcommand::Build {
+            url,
+            url_flag,
+            domain,
+            all,
+        } => {
+            let mut positional = vec!["build".to_string()];
+            if let Some(url) = url_flag.or(url) {
+                positional.push("--url".to_string());
+                positional.push(url);
+            }
+            if let Some(domain) = domain {
+                positional.push("--domain".to_string());
+                positional.push(domain);
+            }
+            if all {
+                positional.push("--all".to_string());
+            }
+            positional
+        }
+        GraphSubcommand::Status => vec!["status".to_string()],
+        GraphSubcommand::Explore { entity } => vec!["explore".to_string(), entity],
+        GraphSubcommand::Stats => vec!["stats".to_string()],
+        GraphSubcommand::Worker => vec!["worker".to_string()],
     }
 }
 

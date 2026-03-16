@@ -3,7 +3,9 @@ use std::error::Error;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::watch::{self as watch_jobs, WatchDef, WatchDefCreate, WatchRun};
+use crate::crates::jobs::watch::{self as watch_jobs, WatchDef, WatchRun};
+
+pub use crate::crates::jobs::watch::WatchDefCreate;
 
 pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     watch_jobs::list_watch_defs(cfg, limit).await
@@ -22,6 +24,14 @@ pub async fn list_watch_runs(
     limit: i64,
 ) -> Result<Vec<WatchRun>, Box<dyn Error>> {
     watch_jobs::list_watch_runs(cfg, watch_id, limit).await
+}
+
+pub async fn create_watch_run(
+    cfg: &Config,
+    watch_id: Uuid,
+    dispatched_job_id: Option<Uuid>,
+) -> Result<WatchRun, Box<dyn Error>> {
+    watch_jobs::create_watch_run(cfg, watch_id, dispatched_job_id).await
 }
 
 #[cfg(test)]

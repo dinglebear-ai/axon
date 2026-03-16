@@ -19,7 +19,7 @@ export function Message({
   return (
     <div
       className={cn(
-        'group flex w-full max-w-[95%] flex-col gap-2',
+        'group flex w-full max-w-[95%] flex-col gap-0.5',
         from === 'user' ? 'is-user ml-auto justify-end' : 'is-assistant',
         className,
       )}
@@ -222,7 +222,7 @@ export const MessageResponse = memo(
     return (
       <Streamdown
         className={cn(
-          'size-full min-w-0 break-words text-[10px] leading-[1.4] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_p]:text-[10px] [&_p]:leading-[1.4] [&_h1]:mt-1.5 [&_h1]:mb-0.5 [&_h1]:text-[12px] [&_h1]:font-semibold [&_h1]:leading-[1.25] [&_h2]:mt-1.5 [&_h2]:mb-0.5 [&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:leading-[1.25] [&_h3]:mt-1 [&_h3]:mb-0.5 [&_h3]:text-[10px] [&_h3]:font-semibold [&_h3]:leading-[1.25] [&_ol]:my-1 [&_ol]:list-inside [&_ol]:list-decimal [&_ol]:pl-2 [&_ul]:my-1 [&_ul]:list-inside [&_ul]:list-disc [&_ul]:pl-2 [&_li]:ml-0 [&_li]:text-[10px] [&_li]:leading-[1.4] [&_li+li]:mt-0.5 [&_ol_ol]:pl-3 [&_ul_ul]:list-[circle] [&_ul_ul]:pl-3 [&_pre]:my-1 [&_pre]:text-[9px] [&_code]:text-[9px]',
+          'size-full min-w-0 break-words text-[10px] leading-[1.35] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-0.5 [&_p]:text-[10px] [&_p]:leading-[1.35] [&_h1]:mt-1 [&_h1]:mb-0.5 [&_h1]:text-[12px] [&_h1]:font-semibold [&_h1]:leading-[1.2] [&_h2]:mt-1 [&_h2]:mb-0 [&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:leading-[1.2] [&_h3]:mt-0.5 [&_h3]:mb-0 [&_h3]:text-[10px] [&_h3]:font-semibold [&_h3]:leading-[1.2] [&_ol]:my-0.5 [&_ol]:list-inside [&_ol]:list-decimal [&_ol]:pl-2 [&_ul]:my-0.5 [&_ul]:list-inside [&_ul]:list-disc [&_ul]:pl-2 [&_li]:ml-0 [&_li]:text-[10px] [&_li]:leading-[1.35] [&_li+li]:mt-0 [&_ol_ol]:pl-3 [&_ul_ul]:list-[circle] [&_ul_ul]:pl-3 [&_pre]:my-0.5 [&_pre]:text-[9px] [&_code]:text-[9px] [&_table]:my-0.5 [&_table]:w-full [&_table]:text-[9px] [&_table]:leading-[1.3] [&_th]:py-0.5 [&_th]:px-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-[var(--text-dim)] [&_td]:py-0.5 [&_td]:px-1.5 [&_tr]:border-b [&_tr]:border-[rgba(175,215,255,0.06)] [&_blockquote]:my-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-[rgba(175,215,255,0.2)] [&_blockquote]:pl-2 [&_blockquote]:text-[var(--text-muted)] [&_hr]:my-1 [&_hr]:border-[rgba(175,215,255,0.1)]',
           props.className,
         )}
         {...props}

@@ -202,7 +202,7 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
         className="hidden"
         onChange={handleFilePick}
       />
-      <div className="px-2.5 pb-2.5 pt-2.5 sm:px-2 sm:pb-2 sm:pt-2">
+      <div className="px-2 pb-2 pt-2 sm:px-1.5 sm:pb-1.5 sm:pt-1.5">
         <PromptInputAttachments>
           {files.length > 0 ? (
             <div className="flex flex-wrap gap-2">
@@ -221,12 +221,12 @@ export const AxonPromptComposer = React.memo(function AxonPromptComposer({
 
         <PromptInputBody className="items-start gap-2">
           <PromptInputTextarea
-            className={`axon-input ${compact ? 'min-h-10 max-h-40 sm:min-h-9' : 'min-h-14 max-h-56'} rounded-[10px] px-2.5 py-1.5 leading-5`}
+            className={`axon-input ${compact ? 'min-h-8 max-h-36 sm:min-h-7' : 'min-h-12 max-h-48'} rounded-[8px] px-2 py-1 leading-5`}
             placeholder="Describe what you want to build, edit, or debug…"
           />
         </PromptInputBody>
 
-        <PromptInputFooter className="mt-1.5 flex items-center justify-end gap-1.5">
+        <PromptInputFooter className="mt-1 flex items-center justify-end gap-1">
           <div className="min-w-0 flex-1" />
           <div className="min-w-0 overflow-hidden">
             <PromptInputTools className="-mx-0.5 flex flex-nowrap items-center gap-2 overflow-x-auto px-0.5">

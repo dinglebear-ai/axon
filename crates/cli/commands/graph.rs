@@ -1,68 +1,63 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{accent, muted, primary};
-use crate::crates::jobs::graph::run_graph_worker;
 use crate::crates::services::graph as graph_svc;
+use clap::{Parser, Subcommand};
 use std::error::Error;
 
+#[derive(Debug, Parser)]
+struct GraphRuntimeArgs {
+    #[command(subcommand)]
+    action: Option<GraphRuntimeSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+enum GraphRuntimeSubcommand {
+    Build {
+        #[arg(long = "url")]
+        url: Option<String>,
+        #[arg(long)]
+        domain: Option<String>,
+        #[arg(long)]
+        all: bool,
+    },
+    Status,
+    Explore {
+        entity: String,
+    },
+    Stats,
+    Worker,
+}
+
+fn parse_graph_runtime_args(args: &[String]) -> Result<GraphRuntimeArgs, Box<dyn Error>> {
+    GraphRuntimeArgs::try_parse_from(
+        std::iter::once("graph").chain(args.iter().map(String::as_str)),
+    )
+    .map_err(|err| err.to_string().into())
+}
+
 pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let sub = cfg.positional.first().map(String::as_str);
-    match sub {
-        Some("build") => handle_build(cfg).await,
-        Some("status") => handle_status(cfg).await,
-        Some("explore") => handle_explore(cfg).await,
-        Some("stats") => handle_stats(cfg).await,
-        Some("worker") => handle_worker(cfg).await,
-        _ => {
+    match parse_graph_runtime_args(&cfg.positional)?.action {
+        Some(GraphRuntimeSubcommand::Build { url, domain, all }) => {
+            handle_build(cfg, url, domain, all).await
+        }
+        Some(GraphRuntimeSubcommand::Status) => handle_status(cfg).await,
+        Some(GraphRuntimeSubcommand::Explore { entity }) => handle_explore(cfg, &entity).await,
+        Some(GraphRuntimeSubcommand::Stats) => handle_stats(cfg).await,
+        Some(GraphRuntimeSubcommand::Worker) => handle_worker(cfg).await,
+        None => {
             eprintln!("Usage: axon graph <build|status|explore|stats|worker>");
             Ok(())
         }
     }
 }
 
-async fn handle_build(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let mut url: Option<String> = None;
-    let mut domain: Option<String> = None;
-    let mut all = false;
-
-    let mut i = 1usize;
-    while i < cfg.positional.len() {
-        match cfg.positional[i].as_str() {
-            "--url" => {
-                if let Some(val) = cfg.positional.get(i + 1) {
-                    if val.starts_with("--") {
-                        return Err("Expected value after --url".into());
-                    }
-                    url = Some(val.clone());
-                    i += 2;
-                } else {
-                    return Err("Expected value after --url".into());
-                }
-            }
-            "--domain" => {
-                if let Some(val) = cfg.positional.get(i + 1) {
-                    if val.starts_with("--") {
-                        return Err("Expected value after --domain".into());
-                    }
-                    domain = Some(val.clone());
-                    i += 2;
-                } else {
-                    return Err("Expected value after --domain".into());
-                }
-            }
-            "--all" => {
-                all = true;
-                i += 1;
-            }
-            other => {
-                if url.is_none() {
-                    url = Some(other.to_string());
-                }
-                i += 1;
-            }
-        }
-    }
-
+async fn handle_build(
+    cfg: &Config,
+    url: Option<String>,
+    domain: Option<String>,
+    all: bool,
+) -> Result<(), Box<dyn Error>> {
     log_info(&format!(
         "command=graph.build url={} domain={} all={all}",
         url.as_deref().unwrap_or(""),
@@ -126,11 +121,7 @@ async fn handle_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn handle_explore(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let entity = cfg
-        .positional
-        .get(1)
-        .ok_or("Usage: axon graph explore <entity>")?;
+async fn handle_explore(cfg: &Config, entity: &str) -> Result<(), Box<dyn Error>> {
     log_info(&format!("command=graph.explore entity={entity}"));
     let result = graph_svc::graph_explore(cfg, entity).await?;
 
@@ -176,7 +167,38 @@ async fn handle_stats(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 async fn handle_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
     log_info("command=graph.worker");
-    run_graph_worker(cfg)
-        .await
-        .map_err(|err| -> Box<dyn Error> { err.into() })
+    graph_svc::graph_worker(cfg).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GraphRuntimeSubcommand, parse_graph_runtime_args};
+
+    #[test]
+    fn parse_graph_runtime_args_accepts_build_flags() {
+        let args = vec![
+            "build".to_string(),
+            "--url".to_string(),
+            "https://example.com".to_string(),
+            "--domain".to_string(),
+            "example.com".to_string(),
+            "--all".to_string(),
+        ];
+        let parsed = parse_graph_runtime_args(&args).expect("valid args");
+        match parsed.action {
+            Some(GraphRuntimeSubcommand::Build { url, domain, all }) => {
+                assert_eq!(url.as_deref(), Some("https://example.com"));
+                assert_eq!(domain.as_deref(), Some("example.com"));
+                assert!(all);
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_graph_runtime_args_rejects_missing_flag_value() {
+        let args = vec!["build".to_string(), "--domain".to_string()];
+        let err = parse_graph_runtime_args(&args).expect_err("missing domain should error");
+        assert!(err.to_string().contains("--domain"));
+    }
 }

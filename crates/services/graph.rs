@@ -1,7 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::neo4j::Neo4jClient;
 use crate::crates::jobs::common::make_pool;
-use crate::crates::jobs::graph::{enqueue_graph_job, ensure_graph_schema};
+use crate::crates::jobs::graph::{enqueue_graph_job, ensure_graph_schema, run_graph_worker};
 use crate::crates::services::types::{
     GraphBuildResult, GraphExploreResult, GraphStatsResult, GraphStatusResult,
 };
@@ -156,4 +156,10 @@ pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error
             "rows": rows,
         }),
     })
+}
+
+pub async fn graph_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    run_graph_worker(cfg)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.into() })
 }

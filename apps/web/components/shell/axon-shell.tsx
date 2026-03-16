@@ -55,7 +55,27 @@ const DESKTOP_TOOL_BUTTON_CLASS =
 export { shouldReloadSessionOnTurnComplete }
 
 export const AxonShell = memo(function AxonShell() {
-  const shell = useAxonShellState()
+  const shellState = useAxonShellState()
+  const {
+    canvasRef,
+    layoutState,
+    layoutActions,
+    settings,
+    conversation,
+    composer,
+    sidebar,
+    editor,
+  } = shellState
+  const shell = {
+    canvasRef,
+    ...layoutState,
+    ...layoutActions,
+    ...settings,
+    ...conversation,
+    ...composer,
+    ...sidebar,
+    ...editor,
+  }
   // Mount only the active layout tree — avoids reconciling both mobile and
   // desktop subtrees simultaneously. Initialises to false (SSR-safe) and
   // flips after the first paint, so there is no flash of wrong layout.

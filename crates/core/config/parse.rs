@@ -213,6 +213,80 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
+    fn parse_graph_build_maps_positional_tokens() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const PG: &str = "AXON_PG_URL";
+        const REDIS: &str = "AXON_REDIS_URL";
+        const AMQP: &str = "AXON_AMQP_URL";
+
+        unsafe {
+            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
+            env::set_var(REDIS, "redis://127.0.0.1:53379");
+            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+        }
+
+        let cli = super::Cli::parse_from([
+            "axon",
+            "graph",
+            "build",
+            "--url",
+            "https://example.com",
+            "--domain",
+            "example.com",
+            "--all",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("graph build should parse");
+        assert!(matches!(cfg.command, CommandKind::Graph));
+        assert_eq!(
+            cfg.positional,
+            vec![
+                "build".to_string(),
+                "--url".to_string(),
+                "https://example.com".to_string(),
+                "--domain".to_string(),
+                "example.com".to_string(),
+                "--all".to_string(),
+            ]
+        );
+
+        unsafe {
+            env::remove_var(PG);
+            env::remove_var(REDIS);
+            env::remove_var(AMQP);
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_graph_explore_maps_positional_tokens() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const PG: &str = "AXON_PG_URL";
+        const REDIS: &str = "AXON_REDIS_URL";
+        const AMQP: &str = "AXON_AMQP_URL";
+
+        unsafe {
+            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
+            env::set_var(REDIS, "redis://127.0.0.1:53379");
+            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+        }
+
+        let cli = super::Cli::parse_from(["axon", "graph", "explore", "rust"]);
+        let cfg = super::build_config::into_config(cli).expect("graph explore should parse");
+        assert!(matches!(cfg.command, CommandKind::Graph));
+        assert_eq!(
+            cfg.positional,
+            vec!["explore".to_string(), "rust".to_string()]
+        );
+
+        unsafe {
+            env::remove_var(PG);
+            env::remove_var(REDIS);
+            env::remove_var(AMQP);
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
     fn parse_refresh_schedule_add_rejects_missing_seed_url_and_urls() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";

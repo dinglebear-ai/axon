@@ -171,6 +171,15 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
+    // Partial index for stale-job watchdog sweeps (WHERE status='running' AND updated_at < threshold).
+    // Without this, reclaim_stale_running_jobs does a full table scan that blocks heartbeat UPDATEs.
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_axon_refresh_jobs_running_updated \
+         ON axon_refresh_jobs(updated_at ASC) WHERE status = 'running'",
+    )
+    .execute(pool)
+    .await?;
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS axon_refresh_targets (

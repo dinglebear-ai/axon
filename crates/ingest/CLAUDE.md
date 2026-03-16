@@ -83,25 +83,46 @@ All ingest unit tests run without live services (pure logic: parsing, classifica
 
 All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedDoc`. The legacy per-function API (`embed_text_with_metadata`, `embed_text_with_extra_payload`, `embed_code_with_metadata`) has been removed — there is now a single entry point for all embedding.
 
+### `PreparedDoc` Field Reference
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `url` | `String` | Yes | Stable identifier for this document — used to derive the deterministic UUID v5 point ID. For code chunks, append `#L{start}-L{end}` for direct GitHub linking. |
+| `domain` | `String` | Yes | Hostname only — `"github.com"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `crates/core/content.rs` to extract. |
+| `chunks` | `Vec<String>` | Yes | Pre-chunked content. Pipeline expects chunks **already split** — do not pass the full raw text. |
+| `source_type` | `String` | Yes | One of: `"github"` / `"reddit"` / `"youtube"` / `"sessions"` / `"refresh"` / `"embed"`. Stored in Qdrant payload for filtering. |
+| `content_type` | `&str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
+| `title` | `Option<String>` | No | Human-readable label (file path, video title, issue title). Stored in Qdrant payload. |
+| `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Use `gh_*` / `reddit_*` / `yt_*` prefixes per source. |
+
 ### Canonical Pattern
 
 ```rust
-use crate::crates::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
+use crate::crates::core::content::url_to_domain;
+use crate::crates::vector::ops::PreparedDoc;
+use crate::crates::vector::ops::tei::embed_prepared_docs;
 use crate::crates::vector::ops::input::chunk_text;       // prose: 2000-char with 200-char overlap
 use crate::crates::vector::ops::input::code::chunk_code;  // tree-sitter AST-aware chunking
 
+let url = "https://github.com/rust-lang/rust/blob/main/src/lib.rs".to_string();
+let domain = url_to_domain(&url);  // → "github.com"
+let chunks = chunk_code(&content, "rs").unwrap_or_else(|| chunk_text(&content));
+
 let doc = PreparedDoc {
-    url: url.to_string(),
-    domain,                          // extracted from URL host
-    chunks,                          // pre-chunked via chunk_text() or chunk_code()
-    source_type: "github".to_string(), // "github"/"reddit"/"youtube"/"sessions"/"refresh"/"embed"
-    content_type: "markdown",        // or "text"
-    title: Some("...".to_string()),  // optional
-    extra: Some(serde_json::json!({  // source-specific gh_*/reddit_*/yt_* fields
+    url,
+    domain,
+    chunks,
+    source_type: "github".to_string(),
+    content_type: "text",
+    title: Some("src/lib.rs".to_string()),
+    extra: Some(serde_json::json!({
         "gh_owner": "rust-lang",
+        "gh_repo": "rust",
     })),
 };
 let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
+// summary.chunks_embedded — number of points upserted to Qdrant
+// summary.docs_failed     — number of docs that errored (logged and skipped)
 ```
 
 ### Pipeline behavior
@@ -115,6 +136,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 - **Prose** (`chunk_text`): 2000-char chunks with 200-char overlap
 - **Code** (`chunk_code`): tree-sitter AST-aware (Rust, Python, JS, TS, Go, Bash); falls back to `chunk_text` for unsupported extensions
 - Callers must chunk content **before** building `PreparedDoc` — the pipeline expects pre-chunked `chunks: Vec<String>`
+- Choose based on file extension: `chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text))`
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:

@@ -22,6 +22,7 @@ use spider::website::Website;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc::Sender;
 
@@ -436,7 +437,7 @@ pub async fn run_crawl_once(
     output_dir: &Path,
     progress_tx: Option<Sender<CrawlSummary>>,
     run_sitemap: bool,
-    previous_manifest: HashMap<String, ManifestEntry>,
+    previous_manifest: Arc<HashMap<String, ManifestEntry>>,
     crawl_id: Option<&str>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     log_info(&format!(
@@ -492,7 +493,7 @@ pub async fn run_crawl_once(
             scope: None,
             transform_cfg,
             progress_tx,
-            previous_manifest,
+            previous_manifest: Arc::clone(&previous_manifest),
             selector_config: build_selector_config(cfg),
             chrome_ws_url: inline_chrome_ws_url,
             chrome_timeout_secs: cfg.chrome_network_idle_timeout_secs,
@@ -539,7 +540,7 @@ pub async fn run_sitemap_only(
     cfg: &Config,
     start_url: &str,
     output_dir: &Path,
-    previous_manifest: HashMap<String, ManifestEntry>,
+    previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     tokio::fs::create_dir_all(output_dir.join("markdown")).await?;
 
@@ -567,7 +568,7 @@ pub async fn run_sitemap_only(
             scope: None,
             transform_cfg,
             progress_tx: None,
-            previous_manifest,
+            previous_manifest: Arc::clone(&previous_manifest),
             selector_config: build_selector_config(cfg),
             // Sitemap-only crawl: no inline Chrome rendering (HTTP-only path).
             chrome_ws_url: None,

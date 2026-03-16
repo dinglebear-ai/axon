@@ -83,26 +83,26 @@
   --status-failed-bg: rgba(251, 113, 133, 0.12);
   --status-failed-border: rgba(251, 113, 133, 0.25);
   --axon-danger-bg: rgba(255, 135, 175, 0.1);
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --text-2xs: 0.6875rem;
-  --text-xs: 0.6875rem;
-  --text-sm: 0.75rem;
-  --text-md: 0.8125rem;
-  --text-base: 0.875rem;
-  --leading-tight: 1.35;
-  --leading-copy: 1.5;
-  --pulse-control-h: 1.75rem;
-  --pulse-control-gap: 0.25rem;
-  --pulse-pill-pad-x: 0.375rem;
-  --pulse-pill-pad-y: 0.125rem;
-  --density-compact-row-y: 0.375rem;
-  --density-comfortable-row-y: 0.5rem;
-  --density-compact-cell-x: 0.5rem;
-  --density-comfortable-cell-x: 0.75rem;
+  --space-1: 0.2rem;
+  --space-2: 0.4rem;
+  --space-3: 0.65rem;
+  --space-4: 0.875rem;
+  --space-5: 1.1rem;
+  --text-2xs: 0.625rem;
+  --text-xs: 0.625rem;
+  --text-sm: 0.6875rem;
+  --text-md: 0.75rem;
+  --text-base: 0.8125rem;
+  --leading-tight: 1.3;
+  --leading-copy: 1.45;
+  --pulse-control-h: 1.625rem;
+  --pulse-control-gap: 0.2rem;
+  --pulse-pill-pad-x: 0.3125rem;
+  --pulse-pill-pad-y: 0.1rem;
+  --density-compact-row-y: 0.3rem;
+  --density-comfortable-row-y: 0.425rem;
+  --density-compact-cell-x: 0.4rem;
+  --density-comfortable-cell-x: 0.65rem;
 
   /* ── H-1: Extracted rgba tokens ──
    * These are the ~10 most repeated hardcoded rgba values across
@@ -127,18 +127,18 @@
 
 /* Compact Density */
 [data-density="compact"] {
-  --space-1: 0.2rem;
-  --space-2: 0.4rem;
-  --space-3: 0.6rem;
-  --space-4: 0.8rem;
-  --space-5: 1rem;
-  --text-xs: 0.6875rem;
-  --text-sm: 0.6875rem;
-  --text-md: 0.75rem;
-  --text-base: 0.8125rem;
-  --leading-tight: 1.25;
-  --leading-copy: 1.4;
-  --pulse-control-h: 1.5rem;
+  --space-1: 0.175rem;
+  --space-2: 0.35rem;
+  --space-3: 0.5rem;
+  --space-4: 0.7rem;
+  --space-5: 0.875rem;
+  --text-xs: 0.625rem;
+  --text-sm: 0.625rem;
+  --text-md: 0.6875rem;
+  --text-base: 0.75rem;
+  --leading-tight: 1.22;
+  --leading-copy: 1.38;
+  --pulse-control-h: 1.4rem;
 }
 
 :root {
@@ -292,7 +292,7 @@
     font-optical-sizing: auto;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
-    line-height: 1.6;
+    line-height: 1.5;
     letter-spacing: 0;
   }
 
@@ -820,7 +820,7 @@ h4 {
 .reboot-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.6875rem; /* 11px */
+  font-size: 0.625rem; /* 10px */
   letter-spacing: 0.04em;
 }
 
@@ -876,7 +876,7 @@ body {
 
 /* H1: axon primary blue, large + tight tracking */
 .axon-editor [data-slate-editor] h1 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.03em;
@@ -886,7 +886,7 @@ body {
 
 /* H2: axon pink */
 .axon-editor [data-slate-editor] h2 {
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--axon-secondary);
   letter-spacing: -0.02em;
@@ -896,7 +896,7 @@ body {
 
 /* H3: pink-tinted muted */
 .axon-editor [data-slate-editor] h3 {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--axon-secondary-strong);
   opacity: 0.75;

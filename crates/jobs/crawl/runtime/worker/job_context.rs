@@ -5,6 +5,7 @@ use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::super::{CrawlJobConfig, latest_completed_result_for_url};
@@ -14,7 +15,7 @@ pub(super) struct JobExecutionContext {
     pub(super) job_cfg: Config,
     pub(super) extraction_prompt: Option<String>,
     pub(super) previous_urls: HashSet<String>,
-    pub(super) previous_manifest: HashMap<String, ManifestEntry>,
+    pub(super) previous_manifest: Arc<HashMap<String, ManifestEntry>>,
     pub(super) cache_source: Option<String>,
 }
 
@@ -107,13 +108,13 @@ async fn load_previous_urls_for_cache(
 ) -> Result<
     (
         HashSet<String>,
-        HashMap<String, ManifestEntry>,
+        Arc<HashMap<String, ManifestEntry>>,
         Option<String>,
     ),
     Box<dyn Error>,
 > {
     let mut previous_urls = HashSet::new();
-    let mut previous_manifest = HashMap::new();
+    let mut previous_manifest = Arc::new(HashMap::new());
     let mut cache_source: Option<String> = None;
 
     if !job_cfg.cache {
@@ -129,14 +130,16 @@ async fn load_previous_urls_for_cache(
             .map(PathBuf::from);
         if let Some(previous_output_dir) = previous_output_dir {
             let previous_manifest_path = previous_output_dir.join("manifest.jsonl");
-            previous_manifest = read_manifest_data(&previous_manifest_path).await?;
+            previous_manifest = Arc::new(read_manifest_data(&previous_manifest_path).await?);
             // Resolve relative paths against the previous output directory so downstream
             // consumers (collector.rs hardlink/reflink) don't resolve against CWD.
-            for entry in previous_manifest.values_mut() {
-                let p = std::path::Path::new(&entry.relative_path);
-                if p.is_relative() {
-                    entry.relative_path =
-                        previous_output_dir.join(p).to_string_lossy().into_owned();
+            if let Some(manifest) = Arc::get_mut(&mut previous_manifest) {
+                for entry in manifest.values_mut() {
+                    let p = std::path::Path::new(&entry.relative_path);
+                    if p.is_relative() {
+                        entry.relative_path =
+                            previous_output_dir.join(p).to_string_lossy().into_owned();
+                    }
                 }
             }
             // Also read URLs from legacy manifest entries that may lack full ManifestEntry

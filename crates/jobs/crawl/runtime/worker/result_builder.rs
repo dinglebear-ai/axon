@@ -109,6 +109,7 @@ mod tests {
     use crate::crates::core::config::Config;
     use crate::crates::crawl::manifest::ManifestEntry;
     use std::collections::{HashMap, HashSet};
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn crawl_result_json_includes_artifact_url_lists_and_error_metrics() {
@@ -131,7 +132,7 @@ mod tests {
             job_cfg: cfg,
             extraction_prompt: None,
             previous_urls: HashSet::new(),
-            previous_manifest: HashMap::<String, ManifestEntry>::new(),
+            previous_manifest: Arc::new(HashMap::<String, ManifestEntry>::new()),
             cache_source: None,
         };
 

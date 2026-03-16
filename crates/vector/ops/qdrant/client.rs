@@ -148,6 +148,17 @@ pub(crate) async fn qdrant_scroll_pages(
     cfg: &Config,
     mut process_page: impl FnMut(&[serde_json::Value]),
 ) -> Result<()> {
+    qdrant_scroll_pages_while(cfg, |points| {
+        process_page(points);
+        true
+    })
+    .await
+}
+
+pub(crate) async fn qdrant_scroll_pages_while(
+    cfg: &Config,
+    process_page: impl FnMut(&[serde_json::Value]) -> bool,
+) -> Result<()> {
     let client = http_client()?;
     let endpoint = format!(
         "{}/collections/{}/points/scroll",
@@ -159,11 +170,7 @@ pub(crate) async fn qdrant_scroll_pages(
         "with_payload": true,
         "with_vector": false
     });
-    scroll_pages_raw(client, &endpoint, body, |points| {
-        process_page(points);
-        true
-    })
-    .await
+    scroll_pages_raw(client, &endpoint, body, process_page).await
 }
 
 /// Scroll the collection keeping only the URL field (one entry per unique URL via chunk_index==0

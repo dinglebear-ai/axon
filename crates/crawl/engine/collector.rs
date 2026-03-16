@@ -31,7 +31,7 @@ pub(super) struct CollectorConfig {
     pub scope: Option<MapScope>,
     pub transform_cfg: &'static spider_transformations::transformation::content::TransformConfig,
     pub progress_tx: Option<Sender<CrawlSummary>>,
-    pub previous_manifest: HashMap<String, ManifestEntry>,
+    pub previous_manifest: Arc<HashMap<String, ManifestEntry>>,
     /// Optional CSS selectors for content scoping (root_selector / exclude_selector).
     pub selector_config: Option<SelectorConfiguration>,
     /// Pre-resolved Chrome WebSocket URL for inline thin-page re-rendering.
@@ -573,7 +573,7 @@ mod tests {
             scope,
             transform_cfg: build_transform_config(),
             progress_tx: None,
-            previous_manifest: HashMap::new(),
+            previous_manifest: Arc::new(HashMap::new()),
             selector_config: None,
             chrome_ws_url: None,
             chrome_timeout_secs: 1,

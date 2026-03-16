@@ -30,6 +30,10 @@ export type ChainOfThoughtProps = ComponentProps<'div'> & {
   onOpenChange?: (open: boolean) => void
 }
 
+export type ChainOfThoughtHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+  hideIcon?: boolean
+}
+
 export const ChainOfThought = memo(
   ({
     className,
@@ -57,10 +61,8 @@ export const ChainOfThought = memo(
   },
 )
 
-export type ChainOfThoughtHeaderProps = ComponentProps<typeof CollapsibleTrigger>
-
 export const ChainOfThoughtHeader = memo(
-  ({ className, children, ...props }: ChainOfThoughtHeaderProps) => {
+  ({ className, children, hideIcon = false, ...props }: ChainOfThoughtHeaderProps) => {
     const { isOpen, setIsOpen } = useChainOfThought()
 
     return (
@@ -72,10 +74,10 @@ export const ChainOfThoughtHeader = memo(
           )}
           {...props}
         >
-          <BrainIcon className="size-3.5 md:size-4" />
+          {!hideIcon && <BrainIcon className="size-3.5 md:size-4" />}
           <span className="flex-1 text-left">{children ?? 'Chain of Thought'}</span>
           <ChevronDownIcon
-            className={cn('size-4 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
+            className={cn('size-3.5 transition-transform', isOpen ? 'rotate-180' : 'rotate-0')}
           />
         </CollapsibleTrigger>
       </Collapsible>

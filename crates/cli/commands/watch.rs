@@ -1,11 +1,68 @@
 use crate::crates::core::config::Config;
-use crate::crates::jobs::watch::WatchDefCreate;
-use crate::crates::jobs::watch::create_watch_run;
 use crate::crates::services::refresh as refresh_service;
 use crate::crates::services::watch as watch_svc;
 use chrono::{Duration, Utc};
+use clap::{Parser, Subcommand};
 use std::error::Error;
 use uuid::Uuid;
+
+#[derive(Debug, Parser)]
+struct WatchRuntimeArgs {
+    #[command(subcommand)]
+    action: Option<WatchRuntimeSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+enum WatchRuntimeSubcommand {
+    Create {
+        name: String,
+        #[arg(long = "task-type")]
+        task_type: String,
+        #[arg(long = "every-seconds")]
+        every_seconds: i64,
+        #[arg(long = "task-payload")]
+        task_payload: Option<String>,
+    },
+    List,
+    Get {
+        id: String,
+    },
+    Update {
+        id: String,
+        #[arg(long = "every-seconds")]
+        every_seconds: Option<i64>,
+    },
+    #[command(name = "run-now")]
+    RunNow {
+        id: String,
+    },
+    Pause {
+        id: String,
+    },
+    Resume {
+        id: String,
+    },
+    Delete {
+        id: String,
+    },
+    History {
+        id: String,
+        #[arg(long, default_value_t = 50)]
+        limit: i64,
+    },
+    Artifacts {
+        run_id: String,
+        #[arg(long, default_value_t = 50)]
+        limit: i64,
+    },
+}
+
+fn parse_watch_runtime_args(args: &[String]) -> Result<WatchRuntimeArgs, Box<dyn Error>> {
+    WatchRuntimeArgs::try_parse_from(
+        std::iter::once("watch").chain(args.iter().map(String::as_str)),
+    )
+    .map_err(|err| err.to_string().into())
+}
 
 fn parse_uuid(raw: Option<&String>, action: &str) -> Result<Uuid, Box<dyn Error>> {
     let id = raw.ok_or_else(|| format!("watch {action} requires <id>"))?;
@@ -13,10 +70,16 @@ fn parse_uuid(raw: Option<&String>, action: &str) -> Result<Uuid, Box<dyn Error>
 }
 
 pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let subcmd = cfg.positional.first().map(|s| s.as_str()).unwrap_or("list");
+    let parsed = parse_watch_runtime_args(&cfg.positional)?;
+    let subcmd = parsed.action.unwrap_or(WatchRuntimeSubcommand::List);
     match subcmd {
-        "create" => handle_watch_create(cfg).await?,
-        "list" => {
+        WatchRuntimeSubcommand::Create {
+            name,
+            task_type,
+            every_seconds,
+            task_payload,
+        } => handle_watch_create(cfg, name, task_type, every_seconds, task_payload).await?,
+        WatchRuntimeSubcommand::List => {
             let watches = watch_svc::list_watch_defs(cfg, 200).await?;
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&watches)?);
@@ -26,76 +89,55 @@ pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        "run-now" => handle_watch_run_now(cfg).await?,
-        "history" => {
-            let watch_id = parse_uuid(cfg.positional.get(1), "history")?;
-            let limit = cfg
-                .positional
-                .iter()
-                .position(|s| s == "--limit")
-                .and_then(|i| cfg.positional.get(i + 1))
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(50);
+        WatchRuntimeSubcommand::RunNow { id } => handle_watch_run_now(cfg, &id).await?,
+        WatchRuntimeSubcommand::History { id, limit } => {
+            let watch_id = parse_uuid(Some(&id), "history")?;
             let runs = watch_svc::list_watch_runs(cfg, watch_id, limit).await?;
             println!("{}", serde_json::to_string_pretty(&runs)?);
         }
-        _ => return Err(format!("unknown watch subcommand: {subcmd}").into()),
+        WatchRuntimeSubcommand::Get { .. } => return Err("unknown watch subcommand: get".into()),
+        WatchRuntimeSubcommand::Update { .. } => {
+            return Err("unknown watch subcommand: update".into());
+        }
+        WatchRuntimeSubcommand::Pause { .. } => {
+            return Err("unknown watch subcommand: pause".into());
+        }
+        WatchRuntimeSubcommand::Resume { .. } => {
+            return Err("unknown watch subcommand: resume".into());
+        }
+        WatchRuntimeSubcommand::Delete { .. } => {
+            return Err("unknown watch subcommand: delete".into());
+        }
+        WatchRuntimeSubcommand::Artifacts { .. } => {
+            return Err("unknown watch subcommand: artifacts".into());
+        }
     }
     Ok(())
 }
 
-async fn handle_watch_create(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let name = cfg
-        .positional
-        .get(1)
-        .ok_or("watch create requires <name>")?
-        .clone();
-    let mut task_type = None::<String>;
-    let mut every_seconds = None::<i64>;
-    let mut task_payload: Option<serde_json::Value> = None;
-    let mut idx = 2usize;
-    while idx < cfg.positional.len() {
-        match cfg.positional[idx].as_str() {
-            "--task-type" => {
-                task_type = cfg.positional.get(idx + 1).cloned();
-                idx += 2;
-            }
-            "--every-seconds" => {
-                let raw = cfg
-                    .positional
-                    .get(idx + 1)
-                    .ok_or("watch create: --every-seconds requires a value")?;
-                let secs = raw.parse::<i64>().map_err(|_| {
-                    format!("watch create: --every-seconds must be an integer, got '{raw}'")
-                })?;
-                if secs < 1 {
-                    return Err(
-                        format!("watch create: --every-seconds must be >= 1, got {secs}").into(),
-                    );
-                }
-                every_seconds = Some(secs);
-                idx += 2;
-            }
-            "--task-payload" => {
-                let raw = cfg
-                    .positional
-                    .get(idx + 1)
-                    .ok_or("watch create: --task-payload requires a value")?;
-                let parsed = serde_json::from_str(raw).map_err(|e| {
-                    format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
-                })?;
-                task_payload = Some(parsed);
-                idx += 2;
-            }
-            _ => idx += 1,
-        }
+async fn handle_watch_create(
+    cfg: &Config,
+    name: String,
+    task_type: String,
+    every_seconds: i64,
+    task_payload_raw: Option<String>,
+) -> Result<(), Box<dyn Error>> {
+    if every_seconds < 1 {
+        return Err(
+            format!("watch create: --every-seconds must be >= 1, got {every_seconds}").into(),
+        );
     }
-    let every_seconds = every_seconds.ok_or("watch create requires --every-seconds <integer>")?;
+    let task_payload = match task_payload_raw {
+        Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
+            format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
+        })?),
+        None => None,
+    };
     let created = watch_svc::create_watch_def(
         cfg,
-        &WatchDefCreate {
+        &watch_svc::WatchDefCreate {
             name,
-            task_type: task_type.ok_or("watch create requires --task-type <value>")?,
+            task_type,
             task_payload: task_payload.unwrap_or_else(|| serde_json::json!({})),
             every_seconds,
             enabled: true,
@@ -111,8 +153,9 @@ async fn handle_watch_create(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn handle_watch_run_now(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let watch_id = parse_uuid(cfg.positional.get(1), "run-now")?;
+async fn handle_watch_run_now(cfg: &Config, raw_id: &str) -> Result<(), Box<dyn Error>> {
+    let raw_id = raw_id.to_string();
+    let watch_id = parse_uuid(Some(&raw_id), "run-now")?;
     let all = watch_svc::list_watch_defs(cfg, 500).await?;
     let watch = all
         .into_iter()
@@ -134,7 +177,7 @@ async fn handle_watch_run_now(cfg: &Config) -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
-    let run = create_watch_run(cfg, watch_id, dispatched_job_id).await?;
+    let run = watch_svc::create_watch_run(cfg, watch_id, dispatched_job_id).await?;
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
@@ -148,6 +191,68 @@ mod tests {
     use super::*;
     use crate::crates::jobs::common::resolve_test_pg_url;
     use crate::crates::jobs::watch::list_watch_defs_with_pool;
+
+    #[test]
+    fn parse_uuid_requires_id() {
+        let err = parse_uuid(None, "history").expect_err("missing id should error");
+        assert!(err.to_string().contains("watch history requires <id>"));
+    }
+
+    #[test]
+    fn parse_uuid_rejects_invalid_uuid() {
+        let raw = "not-a-uuid".to_string();
+        let err = parse_uuid(Some(&raw), "run-now").expect_err("invalid uuid should error");
+        assert!(err.to_string().contains("invalid character") || err.to_string().contains("UUID"));
+    }
+
+    #[test]
+    fn parse_watch_runtime_args_rejects_unknown_argument() {
+        let err = parse_watch_runtime_args(&[
+            "create".to_string(),
+            "demo".to_string(),
+            "--task-type".to_string(),
+            "refresh".to_string(),
+            "--every-seconds".to_string(),
+            "30".to_string(),
+            "--bogus".to_string(),
+        ])
+        .expect_err("unknown argument should error");
+        assert!(err.to_string().contains("--bogus"));
+    }
+
+    #[tokio::test]
+    async fn handle_watch_create_requires_every_seconds() {
+        let cfg = Config::test_default();
+        let err = handle_watch_create(&cfg, "demo".to_string(), "refresh".to_string(), 0, None)
+            .await
+            .expect_err("missing interval should error");
+        assert!(err.to_string().contains("--every-seconds"));
+    }
+
+    #[tokio::test]
+    async fn handle_watch_create_rejects_invalid_task_payload_json() {
+        let cfg = Config::test_default();
+        let err = handle_watch_create(
+            &cfg,
+            "demo".to_string(),
+            "refresh".to_string(),
+            30,
+            Some("{oops".to_string()),
+        )
+        .await
+        .expect_err("invalid json should error");
+        assert!(err.to_string().contains("--task-payload is not valid JSON"));
+    }
+
+    #[tokio::test]
+    async fn run_watch_rejects_unknown_subcommand() {
+        let mut cfg = Config::test_default();
+        cfg.positional = vec!["bogus".to_string()];
+        let err = run_watch(&cfg)
+            .await
+            .expect_err("unknown subcommand should error");
+        assert!(err.to_string().contains("bogus"));
+    }
 
     #[tokio::test]
     #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]

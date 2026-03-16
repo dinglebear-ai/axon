@@ -1,5 +1,5 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_warn;
+use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
@@ -47,6 +47,9 @@ pub(super) async fn collect_and_embed_batched(
         }
 
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
+            log_info(&format!(
+                "github files_progress files_done={files_done} files_total={files_total} chunks_embedded={total_chunks}"
+            ));
             send_progress(
                 progress_tx,
                 serde_json::json!({
@@ -77,6 +80,7 @@ async fn flush_batch(
     let docs = std::mem::take(batch);
     let count = docs.len();
 
+    log_info(&format!("github embed_batch_start batch_size={count}"));
     send_progress(
         progress_tx,
         serde_json::json!({

@@ -270,6 +270,10 @@ pub async fn embed_files(
     )
     .await;
 
+    log_info(&format!(
+        "github clone_start repo={} branch={}",
+        common.repo_slug, common.default_branch
+    ));
     let tmp = clone_repo(common, &common.default_branch, token).await?;
     let repo_root = tmp.path().to_path_buf();
 

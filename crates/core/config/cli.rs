@@ -42,7 +42,7 @@ pub(super) enum CliCommand {
     Sessions(SessionsArgs),
     Screenshot(ScrapeArgs),
     /// Knowledge graph operations
-    Graph(TextArg),
+    Graph(GraphArgs),
     #[command(alias = "completion")]
     Completions(CompletionArgs),
     Mcp(McpArgs),
@@ -132,6 +132,32 @@ pub(super) enum WatchSubcommand {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub(super) struct GraphArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<GraphSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum GraphSubcommand {
+    Build {
+        url: Option<String>,
+        #[arg(long = "url")]
+        url_flag: Option<String>,
+        #[arg(long)]
+        domain: Option<String>,
+        #[arg(long, action = ArgAction::SetTrue)]
+        all: bool,
+    },
+    Status,
+    Explore {
+        entity: String,
+    },
+    Stats,
+    Worker,
 }
 
 #[derive(Debug, Args)]

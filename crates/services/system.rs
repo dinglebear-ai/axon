@@ -11,8 +11,8 @@ use crate::crates::services::types::{
     DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
 };
 use crate::crates::vector::ops::qdrant::{
-    dedupe_payload, domains_payload, payload_domain, payload_url, qdrant_scroll_pages,
-    sources_payload,
+    dedupe_payload, domains_payload, env_usize_clamped, payload_domain, payload_url,
+    qdrant_scroll_pages_while, sources_payload,
 };
 use crate::crates::vector::ops::stats::stats_payload;
 use std::collections::{HashMap, HashSet};
@@ -21,6 +21,7 @@ use std::fmt;
 use tokio::sync::mpsc;
 
 const WATCHDOG_RECLAIM_PREFIX: &str = "watchdog reclaimed stale running ";
+const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000;
 
 #[derive(Debug)]
 pub struct PayloadParseError(String);
@@ -141,8 +142,15 @@ pub async fn domains(
 }
 
 pub fn summarize_detailed_domains(payloads: &[serde_json::Value]) -> DetailedDomainsResult {
+    summarize_detailed_domains_limited(payloads, None)
+}
+
+pub fn summarize_detailed_domains_limited(
+    payloads: &[serde_json::Value],
+    limit: Option<usize>,
+) -> DetailedDomainsResult {
     let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
-    for payload in payloads {
+    for payload in payloads.iter().take(limit.unwrap_or(payloads.len())) {
         let domain = payload_domain(payload);
         let url = payload_url(payload);
         let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
@@ -165,16 +173,26 @@ pub fn summarize_detailed_domains(payloads: &[serde_json::Value]) -> DetailedDom
 }
 
 pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box<dyn Error>> {
+    let limit = env_usize_clamped(
+        "AXON_DOMAINS_DETAILED_LIMIT",
+        DEFAULT_DOMAINS_DETAILED_LIMIT,
+        1,
+        1_000_000,
+    );
     let mut payloads = Vec::new();
-    qdrant_scroll_pages(cfg, |points| {
+    qdrant_scroll_pages_while(cfg, |points: &[serde_json::Value]| {
         for point in points {
             if let Some(payload) = point.get("payload") {
+                if payloads.len() >= limit {
+                    return false;
+                }
                 payloads.push(payload.clone());
             }
         }
+        payloads.len() < limit
     })
     .await?;
-    Ok(summarize_detailed_domains(&payloads))
+    Ok(summarize_detailed_domains_limited(&payloads, Some(limit)))
 }
 
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {

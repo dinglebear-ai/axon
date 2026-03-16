@@ -1,5 +1,41 @@
 # Changelog
-Last Modified: 2026-03-15 (session: v0.25.0 — Pulse shell redesign, AI elements, hybrid search, new API routes)
+Last Modified: 2026-03-16 (session: v0.25.2 — shell/provider module splits, GraphArgs, job_output/url_inputs utilities, qdrant scroll hardening, ws-messages tests)
+
+## [0.25.2] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.25.1.
+
+### Highlights
+
+- **`GraphArgs` proper subcommand struct** — `graph` CLI command upgraded from `TextArg` to a proper `GraphArgs` with `GraphSubcommand` enum (`Build`, `Status`, `Explore`, `Stats`, `Worker`); `--url`, `--domain`, and `--all` flags on `Build`; graph.rs handler updated accordingly.
+- **`common/job_output.rs` + `common/url_inputs.rs`** — shared CLI utilities extracted: `JobStatus` trait with `impl_job_status!` macro for consistent job status/list/errors rendering across all job types; `url_inputs` collects positional + `--urls` CSV inputs into a single `Vec<String>`.
+- **`qdrant_scroll_pages_while`** — new streaming scroll variant with an early-exit predicate; `system.rs` uses it for `summarize_detailed_domains_limited` with a `DEFAULT_DOMAINS_DETAILED_LIMIT` of 10k to cap unbounded scans.
+- **Watch service additions** — `create_watch_run` added to `crates/services/watch.rs`; `WatchDefCreate` re-exported from service layer.
+- **Ingest/jobs hardening** — `crates/jobs/crawl/runtime/worker/job_context.rs` and `result_builder.rs` updated; embed, extract, ingest schema, and refresh jobs hardened.
+- **ws-messages tests** — comprehensive test suite added: `ws-messages-actions.test.ts`, `ws-messages-pulse.test.ts`, `ws-messages-subscription.test.ts`, `ws-messages-tracked.test.ts`; plus `axon-shell-state.test.ts` and `axon-shell.test.tsx` for shell component coverage.
+- **GitHub ingest re-export + batch fix** — `crates/ingest/github.rs` re-exports, `files/batch.rs` hardening.
+
+## [0.25.1] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.25.0.
+
+### Highlights
+
+- **ACP session update cascade fix** — three confirmed root-cause bugs causing `"ACP load_session failed, falling back"` → new fallback session → 30s 404 poll loop eliminated.
+- **SessionInfoUpdate + UsageUpdate SDK variants** — `agent_client_protocol` v0.10.0 `unstable` variants now handled in `map_session_update_kind()` and `map_session_notification_event()`; `Unknown` no longer hit for these cases.
+- **emit() async with backpressure** — `emit()` in `crates/services/events.rs` changed from `try_send()` (silent drop on full channel) to `send().await` (blocks until receiver drains); 16 events were being silently dropped per 31-second probe.
+- **session_info_update frontend handling** — new WS wire event `session_info_update` dispatched to frontend; `getCachedSessions()` extended with `forceRefresh` option bypassing 30s stale-while-revalidate cache when triggered by this event.
+- **Shell component + ws-messages provider split** — `axon-shell.tsx` split into `axon-shell-desktop.tsx`, `axon-shell-mobile.tsx`, `axon-shell-conversation-pane.tsx`, `axon-shell-right-pane.tsx`, `axon-shell-sidebar-pane.tsx`; `provider.ts` split into `provider-actions.ts`, `provider-effects.ts`, `provider-runtime.ts`.
+
+### Commits since `main` (`96773a08`)
+
+| SHA | Message |
+|-----|---------|
+| f970f9ec | fix(services): make emit() async with backpressure — replace try_send drop with send().await |
+| 370555fe | test(acp): add UsageUpdate wire-shape and e2e mapping tests |
+| a5b372fa | feat(acp): map SessionInfoUpdate and UsageUpdate SDK unstable variants |
+| 3142dfe8 | feat(web): handle session_info_update WS event and force-refresh cache bypass |
+| 7b173bf8 | feat(web,vector): Pulse shell redesign, AI elements, hybrid search, new API routes (v0.25.0) |
 
 ## [0.25.0] — feat/pulse-shell-and-hybrid-search
 
@@ -24,7 +60,7 @@ This section documents commits on `feat/pulse-shell-and-hybrid-search` relative 
 
 | SHA | Message |
 |-----|---------|
-| (pending) | feat(web,vector): Pulse shell redesign, AI elements, hybrid search, new API routes (v0.25.0) |
+| 7b173bf8 | feat(web,vector): Pulse shell redesign, AI elements, hybrid search, new API routes (v0.25.0) |
 
 ## [0.24.1] — fix/embed-pipeline-resilience
 

@@ -1,77 +1,34 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import type React from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useAxonWs } from '@/hooks/use-axon-ws'
-import { getAcpModelConfigOption } from '@/lib/pulse/acp-config'
-import { probePulseConfigOptions } from '@/lib/pulse/config-api'
 import type { AcpConfigOption } from '@/lib/pulse/types'
 import { usePulseSlice, useWorkspaceSlice } from '@/lib/shell-store'
-import type { CrawlFile, WsLifecycleEntry, WsServerMsg } from '@/lib/ws-protocol'
-import { handleWsMessage, isRuntimeRelevantWsMessage } from './handlers'
-import { makeInitialRuntimeState } from './runtime'
+import type { MessageHandlerSetters } from './handlers'
+import { useWsProviderActions } from './provider-actions'
 import {
-  LS_PULSE_AGENT,
-  LS_PULSE_MODEL,
-  LS_PULSE_PERMISSION,
-  LS_WORKSPACE_MODE,
-  safeGetItem,
-  safeRemoveItem,
-  safeSetItem,
-  VALID_AGENTS,
-  VALID_PERMISSIONS,
-  validateStoredEnum,
-} from './storage'
+  createSetStateActionBridge,
+  usePersistedPulseState,
+  usePulseConfigProbe,
+  useRuntimeSubscription,
+  useStoredPulseHydration,
+} from './provider-effects'
+import { useWsProviderRuntime } from './provider-runtime'
 import type {
-  CancelResponseState,
-  CrawlProgress,
-  LogLine,
   PulseWorkspaceAgent,
   PulseWorkspaceModel,
   PulseWorkspacePermission,
-  RecentRun,
-  ScreenshotFile,
-  WorkspaceContextState,
-  WsMessagesActions,
   WsMessagesContextValue,
   WsMessagesExecutionState,
-  WsMessagesRuntimeState,
   WsMessagesWorkspaceState,
 } from './types'
 
 export function useWsMessagesProvider() {
   const pathname = usePathname()
   const { subscribeByTypes, send } = useAxonWs()
-  const [markdownContent, setMarkdownContent] = useState('')
-  const [logLines, setLogLines] = useState<LogLine[]>([])
-  const [errorMessage, setErrorMessage] = useState('')
-  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
-  const runIdCounter = useRef(0)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [hasResults, setHasResults] = useState(false)
-  const [crawlFiles, setCrawlFiles] = useState<CrawlFile[]>([])
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [_virtualFileContentByPath, setVirtualFileContentByPath] = useState<Record<string, string>>(
-    {},
-  )
-  const [_currentOutputDir, setCurrentOutputDir] = useState<string | null>(null)
-  const currentModeRef = useRef('')
-  const currentInputRef = useRef('')
-  const [currentMode, setCurrentMode] = useState('')
-  const [crawlProgress, setCrawlProgress] = useState<CrawlProgress | null>(null)
-  const [stdoutLines, setStdoutLines] = useState<string[]>([])
-  const [stdoutJson, setStdoutJson] = useState<unknown[]>([])
-  const [commandMode, setCommandMode] = useState<string | null>(null)
-  const [screenshotFiles, setScreenshotFiles] = useState<ScreenshotFile[]>([])
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
-  const currentJobIdRef = useRef<string | null>(null)
-  const [lifecycleEntries, setLifecycleEntries] = useState<WsLifecycleEntry[]>([])
-  const [cancelResponse, setCancelResponse] = useState<CancelResponseState | null>(null)
+  const runtime = useWsProviderRuntime()
 
-  // ACP-related state — grouped together since they are logically coupled
-  // and frequently updated as a set (agent change triggers config probe,
-  // config probe updates options, options influence model selection).
   const {
     pulseAgent,
     pulseModel,
@@ -91,6 +48,7 @@ export function useWsMessagesProvider() {
     setPulsePermissionLevel: (level: PulseWorkspacePermission) => void
     setAcpConfigOptions: (options: AcpConfigOption[]) => void
   }
+
   const {
     workspaceMode,
     workspacePrompt,
@@ -108,419 +66,117 @@ export function useWsMessagesProvider() {
     setWorkspaceContext,
   } = useWorkspaceSlice()
 
-  const selectedFileRef = useRef<string | null>(null)
-  const crawlFilesRef = useRef<CrawlFile[]>([])
-  const stdoutJsonRef = useRef<unknown[]>([])
-  const currentOutputDirRef = useRef<string | null>(null)
-  const virtualFileContentByPathRef = useRef<Record<string, string>>({})
-  const runtimeStateRef = useRef<WsMessagesRuntimeState>(makeInitialRuntimeState())
-
-  const setCrawlFilesTracked = useCallback((action: React.SetStateAction<CrawlFile[]>) => {
-    if (typeof action === 'function') {
-      setCrawlFiles((prev) => {
-        const next = action(prev)
-        crawlFilesRef.current = next
-        return next
-      })
-    } else {
-      crawlFilesRef.current = action
-      setCrawlFiles(action)
-    }
-  }, [])
-
-  const setSelectedFileTracked = useCallback((action: React.SetStateAction<string | null>) => {
-    if (typeof action === 'function') {
-      setSelectedFile((prev) => {
-        const next = action(prev)
-        selectedFileRef.current = next
-        return next
-      })
-    } else {
-      selectedFileRef.current = action
-      setSelectedFile(action)
-    }
-  }, [])
-
-  const setStdoutJsonTracked = useCallback((action: React.SetStateAction<unknown[]>) => {
-    if (typeof action === 'function') {
-      setStdoutJson((prev) => {
-        const next = action(prev)
-        stdoutJsonRef.current = next
-        return next
-      })
-    } else {
-      stdoutJsonRef.current = action
-      setStdoutJson(action)
-    }
-  }, [])
-
-  const setCurrentOutputDirTracked = useCallback((action: React.SetStateAction<string | null>) => {
-    if (typeof action === 'function') {
-      setCurrentOutputDir((prev) => {
-        const next = action(prev)
-        currentOutputDirRef.current = next
-        return next
-      })
-    } else {
-      currentOutputDirRef.current = action
-      setCurrentOutputDir(action)
-    }
-  }, [])
-
-  const setVirtualFileContentByPathTracked = useCallback(
-    (action: React.SetStateAction<Record<string, string>>) => {
-      if (typeof action === 'function') {
-        setVirtualFileContentByPath((prev) => {
-          const next = action(prev)
-          virtualFileContentByPathRef.current = next
-          return next
-        })
-      } else {
-        virtualFileContentByPathRef.current = action
-        setVirtualFileContentByPath(action)
-      }
-    },
-    [],
-  )
-
-  // ── localStorage: read on mount (once) ──────────────────────────────────
-
-  useEffect(() => {
-    const storedMode = safeGetItem(LS_WORKSPACE_MODE)
-    if (storedMode) setWorkspaceMode(storedMode)
-
-    const storedAgent = validateStoredEnum(
-      safeGetItem(LS_PULSE_AGENT),
-      VALID_AGENTS,
-      'claude' as PulseWorkspaceAgent,
-    )
-    setPulseAgent(storedAgent)
-
-    const storedModel = safeGetItem(LS_PULSE_MODEL)
-    if (storedModel && storedModel.length > 0) setPulseModel(storedModel)
-
-    const storedPermission = validateStoredEnum(
-      safeGetItem(LS_PULSE_PERMISSION),
-      VALID_PERMISSIONS,
-      'accept-edits' as PulseWorkspacePermission,
-    )
-    setPulsePermissionLevel(storedPermission)
-  }, [setPulseAgent, setPulseModel, setPulsePermissionLevel])
-
-  // ── localStorage: consolidated write effect ─────────────────────────────
-
-  useEffect(() => {
-    if (workspaceMode === null) {
-      safeRemoveItem(LS_WORKSPACE_MODE)
-    } else {
-      safeSetItem(LS_WORKSPACE_MODE, workspaceMode)
-    }
-    safeSetItem(LS_PULSE_AGENT, pulseAgent)
-    safeSetItem(LS_PULSE_MODEL, pulseModel ?? '')
-    safeSetItem(LS_PULSE_PERMISSION, pulsePermissionLevel)
-  }, [workspaceMode, pulseAgent, pulseModel, pulsePermissionLevel])
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pulseModel is read inside but intentionally excluded — re-probing on model change would create an infinite loop since the probe itself can set the model
-  useEffect(() => {
-    let cancelled = false
-
-    void probePulseConfigOptions({ agent: pulseAgent })
-      .then((options) => {
-        if (cancelled) return
-        setAcpConfigOptions(options)
-
-        if (options.length === 0) return
-        const modelConfig = getAcpModelConfigOption(options)
-        if (!modelConfig || modelConfig.options.length === 0) return
-        const hasCurrent = modelConfig.options.some((option) => option.value === pulseModel)
-        if (hasCurrent) return
-        setPulseModel(modelConfig.currentValue || modelConfig.options[0]!.value)
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        console.warn('[pulse] config probe failed', error)
-        setAcpConfigOptions([])
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [pathname, pulseAgent])
-
-  const setCurrentJobIdTracked = useCallback((jobId: string | null) => {
-    currentJobIdRef.current = jobId
-    setCurrentJobId(jobId)
-  }, [])
-
-  useEffect(() => {
-    const refs = {
-      currentModeRef,
-      currentInputRef,
-      currentJobIdRef,
-      selectedFileRef,
-      crawlFilesRef,
-      stdoutJsonRef,
-      currentOutputDirRef,
-      virtualFileContentByPathRef,
-      runIdCounter,
-      runtimeStateRef,
-    }
-    const setters = {
-      setLogLines,
-      setMarkdownContent,
-      setHasResults,
-      setCrawlFiles: setCrawlFilesTracked,
-      setCurrentOutputDir: setCurrentOutputDirTracked,
-      setSelectedFile: setSelectedFileTracked,
-      setCrawlProgress,
-      setCommandMode,
-      setStdoutLines,
-      setStdoutJson: setStdoutJsonTracked,
-      setVirtualFileContentByPath: setVirtualFileContentByPathTracked,
-      setScreenshotFiles,
-      setLifecycleEntries,
-      setCancelResponse,
-      setIsProcessing,
-      setErrorMessage,
-      setRecentRuns,
-      setWorkspaceMode,
-      setWorkspacePrompt,
-      setWorkspacePromptVersion: (action: React.SetStateAction<number>) => {
-        if (typeof action === 'function') {
-          setWorkspacePromptVersion(action(workspacePromptVersion))
-          return
-        }
-        setWorkspacePromptVersion(action)
-      },
-      setCurrentJobIdTracked,
-    }
-    return subscribeByTypes(
-      [
-        'log',
-        'file_content',
-        'crawl_files',
-        'crawl_progress',
-        'command.start',
-        'command.output.line',
-        'command.output.json',
-        'command.done',
-        'command.error',
-        'job.status',
-        'job.progress',
-        'artifact.list',
-        'artifact.content',
-        'job.cancel.response',
-      ],
-      (msg: WsServerMsg) => {
-        if (!isRuntimeRelevantWsMessage(msg)) return
-        handleWsMessage(msg, refs, setters)
-      },
-    )
-  }, [
-    setCrawlFilesTracked,
-    setCurrentJobIdTracked,
-    setCurrentOutputDirTracked,
-    setSelectedFileTracked,
-    setStdoutJsonTracked,
-    setVirtualFileContentByPathTracked,
-    subscribeByTypes,
+  useStoredPulseHydration({
     setWorkspaceMode,
+    setPulseAgent,
+    setPulseModel,
+    setPulsePermissionLevel,
+  })
+
+  usePersistedPulseState({
+    workspaceMode,
+    pulseAgent,
+    pulseModel,
+    pulsePermissionLevel,
+  })
+
+  usePulseConfigProbe({
+    pathname,
+    pulseAgent,
+    pulseModel,
+    setAcpConfigOptions,
+    setPulseModel,
+  })
+
+  const setWorkspaceModeBridge = createSetStateActionBridge(setWorkspaceMode, () => workspaceMode)
+  const setWorkspacePromptBridge = createSetStateActionBridge(
     setWorkspacePrompt,
+    () => workspacePrompt,
+  )
+  const setWorkspacePromptVersionBridge = createSetStateActionBridge(
     setWorkspacePromptVersion,
-    workspacePromptVersion,
-  ])
-
-  const selectFile = useCallback(
-    (relativePath: string) => {
-      setSelectedFileTracked(relativePath)
-      setMarkdownContent('')
-      const virtualContent = virtualFileContentByPathRef.current[relativePath]
-      if (typeof virtualContent === 'string') {
-        setMarkdownContent(virtualContent)
-        return
-      }
-      send({ type: 'read_file', path: relativePath })
-    },
-    [send, setSelectedFileTracked],
+    () => workspacePromptVersion,
   )
 
-  const resetExecutionRuntime = useCallback(
-    ({ hasResults, isProcessing }: { hasResults: boolean; isProcessing: boolean }) => {
-      setMarkdownContent('')
-      setLogLines([])
-      setErrorMessage('')
-      setHasResults(hasResults)
-      setIsProcessing(isProcessing)
-      setCrawlFilesTracked([])
-      setSelectedFileTracked(null)
-      setVirtualFileContentByPathTracked({})
-      setCurrentOutputDirTracked(null)
-      setCrawlProgress(null)
-      setStdoutLines([])
-      setStdoutJsonTracked([])
-      setCommandMode(null)
-      setScreenshotFiles([])
-      setCurrentJobIdTracked(null)
-      setLifecycleEntries([])
-      setCancelResponse(null)
-      // Reset runtimeStateRef so reduceRuntimeState sees fresh state on the
-      // next execution rather than stale values from the previous run.
-      runtimeStateRef.current = makeInitialRuntimeState()
-    },
-    [
-      setCrawlFilesTracked,
-      setCurrentJobIdTracked,
-      setCurrentOutputDirTracked,
-      setSelectedFileTracked,
-      setStdoutJsonTracked,
-      setVirtualFileContentByPathTracked,
-    ],
-  )
-
-  const resetWorkspaceRuntime = useCallback(
-    (mode: string | null) => {
-      setWorkspaceMode(mode)
-      setWorkspacePrompt(null)
-      setWorkspacePromptVersion(0)
-      setWorkspaceContext(null)
-    },
-    [setWorkspaceContext, setWorkspaceMode, setWorkspacePrompt, setWorkspacePromptVersion],
-  )
-
-  const startExecution = useCallback(
-    (mode: string, input?: string, options?: { preserveWorkspace?: boolean }) => {
-      const preserveWorkspace = options?.preserveWorkspace === true
-      currentModeRef.current = mode
-      currentInputRef.current = input ?? ''
-      setCurrentMode(mode)
-      resetExecutionRuntime({ hasResults: true, isProcessing: true })
-      if (!preserveWorkspace) {
-        resetWorkspaceRuntime(null)
-      }
-    },
-    [resetExecutionRuntime, resetWorkspaceRuntime],
-  )
-
-  const activateWorkspace = useCallback(
-    (mode: string) => {
-      currentModeRef.current = mode
-      currentInputRef.current = ''
-      setCurrentMode(mode)
-      resetExecutionRuntime({ hasResults: false, isProcessing: false })
-      resetWorkspaceRuntime(mode)
-    },
-    [resetExecutionRuntime, resetWorkspaceRuntime],
-  )
-
-  const submitWorkspacePrompt = useCallback(
-    (prompt: string) => {
-      setWorkspaceMode('pulse')
-      setHasResults(true)
-      setWorkspaceResumeSessionId(null)
-      setWorkspaceResumeVersion(0)
-      setWorkspacePrompt(prompt)
-      bumpWorkspacePromptVersion()
-    },
-    [
-      bumpWorkspacePromptVersion,
-      setHasResults,
-      setWorkspaceMode,
-      setWorkspacePrompt,
-      setWorkspaceResumeSessionId,
-      setWorkspaceResumeVersion,
-    ],
-  )
-
-  const resumeWorkspaceSession = useCallback(
-    (sessionId: string) => {
-      setWorkspaceMode('pulse')
-      setHasResults(true)
-      setWorkspacePrompt(null)
-      setWorkspacePromptVersion(0)
-      setWorkspaceResumeSessionId(sessionId)
-      bumpWorkspaceResumeVersion()
-    },
-    [
-      bumpWorkspaceResumeVersion,
-      setHasResults,
-      setWorkspaceMode,
-      setWorkspacePrompt,
-      setWorkspacePromptVersion,
-      setWorkspaceResumeSessionId,
-    ],
-  )
-
-  const clearWorkspaceResumeSession = useCallback(() => {
-    setWorkspaceResumeSessionId(null)
-    setWorkspaceResumeVersion(0)
-  }, [setWorkspaceResumeSessionId, setWorkspaceResumeVersion])
-
-  const deactivateWorkspace = useCallback(() => {
-    currentModeRef.current = ''
-    currentInputRef.current = ''
-    setCurrentMode('')
-    setWorkspaceMode(null)
-    safeRemoveItem(LS_WORKSPACE_MODE)
-    setWorkspacePrompt(null)
-    setWorkspacePromptVersion(0)
-    setWorkspaceResumeSessionId(null)
-    setWorkspaceResumeVersion(0)
-    setWorkspaceContext(null)
-  }, [
-    setWorkspaceContext,
-    setWorkspaceMode,
-    setWorkspacePrompt,
-    setWorkspacePromptVersion,
-    setWorkspaceResumeSessionId,
-    setWorkspaceResumeVersion,
-  ])
-
-  const updateWorkspaceContext = useCallback(
-    (context: WorkspaceContextState | null) => {
-      setWorkspaceContext(context)
-    },
-    [setWorkspaceContext],
-  )
-
-  const executionState = useMemo<WsMessagesExecutionState>(
+  const subscriptionSetters = useMemo<MessageHandlerSetters>(
     () => ({
-      markdownContent,
-      logLines,
-      errorMessage,
-      recentRuns,
-      isProcessing,
-      hasResults,
-      currentMode,
-      crawlFiles,
-      selectedFile,
-      crawlProgress,
-      stdoutLines,
-      stdoutJson,
-      commandMode,
-      screenshotFiles,
-      currentJobId,
-      lifecycleEntries,
-      cancelResponse,
+      setLogLines: runtime.setters.setLogLines,
+      setMarkdownContent: runtime.setters.setMarkdownContent,
+      setHasResults: runtime.setters.setHasResults,
+      setCrawlFiles: runtime.setters.setCrawlFilesTracked,
+      setCurrentOutputDir: runtime.setters.setCurrentOutputDirTracked,
+      setSelectedFile: runtime.setters.setSelectedFileTracked,
+      setCrawlProgress: runtime.setters.setCrawlProgress,
+      setCommandMode: runtime.setters.setCommandMode,
+      setStdoutLines: runtime.setters.setStdoutLines,
+      setStdoutJson: runtime.setters.setStdoutJsonTracked,
+      setVirtualFileContentByPath: runtime.setters.setVirtualFileContentByPathTracked,
+      setScreenshotFiles: runtime.setters.setScreenshotFiles,
+      setLifecycleEntries: runtime.setters.setLifecycleEntries,
+      setCancelResponse: runtime.setters.setCancelResponse,
+      setIsProcessing: runtime.setters.setIsProcessing,
+      setErrorMessage: runtime.setters.setErrorMessage,
+      setRecentRuns: runtime.setters.setRecentRuns,
+      setWorkspaceMode: setWorkspaceModeBridge,
+      setWorkspacePrompt: setWorkspacePromptBridge,
+      setWorkspacePromptVersion: setWorkspacePromptVersionBridge,
+      setCurrentJobIdTracked: runtime.setters.setCurrentJobIdTracked,
     }),
     [
-      markdownContent,
-      logLines,
-      errorMessage,
-      recentRuns,
-      isProcessing,
-      hasResults,
-      currentMode,
-      crawlFiles,
-      selectedFile,
-      crawlProgress,
-      stdoutLines,
-      stdoutJson,
-      commandMode,
-      screenshotFiles,
-      currentJobId,
-      lifecycleEntries,
-      cancelResponse,
+      runtime.setters,
+      setWorkspaceModeBridge,
+      setWorkspacePromptBridge,
+      setWorkspacePromptVersionBridge,
     ],
+  )
+
+  useRuntimeSubscription({
+    subscribeByTypes,
+    refs: runtime.refs,
+    setters: subscriptionSetters,
+  })
+
+  const actions = useWsProviderActions({
+    send,
+    currentModeRef: runtime.refs.currentModeRef,
+    currentInputRef: runtime.refs.currentInputRef,
+    virtualFileContentByPathRef: runtime.refs.virtualFileContentByPathRef,
+    runtimeStateRef: runtime.refs.runtimeStateRef,
+    setMarkdownContent: runtime.setters.setMarkdownContent,
+    setLogLines: runtime.setters.setLogLines,
+    setErrorMessage: runtime.setters.setErrorMessage,
+    setIsProcessing: runtime.setters.setIsProcessing,
+    setHasResults: runtime.setters.setHasResults,
+    setCurrentMode: runtime.setters.setCurrentMode,
+    setCrawlFilesTracked: runtime.setters.setCrawlFilesTracked,
+    setSelectedFileTracked: runtime.setters.setSelectedFileTracked,
+    setCrawlProgress: runtime.setters.setCrawlProgress,
+    setStdoutLines: runtime.setters.setStdoutLines,
+    setStdoutJsonTracked: runtime.setters.setStdoutJsonTracked,
+    setCommandMode: runtime.setters.setCommandMode,
+    setScreenshotFiles: runtime.setters.setScreenshotFiles,
+    setCurrentJobIdTracked: runtime.setters.setCurrentJobIdTracked,
+    setLifecycleEntries: runtime.setters.setLifecycleEntries,
+    setCancelResponse: runtime.setters.setCancelResponse,
+    setCurrentOutputDirTracked: runtime.setters.setCurrentOutputDirTracked,
+    setVirtualFileContentByPathTracked: runtime.setters.setVirtualFileContentByPathTracked,
+    setWorkspaceMode,
+    setWorkspacePrompt,
+    setWorkspacePromptVersion,
+    bumpWorkspacePromptVersion,
+    setWorkspaceResumeSessionId,
+    setWorkspaceResumeVersion,
+    bumpWorkspaceResumeVersion,
+    setWorkspaceContext,
+    setPulseAgent,
+    setPulseModel,
+    setPulsePermissionLevel,
+    setAcpConfigOptions,
+  })
+
+  const executionState = useMemo<WsMessagesExecutionState>(
+    () => ({ ...runtime.state }),
+    [runtime.state],
   )
 
   const workspaceState = useMemo<WsMessagesWorkspaceState>(
@@ -547,37 +203,6 @@ export function useWsMessagesProvider() {
       pulseModel,
       pulsePermissionLevel,
       acpConfigOptions,
-    ],
-  )
-
-  const actions = useMemo<WsMessagesActions>(
-    () => ({
-      selectFile,
-      setPulseAgent,
-      setPulseModel,
-      setPulsePermissionLevel,
-      setAcpConfigOptions,
-      activateWorkspace,
-      submitWorkspacePrompt,
-      resumeWorkspaceSession,
-      clearWorkspaceResumeSession,
-      deactivateWorkspace,
-      updateWorkspaceContext,
-      startExecution,
-    }),
-    [
-      selectFile,
-      activateWorkspace,
-      submitWorkspacePrompt,
-      resumeWorkspaceSession,
-      clearWorkspaceResumeSession,
-      deactivateWorkspace,
-      updateWorkspaceContext,
-      startExecution,
-      setAcpConfigOptions,
-      setPulseAgent,
-      setPulseModel,
-      setPulsePermissionLevel,
     ],
   )
 

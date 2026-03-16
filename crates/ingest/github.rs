@@ -217,6 +217,9 @@ fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usi
     for (label, result) in results {
         match result {
             Ok(n) => {
+                log_info(&format!(
+                    "github task_done task={label} repo={repo} chunks={n}"
+                ));
                 if label == "issues" {
                     issues_count = n;
                 } else if label == "prs" {
@@ -283,6 +286,10 @@ pub async fn ingest_github(
     )
     .await;
 
+    log_info(&format!(
+        "github tasks_start repo={} has_wiki={} include_source={include_source}",
+        common.repo_slug, common.has_wiki
+    ));
     let (files_result, metadata_result, issues_result, prs_result, wiki_result) = tokio::join!(
         files::embed_files(
             cfg,

@@ -1,7 +1,7 @@
 'use client'
 
-import { AlertCircle, Bot, Check, Copy, FileCode2, Pencil, RotateCcw } from 'lucide-react'
-import { memo } from 'react'
+import { AlertCircle, Bot, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
+import { memo, useState } from 'react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -11,73 +11,10 @@ import {
 import { ConversationContent } from '@/components/ai-elements/conversation'
 import { Message, MessageAction, MessageActions } from '@/components/ai-elements/message'
 import { QueueItemAttachment } from '@/components/ai-elements/queue'
-import { Tool, ToolContent, ToolHeader } from '@/components/ai-elements/tool'
 import { AssistantMessageBody } from '@/components/shell/axon-editor-artifact'
-import { buildToolHeader, toolStatusText } from '@/components/shell/tool-call-metadata'
+import { ToolCallsGroup } from '@/components/shell/axon-message-tool-calls'
 import { Button } from '@/components/ui/button'
 import type { AxonMessage } from '@/hooks/use-axon-session'
-import type { PulseToolUse } from '@/lib/pulse/types'
-
-function ToolCallCard({ tool, isMobile }: { tool: PulseToolUse; isMobile: boolean }) {
-  const isDone = tool.status === 'completed' || tool.status === 'success'
-  const statusLabel = toolStatusText(tool.status)
-  const { title, description, badges, meta } = buildToolHeader(tool)
-
-  return (
-    <Tool defaultOpen={!isDone} className="axon-tool-card mt-1.5">
-      <ToolHeader
-        className="axon-tool-header"
-        title={title}
-        description={description}
-        status={statusLabel}
-        badges={badges}
-        meta={meta}
-      />
-      <ToolContent className="axon-tool-content">
-        <div className={isMobile ? 'space-y-2 px-3 py-2.5' : 'space-y-2 px-3 py-2'}>
-          {tool.input && Object.keys(tool.input).length > 0 ? (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-dim)]">
-                Parameters
-              </p>
-              <pre className="overflow-x-auto rounded bg-[rgba(0,0,0,0.3)] p-2 font-mono text-[10px] leading-relaxed text-[var(--text-secondary)] md:text-[11px]">
-                {JSON.stringify(tool.input, null, 2)}
-              </pre>
-            </div>
-          ) : null}
-          {tool.locations?.length ? (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-dim)]">
-                Locations
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {tool.locations.map((loc) => (
-                  <span
-                    key={loc}
-                    className="inline-flex items-center gap-1 rounded border border-[var(--axon-primary-bg)] bg-[var(--axon-primary-bg)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--axon-primary-strong)]"
-                  >
-                    <FileCode2 className="size-3" />
-                    {loc}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {tool.content ? (
-            <div>
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-dim)]">
-                Output
-              </p>
-              <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded bg-[rgba(0,0,0,0.3)] p-2 font-mono text-[10px] leading-relaxed text-[var(--text-secondary)] md:max-h-52 md:text-[11px]">
-                {tool.content}
-              </pre>
-            </div>
-          ) : null}
-        </div>
-      </ToolContent>
-    </Tool>
-  )
-}
 
 /** Splits a thinking chunk into label + optional description for use in ChainOfThoughtStep. */
 function splitThinkingChunk(chunk: string): { label: string; description?: string } {
@@ -96,7 +33,7 @@ function ThinkingSection({ message }: { message: AxonMessage }) {
   if (!hasChainOfThought) return null
   return (
     <ChainOfThought
-      className="mt-2.5 rounded-xl border border-[rgba(135,175,255,0.12)] bg-[rgba(7,12,26,0.6)] px-2.5 py-2"
+      className="mt-1 rounded-lg border border-[rgba(135,175,255,0.12)] bg-[rgba(7,12,26,0.6)] px-2 py-1"
       defaultOpen={false}
     >
       <ChainOfThoughtHeader>Chain of thought</ChainOfThoughtHeader>
@@ -198,15 +135,15 @@ export const AxonMessageList = memo(function AxonMessageList({
   const bubbleRounding = isMobile ? 'rounded-[16px]' : 'rounded-[10px]'
   const bubblePadding = isMobile
     ? 'px-3 py-2.5 text-[13px] leading-[1.5]'
-    : 'px-2 py-1 text-[10px] leading-[1.35]'
-  const emptyStatePadding = isMobile ? 'py-16' : 'py-24'
-  const botIconSize = isMobile ? 'size-8' : 'size-10'
+    : 'px-2 py-0.5 text-[10px] leading-[1.35]'
+  const emptyStatePadding = isMobile ? 'py-10' : 'py-8'
+  const botIconSize = isMobile ? 'size-7' : 'size-6'
   const fileTruncate = isMobile ? 'max-w-[140px]' : 'max-w-[240px]'
 
   return (
     <ConversationContent
       key={sessionKey}
-      className="axon-message-list-container animate-crossfade-in gap-3 px-0 py-0"
+      className="axon-message-list-container animate-crossfade-in gap-1 px-0 py-0"
     >
       {loading && messages.length === 0 ? (
         <div
@@ -320,11 +257,11 @@ export const AxonMessageList = memo(function AxonMessageList({
             <div
               className={
                 message.role === 'assistant'
-                  ? `axon-message-bubble ${AXON_ASSISTANT_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-1`
-                  : `axon-message-bubble ${AXON_USER_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-1`
+                  ? `axon-message-bubble ${AXON_ASSISTANT_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-0.5`
+                  : `axon-message-bubble ${AXON_USER_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-0.5`
               }
             >
-              <div className="mb-0.5 flex items-center gap-1">
+              <div className="flex items-center gap-1">
                 <span
                   className={`inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.06em] ${
                     message.role === 'user'
@@ -364,16 +301,10 @@ export const AxonMessageList = memo(function AxonMessageList({
                   variant={variant}
                 />
               )}
-              {message.toolUses?.length ? (
-                <div className="space-y-1.5">
-                  {message.toolUses.map((tool, i) => (
-                    <ToolCallCard key={tool.toolCallId ?? i} isMobile={isMobile} tool={tool} />
-                  ))}
-                </div>
-              ) : null}
+              {message.toolUses?.length ? <ToolCallsGroup tools={message.toolUses} /> : null}
               <ThinkingSection message={message} />
               {message.usage && message.role === 'assistant' && (
-                <div className="mt-1 flex items-center gap-1.5 border-t border-[var(--border-subtle)] pt-1 text-[9px] tabular-nums text-[var(--text-dim)]">
+                <div className="mt-0.5 flex items-center gap-1 border-t border-[var(--border-subtle)] pt-0.5 text-[9px] tabular-nums text-[var(--text-dim)]">
                   <div className="flex items-center gap-1.5" title="Input tokens">
                     <span className="font-bold uppercase tracking-widest opacity-60">In</span>
                     <span className="text-[var(--text-secondary)] font-medium">
@@ -464,7 +395,7 @@ export const AxonMessageList = memo(function AxonMessageList({
       {isTyping && !messages.some((m) => m.streaming) ? (
         <Message from="assistant" className={`animate-fade-in-up ${assistantMaxWidth}`}>
           <div
-            className={`${AXON_ASSISTANT_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-1`}
+            className={`${AXON_ASSISTANT_BUBBLE_CLASS} ${bubblePadding} ${bubbleRounding} space-y-0.5`}
           >
             <div className="mb-0.5 flex items-center gap-1">
               <span className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--axon-secondary-strong)]">

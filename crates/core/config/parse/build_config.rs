@@ -5,8 +5,8 @@ use super::super::types::{
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    parse_viewport, positional_from_job, positional_from_refresh_subcommand,
-    positional_from_watch_subcommand,
+    parse_viewport, positional_from_graph_subcommand, positional_from_job,
+    positional_from_refresh_subcommand, positional_from_watch_subcommand,
 };
 use super::performance;
 use clap::ValueEnum;
@@ -182,7 +182,14 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             )
         }
         CliCommand::Screenshot(args) => (CommandKind::Screenshot, args.positional_urls),
-        CliCommand::Graph(args) => (CommandKind::Graph, args.value),
+        CliCommand::Graph(args) => (
+            CommandKind::Graph,
+            if let Some(action) = args.action {
+                positional_from_graph_subcommand(action)
+            } else {
+                Vec::new()
+            },
+        ),
         CliCommand::Completions(args) => (
             CommandKind::Completions,
             vec![
