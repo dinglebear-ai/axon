@@ -158,6 +158,9 @@ pub enum AcpSessionUpdateKind {
     /// Intercepted by `AcpBridgeEvent::ConfigOptionsUpdate` custom serialization.
     #[serde(rename = "config_option_update")]
     ConfigOptionUpdate,
+    /// Context window usage stats from the ACP agent.
+    #[serde(rename = "usage_update")]
+    UsageUpdate,
     /// Catch-all for unrecognized ACP protocol events. Serialized as `"unknown"`
     /// so it is distinguishable on the wire (previously collided with `"status"`).
     #[serde(rename = "unknown")]
@@ -182,6 +185,7 @@ impl std::fmt::Display for AcpSessionUpdateKind {
             Self::AvailableCommandsUpdate => write!(f, "status"),
             Self::CurrentModeUpdate => write!(f, "status"),
             Self::ConfigOptionUpdate => write!(f, "status"),
+            Self::UsageUpdate => write!(f, "usage_update"),
             Self::Unknown => write!(f, "unknown"),
         }
     }
@@ -296,6 +300,11 @@ pub enum AcpBridgeEvent {
     SessionFallback {
         old_session_id: String,
         new_session_id: String,
+    },
+    /// Session metadata was updated (title, updated_at). The session_id is the
+    /// ID of the session that received the update.
+    SessionInfoUpdate {
+        session_id: String,
     },
 }
 
@@ -417,6 +426,17 @@ fn serialize_commands_update<S: serde::Serializer>(
     map.end()
 }
 
+fn serialize_session_info_update<S: serde::Serializer>(
+    session_id: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(None)?;
+    map.serialize_entry("type", "session_info_update")?;
+    map.serialize_entry("session_id", session_id)?;
+    map.end()
+}
+
 fn serialize_session_fallback<S: serde::Serializer>(
     old_session_id: &str,
     new_session_id: &str,
@@ -447,6 +467,9 @@ impl serde::Serialize for AcpBridgeEvent {
                 old_session_id,
                 new_session_id,
             } => serialize_session_fallback(old_session_id, new_session_id, serializer),
+            Self::SessionInfoUpdate { session_id } => {
+                serialize_session_info_update(session_id, serializer)
+            }
         }
     }
 }

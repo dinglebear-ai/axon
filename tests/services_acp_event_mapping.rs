@@ -267,3 +267,31 @@ fn plan_update_event_uses_dedicated_wire_type() {
     assert_eq!(json["type"], "plan_update");
     assert_eq!(json["session_id"], "sess-plan");
 }
+
+// ── New unstable variant tests ───────────────────────────────────────────────
+
+#[test]
+fn usage_update_maps_to_usage_update_kind() {
+    use agent_client_protocol::UsageUpdate;
+    let sdk_update = SessionUpdate::UsageUpdate(UsageUpdate::new(1000, 8000));
+    let kind = map_session_update_kind(&sdk_update);
+    assert_eq!(kind, AcpSessionUpdateKind::UsageUpdate);
+}
+
+#[test]
+fn session_info_update_maps_to_session_info_update_bridge_event() {
+    use agent_client_protocol::SessionInfoUpdate;
+    let notification = SessionNotification::new(
+        "test-session-id",
+        SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new()),
+    );
+    let event = map_session_notification_event(&notification);
+    match event {
+        ServiceEvent::AcpBridge {
+            event: AcpBridgeEvent::SessionInfoUpdate { session_id },
+        } => {
+            assert_eq!(session_id, "test-session-id");
+        }
+        other => panic!("unexpected event: {other:?}"),
+    }
+}

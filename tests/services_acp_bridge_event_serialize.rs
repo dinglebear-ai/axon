@@ -138,6 +138,18 @@ fn acpbridgeevent_session_fallback_wire_shape() {
     assert_eq!(v["new_session_id"], "new-456");
 }
 
+// ── AcpBridgeEvent::SessionInfoUpdate ─────────────────────────────────────
+
+#[test]
+fn session_info_update_serializes_correctly() {
+    let event = AcpBridgeEvent::SessionInfoUpdate {
+        session_id: "abc-123".to_string(),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "session_info_update");
+    assert_eq!(json["session_id"], "abc-123");
+}
+
 // ── AcpSessionUpdateKind Display ─────────────────────────────────────────
 
 #[test]

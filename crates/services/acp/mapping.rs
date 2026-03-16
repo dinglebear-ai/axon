@@ -31,6 +31,7 @@ pub fn map_session_update_kind(update: &SessionUpdate) -> AcpSessionUpdateKind {
         SessionUpdate::AvailableCommandsUpdate(_) => AcpSessionUpdateKind::AvailableCommandsUpdate,
         SessionUpdate::CurrentModeUpdate(_) => AcpSessionUpdateKind::CurrentModeUpdate,
         SessionUpdate::ConfigOptionUpdate(_) => AcpSessionUpdateKind::ConfigOptionUpdate,
+        SessionUpdate::UsageUpdate(_) => AcpSessionUpdateKind::UsageUpdate,
         _ => AcpSessionUpdateKind::Unknown,
     }
 }
@@ -197,6 +198,9 @@ pub fn map_session_notification_event(notification: &SessionNotification) -> Ser
                     })
                     .collect(),
             }),
+        },
+        SessionUpdate::SessionInfoUpdate(_) => ServiceEvent::AcpBridge {
+            event: AcpBridgeEvent::SessionInfoUpdate { session_id: sid },
         },
         _ => ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::SessionUpdate(map_session_notification(notification)),

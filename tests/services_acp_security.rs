@@ -90,6 +90,7 @@ fn session_update_kind_serde_no_collision() {
         AcpSessionUpdateKind::CurrentModeUpdate,
         AcpSessionUpdateKind::ConfigOptionUpdate,
         AcpSessionUpdateKind::Unknown,
+        AcpSessionUpdateKind::UsageUpdate,
     ];
     let serialized: Vec<String> = variants
         .iter()
