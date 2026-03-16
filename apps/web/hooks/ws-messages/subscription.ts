@@ -1,23 +1,9 @@
 import type { WsServerMsg } from '@/lib/ws-protocol'
 import type { MessageHandlerRefs, MessageHandlerSetters } from './handlers'
-import { handleWsMessage, isRuntimeRelevantWsMessage } from './handlers'
+import { handleWsMessage, isRuntimeRelevantWsMessage, RUNTIME_EVENT_TYPES } from './handlers'
 
-export const RUNTIME_WS_MESSAGE_TYPES: ReadonlyArray<WsServerMsg['type']> = [
-  'log',
-  'file_content',
-  'crawl_files',
-  'crawl_progress',
-  'command.start',
-  'command.output.line',
-  'command.output.json',
-  'command.done',
-  'command.error',
-  'job.status',
-  'job.progress',
-  'artifact.list',
-  'artifact.content',
-  'job.cancel.response',
-]
+/** Re-export so existing consumers can keep importing from this module. */
+export const RUNTIME_WS_MESSAGE_TYPES = RUNTIME_EVENT_TYPES
 
 export function subscribeRuntimeMessages(input: {
   subscribeByTypes: (

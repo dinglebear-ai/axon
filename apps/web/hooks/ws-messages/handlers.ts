@@ -57,7 +57,9 @@ export interface MessageHandlerSetters {
   setCurrentJobIdTracked: (jobId: string | null) => void
 }
 
-const RUNTIME_MESSAGE_TYPES = new Set<WsServerMsg['type']>([
+/** Canonical list of WS event types that the runtime message handler cares about.
+ * Imported by subscription.ts as the subscription filter — single source of truth. */
+export const RUNTIME_EVENT_TYPES: ReadonlyArray<WsServerMsg['type']> = [
   'log',
   'file_content',
   'crawl_files',
@@ -72,7 +74,9 @@ const RUNTIME_MESSAGE_TYPES = new Set<WsServerMsg['type']>([
   'artifact.list',
   'artifact.content',
   'job.cancel.response',
-])
+]
+
+const RUNTIME_MESSAGE_TYPES = new Set<WsServerMsg['type']>(RUNTIME_EVENT_TYPES)
 
 export function isRuntimeRelevantWsMessage(msg: WsServerMsg): boolean {
   return RUNTIME_MESSAGE_TYPES.has(msg.type)
