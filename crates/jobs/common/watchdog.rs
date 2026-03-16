@@ -5,7 +5,8 @@
 //! ```text
 //! running + updated_at old → [Pass 1] → running + result_json._watchdog (stale candidate)
 //!                                                         ↓ (after confirm_secs)
-//!                                                  [Pass 2] → failed + error_text='watchdog: reclaimed'
+//!                                          [Pass 2] → pending + _reclaim.count++ (retry)
+//!                                                   OR failed (if reclaim attempts exhausted)
 //! ```
 //!
 //! # Two-Pass Stale Detection
@@ -16,9 +17,12 @@
 //! and writes `result_json._watchdog = { first_seen_stale_at, observed_updated_at }`.
 //! Does NOT change status yet.
 //!
-//! **Pass 2** (confirm phase): On the *next* sweep, finds jobs still marked as stale
-//! candidates. If `first_seen_stale_at` is older than `confirm_secs` AND `observed_updated_at`
-//! still matches (no heartbeat arrived), promotes them to `status='failed'`.
+//! **Pass 2** (confirm + reclaim phase): On the *next* sweep, finds jobs still marked
+//! as stale candidates. If `first_seen_stale_at` is older than `confirm_secs` AND
+//! `observed_updated_at` still matches (no heartbeat arrived):
+//!   - If the reclaim counter (`_reclaim.count`) is below `MAX_WATCHDOG_RECLAIM_ATTEMPTS`,
+//!     resets the job to `pending` with incremented counter so the worker re-picks it.
+//!   - If the reclaim counter has reached the limit, permanently marks the job `failed`.
 //!
 //! This prevents false positives when a heartbeat arrives between the two sweeps:
 //! if the job's `updated_at` is refreshed between Pass 1 and Pass 2, the observed
@@ -165,7 +169,9 @@ pub(crate) fn stale_watchdog_confirmed(
 /// Reclaim stale running jobs with a two-pass confirmation model.
 ///
 /// Pass 1: mark stale candidate in `result_json._watchdog` with observed `updated_at`.
-/// Pass 2: if still stale and unchanged after `confirm_secs`, mark as failed.
+/// Pass 2: if still stale and unchanged after `confirm_secs`, reset to `pending` with
+/// incremented `_reclaim.count`. Jobs that exceed `MAX_WATCHDOG_RECLAIM_ATTEMPTS` are
+/// permanently marked `failed` instead.
 pub async fn reclaim_stale_running_jobs(
     pool: &PgPool,
     table: JobTable,
