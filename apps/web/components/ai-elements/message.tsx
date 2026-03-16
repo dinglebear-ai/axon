@@ -149,7 +149,7 @@ export function MessageBranchContent({ children, ...props }: HTMLAttributes<HTML
 
   useEffect(() => {
     setBranches(childrenArray as ReactElement[])
-  }, [childrenArray.length, setBranches])
+  }, [childrenArray, setBranches])
 
   return childrenArray.map((branch, index) => (
     <div
