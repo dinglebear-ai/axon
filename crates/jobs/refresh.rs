@@ -167,6 +167,30 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
 
     // CREATE INDEX CONCURRENTLY avoids blocking writes to the table during index builds.
     // Safe to run outside a transaction (pool executor uses autocommit).
+    //
+    // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
+    // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
+    for idx_name in [
+        "idx_axon_refresh_jobs_pending",
+        "idx_axon_refresh_jobs_running_updated",
+    ] {
+        let invalid: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pg_class c \
+             JOIN pg_index i ON c.oid = i.indexrelid \
+             WHERE c.relname = $1 AND NOT i.indisvalid",
+        )
+        .bind(idx_name)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        if invalid > 0 {
+            sqlx::query(&format!("DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
+                .execute(pool)
+                .await
+                .ok();
+        }
+    }
+
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_jobs_pending ON axon_refresh_jobs(created_at ASC) WHERE status = 'pending'",
     )
@@ -218,6 +242,22 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+
+    // Drop invalid index before re-creating (same pattern as above).
+    let invalid: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pg_class c \
+         JOIN pg_index i ON c.oid = i.indexrelid \
+         WHERE c.relname = 'idx_axon_refresh_schedules_due' AND NOT i.indisvalid",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if invalid > 0 {
+        sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS idx_axon_refresh_schedules_due")
+            .execute(pool)
+            .await
+            .ok();
+    }
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_schedules_due ON axon_refresh_schedules(next_run_at ASC) WHERE enabled = TRUE",

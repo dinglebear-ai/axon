@@ -137,7 +137,15 @@ async fn send_chunk_with_retries(
                 }
             }
         }
-        // Non-success path: release permit before any retry/backoff sleep.
+        // Non-success path: consume/drop the response body before releasing
+        // the semaphore permit.  The permit gates TCP-level concurrency to TEI;
+        // dropping it while the response body is still live can return the
+        // connection to the pool mid-stream, corrupting the next request on
+        // that socket.
+        let err_body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<response body unavailable>".to_string());
         drop(permit);
         if status == StatusCode::PAYLOAD_TOO_LARGE && chunk.len() > 1 {
             return Ok(ChunkOutcome::Split);
@@ -151,10 +159,7 @@ async fn send_chunk_with_retries(
             tokio::time::sleep(delay).await;
             continue;
         }
-        let body = resp
-            .text()
-            .await
-            .unwrap_or_else(|_| "<response body unavailable>".to_string());
+        let body = err_body;
         let body_preview: String = body.chars().take(240).collect();
         return Err(format!(
             "TEI request failed with status {status} for {embed_url} after {attempt}/{max_attempts} attempts; body={body_preview}"

@@ -83,6 +83,30 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     // CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
     // Execute these against the pool directly (autocommit) so they don't block
     // writes to the table during index builds on large jobs tables.
+    //
+    // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
+    // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
+    for idx_name in [
+        "idx_axon_embed_jobs_pending",
+        "idx_axon_embed_jobs_running_updated",
+    ] {
+        let invalid: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pg_class c \
+             JOIN pg_index i ON c.oid = i.indexrelid \
+             WHERE c.relname = $1 AND NOT i.indisvalid",
+        )
+        .bind(idx_name)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        if invalid > 0 {
+            sqlx::query(&format!("DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
+                .execute(pool)
+                .await
+                .ok();
+        }
+    }
+
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_embed_jobs_pending ON axon_embed_jobs(created_at ASC) WHERE status = 'pending'"
     )
