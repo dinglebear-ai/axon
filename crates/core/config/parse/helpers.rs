@@ -18,13 +18,13 @@ pub(super) fn positional_from_job(job: JobSubcommand) -> Vec<String> {
 pub(super) fn positional_from_graph_subcommand(action: GraphSubcommand) -> Vec<String> {
     match action {
         GraphSubcommand::Build {
-            url,
+            positional_url,
             url_flag,
             domain,
             all,
         } => {
             let mut positional = vec!["build".to_string()];
-            if let Some(url) = url_flag.or(url) {
+            if let Some(url) = url_flag.or(positional_url) {
                 positional.push("--url".to_string());
                 positional.push(url);
             }

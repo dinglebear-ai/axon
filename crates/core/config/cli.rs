@@ -144,8 +144,11 @@ pub(super) struct GraphArgs {
 #[derive(Debug, Subcommand)]
 pub(super) enum GraphSubcommand {
     Build {
-        url: Option<String>,
-        #[arg(long = "url")]
+        /// Target URL (positional form: `axon graph build <url>`)
+        #[arg(value_name = "URL")]
+        positional_url: Option<String>,
+        /// Target URL (flag form: `axon graph build --url <url>`)
+        #[arg(long = "url", conflicts_with = "positional_url")]
         url_flag: Option<String>,
         #[arg(long)]
         domain: Option<String>,
