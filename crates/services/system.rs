@@ -21,7 +21,7 @@ use std::fmt;
 use tokio::sync::mpsc;
 
 const WATCHDOG_RECLAIM_PREFIX: &str = "watchdog reclaimed stale running ";
-const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000;
+const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000_000;
 
 #[derive(Debug)]
 pub struct PayloadParseError(String);
