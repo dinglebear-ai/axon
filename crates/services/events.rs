@@ -80,6 +80,35 @@ pub async fn emit(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceEvent) 
     }
 }
 
+/// Fire-and-forget variant of [`emit`] that never blocks the caller.
+///
+/// Uses `try_send` under the hood — if the channel is full the event is
+/// silently dropped.  Use this in hot paths (stderr readers, streaming
+/// notification handlers) where blocking on a full channel would stall an
+/// unrelated subsystem (e.g. draining adapter stderr).
+pub fn emit_nonblocking(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceEvent) {
+    if let Some(sender) = tx {
+        let _ = sender.try_send(event);
+    }
+}
+
+/// Emit with a timeout — blocks up to `timeout` waiting for channel capacity,
+/// then drops the event if the deadline expires.  Returns `true` if sent,
+/// `false` on timeout or missing sender.
+pub async fn emit_with_timeout(
+    tx: &Option<mpsc::Sender<ServiceEvent>>,
+    event: ServiceEvent,
+    timeout: std::time::Duration,
+) -> bool {
+    if let Some(sender) = tx {
+        tokio::time::timeout(timeout, sender.send(event))
+            .await
+            .is_ok()
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

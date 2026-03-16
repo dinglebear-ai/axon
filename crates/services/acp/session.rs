@@ -4,7 +4,7 @@
 //! Contains: process spawn/IO wiring, connection initialization, session
 //! setup dispatch, and config-option/model-config application.
 
-use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
+use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
 use crate::crates::services::types::AcpAdapterCommand;
 use crate::crates::services::types::AcpBridgeEvent;
 use agent_client_protocol::{
@@ -83,7 +83,11 @@ pub(super) fn spawn_adapter_with_io(
                     } else {
                         LogLevel::Warn
                     };
-                    emit(
+                    // Fire-and-forget: the stderr reader must never block on
+                    // a full service event channel — otherwise backpressure
+                    // from the channel stalls the reader and the adapter
+                    // subprocess hangs waiting for stderr to drain.
+                    emit_nonblocking(
                         &stderr_tx,
                         ServiceEvent::Log {
                             level,
@@ -97,8 +101,7 @@ pub(super) fn spawn_adapter_with_io(
                                 format!("ACP adapter stderr: {trimmed}")
                             },
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }

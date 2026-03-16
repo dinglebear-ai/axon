@@ -14,12 +14,13 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { AxonMessageList } from './axon-message-list'
 import { AxonPromptComposer } from './axon-prompt-composer'
-import type {
-  AxonShellComposerState,
-  AxonShellConversationState,
-  AxonShellEditorState,
-  AxonShellLayoutActions,
-  AxonShellLayoutState,
+import {
+  type AxonShellComposerState,
+  type AxonShellConversationState,
+  type AxonShellEditorState,
+  type AxonShellLayoutActions,
+  type AxonShellLayoutState,
+  PANE_WIDTH_MIN,
 } from './axon-shell-state'
 import { McpIcon } from './mcp-config'
 
@@ -76,7 +77,10 @@ export const AxonShellConversationPane = memo(function AxonShellConversationPane
   return (
     <div
       className={`axon-glass-shell h-full min-h-0 overflow-hidden rounded-none border-0 animate-fade-in ${layoutState.transitionClass}`}
-      style={{ flex: `${layoutState.chatFlex} ${layoutState.chatFlex} 0%`, minWidth: 320 }}
+      style={{
+        flex: `${layoutState.chatFlex} ${layoutState.chatFlex} 0%`,
+        minWidth: PANE_WIDTH_MIN,
+      }}
     >
       <div className="axon-toolbar flex h-9 items-center justify-between px-3 xl:px-4">
         <div className="min-w-0">

@@ -2,7 +2,9 @@
 //! forwarding session notifications and permission requests through the
 //! service event channel.
 
-use crate::crates::services::events::{EditorOperation, LogLevel, ServiceEvent, emit};
+use crate::crates::services::events::{
+    EditorOperation, LogLevel, ServiceEvent, emit, emit_nonblocking, emit_with_timeout,
+};
 use crate::crates::services::types::AcpConfigOption;
 use crate::crates::services::types::AcpSessionUpdateKind;
 use crate::crates::services::types::{AcpBridgeEvent, AcpTurnResultEvent};
@@ -96,14 +98,17 @@ pub(super) async fn finalize_successful_turn(
     } else {
         crate::crates::core::logging::log_warn(&msg);
     }
-    emit(
+    // Non-blocking emits: turn finalization must never block on a full
+    // service event channel — otherwise completed turns hang waiting for
+    // the downstream consumer to drain, preventing the caller from
+    // receiving the result.
+    emit_nonblocking(
         service_tx,
         ServiceEvent::Log {
             level: log_level,
             message: msg,
         },
-    )
-    .await;
+    );
 
     let session = session_id_str.to_string();
     let text = runtime_state.assistant_text.borrow().clone();
@@ -114,10 +119,10 @@ pub(super) async fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        emit(service_tx, ServiceEvent::EditorWrite { content, operation }).await;
+        emit_nonblocking(service_tx, ServiceEvent::EditorWrite { content, operation });
     }
 
-    emit(
+    emit_nonblocking(
         service_tx,
         ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
@@ -126,18 +131,16 @@ pub(super) async fn finalize_successful_turn(
                 result: text,
             }),
         },
-    )
-    .await;
+    );
     let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
     crate::crates::core::logging::log_info(&msg);
-    emit(
+    emit_nonblocking(
         service_tx,
         ServiceEvent::Log {
             level: LogLevel::Info,
             message: msg,
         },
-    )
-    .await;
+    );
     Ok(())
 }
 
@@ -166,7 +169,20 @@ impl Client for AcpBridgeClient {
     ) -> agent_client_protocol::Result<RequestPermissionResponse> {
         // Use the current turn's service_tx. Clone to release borrow before awaits.
         let service_tx = self.runtime_state.service_tx.borrow().clone();
-        emit(&service_tx, map_permission_request_event(&args)).await;
+        // Timeout-guarded emit: permission handling must not hang indefinitely
+        // when the service event channel is full.  A 5-second timeout lets
+        // transient backpressure resolve while guaranteeing forward progress.
+        if !emit_with_timeout(
+            &service_tx,
+            map_permission_request_event(&args),
+            std::time::Duration::from_secs(5),
+        )
+        .await
+        {
+            log::warn!(
+                "[acp_bridge] permission request event dropped: channel full after 5s timeout"
+            );
+        }
 
         let tool_call_id = args.tool_call.tool_call_id.0.to_string();
         let tool_name = args
@@ -185,7 +201,7 @@ impl Client for AcpBridgeClient {
                 .borrow()
                 .contains(&tool_name)
         {
-            emit(
+            emit_nonblocking(
                 &service_tx,
                 ServiceEvent::Log {
                     level: LogLevel::Info,
@@ -193,8 +209,7 @@ impl Client for AcpBridgeClient {
                         "ACP permission auto-cancelled for blocked MCP tool: {tool_name}"
                     ),
                 },
-            )
-            .await;
+            );
             return Ok(RequestPermissionResponse::new(
                 RequestPermissionOutcome::Cancelled,
             ));
