@@ -31,6 +31,7 @@ This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.
 
 | SHA | Message |
 |-----|---------|
+| 89d009c5 | refactor(web,cli): GraphArgs subcommand, job_output/url_inputs utils, qdrant scroll hardening, ws-messages tests (v0.25.2) |
 | f970f9ec | fix(services): make emit() async with backpressure — replace try_send drop with send().await |
 | 370555fe | test(acp): add UsageUpdate wire-shape and e2e mapping tests |
 | a5b372fa | feat(acp): map SessionInfoUpdate and UsageUpdate SDK unstable variants |
