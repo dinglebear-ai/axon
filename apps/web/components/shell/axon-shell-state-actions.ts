@@ -24,6 +24,7 @@ type McpSummary = {
 }
 
 type Params = {
+  bumpSessionInfoGen: () => void
   activeAssistantSessionId: string | null
   activeSessionId: string | null
   activeSessionRepo: string
@@ -72,6 +73,7 @@ type Params = {
 
 export function useAxonShellActions(params: Params) {
   const {
+    bumpSessionInfoGen,
     activeAssistantSessionId,
     activeSessionId,
     activeSessionRepo,
@@ -147,6 +149,7 @@ export function useAxonShellActions(params: Params) {
 
   const handleSelectSession = useCallback(
     (sessionId: string) => {
+      bumpSessionInfoGen()
       setLiveMessages([])
       setActiveSessionId(sessionId)
       setActiveAssistantSessionId(null)
@@ -159,6 +162,7 @@ export function useAxonShellActions(params: Params) {
       }
     },
     [
+      bumpSessionInfoGen,
       pulseAgent,
       sessions,
       setActiveAssistantSessionId,
@@ -172,21 +176,30 @@ export function useAxonShellActions(params: Params) {
 
   const handleSelectAssistantSession = useCallback(
     (sessionId: string) => {
+      bumpSessionInfoGen()
       setLiveMessages([])
       setActiveAssistantSessionId(sessionId)
       setActiveSessionId(null)
       setSessionKey((k) => k + 1)
     },
-    [setActiveAssistantSessionId, setActiveSessionId, setLiveMessages, setSessionKey],
+    [
+      bumpSessionInfoGen,
+      setActiveAssistantSessionId,
+      setActiveSessionId,
+      setLiveMessages,
+      setSessionKey,
+    ],
   )
 
   const handleNewSession = useCallback(() => {
+    bumpSessionInfoGen()
     setActiveSessionId(null)
     setActiveAssistantSessionId(null)
     setLiveMessages([])
     setPendingHandoffContext(null)
     setSessionKey((k) => k + 1)
   }, [
+    bumpSessionInfoGen,
     setActiveAssistantSessionId,
     setActiveSessionId,
     setLiveMessages,

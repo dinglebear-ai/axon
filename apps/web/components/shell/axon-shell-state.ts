@@ -370,6 +370,12 @@ export function useAxonShellState() {
     }
   }, [activeFile, setEditorMarkdown])
 
+  // Invalidate any in-flight onSessionInfoUpdate fetch so it cannot
+  // overwrite a manual session selection with a stale session ID.
+  const bumpSessionInfoGen = useCallback(() => {
+    sessionInfoGenRef.current++
+  }, [])
+
   const {
     composerProps,
     handleEditMessage,
@@ -384,6 +390,7 @@ export function useAxonShellState() {
     openFile,
     sidebarProps,
   } = useAxonShellActions({
+    bumpSessionInfoGen,
     activeAssistantSessionId: session.activeAssistantSessionId,
     activeSessionId: session.activeSessionId,
     activeSessionRepo: activeSession?.project ?? '',
