@@ -297,7 +297,7 @@ fn session_info_update_maps_to_session_info_update_bridge_event() {
 }
 
 #[test]
-fn usage_update_maps_through_notification_as_session_update() {
+fn usage_update_maps_through_notification_as_usage_update() {
     use agent_client_protocol::UsageUpdate;
     let notification = SessionNotification::new(
         "sess-usage",
@@ -306,11 +306,14 @@ fn usage_update_maps_through_notification_as_session_update() {
     let event = map_session_notification_event(&notification);
     match event {
         ServiceEvent::AcpBridge {
-            event: AcpBridgeEvent::SessionUpdate(update),
+            event: AcpBridgeEvent::UsageUpdate(usage),
         } => {
-            assert_eq!(update.session_id, "sess-usage");
-            assert_eq!(update.kind, AcpSessionUpdateKind::UsageUpdate);
+            assert_eq!(usage.session_id, "sess-usage");
+            assert_eq!(usage.used, 1000);
+            assert_eq!(usage.size, 8000);
+            assert!(usage.cost_amount.is_none());
+            assert!(usage.cost_currency.is_none());
         }
-        other => panic!("expected SessionUpdate, got: {other:?}"),
+        other => panic!("expected UsageUpdate, got: {other:?}"),
     }
 }

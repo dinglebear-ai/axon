@@ -75,11 +75,16 @@ async fn send_chunk_with_retries(
     max_attempts: usize,
     request_timeout_ms: u64,
 ) -> Result<ChunkOutcome, Box<dyn Error>> {
-    let _permit = TEI_CONCURRENCY
-        .acquire()
-        .await
-        .map_err(|e| -> Box<dyn Error> { format!("TEI semaphore closed: {e}").into() })?;
     for attempt in 1..=max_attempts {
+        // Acquire the concurrency permit just before the HTTP request and drop
+        // it immediately after the response completes.  Previously the permit
+        // was held across retry backoff sleeps, meaning a transient 429/503
+        // would hold a semaphore slot for up to 16s+ of backoff, exhausting
+        // the global concurrency limit and stalling unrelated embed requests.
+        let permit = TEI_CONCURRENCY
+            .acquire()
+            .await
+            .map_err(|e| -> Box<dyn Error> { format!("TEI semaphore closed: {e}").into() })?;
         let resp = match client
             .post(embed_url)
             .timeout(Duration::from_millis(request_timeout_ms))
@@ -89,6 +94,8 @@ async fn send_chunk_with_retries(
         {
             Ok(resp) => resp,
             Err(err) => {
+                // Release permit before sleeping on backoff.
+                drop(permit);
                 if log_retry_and_sleep(
                     attempt,
                     max_attempts,
@@ -107,7 +114,10 @@ async fn send_chunk_with_retries(
         };
         let status = resp.status();
         if status.is_success() {
-            match resp.json::<Vec<Vec<f32>>>().await {
+            let result = resp.json::<Vec<Vec<f32>>>().await;
+            // Release permit after response body is consumed.
+            drop(permit);
+            match result {
                 Ok(v) => return Ok(ChunkOutcome::Vectors(v)),
                 Err(err) => {
                     if log_retry_and_sleep(
@@ -127,6 +137,8 @@ async fn send_chunk_with_retries(
                 }
             }
         }
+        // Non-success path: release permit before any retry/backoff sleep.
+        drop(permit);
         if status == StatusCode::PAYLOAD_TOO_LARGE && chunk.len() > 1 {
             return Ok(ChunkOutcome::Split);
         }
