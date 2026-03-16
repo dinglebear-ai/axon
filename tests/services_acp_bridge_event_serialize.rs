@@ -60,6 +60,26 @@ fn acpbridgeevent_thinking_content_wire_shape() {
     );
 }
 
+// ── AcpBridgeEvent::SessionUpdate (usage_update) ──────────────────────────
+
+#[test]
+fn acpbridgeevent_usage_update_wire_type() {
+    let event = AcpBridgeEvent::SessionUpdate(AcpSessionUpdateEvent {
+        session_id: "s-usage".to_string(),
+        kind: AcpSessionUpdateKind::UsageUpdate,
+        text_delta: None,
+        tool_call_id: None,
+        tool_name: None,
+        tool_status: None,
+        tool_content: None,
+        tool_input: None,
+        tool_locations: None,
+    });
+    let v: Value = serde_json::to_value(&event).unwrap();
+    assert_eq!(v["type"], "usage_update");
+    assert_eq!(v["session_id"], "s-usage");
+}
+
 // ── AcpBridgeEvent::PermissionRequest ─────────────────────────────────────
 
 #[test]
@@ -193,5 +213,9 @@ fn acpsessionupdatekind_display_status_variants() {
     assert_eq!(
         AcpSessionUpdateKind::ToolCallUpdated.to_string(),
         "tool_use_update"
+    );
+    assert_eq!(
+        AcpSessionUpdateKind::UsageUpdate.to_string(),
+        "usage_update"
     );
 }

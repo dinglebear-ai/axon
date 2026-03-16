@@ -295,3 +295,22 @@ fn session_info_update_maps_to_session_info_update_bridge_event() {
         other => panic!("unexpected event: {other:?}"),
     }
 }
+
+#[test]
+fn usage_update_maps_through_notification_as_session_update() {
+    use agent_client_protocol::UsageUpdate;
+    let notification = SessionNotification::new(
+        "sess-usage",
+        SessionUpdate::UsageUpdate(UsageUpdate::new(1000, 8000)),
+    );
+    let event = map_session_notification_event(&notification);
+    match event {
+        ServiceEvent::AcpBridge {
+            event: AcpBridgeEvent::SessionUpdate(update),
+        } => {
+            assert_eq!(update.session_id, "sess-usage");
+            assert_eq!(update.kind, AcpSessionUpdateKind::UsageUpdate);
+        }
+        other => panic!("expected SessionUpdate, got: {other:?}"),
+    }
+}
