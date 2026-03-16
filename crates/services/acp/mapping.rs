@@ -5,7 +5,7 @@ use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::types::{
     AcpAvailableCommand, AcpBridgeEvent, AcpCommandsUpdate, AcpConfigOption, AcpConfigSelectValue,
     AcpMcpServerConfig, AcpModeUpdate, AcpPermissionRequestEvent, AcpPlanEntry, AcpPlanUpdate,
-    AcpSessionUpdateEvent, AcpSessionUpdateKind,
+    AcpSessionUpdateEvent, AcpSessionUpdateKind, AcpUsageUpdate,
 };
 use agent_client_protocol::{
     ContentBlock, EnvVariable, LoadSessionRequest, McpServer, McpServerHttp, McpServerStdio,
@@ -197,6 +197,15 @@ pub fn map_session_notification_event(notification: &SessionNotification) -> Ser
                         description: Some(c.description.clone()),
                     })
                     .collect(),
+            }),
+        },
+        SessionUpdate::UsageUpdate(usage) => ServiceEvent::AcpBridge {
+            event: AcpBridgeEvent::UsageUpdate(AcpUsageUpdate {
+                session_id: sid,
+                used: usage.used,
+                size: usage.size,
+                cost_amount: usage.cost.as_ref().map(|c| c.amount.to_string()),
+                cost_currency: usage.cost.as_ref().map(|c| c.currency.clone()),
             }),
         },
         SessionUpdate::SessionInfoUpdate(_) => ServiceEvent::AcpBridge {

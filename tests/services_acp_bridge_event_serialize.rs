@@ -5,7 +5,7 @@
 
 use axon::crates::services::types::{
     AcpBridgeEvent, AcpConfigOption, AcpConfigSelectValue, AcpPermissionRequestEvent,
-    AcpSessionUpdateEvent, AcpSessionUpdateKind, AcpTurnResultEvent,
+    AcpSessionUpdateEvent, AcpSessionUpdateKind, AcpTurnResultEvent, AcpUsageUpdate,
 };
 use serde_json::Value;
 
@@ -60,24 +60,41 @@ fn acpbridgeevent_thinking_content_wire_shape() {
     );
 }
 
-// ── AcpBridgeEvent::SessionUpdate (usage_update) ──────────────────────────
+// ── AcpBridgeEvent::UsageUpdate ──────────────────────────────────────────
 
 #[test]
-fn acpbridgeevent_usage_update_wire_type() {
-    let event = AcpBridgeEvent::SessionUpdate(AcpSessionUpdateEvent {
+fn acpbridgeevent_usage_update_wire_shape() {
+    let event = AcpBridgeEvent::UsageUpdate(AcpUsageUpdate {
         session_id: "s-usage".to_string(),
-        kind: AcpSessionUpdateKind::UsageUpdate,
-        text_delta: None,
-        tool_call_id: None,
-        tool_name: None,
-        tool_status: None,
-        tool_content: None,
-        tool_input: None,
-        tool_locations: None,
+        used: 1000,
+        size: 8000,
+        cost_amount: Some("0.05".to_string()),
+        cost_currency: Some("USD".to_string()),
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "usage_update");
     assert_eq!(v["session_id"], "s-usage");
+    assert_eq!(v["used"], 1000);
+    assert_eq!(v["size"], 8000);
+    assert_eq!(v["costAmount"], "0.05");
+    assert_eq!(v["costCurrency"], "USD");
+}
+
+#[test]
+fn acpbridgeevent_usage_update_without_cost() {
+    let event = AcpBridgeEvent::UsageUpdate(AcpUsageUpdate {
+        session_id: "s2".to_string(),
+        used: 500,
+        size: 4000,
+        cost_amount: None,
+        cost_currency: None,
+    });
+    let v: Value = serde_json::to_value(&event).unwrap();
+    assert_eq!(v["type"], "usage_update");
+    assert_eq!(v["used"], 500);
+    assert_eq!(v["size"], 4000);
+    assert!(v.get("costAmount").is_none());
+    assert!(v.get("costCurrency").is_none());
 }
 
 // ── AcpBridgeEvent::PermissionRequest ─────────────────────────────────────

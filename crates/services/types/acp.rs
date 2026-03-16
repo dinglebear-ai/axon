@@ -281,6 +281,23 @@ pub struct AcpCommandsUpdate {
     pub commands: Vec<AcpAvailableCommand>,
 }
 
+/// Context window usage stats forwarded from the ACP agent.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpUsageUpdate {
+    pub session_id: String,
+    /// Tokens currently in context.
+    pub used: u64,
+    /// Total context window size in tokens.
+    pub size: u64,
+    /// Cumulative session cost amount (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_amount: Option<String>,
+    /// ISO 4217 currency code for cost (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_currency: Option<String>,
+}
+
 // ── Bridge event (top-level enum) ────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -301,6 +318,8 @@ pub enum AcpBridgeEvent {
         old_session_id: String,
         new_session_id: String,
     },
+    /// Context window usage update from the ACP agent.
+    UsageUpdate(AcpUsageUpdate),
     /// Session metadata was updated (title, updated_at). The session_id is the
     /// ID of the session that received the update.
     SessionInfoUpdate {
@@ -426,6 +445,25 @@ fn serialize_commands_update<S: serde::Serializer>(
     map.end()
 }
 
+fn serialize_usage_update<S: serde::Serializer>(
+    usage: &AcpUsageUpdate,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(None)?;
+    map.serialize_entry("type", "usage_update")?;
+    map.serialize_entry("session_id", &usage.session_id)?;
+    map.serialize_entry("used", &usage.used)?;
+    map.serialize_entry("size", &usage.size)?;
+    if let Some(ref amount) = usage.cost_amount {
+        map.serialize_entry("costAmount", amount)?;
+    }
+    if let Some(ref currency) = usage.cost_currency {
+        map.serialize_entry("costCurrency", currency)?;
+    }
+    map.end()
+}
+
 fn serialize_session_info_update<S: serde::Serializer>(
     session_id: &str,
     serializer: S,
@@ -463,6 +501,7 @@ impl serde::Serialize for AcpBridgeEvent {
             Self::PlanUpdate(plan) => serialize_plan_update(plan, serializer),
             Self::ModeUpdate(mode) => serialize_mode_update(mode, serializer),
             Self::CommandsUpdate(cmds) => serialize_commands_update(cmds, serializer),
+            Self::UsageUpdate(usage) => serialize_usage_update(usage, serializer),
             Self::SessionFallback {
                 old_session_id,
                 new_session_id,
