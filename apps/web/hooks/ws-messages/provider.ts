@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useAxonWs } from '@/hooks/use-axon-ws'
 import type { AcpConfigOption } from '@/lib/pulse/types'
 import { usePulseSlice, useWorkspaceSlice } from '@/lib/shell-store'
@@ -88,14 +88,30 @@ export function useWsMessagesProvider() {
     setPulseModel,
   })
 
-  const setWorkspaceModeBridge = createSetStateActionBridge(setWorkspaceMode, () => workspaceMode)
-  const setWorkspacePromptBridge = createSetStateActionBridge(
-    setWorkspacePrompt,
-    () => workspacePrompt,
+  // Keep getter refs up to date so the bridge closures always read current values
+  // without needing to recreate the bridge function on every render.
+  const workspaceModeRef = useRef(workspaceMode)
+  workspaceModeRef.current = workspaceMode
+  const workspacePromptRef = useRef(workspacePrompt)
+  workspacePromptRef.current = workspacePrompt
+  const workspacePromptVersionRef = useRef(workspacePromptVersion)
+  workspacePromptVersionRef.current = workspacePromptVersion
+
+  const setWorkspaceModeBridge = useMemo(
+    () => createSetStateActionBridge(setWorkspaceMode, () => workspaceModeRef.current),
+    [setWorkspaceMode],
   )
-  const setWorkspacePromptVersionBridge = createSetStateActionBridge(
-    setWorkspacePromptVersion,
-    () => workspacePromptVersion,
+  const setWorkspacePromptBridge = useMemo(
+    () => createSetStateActionBridge(setWorkspacePrompt, () => workspacePromptRef.current),
+    [setWorkspacePrompt],
+  )
+  const setWorkspacePromptVersionBridge = useMemo(
+    () =>
+      createSetStateActionBridge(
+        setWorkspacePromptVersion,
+        () => workspacePromptVersionRef.current,
+      ),
+    [setWorkspacePromptVersion],
   )
 
   const subscriptionSetters = useMemo<MessageHandlerSetters>(
