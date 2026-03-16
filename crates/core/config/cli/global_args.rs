@@ -284,6 +284,16 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::crates::core::config) search_time_range: Option<String>,
 
+    /// Lower bound for temporal search filter. Formats: 7d, 30d, 1w, YYYY-MM-DD, RFC3339.
+    /// Filters query/ask results to content indexed on or after this date. Default: none.
+    #[arg(global = true, long)]
+    pub(in crate::crates::core::config) since: Option<String>,
+
+    /// Upper bound for temporal search filter. Same formats as --since.
+    /// Filters query/ask results to content indexed on or before this date. Default: none.
+    #[arg(global = true, long)]
+    pub(in crate::crates::core::config) before: Option<String>,
+
     /// Bypass Content Security Policy in Chrome. Helps pages that block inline JS via CSP. Default: false.
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::crates::core::config) bypass_csp: bool,

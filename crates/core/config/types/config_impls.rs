@@ -144,6 +144,8 @@ impl Default for Config {
             chrome_screenshot: false,
             research_depth: None,
             search_time_range: None,
+            since: None,
+            before: None,
             bypass_csp: false,
             accept_invalid_certs: false,
             screenshot_full_page: true,
@@ -331,6 +333,8 @@ impl fmt::Debug for Config {
             .field("chrome_screenshot", &self.chrome_screenshot)
             .field("research_depth", &self.research_depth)
             .field("search_time_range", &self.search_time_range)
+            .field("since", &self.since)
+            .field("before", &self.before)
             .field("bypass_csp", &self.bypass_csp)
             .field("accept_invalid_certs", &self.accept_invalid_certs)
             .field("screenshot_full_page", &self.screenshot_full_page)

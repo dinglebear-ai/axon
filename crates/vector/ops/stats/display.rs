@@ -13,6 +13,8 @@ pub(crate) fn print_stats_human(stats: &serde_json::Value) {
     println!();
     print_pipeline_stats(stats);
     println!();
+    print_freshness_stats(stats);
+    println!();
     print_command_counts(stats);
 }
 
@@ -161,6 +163,77 @@ fn print_pipeline_stats(stats: &serde_json::Value) {
     }
 }
 
+/// Format a duration in seconds as a human-readable age string.
+fn fmt_age_secs(secs: i64) -> String {
+    if secs < 60 {
+        "just now".to_string()
+    } else if secs < 3_600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86_400 {
+        let h = secs / 3_600;
+        let m = (secs % 3_600) / 60;
+        if m == 0 {
+            format!("{h}h ago")
+        } else {
+            format!("{h}h {m}m ago")
+        }
+    } else {
+        let d = secs / 86_400;
+        let h = (secs % 86_400) / 3_600;
+        if h == 0 {
+            format!("{d}d ago")
+        } else {
+            format!("{d}d {h}h ago")
+        }
+    }
+}
+
+fn print_freshness_stats(stats: &serde_json::Value) {
+    println!("{}", primary("Freshness"));
+    let age_text = stats["freshness"]["last_indexed_secs_ago"]
+        .as_i64()
+        .map(fmt_age_secs)
+        .unwrap_or_else(|| "n/a".to_string());
+    println!("  {} {}", muted("Last Indexed:"), accent(&age_text));
+    println!(
+        "  {} {}",
+        muted("Crawls (24h):"),
+        fmt_count(&stats["freshness"]["crawls_last_24h"])
+    );
+    println!(
+        "  {} {}",
+        muted("Crawls (7d):"),
+        fmt_count(&stats["freshness"]["crawls_last_7d"])
+    );
+
+    let Some(days) = stats["growth_7d"].as_array() else {
+        return;
+    };
+    if days.is_empty() {
+        return;
+    }
+    let max_chunks = days
+        .iter()
+        .filter_map(|d| d["chunks"].as_i64())
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    println!();
+    println!("{}", primary("Growth (last 7 days)"));
+    for day in days {
+        let date = day["date"].as_str().unwrap_or("?");
+        let chunks = day["chunks"].as_i64().unwrap_or(0);
+        let bar_len = (chunks as f64 / max_chunks as f64 * 20.0).round() as usize;
+        let bar = "█".repeat(bar_len);
+        println!(
+            "  {}  {:<20}  {}",
+            muted(date),
+            accent(&bar),
+            muted(&format!("{chunks} chunks"))
+        );
+    }
+}
+
 fn print_command_counts(stats: &serde_json::Value) {
     println!("{}", primary("Command Counts"));
     println!(
@@ -218,4 +291,45 @@ fn print_command_counts(stats: &serde_json::Value) {
         muted("Searches:"),
         fmt_count(&stats["counts"]["searches"])
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_age_secs_just_now() {
+        assert_eq!(fmt_age_secs(0), "just now");
+        assert_eq!(fmt_age_secs(59), "just now");
+    }
+
+    #[test]
+    fn fmt_age_secs_minutes() {
+        assert_eq!(fmt_age_secs(60), "1m ago");
+        assert_eq!(fmt_age_secs(3_599), "59m ago");
+    }
+
+    #[test]
+    fn fmt_age_secs_hours_no_minutes() {
+        assert_eq!(fmt_age_secs(3_600), "1h ago");
+        assert_eq!(fmt_age_secs(7_200), "2h ago");
+    }
+
+    #[test]
+    fn fmt_age_secs_hours_with_minutes() {
+        assert_eq!(fmt_age_secs(3_660), "1h 1m ago");
+        assert_eq!(fmt_age_secs(86_399), "23h 59m ago");
+    }
+
+    #[test]
+    fn fmt_age_secs_days_no_hours() {
+        assert_eq!(fmt_age_secs(86_400), "1d ago");
+        assert_eq!(fmt_age_secs(172_800), "2d ago");
+    }
+
+    #[test]
+    fn fmt_age_secs_days_with_hours() {
+        assert_eq!(fmt_age_secs(90_000), "1d 1h ago");
+        assert_eq!(fmt_age_secs(93_600), "1d 2h ago");
+    }
 }

@@ -511,6 +511,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         chrome_screenshot: global.chrome_screenshot,
         research_depth: global.research_depth,
         search_time_range: global.search_time_range,
+        since: global.since,
+        before: global.before,
         bypass_csp: global.bypass_csp,
         accept_invalid_certs: global.accept_invalid_certs,
         screenshot_full_page: global.screenshot_full_page,

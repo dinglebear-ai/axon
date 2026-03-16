@@ -167,6 +167,18 @@ pub(crate) async fn create_watch_def_with_pool(
     .await?)
 }
 
+#[must_use = "deletion errors are logged by the caller; ignoring this silently drops failures"]
+pub(crate) async fn delete_watch_def_with_pool(
+    pool: &PgPool,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
+    sqlx::query("DELETE FROM axon_watch_defs WHERE name = $1")
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema_once(&pool).await?;

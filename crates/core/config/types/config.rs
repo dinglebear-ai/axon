@@ -434,6 +434,14 @@ pub struct Config {
     /// Passed to `SearchOptions::with_time_range`. Default: None. Flag: `--search-time-range`.
     pub search_time_range: Option<String>,
 
+    /// Lower bound for `scraped_at` payload filter on query/ask. Accepts `7d`, `30d`, `1w`,
+    /// `YYYY-MM-DD`, or RFC3339. Default: None (no lower bound). Flag: `--since`.
+    pub since: Option<String>,
+
+    /// Upper bound for `scraped_at` payload filter on query/ask. Same formats as `--since`.
+    /// Default: None (no upper bound). Flag: `--before`.
+    pub before: Option<String>,
+
     // P5 — opt-in crawl safety/compat flags
     /// Bypass Content Security Policy in Chrome — helps on pages that block inline JS via CSP.
     /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. Flag: `--bypass-csp`.

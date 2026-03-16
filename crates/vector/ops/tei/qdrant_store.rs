@@ -206,6 +206,16 @@ async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
             .await?
             .error_for_status()?;
     }
+    // datetime index enables efficient range queries on scraped_at (--since / --before)
+    client
+        .put(&index_url)
+        .json(&serde_json::json!({
+            "field_name": "scraped_at",
+            "field_schema": "datetime"
+        }))
+        .send()
+        .await?
+        .error_for_status()?;
     Ok(())
 }
 

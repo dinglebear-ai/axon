@@ -2,8 +2,10 @@ use super::deterministic::{
     DeterministicExtractionEngine, ExtractRun, FallbackResponse, extract_items_fallback,
 };
 use super::{ExtractionMetrics, to_markdown};
+use crate::crates::core::config::RenderMode;
 use crate::crates::core::http::{http_client, ssrf_blacklist_patterns, validate_url};
 use crate::crates::core::logging::log_warn;
+use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::website::Website;
 use std::collections::HashMap;
 use std::error::Error;
@@ -33,6 +35,54 @@ fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMap {
     map
 }
 
+/// Build a spider `Website` configured for single-page Chrome extraction.
+///
+/// Applies Chrome stealth, fingerprint patching, network intercept, and CDP
+/// connection. Returns `None` when `chrome_remote_url` is absent — callers
+/// must fall back to the HTTP path in that case.
+fn build_chrome_extract_website(url: &str, wcfg: &ExtractWebConfig) -> Option<Website> {
+    let chrome_url = wcfg.chrome_remote_url.as_deref()?;
+
+    let ssrf_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
+        .iter()
+        .copied()
+        .map(Into::into)
+        .collect();
+
+    let mut website = Website::new(url);
+    website
+        .with_limit(1)
+        // with_depth(0) prevents spider from discovering/queuing outbound links on the
+        // seed page even when limit=1. Without it, spider still runs link-find callbacks
+        // for every href on the page — wasted work for a single-page fetch.
+        .with_depth(0)
+        .with_blacklist_url(Some(ssrf_patterns))
+        .with_stealth(wcfg.chrome_stealth || wcfg.chrome_anti_bot)
+        .with_fingerprint(true)
+        .with_dismiss_dialogs(true)
+        .with_chrome_intercept(RequestInterceptConfiguration::new(wcfg.chrome_intercept))
+        .with_chrome_connection(Some(chrome_url.to_string()));
+
+    if wcfg.bypass_csp {
+        website.with_csp_bypass(true);
+    }
+    if wcfg.accept_invalid_certs {
+        website.with_danger_accept_invalid_certs(true);
+    }
+    if let Some(ua) = wcfg.user_agent.as_deref() {
+        website.with_user_agent(Some(ua));
+    }
+    if let Some(timeout_ms) = wcfg.request_timeout_ms {
+        website.with_request_timeout(Some(std::time::Duration::from_millis(timeout_ms)));
+    }
+    let retries = wcfg.fetch_retries.min(u8::MAX as usize) as u8;
+    website.with_retry(retries);
+
+    website.configuration.disable_log = true;
+
+    Some(website)
+}
+
 /// Configuration bundle for `run_extract_with_engine`.
 ///
 /// Replaces the previous 7-param function signature with a single struct,
@@ -47,7 +97,7 @@ pub struct ExtractWebConfig {
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
     // ── Rendering / Chrome ──────────────────────────────────────────────────
-    pub render_mode: crate::crates::core::config::RenderMode,
+    pub render_mode: RenderMode,
     /// CDP management URL (e.g. `http://axon-chrome:6000`). `None` = no Chrome.
     pub chrome_remote_url: Option<String>,
     pub chrome_stealth: bool,
@@ -300,6 +350,84 @@ async fn run_single_url_extract(
     })
 }
 
+/// Fetch a single URL via headless Chrome and extract structured data from it.
+///
+/// Uses spider's Chrome path (`website.crawl()`) with stealth and fingerprint
+/// patching. Falls back to the HTTP path when Chrome is not configured
+/// (`chrome_remote_url` is `None`).
+async fn run_single_url_extract_chrome(
+    url: &str,
+    engine: Arc<DeterministicExtractionEngine>,
+    cfg: &ExtractWebConfig,
+    fallback_cfg: FallbackConfig,
+) -> Result<ExtractRun, Box<dyn Error>> {
+    let Some(mut website) = build_chrome_extract_website(url, cfg) else {
+        // No Chrome configured — delegate to the HTTP path.
+        return run_single_url_extract(url, http_client()?.clone(), engine, fallback_cfg).await;
+    };
+
+    let mut rx = website.subscribe(16).ok_or("subscribe failed")?;
+
+    // Spider's canonical single-page Chrome fetch pattern:
+    // tokio::join! + oneshot avoids tokio::spawn (no Send bound required).
+    // The biased select! checks done_rx first — exits the collect loop
+    // immediately when crawl signals done, even if the channel hasn't closed.
+    let (done_tx, mut done_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let crawl = async move {
+        website.crawl().await;
+        website.unsubscribe();
+        let _ = done_tx.send(());
+    };
+
+    // Collect pages into a Vec; return it so tokio::join! can hand it back.
+    let sub = async move {
+        let mut pages: Vec<spider::page::Page> = Vec::new();
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut done_rx => break,
+                result = rx.recv() => {
+                    match result {
+                        Ok(page) => pages.push(page),
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+        pages
+    };
+
+    let ((), pages) = tokio::join!(crawl, sub);
+
+    // Feed collected pages back through collect_page_results via a replay channel.
+    // For a single-URL Chrome extract we expect exactly 1 page.
+    let http = http_client()?.clone();
+    let (replay_tx, replay_rx) =
+        tokio::sync::broadcast::channel::<spider::page::Page>(pages.len().max(1));
+    for page in pages {
+        let _ = replay_tx.send(page);
+    }
+    drop(replay_tx); // signal EOF immediately
+
+    let PageCollectResult {
+        results,
+        pages_visited,
+        pages_with_data,
+        metrics,
+        parser_hits,
+    } = collect_page_results(replay_rx, http, Arc::clone(&engine), fallback_cfg).await;
+
+    Ok(ExtractRun {
+        start_url: url.to_string(),
+        pages_visited,
+        pages_with_data,
+        results,
+        metrics,
+        parser_hits,
+    })
+}
+
 pub async fn run_extract_with_engine(
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
@@ -315,25 +443,32 @@ pub async fn run_extract_with_engine(
 
     validate_url(&wcfg.start_url)?;
 
+    // Clone start_url before partial moves into fallback_cfg.
+    let start_url = wcfg.start_url.clone();
+
     let fallback_cfg = FallbackConfig {
         api_url,
-        api_key: wcfg.openai_api_key,
-        model: wcfg.openai_model,
-        prompt_text: wcfg.prompt,
+        api_key: wcfg.openai_api_key.clone(),
+        model: wcfg.openai_model.clone(),
+        prompt_text: wcfg.prompt.clone(),
         has_fallback,
     };
 
     // Single-page: bypass spider to fetch the exact URL. Spider normalises deep
     // paths to the domain root (Website::new strips the path component), so
     // requests for /wiki/Rust or /recipe/12345 land on the site homepage instead.
+    // For Chrome mode, we use spider with limit=1 to get stealth + fingerprint
+    // patches. For HTTP mode, plain reqwest fetches the exact URL directly.
     if wcfg.limit <= 1 {
-        return run_single_url_extract(
-            &wcfg.start_url,
-            http_client()?.clone(),
-            engine,
-            fallback_cfg,
-        )
-        .await;
+        return match wcfg.render_mode {
+            RenderMode::Chrome => {
+                run_single_url_extract_chrome(&start_url, engine, &wcfg, fallback_cfg).await
+            }
+            _ => {
+                run_single_url_extract(&start_url, http_client()?.clone(), engine, fallback_cfg)
+                    .await
+            }
+        };
     }
 
     let ssrf_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
@@ -353,6 +488,10 @@ pub async fn run_extract_with_engine(
         if !map.is_empty() {
             website.with_headers(Some(map));
         }
+    }
+    // Wire user-agent so HTTP extract crawls use the same UA as scrape/crawl.
+    if let Some(ua) = wcfg.user_agent.as_deref() {
+        website.with_user_agent(Some(ua));
     }
     let mut website = website.build().map_err(|_| "build website")?;
 
@@ -382,4 +521,50 @@ pub async fn run_extract_with_engine(
         metrics,
         parser_hits,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// When Chrome mode is requested but no chrome_remote_url is configured,
+    /// the extract engine must fall back to the HTTP path gracefully rather
+    /// than panicking or returning an error about a missing CDP connection.
+    #[tokio::test]
+    async fn extract_chrome_mode_without_remote_url_falls_back_to_http() {
+        let engine = Arc::new(DeterministicExtractionEngine::default());
+        let wcfg = ExtractWebConfig {
+            start_url: "https://example.invalid".to_string(),
+            prompt: "test".to_string(),
+            limit: 1,
+            openai_base_url: String::new(),
+            openai_api_key: String::new(),
+            openai_model: String::new(),
+            custom_headers: vec![],
+            render_mode: RenderMode::Chrome,
+            chrome_remote_url: None, // ← no Chrome configured
+            chrome_stealth: true,
+            chrome_anti_bot: true,
+            chrome_intercept: true,
+            bypass_csp: false,
+            accept_invalid_certs: false,
+            request_timeout_ms: Some(1000),
+            fetch_retries: 0,
+            user_agent: None,
+        };
+        // Should not panic. The URL is intentionally invalid so we get a network
+        // error, which is expected. We only care it falls back to HTTP, not Chrome.
+        let result = run_extract_with_engine(wcfg, engine).await;
+        match result {
+            Ok(_) => {} // unlikely with invalid URL, but fine
+            Err(e) => {
+                let msg = e.to_string();
+                // Must NOT be a Chrome/CDP error
+                assert!(
+                    !msg.contains("CDP") && !msg.contains("chrome_remote_url"),
+                    "Expected HTTP fallback error, got Chrome error: {msg}"
+                );
+            }
+        }
+    }
 }

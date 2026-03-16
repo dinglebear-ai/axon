@@ -3,9 +3,10 @@ mod run_due;
 mod worker;
 
 use crate::crates::core::config::Config;
-use crate::crates::core::ui::{accent, muted, status_text, symbol_for_status};
+use crate::crates::core::ui::{accent, muted, subtle, symbol_for_status};
 use crate::crates::jobs::watch::list_watch_defs;
 use crate::crates::services::refresh as refresh_service;
+use chrono::{DateTime, Utc};
 use std::error::Error;
 
 pub use run_due::handle_refresh_schedule_run_due;
@@ -67,10 +68,18 @@ async fn handle_refresh_schedule_list(cfg: &Config) -> Result<(), Box<dyn Error>
         .filter(|w| w.task_type == "refresh")
         .map(|w| {
             seen.insert(w.name.clone());
+            let seed_url = w
+                .task_payload
+                .get("seed_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             serde_json::json!({
                 "name": w.name,
                 "enabled": w.enabled,
                 "every_seconds": w.every_seconds,
+                "next_run_at": w.next_run_at.to_rfc3339(),
+                "last_run_at": w.last_run_at.map(|t| t.to_rfc3339()),
+                "seed_url": seed_url,
             })
         })
         .collect();
@@ -80,6 +89,9 @@ async fn handle_refresh_schedule_list(cfg: &Config) -> Result<(), Box<dyn Error>
                 "name": s.name,
                 "enabled": s.enabled,
                 "every_seconds": s.every_seconds,
+                "next_run_at": s.next_run_at.to_rfc3339(),
+                "last_run_at": s.last_run_at.map(|t| t.to_rfc3339()),
+                "seed_url": s.seed_url,
             }));
         }
     }
@@ -94,6 +106,7 @@ async fn handle_refresh_schedule_list(cfg: &Config) -> Result<(), Box<dyn Error>
         return Ok(());
     }
 
+    let now = Utc::now();
     for schedule in schedules {
         let enabled = schedule
             .get("enabled")
@@ -103,19 +116,96 @@ async fn handle_refresh_schedule_list(cfg: &Config) -> Result<(), Box<dyn Error>
             .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("<unknown>");
-        let status = if enabled {
-            status_text("running")
+        let every_secs = schedule
+            .get("every_seconds")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let next_run_at = schedule
+            .get("next_run_at")
+            .and_then(|v| v.as_str())
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| t.with_timezone(&Utc));
+        let last_run_at = schedule
+            .get("last_run_at")
+            .and_then(|v| v.as_str())
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| t.with_timezone(&Utc));
+        let seed_url = schedule.get("seed_url").and_then(|v| v.as_str());
+
+        let (symbol, state_label) = if enabled {
+            (symbol_for_status("completed"), accent("active"))
         } else {
-            status_text("paused")
+            (symbol_for_status("pending"), muted("paused"))
         };
+        let every_str = format_every_seconds(every_secs);
+        let next_str = next_run_at
+            .map(|t| format_time_until(t, now))
+            .unwrap_or_else(|| "unknown".to_string());
+        let last_str = last_run_at
+            .map(|t| format_time_ago(t, now))
+            .unwrap_or_else(|| "never run".to_string());
+
         println!(
-            "  {} {} {}",
-            symbol_for_status("pending"),
+            "  {} {}  {}  every {}  next {}  {}",
+            symbol,
             accent(name),
-            status
+            state_label,
+            muted(&every_str),
+            muted(&next_str),
+            muted(&last_str),
         );
+        if let Some(seed) = seed_url {
+            println!("    {} {}", muted("seed:"), subtle(seed));
+        }
     }
     Ok(())
+}
+
+fn format_every_seconds(secs: i64) -> String {
+    if secs <= 0 {
+        return "?".to_string();
+    }
+    if secs >= 86400 && secs % 86400 == 0 {
+        format!("{}d", secs / 86400)
+    } else if secs >= 3600 && secs % 3600 == 0 {
+        format!("{}h", secs / 3600)
+    } else if secs >= 60 && secs % 60 == 0 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+fn format_time_until(target: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let diff = (target - now).num_seconds();
+    if diff <= 0 {
+        return "overdue".to_string();
+    }
+    let h = diff / 3600;
+    let m = (diff % 3600) / 60;
+    if h > 0 {
+        format!("in {}h {}m", h, m)
+    } else if m > 0 {
+        format!("in {}m", m)
+    } else {
+        "in <1m".to_string()
+    }
+}
+
+fn format_time_ago(target: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let diff = (now - target).num_seconds();
+    if diff < 0 {
+        return "just now".to_string();
+    }
+    let h = diff / 3600;
+    let m = (diff % 3600) / 60;
+    if h > 0 {
+        format!("{}h {}m ago", h, m)
+    } else if m > 0 {
+        format!("{}m ago", m)
+    } else {
+        "just now".to_string()
+    }
 }
 
 async fn handle_refresh_schedule_enable(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -185,4 +275,91 @@ async fn handle_refresh_schedule_delete(cfg: &Config) -> Result<(), Box<dyn Erro
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn format_every_seconds_zero_returns_sentinel() {
+        assert_eq!(format_every_seconds(0), "?");
+    }
+
+    #[test]
+    fn format_every_seconds_negative_returns_sentinel() {
+        assert_eq!(format_every_seconds(-1), "?");
+    }
+
+    #[test]
+    fn format_every_seconds_picks_largest_clean_unit() {
+        assert_eq!(format_every_seconds(86400), "1d");
+        assert_eq!(format_every_seconds(21600), "6h");
+        assert_eq!(format_every_seconds(1800), "30m");
+        assert_eq!(format_every_seconds(45), "45s");
+    }
+
+    #[test]
+    fn format_time_until_overdue_when_past() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_until(now - Duration::seconds(1), now),
+            "overdue"
+        );
+    }
+
+    #[test]
+    fn format_time_until_sub_minute() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_until(now + Duration::seconds(30), now),
+            "in <1m"
+        );
+    }
+
+    #[test]
+    fn format_time_until_minutes_only() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_until(now + Duration::minutes(45), now),
+            "in 45m"
+        );
+    }
+
+    #[test]
+    fn format_time_until_hours_and_minutes() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_until(now + Duration::seconds(5 * 3600 + 54 * 60), now),
+            "in 5h 54m"
+        );
+    }
+
+    #[test]
+    fn format_time_ago_negative_diff_returns_just_now() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_ago(now + Duration::seconds(10), now),
+            "just now"
+        );
+    }
+
+    #[test]
+    fn format_time_ago_sub_minute_returns_just_now() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_ago(now - Duration::seconds(30), now),
+            "just now"
+        );
+    }
+
+    #[test]
+    fn format_time_ago_hours_and_minutes() {
+        let now = Utc::now();
+        assert_eq!(
+            format_time_ago(now - Duration::seconds(2 * 3600 + 15 * 60), now),
+            "2h 15m ago"
+        );
+    }
 }

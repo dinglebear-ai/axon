@@ -1,5 +1,6 @@
 mod client;
 mod commands;
+mod filter;
 mod hybrid;
 #[cfg(test)]
 mod tests;
@@ -18,5 +19,6 @@ pub(crate) use client::{
     qdrant_delete_stale_tail, qdrant_domain_facets, qdrant_retrieve_by_url,
     qdrant_scroll_pages_while, qdrant_search,
 };
+pub(crate) use filter::build_scraped_at_filter;
 pub(crate) use hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 pub(crate) use utils::{env_usize_clamped, payload_domain, payload_url};
