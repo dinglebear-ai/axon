@@ -91,7 +91,7 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 | `domain` | `String` | Yes | Hostname only — `"github.com"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `crates/core/content.rs` to extract. |
 | `chunks` | `Vec<String>` | Yes | Pre-chunked content. Pipeline expects chunks **already split** — do not pass the full raw text. |
 | `source_type` | `String` | Yes | One of: `"github"` / `"reddit"` / `"youtube"` / `"sessions"` / `"refresh"` / `"embed"`. Stored in Qdrant payload for filtering. |
-| `content_type` | `&str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
+| `content_type` | `&'static str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
 | `title` | `Option<String>` | No | Human-readable label (file path, video title, issue title). Stored in Qdrant payload. |
 | `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Use `gh_*` / `reddit_*` / `yt_*` prefixes per source. |
 

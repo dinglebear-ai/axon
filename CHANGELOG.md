@@ -27,16 +27,14 @@ This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.
 - **session_info_update frontend handling** — new WS wire event `session_info_update` dispatched to frontend; `getCachedSessions()` extended with `forceRefresh` option bypassing 30s stale-while-revalidate cache when triggered by this event.
 - **Shell component + ws-messages provider split** — `axon-shell.tsx` split into `axon-shell-desktop.tsx`, `axon-shell-mobile.tsx`, `axon-shell-conversation-pane.tsx`, `axon-shell-right-pane.tsx`, `axon-shell-sidebar-pane.tsx`; `provider.ts` split into `provider-actions.ts`, `provider-effects.ts`, `provider-runtime.ts`.
 
-### Commits since `main` (`96773a08`)
+### Commits since v0.25.0 (`7b173bf8`)
 
 | SHA | Message |
 |-----|---------|
-| 89d009c5 | refactor(web,cli): GraphArgs subcommand, job_output/url_inputs utils, qdrant scroll hardening, ws-messages tests (v0.25.2) |
 | f970f9ec | fix(services): make emit() async with backpressure — replace try_send drop with send().await |
 | 370555fe | test(acp): add UsageUpdate wire-shape and e2e mapping tests |
 | a5b372fa | feat(acp): map SessionInfoUpdate and UsageUpdate SDK unstable variants |
 | 3142dfe8 | feat(web): handle session_info_update WS event and force-refresh cache bypass |
-| 7b173bf8 | feat(web,vector): Pulse shell redesign, AI elements, hybrid search, new API routes (v0.25.0) |
 
 ## [0.25.0] — feat/pulse-shell-and-hybrid-search
 
