@@ -179,20 +179,41 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
         1,
         1_000_000,
     );
-    let mut payloads = Vec::new();
+    // Aggregate directly inside the scroll callback to avoid buffering all payloads.
+    // Previous implementation cloned every payload into a Vec before summarizing,
+    // spiking memory on large collections.
+    let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
+    let mut count = 0usize;
     qdrant_scroll_pages_while(cfg, |points: &[serde_json::Value]| {
         for point in points {
+            if count >= limit {
+                return false;
+            }
             if let Some(payload) = point.get("payload") {
-                if payloads.len() >= limit {
-                    return false;
+                let domain = payload_domain(payload);
+                let url = payload_url(payload);
+                let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
+                entry.0 += 1;
+                if !url.is_empty() {
+                    entry.1.insert(url);
                 }
-                payloads.push(payload.clone());
+                count += 1;
             }
         }
-        payloads.len() < limit
+        count < limit
     })
     .await?;
-    Ok(summarize_detailed_domains_limited(&payloads, Some(limit)))
+
+    let mut domains: Vec<DetailedDomainFacet> = by_domain
+        .into_iter()
+        .map(|(domain, (vectors, urls))| DetailedDomainFacet {
+            domain,
+            vectors,
+            urls: urls.len(),
+        })
+        .collect();
+    domains.sort_by(|a, b| a.domain.cmp(&b.domain));
+    Ok(DetailedDomainsResult { domains })
 }
 
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
