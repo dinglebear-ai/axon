@@ -113,7 +113,7 @@ export function useAxonSession(
   sessionId: string | null,
   options: UseAxonSessionOptions = {},
 ): UseAxonSessionResult {
-  const { assistantMode = false } = options
+  const { assistantMode = false, forceRefresh = false } = options
   const [messages, setMessages] = useState<AxonMessage[]>([])
   const [loading, setLoading] = useState(false)
   // `loaded` is set to true once any fetch completes (success or error), and reset
@@ -151,7 +151,7 @@ export function useAxonSession(
     }
     setError(null)
 
-    fetchSessionWithRetry(sessionId, () => cancelled, { assistantMode })
+    fetchSessionWithRetry(sessionId, () => cancelled, { assistantMode, forceRefresh })
       .then((data) => {
         if (cancelled) return
         setMessages(
@@ -184,7 +184,7 @@ export function useAxonSession(
     return () => {
       cancelled = true
     }
-  }, [assistantMode, sessionId, version])
+  }, [assistantMode, forceRefresh, sessionId, version])
 
   return { messages, loading, loaded, error, reload }
 }
