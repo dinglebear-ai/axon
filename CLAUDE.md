@@ -78,6 +78,7 @@ MCP docs:
 | `refresh <url>` | Periodic URL re-indexing (schedule, status, cancel, list). Supports `github:owner/repo` schedules with `pushed_at` gating. | Yes (default) |
 | `graph <sub>` | Knowledge graph operations: `build`, `status`, `explore`, `stats`, `worker`. Requires `AXON_NEO4J_URL`. | Depends |
 | `serve` | Start web UI server (axum + WebSocket + Docker stats) | No |
+| `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
 ### Job Subcommands (for crawl / extract / embed / refresh)
 
@@ -404,6 +405,14 @@ Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin.
 
 ### Collection must exist before upsert
 `ensure_collection()` does a GET first; only issues PUT on 404 (collection not found). This means it's safe on existing collections — no 409 Conflict. Safe to call on every embed.
+
+### `migrate` — one-time collection upgrade
+`axon migrate --from cortex --to cortex_v2` scrolls all points from the source, computes BM42 sparse vectors locally from `chunk_text` payload fields (no TEI calls), and upserts named-mode points to the destination. After migration, set `AXON_COLLECTION=cortex_v2` in `.env`.
+
+- Source must be an **unnamed** collection (`"vectors": {"size": N}` schema); named collections are rejected with a clear error.
+- Destination is created automatically if it doesn't exist; if it already exists as a named collection, migration is idempotent (re-runs upsert existing points with fresh sparse vectors).
+- Progress is logged every 100 pages (~25,600 points). At 256 points/page over 2.57M points, expect 1–2 hours.
+- The scroll loop uses the raw Qdrant `/points/scroll` API directly (not the shared `qdrant_scroll_pages_while` helper) to enable async upserts after each page.
 
 ### Sitemap backfill
 After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that the crawler missed and fetches them individually. Respects `--max-sitemaps` (default: 512) and `--include-subdomains`. Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` falls within the last N days; URLs without `<lastmod>` are always included.
