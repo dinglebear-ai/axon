@@ -138,7 +138,7 @@ async fn upsert_and_search_roundtrip() -> Result<(), Box<dyn Error>> {
     }]);
     upsert_points(&client, &base, &cfg.collection, points).await?;
 
-    let hits = qdrant_search(&cfg, &vector, 1).await?;
+    let hits = qdrant_search(&cfg, &vector, 1, None).await?;
 
     delete_collection(&client, &base, &cfg.collection).await;
 

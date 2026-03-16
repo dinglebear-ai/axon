@@ -428,6 +428,7 @@ pub(crate) async fn qdrant_search(
     cfg: &Config,
     vector: &[f32],
     limit: usize,
+    filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
     let url = format!(
@@ -436,14 +437,18 @@ pub(crate) async fn qdrant_search(
         cfg.collection
     );
     let search_start = Instant::now();
+    let mut body = serde_json::json!({
+        "vector": vector,
+        "limit": limit,
+        "with_payload": true,
+        "with_vector": false
+    });
+    if let Some(f) = filter {
+        body["filter"] = f.clone();
+    }
     let res = client
         .post(&url)
-        .json(&serde_json::json!({
-            "vector": vector,
-            "limit": limit,
-            "with_payload": true,
-            "with_vector": false
-        }))
+        .json(&body)
         .send()
         .await
         .map_err(|e| {

@@ -15,21 +15,23 @@ async fn dispatch_search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<qdrant::QdrantSearchHit>, Box<dyn Error>> {
+    let filter = qdrant::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
+    let filter_ref = filter.as_ref();
     let mode = get_or_fetch_vector_mode(cfg).await?;
     match mode {
         VectorMode::Named => {
             let sv = sparse::compute_sparse_vector(query);
             if cfg.hybrid_search_enabled && !sv.is_empty() {
-                qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit)
+                qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
                     .await
                     .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
             } else {
-                qdrant::qdrant_named_dense_search(cfg, vector, limit)
+                qdrant::qdrant_named_dense_search(cfg, vector, limit, filter_ref)
                     .await
                     .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
             }
         }
-        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit)
+        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref)
             .await
             .map_err(|e| -> Box<dyn Error> { e.to_string().into() }),
     }

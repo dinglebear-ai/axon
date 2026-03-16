@@ -24,6 +24,7 @@ pub(crate) async fn qdrant_hybrid_search(
     dense_vector: &[f32],
     sparse_vector: &SparseVector,
     limit: usize,
+    filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
     let url = format!(
@@ -34,7 +35,7 @@ pub(crate) async fn qdrant_hybrid_search(
 
     let candidates = cfg.hybrid_search_candidates.max(limit);
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "prefetch": [
             {
                 "query": dense_vector,
@@ -52,6 +53,9 @@ pub(crate) async fn qdrant_hybrid_search(
         "with_payload": true,
         "with_vector": false
     });
+    if let Some(f) = filter {
+        body["filter"] = f.clone();
+    }
 
     let search_start = Instant::now();
     let resp = client
@@ -99,6 +103,7 @@ pub(crate) async fn qdrant_named_dense_search(
     cfg: &Config,
     dense_vector: &[f32],
     limit: usize,
+    filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
     let url = format!(
@@ -107,13 +112,16 @@ pub(crate) async fn qdrant_named_dense_search(
         cfg.collection
     );
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "query": dense_vector,
         "using": "dense",
         "limit": limit,
         "with_payload": true,
         "with_vector": false
     });
+    if let Some(f) = filter {
+        body["filter"] = f.clone();
+    }
 
     let search_start = Instant::now();
     let resp = client
@@ -188,7 +196,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid search test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -221,7 +229,7 @@ mod tests {
         cfg.collection = "test_col".to_string();
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
-        let result = qdrant_named_dense_search(&cfg, &dense, 5).await;
+        let result = qdrant_named_dense_search(&cfg, &dense, 5, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -248,7 +256,7 @@ mod tests {
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
-        let result = qdrant_named_dense_search(&cfg, &[0.1f32], 5).await;
+        let result = qdrant_named_dense_search(&cfg, &[0.1f32], 5, None).await;
         assert!(result.is_err(), "HTTP 500 must propagate as Err");
     }
 
@@ -266,7 +274,64 @@ mod tests {
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
-        let result = qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5).await;
+        let result = qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None).await;
         assert!(result.is_err(), "HTTP 500 must propagate as Err");
+    }
+
+    #[tokio::test]
+    async fn qdrant_hybrid_search_includes_filter_when_some() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"filter":{"must":[{"key":"scraped_at"}]}}"#);
+                then.status(200)
+                    .json_body(make_search_response(vec![("https://example.com/a", 0.9)]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let dense = vec![0.1f32, 0.2, 0.3, 0.4];
+        let sparse = compute_sparse_vector("hybrid search test");
+        let filter = serde_json::json!({
+            "must": [{"key": "scraped_at", "range": {"gte": "2026-01-01T00:00:00+00:00"}}]
+        });
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, Some(&filter)).await;
+
+        mock.assert_async().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn qdrant_named_dense_search_includes_filter_when_some() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"filter":{"must":[{"key":"scraped_at"}]}}"#);
+                then.status(200).json_body(make_search_response(vec![(
+                    "https://example.com/dense",
+                    0.88,
+                )]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let filter = serde_json::json!({
+            "must": [{"key": "scraped_at", "range": {"gte": "2026-01-01T00:00:00+00:00"}}]
+        });
+        let result =
+            qdrant_named_dense_search(&cfg, &[0.1f32, 0.2, 0.3, 0.4], 5, Some(&filter)).await;
+
+        mock.assert_async().await;
+        assert!(result.is_ok());
     }
 }

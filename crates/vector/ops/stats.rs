@@ -50,6 +50,12 @@ pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Er
         "total_chunks": pg.total_chunks,
         "total_docs": pg.total_docs,
         "base_urls_count": pg.base_urls_count,
+        "freshness": {
+            "last_indexed_secs_ago": pg.last_indexed_secs_ago,
+            "crawls_last_24h": pg.crawls_last_24h,
+            "crawls_last_7d": pg.crawls_last_7d,
+        },
+        "growth_7d": pg.chunks_per_day_7d,
         "counts": {
             "crawls": pg.crawl_count,
             "embeds": pg.embed_count,
