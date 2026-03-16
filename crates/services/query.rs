@@ -93,7 +93,8 @@ pub async fn ask(
                 question.chars().take(80).collect::<String>()
             ),
         },
-    );
+    )
+    .await;
     let payload = ask_payload(cfg, question)
         .await
         .map_err(|e| -> Box<dyn Error> { e.into() })?;
@@ -103,7 +104,8 @@ pub async fn ask(
             level: LogLevel::Info,
             message: "ask complete".to_string(),
         },
-    );
+    )
+    .await;
     Ok(map_ask_payload(payload))
 }
 

@@ -47,7 +47,8 @@ pub(super) async fn run_turn_on_conn(
                 level: LogLevel::Warn,
                 message: err,
             },
-        );
+        )
+        .await;
     }
 
     let prompt_result = run_prompt(conn, runtime_state, &turn_ctx).await;
@@ -149,7 +150,8 @@ async fn load_or_fallback_session(
                 service_tx,
                 &turn_session_id,
                 response.config_options,
-            );
+            )
+            .await;
             Ok(turn_session_id)
         }
         Err(err) => {
@@ -161,7 +163,8 @@ async fn load_or_fallback_session(
                         "ACP load_session({requested_id}) failed, creating fallback session. Original session may have uncommitted state. Error: {err}"
                     ),
                 },
-            );
+            )
+            .await;
             let fallback = create_new_session(conn, session_cwd, runtime_state, service_tx)
                 .await
                 .map_err(|new_err| {
@@ -176,7 +179,8 @@ async fn load_or_fallback_session(
                         new_session_id: fallback.0.to_string(),
                     },
                 },
-            );
+            )
+            .await;
             Ok(fallback)
         }
     }
@@ -199,11 +203,12 @@ async fn create_new_session(
         service_tx,
         &turn_session_id,
         response.config_options,
-    );
+    )
+    .await;
     Ok(turn_session_id)
 }
 
-fn update_config_options_from_optional(
+async fn update_config_options_from_optional(
     runtime_state: &Arc<AcpRuntimeState>,
     service_tx: &Option<mpsc::Sender<ServiceEvent>>,
     session_id: &SessionId,
@@ -226,7 +231,8 @@ fn update_config_options_from_optional(
                 config_options: mapped,
             },
         },
-    );
+    )
+    .await;
 }
 
 async fn apply_requested_options(
@@ -264,7 +270,7 @@ async fn run_prompt(
     *runtime_state.service_tx.borrow_mut() = turn_ctx.service_tx.clone();
 
     let session_id_str = turn_ctx.turn_session_id.0.to_string();
-    emit_prompt_start_log(&turn_ctx.service_tx, &session_id_str);
+    emit_prompt_start_log(&turn_ctx.service_tx, &session_id_str).await;
 
     let prompt_blocks: Vec<ContentBlock> = turn_ctx
         .req
@@ -286,16 +292,19 @@ async fn run_prompt(
 
     match prompt_result {
         Err(e) => Err(e.to_string()),
-        Ok(response) => finalize_successful_turn(
-            response.stop_reason,
-            runtime_state,
-            &turn_ctx.service_tx,
-            &session_id_str,
-        ),
+        Ok(response) => {
+            finalize_successful_turn(
+                response.stop_reason,
+                runtime_state,
+                &turn_ctx.service_tx,
+                &session_id_str,
+            )
+            .await
+        }
     }
 }
 
-fn emit_prompt_start_log(service_tx: &Option<mpsc::Sender<ServiceEvent>>, session_id: &str) {
+async fn emit_prompt_start_log(service_tx: &Option<mpsc::Sender<ServiceEvent>>, session_id: &str) {
     emit(
         service_tx,
         ServiceEvent::Log {
@@ -304,5 +313,6 @@ fn emit_prompt_start_log(service_tx: &Option<mpsc::Sender<ServiceEvent>>, sessio
                 "ACP runtime: session ready (session_id={session_id}); sending prompt turn"
             ),
         },
-    );
+    )
+    .await;
 }

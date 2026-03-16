@@ -1,9 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::ingest;
-pub use crate::crates::jobs::ingest::IngestSource;
+pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{
     cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
-    recover_stale_ingest_jobs, start_ingest_job,
+    recover_stale_ingest_jobs, run_ingest_worker, start_ingest_job,
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{IngestJobResult, IngestResult, IngestStartResult};
@@ -73,6 +73,25 @@ pub async fn ingest_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     recover_stale_ingest_jobs(cfg).await
 }
 
+pub async fn ingest_status_raw(
+    cfg: &Config,
+    id: Uuid,
+) -> Result<Option<IngestJob>, Box<dyn Error>> {
+    get_ingest_job(cfg, id).await
+}
+
+pub async fn ingest_list_raw(
+    cfg: &Config,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<IngestJob>, Box<dyn Error>> {
+    list_ingest_jobs(cfg, limit, offset).await
+}
+
+pub async fn ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    run_ingest_worker(cfg).await
+}
+
 // --- Service functions ---
 
 /// Ingest a GitHub repository (code, issues, PRs, wiki) into the vector store.
@@ -94,7 +113,8 @@ pub async fn ingest_github(
             level: LogLevel::Info,
             message: format!("ingesting github repo: {repo_slug}"),
         },
-    );
+    )
+    .await;
 
     let chunks =
         ingest::github::ingest_github(cfg, &repo_slug, cfg.github_include_source, None).await?;
@@ -105,7 +125,8 @@ pub async fn ingest_github(
             level: LogLevel::Info,
             message: format!("github ingest complete: {chunks} chunks"),
         },
-    );
+    )
+    .await;
 
     let payload = serde_json::json!({
         "source": "github",
@@ -129,7 +150,8 @@ pub async fn ingest_reddit(
             level: LogLevel::Info,
             message: format!("ingesting reddit target: {target}"),
         },
-    );
+    )
+    .await;
 
     let chunks = ingest::reddit::ingest_reddit(cfg, target).await?;
 
@@ -139,7 +161,8 @@ pub async fn ingest_reddit(
             level: LogLevel::Info,
             message: format!("reddit ingest complete: {chunks} chunks"),
         },
-    );
+    )
+    .await;
 
     let payload = serde_json::json!({
         "source": "reddit",
@@ -164,7 +187,8 @@ pub async fn ingest_youtube(
             level: LogLevel::Info,
             message: format!("ingesting youtube: {url}"),
         },
-    );
+    )
+    .await;
 
     let chunks = ingest::youtube::ingest_youtube(cfg, url).await?;
 
@@ -174,7 +198,8 @@ pub async fn ingest_youtube(
             level: LogLevel::Info,
             message: format!("youtube ingest complete: {chunks} chunks"),
         },
-    );
+    )
+    .await;
 
     let payload = serde_json::json!({
         "source": "youtube",
@@ -198,7 +223,8 @@ pub async fn ingest_sessions(
             level: LogLevel::Info,
             message: "ingesting session exports".to_string(),
         },
-    );
+    )
+    .await;
 
     let chunks = ingest::sessions::ingest_sessions(cfg).await?;
 
@@ -208,7 +234,8 @@ pub async fn ingest_sessions(
             level: LogLevel::Info,
             message: format!("sessions ingest complete: {chunks} chunks"),
         },
-    );
+    )
+    .await;
 
     let payload = serde_json::json!({
         "source": "sessions",

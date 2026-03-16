@@ -39,7 +39,8 @@ pub(super) async fn apply_requested_model_before_prompt(
                 level: LogLevel::Warn,
                 message: msg,
             },
-        );
+        )
+        .await;
         return Ok(());
     }
 
@@ -53,7 +54,8 @@ pub(super) async fn apply_requested_model_before_prompt(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
 
     let set_resp = conn
         .set_session_config_option(SetSessionConfigOptionRequest::new(
@@ -69,7 +71,8 @@ pub(super) async fn apply_requested_model_before_prompt(
         session_id,
         service_tx,
         set_resp.config_options,
-    );
+    )
+    .await;
     *runtime_state.established_model.borrow_mut() = Some(requested.to_string());
     Ok(())
 }
@@ -114,7 +117,8 @@ pub(super) async fn apply_requested_mode_before_prompt(
                 level: LogLevel::Warn,
                 message: msg,
             },
-        );
+        )
+        .await;
         return Ok(());
     }
 
@@ -132,7 +136,8 @@ pub(super) async fn apply_requested_mode_before_prompt(
         session_id,
         service_tx,
         set_resp.config_options,
-    );
+    )
+    .await;
     Ok(())
 }
 
@@ -159,7 +164,7 @@ pub(super) fn resolve_mode_option_for_request(
     ("".to_string(), false)
 }
 
-fn emit_config_options_update(
+async fn emit_config_options_update(
     runtime_state: &Arc<AcpRuntimeState>,
     session_id: &SessionId,
     service_tx: &Option<mpsc::Sender<ServiceEvent>>,
@@ -178,7 +183,8 @@ fn emit_config_options_update(
                 config_options: updated,
             },
         },
-    );
+    )
+    .await;
 }
 
 #[cfg(test)]

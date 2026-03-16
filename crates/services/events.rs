@@ -1,4 +1,3 @@
-use crate::crates::core::logging::log_warn;
 use crate::crates::services::types::AcpBridgeEvent;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -75,11 +74,9 @@ pub enum ServiceEvent {
     },
 }
 
-pub fn emit(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceEvent) {
-    if let Some(sender) = tx
-        && sender.try_send(event).is_err()
-    {
-        log_warn("acp event_channel_full action=drop");
+pub async fn emit(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceEvent) {
+    if let Some(sender) = tx {
+        let _ = sender.send(event).await;
     }
 }
 
@@ -141,30 +138,41 @@ mod tests {
         }
     }
 
-    #[test]
-    fn emit_delivers_event_when_channel_has_room() {
+    #[tokio::test]
+    async fn emit_delivers_event_when_channel_has_room() {
         let (tx, mut rx) = mpsc::channel::<ServiceEvent>(4);
         let sender_opt = Some(tx);
-        emit(&sender_opt, make_log_event("hello"));
-        // try_recv() is synchronous — no async runtime required.
+        emit(&sender_opt, make_log_event("hello")).await;
         let received = rx.try_recv().expect("event should have been delivered");
         assert_eq!(received, make_log_event("hello"));
     }
 
-    #[test]
-    fn emit_with_none_sender_does_not_panic() {
+    #[tokio::test]
+    async fn emit_with_none_sender_does_not_panic() {
         // Passing None must not panic; the event is silently discarded.
-        emit(&None, make_log_event("ignored"));
+        emit(&None, make_log_event("ignored")).await;
     }
 
-    #[test]
-    fn emit_full_channel_does_not_panic() {
-        // Capacity of 1: fill the slot first, then verify a second emit is
-        // dropped silently rather than panicking.
-        let (tx, _rx) = mpsc::channel::<ServiceEvent>(1);
+    #[tokio::test]
+    async fn emit_blocks_on_full_channel_and_delivers_after_drain() {
+        let (tx, mut rx) = mpsc::channel::<ServiceEvent>(1);
         let sender_opt = Some(tx);
-        emit(&sender_opt, make_log_event("first"));
-        // Channel is now full; second emit should not panic.
-        emit(&sender_opt, make_log_event("dropped"));
+        // Fill the channel
+        emit(&sender_opt, make_log_event("first")).await;
+        // Spawn a task to send to a full channel — will block until receiver drains
+        let sender_clone = sender_opt.clone();
+        let send_task = tokio::spawn(async move {
+            emit(&sender_clone, make_log_event("second")).await;
+        });
+        // Drain the channel
+        let _ = rx.recv().await;
+        // Now the send_task should complete
+        send_task.await.unwrap();
+        // Second event must be delivered (not dropped)
+        let msg = rx.recv().await;
+        assert!(
+            msg.is_some(),
+            "second event must be delivered after drain, not dropped"
+        );
     }
 }

@@ -1,13 +1,17 @@
+//! Service-layer wrappers for extract job lifecycle operations and prompt-aware enqueue helpers.
+
 use crate::crates::core::config::Config;
 use crate::crates::jobs::extract::{
-    cancel_extract_job, cleanup_extract_jobs, clear_extract_jobs, get_extract_job,
-    list_extract_jobs, recover_stale_extract_jobs, start_extract_job,
+    self as extract_jobs, cancel_extract_job, cleanup_extract_jobs, clear_extract_jobs,
+    get_extract_job, list_extract_jobs, recover_stale_extract_jobs, start_extract_job,
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{ExtractJobResult, ExtractStartResult};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+pub use crate::crates::jobs::extract::ExtractJob;
 
 // --- Pure mapping helpers (no I/O, testable without live services) ---
 
@@ -56,6 +60,25 @@ pub async fn extract_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     recover_stale_extract_jobs(cfg).await
 }
 
+pub async fn extract_status_raw(
+    cfg: &Config,
+    id: Uuid,
+) -> Result<Option<ExtractJob>, Box<dyn Error>> {
+    get_extract_job(cfg, id).await
+}
+
+pub async fn extract_list_raw(
+    cfg: &Config,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ExtractJob>, Box<dyn Error>> {
+    list_extract_jobs(cfg, limit, offset).await
+}
+
+pub async fn extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    extract_jobs::run_extract_worker(cfg).await
+}
+
 // --- Service functions ---
 
 /// Enqueue an extract job for the given URLs and return its job ID immediately.
@@ -77,7 +100,8 @@ pub async fn extract_start(
             level: LogLevel::Info,
             message: format!("enqueueing extract job for {} URL(s)", urls.len()),
         },
-    );
+    )
+    .await;
 
     let job_id = start_extract_job(cfg, urls, prompt).await?;
 
@@ -87,7 +111,41 @@ pub async fn extract_start(
             level: LogLevel::Info,
             message: format!("enqueued extract job: {job_id}"),
         },
-    );
+    )
+    .await;
+
+    Ok(map_extract_start_result(job_id.to_string()))
+}
+
+pub async fn extract_start_with_prompt(
+    cfg: &Config,
+    urls: &[String],
+    prompt: Option<String>,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<ExtractStartResult, Box<dyn Error>> {
+    if urls.is_empty() {
+        return Err("extract_start requires at least one URL".into());
+    }
+
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("enqueueing extract job for {} URL(s)", urls.len()),
+        },
+    )
+    .await;
+
+    let job_id = start_extract_job(cfg, urls, prompt).await?;
+
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("enqueued extract job: {job_id}"),
+        },
+    )
+    .await;
 
     Ok(map_extract_start_result(job_id.to_string()))
 }

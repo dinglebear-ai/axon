@@ -355,40 +355,63 @@ pub async fn dedupe(
             level: LogLevel::Info,
             message: "starting dedupe".to_string(),
         },
-    );
-    let payload = match dedupe_payload(cfg).await {
-        Ok(v) => v,
-        Err(e) => {
+    )
+    .await;
+    // Run dedupe and immediately convert the Result to a plain String outcome so
+    // that `Box<dyn Error>` (!Send) is fully dropped before the next `.await`.
+    enum DedupeOutcome {
+        Success {
+            duplicate_groups: usize,
+            deleted: usize,
+        },
+        Failure(String),
+    }
+    let outcome = match dedupe_payload(cfg).await {
+        Ok(v) => DedupeOutcome::Success {
+            duplicate_groups: v
+                .get("duplicate_groups")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0) as usize,
+            deleted: v
+                .get("deleted")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0) as usize,
+        },
+        Err(e) => DedupeOutcome::Failure(format!("dedupe failed: {e}")),
+    };
+    match outcome {
+        DedupeOutcome::Success {
+            duplicate_groups,
+            deleted,
+        } => {
+            emit(
+                &tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Info,
+                    message: format!(
+                        "completed dedupe: {duplicate_groups} groups, {deleted} deleted"
+                    ),
+                },
+            )
+            .await;
+            Ok(DedupeResult {
+                completed: true,
+                duplicate_groups,
+                deleted,
+            })
+        }
+        DedupeOutcome::Failure(msg) => {
             emit(
                 &tx,
                 ServiceEvent::Log {
                     level: LogLevel::Error,
-                    message: format!("dedupe failed: {e}"),
+                    message: msg.clone(),
                 },
-            );
-            return Err(e);
+            )
+            .await;
+            Err(msg.into())
         }
-    };
-    let duplicate_groups = payload
-        .get("duplicate_groups")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0) as usize;
-    let deleted = payload
-        .get("deleted")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0) as usize;
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("completed dedupe: {duplicate_groups} groups, {deleted} deleted"),
-        },
-    );
-    Ok(DedupeResult {
-        completed: true,
-        duplicate_groups,
-        deleted,
-    })
+    }
 }
 
 #[cfg(test)]

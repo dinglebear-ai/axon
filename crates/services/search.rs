@@ -244,7 +244,8 @@ pub async fn search_batch(
             level: LogLevel::Info,
             message: format!("starting search: {}", queries.join(", ")),
         },
-    );
+    )
+    .await;
 
     let time_range = opts.time_range.map(to_spider_time_range);
     let mut all: Vec<serde_json::Value> = Vec::new();
@@ -260,7 +261,8 @@ pub async fn search_batch(
             level: LogLevel::Info,
             message: format!("search complete: {} results", all.len()),
         },
-    );
+    )
+    .await;
 
     Ok(map_search_results(all))
 }
@@ -281,7 +283,8 @@ pub async fn research(
             level: LogLevel::Info,
             message: format!("starting research: {query}"),
         },
-    );
+    )
+    .await;
 
     let time_range = opts.time_range.map(to_spider_time_range);
     let payload = research_payload(cfg, query, opts.limit, opts.offset, time_range).await?;
@@ -292,7 +295,8 @@ pub async fn research(
             level: LogLevel::Info,
             message: "research complete".to_string(),
         },
-    );
+    )
+    .await;
 
     Ok(map_research_payload(payload))
 }

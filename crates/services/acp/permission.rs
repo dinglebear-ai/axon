@@ -25,7 +25,7 @@ pub(super) fn resolve_acp_auto_approve() -> bool {
 }
 
 /// Select the best auto-approve outcome from the permission request options.
-pub(super) fn auto_approve_outcome(
+pub(super) async fn auto_approve_outcome(
     args: &RequestPermissionRequest,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
     tool_call_id: &str,
@@ -55,7 +55,8 @@ pub(super) fn auto_approve_outcome(
                 level: LogLevel::Info,
                 message: msg,
             },
-        );
+        )
+        .await;
     }
 
     outcome
@@ -94,7 +95,8 @@ pub(super) async fn handle_interactive_permission(
                 level: LogLevel::Warn,
                 message: msg,
             },
-        );
+        )
+        .await;
         return RequestPermissionOutcome::Cancelled;
     }
 
@@ -126,14 +128,38 @@ pub(super) async fn handle_interactive_permission(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
 
     let timeout_secs = runtime_state.permission_timeout_secs.get().unwrap_or(60);
 
     // Wait up to N seconds for a response from the frontend.
-    match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), resp_rx).await {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), resp_rx).await;
+    resolve_permission_response(
+        args,
+        tx,
+        permission_responders,
+        session_id,
+        tool_call_id,
+        result,
+    )
+    .await
+}
+
+/// Map a raw timeout/oneshot result to a `RequestPermissionOutcome` with log events.
+async fn resolve_permission_response(
+    args: &RequestPermissionRequest,
+    tx: &Option<mpsc::Sender<ServiceEvent>>,
+    permission_responders: &PermissionResponderMap,
+    session_id: &str,
+    tool_call_id: &str,
+    result: Result<
+        Result<String, tokio::sync::oneshot::error::RecvError>,
+        tokio::time::error::Elapsed,
+    >,
+) -> RequestPermissionOutcome {
+    match result {
         Ok(Ok(option_id)) => {
-            // Validate that the chosen option_id exists in the request.
             let matched = args
                 .options
                 .iter()
@@ -150,7 +176,8 @@ pub(super) async fn handle_interactive_permission(
                             level: LogLevel::Info,
                             message: msg,
                         },
-                    );
+                    )
+                    .await;
                     RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
                         opt.option_id.clone(),
                     ))
@@ -166,12 +193,13 @@ pub(super) async fn handle_interactive_permission(
                             level: LogLevel::Warn,
                             message: msg,
                         },
-                    );
+                    )
+                    .await;
                     RequestPermissionOutcome::Cancelled
                 }
             }
         }
-        // Disconnect path: the oneshot sender was dropped without being sent.
+        // Disconnect: oneshot sender dropped without sending.
         Ok(Err(_)) => {
             permission_responders.remove(&(session_id.to_string(), tool_call_id.to_string()));
             let msg = format!("ACP permission: responder dropped for tool_call={tool_call_id}");
@@ -182,10 +210,11 @@ pub(super) async fn handle_interactive_permission(
                     level: LogLevel::Warn,
                     message: msg,
                 },
-            );
+            )
+            .await;
             RequestPermissionOutcome::Cancelled
         }
-        // Timeout path: no frontend response within 60s.
+        // Timeout: no frontend response within N seconds.
         Err(_) => {
             let msg = format!(
                 "ACP permission: timeout waiting for frontend response for tool_call={tool_call_id}"
@@ -197,8 +226,8 @@ pub(super) async fn handle_interactive_permission(
                     level: LogLevel::Warn,
                     message: msg,
                 },
-            );
-            // Clean up the map entry. DashMap: no lock needed.
+            )
+            .await;
             permission_responders.remove(&(session_id.to_string(), tool_call_id.to_string()));
             RequestPermissionOutcome::Cancelled
         }

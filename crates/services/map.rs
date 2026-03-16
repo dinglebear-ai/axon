@@ -25,7 +25,8 @@ pub async fn discover(
             level: LogLevel::Info,
             message: format!("starting map: {url}"),
         },
-    );
+    )
+    .await;
 
     let result = map_with_sitemap(cfg, url).await?;
 
@@ -49,7 +50,8 @@ pub async fn discover(
             level: LogLevel::Info,
             message: format!("map complete: {mapped_count} urls"),
         },
-    );
+    )
+    .await;
 
     let payload = serde_json::json!({
         "url": url,

@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+pub use crate::crates::jobs::crawl::CrawlJob;
+
 // --- Pure mapping helpers (no I/O, testable without live services) ---
 
 fn predict_audit_report_path(output_dir: &Path, url: &str) -> PathBuf {
@@ -107,7 +109,8 @@ pub async fn crawl_start(
             level: LogLevel::Info,
             message: format!("enqueueing crawl jobs for {} URL(s)", urls.len()),
         },
-    );
+    )
+    .await;
 
     let url_refs: Vec<&str> = urls.iter().map(String::as_str).collect();
     let jobs = crawl::start_crawl_jobs_batch(cfg, &url_refs).await?;
@@ -123,7 +126,8 @@ pub async fn crawl_start(
             level: LogLevel::Info,
             message: format!("enqueued {} crawl job(s)", jobs.len()),
         },
-    );
+    )
+    .await;
 
     Ok(map_crawl_start_result(&cfg.output_dir, &jobs))
 }
@@ -158,6 +162,25 @@ pub async fn crawl_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
 
 pub async fn crawl_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     crawl::recover_stale_crawl_jobs(cfg).await
+}
+
+pub async fn crawl_status_raw(
+    cfg: &Config,
+    job_id: Uuid,
+) -> Result<Option<CrawlJob>, Box<dyn Error>> {
+    crawl::get_job(cfg, job_id).await
+}
+
+pub async fn crawl_list_raw(
+    cfg: &Config,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<CrawlJob>, Box<dyn Error>> {
+    crawl::list_jobs(cfg, limit, offset).await
+}
+
+pub async fn crawl_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    crawl::run_worker(cfg).await
 }
 
 #[cfg(test)]

@@ -88,7 +88,8 @@ pub(super) async fn establish_acp_session(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
 
     let spawned = spawn_adapter_with_io(adapter.clone(), tx)?;
     let (conn, runtime_state, exit_rx) =
@@ -144,7 +145,8 @@ async fn wait_for_adapter_exit(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
 
     match tokio::time::timeout(std::time::Duration::from_secs(10), exit_rx).await {
         Ok(Ok(crash_msg)) => {
@@ -156,7 +158,8 @@ async fn wait_for_adapter_exit(
                     level: LogLevel::Warn,
                     message: msg,
                 },
-            );
+            )
+            .await;
         }
         Ok(Err(_)) => {
             // oneshot sender dropped = process exited with status 0
@@ -171,7 +174,8 @@ async fn wait_for_adapter_exit(
                     level: LogLevel::Info,
                     message: msg,
                 },
-            );
+            )
+            .await;
         }
         Err(_) => {
             let msg = format!(
@@ -185,7 +189,8 @@ async fn wait_for_adapter_exit(
                     level: LogLevel::Warn,
                     message: msg,
                 },
-            );
+            )
+            .await;
         }
     }
 }
@@ -228,7 +233,8 @@ pub(super) async fn run_prompt_turn(
                 "ACP runtime: session ready (session_id={session_id_str}); sending prompt turn"
             ),
         },
-    );
+    )
+    .await;
 
     let prompt_blocks: Vec<ContentBlock> = req.prompt.into_iter().map(ContentBlock::from).collect();
 
@@ -255,7 +261,8 @@ pub(super) async fn run_prompt_turn(
                 &runtime_state,
                 &tx,
                 &session,
-            )?;
+            )
+            .await?;
             true
         }
         // FINDING-14: Sender is dropped on clean exit (code 0), so the receiver

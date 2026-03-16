@@ -328,7 +328,8 @@ impl AcpClientScaffold {
                     req.session_id.as_deref().unwrap_or("<new>")
                 ),
             },
-        );
+        )
+        .await;
 
         let adapter = self.adapter.clone();
         let req_owned = req.clone();
@@ -373,7 +374,8 @@ impl AcpClientScaffold {
                     req.session_id.as_deref().unwrap_or("<new>")
                 ),
             },
-        );
+        )
+        .await;
 
         let adapter = self.adapter.clone();
         let req_owned = req.clone();

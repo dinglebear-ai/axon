@@ -76,7 +76,7 @@ pub(super) fn stop_reason_to_str(reason: StopReason) -> &'static str {
 /// Called from both `runtime.rs` (one-shot path) and `persistent_conn/turn.rs`
 /// (persistent-connection path) to ensure consistent behavior — especially
 /// `EditorWrite` emission, which was previously missing in the one-shot path.
-pub(super) fn finalize_successful_turn(
+pub(super) async fn finalize_successful_turn(
     stop_reason: StopReason,
     runtime_state: &Arc<AcpRuntimeState>,
     service_tx: &Option<mpsc::Sender<ServiceEvent>>,
@@ -102,7 +102,8 @@ pub(super) fn finalize_successful_turn(
             level: log_level,
             message: msg,
         },
-    );
+    )
+    .await;
 
     let session = session_id_str.to_string();
     let text = runtime_state.assistant_text.borrow().clone();
@@ -113,7 +114,7 @@ pub(super) fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        emit(service_tx, ServiceEvent::EditorWrite { content, operation });
+        emit(service_tx, ServiceEvent::EditorWrite { content, operation }).await;
     }
 
     emit(
@@ -125,7 +126,8 @@ pub(super) fn finalize_successful_turn(
                 result: text,
             }),
         },
-    );
+    )
+    .await;
     let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
     crate::crates::core::logging::log_info(&msg);
     emit(
@@ -134,7 +136,8 @@ pub(super) fn finalize_successful_turn(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
     Ok(())
 }
 
@@ -163,7 +166,7 @@ impl Client for AcpBridgeClient {
     ) -> agent_client_protocol::Result<RequestPermissionResponse> {
         // Use the current turn's service_tx. Clone to release borrow before awaits.
         let service_tx = self.runtime_state.service_tx.borrow().clone();
-        emit(&service_tx, map_permission_request_event(&args));
+        emit(&service_tx, map_permission_request_event(&args)).await;
 
         let tool_call_id = args.tool_call.tool_call_id.0.to_string();
         let tool_name = args
@@ -190,18 +193,17 @@ impl Client for AcpBridgeClient {
                         "ACP permission auto-cancelled for blocked MCP tool: {tool_name}"
                     ),
                 },
-            );
+            )
+            .await;
             return Ok(RequestPermissionResponse::new(
                 RequestPermissionOutcome::Cancelled,
             ));
         }
 
         if self.auto_approve {
-            return Ok(RequestPermissionResponse::new(auto_approve_outcome(
-                &args,
-                &service_tx,
-                &tool_call_id,
-            )));
+            return Ok(RequestPermissionResponse::new(
+                auto_approve_outcome(&args, &service_tx, &tool_call_id).await,
+            ));
         }
 
         // Interactive mode: delegate to helper which manages oneshot registration,
@@ -278,27 +280,27 @@ impl Client for AcpBridgeClient {
         // Clone immediately to release the borrow before the emit call.
         let service_tx = self.runtime_state.service_tx.borrow().clone();
 
-        {
+        // Check the text length without holding the borrow across the await.
+        let text_at_limit = {
             let text = self.runtime_state.assistant_text.borrow();
-            if text.len() >= 1024 * 1024 && !text.is_empty() {
-                // Only emit once: the text accumulation block (above) already stops
-                // appending past the cap, so the len == cap check is stable.  Guard
-                // with a flag so we don't re-emit on every subsequent notification.
-                if !self.runtime_state.limit_warning_emitted.get() {
-                    self.runtime_state.limit_warning_emitted.set(true);
-                    emit(
-                        &service_tx,
-                        ServiceEvent::Log {
-                            level: LogLevel::Warn,
-                            message: "Assistant text limit hit (1 MiB); output truncated"
-                                .to_string(),
-                        },
-                    );
-                }
-            }
+            text.len() >= 1024 * 1024 && !text.is_empty()
+        };
+        if text_at_limit && !self.runtime_state.limit_warning_emitted.get() {
+            // Only emit once: the text accumulation block (above) already stops
+            // appending past the cap, so the len == cap check is stable.  Guard
+            // with a flag so we don't re-emit on every subsequent notification.
+            self.runtime_state.limit_warning_emitted.set(true);
+            emit(
+                &service_tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Warn,
+                    message: "Assistant text limit hit (1 MiB); output truncated".to_string(),
+                },
+            )
+            .await;
         }
 
-        emit(&service_tx, map_session_notification_event(&args));
+        emit(&service_tx, map_session_notification_event(&args)).await;
         Ok(())
     }
 }
@@ -352,8 +354,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn finalize_emits_editor_write_events() {
+    #[tokio::test]
+    async fn finalize_emits_editor_write_events() {
         let runtime_state = Arc::new(AcpRuntimeState::default());
         let (tx, mut rx) = mpsc::channel(32);
         let service_tx = Some(tx);
@@ -373,7 +375,8 @@ mod tests {
             &runtime_state,
             &service_tx,
             "test-session-123",
-        );
+        )
+        .await;
         assert!(result.is_ok());
 
         // Drain events and check for EditorWrite.

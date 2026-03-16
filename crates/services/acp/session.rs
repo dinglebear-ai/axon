@@ -97,7 +97,8 @@ pub(super) fn spawn_adapter_with_io(
                                 format!("ACP adapter stderr: {trimmed}")
                             },
                         },
-                    );
+                    )
+                    .await;
                 }
             }
         }
@@ -172,7 +173,8 @@ pub(super) async fn initialize_connection(
             level: LogLevel::Info,
             message: msg,
         },
-    );
+    )
+    .await;
 
     let compat_stdin = spawned.stdin.compat_write();
     let compat_stdout = spawned.stdout.compat();
@@ -185,20 +187,26 @@ pub(super) async fn initialize_connection(
     let io_tx = tx.clone();
     tokio::task::spawn_local(async move {
         match io_task.await {
-            Ok(()) => emit(
-                &io_tx,
-                ServiceEvent::Log {
-                    level: LogLevel::Info,
-                    message: "ACP runtime: IO task completed".to_string(),
-                },
-            ),
-            Err(err) => emit(
-                &io_tx,
-                ServiceEvent::Log {
-                    level: LogLevel::Warn,
-                    message: format!("ACP runtime: IO task failed: {err}"),
-                },
-            ),
+            Ok(()) => {
+                emit(
+                    &io_tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Info,
+                        message: "ACP runtime: IO task completed".to_string(),
+                    },
+                )
+                .await;
+            }
+            Err(err) => {
+                emit(
+                    &io_tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Warn,
+                        message: format!("ACP runtime: IO task failed: {err}"),
+                    },
+                )
+                .await;
+            }
         }
     });
 
@@ -208,7 +216,8 @@ pub(super) async fn initialize_connection(
             level: LogLevel::Info,
             message: "ACP runtime: sending initialize request".to_string(),
         },
-    );
+    )
+    .await;
     let resp = conn
         .initialize(initialize)
         .await
@@ -219,7 +228,8 @@ pub(super) async fn initialize_connection(
             level: LogLevel::Info,
             message: format!("ACP initialized with protocol {}", resp.protocol_version),
         },
-    );
+    )
+    .await;
 
     Ok((conn, runtime_state, spawned.exit_rx))
 }
@@ -271,7 +281,8 @@ pub(super) async fn setup_session(
                     level: LogLevel::Info,
                     message: msg,
                 },
-            );
+            )
+            .await;
             let r = conn
                 .new_session(new_session)
                 .await
@@ -288,7 +299,8 @@ pub(super) async fn setup_session(
                     level: LogLevel::Info,
                     message: msg,
                 },
-            );
+            )
+            .await;
             let requested_id = load_session.session_id.clone();
             let fallback_cwd = load_session.cwd.clone();
             match conn.load_session(load_session).await {
@@ -302,7 +314,8 @@ pub(super) async fn setup_session(
                             level: LogLevel::Warn,
                             message: msg,
                         },
-                    );
+                    )
+                    .await;
                     let r = conn
                         .new_session(NewSessionRequest::new(fallback_cwd))
                         .await
@@ -315,7 +328,8 @@ pub(super) async fn setup_session(
                                 new_session_id: r.session_id.0.to_string(),
                             },
                         },
-                    );
+                    )
+                    .await;
                     Ok((r.session_id, r.config_options))
                 }
             }
@@ -353,7 +367,8 @@ pub(super) async fn apply_config_and_model(
                     config_options: opts.clone(),
                 },
             },
-        );
+        )
+        .await;
     } else if codex_adapter {
         if let Some(fb) = read_codex_cached_model_options(model).await {
             latest_config_options = fb.clone();
@@ -365,7 +380,8 @@ pub(super) async fn apply_config_and_model(
                         config_options: fb,
                     },
                 },
-            );
+            )
+            .await;
         }
     } else if gemini_adapter && let Some(fb) = read_gemini_cached_model_options(model).await {
         latest_config_options = fb.clone();
@@ -377,7 +393,8 @@ pub(super) async fn apply_config_and_model(
                     config_options: fb,
                 },
             },
-        );
+        )
+        .await;
     }
 
     if let Some(req_model) = normalized_requested_model(model)
@@ -423,7 +440,8 @@ async fn apply_model_config(
                 level: LogLevel::Info,
                 message: msg,
             },
-        );
+        )
+        .await;
         let set_resp = conn
             .set_session_config_option(SetSessionConfigOptionRequest::new(
                 session_id.clone(),
@@ -442,7 +460,8 @@ async fn apply_model_config(
                         config_options: updated.clone(),
                     },
                 },
-            );
+            )
+            .await;
         }
         return Ok(Some(updated));
     } else {
@@ -456,7 +475,8 @@ async fn apply_model_config(
                 level: LogLevel::Warn,
                 message: msg,
             },
-        );
+        )
+        .await;
     }
 
     Ok(None)
