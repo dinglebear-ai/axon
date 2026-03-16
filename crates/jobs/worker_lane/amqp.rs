@@ -229,16 +229,30 @@ pub(crate) async fn run_amqp_lane(
     // we re-enqueue them so the watchdog/startup sweep doesn't have to wait.
     let mut preacked_ids: VecDeque<Uuid> = VecDeque::new();
 
+    // Cap pre-acked buffer at 2x max concurrent jobs to prevent unbounded growth.
+    // With basic_qos(1), every ack releases the unacked slot, letting the broker
+    // push another message. Without a cap, a large queue drains entirely into RAM.
+    let preack_cap = wc.lane_count.saturating_mul(2).max(2);
+
     loop {
         // Drain pre-acked jobs before polling for new deliveries. A permit
         // was just freed (either by a completed inflight job or lane startup)
         // and we have a queued job ready to start immediately.
         while semaphore.available_permits() > 0 && !preacked_ids.is_empty() {
             let job_id = preacked_ids.pop_front().expect("just checked is_empty");
-            if let Some(job_fut) =
-                claim_preacked_job(job_id, cfg, &pool, wc, lane, process_fn, &semaphore).await?
-            {
-                inflight.push(job_fut);
+            match claim_preacked_job(job_id, cfg, &pool, wc, lane, process_fn, &semaphore).await {
+                Ok(Some(job_fut)) => inflight.push(job_fut),
+                Ok(None) => {} // already claimed by another lane
+                Err(e) => {
+                    // Transient DB error — the AMQP delivery was already acked so
+                    // re-push the ID for another attempt on the next permit release.
+                    log_warn(&format!(
+                        "{} worker lane={lane} re-queuing pre-acked job {job_id} after DB error: {e}",
+                        wc.job_kind
+                    ));
+                    preacked_ids.push_front(job_id);
+                    break; // back off — don't hammer a failing DB
+                }
             }
         }
 
@@ -249,12 +263,16 @@ pub(crate) async fn run_amqp_lane(
         // poll consumer.next() during saturation, that delivery sits unacked
         // until consumer_timeout (default 30 min) closes the channel.
         if semaphore.available_permits() == 0 && !inflight.is_empty() {
+            // Only poll consumer.next() when the pre-ack buffer has room.
+            // Otherwise let the delivery sit unacked at the broker until a
+            // slot opens, preventing unbounded memory growth.
+            let under_cap = preacked_ids.len() < preack_cap;
             tokio::select! {
                 _ = inflight.next() => {}
                 _ = sweep_interval.tick() => {
                     sweep_stale_jobs(cfg, &pool, wc, "amqp", lane).await;
                 }
-                maybe_delivery = consumer.next() => {
+                maybe_delivery = consumer.next(), if under_cap => {
                     match maybe_delivery {
                         None => break,
                         Some(Ok(d)) => handle_saturation_delivery(d, wc, lane, &mut preacked_ids).await,

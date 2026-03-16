@@ -44,7 +44,7 @@ pub(crate) async fn claim_preacked_job(
                 "{} worker lane={lane} DB error claiming pre-acked job {job_id}: {e}",
                 wc.job_kind
             ));
-            Ok(None)
+            Err(e.into())
         }
     }
 }
