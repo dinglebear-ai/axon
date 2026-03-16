@@ -180,6 +180,7 @@ pub(crate) async fn qdrant_scroll_pages_while(
 /// flat float array; for named-mode it is an object keyed by vector name.
 ///
 /// Used by the `migrate` command to copy dense vectors without re-embedding.
+// Allowed: consumed by run_migrate() which is wired in the next commit.
 #[allow(dead_code)]
 pub(crate) async fn qdrant_scroll_pages_with_vectors(
     cfg: &Config,
