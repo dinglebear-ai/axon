@@ -95,13 +95,15 @@ pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode,
 
     let status = resp.status();
 
-    // 404 -> collection doesn't exist yet -> Unnamed is correct, safe to cache.
+    // 404 -> collection doesn't exist yet -> return Unnamed but do NOT cache.
+    // In long-lived processes (serve/MCP), the collection may be created later.
+    // Caching here would permanently skip mode detection after the collection
+    // is created, leaving hybrid search disabled for the process lifetime.
     if status == StatusCode::NOT_FOUND {
         log_debug(&format!(
-            "qdrant collection '{}' not found (404), caching Unnamed mode",
+            "qdrant collection '{}' not found (404), returning Unnamed (not cached)",
             cfg.collection
         ));
-        cache_vector_mode(&cfg.collection, VectorMode::Unnamed);
         return Ok(VectorMode::Unnamed);
     }
 
