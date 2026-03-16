@@ -152,28 +152,6 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(&mut *tx)
         .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_axon_crawl_jobs_status ON axon_crawl_jobs(status)",
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Composite partial index for claim_next_pending: WHERE status='pending' ORDER BY created_at
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_axon_crawl_jobs_pending ON axon_crawl_jobs(created_at ASC) WHERE status = 'pending'"
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Partial index for stale-job watchdog sweeps (WHERE status='running' AND updated_at < threshold).
-        // Without this, reclaim_stale_running_jobs does a full table scan that blocks heartbeat UPDATEs.
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_axon_crawl_jobs_running_updated \
-             ON axon_crawl_jobs(updated_at ASC) WHERE status = 'running'",
-        )
-        .execute(&mut *tx)
-        .await?;
-
         // Add CHECK constraint to existing tables (idempotent via IF NOT EXISTS pattern).
         sqlx::query(
             r#"DO $$ BEGIN
@@ -187,6 +165,29 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     }
 
     tx.commit().await?;
+
+    // CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
+    // Execute these against the pool directly (autocommit) so they don't block
+    // writes to the table during index builds on large jobs tables.
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_crawl_jobs_status ON axon_crawl_jobs(status)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_crawl_jobs_pending ON axon_crawl_jobs(created_at ASC) WHERE status = 'pending'"
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_crawl_jobs_running_updated \
+         ON axon_crawl_jobs(updated_at ASC) WHERE status = 'running'",
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }
 

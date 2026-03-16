@@ -21,10 +21,10 @@ import { AxonFrame } from './axon-frame'
 import { AxonLogsPane } from './axon-logs-pane'
 import { AxonMcpPane } from './axon-mcp-pane'
 import { AxonMessageList } from './axon-message-list'
-import { AxonMobilePaneSwitcher } from './axon-mobile-pane-switcher'
 import { AxonPaneHandle } from './axon-pane-handle'
 import { AxonPromptComposer } from './axon-prompt-composer'
 import { AxonSettingsPane } from './axon-settings-pane'
+import { AxonShellMobile } from './axon-shell-mobile'
 import { AxonShellResizeDivider } from './axon-shell-resize-divider'
 import {
   PANE_WIDTH_MIN,
@@ -89,113 +89,15 @@ export const AxonShell = memo(function AxonShell() {
       </div>
       <div className="flex h-dvh min-h-dvh flex-col">
         {isMobile ? (
-          <section className="flex min-h-0 flex-1 flex-col">
-            <div className="axon-toolbar flex h-14 items-center justify-between bg-[rgba(7,12,26,0.62)] px-3">
-              <span className="axon-wordmark select-none text-sm font-extrabold tracking-[3px]">
-                AXON
-              </span>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => shell.setMobilePaneTracked('sidebar')}
-                  aria-label="Sidebar pane"
-                  aria-pressed={shell.mobilePane === 'sidebar'}
-                  className={`inline-flex size-7 items-center justify-center rounded border transition-colors ${
-                    shell.mobilePane === 'sidebar'
-                      ? 'border-[rgba(175,215,255,0.48)] bg-[linear-gradient(145deg,rgba(135,175,255,0.34),rgba(135,175,255,0.14))] text-[var(--text-primary)] shadow-[0_0_14px_rgba(135,175,255,0.2)]'
-                      : 'border-[var(--border-subtle)] bg-[var(--surface-input)] text-[var(--text-dim)] hover:border-[rgba(175,215,255,0.24)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  <PanelLeft className="size-3.5" />
-                </Button>
-                <AxonMobilePaneSwitcher
-                  mobilePane={shell.mobilePane === 'sidebar' ? 'chat' : shell.mobilePane}
-                  onMobilePaneChange={(pane) => shell.setMobilePaneTracked(pane)}
-                />
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col">
-              {shell.mobilePane === 'sidebar' ? (
-                <AxonSidebar
-                  variant="mobile"
-                  {...shell.sidebarProps}
-                  onSelectSession={shell.handleMobileSelectSession}
-                  onSelectFile={shell.handleMobileFileSelect}
-                  onNewSession={shell.handleMobileNewSession}
-                />
-              ) : shell.mobilePane === 'chat' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <Conversation key={shell.sessionKey} className="w-full flex-1 px-2 py-2">
-                    <AxonMessageList
-                      messages={shell.displayMessages}
-                      agentName={shell.agentLabel}
-                      sessionKey={shell.sessionKey}
-                      copiedId={shell.copiedId}
-                      copyMessage={shell.copyMessage}
-                      onOpenFile={shell.handleMobileOpenFile}
-                      isTyping={shell.isStreaming}
-                      variant="mobile"
-                      loading={shell.sessionLoading}
-                      error={shell.sessionError}
-                      onRetry={shell.reloadSession}
-                      onEditorContent={shell.onEditorUpdate}
-                      onEdit={shell.handleEditMessage}
-                      onRetryMessage={shell.handleRetryMessage}
-                    />
-                    <ConversationScrollButton className="animate-scale-in" />
-                  </Conversation>
-
-                  <div className="axon-toolbar border-t border-b-0 px-2 py-2">
-                    <AxonPromptComposer compact {...shell.composerProps} />
-                  </div>
-                </div>
-              ) : shell.mobilePane === 'editor' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    <EditorPane
-                      markdown={shell.editorMarkdown}
-                      onMarkdownChange={shell.setEditorMarkdown}
-                      scrollStorageKey="axon.web.shell.editor-scroll"
-                    />
-                  </div>
-                </div>
-              ) : shell.mobilePane === 'terminal' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <AxonTerminalPane />
-                </div>
-              ) : shell.mobilePane === 'logs' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <AxonLogsPane />
-                </div>
-              ) : shell.mobilePane === 'mcp' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <AxonMcpPane />
-                </div>
-              ) : shell.mobilePane === 'settings' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <AxonSettingsPane
-                    canvasProfile={shell.canvasProfile}
-                    onCanvasProfileChange={shell.handleCanvasProfileChange}
-                    enableFs={shell.enableFs}
-                    onEnableFsChange={shell.setEnableFs}
-                    enableTerminal={shell.enableTerminal}
-                    onEnableTerminalChange={shell.setEnableTerminal}
-                    permissionTimeoutSecs={shell.permissionTimeoutSecs}
-                    onPermissionTimeoutSecsChange={shell.setPermissionTimeoutSecs}
-                    adapterTimeoutSecs={shell.adapterTimeoutSecs}
-                    onAdapterTimeoutSecsChange={shell.setAdapterTimeoutSecs}
-                  />
-                </div>
-              ) : shell.mobilePane === 'cortex' ? (
-                <div className="axon-glass-shell flex h-full min-h-0 flex-col border-0 rounded-none">
-                  <AxonCortexPane />
-                </div>
-              ) : null}
-            </div>
-          </section>
+          <AxonShellMobile
+            composer={shellState.composer}
+            conversation={shellState.conversation}
+            editor={shellState.editor}
+            layoutActions={shellState.layoutActions}
+            layoutState={shellState.layoutState}
+            settings={shellState.settings}
+            sidebar={shellState.sidebar}
+          />
         ) : (
           <section ref={shell.sectionRef} className="flex min-h-0 flex-1">
             {shell.sidebarOpen ? (

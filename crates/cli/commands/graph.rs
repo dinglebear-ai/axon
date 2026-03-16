@@ -14,7 +14,10 @@ struct GraphRuntimeArgs {
 #[derive(Debug, Subcommand)]
 enum GraphRuntimeSubcommand {
     Build {
-        #[arg(long = "url")]
+        /// Target URL (positional or --url flag)
+        #[arg(value_name = "URL")]
+        positional_url: Option<String>,
+        #[arg(long = "url", conflicts_with = "positional_url")]
         url: Option<String>,
         #[arg(long)]
         domain: Option<String>,
@@ -38,8 +41,19 @@ fn parse_graph_runtime_args(args: &[String]) -> Result<GraphRuntimeArgs, Box<dyn
 
 pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match parse_graph_runtime_args(&cfg.positional)?.action {
-        Some(GraphRuntimeSubcommand::Build { url, domain, all }) => {
-            handle_build(cfg, url, domain, all).await
+        Some(GraphRuntimeSubcommand::Build {
+            positional_url,
+            url,
+            domain,
+            all,
+        }) => {
+            let resolved_url = positional_url.or(url);
+            if resolved_url.is_none() && domain.is_none() && !all {
+                return Err(
+                    "graph build requires at least one of: <url>, --url, --domain, or --all".into(),
+                );
+            }
+            handle_build(cfg, resolved_url, domain, all).await
         }
         Some(GraphRuntimeSubcommand::Status) => handle_status(cfg).await,
         Some(GraphRuntimeSubcommand::Explore { entity }) => handle_explore(cfg, &entity).await,
@@ -186,10 +200,35 @@ mod tests {
         ];
         let parsed = parse_graph_runtime_args(&args).expect("valid args");
         match parsed.action {
-            Some(GraphRuntimeSubcommand::Build { url, domain, all }) => {
+            Some(GraphRuntimeSubcommand::Build {
+                url, domain, all, ..
+            }) => {
                 assert_eq!(url.as_deref(), Some("https://example.com"));
                 assert_eq!(domain.as_deref(), Some("example.com"));
                 assert!(all);
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_graph_runtime_args_accepts_positional_url() {
+        let args = vec![
+            "build".to_string(),
+            "https://positional.example.com".to_string(),
+        ];
+        let parsed = parse_graph_runtime_args(&args).expect("valid args");
+        match parsed.action {
+            Some(GraphRuntimeSubcommand::Build {
+                positional_url,
+                url,
+                ..
+            }) => {
+                assert_eq!(
+                    positional_url.as_deref(),
+                    Some("https://positional.example.com")
+                );
+                assert!(url.is_none());
             }
             other => panic!("unexpected action: {other:?}"),
         }
@@ -200,5 +239,19 @@ mod tests {
         let args = vec!["build".to_string(), "--domain".to_string()];
         let err = parse_graph_runtime_args(&args).expect_err("missing domain should error");
         assert!(err.to_string().contains("--domain"));
+    }
+
+    #[tokio::test]
+    async fn run_graph_build_requires_at_least_one_target() {
+        use crate::crates::core::config::Config;
+        let mut cfg = Config::test_default();
+        cfg.positional = vec!["build".to_string()];
+        let err = super::run_graph(&cfg)
+            .await
+            .expect_err("no target should error");
+        assert!(
+            err.to_string()
+                .contains("requires at least one of: <url>, --url, --domain, or --all")
+        );
     }
 }

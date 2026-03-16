@@ -165,8 +165,10 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
+    // CREATE INDEX CONCURRENTLY avoids blocking writes to the table during index builds.
+    // Safe to run outside a transaction (pool executor uses autocommit).
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_axon_refresh_jobs_pending ON axon_refresh_jobs(created_at ASC) WHERE status = 'pending'",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_jobs_pending ON axon_refresh_jobs(created_at ASC) WHERE status = 'pending'",
     )
     .execute(pool)
     .await?;
@@ -174,7 +176,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     // Partial index for stale-job watchdog sweeps (WHERE status='running' AND updated_at < threshold).
     // Without this, reclaim_stale_running_jobs does a full table scan that blocks heartbeat UPDATEs.
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_axon_refresh_jobs_running_updated \
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_jobs_running_updated \
          ON axon_refresh_jobs(updated_at ASC) WHERE status = 'running'",
     )
     .execute(pool)
@@ -218,7 +220,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_axon_refresh_schedules_due ON axon_refresh_schedules(next_run_at ASC) WHERE enabled = TRUE",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_schedules_due ON axon_refresh_schedules(next_run_at ASC) WHERE enabled = TRUE",
     )
     .execute(pool)
     .await?;
