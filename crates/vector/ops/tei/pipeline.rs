@@ -276,7 +276,7 @@ pub(super) async fn run_embed_pipeline(
         std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(8)
-            .clamp(2, 16),
+            .clamp(2, 8),
         1,
         64,
     );

@@ -327,12 +327,40 @@ pub(super) async fn qdrant_upsert(
         cfg.collection
     ));
     for batch in points.chunks(upsert_batch_size) {
-        client
-            .put(&url)
-            .json(&serde_json::json!({"points": batch}))
-            .send()
-            .await?
-            .error_for_status()?;
+        let mut last_err = String::new();
+        let mut succeeded = false;
+        for attempt in 1..=3u32 {
+            match client
+                .put(&url)
+                .json(&serde_json::json!({"points": batch}))
+                .send()
+                .await
+                .and_then(|r| r.error_for_status())
+            {
+                Ok(_) => {
+                    succeeded = true;
+                    break;
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                    if attempt < 3 {
+                        let backoff_ms = 500u64 * (1u64 << (attempt - 1));
+                        log_warn(&format!(
+                            "qdrant upsert attempt {attempt}/3 failed (collection={}): {e} — retrying in {backoff_ms}ms",
+                            cfg.collection
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    }
+                }
+            }
+        }
+        if !succeeded {
+            return Err(format!(
+                "qdrant upsert failed after 3 attempts (collection={}): {last_err}",
+                cfg.collection
+            )
+            .into());
+        }
     }
     Ok(())
 }

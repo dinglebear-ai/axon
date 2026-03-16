@@ -1,5 +1,22 @@
 # Changelog
-Last Modified: 2026-03-16 (session: v0.25.2 — shell/provider module splits, GraphArgs, job_output/url_inputs utilities, qdrant scroll hardening, ws-messages tests)
+Last Modified: 2026-03-16 (session: v0.25.3 — AMQP consumer_timeout fix, doc_concurrency clamp, qdrant_upsert retry, AST chunking observability)
+
+## [0.25.3] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.25.2.
+
+### Highlights
+
+- **AMQP consumer_timeout eliminated** — saturation path in `run_amqp_lane` now polls `consumer.next()` during `semaphore.available_permits() == 0`. Deliveries that arrive while all slots are full are immediately pre-acked (clearing RabbitMQ's unacked count), stored as UUIDs in `preacked_ids`, and processed when a permit frees. Prevents the `PRECONDITION_FAILED - delivery acknowledgement on channel 1 timed out` channel close that fired after 30 min of continuous ingest. On lane exit, unstarted pre-acked jobs are re-enqueued to AMQP rather than waiting for the watchdog sweep.
+- **`doc_concurrency` clamp corrected** — `pipeline.rs` thundering herd fix was `clamp(2, 16)` instead of the intended `clamp(2, 8)`. With 12 CPUs and 12 ingest lanes this queued 144 docs behind the 8-permit TEI semaphore, exceeding the 300s doc timeout. Now capped at 8.
+- **`qdrant_upsert` retry** — bare `send().await?.error_for_status()?` had zero fault tolerance. Added 3-attempt exponential backoff (500ms, 1000ms) matching the TEI retry pattern.
+- **AST chunking observability** — `github collect_start files_total=N batch_concurrency=M embed_batch_size=50` logged at the start of `collect_and_embed_batched` so the multi-minute tree-sitter CPU phase is visible in the log file (`$AXON_DATA_DIR/axon/logs/axon.log`).
+
+### Commits since v0.25.2 (`f8f387bc`)
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix | AMQP consumer_timeout, doc_concurrency clamp, qdrant_upsert retry, AST chunking observability |
 
 ## [0.25.2] — feat/pulse-shell-and-hybrid-search
 

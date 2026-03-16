@@ -29,6 +29,10 @@ pub(super) async fn collect_and_embed_batched(
         })
         .buffer_unordered(concurrency);
 
+    log_info(&format!(
+        "github collect_start files_total={files_total} batch_concurrency={concurrency} embed_batch_size={EMBED_BATCH_SIZE}"
+    ));
+
     let mut batch: Vec<PreparedDoc> = Vec::with_capacity(EMBED_BATCH_SIZE);
     let mut files_done = 0usize;
     let mut failed = 0usize;

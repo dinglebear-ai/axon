@@ -3,15 +3,17 @@ use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::jobs::common::open_amqp_connection_and_channel;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
-use lapin::options::{BasicConsumeOptions, BasicQosOptions};
+use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicQosOptions};
 use lapin::types::FieldTable;
 use sqlx::PgPool;
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
-use super::delivery::claim_delivery;
+use super::delivery::{claim_delivery, claim_preacked_job};
 use super::{ProcessFn, STALE_SWEEP_INTERVAL_SECS, WorkerConfig, sweep_stale_jobs};
 
 /// Result of polling the consumer + inflight set. Distinguishes between a real
@@ -158,6 +160,46 @@ async fn close_amqp_lane(conn: lapin::Connection, ch: lapin::Channel, wc: &Worke
     }
 }
 
+/// Handle a delivery that arrived while the lane was saturated (all semaphore
+/// permits held). Pre-acks immediately to clear the RabbitMQ unacked slot and
+/// prevent consumer_timeout. Stores the job UUID for processing once a permit
+/// frees up.
+async fn handle_saturation_delivery(
+    d: lapin::message::Delivery,
+    wc: &WorkerConfig,
+    lane: usize,
+    preacked_ids: &mut VecDeque<Uuid>,
+) {
+    let parsed = std::str::from_utf8(&d.data)
+        .ok()
+        .and_then(|s| Uuid::parse_str(s.trim()).ok());
+    match parsed {
+        Some(job_id) => match d.ack(BasicAckOptions::default()).await {
+            Ok(_) => {
+                log_debug(&format!(
+                    "{} worker lane={lane} pre-acked delivery during saturation job_id={job_id}",
+                    wc.job_kind
+                ));
+                preacked_ids.push_back(job_id);
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "{} worker lane={lane} pre-ack failed during saturation: {e}",
+                    wc.job_kind
+                ));
+            }
+        },
+        None => {
+            log_warn(&format!(
+                "{} worker lane={lane} malformed delivery during saturation (len={}), discarding",
+                wc.job_kind,
+                d.data.len()
+            ));
+            let _ = d.ack(BasicAckOptions::default()).await;
+        }
+    }
+}
+
 /// Generic AMQP consumer lane. Listens for job IDs on the queue, claims them,
 /// and dispatches to `process_fn` concurrently using `FuturesUnordered` with a
 /// semaphore for backpressure. Runs stale sweeps on idle timeout.
@@ -181,16 +223,46 @@ pub(crate) async fn run_amqp_lane(
     sweep_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     sweep_interval.tick().await; // consume the immediate first tick
 
+    // Deliveries that arrived during saturation: pre-acked to clear the RabbitMQ
+    // unacked slot (prevents consumer_timeout), queued here for processing once a
+    // semaphore permit frees up. If the lane exits with entries still here,
+    // we re-enqueue them so the watchdog/startup sweep doesn't have to wait.
+    let mut preacked_ids: VecDeque<Uuid> = VecDeque::new();
+
     loop {
+        // Drain pre-acked jobs before polling for new deliveries. A permit
+        // was just freed (either by a completed inflight job or lane startup)
+        // and we have a queued job ready to start immediately.
+        while semaphore.available_permits() > 0 && !preacked_ids.is_empty() {
+            let job_id = preacked_ids.pop_front().expect("just checked is_empty");
+            if let Some(job_fut) =
+                claim_preacked_job(job_id, cfg, &pool, wc, lane, process_fn, &semaphore).await?
+            {
+                inflight.push(job_fut);
+            }
+        }
+
         // If all permits are consumed, block until at least one in-flight job
-        // completes OR the sweep interval fires.  Without the select! here,
-        // sweeps stop firing for the entire duration of any saturated burst,
-        // which can span hours for long-running jobs.
+        // completes OR the sweep interval fires OR a new delivery arrives.
+        // The consumer.next() arm is critical: with basic_qos(1), RabbitMQ
+        // pushes a delivery as soon as the previous one is acked. If we never
+        // poll consumer.next() during saturation, that delivery sits unacked
+        // until consumer_timeout (default 30 min) closes the channel.
         if semaphore.available_permits() == 0 && !inflight.is_empty() {
             tokio::select! {
                 _ = inflight.next() => {}
                 _ = sweep_interval.tick() => {
                     sweep_stale_jobs(cfg, &pool, wc, "amqp", lane).await;
+                }
+                maybe_delivery = consumer.next() => {
+                    match maybe_delivery {
+                        None => break,
+                        Some(Ok(d)) => handle_saturation_delivery(d, wc, lane, &mut preacked_ids).await,
+                        Some(Err(e)) => log_warn(&format!(
+                            "{} worker lane={lane} AMQP delivery error during saturation: {e}",
+                            wc.job_kind
+                        )),
+                    }
                 }
             }
             continue;
@@ -208,6 +280,19 @@ pub(crate) async fn run_amqp_lane(
         {
             inflight.push(job_fut);
         }
+    }
+
+    // Re-enqueue pre-acked jobs whose deliveries were consumed but never started.
+    // These are still `pending` in Postgres but have no AMQP message; without this
+    // they wait until the next startup sweep to be re-enqueued.
+    if !preacked_ids.is_empty() {
+        let ids: Vec<Uuid> = preacked_ids.drain(..).collect();
+        log_warn(&format!(
+            "{} worker lane={lane} re-enqueuing {} pre-acked job(s) on exit",
+            wc.job_kind,
+            ids.len()
+        ));
+        let _ = crate::crates::jobs::common::batch_enqueue_jobs(cfg, &wc.queue_name, &ids).await;
     }
 
     // Drain any remaining in-flight jobs before exiting.

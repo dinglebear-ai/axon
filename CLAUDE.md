@@ -198,7 +198,7 @@ High-level subsystem map:
   - job states in `crates/jobs/status.rs`
 - Vector + RAG:
   - `crates/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
-  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors; query pipeline fuses both with Reciprocal Rank Fusion (RRF) via Qdrant `/query`. Legacy collections use dense-only. See `crates/vector/CLAUDE.md`.
+  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `crates/vector/CLAUDE.md`.
 - Services layer (services-first contract) — see `crates/services/CLAUDE.md`:
   - `crates/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
   - CLI commands call `crates/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those are removed)
@@ -387,8 +387,8 @@ When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).
 
-### TEI 429 / rate limiting
-On HTTP 429 or 503, `tei_embed()` makes up to 5 attempts (1 initial + 4 retries) with exponential backoff starting at 1s (1s, 2s, 4s, 8s) plus jitter (up to 500ms each). Override with `TEI_MAX_RETRIES` env var. Worst-case retry budget: 4 backoff sleeps (15s) + 5 request timeouts (5x30s=150s) + jitter (2s) = ~167s, well inside the 300s doc timeout.
+### TEI retries
+On HTTP 429, any 5xx status, transport errors, or response decode failures, `tei_embed()` makes up to 5 attempts (1 initial + 4 retries) with exponential backoff starting at 1s (1s, 2s, 4s, 8s) plus jitter (up to 500ms each). Override with `TEI_MAX_RETRIES` env var. Worst-case retry budget: 4 backoff sleeps (15s) + 5 request timeouts (5x30s=150s) + jitter (2s) = ~167s, well inside the 300s doc timeout.
 
 ### Locale path prefix matching
 `--exclude-path-prefix` (and the default locale list) treats both `/` and `-` as word boundaries. This means `/ja` blocks both `/ja/docs` and `/ja-jp/docs`. Pass `none` to disable all locale filtering.

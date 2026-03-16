@@ -1,7 +1,7 @@
 # crates/vector — Embeddings & Vector Search
-Last Modified: 2026-03-10
+Last Modified: 2026-03-16
 
-TEI embedding + Qdrant vector store ops.
+TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (dense + sparse BM42) search depending on collection type.
 
 ## Module Layout
 
@@ -13,11 +13,15 @@ vector/ops/
 │   ├── classify.rs  # classify_file_type(), language_name(), is_test_path()
 │   └── code.rs      # chunk_code() — tree-sitter AST-aware code chunking
 ├── qdrant/          # client.rs, commands.rs, types.rs, utils.rs
+│   └── hybrid.rs    # qdrant_hybrid_search(), qdrant_named_dense_search() — hybrid/named-mode search
 ├── ranking.rs       # BM25-style reranking module root
 ├── ranking/         # snippet.rs (helpers used by ranking.rs)
+├── sparse.rs        # compute_sparse_vector(), SparseVector — BM42-style sparse vectors
 ├── stats/           # display.rs, pg.rs, qdrant_fetch.rs
 ├── tei.rs           # tei_embed(), PreparedDoc, EmbedSummary, embed_prepared_docs()
-├── tei/             # tei_manifest.rs
+├── tei/
+│   ├── tei_manifest.rs
+│   └── qdrant_store.rs  # ensure_collection(), VectorMode detection, named vs unnamed collection management
 └── source_display.rs
 ```
 
@@ -35,8 +39,18 @@ On 429 or 503, `tei_embed()` retries up to **5 times** with exponential backoff 
 ### Pipeline Resilience
 `run_embed_pipeline()` in `tei/pipeline.rs` processes docs concurrently with per-doc timeouts. Individual doc failures (TEI timeout, transport error) are **logged and skipped** — they do not abort the remaining batch. `EmbedSummary.docs_failed` reports how many docs failed. The pipeline uses **upsert-first** (deterministic UUID v5 point IDs overwrite existing) then **stale-tail cleanup** after successful upsert — no data is deleted until the replacement is safely stored.
 
-### ensure_collection() — GET First
-`ensure_collection()` does **GET first, PUT only on 404**. Safe to call on every embed — no 409 Conflict on existing collections. If collection exists (GET 200), returns early without touching it.
+### ensure_collection() — GET First + VectorMode Detection
+`ensure_collection()` in `tei/qdrant_store.rs` does **GET first, PUT only on 404**. Safe to call on every embed — no 409 Conflict on existing collections.
+
+It also detects (and caches) the collection's **VectorMode**:
+
+| State | Action | Result |
+|-------|--------|--------|
+| Collection doesn't exist | Create with named `dense` + `bm42` sparse | `VectorMode::Named` |
+| Collection exists with named `dense` | Ensure `bm42` sparse index exists; PATCH if missing | `VectorMode::Named` |
+| Collection exists with unnamed vector | No changes | `VectorMode::Unnamed` |
+
+`VectorMode` is cached in a process-wide `OnceLock<Mutex<HashMap>>`. Cache is populated on first embed and reused on all subsequent embeds and queries — no repeated Qdrant introspection calls.
 
 ### Scroll vs Facet — Performance Critical
 | Use case | Function | Cost |
@@ -52,8 +66,31 @@ Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A 
 
 `classify_file_type()` in `input/classify.rs` tags files as `test`/`config`/`doc`/`source` for metadata enrichment. Pure function, no I/O.
 
+### Hybrid Search (Dense + Sparse BM42)
+
+New collections are created with **named vectors** (`dense` + `bm42` sparse). For these collections, query commands use hybrid search instead of dense-only search:
+
+1. **Dense embedding**: TEI encodes the query into a float32 vector
+2. **Sparse vector**: `compute_sparse_vector()` in `sparse.rs` computes BM42-style TF weights (FNV-1a hash, `SPARSE_DIM=30_522` buckets, stopword filtering, min-length 3 chars)
+3. **Fusion**: Qdrant `/query` endpoint receives two `prefetch` arms (dense + sparse) and fuses with **Reciprocal Rank Fusion (RRF)**
+
+```rust
+// sparse.rs — compute sparse vector for a text
+let sv: SparseVector = compute_sparse_vector(text);
+// sv.to_json() → { "indices": [...], "values": [...] }
+
+// qdrant/hybrid.rs — issue hybrid query
+qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
+```
+
+**Fallback:** When a collection is `VectorMode::Unnamed` (legacy dense-only), the query falls back to standard cosine search via the regular `/points/search` endpoint — no sparse vector is computed.
+
+**Hash collisions:** With 30,522 buckets, ~15% collision rate for 100 unique terms, ~48% for 200. Qdrant's IDF weighting mitigates impact — high-IDF terms are unlikely to collide. This is a deliberate trade-off vs. requiring the BERT tokenizer vocabulary.
+
+**Config:** `cfg.hybrid_search_candidates` controls the prefetch window size for each arm before RRF fusion (default: at least `limit`).
+
 ### Ranking Pipeline
-`ranking.rs` applies BM25-style scoring on top of Qdrant cosine results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
+`ranking.rs` applies BM25-style scoring on top of Qdrant cosine/hybrid results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
 
 ### Collection Naming
 Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
@@ -67,10 +104,11 @@ cargo test qdrant         # Qdrant client, scroll, facet, ensure_collection
 cargo test chunk_text     # text chunking (7 tests, no services needed)
 cargo test chunk_code     # tree-sitter AST code chunking (23 tests)
 cargo test classify_file  # file type classification (46 tests)
+cargo test sparse         # sparse vector computation, stopwords, hash stability (9 tests)
 cargo test -- --nocapture # show request/response debug output
 ```
 
-All TEI and Qdrant tests use `httpmock` — no live services required.
+All TEI, Qdrant, and sparse tests run without live services (`httpmock` for network calls; sparse tests are pure computation).
 
 ## Key Env Vars (Vector Tuning)
 
@@ -80,6 +118,7 @@ All TEI and Qdrant tests use `httpmock` — no live services required.
 | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |
 | `AXON_SUGGEST_INDEX_LIMIT` | 50,000 | Max URLs fetched for dedup in `suggest` command |
+| `hybrid_search_candidates` (Config field) | `≥ limit` | Prefetch window per arm before RRF fusion (set via CLI `--hybrid-search-candidates`) |
 
 ## TEI Service (External — steamy-wsl)
 

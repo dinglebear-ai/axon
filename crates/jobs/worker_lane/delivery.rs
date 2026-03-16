@@ -10,6 +10,45 @@ use uuid::Uuid;
 use super::{ProcessFn, WorkerConfig};
 use crate::crates::core::config::Config;
 
+/// Claim a job whose AMQP delivery was already acked during saturation to prevent
+/// consumer_timeout. Acquires a semaphore permit, claims the DB row, and returns
+/// the job future.
+///
+/// Returns `Ok(None)` if the job was already claimed by another lane or the DB
+/// claim failed (job stays `pending` and is reclaimed by watchdog/startup sweep).
+pub(crate) async fn claim_preacked_job(
+    job_id: Uuid,
+    cfg: &Config,
+    pool: &PgPool,
+    wc: &WorkerConfig,
+    lane: usize,
+    process_fn: &ProcessFn,
+    semaphore: &Arc<tokio::sync::Semaphore>,
+) -> Result<Option<Pin<Box<dyn Future<Output = ()>>>>, Box<dyn std::error::Error>> {
+    let permit = semaphore.clone().acquire_owned().await?;
+    match claim_pending_by_id(pool, wc.table, job_id).await {
+        Ok(true) => {
+            let fut = process_fn(cfg.clone(), pool.clone(), job_id);
+            Ok(Some(Box::pin(async move {
+                fut.await;
+                drop(permit);
+            })))
+        }
+        Ok(false) => {
+            drop(permit);
+            Ok(None)
+        }
+        Err(e) => {
+            drop(permit);
+            log_warn(&format!(
+                "{} worker lane={lane} DB error claiming pre-acked job {job_id}: {e}",
+                wc.job_kind
+            ));
+            Ok(None)
+        }
+    }
+}
+
 /// Claim a delivery, ack/nack appropriately, and return the job future to push
 /// into the in-flight set (if the job was successfully claimed) along with its
 /// permit (which must be dropped when the job completes).
