@@ -205,6 +205,16 @@ async fn execute_extract_runs(
             openai_api_key: openai_api_key_top.clone(),
             openai_model: openai_model_top.clone(),
             custom_headers: custom_headers.clone(),
+            render_mode: cfg.render_mode,
+            chrome_remote_url: cfg.chrome_remote_url.clone(),
+            chrome_stealth: cfg.chrome_stealth,
+            chrome_anti_bot: cfg.chrome_anti_bot,
+            chrome_intercept: cfg.chrome_intercept,
+            bypass_csp: cfg.bypass_csp,
+            accept_invalid_certs: cfg.accept_invalid_certs,
+            request_timeout_ms: cfg.request_timeout_ms,
+            fetch_retries: cfg.fetch_retries,
+            user_agent: cfg.chrome_user_agent.clone(),
         };
         pending_runs.push(async move {
             let run = run_extract_with_engine(wcfg, engine).await;

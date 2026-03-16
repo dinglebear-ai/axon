@@ -46,6 +46,19 @@ pub struct ExtractWebConfig {
     pub openai_model: String,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
+    // ── Rendering / Chrome ──────────────────────────────────────────────────
+    pub render_mode: crate::crates::core::config::RenderMode,
+    /// CDP management URL (e.g. `http://axon-chrome:6000`). `None` = no Chrome.
+    pub chrome_remote_url: Option<String>,
+    pub chrome_stealth: bool,
+    pub chrome_anti_bot: bool,
+    pub chrome_intercept: bool,
+    pub bypass_csp: bool,
+    pub accept_invalid_certs: bool,
+    pub request_timeout_ms: Option<u64>,
+    pub fetch_retries: usize,
+    /// User-Agent string (from `AXON_CHROME_USER_AGENT`).
+    pub user_agent: Option<String>,
 }
 
 struct FallbackConfig {
@@ -212,6 +225,81 @@ fn drain_fallback_result(
     }
 }
 
+/// Fetch a single URL directly with reqwest and extract structured data from it.
+///
+/// Bypasses spider entirely — spider normalises deep URL paths to the domain
+/// root (e.g. `en.wikipedia.org/wiki/Rust` → `en.wikipedia.org/`), which causes
+/// extraction to run against the wrong page. For single-URL extraction we always
+/// want the exact page the caller requested.
+async fn run_single_url_extract(
+    url: &str,
+    client: reqwest::Client,
+    engine: Arc<DeterministicExtractionEngine>,
+    cfg: FallbackConfig,
+) -> Result<ExtractRun, Box<dyn Error>> {
+    let html = client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+
+    let mut metrics = ExtractionMetrics::default();
+    let mut pages_with_data = 0usize;
+    let mut all_results = Vec::new();
+    let mut parser_hits = HashMap::new();
+
+    let det = engine.extract(url, &html);
+    let det_matched = apply_deterministic_results(
+        det,
+        &mut metrics,
+        &mut pages_with_data,
+        &mut all_results,
+        &mut parser_hits,
+    );
+
+    if !det_matched && cfg.has_fallback {
+        metrics.llm_fallback_pages += 1;
+        metrics.llm_requests += 1;
+        let markdown = to_markdown(&html, None);
+        match extract_items_fallback(
+            &client,
+            &cfg.api_url,
+            &cfg.api_key,
+            &cfg.model,
+            &cfg.prompt_text,
+            url,
+            &markdown,
+        )
+        .await
+        {
+            Ok(fallback) => {
+                metrics.prompt_tokens += fallback.prompt_tokens;
+                metrics.completion_tokens += fallback.completion_tokens;
+                metrics.total_tokens += fallback.total_tokens;
+                metrics.estimated_cost_usd += fallback.estimated_cost_usd;
+                if !fallback.items.is_empty() {
+                    pages_with_data += 1;
+                    all_results.extend(fallback.items);
+                } else {
+                    log_warn(&format!("fallback extraction produced no items for {url}"));
+                }
+            }
+            Err(e) => log_warn(&format!("fallback extraction failed for {url}: {e}")),
+        }
+    }
+
+    Ok(ExtractRun {
+        start_url: url.to_string(),
+        pages_visited: 1,
+        pages_with_data,
+        results: all_results,
+        metrics,
+        parser_hits,
+    })
+}
+
 pub async fn run_extract_with_engine(
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
@@ -226,6 +314,28 @@ pub async fn run_extract_with_engine(
         && wcfg.openai_base_url.starts_with("http");
 
     validate_url(&wcfg.start_url)?;
+
+    let fallback_cfg = FallbackConfig {
+        api_url,
+        api_key: wcfg.openai_api_key,
+        model: wcfg.openai_model,
+        prompt_text: wcfg.prompt,
+        has_fallback,
+    };
+
+    // Single-page: bypass spider to fetch the exact URL. Spider normalises deep
+    // paths to the domain root (Website::new strips the path component), so
+    // requests for /wiki/Rust or /recipe/12345 land on the site homepage instead.
+    if wcfg.limit <= 1 {
+        return run_single_url_extract(
+            &wcfg.start_url,
+            http_client()?.clone(),
+            engine,
+            fallback_cfg,
+        )
+        .await;
+    }
+
     let ssrf_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
         .iter()
         .copied()
@@ -247,13 +357,6 @@ pub async fn run_extract_with_engine(
     let mut website = website.build().map_err(|_| "build website")?;
 
     let rx = website.subscribe(16).ok_or("subscribe failed")?;
-    let fallback_cfg = FallbackConfig {
-        api_url,
-        api_key: wcfg.openai_api_key,
-        model: wcfg.openai_model,
-        prompt_text: wcfg.prompt,
-        has_fallback,
-    };
     let collect = tokio::spawn(collect_page_results(
         rx,
         http_client()?.clone(),
