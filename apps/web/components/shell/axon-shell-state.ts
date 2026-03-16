@@ -165,13 +165,21 @@ export function useAxonShellState() {
     [wsSend],
   )
 
+  // Guard against stale onSessionInfoUpdate responses overwriting a newer
+  // session selection. Each invocation bumps the generation counter; after
+  // the async fetch resolves we verify the generation hasn't advanced.
+  const sessionInfoGenRef = useRef(0)
+
   const onSessionInfoUpdate = useCallback(
     (sessionId: string) => {
-      fetchSessionWithRetry(sessionId, () => false, {
+      const gen = ++sessionInfoGenRef.current
+      fetchSessionWithRetry(sessionId, () => sessionInfoGenRef.current !== gen, {
         assistantMode: layout.railMode === 'assistant',
         forceRefresh: true,
       })
         .then(() => {
+          // Stale: user has moved to a different session since this fetch started.
+          if (sessionInfoGenRef.current !== gen) return
           session.onSessionIdChange(sessionId)
         })
         .catch(() => {
