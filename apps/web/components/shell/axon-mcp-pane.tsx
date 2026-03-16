@@ -141,6 +141,7 @@ function McpPaneContent() {
         setError('Save failed')
         toast.error('Failed to save server configuration')
       } else {
+        setError('')
         toast.success(`Server "${name}" saved`)
       }
     } catch (_err) {
