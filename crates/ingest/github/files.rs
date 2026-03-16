@@ -203,10 +203,18 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
     let file_size = text.len();
 
     // One PreparedDoc per chunk so each carries its own line range metadata.
+    // Track byte offset by searching forward from the last match position,
+    // avoiding the first-match bug when duplicate chunks exist.
+    let mut search_start = 0usize;
     let docs = chunks
         .iter()
         .map(|chunk| {
-            let (line_start, line_end) = line_range_for_chunk(&text, chunk);
+            let byte_offset = text[search_start..]
+                .find(chunk.as_str())
+                .map(|pos| search_start + pos)
+                .unwrap_or(search_start);
+            search_start = byte_offset + chunk.len();
+            let (line_start, line_end) = line_range_for_chunk(&text, chunk, byte_offset);
 
             let extra = build_github_payload(&GitHubPayloadParams {
                 repo: ctx.name.clone(),
