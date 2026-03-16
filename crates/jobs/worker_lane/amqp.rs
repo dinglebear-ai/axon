@@ -3,7 +3,7 @@ use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::jobs::common::open_amqp_connection_and_channel;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
-use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicQosOptions};
+use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicQosOptions};
 use lapin::types::FieldTable;
 use sqlx::PgPool;
 use std::collections::VecDeque;
@@ -262,20 +262,37 @@ pub(crate) async fn run_amqp_lane(
         // pushes a delivery as soon as the previous one is acked. If we never
         // poll consumer.next() during saturation, that delivery sits unacked
         // until consumer_timeout (default 30 min) closes the channel.
+        //
+        // Always poll consumer.next() — guarding it behind a cap condition
+        // reintroduces the consumer_timeout failure path during sustained
+        // saturation. When the pre-ack buffer is full, nack with requeue so
+        // the delivery returns to the broker without growing the in-memory
+        // buffer, while still clearing the unacked slot that would trigger
+        // consumer_timeout.
         if semaphore.available_permits() == 0 && !inflight.is_empty() {
-            // Only poll consumer.next() when the pre-ack buffer has room.
-            // Otherwise let the delivery sit unacked at the broker until a
-            // slot opens, preventing unbounded memory growth.
-            let under_cap = preacked_ids.len() < preack_cap;
             tokio::select! {
                 _ = inflight.next() => {}
                 _ = sweep_interval.tick() => {
                     sweep_stale_jobs(cfg, &pool, wc, "amqp", lane).await;
                 }
-                maybe_delivery = consumer.next(), if under_cap => {
+                maybe_delivery = consumer.next() => {
                     match maybe_delivery {
                         None => break,
-                        Some(Ok(d)) => handle_saturation_delivery(d, wc, lane, &mut preacked_ids).await,
+                        Some(Ok(d)) => {
+                            if preacked_ids.len() < preack_cap {
+                                handle_saturation_delivery(d, wc, lane, &mut preacked_ids).await;
+                            } else {
+                                // Buffer full — nack with requeue to clear the unacked
+                                // slot and return the message to the broker for later
+                                // redelivery. Prevents consumer_timeout without growing
+                                // the in-memory pre-ack buffer.
+                                log_warn(&format!(
+                                    "{} worker lane={lane} pre-ack buffer full (cap={preack_cap}), nacking delivery for requeue",
+                                    wc.job_kind
+                                ));
+                                let _ = d.nack(BasicNackOptions { requeue: true, ..Default::default() }).await;
+                            }
+                        }
                         Some(Err(e)) => log_warn(&format!(
                             "{} worker lane={lane} AMQP delivery error during saturation: {e}",
                             wc.job_kind

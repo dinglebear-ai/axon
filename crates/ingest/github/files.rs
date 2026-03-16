@@ -214,16 +214,21 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
                 .map(|pos| search_start + pos)
                 .unwrap_or(search_start);
             // Advance by chunk length minus overlap so the next search starts
-            // within the overlap window. chunk_text() uses 200-char overlap.
-            // Saturating subtraction of 200 bytes can land mid-char for non-ASCII
-            // content (e.g. box-drawing chars are 3 bytes). Snap back to the
-            // nearest valid char boundary to prevent panics on the next iteration.
+            // within the overlap window. chunk_text() uses a 200-character overlap.
+            // Walk back exactly 200 characters (not bytes) from the end of this chunk
+            // so that multibyte characters (e.g. box-drawing, CJK) don't produce
+            // incorrect GitHub line-range metadata or panic on the next iteration.
             const CHUNK_OVERLAP: usize = 200;
-            let mut raw_next = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
-            // Walk back to a char boundary (at most 3 steps for any UTF-8 char).
-            raw_next = raw_next.min(text.len());
-            while raw_next > 0 && !text.is_char_boundary(raw_next) {
+            let chunk_end = (byte_offset + chunk.len()).min(text.len());
+            let mut raw_next = chunk_end;
+            for _ in 0..CHUNK_OVERLAP {
+                if raw_next == 0 {
+                    break;
+                }
                 raw_next -= 1;
+                while raw_next > 0 && !text.is_char_boundary(raw_next) {
+                    raw_next -= 1;
+                }
             }
             search_start = raw_next;
             let (line_start, line_end) = line_range_for_chunk(&text, chunk, byte_offset);

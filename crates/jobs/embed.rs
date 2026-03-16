@@ -102,8 +102,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
         if invalid > 0 {
             sqlx::query(&format!("DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
                 .execute(pool)
-                .await
-                .ok();
+                .await?;
         }
     }
 

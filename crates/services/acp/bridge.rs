@@ -119,15 +119,12 @@ pub(super) async fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        emit_with_timeout(
-            service_tx,
-            ServiceEvent::EditorWrite { content, operation },
-            std::time::Duration::from_secs(5),
-        )
-        .await;
+        // Non-blocking: EditorWrite events are best-effort. Awaiting them under
+        // backpressure adds up to 5s per block, delaying turn completion.
+        emit_nonblocking(service_tx, ServiceEvent::EditorWrite { content, operation });
     }
 
-    emit_with_timeout(
+    let emitted = emit_with_timeout(
         service_tx,
         ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
@@ -139,15 +136,21 @@ pub(super) async fn finalize_successful_turn(
         std::time::Duration::from_secs(5),
     )
     .await;
-    let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
-    crate::crates::core::logging::log_info(&msg);
-    emit_nonblocking(
-        service_tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: msg,
-        },
-    );
+    if emitted {
+        let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
+        crate::crates::core::logging::log_info(&msg);
+        emit_nonblocking(
+            service_tx,
+            ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: msg,
+            },
+        );
+    } else {
+        crate::crates::core::logging::log_warn(&format!(
+            "ACP runtime: TurnResult dropped — channel full after 5s timeout (session_id={session})"
+        ));
+    }
     Ok(())
 }
 

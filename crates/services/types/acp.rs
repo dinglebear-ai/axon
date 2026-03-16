@@ -454,10 +454,20 @@ fn serialize_usage_update<S: serde::Serializer>(
     // Build the nested "usage" object that the web client Zod schema expects:
     //   { total_tokens?: int, input_tokens?: int, output_tokens?: int }
     // We only have `used` (total tokens in context), so map it to `total_tokens`.
+    // Include all three fields with explicit 0 for input/output — the web UI
+    // treats the object as complete and crashes if expected fields are absent.
     let mut usage_obj = serde_json::Map::new();
     usage_obj.insert(
         "total_tokens".to_string(),
         serde_json::Value::Number(usage.used.into()),
+    );
+    usage_obj.insert(
+        "input_tokens".to_string(),
+        serde_json::Value::Number(0.into()),
+    );
+    usage_obj.insert(
+        "output_tokens".to_string(),
+        serde_json::Value::Number(0.into()),
     );
 
     let mut map = serializer.serialize_map(None)?;
