@@ -89,6 +89,10 @@ async fn run_once(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
+        CommandKind::Migrate => {
+            eprintln!("migrate command not yet implemented");
+            std::process::exit(1);
+        }
     }
     Ok(())
 }

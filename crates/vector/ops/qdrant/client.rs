@@ -173,6 +173,32 @@ pub(crate) async fn qdrant_scroll_pages_while(
     scroll_pages_raw(client, &endpoint, body, process_page).await
 }
 
+/// Like [`qdrant_scroll_pages_while`] but also fetches stored vector data.
+///
+/// Each point JSON in the callback contains a `"vector"` field alongside
+/// `"id"` and `"payload"`. For unnamed-mode collections the vector is a
+/// flat float array; for named-mode it is an object keyed by vector name.
+///
+/// Used by the `migrate` command to copy dense vectors without re-embedding.
+#[allow(dead_code)]
+pub(crate) async fn qdrant_scroll_pages_with_vectors(
+    cfg: &Config,
+    process_page: impl FnMut(&[serde_json::Value]) -> bool,
+) -> Result<()> {
+    let client = http_client()?;
+    let endpoint = format!(
+        "{}/collections/{}/points/scroll",
+        qdrant_base(cfg),
+        cfg.collection
+    );
+    let body = serde_json::json!({
+        "limit": 256,
+        "with_payload": true,
+        "with_vector": true
+    });
+    scroll_pages_raw(client, &endpoint, body, process_page).await
+}
+
 /// Scroll the collection keeping only the URL field (one entry per unique URL via chunk_index==0
 /// filter) and collect into a HashSet. The `filter` value is passed directly as the Qdrant
 /// filter body so callers control which subset of documents is scanned.

@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use super::client::{
     qdrant_delete_by_url_filter, qdrant_delete_stale_domain_urls, qdrant_domain_facets,
-    qdrant_retrieve_by_url, qdrant_scroll_pages, qdrant_search, qdrant_url_facets,
+    qdrant_retrieve_by_url, qdrant_scroll_pages, qdrant_scroll_pages_with_vectors, qdrant_search,
+    qdrant_url_facets,
 };
 
 /// Helper: create an isolated test collection via the Qdrant REST API.
@@ -373,6 +374,50 @@ async fn qdrant_delete_stale_domain_urls_removes_only_stale_points() -> Result<(
         "page-a chunks must be untouched (2 points)"
     );
     assert_eq!(page_b_points.len(), 0, "page-b chunks must all be deleted");
+    Ok(())
+}
+
+/// `qdrant_scroll_pages_with_vectors` must return vector data alongside payload for each point.
+#[tokio::test]
+async fn qdrant_scroll_pages_with_vectors_returns_vector_data() -> Result<(), Box<dyn Error>> {
+    let Some(qdrant_url) = resolve_test_qdrant_url() else {
+        return Ok(());
+    };
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = qdrant_url;
+    cfg.collection = format!("test_{}", Uuid::new_v4().simple());
+
+    let base = cfg.qdrant_url.trim_end_matches('/').to_string();
+    let client = reqwest::Client::new();
+
+    create_test_collection(&client, &base, &cfg.collection, 4).await?;
+
+    let points = serde_json::json!([
+        {"id": "11111111-0000-0000-0000-000000000001", "vector": [1.0f32, 0.0, 0.0, 0.0], "payload": {"chunk_text": "hello world"}},
+        {"id": "11111111-0000-0000-0000-000000000002", "vector": [0.0f32, 1.0, 0.0, 0.0], "payload": {"chunk_text": "foo bar"}},
+    ]);
+    upsert_points(&client, &base, &cfg.collection, points).await?;
+
+    let mut vectors_seen = 0usize;
+    qdrant_scroll_pages_with_vectors(&cfg, |page| {
+        for p in page {
+            // Unnamed collection → flat float array under "vector" key.
+            assert!(
+                p["vector"].is_array(),
+                "expected flat array vector, got: {p}"
+            );
+            vectors_seen += 1;
+        }
+        true
+    })
+    .await?;
+
+    delete_collection(&client, &base, &cfg.collection).await;
+
+    assert_eq!(
+        vectors_seen, 2,
+        "must visit all 2 inserted points with vectors"
+    );
     Ok(())
 }
 

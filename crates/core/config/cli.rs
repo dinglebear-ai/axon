@@ -47,6 +47,8 @@ pub(super) enum CliCommand {
     Completions(CompletionArgs),
     Mcp(McpArgs),
     Serve(ServeArgs),
+    /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
+    Migrate(MigrateArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -74,6 +76,16 @@ pub(super) struct ServeArgs {
     /// Port to bind the web UI server on
     #[arg(long, env = "AXON_SERVE_PORT", default_value_t = 49000)]
     pub(super) port: u16,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct MigrateArgs {
+    /// Source collection to migrate from (must use unnamed dense vectors)
+    #[arg(long)]
+    pub(super) from: String,
+    /// Destination collection to create with named dense + bm42 sparse vectors
+    #[arg(long)]
+    pub(super) to: String,
 }
 
 #[derive(Debug, Args)]
@@ -371,6 +383,16 @@ mod tests {
         assert!(
             result.is_ok(),
             "mcp --transport both should parse: {result:?}"
+        );
+    }
+
+    #[test]
+    fn parse_migrate_flags() {
+        let result =
+            Cli::try_parse_from(["axon", "migrate", "--from", "cortex", "--to", "cortex_v2"]);
+        assert!(
+            result.is_ok(),
+            "migrate --from --to should parse: {result:?}"
         );
     }
 }

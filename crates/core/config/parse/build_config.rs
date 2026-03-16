@@ -208,6 +208,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             serve_port = args.port;
             (CommandKind::Serve, Vec::new())
         }
+        CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
     };
 
     if matches!(command, CommandKind::Completions) {
