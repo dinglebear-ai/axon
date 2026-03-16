@@ -32,7 +32,14 @@ pre-commit:
       glob: "crates/mcp/schema.rs"
       run: python3 scripts/generate_mcp_schema_doc.py && git add docs/MCP-TOOL-SCHEMA.md
     monolith:
-      run: if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; else echo "[skip] global monolith enforcer not found at ~/.claude/hooks/enforce_monoliths.py"; fi
+      run: >
+        if [ -f "scripts/enforce_monoliths.py" ]; then
+          python3 "scripts/enforce_monoliths.py" --staged;
+        elif [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then
+          python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged;
+        else
+          echo "ERROR enforce_monoliths.py not found in scripts/ or ~/.claude/hooks/" >&2; exit 1;
+        fi
     rustfmt:
       glob: "**/*.rs"
       run: cargo fmt -- --check

@@ -5,13 +5,22 @@ use crate::crates::vector::ops::qdrant::env_usize_clamped;
 use rand::RngExt as _;
 use reqwest::StatusCode;
 use std::error::Error;
+use std::sync::LazyLock;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;
 const TEI_REQUEST_TIMEOUT_MS_MAX: u64 = 600_000;
 const TEI_MAX_BACKOFF_MS: u64 = 60_000;
+
+/// Global process-wide limit on concurrent in-flight TEI /embed requests.
+/// Prevents thundering-herd TCP saturation when multiple embed workers run in parallel.
+/// Each permit covers one batch sent to TEI; the permit is held until the response returns.
+/// Tunable via AXON_TEI_MAX_CONCURRENT (default 8, range 1–64).
+static TEI_CONCURRENCY: LazyLock<Semaphore> =
+    LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
 
 fn retry_delay(attempt: usize) -> Duration {
     let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(attempt as u32 - 1));
@@ -38,6 +47,27 @@ enum ChunkOutcome {
     Split,
 }
 
+/// Logs a retry warning and sleeps for the backoff delay.
+/// Returns `true` if the caller should `continue` to the next attempt, `false` if exhausted.
+async fn log_retry_and_sleep(
+    attempt: usize,
+    max_attempts: usize,
+    kind: &str,
+    embed_url: &str,
+    err_msg: &str,
+) -> bool {
+    if attempt >= max_attempts {
+        return false;
+    }
+    let delay = retry_delay(attempt);
+    log_warn(&format!(
+        "tei_embed retry {kind} attempt={attempt}/{max_attempts} delay_ms={} url={embed_url} err={err_msg}",
+        delay.as_millis()
+    ));
+    tokio::time::sleep(delay).await;
+    true
+}
+
 async fn send_chunk_with_retries(
     client: &reqwest::Client,
     embed_url: &str,
@@ -45,6 +75,10 @@ async fn send_chunk_with_retries(
     max_attempts: usize,
     request_timeout_ms: u64,
 ) -> Result<ChunkOutcome, Box<dyn Error>> {
+    let _permit = TEI_CONCURRENCY
+        .acquire()
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("TEI semaphore closed: {e}").into() })?;
     for attempt in 1..=max_attempts {
         let resp = match client
             .post(embed_url)
@@ -55,76 +89,64 @@ async fn send_chunk_with_retries(
         {
             Ok(resp) => resp,
             Err(err) => {
-                if attempt < max_attempts {
-                    let delay = retry_delay(attempt);
-                    log_warn(&format!(
-                        "tei_embed retry transport_error attempt={attempt}/{max_attempts} delay_ms={} url={} err={}",
-                        delay.as_millis(),
-                        embed_url,
-                        err
-                    ));
-                    tokio::time::sleep(delay).await;
+                if log_retry_and_sleep(
+                    attempt,
+                    max_attempts,
+                    "transport_error",
+                    embed_url,
+                    &err.to_string(),
+                )
+                .await
+                {
                     continue;
                 }
                 return Err(format!(
-                    "TEI request transport error for {} after {attempt}/{max_attempts} attempts: {err}",
-                    embed_url
-                )
-                .into());
+                    "TEI request transport error for {embed_url} after {attempt}/{max_attempts} attempts: {err}"
+                ).into());
             }
         };
-
         let status = resp.status();
         if status.is_success() {
             match resp.json::<Vec<Vec<f32>>>().await {
                 Ok(v) => return Ok(ChunkOutcome::Vectors(v)),
                 Err(err) => {
-                    if attempt < max_attempts {
-                        let delay = retry_delay(attempt);
-                        log_warn(&format!(
-                            "tei_embed retry decode_error attempt={attempt}/{max_attempts} delay_ms={} url={} err={}",
-                            delay.as_millis(),
-                            embed_url,
-                            err
-                        ));
-                        tokio::time::sleep(delay).await;
+                    if log_retry_and_sleep(
+                        attempt,
+                        max_attempts,
+                        "decode_error",
+                        embed_url,
+                        &err.to_string(),
+                    )
+                    .await
+                    {
                         continue;
                     }
                     return Err(format!(
-                        "TEI response decode error for {} after {attempt}/{max_attempts} attempts: {err}",
-                        embed_url
-                    )
-                    .into());
+                        "TEI response decode error for {embed_url} after {attempt}/{max_attempts} attempts: {err}"
+                    ).into());
                 }
             }
         }
-
         if status == StatusCode::PAYLOAD_TOO_LARGE && chunk.len() > 1 {
             return Ok(ChunkOutcome::Split);
         }
-
         if is_retryable_status(status) && attempt < max_attempts {
             let delay = retry_delay(attempt);
             log_warn(&format!(
-                "tei_embed retry status attempt={attempt}/{max_attempts} delay_ms={} url={} status={}",
-                delay.as_millis(),
-                embed_url,
-                status
+                "tei_embed retry status attempt={attempt}/{max_attempts} delay_ms={} url={embed_url} status={status}",
+                delay.as_millis()
             ));
             tokio::time::sleep(delay).await;
             continue;
         }
-
         let body = resp
             .text()
             .await
             .unwrap_or_else(|_| "<response body unavailable>".to_string());
         let body_preview: String = body.chars().take(240).collect();
         return Err(format!(
-            "TEI request failed with status {} for {} after {attempt}/{max_attempts} attempts; body={}",
-            status, embed_url, body_preview
-        )
-        .into());
+            "TEI request failed with status {status} for {embed_url} after {attempt}/{max_attempts} attempts; body={body_preview}"
+        ).into());
     }
     Err(format!("TEI embed exhausted {max_attempts} attempts for {embed_url}").into())
 }
@@ -150,7 +172,7 @@ pub(crate) async fn tei_embed(
         inputs.len(),
         embed_url
     ));
-    let _tei_start = std::time::Instant::now();
+    let tei_start = std::time::Instant::now();
 
     let mut stack: Vec<&[String]> = inputs.chunks(batch_size).collect();
     stack.reverse();
@@ -177,7 +199,7 @@ pub(crate) async fn tei_embed(
     log_debug(&format!(
         "tei_embed done vectors={} duration_ms={}",
         vectors.len(),
-        _tei_start.elapsed().as_millis()
+        tei_start.elapsed().as_millis()
     ));
 
     Ok(vectors)

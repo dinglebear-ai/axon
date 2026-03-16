@@ -55,6 +55,7 @@ interface UseAxonSessionResult {
 }
 interface UseAxonSessionOptions {
   assistantMode?: boolean
+  forceRefresh?: boolean
 }
 
 // The Rust ACP adapter prepends a system context block to the first user prompt
@@ -89,8 +90,11 @@ export async function fetchSessionWithRetry(
   isCancelled: () => boolean,
   options: UseAxonSessionOptions = {},
 ): Promise<SessionResponse> {
-  const { assistantMode = false } = options
-  const query = assistantMode ? '?assistant_mode=1' : ''
+  const { assistantMode = false, forceRefresh = false } = options
+  const params = new URLSearchParams()
+  if (assistantMode) params.set('assistant_mode', '1')
+  if (forceRefresh) params.set('fresh', '1')
+  const query = params.toString() ? `?${params.toString()}` : ''
   for (let i = 0; i <= RETRY_DELAYS_MS.length; i++) {
     if (isCancelled()) throw new Error('cancelled')
     const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}${query}`)

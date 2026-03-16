@@ -51,6 +51,9 @@ interface UseAxonAcpOptions {
     tool_call_id: string
     options: string[]
   }) => void
+  /** Called when the backend writes session metadata to disk (`session_info_update`).
+   * Consumers should force-refresh the session cache for the given sessionId. */
+  onSessionInfoUpdate?: (sessionId: string) => void
   enableFs?: boolean
   enableTerminal?: boolean
   permissionTimeoutSecs?: number | null
@@ -79,6 +82,7 @@ export function useAxonAcp({
   onEditorUpdate,
   onShowEditor,
   onPermissionRequest,
+  onSessionInfoUpdate,
   enableFs = true,
   enableTerminal = true,
   permissionTimeoutSecs = null,
@@ -177,6 +181,7 @@ export function useAxonAcp({
         'commands_update',
         'acp_resume_result',
         'permission_request',
+        'session_info_update',
         'command.output.json',
       ],
       (rawMsg) => {
@@ -229,6 +234,7 @@ export function useAxonAcp({
               )
             },
             onPermissionRequest,
+            onSessionInfoUpdate,
             onEditorUpdate,
             onShowEditor,
             flushBufferedStream,
@@ -260,6 +266,7 @@ export function useAxonAcp({
     onCommandsUpdate,
     onTurnComplete,
     onPermissionRequest,
+    onSessionInfoUpdate,
     onEditorUpdate,
     onShowEditor,
     flushBufferedStream,

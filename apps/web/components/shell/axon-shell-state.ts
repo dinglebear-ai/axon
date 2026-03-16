@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PromptInputFile } from '@/components/ai-elements/prompt-input'
 import type { NeuralCanvasHandle } from '@/components/neural-canvas'
 import { useAxonAcp } from '@/hooks/use-axon-acp'
+import { fetchSessionWithRetry } from '@/hooks/use-axon-session'
 import { useAxonWs } from '@/hooks/use-axon-ws'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { useMcpServers } from '@/hooks/use-mcp-servers'
@@ -164,6 +165,22 @@ export function useAxonShellState() {
     [wsSend],
   )
 
+  const onSessionInfoUpdate = useCallback(
+    (sessionId: string) => {
+      fetchSessionWithRetry(sessionId, () => false, {
+        assistantMode: layout.railMode === 'assistant',
+        forceRefresh: true,
+      })
+        .then(() => {
+          session.onSessionIdChange(sessionId)
+        })
+        .catch(() => {
+          // Ignore fetch failures — the session may not yet be on disk.
+        })
+    },
+    [layout.railMode, session],
+  )
+
   const { submitPrompt, isStreaming, connected } = useAxonAcp({
     activeSessionId: session.chatSessionId,
     agent: pulseAgent ?? 'claude',
@@ -175,6 +192,7 @@ export function useAxonShellState() {
     handoffContext: pendingHandoffContext,
     onSessionIdChange: session.onSessionIdChange,
     onSessionFallback: undefined,
+    onSessionInfoUpdate,
     onMessagesChange: messages.onMessagesChange,
     onAcpConfigOptionsUpdate: setAcpConfigOptions,
     onCommandsUpdate: handleCommandsUpdate,
@@ -428,63 +446,76 @@ export function useAxonShellState() {
   const chatTitle = activeSession?.preview?.slice(0, 60) ?? activeSession?.project ?? 'New chat'
   const agentLabel = agentDisplayName(pulseAgent ?? 'claude')
 
-  return useMemo(
+  const layoutState = useMemo(
     () => ({
-      agentLabel,
       canvasProfile: layout.canvasProfile,
-      canvasRef,
       chatFlex: layout.chatFlex,
       chatOpen: layout.chatOpen,
-      chatTitle,
-      composerProps,
-      connected,
-      copiedId,
-      copyMessage,
-      displayMessages,
-      editorMarkdown,
       editorOpen: layout.editorOpen,
-      handleCanvasProfileChange: layout.handleCanvasProfileChange,
-      handleEditMessage,
-      handleMobileFileSelect,
-      handleMobileNewSession,
-      handleMobileOpenFile,
-      handleMobileSelectSession,
-      handleRetryMessage,
-      handleSelectSession,
-      handleSidebarFileSelect,
-      handleStats,
       isDragging: layout.isDragging,
-      isStreaming,
       layoutRestored: layout.layoutRestored,
-      liveMessages: messages.liveMessages,
       mobilePane: layout.mobilePane,
+      railMode: layout.railMode,
+      rightPane: layout.rightPane,
+      sectionRef: layout.sectionRef,
+      sidebarOpen: layout.sidebarOpen,
+      sidebarWidth: layout.sidebarWidth,
+      transitionClass: layout.transitionClass,
+      density: layout.density,
+    }),
+    [
+      layout.canvasProfile,
+      layout.chatFlex,
+      layout.chatOpen,
+      layout.editorOpen,
+      layout.isDragging,
+      layout.layoutRestored,
+      layout.mobilePane,
+      layout.railMode,
+      layout.rightPane,
+      layout.sectionRef,
+      layout.sidebarOpen,
+      layout.sidebarWidth,
+      layout.transitionClass,
+      layout.density,
+    ],
+  )
+
+  const layoutActions = useMemo(
+    () => ({
+      handleCanvasProfileChange: layout.handleCanvasProfileChange,
       nudgeChatFlex: layout.nudgeChatFlex,
       nudgeSidebar: layout.nudgeSidebar,
-      onEditorUpdate,
-      openFile,
       persistChatOpen: layout.persistChatOpen,
       persistRightPane: layout.persistRightPane,
       persistSidebarOpen: layout.persistSidebarOpen,
-      railMode: layout.railMode,
-      reloadSession: session.reloadSession,
       resetChatFlex: layout.resetChatFlex,
       resetSidebarWidth: layout.resetSidebarWidth,
-      rightPane: layout.rightPane,
-      sectionRef: layout.sectionRef,
-      sessionError: session.sessionError,
-      sessionKey,
-      sessionLoading: session.sessionLoading,
-      setEditorMarkdown,
       setMobilePaneTracked: layout.setMobilePaneTracked,
       setRailModeTracked: layout.setRailModeTracked,
-      sidebarOpen: layout.sidebarOpen,
-      sidebarProps,
-      sidebarWidth: layout.sidebarWidth,
       startChatResize: layout.startChatResize,
       startSidebarResize: layout.startSidebarResize,
-      transitionClass: layout.transitionClass,
-      density: layout.density,
       setDensityTracked: layout.setDensityTracked,
+    }),
+    [
+      layout.handleCanvasProfileChange,
+      layout.nudgeChatFlex,
+      layout.nudgeSidebar,
+      layout.persistChatOpen,
+      layout.persistRightPane,
+      layout.persistSidebarOpen,
+      layout.resetChatFlex,
+      layout.resetSidebarWidth,
+      layout.setMobilePaneTracked,
+      layout.setRailModeTracked,
+      layout.startChatResize,
+      layout.startSidebarResize,
+      layout.setDensityTracked,
+    ],
+  )
+
+  const settingsState = useMemo(
+    () => ({
       enableFs: settings.enableFs,
       setEnableFs: settings.setEnableFs,
       enableTerminal: settings.enableTerminal,
@@ -495,61 +526,6 @@ export function useAxonShellState() {
       setAdapterTimeoutSecs: settings.setAdapterTimeoutSecs,
     }),
     [
-      agentLabel,
-      layout.canvasProfile,
-      canvasRef,
-      layout.chatFlex,
-      layout.chatOpen,
-      chatTitle,
-      composerProps,
-      connected,
-      copiedId,
-      copyMessage,
-      displayMessages,
-      editorMarkdown,
-      layout.editorOpen,
-      layout.handleCanvasProfileChange,
-      handleEditMessage,
-      handleMobileFileSelect,
-      handleMobileNewSession,
-      handleMobileOpenFile,
-      handleMobileSelectSession,
-      handleRetryMessage,
-      handleSelectSession,
-      handleSidebarFileSelect,
-      handleStats,
-      layout.isDragging,
-      isStreaming,
-      layout.layoutRestored,
-      messages.liveMessages,
-      layout.mobilePane,
-      layout.nudgeChatFlex,
-      layout.nudgeSidebar,
-      onEditorUpdate,
-      openFile,
-      layout.persistChatOpen,
-      layout.persistRightPane,
-      layout.persistSidebarOpen,
-      layout.railMode,
-      session.reloadSession,
-      layout.resetChatFlex,
-      layout.resetSidebarWidth,
-      layout.rightPane,
-      layout.sectionRef,
-      session.sessionError,
-      sessionKey,
-      session.sessionLoading,
-      setEditorMarkdown,
-      layout.setMobilePaneTracked,
-      layout.setRailModeTracked,
-      layout.sidebarOpen,
-      sidebarProps,
-      layout.sidebarWidth,
-      layout.startChatResize,
-      layout.startSidebarResize,
-      layout.transitionClass,
-      layout.density,
-      layout.setDensityTracked,
       settings.enableFs,
       settings.setEnableFs,
       settings.enableTerminal,
@@ -560,4 +536,111 @@ export function useAxonShellState() {
       settings.setAdapterTimeoutSecs,
     ],
   )
+
+  const conversationState = useMemo(
+    () => ({
+      agentLabel,
+      chatTitle,
+      connected,
+      copiedId,
+      copyMessage,
+      displayMessages,
+      handleEditMessage,
+      handleMobileOpenFile,
+      handleRetryMessage,
+      handleStats,
+      isStreaming,
+      liveMessages: messages.liveMessages,
+      openFile,
+      reloadSession: session.reloadSession,
+      sessionError: session.sessionError,
+      sessionKey,
+      sessionLoading: session.sessionLoading,
+    }),
+    [
+      agentLabel,
+      chatTitle,
+      connected,
+      copiedId,
+      copyMessage,
+      displayMessages,
+      handleEditMessage,
+      handleMobileOpenFile,
+      handleRetryMessage,
+      handleStats,
+      isStreaming,
+      messages.liveMessages,
+      openFile,
+      session.reloadSession,
+      session.sessionError,
+      sessionKey,
+      session.sessionLoading,
+    ],
+  )
+
+  const composerState = useMemo(
+    () => ({
+      composerProps,
+    }),
+    [composerProps],
+  )
+
+  const sidebarState = useMemo(
+    () => ({
+      handleMobileFileSelect,
+      handleMobileNewSession,
+      handleMobileSelectSession,
+      handleSelectSession,
+      handleSidebarFileSelect,
+      sidebarProps,
+    }),
+    [
+      handleMobileFileSelect,
+      handleMobileNewSession,
+      handleMobileSelectSession,
+      handleSelectSession,
+      handleSidebarFileSelect,
+      sidebarProps,
+    ],
+  )
+
+  const editorState = useMemo(
+    () => ({
+      editorMarkdown,
+      onEditorUpdate,
+      setEditorMarkdown,
+    }),
+    [editorMarkdown, onEditorUpdate, setEditorMarkdown],
+  )
+
+  return useMemo(
+    () => ({
+      canvasRef,
+      layoutState,
+      layoutActions,
+      settings: settingsState,
+      conversation: conversationState,
+      composer: composerState,
+      sidebar: sidebarState,
+      editor: editorState,
+    }),
+    [
+      layoutState,
+      layoutActions,
+      settingsState,
+      conversationState,
+      composerState,
+      sidebarState,
+      editorState,
+    ],
+  )
 }
+
+export type AxonShellState = ReturnType<typeof useAxonShellState>
+export type AxonShellLayoutState = AxonShellState['layoutState']
+export type AxonShellLayoutActions = AxonShellState['layoutActions']
+export type AxonShellConversationState = AxonShellState['conversation']
+export type AxonShellComposerState = AxonShellState['composer']
+export type AxonShellSidebarState = AxonShellState['sidebar']
+export type AxonShellEditorState = AxonShellState['editor']
+export type AxonShellSettingsState = AxonShellState['settings']

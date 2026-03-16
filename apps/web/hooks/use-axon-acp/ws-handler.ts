@@ -40,6 +40,7 @@ export interface WsHandlerCallbacks {
     tool_call_id: string
     options: string[]
   }) => void
+  onSessionInfoUpdate?: (sessionId: string) => void
   onEditorUpdate?: (content: string, operation: 'replace' | 'append') => void
   onShowEditor?: () => void
   flushBufferedStream: () => void
@@ -156,6 +157,12 @@ const PermissionRequestSchema = z
     options: z.array(z.string()),
   })
   .passthrough()
+const SessionInfoUpdateSchema = z
+  .object({
+    type: z.literal('session_info_update'),
+    session_id: z.string(),
+  })
+  .passthrough()
 const EditorUpdateSchema = z
   .object({
     type: z.literal('editor_update'),
@@ -191,6 +198,7 @@ type ParsedAcpWsMessage =
   | z.infer<typeof AcpResumeResultSchema>
   | z.infer<typeof EditorUpdateSchema>
   | z.infer<typeof PermissionRequestSchema>
+  | z.infer<typeof SessionInfoUpdateSchema>
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -223,7 +231,8 @@ export function isAcpRelevantWsMessage(rawMsg: unknown): boolean {
     type === 'config_option_update' ||
     type === 'commands_update' ||
     type === 'acp_resume_result' ||
-    type === 'permission_request'
+    type === 'permission_request' ||
+    type === 'session_info_update'
   )
 }
 
@@ -285,6 +294,10 @@ function parseAcpWsMessage(rawMsg: unknown): ParsedAcpWsMessage | null {
     }
     case 'permission_request': {
       const parsed = PermissionRequestSchema.safeParse(msg)
+      return parsed.success ? parsed.data : null
+    }
+    case 'session_info_update': {
+      const parsed = SessionInfoUpdateSchema.safeParse(msg)
       return parsed.success ? parsed.data : null
     }
     default:
@@ -510,6 +523,11 @@ export function handleAcpWsMessage(
         tool_call_id: msg.tool_call_id,
         options: msg.options,
       })
+      break
+    }
+
+    case 'session_info_update': {
+      callbacks.onSessionInfoUpdate?.(msg.session_id)
       break
     }
   }

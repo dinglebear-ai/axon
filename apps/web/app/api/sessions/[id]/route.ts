@@ -29,6 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const url = new URL(_request.url)
   const assistantMode = url.searchParams.get('assistant_mode') === '1'
+  const fresh = url.searchParams.get('fresh') === '1'
   const matchSession = (sessions: Awaited<ReturnType<typeof getCachedSessions>>) =>
     sessions.find((s) => s.id === id || s.filename === id)
 
@@ -37,6 +38,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     limit: LIST_LIMIT,
     perAgentLimit: PER_AGENT_LIMIT,
     ttlMs: SESSION_CACHE_TTL_MS,
+    forceRefresh: fresh,
   })
   let session = matchSession(fastSessions)
   if (!session) {
@@ -46,6 +48,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       limit: DETAIL_LIMIT,
       perAgentLimit: PER_AGENT_LIMIT,
       ttlMs: SESSION_CACHE_TTL_MS,
+      forceRefresh: fresh,
     })
     session = matchSession(fullSessions)
   }

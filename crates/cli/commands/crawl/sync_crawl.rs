@@ -1,3 +1,5 @@
+//! Synchronous crawl orchestration with disk cache, sitemap-only mode, and HTTP-to-Chrome fallback.
+
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::content::url_to_domain;
 use crate::crates::core::logging::{log_done, log_warn};
@@ -12,6 +14,7 @@ use crate::crates::crawl::manifest::{
 use crate::crates::jobs::embed::start_embed_job;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::sync::Arc;
 
 const DEFAULT_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 
@@ -73,7 +76,8 @@ pub(super) async fn maybe_return_cached_result(
 
 async fn run_sitemap_only_crawl(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
     let spinner = Spinner::new("running sitemap-only crawl");
-    let (summary, _) = run_sitemap_only(cfg, start_url, &cfg.output_dir, HashMap::new()).await?;
+    let (summary, _) =
+        run_sitemap_only(cfg, start_url, &cfg.output_dir, Arc::new(HashMap::new())).await?;
     spinner.finish(&format!(
         "sitemap-only complete (pages={}, markdown={})",
         summary.pages_seen, summary.markdown_files
@@ -92,8 +96,8 @@ async fn maybe_chrome_fallback(
     cfg: &Config,
     start_url: &str,
     http_summary: CrawlSummary,
-    http_seen_urls: HashSet<String>,
-    previous_manifest: HashMap<String, crate::crates::crawl::manifest::ManifestEntry>,
+    mut http_seen_urls: HashSet<String>,
+    previous_manifest: Arc<HashMap<String, crate::crates::crawl::manifest::ManifestEntry>>,
 ) -> (CrawlSummary, HashSet<String>) {
     let plan = plan_chrome_fallback(cfg, &http_summary);
     if matches!(plan, ChromeFallbackPlan::None) {
@@ -101,19 +105,16 @@ async fn maybe_chrome_fallback(
     }
 
     log_auto_switch_warning(start_url, &http_summary);
-    if let Some(result) = maybe_refetch_waf_blocked(cfg, plan, &http_summary, &http_seen_urls).await
-    {
-        return result;
+    if let Some(updated_summary) = maybe_refetch_waf_blocked(cfg, plan, &http_summary).await {
+        return (updated_summary, http_seen_urls);
     }
-    if let Some(result) =
-        maybe_refetch_thin_pages(cfg, plan, http_summary.clone(), &http_seen_urls).await
-    {
-        return result;
+    if let Some(updated_summary) = maybe_refetch_thin_pages(cfg, plan, &http_summary).await {
+        return (updated_summary, http_seen_urls);
     }
-    let (html_backfill_summary, html_backfill_seen_urls, should_retry_full_chrome) =
-        maybe_backfill_html_links(cfg, plan, start_url, &http_summary, &http_seen_urls).await;
+    let (html_backfill_summary, should_retry_full_chrome) =
+        maybe_backfill_html_links(cfg, plan, start_url, &http_summary, &mut http_seen_urls).await;
     if !should_retry_full_chrome {
-        return (html_backfill_summary, html_backfill_seen_urls);
+        return (html_backfill_summary, http_seen_urls);
     }
 
     let spinner = Spinner::new("HTTP yielded low coverage; retrying full crawl with Chrome");
@@ -140,7 +141,7 @@ async fn maybe_chrome_fallback(
             spinner.finish(&format!(
                 "Chrome fallback failed ({err}), using HTTP result"
             ));
-            (html_backfill_summary, html_backfill_seen_urls)
+            (html_backfill_summary, http_seen_urls)
         }
     }
 }
@@ -160,8 +161,7 @@ async fn maybe_refetch_waf_blocked(
     cfg: &Config,
     plan: ChromeFallbackPlan,
     summary: &CrawlSummary,
-    seen_urls: &HashSet<String>,
-) -> Option<(CrawlSummary, HashSet<String>)> {
+) -> Option<CrawlSummary> {
     if !matches!(plan, ChromeFallbackPlan::TargetedRefetch)
         || summary.waf_blocked_pages == 0
         || summary.waf_blocked_urls.is_empty()
@@ -175,15 +175,14 @@ async fn maybe_refetch_waf_blocked(
     let mut waf_summary = summary.clone();
     waf_summary.thin_urls = summary.waf_blocked_urls.clone();
     let updated = chrome_refetch_thin_pages(cfg, waf_summary, &cfg.output_dir).await;
-    Some((updated, seen_urls.clone()))
+    Some(updated)
 }
 
 async fn maybe_refetch_thin_pages(
     cfg: &Config,
     plan: ChromeFallbackPlan,
-    summary: CrawlSummary,
-    seen_urls: &HashSet<String>,
-) -> Option<(CrawlSummary, HashSet<String>)> {
+    summary: &CrawlSummary,
+) -> Option<CrawlSummary> {
     if !matches!(plan, ChromeFallbackPlan::TargetedRefetch) || summary.thin_urls.is_empty() {
         return None;
     }
@@ -191,12 +190,12 @@ async fn maybe_refetch_thin_pages(
     let spinner = Spinner::new(&format!(
         "HTTP yielded thin results; re-fetching {thin_count} thin page(s) with Chrome"
     ));
-    let updated_summary = chrome_refetch_thin_pages(cfg, summary, &cfg.output_dir).await;
+    let updated_summary = chrome_refetch_thin_pages(cfg, summary.clone(), &cfg.output_dir).await;
     spinner.finish(&format!(
         "Chrome targeted re-fetch complete (pages={}, markdown={}, thin_remaining={})",
         updated_summary.pages_seen, updated_summary.markdown_files, updated_summary.thin_pages,
     ));
-    Some((updated_summary, seen_urls.clone()))
+    Some(updated_summary)
 }
 
 async fn maybe_backfill_html_links(
@@ -204,12 +203,11 @@ async fn maybe_backfill_html_links(
     plan: ChromeFallbackPlan,
     start_url: &str,
     summary: &CrawlSummary,
-    seen_urls: &HashSet<String>,
-) -> (CrawlSummary, HashSet<String>, bool) {
+    seen_urls: &mut HashSet<String>,
+) -> (CrawlSummary, bool) {
     let mut html_backfill_summary = summary.clone();
-    let mut html_backfill_seen_urls = seen_urls.clone();
     if !matches!(plan, ChromeFallbackPlan::HtmlBackfill) {
-        return (html_backfill_summary, html_backfill_seen_urls, true);
+        return (html_backfill_summary, true);
     }
 
     let spinner = Spinner::new("HTTP yielded low coverage; backfilling discovered HTML links");
@@ -224,7 +222,7 @@ async fn maybe_backfill_html_links(
     {
         Ok(added_urls) => {
             for url in added_urls {
-                html_backfill_seen_urls.insert(url);
+                seen_urls.insert(url);
             }
             spinner.finish(&format!(
                 "HTML backfill complete (pages={}, markdown={})",
@@ -232,13 +230,13 @@ async fn maybe_backfill_html_links(
             ));
             let should_retry =
                 should_fallback_to_chrome(&html_backfill_summary, cfg.max_pages, cfg);
-            (html_backfill_summary, html_backfill_seen_urls, should_retry)
+            (html_backfill_summary, should_retry)
         }
         Err(err) => {
             spinner.finish(&format!(
                 "HTML backfill failed ({err}), retrying with Chrome"
             ));
-            (html_backfill_summary, html_backfill_seen_urls, true)
+            (html_backfill_summary, true)
         }
     }
 }
@@ -248,10 +246,10 @@ async fn maybe_backfill_html_links(
 /// Returns `(summary, seen_urls, effective_cfg_holder)` — the caller owns the
 /// `Config` holder so that `effective_cfg`'s lifetime extends past this call.
 async fn run_crawl_phase(
-    cfg: &Config,
+    cfg: &mut Config,
     start_url: &str,
-    previous_manifest: HashMap<String, crate::crates::crawl::manifest::ManifestEntry>,
-) -> Result<(CrawlSummary, HashSet<String>, Option<Config>), Box<dyn Error>> {
+    previous_manifest: Arc<HashMap<String, crate::crates::crawl::manifest::ManifestEntry>>,
+) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
     let initial_mode = super::runtime::resolve_initial_mode(cfg);
     let chrome_bootstrap = super::runtime::bootstrap_chrome_runtime(cfg).await;
     for warning in &chrome_bootstrap.warnings {
@@ -260,25 +258,19 @@ async fn run_crawl_phase(
 
     // Thread the pre-resolved WebSocket URL through cfg so configure_website
     // skips the redundant /json/version fetch on Chrome mode calls.
-    let ws_cfg_holder: Option<Config> =
-        chrome_bootstrap
-            .resolved_ws_url
-            .as_deref()
-            .map(|ws_url| Config {
-                chrome_remote_url: Some(ws_url.to_string()),
-                ..cfg.clone()
-            });
-    let effective_cfg: &Config = ws_cfg_holder.as_ref().unwrap_or(cfg);
+    if let Some(ws_url) = chrome_bootstrap.resolved_ws_url {
+        cfg.chrome_remote_url = Some(ws_url);
+    }
 
     let spinner = Spinner::new("running crawl");
     let (http_summary, http_seen_urls) = run_crawl_once(
-        effective_cfg,
+        cfg,
         start_url,
         initial_mode,
         &cfg.output_dir,
         None,
         false,
-        previous_manifest.clone(),
+        Arc::clone(&previous_manifest),
         None,
     )
     .await?;
@@ -288,7 +280,7 @@ async fn run_crawl_phase(
     ));
 
     let (summary, seen_urls) = maybe_chrome_fallback(
-        effective_cfg,
+        cfg,
         start_url,
         http_summary,
         http_seen_urls,
@@ -296,7 +288,7 @@ async fn run_crawl_phase(
     )
     .await;
 
-    Ok((summary, seen_urls, ws_cfg_holder))
+    Ok((summary, seen_urls))
 }
 
 /// Queue an optional embed job, update the `latest` reflink, write the audit diff,
@@ -368,24 +360,25 @@ pub(super) async fn run_sync_crawl(cfg: &Config, start_url: &str) -> Result<(), 
     }
 
     let domain = url_to_domain(start_url);
-    let mut sync_cfg = cfg.clone();
-    sync_cfg.output_dir = cfg.output_dir.join("domains").join(&domain).join("sync");
-    let cfg = &sync_cfg;
+    let mut sync_cfg = Config {
+        output_dir: cfg.output_dir.join("domains").join(&domain).join("sync"),
+        ..cfg.clone()
+    };
+    let cfg = &mut sync_cfg;
 
     let manifest_path = cfg.output_dir.join("manifest.jsonl");
-    let previous_manifest = if cfg.cache {
+    let previous_manifest = Arc::new(if cfg.cache {
         read_manifest_data(&manifest_path).await?
     } else {
         HashMap::new()
-    };
+    });
     let previous_urls: HashSet<String> = previous_manifest.keys().cloned().collect();
 
     if maybe_return_cached_result(cfg, start_url, &manifest_path, &previous_urls).await? {
         return Ok(());
     }
 
-    let (mut final_summary, seen_urls, _ws_cfg_holder) =
-        run_crawl_phase(cfg, start_url, previous_manifest).await?;
+    let (mut final_summary, seen_urls) = run_crawl_phase(cfg, start_url, previous_manifest).await?;
 
     if cfg.discover_sitemaps {
         // Re-read the manifest to merge any URLs that were written to disk by run_crawl_once

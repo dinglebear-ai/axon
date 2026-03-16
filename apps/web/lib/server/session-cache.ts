@@ -15,6 +15,7 @@ interface SessionCacheOptions {
   limit: number
   perAgentLimit: number
   ttlMs?: number
+  forceRefresh?: boolean
 }
 
 function cacheKey(options: SessionCacheOptions): string {
@@ -36,6 +37,27 @@ export async function getCachedSessions(options: SessionCacheOptions): Promise<S
   const key = cacheKey(options)
   const now = Date.now()
   const ttlMs = options.ttlMs ?? 30_000
+
+  // forceRefresh: bypass stale cache entirely, always wait for fresh scan
+  if (options.forceRefresh) {
+    const pending = inflight.get(key)
+    if (pending) return pending
+    const promise = scanSessions(options.limit, options.perAgentLimit, {
+      assistantMode: options.assistantMode,
+    })
+      .then((sessions) => {
+        cache.set(key, { sessions, fetchedAt: Date.now() })
+        inflight.delete(key)
+        return sessions
+      })
+      .catch((err) => {
+        inflight.delete(key)
+        throw err
+      })
+    inflight.set(key, promise)
+    return promise
+  }
+
   const hit = cache.get(key)
 
   // Fresh cache — return immediately

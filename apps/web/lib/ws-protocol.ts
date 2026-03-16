@@ -54,6 +54,7 @@ export type WsServerMsg =
   | { type: 'usage_update'; session_id: string; usage: WsUsageStats }
   | { type: 'thinking_content'; session_id?: string; content: string; tool_call_id?: string | null }
   | { type: 'session_fallback'; old_session_id: string; new_session_id: string }
+  | { type: 'session_info_update'; session_id: string }
   | { type: 'result'; session_id?: string; result?: string; [key: string]: unknown }
   | { type: 'error'; message?: string; [key: string]: unknown }
   | { type: 'editor_update'; content: string; operation: 'replace' | 'append' }
