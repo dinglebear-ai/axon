@@ -95,21 +95,23 @@ pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let runs = watch_svc::list_watch_runs(cfg, watch_id, limit).await?;
             println!("{}", serde_json::to_string_pretty(&runs)?);
         }
-        WatchRuntimeSubcommand::Get { .. } => return Err("unknown watch subcommand: get".into()),
+        WatchRuntimeSubcommand::Get { .. } => {
+            return Err("watch get is not yet implemented".into());
+        }
         WatchRuntimeSubcommand::Update { .. } => {
-            return Err("unknown watch subcommand: update".into());
+            return Err("watch update is not yet implemented".into());
         }
         WatchRuntimeSubcommand::Pause { .. } => {
-            return Err("unknown watch subcommand: pause".into());
+            return Err("watch pause is not yet implemented".into());
         }
         WatchRuntimeSubcommand::Resume { .. } => {
-            return Err("unknown watch subcommand: resume".into());
+            return Err("watch resume is not yet implemented".into());
         }
         WatchRuntimeSubcommand::Delete { .. } => {
-            return Err("unknown watch subcommand: delete".into());
+            return Err("watch delete is not yet implemented".into());
         }
         WatchRuntimeSubcommand::Artifacts { .. } => {
-            return Err("unknown watch subcommand: artifacts".into());
+            return Err("watch artifacts is not yet implemented".into());
         }
     }
     Ok(())
