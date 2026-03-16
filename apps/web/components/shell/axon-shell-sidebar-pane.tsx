@@ -30,6 +30,7 @@ export const AxonShellSidebarPane = memo(function AxonShellSidebarPane({
         variant="mobile"
         {...sidebar.sidebarProps}
         onSelectSession={sidebar.handleMobileSelectSession}
+        onSelectAssistantSession={sidebar.handleMobileSelectAssistantSession}
         onSelectFile={sidebar.handleMobileFileSelect}
         onNewSession={sidebar.handleMobileNewSession}
       />

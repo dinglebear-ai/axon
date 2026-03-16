@@ -376,6 +376,7 @@ export function useAxonShellState() {
     handleMobileFileSelect,
     handleMobileNewSession,
     handleMobileOpenFile,
+    handleMobileSelectAssistantSession,
     handleMobileSelectSession,
     handleRetryMessage,
     handleSelectSession,
@@ -597,6 +598,7 @@ export function useAxonShellState() {
     () => ({
       handleMobileFileSelect,
       handleMobileNewSession,
+      handleMobileSelectAssistantSession,
       handleMobileSelectSession,
       handleSelectSession,
       handleSidebarFileSelect,
@@ -605,6 +607,7 @@ export function useAxonShellState() {
     [
       handleMobileFileSelect,
       handleMobileNewSession,
+      handleMobileSelectAssistantSession,
       handleMobileSelectSession,
       handleSelectSession,
       handleSidebarFileSelect,

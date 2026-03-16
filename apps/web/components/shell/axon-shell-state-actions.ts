@@ -212,6 +212,14 @@ export function useAxonShellActions(params: Params) {
     [handleSelectSession, setMobilePaneTracked],
   )
 
+  const handleMobileSelectAssistantSession = useCallback(
+    (sessionId: string) => {
+      handleSelectAssistantSession(sessionId)
+      setMobilePaneTracked('chat')
+    },
+    [handleSelectAssistantSession, setMobilePaneTracked],
+  )
+
   const handleMobileFileSelect = useCallback(
     (entry: FileEntry) => {
       workspace.setSelectedFilePath(entry.path)
@@ -451,6 +459,7 @@ export function useAxonShellActions(params: Params) {
     handleMobileFileSelect,
     handleMobileNewSession,
     handleMobileOpenFile,
+    handleMobileSelectAssistantSession,
     handleMobileSelectSession,
     handleRetryMessage,
     handleSelectSession,
