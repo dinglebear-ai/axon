@@ -35,6 +35,7 @@ export function TopNToggle({
           : `Top ${DISPLAY_LIMIT} of ${totalRows.toLocaleString()} rows`}
       </span>
       <Button
+        type="button"
         variant="link"
         size="sm"
         onClick={onToggle}

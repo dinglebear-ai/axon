@@ -26,7 +26,10 @@ export async function GET() {
     return NextResponse.json(prefs)
   } catch (error) {
     logError('api.shell.tool_preferences.get_failed', {
-      message: error instanceof Error ? error.message : String(error),
+      error:
+        error instanceof Error
+          ? { message: error.message, name: error.name, stack: error.stack }
+          : String(error),
     })
     return NextResponse.json({ error: 'failed_to_load' }, { status: 500 })
   }
@@ -54,7 +57,10 @@ export async function PUT(request: Request) {
     return NextResponse.json(saved)
   } catch (error) {
     logError('api.shell.tool_preferences.put_failed', {
-      message: error instanceof Error ? error.message : String(error),
+      error:
+        error instanceof Error
+          ? { message: error.message, name: error.name, stack: error.stack }
+          : String(error),
     })
     return NextResponse.json({ error: 'failed_to_save' }, { status: 500 })
   }

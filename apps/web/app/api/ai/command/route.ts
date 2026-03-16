@@ -191,8 +191,13 @@ export async function POST(req: NextRequest) {
     return createUIMessageStreamResponse({ stream })
   } catch (error) {
     const errorId = makeErrorId('ai-command')
-    const message = error instanceof Error ? error.message : String(error)
-    logError('api.ai.command.unhandled_error', { errorId, message })
+    logError('api.ai.command.unhandled_error', {
+      errorId,
+      error:
+        error instanceof Error
+          ? { message: error.message, name: error.name, stack: error.stack }
+          : String(error),
+    })
     return apiError(500, 'Failed to process AI request', {
       code: 'ai_command_internal',
       errorId,

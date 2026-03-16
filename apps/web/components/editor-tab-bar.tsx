@@ -67,6 +67,7 @@ export function EditorTabBar({
 
             {/* Close button */}
             <Button
+              type="button"
               variant="ghost"
               size="icon-xs"
               aria-label={`Close ${tab.title || 'Untitled'}`}

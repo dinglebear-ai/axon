@@ -66,7 +66,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json(response)
   } catch (err) {
-    logError('api.jobs.db_error', { message: err instanceof Error ? err.message : String(err) })
+    logError('api.jobs.db_error', {
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
+    })
     return apiError(500, 'Failed to query jobs', { code: 'jobs_db_error' })
   }
 }

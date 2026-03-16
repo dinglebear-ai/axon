@@ -104,7 +104,10 @@ async function checkHttpServer(
   } catch (err) {
     logError('api.mcp.status.http_check_failed', {
       name,
-      message: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
     })
     return 'offline'
   }
@@ -132,7 +135,10 @@ async function checkStdioServer(name: string, command: string): Promise<ServerSt
   } catch (err) {
     logError('api.mcp.status.stdio_check_failed', {
       name,
-      message: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
     })
     return 'offline'
   }
@@ -166,7 +172,10 @@ export async function GET() {
     return NextResponse.json({ servers })
   } catch (err) {
     logError('api.mcp.status.get_failed', {
-      message: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
     })
     return NextResponse.json({ error: 'Failed to check MCP server status' }, { status: 500 })
   }

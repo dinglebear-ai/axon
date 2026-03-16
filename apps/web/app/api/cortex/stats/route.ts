@@ -11,7 +11,10 @@ export async function GET() {
     return NextResponse.json({ ok: true, data })
   } catch (err) {
     logError('api.cortex.stats.failed', {
-      message: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
     })
     return apiError(500, 'Failed to fetch Cortex stats', { code: 'cortex_stats' })
   }

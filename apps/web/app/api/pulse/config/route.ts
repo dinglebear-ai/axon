@@ -123,7 +123,10 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : String(error)
     logError('api.pulse.config.probe_failed', {
       errorId,
-      message,
+      error:
+        error instanceof Error
+          ? { message: error.message, name: error.name, stack: error.stack }
+          : String(error),
       agent: req.agent,
       sessionId: req.sessionId ?? null,
       model: req.model ?? null,

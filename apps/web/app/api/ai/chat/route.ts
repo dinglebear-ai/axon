@@ -105,7 +105,10 @@ export async function POST(request: Request) {
     )
   } catch (err) {
     logError('api.ai.chat.unhandled_error', {
-      message: err instanceof Error ? err.message : String(err),
+      error:
+        err instanceof Error
+          ? { message: err.message, name: err.name, stack: err.stack }
+          : String(err),
     })
     return apiError(500, 'AI chat request failed', { code: 'ai_chat_internal' })
   }

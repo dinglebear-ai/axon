@@ -21,6 +21,7 @@ export function AxonPaneHandle({
   const Icon = ICONS[label as keyof typeof ICONS] ?? (side === 'left' ? PanelLeft : PanelRight)
   return (
     <Button
+      type="button"
       variant="ghost"
       size="sm"
       onClick={onClick}
