@@ -4,9 +4,9 @@ pub mod crates;
 
 use self::crates::cli::commands::{
     run_ask, run_completions, run_crawl, run_debug, run_dedupe, run_doctor, run_domains, run_embed,
-    run_evaluate, run_extract, run_graph, run_ingest, run_map, run_mcp, run_query, run_refresh,
-    run_research, run_retrieve, run_scrape, run_screenshot, run_search, run_serve, run_sessions,
-    run_sources, run_stats, run_status, run_suggest, run_watch, start_url_from_cfg,
+    run_evaluate, run_extract, run_graph, run_ingest, run_map, run_mcp, run_migrate, run_query,
+    run_refresh, run_research, run_retrieve, run_scrape, run_screenshot, run_search, run_serve,
+    run_sessions, run_sources, run_stats, run_status, run_suggest, run_watch, start_url_from_cfg,
 };
 use self::crates::core::config::{CommandKind, Config, parse_args};
 use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
@@ -89,10 +89,7 @@ async fn run_once(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
-        CommandKind::Migrate => {
-            eprintln!("migrate command not yet implemented");
-            std::process::exit(1);
-        }
+        CommandKind::Migrate => run_migrate(cfg).await?,
     }
     Ok(())
 }
