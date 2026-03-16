@@ -1,5 +1,42 @@
 # Changelog
-Last Modified: 2026-03-16 (session: v0.25.3 — AMQP consumer_timeout fix, doc_concurrency clamp, qdrant_upsert retry, AST chunking observability)
+Last Modified: 2026-03-16 (session: v0.26.0 — Chrome stealth extract, temporal vector search, spawn_blocking ingest, logging/client improvements)
+
+## [0.26.0] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.25.3.
+
+### Highlights
+
+- **Chrome stealth path for `axon extract`** — `--render-mode chrome` now routes single-URL extraction through Spider's `website.crawl()` with full stealth + fingerprint patching, `with_wait_for_idle_network0`, and CDP URL resolution. Previously Chrome mode fell back to plain reqwest. `engine/chrome.rs` extracted to satisfy monolith limit.
+- **`render_mode` persisted in `ExtractJobConfig`** — async extract jobs now serialize `render_mode` (with `#[serde(default)]` for backward compat) so workers honour the originally requested render mode on dequeue.
+- **Temporal vector search** — `--since` / `--before` flags on `query`/`retrieve`/`ask` filter Qdrant results by `indexed_at` timestamp, powered by new `VectorQueryFilter::temporal` path.
+- **`spawn_blocking` for CPU-bound chunk ops** — `chunk_code`/`chunk_text` in GitHub ingest file batch now offload tree-sitter AST work to the blocking thread pool, preventing async runtime starvation during large repo ingest.
+- **`build_client` user-agent support** — `build_client(timeout, user_agent: Option<&str>)` signature extended; `HTTP_CLIENT` LazyLock reads `AXON_CHROME_USER_AGENT` at init.
+- **Local timestamp logging** — `log_info`/`log_warn`/`log_done` timestamps now use `chrono::Local::now().format("%H:%M:%S")` instead of UTC epoch math.
+- **`list_ingest_jobs` source filter** — added `source_filter: Option<&str>` parameter with SQL `WHERE ($3::text IS NULL OR source_type = $3)` for filtering `sessions` separately.
+- **Refresh schedule cascade delete** — `delete_refresh_schedule_with_pool` now also calls `delete_watch_def_with_pool`.
+- **`context7` MCP server** — added `npx -y @upstash/context7-mcp` to `config/mcporter.json`.
+
+### Commits since v0.25.3 (`3d9f3476`)
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat | Chrome stealth extract, temporal search, spawn_blocking ingest, logging/client improvements |
+| ff50c232 | fix | wire CDP URL resolution, network-idle wait, render_mode persistence in Chrome extract path |
+| cb60b108 | refactor | extract Chrome path to engine/chrome.rs (monolith limit) |
+| 516628ec | feat | temporal search via --since / --before flags |
+| 8d58df42 | feat | add Chrome stealth path to single-URL extraction |
+| f2150b2b | feat | add Chrome/rendering fields to ExtractWebConfig |
+| 9b1291f4 | fix | address all 9 PR review comments from cubic-dev-ai |
+| 4838a7cf | fix | re-push pre-acked job on DB claim error, cap preacked_ids |
+| 64906291 | fix | drop response before permit on non-success TEI path, clean invalid indexes CONCURRENTLY |
+| 5b47e5ec | fix | snap search_start to UTF-8 char boundary after chunk-overlap rewind |
+| d72509c0 | fix | reset session generation counter on manual session switch |
+| e2362a68 | fix | advance search_start by chunk_len minus overlap for correct line ranges |
+| 12f1456b | fix | restore MCP card navigation after href removal |
+| 7e94e987 | fix | add usage data fields to UsageUpdate wire event |
+| cd210a48 | fix | restore positional URL for graph build and validate required args |
+| 0a166796 | fix | replace misleading "unknown" errors with "not yet implemented" for watch subcommands |
 
 ## [0.25.3] — feat/pulse-shell-and-hybrid-search
 

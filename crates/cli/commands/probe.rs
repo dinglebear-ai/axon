@@ -15,7 +15,7 @@ pub async fn probe_http(url: &str, paths: &[&str]) -> (bool, Option<String>) {
     }
 
     // Short 4s timeout for health probes — intentionally not the global 30s client.
-    let client = match build_client(4) {
+    let client = match build_client(4, None) {
         Ok(c) => c,
         Err(err) => return (false, Some(err.to_string())),
     };

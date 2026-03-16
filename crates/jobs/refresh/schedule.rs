@@ -3,6 +3,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
 use crate::crates::jobs::common::{enqueue_job, make_pool};
 use crate::crates::jobs::status::JobStatus;
+use crate::crates::jobs::watch::delete_watch_def_with_pool;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -153,6 +154,15 @@ pub(crate) async fn delete_refresh_schedule_with_pool(
         .execute(pool)
         .await?
         .rows_affected();
+    // Always attempt to remove the corresponding watch def; it may not exist for
+    // legacy schedules created before the watch system was introduced.
+    let _ = delete_watch_def_with_pool(pool, name)
+        .await
+        .inspect_err(|e| {
+            log_warn(&format!(
+                "refresh schedule delete watch_def failed name={name} error={e}"
+            ));
+        });
     Ok(rows > 0)
 }
 

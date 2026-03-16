@@ -248,7 +248,7 @@ pub async fn discover_sitemap_urls(
     let seeded_default_sitemaps = queue.len();
 
     let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs)?;
+    let client = build_client(timeout_secs, None)?;
     let robots_declared_sitemaps =
         enqueue_robots_sitemaps(&client, &scheme, &host, cfg, &mut queue).await;
 
@@ -442,7 +442,7 @@ pub(crate) async fn append_candidate_backfill(
     tokio::fs::create_dir_all(&markdown_dir).await?;
 
     let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs)?;
+    let client = build_client(timeout_secs, None)?;
     let mut manifest = open_append_manifest(&manifest_path).await?;
 
     let mut idx = summary.markdown_files;

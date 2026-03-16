@@ -2,7 +2,7 @@ use super::state::upsert_target_state;
 use super::{RefreshPageResult, RefreshRunSummary, RefreshTargetState};
 use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_filename;
-use crate::crates::core::logging::log_warn;
+use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::crawl::manifest::ManifestEntry;
 use crate::crates::vector::ops::input::chunk_text;
 use crate::crates::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
@@ -108,6 +108,7 @@ pub(crate) async fn process_single_refresh_url(
             if result.changed {
                 *changed_idx += 1;
                 summary.changed += 1;
+                log_info(&format!("refresh url={url} status=changed"));
 
                 if let Some(markdown) = result.markdown.as_deref() {
                     let filename = url_to_filename(url, *changed_idx);

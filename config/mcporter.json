@@ -1,18 +1,28 @@
 {
   "mcpServers": {
     "axon-axon": {
-      "type": "stdio",
       "command": "axon",
-      "args": ["mcp"],
+      "args": [
+        "mcp"
+      ],
       "env": {
         "AXON_MCP_TRANSPORT": "stdio"
       }
     },
     "plate": {
       "description": "Plate editors, plugins and components",
-      "type": "stdio",
       "command": "npx",
-      "args": ["shadcn@latest", "mcp"]
+      "args": [
+        "shadcn@latest",
+        "mcp"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
     }
   },
   "imports": []

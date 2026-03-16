@@ -310,8 +310,18 @@ pub(crate) async fn run_amqp_lane(
             DeliveryOutcome::Break => break,
         };
 
-        if let Some(job_fut) =
-            claim_delivery(delivery, cfg, &pool, wc, lane, process_fn, &semaphore).await?
+        if let Some(job_fut) = claim_delivery(
+            delivery,
+            cfg,
+            &pool,
+            wc,
+            lane,
+            process_fn,
+            &semaphore,
+            &mut preacked_ids,
+            preack_cap,
+        )
+        .await?
         {
             inflight.push(job_fut);
         }

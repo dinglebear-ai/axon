@@ -58,16 +58,26 @@ pub async fn get_ingest_job(cfg: &Config, id: Uuid) -> Result<Option<IngestJob>,
     .await?)
 }
 
+/// List ingest jobs, optionally filtered to a single `source_type`.
+///
+/// Pass `source_filter = Some("sessions")` to show only session ingest jobs,
+/// or `None` to return all jobs regardless of source type.
 pub async fn list_ingest_jobs(
     cfg: &Config,
+    source_filter: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<IngestJob>, Box<dyn Error>> {
+    log_info(&format!(
+        "command=ingest_list source_filter={} limit={limit} offset={offset}",
+        source_filter.unwrap_or("all"),
+    ));
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
     Ok(sqlx::query_as::<_, IngestJob>(
         "SELECT id,status,source_type,target,created_at,updated_at,started_at,finished_at,\
          error_text,result_json,config_json FROM axon_ingest_jobs \
+         WHERE ($3::text IS NULL OR source_type = $3) \
          ORDER BY CASE status \
            WHEN 'running' THEN 0 \
            WHEN 'pending' THEN 1 \
@@ -79,6 +89,7 @@ pub async fn list_ingest_jobs(
     )
     .bind(limit)
     .bind(offset)
+    .bind(source_filter)
     .fetch_all(&pool)
     .await?)
 }

@@ -187,7 +187,16 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
     }
 
     let ext = file_extension(path);
-    let chunks = chunk_code(&text, &ext).unwrap_or_else(|| chunk_text(&text));
+    // chunk_code (tree-sitter) and chunk_text are CPU-bound. Offload to the
+    // blocking thread pool so they don't starve the async runtime, and so
+    // concurrent buffer_unordered calls can chunk on separate OS threads.
+    let ext_for_chunk = ext.clone();
+    let (chunks, text) = tokio::task::spawn_blocking(move || {
+        let chunks = chunk_code(&text, &ext_for_chunk).unwrap_or_else(|| chunk_text(&text));
+        (chunks, text)
+    })
+    .await
+    .map_err(|e| format!("chunk_code panicked: {e}"))?;
     if chunks.is_empty() {
         return Ok(Vec::new());
     }

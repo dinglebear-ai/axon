@@ -4,6 +4,7 @@ use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 use super::FileEmbedCtx;
@@ -94,9 +95,15 @@ async fn flush_batch(
     )
     .await;
 
+    let batch_start = Instant::now();
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let elapsed_ms = batch_start.elapsed().as_millis();
+    log_info(&format!(
+        "github embed_batch_done batch_size={count} chunks={} elapsed_ms={elapsed_ms}",
+        summary.chunks_embedded
+    ));
     Ok(summary.chunks_embedded)
 }
 

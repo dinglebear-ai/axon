@@ -10,7 +10,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 // Aliases used for futures that must be Send to work in FuturesUnordered across await points.
@@ -269,6 +269,7 @@ pub(super) async fn run_embed_pipeline(
     progress_tx: Option<tokio::sync::mpsc::Sender<EmbedProgress>>,
 ) -> Result<EmbedSummary, SendError> {
     let docs_total = prepared.len();
+    let pipeline_start = Instant::now();
     log_info(&format!("embed_pipeline docs={}", docs_total));
     let doc_timeout_secs = env_usize_clamped("AXON_EMBED_DOC_TIMEOUT_SECS", 300, 10, 7200) as u64;
     let doc_concurrency = env_usize_clamped(
@@ -344,13 +345,18 @@ pub(super) async fn run_embed_pipeline(
 
     flush_and_cleanup(cfg, &mut pending_points, &mut stale_tail_queue).await?;
 
+    let elapsed_secs = pipeline_start.elapsed().as_secs();
+    let docs_embedded = docs_total - docs_failed;
     if docs_failed > 0 {
         log_warn(&format!(
             "embed_pipeline completed with {docs_failed}/{docs_total} doc failures"
         ));
     }
+    log_info(&format!(
+        "embed_pipeline_done docs={docs_total} embedded={docs_embedded} failed={docs_failed} chunks={chunks_embedded} elapsed={elapsed_secs}s"
+    ));
     Ok(EmbedSummary {
-        docs_embedded: docs_total - docs_failed,
+        docs_embedded,
         docs_failed,
         chunks_embedded,
     })

@@ -53,7 +53,7 @@ pub async fn ingest_list(
     limit: i64,
     offset: i64,
 ) -> Result<IngestResult, Box<dyn Error>> {
-    let jobs = list_ingest_jobs(cfg, limit, offset).await?;
+    let jobs = list_ingest_jobs(cfg, None, limit, offset).await?;
     Ok(map_ingest_result(serde_json::to_value(jobs)?))
 }
 
@@ -85,7 +85,7 @@ pub async fn ingest_list_raw(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<IngestJob>, Box<dyn Error>> {
-    list_ingest_jobs(cfg, limit, offset).await
+    list_ingest_jobs(cfg, None, limit, offset).await
 }
 
 pub async fn ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {

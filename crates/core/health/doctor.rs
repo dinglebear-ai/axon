@@ -30,7 +30,7 @@ async fn probe_tei_info(url: &str) -> (Option<Value>, Option<String>) {
     }
 
     // Short 4s timeout for health probes — intentionally not the global 30s client.
-    let client = match build_client(4) {
+    let client = match build_client(4, None) {
         Ok(c) => c,
         Err(err) => return (None, Some(err.to_string())),
     };
@@ -120,7 +120,7 @@ async fn probe_openai(cfg: &Config, openai_model: &str) -> (bool, String) {
         return (false, "OPENAI_MODEL not set".to_string());
     }
 
-    let client = match build_client(3) {
+    let client = match build_client(3, None) {
         Ok(c) => c,
         Err(e) => return (false, e.to_string()),
     };

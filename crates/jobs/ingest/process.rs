@@ -6,7 +6,7 @@ use futures::Future;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use sqlx::PgPool;
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::Instrument as _;
 use uuid::Uuid;
 
@@ -306,6 +306,11 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
     )
     .entered();
 
+    log_info(&format!(
+        "ingest_job_start source={source_label} target={target_label} job_id={id}"
+    ));
+    let job_start = Instant::now();
+
     let result = match &job_cfg.source {
         IngestSource::Github {
             repo,
@@ -353,11 +358,18 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
         }
     };
 
+    let elapsed = job_start.elapsed().as_secs();
     match result {
         Ok(chunks) => {
+            log_info(&format!(
+                "ingest_job_done source={source_label} target={target_label} job_id={id} chunks={chunks} elapsed={elapsed}s"
+            ));
             mark_completed(&pool, id, chunks).await;
         }
         Err(e) => {
+            log_warn(&format!(
+                "ingest_job_failed source={source_label} target={target_label} job_id={id} error={e} elapsed={elapsed}s"
+            ));
             if let Err(e2) = mark_job_failed(&pool, TABLE, id, &e.to_string()).await {
                 log_warn(&format!("mark_job_failed failed job_id={id} error={e2}"));
             }

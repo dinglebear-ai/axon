@@ -46,7 +46,12 @@ pub async fn maybe_handle_ingest_subcommand(
             handle_job_errors(cfg, job, id, "ingest")?;
         }
         "list" => {
-            let jobs = ingest_jobs::list_ingest_jobs(cfg, 50, 0).await?;
+            let source_filter = if cmd_name == "sessions" {
+                Some("sessions")
+            } else {
+                None
+            };
+            let jobs = ingest_jobs::list_ingest_jobs(cfg, source_filter, 50, 0).await?;
             handle_ingest_list(cfg, jobs).await?;
         }
         "cleanup" => {

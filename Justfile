@@ -199,7 +199,7 @@ dev:
     set -euo pipefail
     just stop
     sleep 1
-    export RUST_LOG="${RUST_LOG:-warn,axon.mcp.oauth=info,axon::crates::mcp=info}"
+    export RUST_LOG="${RUST_LOG:-info,axon.mcp.oauth=info,axon::crates::mcp=info}"
     if command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon

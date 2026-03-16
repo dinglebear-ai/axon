@@ -291,7 +291,7 @@ async fn list_embed_status(cfg: &Config) -> Result<Vec<EmbedJob>, String> {
 }
 
 async fn list_ingest_status(cfg: &Config) -> Result<Vec<IngestJob>, String> {
-    list_ingest_jobs(cfg, 20, 0)
+    list_ingest_jobs(cfg, None, 20, 0)
         .await
         .map_err(|e| format!("ingest status lookup failed: {e}"))
 }

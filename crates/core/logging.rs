@@ -1,3 +1,4 @@
+use chrono::Local;
 use console::Style;
 use std::fmt;
 use std::io::{self, Write};
@@ -245,17 +246,8 @@ where
     ) -> fmt::Result {
         let ansi = writer.has_ansi_escapes();
 
-        // HH:MM:SS (UTC) ─────────────────────────────────────────────────────
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let ts = format!(
-            "{:02}:{:02}:{:02}",
-            (secs % 86400) / 3600,
-            (secs % 3600) / 60,
-            secs % 60
-        );
+        // HH:MM:SS (local time) ───────────────────────────────────────────────
+        let ts = Local::now().format("%H:%M:%S").to_string();
         if ansi {
             write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
         } else {
