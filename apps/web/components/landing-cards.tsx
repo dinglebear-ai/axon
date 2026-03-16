@@ -18,12 +18,14 @@ function LandingCard({
   icon,
   title,
   href,
+  onViewAll,
   children,
   storageKey,
 }: {
   icon: React.ReactNode
   title: string
   href?: string
+  onViewAll?: () => void
   children: React.ReactNode
   storageKey: string
 }) {
@@ -78,7 +80,7 @@ function LandingCard({
                 />
               </Button>
             </CollapsibleTrigger>
-            {href && open && (
+            {open && href && (
               <Link
                 href={href}
                 className="flex items-center gap-0.5 text-[10px] text-[rgba(175,215,255,0.3)] transition-colors hover:text-[rgba(175,215,255,0.7)]"
@@ -86,6 +88,16 @@ function LandingCard({
                 View all
                 <ChevronRight className="size-3" />
               </Link>
+            )}
+            {open && !href && onViewAll && (
+              <button
+                type="button"
+                onClick={onViewAll}
+                className="flex items-center gap-0.5 text-[10px] text-[rgba(175,215,255,0.3)] transition-colors hover:text-[rgba(175,215,255,0.7)]"
+              >
+                View all
+                <ChevronRight className="size-3" />
+              </button>
             )}
           </div>
         </CardHeader>
@@ -249,7 +261,7 @@ function McpContent() {
 // Export
 // ---------------------------------------------------------------------------
 
-export function LandingCards() {
+export function LandingCards({ onMcpOpen }: { onMcpOpen?: () => void } = {}) {
   return (
     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <LandingCard
@@ -260,7 +272,12 @@ export function LandingCards() {
       >
         <FilesContent />
       </LandingCard>
-      <LandingCard icon={<Network />} title="MCP" storageKey="axon.landing.card.mcp">
+      <LandingCard
+        icon={<Network />}
+        title="MCP"
+        onViewAll={onMcpOpen}
+        storageKey="axon.landing.card.mcp"
+      >
         <McpContent />
       </LandingCard>
     </div>

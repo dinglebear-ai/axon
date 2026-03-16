@@ -213,7 +213,10 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
                 .find(chunk.as_str())
                 .map(|pos| search_start + pos)
                 .unwrap_or(search_start);
-            search_start = byte_offset + chunk.len();
+            // Advance by chunk length minus overlap so the next search starts
+            // within the overlap window. chunk_text() uses 200-char overlap.
+            const CHUNK_OVERLAP: usize = 200;
+            search_start = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
             let (line_start, line_end) = line_range_for_chunk(&text, chunk, byte_offset);
 
             let extra = build_github_payload(&GitHubPayloadParams {
