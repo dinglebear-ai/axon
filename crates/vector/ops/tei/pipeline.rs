@@ -30,7 +30,7 @@ async fn embed_prepared_doc(
 ) -> Result<(usize, String, usize, Vec<serde_json::Value>), SendError> {
     let vectors = tei_embed(cfg, &doc.chunks)
         .await
-        .map_err(|e| -> SendError { e.to_string().into() })?;
+        .map_err(|e| -> SendError { format!("TEI embed for {}: {e}", doc.url).into() })?;
     if vectors.is_empty() {
         return Err(format!("TEI returned no vectors for {}", doc.url).into());
     }
@@ -147,7 +147,7 @@ async fn bootstrap_first_doc(
         Ok((dim, url, chunk_count, points)) => {
             let mode = qdrant_store::collection_init_or_cached(cfg, dim)
                 .await
-                .map_err(|e| -> SendError { e.to_string().into() })?;
+                .map_err(|e| -> SendError { format!("collection init/cache: {e}").into() })?;
             let chunks = if mode == VectorMode::Named {
                 let rebuilt = rebuild_points_as_named(points);
                 let n = rebuilt.len();
@@ -181,7 +181,7 @@ async fn flush_and_cleanup(
     }
     qdrant_store::qdrant_upsert(cfg, points)
         .await
-        .map_err(|e| -> SendError { e.to_string().into() })?;
+        .map_err(|e| -> SendError { format!("qdrant upsert: {e}").into() })?;
     points.clear();
     for (tail_url, count) in stale_tail_queue.drain(..) {
         if let Err(e) = qdrant_delete_stale_tail(cfg, &tail_url, count).await {

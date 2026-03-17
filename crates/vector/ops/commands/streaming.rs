@@ -1,5 +1,5 @@
 use crate::crates::core::config::Config;
-use anyhow::{Result as AnyResult, anyhow};
+use anyhow::Result as AnyResult;
 use futures_util::StreamExt;
 use std::error::Error;
 use std::io::Write;
@@ -319,13 +319,8 @@ pub(crate) async fn ask_llm_non_streaming(
         "temperature": 0.1
     }));
 
-    let response = req
-        .send()
-        .await
-        .map_err(|e| anyhow!(e.to_string()))?
-        .error_for_status()
-        .map_err(|e| anyhow!(e.to_string()))?;
-    let json: serde_json::Value = response.json().await.map_err(|e| anyhow!(e.to_string()))?;
+    let response = req.send().await?.error_for_status()?;
+    let json: serde_json::Value = response.json().await?;
     Ok(json["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or("(no answer)")

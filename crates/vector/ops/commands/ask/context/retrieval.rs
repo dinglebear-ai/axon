@@ -29,7 +29,7 @@ async fn dispatch_ask_search(
     let filter_ref = filter.as_ref();
     let mode = get_or_fetch_vector_mode(cfg)
         .await
-        .map_err(|e| anyhow!(e.to_string()))?;
+        .map_err(|e| anyhow!("vector mode detection: {e}"))?;
     match mode {
         VectorMode::Named => {
             let sv = sparse::compute_sparse_vector(query);
@@ -39,9 +39,7 @@ async fn dispatch_ask_search(
                 qdrant::qdrant_named_dense_search(cfg, vector, limit, filter_ref).await
             }
         }
-        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref)
-            .await
-            .map_err(|e| anyhow!(e.to_string())),
+        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref).await,
     }
 }
 
@@ -49,7 +47,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let retrieval_started = std::time::Instant::now();
     let mut ask_vectors = tei::tei_embed(cfg, &[query.to_string()])
         .await
-        .map_err(|e| anyhow!(e.to_string()))?;
+        .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
