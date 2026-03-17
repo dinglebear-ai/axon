@@ -87,9 +87,11 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
     let config: AxonConfig = match serde_json::from_str(&raw) {
         Ok(cfg) => cfg,
         Err(e) => {
-            log::warn!(
-                "[pulse_chat] failed to parse {}: {e}",
-                config_path.display()
+            tracing::warn!(
+                context = "pulse_chat",
+                path = %config_path.display(),
+                error = %e,
+                "failed to parse MCP config",
             );
             return vec![];
         }
@@ -111,10 +113,11 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
                 let cmd = command.unwrap_or_default();
                 // SEC-2: validate command before spawning a child process.
                 if !is_safe_mcp_command(&cmd) {
-                    log::warn!(
-                        "[pulse_chat] skipping MCP server '{}': command '{}' failed safety check",
-                        name,
-                        cmd
+                    tracing::warn!(
+                        context = "pulse_chat",
+                        server = %name,
+                        command = %cmd,
+                        "skipping MCP server: command failed safety check",
                     );
                     return None;
                 }

@@ -1,5 +1,6 @@
 mod cdp_render;
 mod collector;
+mod dir_ops;
 mod runtime;
 pub(crate) mod sitemap;
 #[cfg(test)]
@@ -12,9 +13,11 @@ use crate::crates::core::content::{
     build_selector_config, build_transform_config, extract_anchor_hrefs,
 };
 use crate::crates::core::http::{fetch_html, http_client, normalize_url, validate_url};
-use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::crawl::manifest::ManifestEntry;
 use collector::{CollectorConfig, collect_crawl_pages};
+use dir_ops::prepare_crawl_output_dir;
+pub use dir_ops::update_latest_reflink;
 use runtime::configure_website;
 use spider::url::Url;
 #[cfg(test)]
@@ -329,107 +332,6 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
         urls,
         sitemap_urls: raw_sitemap_count,
     })
-}
-
-pub async fn update_latest_reflink(
-    source_dir: &Path,
-    latest_dir: &Path,
-) -> Result<(), Box<dyn Error>> {
-    // Guard against accidental self-delete or deleting the parent of source.
-    if source_dir == latest_dir {
-        return Err("source_dir and latest_dir must not be the same path".into());
-    }
-    if source_dir.starts_with(latest_dir) {
-        return Err("source_dir must not be inside latest_dir".into());
-    }
-
-    // 1. Prepare clean slate
-    if latest_dir.exists() {
-        tokio::fs::remove_dir_all(latest_dir).await?;
-    }
-    tokio::fs::create_dir_all(latest_dir).await?;
-
-    // 2. Reflink files recursively (shallow for simplicity, we only have one level of markdown)
-    // We reflink manifest.jsonl and the markdown/ directory.
-    let manifest = "manifest.jsonl";
-    let source_manifest = source_dir.join(manifest);
-    if source_manifest.exists() {
-        let src = source_manifest.clone();
-        let dst = latest_dir.join(manifest);
-        tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst)).await??;
-    }
-
-    let markdown = "markdown";
-    let source_md = source_dir.join(markdown);
-    let target_md = latest_dir.join(markdown);
-    if source_md.exists() {
-        tokio::fs::create_dir_all(&target_md).await?;
-        let mut entries = tokio::fs::read_dir(source_md).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_file() {
-                let Some(filename) = path.file_name() else {
-                    continue;
-                };
-                let dst = target_md.join(filename);
-                let src = path.clone();
-                tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst))
-                    .await??;
-            }
-        }
-    }
-
-    log_info(&format!(
-        "Updated 'latest' armory view via reflink: {}",
-        latest_dir.display()
-    ));
-    Ok(())
-}
-
-/// Prepare the output directory before a crawl run.
-///
-/// - Cache mode: archives existing `markdown/` to `markdown.old/` (Recycling Bin Pattern)
-///   so the collector can surgically reuse unchanged pages.
-/// - Non-cache mode: wipes the directory unless `AXON_NO_WIPE` is set.
-/// - Always ensures `markdown/` exists at the end.
-async fn prepare_crawl_output_dir(
-    output_dir: &Path,
-    markdown_dir: &Path,
-    recycling_bin: &Path,
-    cfg: &Config,
-) -> Result<(), Box<dyn Error>> {
-    if output_dir.exists() {
-        if cfg.cache {
-            // Recycling Bin Pattern: move existing markdown to .old for surgical reuse
-            if markdown_dir.exists() {
-                if recycling_bin.exists() {
-                    tokio::fs::remove_dir_all(recycling_bin).await?;
-                }
-                tokio::fs::rename(markdown_dir, recycling_bin).await?;
-                log_info(&format!(
-                    "Archived existing spoils to recycling bin for incremental reuse: {}",
-                    recycling_bin.display()
-                ));
-            }
-        } else if std::env::var("AXON_NO_WIPE").is_err() {
-            log_warn(&format!(
-                "Clearing output directory before crawl: {}",
-                output_dir.display()
-            ));
-            let mut entries = tokio::fs::read_dir(output_dir).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let path = entry.path();
-                let meta = tokio::fs::symlink_metadata(&path).await?;
-                if meta.is_symlink() || meta.is_file() {
-                    tokio::fs::remove_file(&path).await?;
-                } else if meta.is_dir() {
-                    tokio::fs::remove_dir_all(&path).await?;
-                }
-            }
-        }
-    }
-    tokio::fs::create_dir_all(markdown_dir).await?;
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

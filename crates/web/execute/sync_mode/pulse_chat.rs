@@ -55,9 +55,9 @@ async fn dispatch_acp_event(
         ServiceEvent::Log { level, message } => {
             let truncated: String = message.chars().take(200).collect();
             match level {
-                LogLevel::Info => log::info!("[pulse_chat] {truncated}"),
-                LogLevel::Warn => log::warn!("[pulse_chat] {truncated}"),
-                LogLevel::Error => log::error!("[pulse_chat] {truncated}"),
+                LogLevel::Info => tracing::info!(context = "pulse_chat", "{truncated}"),
+                LogLevel::Warn => tracing::warn!(context = "pulse_chat", "{truncated}"),
+                LogLevel::Error => tracing::error!(context = "pulse_chat", "{truncated}"),
             }
             send_json_owned(
                 tx.clone(),
@@ -79,9 +79,10 @@ async fn dispatch_acp_event(
                 event_type,
                 Some("assistant_delta") | Some("thinking_content") | Some("user_delta")
             ) {
-                log::info!(
-                    "[pulse_chat] ACP event: type={}",
-                    event_type.unwrap_or("unknown")
+                tracing::info!(
+                    context = "pulse_chat",
+                    event_type = event_type.unwrap_or("unknown"),
+                    "ACP event",
                 );
             }
             if let Some(envelope) = serialize_raw_output_event(ws_ctx, &raw_json) {
@@ -89,9 +90,11 @@ async fn dispatch_acp_event(
             }
         }
         ServiceEvent::EditorWrite { content, operation } => {
-            log::info!(
-                "[pulse_chat] editor_update: op={operation} content_len={}",
-                content.len()
+            tracing::info!(
+                context = "pulse_chat",
+                operation = ?operation,
+                content_len = content.len(),
+                "editor_update",
             );
             let standalone = json!({
                 "type": "editor_update",
@@ -192,9 +195,11 @@ async fn get_or_create_acp_connection(
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(&adapter.program);
-    log::info!(
-        "[pulse_chat] spawning persistent adapter: program={adapter_name} args={:?}",
-        adapter.args
+    tracing::info!(
+        context = "pulse_chat",
+        program = adapter_name,
+        args = ?adapter.args,
+        "spawning persistent adapter",
     );
     let scaffold = acp_svc::AcpClientScaffold::new(adapter.clone());
     let initialize = scaffold.prepare_initialize().map_err(|e| e.to_string())?;
@@ -265,13 +270,14 @@ pub(super) async fn handle_pulse_chat(
     ws_ctx: CommandContext,
     permission_responders: acp_svc::PermissionResponderMap,
 ) -> Result<(), String> {
-    log::info!(
-        "[pulse_chat] starting: agent={:?} assistant_mode={} session_id={:?} model={:?} input_len={}",
-        agent,
+    tracing::info!(
+        context = "pulse_chat",
+        agent = ?agent,
         assistant_mode,
-        session_id,
-        model,
-        input.len()
+        session_id = ?session_id,
+        model = ?model,
+        input_len = input.len(),
+        "starting pulse_chat",
     );
 
     let mut mcp_servers = read_axon_mcp_servers().await;
@@ -287,9 +293,10 @@ pub(super) async fn handle_pulse_chat(
         });
     }
     if !mcp_servers.is_empty() {
-        log::info!(
-            "[pulse_chat] passing {} MCP server(s) to ACP session",
-            mcp_servers.len()
+        tracing::info!(
+            context = "pulse_chat",
+            count = mcp_servers.len(),
+            "passing MCP servers to ACP session",
         );
     }
 
@@ -349,7 +356,7 @@ async fn execute_acp_turn(
         // dispatch this turn. Evict immediately so the next call spawns a fresh
         // adapter rather than retrying against the same dead handle for up to
         // 30 minutes.
-        log::warn!("[acp] session {agent_key} evicted from cache after turn error: {err}");
+        tracing::warn!(context = "acp", agent_key, error = %err, "session evicted from cache after turn error");
         SESSION_CACHE.remove(agent_key);
         return send_result;
     }
@@ -366,12 +373,15 @@ async fn execute_acp_turn(
             || err.contains("adapter exited")
             || err.contains("result unavailable after channel close");
         if is_fatal {
-            log::warn!(
-                "[acp] session {agent_key} evicted from cache after fatal adapter error: {err}"
+            tracing::warn!(
+                context = "acp",
+                agent_key,
+                error = %err,
+                "session evicted from cache after fatal adapter error",
             );
             SESSION_CACHE.remove(agent_key);
         } else {
-            log::debug!("[acp] session {agent_key} turn error (adapter still healthy): {err}");
+            tracing::debug!(context = "acp", agent_key, error = %err, "turn error (adapter still healthy)");
         }
     }
 

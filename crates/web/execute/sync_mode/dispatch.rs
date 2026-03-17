@@ -343,7 +343,7 @@ pub(super) async fn dispatch_service(
         }
         ServiceMode::McpRefresh => {
             use crate::crates::services::acp::SESSION_CACHE;
-            log::info!("[mcp_refresh] clearing ACP session cache");
+            tracing::info!(context = "mcp_refresh", "clearing ACP session cache");
             for key in SESSION_CACHE.agent_keys() {
                 SESSION_CACHE.remove(&key);
             }

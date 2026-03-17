@@ -88,8 +88,9 @@ pub fn check_auth(
         // Warn once per process, not on every check_auth() call.
         static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
         WARNED.get_or_init(|| {
-            log::warn!(
-                "[auth] AXON_WEB_API_TOKEN is not set — auth is DISABLED in this debug build"
+            tracing::warn!(
+                context = "auth",
+                "AXON_WEB_API_TOKEN is not set \u{2014} auth is DISABLED in this debug build",
             );
         });
         AuthOutcome::Token

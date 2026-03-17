@@ -316,11 +316,12 @@ async fn ws_upgrade(
     // Uses atomic CAS via try_acquire_connection to avoid TOCTOU race between
     // separate load() + fetch_add() calls (Thread 10).
     if !try_acquire_connection(&WS_CONNECTION_COUNT, max_ws_connections()) {
-        log::warn!(
-            "[ws] connection limit reached ({}/{}), rejecting upgrade from {}",
-            WS_CONNECTION_COUNT.load(Ordering::Relaxed),
-            max_ws_connections(),
-            addr.ip()
+        tracing::warn!(
+            context = "ws",
+            current = WS_CONNECTION_COUNT.load(Ordering::Relaxed),
+            max = max_ws_connections(),
+            client = %addr.ip(),
+            "connection limit reached, rejecting upgrade",
         );
         return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
     }
@@ -338,8 +339,8 @@ async fn ws_upgrade(
 
     let log_msg = auth_log_message(&outcome, addr);
     match &outcome {
-        AuthOutcome::Token => log::info!("{log_msg}"),
-        AuthOutcome::Denied(_) => log::warn!("{log_msg}"),
+        AuthOutcome::Token => tracing::info!(context = "ws", "{log_msg}"),
+        AuthOutcome::Denied(_) => tracing::warn!(context = "ws", "{log_msg}"),
     }
 
     if matches!(outcome, AuthOutcome::Denied(_)) {
@@ -387,11 +388,12 @@ async fn shell_ws_upgrade(
     // L-12: enforce shell WS connection limit.
     // Uses atomic CAS via try_acquire_connection — same pattern as ws_upgrade (Thread 10/20).
     if !try_acquire_connection(&SHELL_CONNECTION_COUNT, max_shell_connections()) {
-        log::warn!(
-            "[shell ws] connection limit reached ({}/{}), rejecting upgrade from {}",
-            SHELL_CONNECTION_COUNT.load(Ordering::Relaxed),
-            max_shell_connections(),
-            addr.ip()
+        tracing::warn!(
+            context = "shell_ws",
+            current = SHELL_CONNECTION_COUNT.load(Ordering::Relaxed),
+            max = max_shell_connections(),
+            client = %addr.ip(),
+            "connection limit reached, rejecting upgrade",
         );
         return (StatusCode::SERVICE_UNAVAILABLE, "too many connections").into_response();
     }
@@ -406,8 +408,8 @@ async fn shell_ws_upgrade(
     );
     let log_msg = auth_log_message(&outcome, addr);
     match &outcome {
-        AuthOutcome::Token => log::info!("shell ws: {log_msg}"),
-        AuthOutcome::Denied(_) => log::warn!("shell ws: {log_msg}"),
+        AuthOutcome::Token => tracing::info!(context = "shell_ws", "{log_msg}"),
+        AuthOutcome::Denied(_) => tracing::warn!(context = "shell_ws", "{log_msg}"),
     }
     if matches!(outcome, AuthOutcome::Denied(_)) {
         drop(pre_guard);

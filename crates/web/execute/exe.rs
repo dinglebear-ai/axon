@@ -49,6 +49,6 @@ pub(super) fn resolve_exe() -> Result<PathBuf, String> {
         "axon binary not found at any candidate path; checked: {:?}",
         checked
     );
-    log::warn!("{msg}");
+    tracing::warn!(context = "execute", "{msg}");
     Err(msg)
 }

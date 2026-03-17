@@ -70,7 +70,7 @@ pub(super) fn build_args(mode: &str, input: &str, flags: &serde_json::Value) -> 
                         if cli_flag.contains("output") && cli_flag.contains("dir") {
                             let p = std::path::Path::new(s.as_str());
                             if p.components().any(|c| c == std::path::Component::ParentDir) {
-                                log::warn!("rejecting output-dir with path traversal: {s}");
+                                tracing::warn!(context = "execute", path = %s, "rejecting output-dir with path traversal");
                                 continue;
                             }
                         }
