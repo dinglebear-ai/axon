@@ -259,8 +259,13 @@ fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<d
         .as_array()
         .ok_or("point missing vector array")?
         .iter()
-        .map(|v| v.as_f64().unwrap_or(0.0) as f32)
-        .collect();
+        .enumerate()
+        .map(|(i, v)| {
+            v.as_f64()
+                .map(|f| f as f32)
+                .ok_or_else(|| format!("vector element {i} is not a number: {v}"))
+        })
+        .collect::<Result<_, _>>()?;
 
     if dense_vec.is_empty() {
         return Err("point has empty dense vector".into());
