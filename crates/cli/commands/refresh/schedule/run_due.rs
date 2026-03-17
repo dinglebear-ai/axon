@@ -4,11 +4,8 @@ use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::core::ui::symbol_for_status;
 use crate::crates::jobs::common::make_pool;
-use crate::crates::jobs::refresh::ensure_schema_once;
-use crate::crates::jobs::refresh::{
-    claim_due_refresh_schedules_with_pool, mark_refresh_schedule_ran_with_pool,
-};
 use crate::crates::services::refresh as refresh_service;
+use crate::crates::services::refresh::RefreshSchedule;
 use chrono::{Duration, Utc};
 use std::error::Error;
 use uuid::Uuid;
@@ -95,8 +92,8 @@ pub(super) async fn run_refresh_schedule_due_sweep_with_pool(
     pool: &sqlx::PgPool,
     batch: usize,
 ) -> Result<RefreshScheduleDueSweep, Box<dyn Error>> {
-    ensure_schema_once(pool).await?;
-    let claimed = claim_due_refresh_schedules_with_pool(pool, batch as i64).await?;
+    refresh_service::refresh_ensure_schema(pool).await?;
+    let claimed = refresh_service::refresh_claim_due_schedules(pool, batch as i64).await?;
     let now = Utc::now();
     let mut counters = SweepCounters {
         dispatched: 0,
@@ -130,15 +127,14 @@ pub(super) async fn run_refresh_schedule_due_sweep_with_pool(
 async fn process_due_schedule(
     cfg: &Config,
     pool: &sqlx::PgPool,
-    schedule: &crate::crates::jobs::refresh::RefreshSchedule,
+    schedule: &RefreshSchedule,
     now: chrono::DateTime<Utc>,
     counters: &mut SweepCounters,
 ) -> Result<(), Box<dyn Error>> {
     if schedule.source_type.as_deref() == Some("github")
         && let Some(target) = &schedule.target
     {
-        process_github_due_schedule(cfg, pool, schedule, target, now, counters).await;
-        return Ok(());
+        return process_github_due_schedule(cfg, pool, schedule, target, now, counters).await;
     }
     process_url_due_schedule(cfg, pool, schedule, now, counters).await
 }
@@ -146,11 +142,11 @@ async fn process_due_schedule(
 async fn process_github_due_schedule(
     cfg: &Config,
     pool: &sqlx::PgPool,
-    schedule: &crate::crates::jobs::refresh::RefreshSchedule,
+    schedule: &RefreshSchedule,
     target: &str,
     now: chrono::DateTime<Utc>,
     counters: &mut SweepCounters,
-) {
+) -> Result<(), Box<dyn Error>> {
     match dispatch_github_refresh(cfg, pool, schedule, target).await {
         Ok(Some(job_id)) => {
             counters.dispatched += 1;
@@ -165,14 +161,21 @@ async fn process_github_due_schedule(
             }));
         }
         Ok(None) => counters.skipped += 1,
-        Err(_) => counters.failed += 1,
+        Err(err) => {
+            log_warn(&format!(
+                "refresh github dispatch failed schedule={} target={target}: {err}",
+                schedule.name
+            ));
+            counters.failed += 1;
+        }
     }
+    Ok(())
 }
 
 async fn process_url_due_schedule(
     cfg: &Config,
     pool: &sqlx::PgPool,
-    schedule: &crate::crates::jobs::refresh::RefreshSchedule,
+    schedule: &RefreshSchedule,
     now: chrono::DateTime<Utc>,
     counters: &mut SweepCounters,
 ) -> Result<(), Box<dyn Error>> {
@@ -211,12 +214,14 @@ async fn process_url_due_schedule(
 
 async fn mark_schedule_ran(
     pool: &sqlx::PgPool,
-    schedule: &crate::crates::jobs::refresh::RefreshSchedule,
+    schedule: &RefreshSchedule,
     now: chrono::DateTime<Utc>,
     skipped: bool,
 ) {
     let next_run_at = now + Duration::seconds(schedule.every_seconds);
-    if let Err(err) = mark_refresh_schedule_ran_with_pool(pool, schedule.id, next_run_at).await {
+    if let Err(err) =
+        refresh_service::refresh_mark_schedule_ran(pool, schedule.id, next_run_at).await
+    {
         let context = if skipped { "skipped " } else { "" };
         log_warn(&format!(
             "refresh schedule mark_ran failed for {context}schedule={} id={}: {err}",
