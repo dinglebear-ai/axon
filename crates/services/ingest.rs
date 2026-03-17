@@ -226,7 +226,9 @@ pub async fn ingest_sessions(
     )
     .await;
 
-    let chunks = ingest::sessions::ingest_sessions(cfg).await?;
+    let chunks = ingest::sessions::ingest_sessions(cfg)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
 
     emit(
         &tx,

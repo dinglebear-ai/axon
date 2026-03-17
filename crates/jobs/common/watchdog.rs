@@ -38,7 +38,7 @@
 //! variable microsecond precision) across Postgres TIMESTAMPTZ roundtrips.
 
 use crate::crates::jobs::status::JobStatus;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::{PgPool, Row};
@@ -192,10 +192,12 @@ pub async fn reclaim_stale_running_jobs(
         table.as_str(),
         running = JobStatus::Running.as_str(),
     );
+    let table_name = table.as_str();
     let rows = sqlx::query(&select_query)
         .bind(idle_timeout_secs.min(i32::MAX as i64) as i32)
         .fetch_all(pool)
-        .await?;
+        .await
+        .with_context(|| format!("watchdog: fetch stale candidates from {table_name}"))?;
 
     let mut stats = WatchdogSweepStats {
         stale_candidates: rows.len() as u64,
@@ -209,9 +211,13 @@ pub async fn reclaim_stale_running_jobs(
     let mut mark_batch: Vec<(Uuid, Value)> = Vec::new();
 
     for row in &rows {
-        let id: Uuid = row.try_get("id")?;
-        let updated_at: DateTime<Utc> = row.try_get("updated_at")?;
-        let result_json: Option<Value> = row.try_get("result_json")?;
+        let id: Uuid = row.try_get("id").context("watchdog: parse job id")?;
+        let updated_at: DateTime<Utc> = row
+            .try_get("updated_at")
+            .context("watchdog: parse updated_at")?;
+        let result_json: Option<Value> = row
+            .try_get("result_json")
+            .context("watchdog: parse result_json")?;
         let current_json = result_json.unwrap_or_else(|| serde_json::json!({}));
 
         if stale_watchdog_confirmed(&current_json, updated_at, confirm_secs) {
@@ -244,7 +250,8 @@ pub async fn reclaim_stale_running_jobs(
             .bind(id)
             .bind(new_json)
             .fetch_optional(pool)
-            .await?;
+            .await
+            .with_context(|| format!("watchdog: reclaim job {id} in {}", table.as_str()))?;
         if maybe_row.is_some() {
             stats.reclaimed_jobs += 1;
             stats.reclaimed_ids.push(id);
@@ -270,7 +277,8 @@ pub async fn reclaim_stale_running_jobs(
             .bind(&exhausted_ids)
             .bind(&msg)
             .fetch_all(pool)
-            .await?;
+            .await
+            .with_context(|| format!("watchdog: fail exhausted jobs in {}", table.as_str()))?;
         stats.exhausted_jobs = exhausted.len() as u64;
         stats.exhausted_ids = exhausted.into_iter().map(|(id,)| id).collect();
     }
@@ -286,7 +294,10 @@ pub async fn reclaim_stale_running_jobs(
             .bind(id)
             .bind(marked)
             .execute(pool)
-            .await?;
+            .await
+            .with_context(|| {
+                format!("watchdog: mark stale candidate {id} in {}", table.as_str())
+            })?;
         stats.marked_candidates += 1;
     }
 
