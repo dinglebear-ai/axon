@@ -45,7 +45,7 @@ async fn find_session_file(projects_dir: &std::path::Path, filename: &str) -> Op
     let mut read_dir = match tokio::fs::read_dir(projects_dir).await {
         Ok(d) => d,
         Err(e) => {
-            log::debug!("[session_guard] cannot read projects dir: {e}");
+            tracing::debug!(context = "session_guard", error = %e, "cannot read projects dir");
             return None;
         }
     };
@@ -73,8 +73,9 @@ pub(super) async fn poll_session_file(session_id: &str) -> Option<PathBuf> {
     let projects = match projects_dir() {
         Some(p) => p,
         None => {
-            log::warn!(
-                "[session_guard] home directory env var not set; cannot poll for session file"
+            tracing::warn!(
+                context = "session_guard",
+                "home directory env var not set; cannot poll for session file",
             );
             return None;
         }
@@ -86,25 +87,29 @@ pub(super) async fn poll_session_file(session_id: &str) -> Option<PathBuf> {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         if let Some(path) = find_session_file(&projects, &filename).await {
-            log::info!(
-                "[session_guard] session file confirmed on disk: {} (attempt {})",
-                path.display(),
-                attempt
+            tracing::info!(
+                context = "session_guard",
+                path = %path.display(),
+                attempt,
+                "session file confirmed on disk",
             );
             return Some(path);
         }
         if attempt == 0 {
-            log::debug!(
-                "[session_guard] waiting for session file: {} in {}",
+            tracing::debug!(
+                context = "session_guard",
                 filename,
-                projects.display()
+                dir = %projects.display(),
+                "waiting for session file",
             );
         }
     }
 
-    log::warn!(
-        "[session_guard] session file not found after 5s for session_id={session_id} in {}",
-        projects.display()
+    tracing::warn!(
+        context = "session_guard",
+        session_id,
+        dir = %projects.display(),
+        "session file not found after 5s",
     );
     None
 }

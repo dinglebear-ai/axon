@@ -299,12 +299,12 @@ async fn dispatch_subprocess_fallback(
     let exe = match tokio::task::spawn_blocking(resolve_exe).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => {
-            log::error!("[execute] resolve_exe failed: {e}");
+            tracing::error!(context = "execute", error = %e, "resolve_exe failed");
             send_error_dual(&tx, &ws_ctx, "cannot find axon binary".to_string(), None).await;
             return;
         }
         Err(join_err) => {
-            log::error!("[execute] resolve_exe join error: {join_err}");
+            tracing::error!(context = "execute", error = %join_err, "resolve_exe join error");
             send_error_dual(&tx, &ws_ctx, "resolve_exe join error".to_string(), None).await;
             return;
         }
