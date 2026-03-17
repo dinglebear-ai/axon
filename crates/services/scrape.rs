@@ -33,9 +33,15 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
 /// JSON value into the typed service result.
 pub async fn scrape(cfg: &Config, url: &str) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
-    crate::crates::core::http::validate_url(&normalized)?;
-    let mut website = build_scrape_website(cfg, &normalized)?;
-    let page = fetch_single_page(cfg, &mut website, &normalized).await?;
+    crate::crates::core::http::validate_url(&normalized).map_err(|e| -> Box<dyn Error> {
+        format!("invalid scrape url {normalized}: {e}").into()
+    })?;
+    let mut website = build_scrape_website(cfg, &normalized).map_err(|e| -> Box<dyn Error> {
+        format!("failed to build scrape config for {normalized}: {e}").into()
+    })?;
+    let page = fetch_single_page(cfg, &mut website, &normalized)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("fetch failed for {normalized}: {e}").into() })?;
     let status_code = page.status_code;
     if !(200..300).contains(&status_code) {
         return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());

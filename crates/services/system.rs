@@ -129,7 +129,9 @@ pub async fn sources(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<SourcesResult, Box<dyn Error>> {
-    let payload = sources_payload(cfg, pagination.limit, pagination.offset).await?;
+    let payload = sources_payload(cfg, pagination.limit, pagination.offset)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("sources facet query failed: {e}").into() })?;
     Ok(map_sources_payload(&payload)?)
 }
 
@@ -137,7 +139,9 @@ pub async fn domains(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<DomainsResult, Box<dyn Error>> {
-    let payload = domains_payload(cfg, pagination.limit, pagination.offset).await?;
+    let payload = domains_payload(cfg, pagination.limit, pagination.offset)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("domains facet query failed: {e}").into() })?;
     Ok(map_domains_payload(&payload)?)
 }
 
@@ -202,7 +206,8 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
         }
         count < limit
     })
-    .await?;
+    .await
+    .map_err(|e| -> Box<dyn Error> { format!("detailed domains scroll failed: {e}").into() })?;
 
     let mut domains: Vec<DetailedDomainFacet> = by_domain
         .into_iter()
@@ -217,12 +222,16 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
 }
 
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
-    let payload = stats_payload(cfg).await?;
+    let payload = stats_payload(cfg)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("stats query failed: {e}").into() })?;
     Ok(map_stats_payload(payload))
 }
 
 pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
-    let payload = build_doctor_report(cfg).await?;
+    let payload = build_doctor_report(cfg)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("doctor health check failed: {e}").into() })?;
     Ok(map_doctor_payload(payload))
 }
 
