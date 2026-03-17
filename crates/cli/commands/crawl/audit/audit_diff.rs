@@ -80,7 +80,10 @@ fn build_snapshot_diff(
 pub(super) async fn run_crawl_audit_diff(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let reports = list_audit_reports(&cfg.output_dir).await?;
     if reports.len() < 2 {
-        return Err("crawl diff requires at least two persisted crawl audit reports".into());
+        return Err(anyhow::anyhow!(
+            "crawl diff requires at least two persisted crawl audit reports"
+        )
+        .into());
     }
     let previous_report = reports[reports.len() - 2].clone();
     let current_report = reports[reports.len() - 1].clone();

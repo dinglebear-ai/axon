@@ -16,13 +16,15 @@ use uuid::Uuid;
 pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let urls = parse_urls(cfg);
     if urls.is_empty() {
-        return Err("scrape requires at least one URL (positional or --urls)".into());
+        return Err(
+            anyhow::anyhow!("scrape requires at least one URL (positional or --urls)").into(),
+        );
     }
     if cfg.output_path.is_some() && urls.len() > 1 {
-        return Err(
+        return Err(anyhow::anyhow!(
             "--output cannot be used with multiple URLs (each would overwrite the same file)"
-                .into(),
-        );
+        )
+        .into());
     }
     log_info(&format!(
         "command=scrape urls={} format={:?} wait={}",
@@ -64,7 +66,9 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     if !errors.is_empty() {
-        return Err(format!("{} scrape(s) failed: {}", errors.len(), errors.join("; ")).into());
+        return Err(
+            anyhow::anyhow!("{} scrape(s) failed: {}", errors.len(), errors.join("; ")).into(),
+        );
     }
 
     Ok(())

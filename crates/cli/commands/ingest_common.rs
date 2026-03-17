@@ -299,7 +299,10 @@ pub async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), B
             (n, "reddit", target.clone())
         }
         IngestSource::Sessions { .. } => {
-            return Err("sessions ingest is handled by the sessions command, not ingest".into());
+            return Err(anyhow::anyhow!(
+                "sessions ingest is handled by the sessions command, not ingest"
+            )
+            .into());
         }
     };
     print_ingest_sync_result(cfg, source_label, chunks, &target_label);

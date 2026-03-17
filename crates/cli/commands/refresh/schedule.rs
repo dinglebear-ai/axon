@@ -41,7 +41,7 @@ pub async fn handle_refresh_schedule(cfg: &Config) -> Result<(), Box<dyn Error>>
         "delete" => handle_refresh_schedule_delete(cfg).await?,
         "run-due" => handle_refresh_schedule_run_due(cfg).await?,
         "worker" => worker::handle_refresh_schedule_worker(cfg).await?,
-        _ => return Err(format!("unknown refresh schedule subcommand: {action}").into()),
+        _ => return Err(anyhow::anyhow!("unknown refresh schedule subcommand: {action}").into()),
     }
     Ok(())
 }

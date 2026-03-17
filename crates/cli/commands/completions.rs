@@ -21,7 +21,7 @@ fn generate_completion_script(shell: &str) -> Result<String, Box<dyn Error>> {
         "bash" => generate(Bash, &mut command, "axon", &mut out),
         "zsh" => generate(Zsh, &mut command, "axon", &mut out),
         "fish" => generate(Fish, &mut command, "axon", &mut out),
-        other => return Err(format!("unsupported shell for completions: {other}").into()),
+        other => return Err(anyhow::anyhow!("unsupported shell for completions: {other}").into()),
     }
     let script = String::from_utf8(out)
         .map_err(|e| format!("failed to decode generated completion script as UTF-8: {e}"))?;

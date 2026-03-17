@@ -42,12 +42,17 @@ pub async fn handle_refresh_schedule_run_due(cfg: &Config) -> Result<(), Box<dyn
                     .parse::<usize>()
                     .map_err(|_| "refresh schedule run-due --batch must be an integer")?;
                 if batch == 0 {
-                    return Err("refresh schedule run-due --batch must be greater than 0".into());
+                    return Err(anyhow::anyhow!(
+                        "refresh schedule run-due --batch must be greater than 0"
+                    )
+                    .into());
                 }
                 idx += 2;
             }
             token => {
-                return Err(format!("unknown refresh schedule run-due flag: {token}").into());
+                return Err(
+                    anyhow::anyhow!("unknown refresh schedule run-due flag: {token}").into(),
+                );
             }
         }
     }

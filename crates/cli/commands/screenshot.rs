@@ -15,7 +15,9 @@ use util::require_chrome;
 pub async fn run_screenshot(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let urls = parse_urls(cfg);
     if urls.is_empty() {
-        return Err("screenshot requires at least one URL (positional or --urls)".into());
+        return Err(
+            anyhow::anyhow!("screenshot requires at least one URL (positional or --urls)").into(),
+        );
     }
     for url in &urls {
         screenshot_one(cfg, url).await?;

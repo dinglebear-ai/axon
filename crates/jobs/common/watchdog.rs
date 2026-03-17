@@ -38,7 +38,7 @@
 //! variable microsecond precision) across Postgres TIMESTAMPTZ roundtrips.
 
 use crate::crates::jobs::status::JobStatus;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::{PgPool, Row};
@@ -180,22 +180,23 @@ pub async fn reclaim_stale_running_jobs(
     confirm_secs: i64,
     marker: &str,
 ) -> Result<WatchdogSweepStats> {
+    let table_name = table.as_str();
     let select_query = format!(
         r#"
         SELECT id, updated_at, result_json
-        FROM {}
+        FROM {table_name}
         WHERE status = '{running}'
           AND updated_at < NOW() - make_interval(secs => $1::int)
         ORDER BY updated_at ASC
         LIMIT 50
         "#,
-        table.as_str(),
         running = JobStatus::Running.as_str(),
     );
     let rows = sqlx::query(&select_query)
         .bind(idle_timeout_secs.min(i32::MAX as i64) as i32)
         .fetch_all(pool)
-        .await?;
+        .await
+        .with_context(|| format!("watchdog: fetch stale candidates from {table_name}"))?;
 
     let mut stats = WatchdogSweepStats {
         stale_candidates: rows.len() as u64,
@@ -209,9 +210,13 @@ pub async fn reclaim_stale_running_jobs(
     let mut mark_batch: Vec<(Uuid, Value)> = Vec::new();
 
     for row in &rows {
-        let id: Uuid = row.try_get("id")?;
-        let updated_at: DateTime<Utc> = row.try_get("updated_at")?;
-        let result_json: Option<Value> = row.try_get("result_json")?;
+        let id: Uuid = row.try_get("id").context("watchdog: parse job id")?;
+        let updated_at: DateTime<Utc> = row
+            .try_get("updated_at")
+            .context("watchdog: parse updated_at")?;
+        let result_json: Option<Value> = row
+            .try_get("result_json")
+            .context("watchdog: parse result_json")?;
         let current_json = result_json.unwrap_or_else(|| serde_json::json!({}));
 
         if stale_watchdog_confirmed(&current_json, updated_at, confirm_secs) {
@@ -232,11 +237,10 @@ pub async fn reclaim_stale_running_jobs(
     // Caller is responsible for re-publishing IDs to AMQP via batch_enqueue_jobs.
     for (id, new_json) in retry_batch {
         let retry_query = format!(
-            "UPDATE {} SET status='{pending}', updated_at=NOW(), \
+            "UPDATE {table_name} SET status='{pending}', updated_at=NOW(), \
              started_at=NULL, finished_at=NULL, error_text=NULL, result_json=$2 \
              WHERE id=$1 AND status='{running}' \
              RETURNING id",
-            table.as_str(),
             pending = JobStatus::Pending.as_str(),
             running = JobStatus::Running.as_str(),
         );
@@ -244,7 +248,8 @@ pub async fn reclaim_stale_running_jobs(
             .bind(id)
             .bind(new_json)
             .fetch_optional(pool)
-            .await?;
+            .await
+            .with_context(|| format!("watchdog: reclaim job {id} in {table_name}"))?;
         if maybe_row.is_some() {
             stats.reclaimed_jobs += 1;
             stats.reclaimed_ids.push(id);
@@ -259,10 +264,9 @@ pub async fn reclaim_stale_running_jobs(
             job_kind, marker
         );
         let fail_query = format!(
-            "UPDATE {} SET status='{failed}', updated_at=NOW(), finished_at=NOW(), error_text=$2 \
+            "UPDATE {table_name} SET status='{failed}', updated_at=NOW(), finished_at=NOW(), error_text=$2 \
              WHERE id = ANY($1) AND status='{running}' \
              RETURNING id",
-            table.as_str(),
             failed = JobStatus::Failed.as_str(),
             running = JobStatus::Running.as_str(),
         );
@@ -270,7 +274,8 @@ pub async fn reclaim_stale_running_jobs(
             .bind(&exhausted_ids)
             .bind(&msg)
             .fetch_all(pool)
-            .await?;
+            .await
+            .with_context(|| format!("watchdog: fail exhausted jobs in {table_name}"))?;
         stats.exhausted_jobs = exhausted.len() as u64;
         stats.exhausted_ids = exhausted.into_iter().map(|(id,)| id).collect();
     }
@@ -278,15 +283,15 @@ pub async fn reclaim_stale_running_jobs(
     // Mark candidates individually (each gets a unique payload with timestamps).
     for (id, marked) in mark_batch {
         let mark_query = format!(
-            "UPDATE {} SET result_json=$2 WHERE id=$1 AND status='{running}'",
-            table.as_str(),
+            "UPDATE {table_name} SET result_json=$2 WHERE id=$1 AND status='{running}'",
             running = JobStatus::Running.as_str()
         );
         let _ = sqlx::query(&mark_query)
             .bind(id)
             .bind(marked)
             .execute(pool)
-            .await?;
+            .await
+            .with_context(|| format!("watchdog: mark stale candidate {id} in {table_name}"))?;
         stats.marked_candidates += 1;
     }
 

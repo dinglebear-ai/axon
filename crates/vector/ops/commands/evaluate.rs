@@ -173,7 +173,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
 }
 
 fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    super::ask::validate_ask_llm_config(cfg).map_err(|e| -> Box<dyn Error> { e.into() })?;
+    super::ask::validate_ask_llm_config(cfg)?;
     super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
 }
 

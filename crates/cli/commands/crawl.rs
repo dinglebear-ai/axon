@@ -26,7 +26,9 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
     let urls = parse_urls(cfg);
     if urls.is_empty() {
-        return Err("crawl requires at least one URL (positional or --urls)".into());
+        return Err(
+            anyhow::anyhow!("crawl requires at least one URL (positional or --urls)").into(),
+        );
     }
     for url in &urls {
         validate_url(url)?;

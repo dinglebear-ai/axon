@@ -24,7 +24,9 @@ pub async fn run_extract(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let urls = parse_urls(cfg);
     if urls.is_empty() {
-        return Err("extract requires at least one URL (positional or --urls)".into());
+        return Err(
+            anyhow::anyhow!("extract requires at least one URL (positional or --urls)").into(),
+        );
     }
     log_info(&format!(
         "command=extract urls={} wait={}",

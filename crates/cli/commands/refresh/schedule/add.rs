@@ -19,7 +19,9 @@ pub(super) async fn handle_refresh_schedule_add(cfg: &Config) -> Result<(), Box<
     if let Some(repo) = name.strip_prefix("github:") {
         let parts: Vec<&str> = repo.split('/').collect();
         if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-            return Err("Invalid GitHub target. Expected: github:owner/repo".into());
+            return Err(
+                anyhow::anyhow!("Invalid GitHub target. Expected: github:owner/repo").into(),
+            );
         }
         return super::super::github::handle_refresh_schedule_add_github(cfg, repo, &name).await;
     }
@@ -88,7 +90,9 @@ async fn parse_refresh_schedule_add_input(
         .or(tier_seconds)
         .unwrap_or(REFRESH_TIER_MEDIUM_SECONDS);
     if seed_url.is_none() && urls.is_none() {
-        return Err("refresh schedule add requires [seed_url] or --urls <csv>".into());
+        return Err(
+            anyhow::anyhow!("refresh schedule add requires [seed_url] or --urls <csv>").into(),
+        );
     }
     Ok(RefreshScheduleAddInput {
         name,
@@ -106,7 +110,7 @@ fn parse_urls_csv(value: &str) -> Result<Vec<String>, Box<dyn Error>> {
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
     if parsed_urls.is_empty() {
-        return Err("refresh schedule add --urls cannot be empty".into());
+        return Err(anyhow::anyhow!("refresh schedule add --urls cannot be empty").into());
     }
     for url in &parsed_urls {
         validate_url(url)?;
@@ -116,10 +120,10 @@ fn parse_urls_csv(value: &str) -> Result<Vec<String>, Box<dyn Error>> {
 
 fn parse_seed_url_token(token: &str, seed_url: &mut Option<String>) -> Result<(), Box<dyn Error>> {
     if token.starts_with("--") {
-        return Err(format!("unknown refresh schedule add flag: {token}").into());
+        return Err(anyhow::anyhow!("unknown refresh schedule add flag: {token}").into());
     }
     if seed_url.is_some() {
-        return Err("refresh schedule add accepts at most one [seed_url]".into());
+        return Err(anyhow::anyhow!("refresh schedule add accepts at most one [seed_url]").into());
     }
     validate_url(token)?;
     *seed_url = Some(token.to_string());

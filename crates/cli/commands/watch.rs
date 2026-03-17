@@ -96,22 +96,22 @@ pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
             println!("{}", serde_json::to_string_pretty(&runs)?);
         }
         WatchRuntimeSubcommand::Get { .. } => {
-            return Err("watch get is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch get is not yet implemented").into());
         }
         WatchRuntimeSubcommand::Update { .. } => {
-            return Err("watch update is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch update is not yet implemented").into());
         }
         WatchRuntimeSubcommand::Pause { .. } => {
-            return Err("watch pause is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch pause is not yet implemented").into());
         }
         WatchRuntimeSubcommand::Resume { .. } => {
-            return Err("watch resume is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch resume is not yet implemented").into());
         }
         WatchRuntimeSubcommand::Delete { .. } => {
-            return Err("watch delete is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch delete is not yet implemented").into());
         }
         WatchRuntimeSubcommand::Artifacts { .. } => {
-            return Err("watch artifacts is not yet implemented".into());
+            return Err(anyhow::anyhow!("watch artifacts is not yet implemented").into());
         }
     }
     Ok(())
