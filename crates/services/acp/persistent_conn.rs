@@ -92,9 +92,10 @@ impl AcpConnectionHandle {
                 {
                     Ok(_) => {}
                     Err(_) => {
-                        log::warn!(
-                            "[acp_conn] adapter loop timed out after {} seconds",
-                            timeout.as_secs()
+                        tracing::warn!(
+                            context = "acp_conn",
+                            timeout_secs = timeout.as_secs(),
+                            "adapter loop timed out"
                         );
                     }
                 }
@@ -137,7 +138,7 @@ async fn adapter_loop(
     let first_turn = match rx.recv().await {
         Some(AdapterMessage::RunTurn(t)) => t,
         None => {
-            log::info!("[acp_conn] channel closed before first turn");
+            tracing::info!(context = "acp_conn", "channel closed before first turn");
             return;
         }
     };
@@ -162,11 +163,11 @@ async fn adapter_loop(
         runtime_state,
     } = match setup_result {
         Ok(s) => {
-            log::info!("[acp_conn] adapter ready (session_id={})", s.session_id.0);
+            tracing::info!(context = "acp_conn", session_id = %s.session_id.0, "adapter ready");
             s
         }
         Err(e) => {
-            log::error!("[acp_conn] adapter setup failed: {e}");
+            tracing::error!(context = "acp_conn", error = %e, "adapter setup failed");
             let _ = first_turn
                 .result_tx
                 .send(Err(format!("ACP adapter setup failed: {e}")));
@@ -194,20 +195,20 @@ async fn adapter_loop(
                         turn::run_turn_on_conn(&mut conn, &session_id, &session_cwd, &runtime_state, turn).await;
                     }
                     None => {
-                        log::info!("[acp_conn] channel closed (WS connection ended)");
+                        tracing::info!(context = "acp_conn", "channel closed (WS connection ended)");
                         break;
                     }
                 }
             }
             exit_result = &mut exit_rx => {
                 match exit_result {
-                    Ok(msg) => log::error!("[acp_conn] adapter exited unexpectedly: {msg}"),
-                    Err(_) => log::info!("[acp_conn] adapter exited cleanly"),
+                    Ok(msg) => tracing::error!(context = "acp_conn", message = %msg, "adapter exited unexpectedly"),
+                    Err(_) => tracing::info!(context = "acp_conn", "adapter exited cleanly"),
                 }
                 break;
             }
         }
     }
 
-    log::info!("[acp_conn] adapter loop ended");
+    tracing::info!(context = "acp_conn", "adapter loop ended");
 }

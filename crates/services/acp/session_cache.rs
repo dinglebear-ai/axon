@@ -217,7 +217,7 @@ impl AcpSessionCache {
             }
         }
         for key in &to_remove {
-            log::info!("[acp_cache] evicting expired session: {key}");
+            tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
             self.remove(key);
         }
     }

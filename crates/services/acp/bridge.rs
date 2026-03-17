@@ -189,8 +189,9 @@ impl Client for AcpBridgeClient {
         )
         .await
         {
-            log::warn!(
-                "[acp_bridge] permission request event dropped: channel full after 5s timeout"
+            tracing::warn!(
+                context = "acp_bridge",
+                "permission request event dropped: channel full after 5s timeout"
             );
         }
 
@@ -272,10 +273,11 @@ impl Client for AcpBridgeClient {
                 // guards against late results from a previous timed-out turn being
                 // attributed to the new active turn.
                 if active_turn_id != state.current_turn_id.get() {
-                    log::warn!(
-                        "[acp_bridge] dropping late text delta: turn_id mismatch \
-                         (expected {active_turn_id}, current {})",
-                        state.current_turn_id.get()
+                    tracing::warn!(
+                        context = "acp_bridge",
+                        expected_turn_id = active_turn_id,
+                        current_turn_id = state.current_turn_id.get(),
+                        "dropping late text delta: turn_id mismatch"
                     );
                     return Ok(());
                 }

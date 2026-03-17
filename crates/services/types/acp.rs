@@ -335,9 +335,10 @@ fn serialize_session_update<S: serde::Serializer>(
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeMap;
     if update.kind == AcpSessionUpdateKind::Unknown {
-        log::warn!(
-            "received unknown ACP session update kind, forwarding as 'unknown': {:?}",
-            update
+        tracing::warn!(
+            context = "acp_types",
+            update = ?update,
+            "received unknown ACP session update kind, forwarding as 'unknown'"
         );
     }
     let event_type = update.kind.to_string();
