@@ -11,7 +11,7 @@ use crate::crates::crawl::engine::{
 use crate::crates::crawl::manifest::{
     manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
 };
-use crate::crates::jobs::embed::start_embed_job;
+use crate::crates::services::embed::embed_start_with_input;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -303,7 +303,9 @@ async fn finalize_crawl(
 ) -> Result<(), Box<dyn Error>> {
     if cfg.embed {
         let markdown_dir = cfg.output_dir.join("markdown");
-        let embed_job_id = start_embed_job(cfg, &markdown_dir.to_string_lossy()).await?;
+        let embed_result =
+            embed_start_with_input(cfg, &markdown_dir.to_string_lossy(), None).await?;
+        let embed_job_id = embed_result.job_id;
         println!(
             "{} {}",
             muted("Queued embed job:"),
