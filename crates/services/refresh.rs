@@ -4,12 +4,18 @@ use crate::crates::jobs::refresh::{
     list_refresh_jobs, list_refresh_schedules, recover_stale_refresh_jobs, run_refresh_once,
     run_refresh_worker, set_refresh_schedule_enabled, start_refresh_job,
 };
+use crate::crates::jobs::refresh::{
+    claim_due_refresh_schedules_with_pool, ensure_schema_once, mark_refresh_schedule_ran_with_pool,
+    should_reingest_github as jobs_should_reingest_github,
+};
 
 pub use crate::crates::jobs::refresh::{
     RefreshJob, RefreshSchedule, RefreshScheduleCreate, create_refresh_schedule,
     delete_refresh_schedule, list_refresh_jobs as schedule_list_jobs,
 };
 use crate::crates::services::types::{RefreshRunResult, RefreshStartResult};
+use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -97,4 +103,31 @@ pub async fn refresh_schedule_enable(cfg: &Config, name: &str) -> Result<bool, B
 
 pub async fn refresh_schedule_disable(cfg: &Config, name: &str) -> Result<bool, Box<dyn Error>> {
     set_refresh_schedule_enabled(cfg, name, false).await
+}
+
+/// Initialize the refresh schema once per pool. Used by the schedule sweep worker.
+pub async fn refresh_ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
+    ensure_schema_once(pool).await
+}
+
+/// Claim due refresh schedules for processing. Returns claimed schedule records.
+pub async fn refresh_claim_due_schedules(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<RefreshSchedule>, Box<dyn Error>> {
+    claim_due_refresh_schedules_with_pool(pool, limit).await
+}
+
+/// Mark a refresh schedule as having run, updating `last_run_at` and `next_run_at`.
+pub async fn refresh_mark_schedule_ran(
+    pool: &PgPool,
+    id: Uuid,
+    next_run_at: DateTime<Utc>,
+) -> Result<bool, Box<dyn Error>> {
+    mark_refresh_schedule_ran_with_pool(pool, id, next_run_at).await
+}
+
+/// Pure function: should we re-ingest a GitHub repo given `pushed_at` vs `last_run_at`?
+pub fn refresh_should_reingest_github(pushed_at: &str, last_run_at: Option<DateTime<Utc>>) -> bool {
+    jobs_should_reingest_github(pushed_at, last_run_at)
 }

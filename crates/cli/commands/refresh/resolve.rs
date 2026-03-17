@@ -36,7 +36,7 @@ pub async fn urls_from_manifest_seed(
 
 pub async fn resolve_schedule_urls(
     cfg: &Config,
-    schedule: &crate::crates::jobs::refresh::RefreshSchedule,
+    schedule: &crate::crates::services::refresh::RefreshSchedule,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let mut urls = match schedule.urls_json.as_ref() {
         Some(value) => serde_json::from_value::<Vec<String>>(value.clone()).unwrap_or_default(),
