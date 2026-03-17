@@ -27,7 +27,7 @@ pub async fn run_migrate(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .clone();
 
     if from == to {
-        return Err("--from and --to must be different collections".into());
+        return Err(anyhow::anyhow!("--from and --to must be different collections").into());
     }
 
     log_info(&format!("command=migrate from={from} to={to}"));
@@ -141,7 +141,7 @@ async fn inspect_source_collection(
     let url = format!("{}/collections/{}", qdrant_url, collection);
     let resp = client.get(&url).send().await?;
     if resp.status() == StatusCode::NOT_FOUND {
-        return Err(format!("source collection '{collection}' not found").into());
+        return Err(anyhow::anyhow!("source collection '{collection}' not found").into());
     }
     let body: serde_json::Value = resp.error_for_status()?.json().await?;
 
@@ -150,7 +150,7 @@ async fn inspect_source_collection(
         .pointer("/result/config/params/vectors/dense")
         .is_some()
     {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "source collection '{collection}' already uses named vectors; no migration needed"
         )
         .into());
@@ -188,13 +188,13 @@ async fn ensure_named_collection(
             ));
             return Ok(());
         }
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "destination '{collection}' exists with unnamed vectors; choose a different name"
         )
         .into());
     } else if resp.status() != StatusCode::NOT_FOUND {
         let status = resp.status();
-        return Err(format!("Qdrant GET collection/{collection} failed: {status}").into());
+        return Err(anyhow::anyhow!("Qdrant GET collection/{collection} failed: {status}").into());
     }
 
     // Create Named collection
@@ -252,7 +252,7 @@ async fn ensure_named_collection(
 fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<dyn Error>> {
     let id = &point["id"];
     if id.is_null() {
-        return Err("point has no id".into());
+        return Err(anyhow::anyhow!("point has no id").into());
     }
 
     let dense_vec: Vec<f32> = point["vector"]
@@ -268,7 +268,7 @@ fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<d
         .collect::<Result<_, _>>()?;
 
     if dense_vec.is_empty() {
-        return Err("point has empty dense vector".into());
+        return Err(anyhow::anyhow!("point has empty dense vector").into());
     }
 
     let chunk_text = point["payload"]["chunk_text"]

@@ -19,7 +19,7 @@ pub(crate) async fn embed_prepared_docs(
     }
     super::pipeline::run_embed_pipeline(cfg, docs, progress_tx)
         .await
-        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
+        .map_err(|e| -> Box<dyn Error> { format!("embed pipeline failed: {e}").into() })
 }
 
 /// Embed a file or directory from the local filesystem into Qdrant.
@@ -45,7 +45,9 @@ pub async fn embed_path_native_with_progress(
     }
     let summary = super::pipeline::run_embed_pipeline(cfg, prepared, progress_tx)
         .await
-        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+        .map_err(|e| -> Box<dyn Error> {
+            format!("embed pipeline failed for path '{input}': {e}").into()
+        })?;
     prepare::emit_embed_summary(cfg, summary.chunks_embedded);
     Ok(summary)
 }

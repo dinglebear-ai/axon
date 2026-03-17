@@ -27,7 +27,7 @@ async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), Box<d
     let IngestSource::Sessions { .. } = source else {
         // NOTE: This branch is unreachable for current callers but guards against
         // future callers passing the wrong IngestSource variant.
-        return Err(format!("sessions: expected Sessions source, got {:?}", source).into());
+        return Err(anyhow::anyhow!("sessions: expected Sessions source, got {:?}", source).into());
     };
 
     let result = ingest_service::ingest_sessions(cfg, None).await?;

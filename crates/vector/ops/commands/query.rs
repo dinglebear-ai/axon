@@ -24,16 +24,22 @@ async fn dispatch_search(
             if cfg.hybrid_search_enabled && !sv.is_empty() {
                 qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
                     .await
-                    .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
+                    })
             } else {
                 qdrant::qdrant_named_dense_search(cfg, vector, limit, filter_ref)
                     .await
-                    .map_err(|e| -> Box<dyn Error> { e.to_string().into() })
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("named dense search on '{}' failed: {e}", cfg.collection).into()
+                    })
             }
         }
         VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref)
             .await
-            .map_err(|e| -> Box<dyn Error> { e.to_string().into() }),
+            .map_err(|e| -> Box<dyn Error> {
+                format!("vector search on '{}' failed: {e}", cfg.collection).into()
+            }),
     }
 }
 

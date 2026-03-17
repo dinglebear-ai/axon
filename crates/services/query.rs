@@ -95,9 +95,7 @@ pub async fn ask(
         },
     )
     .await;
-    let payload = ask_payload(cfg, question)
-        .await
-        .map_err(|e| -> Box<dyn Error> { e.into() })?;
+    let payload = ask_payload(cfg, question).await?;
     emit(
         &tx,
         ServiceEvent::Log {

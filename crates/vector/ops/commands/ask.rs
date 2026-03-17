@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 
@@ -9,16 +11,15 @@ mod tests;
 
 pub(crate) use context::{AskContext, build_ask_context};
 
-pub(super) fn validate_ask_llm_config(cfg: &Config) -> Result<(), String> {
-    if cfg.openai_base_url.trim().is_empty() || cfg.openai_model.trim().is_empty() {
-        return Err(
-            "OPENAI_BASE_URL and OPENAI_MODEL are required for ask/evaluate commands".to_string(),
-        );
-    }
+pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !cfg.openai_base_url.trim().is_empty() && !cfg.openai_model.trim().is_empty(),
+        "OPENAI_BASE_URL and OPENAI_MODEL are required for ask/evaluate commands"
+    );
     Ok(())
 }
 
-pub async fn ask_payload(cfg: &Config, query: &str) -> Result<serde_json::Value, String> {
+pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
     let ask_started = std::time::Instant::now();
 
     log_info(&format!(
@@ -30,10 +31,10 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> Result<serde_json::Value,
 
     let ctx = build_ask_context(cfg, query)
         .await
-        .map_err(|e| e.to_string())?;
+        .context("failed to build ask context")?;
     let (raw_answer, llm_elapsed_ms, _) = output::ask_llm_answer(cfg, query, &ctx.context)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
     let answer = normalize::normalize_ask_answer(cfg, query, &raw_answer, &ctx.context);
     let total_elapsed_ms = ask_started.elapsed().as_millis();
 

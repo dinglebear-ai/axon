@@ -12,7 +12,7 @@ use std::error::Error;
 
 pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.tavily_api_key.is_empty() {
-        return Err("search requires TAVILY_API_KEY — set it in .env".into());
+        return Err(anyhow::anyhow!("search requires TAVILY_API_KEY — set it in .env").into());
     }
 
     // Multiple positional args → run each as a separate search and merge results.
@@ -21,7 +21,7 @@ pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
     } else if !cfg.positional.is_empty() {
         vec![cfg.positional.join(" ")]
     } else {
-        return Err("search requires a query (positional or --query)".into());
+        return Err(anyhow::anyhow!("search requires a query (positional or --query)").into());
     };
     log_info(&format!(
         "command=search query_len={}",

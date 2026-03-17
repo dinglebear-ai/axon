@@ -49,9 +49,10 @@ pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }) => {
             let resolved_url = positional_url.or(url);
             if resolved_url.is_none() && domain.is_none() && !all {
-                return Err(
-                    "graph build requires at least one of: <url>, --url, --domain, or --all".into(),
-                );
+                return Err(anyhow::anyhow!(
+                    "graph build requires at least one of: <url>, --url, --domain, or --all"
+                )
+                .into());
             }
             handle_build(cfg, resolved_url, domain, all).await
         }

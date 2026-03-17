@@ -61,7 +61,7 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
         "audit" => {
             let url = cfg.positional.get(1).map(|s| s.as_str()).unwrap_or("");
             if url.is_empty() {
-                return Err("crawl audit requires a URL argument".into());
+                return Err(anyhow::anyhow!("crawl audit requires a URL argument").into());
             }
             audit::run_crawl_audit(cfg, url).await?;
         }

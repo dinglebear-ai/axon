@@ -138,8 +138,11 @@ pub(crate) async fn append_html_anchor_backfill(
         cfg.max_pages as usize
     };
 
-    let client = http_client()?;
-    let html = fetch_html(client, &crawl_start_url).await?;
+    let client = http_client()
+        .map_err(|e| format!("http client init failed for backfill of {start_url}: {e}"))?;
+    let html = fetch_html(client, &crawl_start_url)
+        .await
+        .map_err(|e| format!("fetch failed for backfill of {crawl_start_url}: {e}"))?;
     let fallback_urls = extract_anchor_hrefs(&crawl_start_url, &html, fallback_limit);
 
     let existing_urls: Vec<String> = seen_urls.iter().cloned().collect();

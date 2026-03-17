@@ -20,13 +20,13 @@ fn validate_github_repo(repo: &str) -> Result<&str, Box<dyn Error>> {
     let trimmed = repo.trim();
     let mut parts = trimmed.split('/');
     let Some(owner) = parts.next() else {
-        return Err("Invalid GitHub target. Expected owner/repo".into());
+        return Err(anyhow::anyhow!("Invalid GitHub target. Expected owner/repo").into());
     };
     let Some(name) = parts.next() else {
-        return Err("Invalid GitHub target. Expected owner/repo".into());
+        return Err(anyhow::anyhow!("Invalid GitHub target. Expected owner/repo").into());
     };
     if parts.next().is_some() || owner.is_empty() || name.is_empty() {
-        return Err("Invalid GitHub target. Expected owner/repo".into());
+        return Err(anyhow::anyhow!("Invalid GitHub target. Expected owner/repo").into());
     }
     let valid_segment = |segment: &str| {
         segment
@@ -36,7 +36,7 @@ fn validate_github_repo(repo: &str) -> Result<&str, Box<dyn Error>> {
             && !segment.ends_with('.')
     };
     if !valid_segment(owner) || !valid_segment(name) {
-        return Err("Invalid GitHub target. Expected owner/repo".into());
+        return Err(anyhow::anyhow!("Invalid GitHub target. Expected owner/repo").into());
     }
     Ok(trimmed)
 }
@@ -82,7 +82,9 @@ pub(crate) async fn handle_refresh_schedule_add_github(
                 idx += 2;
             }
             token => {
-                return Err(format!("unknown flag for github refresh schedule: {token}").into());
+                return Err(
+                    anyhow::anyhow!("unknown flag for github refresh schedule: {token}").into(),
+                );
             }
         }
     }
@@ -137,7 +139,7 @@ pub(crate) async fn check_github_pushed_at(
     resp["pushed_at"]
         .as_str()
         .map(String::from)
-        .ok_or_else(|| "missing pushed_at in GitHub API response".into())
+        .ok_or_else(|| anyhow::anyhow!("missing pushed_at in GitHub API response").into())
 }
 
 /// Dispatch a GitHub re-ingest job for a single schedule entry.

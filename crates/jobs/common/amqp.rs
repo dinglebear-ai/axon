@@ -109,7 +109,8 @@ pub async fn batch_enqueue_jobs(cfg: &Config, queue_name: &str, job_ids: &[Uuid]
             id.to_string().as_bytes(),
             BasicProperties::default().with_delivery_mode(2),
         )
-        .await?;
+        .await
+        .with_context(|| format!("basic_publish job {id} to queue={queue_name}"))?;
         // Don't await the confirm here — collect them all at once below.
     }
 

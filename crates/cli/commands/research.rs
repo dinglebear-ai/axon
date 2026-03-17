@@ -75,10 +75,13 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.tavily_api_key.is_empty() {
-        return Err("research requires TAVILY_API_KEY — set it in .env".into());
+        return Err(anyhow::anyhow!("research requires TAVILY_API_KEY — set it in .env").into());
     }
     if cfg.openai_base_url.is_empty() || cfg.openai_model.is_empty() {
-        return Err("research requires OPENAI_BASE_URL and OPENAI_MODEL — set them in .env".into());
+        return Err(anyhow::anyhow!(
+            "research requires OPENAI_BASE_URL and OPENAI_MODEL — set them in .env"
+        )
+        .into());
     }
     Ok(())
 }
@@ -90,7 +93,7 @@ fn resolve_research_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
     if !cfg.positional.is_empty() {
         return Ok(cfg.positional.join(" "));
     }
-    Err("research requires a query (positional or --query)".into())
+    Err(anyhow::anyhow!("research requires a query (positional or --query)").into())
 }
 
 fn print_human_research_output(

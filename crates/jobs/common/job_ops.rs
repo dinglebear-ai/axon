@@ -35,7 +35,8 @@ pub async fn claim_next_pending(pool: &PgPool, table: JobTable) -> Result<Option
     );
     let row = sqlx::query_as::<_, (Uuid,)>(&query)
         .fetch_optional(pool)
-        .await?;
+        .await
+        .with_context(|| format!("claim_next_pending in {table}"))?;
     if let Some((id,)) = row {
         log_info(&format!("job_started job_id={id} table={table}"));
         Ok(Some(id))
@@ -55,7 +56,8 @@ pub async fn claim_pending_by_id(pool: &PgPool, table: JobTable, id: Uuid) -> Re
     let updated = sqlx::query(&query)
         .bind(id)
         .execute(pool)
-        .await?
+        .await
+        .with_context(|| format!("claim_pending_by_id for job {id} in {table}"))?
         .rows_affected();
     if updated > 0 {
         log_info(&format!("job_started job_id={id} table={table}"));

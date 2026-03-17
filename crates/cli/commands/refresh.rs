@@ -22,7 +22,10 @@ pub async fn run_refresh(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let urls = resolve_refresh_urls(cfg).await?;
     if urls.is_empty() {
-        return Err("refresh requires at least one URL or a crawl manifest seed URL".into());
+        return Err(anyhow::anyhow!(
+            "refresh requires at least one URL or a crawl manifest seed URL"
+        )
+        .into());
     }
 
     if cfg.wait {
