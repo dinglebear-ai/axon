@@ -130,7 +130,8 @@ impl AxonMcpServer {
             AxonRequest::Refresh(req) => self.handle_refresh(req).await?,
             AxonRequest::Graph(req) => self.handle_graph(req).await?,
         };
-        serde_json::to_string(&response).map_err(|e| internal_error(e.to_string()))
+        serde_json::to_string(&response)
+            .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
     }
 }
 

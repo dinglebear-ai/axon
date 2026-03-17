@@ -92,14 +92,16 @@ pub enum WsEventV2 {
 
 pub(crate) fn serialize_v2_event(event: WsEventV2) -> Option<String> {
     serde_json::to_string(&event)
-        .map_err(|e| log::error!("failed to serialize WsEventV2: {e}"))
+        .map_err(
+            |e| tracing::error!(context = "events", error = %e, "failed to serialize WsEventV2"),
+        )
         .ok()
 }
 
 #[cfg(test)]
 pub(super) fn acp_bridge_event_payload(event: &AcpBridgeEvent) -> Value {
     serde_json::to_value(event).unwrap_or_else(|e| {
-        log::error!("failed to serialize ACP bridge event payload, sending error placeholder: {e}");
+        tracing::error!(context = "events", error = %e, "failed to serialize ACP bridge event payload, sending error placeholder");
         serde_json::json!({ "error": format!("serialization failed: {e}") })
     })
 }
@@ -111,7 +113,7 @@ pub(super) fn acp_bridge_event_payload(event: &AcpBridgeEvent) -> Value {
 /// instead of two (`to_value` + `to_string`).
 pub(super) fn acp_bridge_event_json(event: &AcpBridgeEvent) -> String {
     serde_json::to_string(event).unwrap_or_else(|e| {
-        log::error!("failed to serialize ACP bridge event: {e}");
+        tracing::error!(context = "events", error = %e, "failed to serialize ACP bridge event");
         // Use serde_json to properly escape the error message — a raw format!()
         // produces invalid JSON if the error contains quotes, backslashes, or newlines.
         serde_json::json!({"type": "error", "message": format!("serialization failed: {e}")})
@@ -142,7 +144,7 @@ pub(super) fn acp_bridge_event_json(event: &AcpBridgeEvent) -> String {
 /// ```
 pub(super) fn serialize_raw_output_event(ctx: &CommandContext, data_json: &str) -> Option<String> {
     let ctx_json = serde_json::to_string(ctx)
-        .map_err(|e| log::error!("failed to serialize CommandContext: {e}"))
+        .map_err(|e| tracing::error!(context = "events", error = %e, "failed to serialize CommandContext"))
         .ok()?;
     // Build the envelope by string concatenation — `data_json` is already valid
     // JSON from `acp_bridge_event_json`, so no second serialization pass.

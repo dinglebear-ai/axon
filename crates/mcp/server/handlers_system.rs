@@ -199,9 +199,9 @@ impl AxonMcpServer {
 
         // Head / Grep / Wc / Read — all need the file text
         let path = validate_artifact_path(raw_path).await?;
-        let text = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| logged_internal_error("operation", e))?;
+        let text = tokio::fs::read_to_string(&path).await.map_err(|e| {
+            logged_internal_error(&format!("artifacts read '{}'", path.display()), e)
+        })?;
 
         match req.subaction {
             ArtifactsSubaction::Head => {
@@ -307,7 +307,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::doctor(self.cfg.as_ref())
             .await
-            .map_err(|e| logged_internal_error("operation", e))?;
+            .map_err(|e| logged_internal_error("doctor", e))?;
         respond_with_mode("doctor", "doctor", response_mode, "doctor", result.payload).await
     }
 
@@ -319,7 +319,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::domains(self.cfg.as_ref(), pagination)
             .await
-            .map_err(|e| logged_internal_error("operation", e))?;
+            .map_err(|e| logged_internal_error("domains", e))?;
         let payload = serde_json::json!({
             "limit": result.limit,
             "offset": result.offset,
@@ -339,7 +339,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::sources(self.cfg.as_ref(), pagination)
             .await
-            .map_err(|e| logged_internal_error("operation", e))?;
+            .map_err(|e| logged_internal_error("sources", e))?;
         let payload = serde_json::json!({
             "count": result.count,
             "limit": result.limit,
@@ -356,7 +356,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::stats(self.cfg.as_ref())
             .await
-            .map_err(|e| logged_internal_error("operation", e))?;
+            .map_err(|e| logged_internal_error("stats", e))?;
         respond_with_mode("stats", "stats", response_mode, "stats", result.payload).await
     }
 }
