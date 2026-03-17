@@ -427,7 +427,11 @@ async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
                 None,
             ))
             .await;
-        log::info!("[ws] acp_resume: session_id={session_id} not found in cache");
+        tracing::info!(
+            context = "ws",
+            session_id,
+            "acp_resume: session not found in cache"
+        );
         return;
     };
 
@@ -439,7 +443,11 @@ async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
         .value()
         .clone();
     if owner != conn.conn_id {
-        log::warn!("[ws] acp_resume denied: session_id={session_id} bound to different connection");
+        tracing::warn!(
+            context = "ws",
+            session_id,
+            "acp_resume denied: session bound to different connection"
+        );
         let _ = tx
             .send(acp_resume_json(
                 false,
@@ -460,7 +468,12 @@ async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
     let _ = tx
         .send(acp_resume_json(true, session_id, None, Some(replayed)))
         .await;
-    log::info!("[ws] acp_resume: session_id={session_id}, replayed {replayed} buffered event(s)");
+    tracing::info!(
+        context = "ws",
+        session_id,
+        replayed,
+        "acp_resume: replayed buffered events"
+    );
 }
 
 /// Route a `permission_response` to the waiting ACP session.
@@ -472,10 +485,18 @@ fn route_permission_response(
     session_id: String,
 ) {
     if tool_call_id.is_empty() || option_id.is_empty() {
-        log::warn!("permission_response with empty tool_call_id or option_id — ignoring");
+        tracing::warn!(
+            context = "ws",
+            "permission_response with empty tool_call_id or option_id — ignoring"
+        );
         return;
     }
-    log::debug!("permission_response: session_id={session_id} tool_call_id={tool_call_id}");
+    tracing::debug!(
+        context = "ws",
+        session_id,
+        tool_call_id,
+        "permission_response received"
+    );
 
     if let Some((_, sender)) = conn
         .permission_responders
@@ -491,9 +512,11 @@ fn route_permission_response(
         .is_some_and(|owner| *owner == conn.conn_id);
 
     if !owned_by_this_conn {
-        log::warn!(
-            "permission_response denied: session_id={session_id} not owned by this connection \
-             (tool_call_id={tool_call_id})"
+        tracing::warn!(
+            context = "ws",
+            session_id,
+            tool_call_id,
+            "permission_response denied: session not owned by this connection",
         );
         return;
     }
@@ -507,9 +530,11 @@ fn route_permission_response(
         return;
     }
 
-    log::warn!(
-        "permission_response for unknown key: session_id={session_id} \
-         tool_call_id={tool_call_id} (already responded or wrong session)"
+    tracing::warn!(
+        context = "ws",
+        session_id,
+        tool_call_id,
+        "permission_response for unknown key (already responded or wrong session)",
     );
 }
 

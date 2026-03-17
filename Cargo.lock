@@ -626,6 +626,7 @@ dependencies = [
  "subtle",
  "tempfile",
  "text-splitter",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-executor-trait 3.1.0",
  "tokio-reactor-trait",
