@@ -205,24 +205,26 @@ impl AcpClientScaffold {
         if adapters::is_codex_adapter(&self.adapter) {
             match preflight::repair_codex_skill_symlinks() {
                 Ok(Some(stats)) if stats.removed_dangling_symlinks > 0 => {
-                    log::warn!(
-                        "ACP codex preflight: removed {} dangling skill symlink(s) (scanned={}, failed={})",
-                        stats.removed_dangling_symlinks,
-                        stats.scanned_symlinks,
-                        stats.failed_removals
+                    tracing::warn!(
+                        context = "acp_preflight",
+                        removed = stats.removed_dangling_symlinks,
+                        scanned = stats.scanned_symlinks,
+                        failed = stats.failed_removals,
+                        "removed dangling skill symlink(s)"
                     );
                 }
                 Ok(Some(stats)) if stats.failed_removals > 0 => {
-                    log::warn!(
-                        "ACP codex preflight: failed to inspect/remove {} skill symlink entry(ies) (scanned={}, removed={})",
-                        stats.failed_removals,
-                        stats.scanned_symlinks,
-                        stats.removed_dangling_symlinks
+                    tracing::warn!(
+                        context = "acp_preflight",
+                        failed = stats.failed_removals,
+                        scanned = stats.scanned_symlinks,
+                        removed = stats.removed_dangling_symlinks,
+                        "failed to inspect/remove skill symlink entry(ies)"
                     );
                 }
                 Ok(_) => {}
                 Err(err) => {
-                    log::warn!("ACP codex preflight: skill symlink repair failed: {err}");
+                    tracing::warn!(context = "acp_preflight", error = %err, "skill symlink repair failed");
                 }
             }
         }
