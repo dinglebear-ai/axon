@@ -7,7 +7,7 @@
 use super::events::{self, JobCancelResponsePayload, WsEventV2, serialize_v2_event};
 use super::ws_send::{send_done_dual, send_error_dual};
 use crate::crates::core::config::Config;
-use crate::crates::jobs;
+use crate::crates::services;
 use std::string::ToString;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -71,13 +71,13 @@ async fn validate_and_parse_job_id(
 /// Dispatch a cancel request to the appropriate job table.
 async fn dispatch_cancel(cancel_mode: &str, uuid: Uuid, cfg: &Config) -> Result<bool, String> {
     match cancel_mode {
-        "crawl" => jobs::crawl::cancel_job(cfg, uuid)
+        "crawl" => services::crawl::crawl_cancel(cfg, uuid)
             .await
             .map_err(|e| e.to_string()),
-        "extract" => jobs::extract::cancel_extract_job(cfg, uuid)
+        "extract" => services::extract::extract_cancel(cfg, uuid)
             .await
             .map_err(|e| e.to_string()),
-        "embed" => jobs::embed::cancel_embed_job(cfg, uuid)
+        "embed" => services::embed::embed_cancel(cfg, uuid)
             .await
             .map_err(|e| e.to_string()),
         other => Err(format!("cancel not supported for mode '{other}'")),
