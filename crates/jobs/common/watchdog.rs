@@ -192,6 +192,7 @@ pub async fn reclaim_stale_running_jobs(
         "#,
         running = JobStatus::Running.as_str(),
     );
+    let table_name = table.as_str();
     let rows = sqlx::query(&select_query)
         .bind(idle_timeout_secs.min(i32::MAX as i64) as i32)
         .fetch_all(pool)
