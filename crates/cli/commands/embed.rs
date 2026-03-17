@@ -64,7 +64,7 @@ async fn maybe_handle_embed_subcommand(cfg: &Config) -> Result<bool, Box<dyn Err
         "list" => handle_embed_list(cfg).await?,
         "cleanup" => handle_embed_cleanup(cfg).await?,
         "clear" => handle_embed_clear(cfg).await?,
-        "worker" => crate::crates::jobs::embed::run_embed_worker(cfg).await?,
+        "worker" => embed_service::embed_worker(cfg).await?,
         "recover" => handle_embed_recover(cfg).await?,
         _ => return Ok(false),
     }
@@ -82,7 +82,7 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
 
 async fn handle_embed_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "status")?;
-    let job = crate::crates::jobs::embed::get_embed_job(cfg, id).await?;
+    let job = embed_service::embed_status_raw(cfg, id).await?;
     handle_job_status(cfg, job, id, "Embed")
 }
 
@@ -94,12 +94,12 @@ async fn handle_embed_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "errors")?;
-    let job = crate::crates::jobs::embed::get_embed_job(cfg, id).await?;
+    let job = embed_service::embed_status_raw(cfg, id).await?;
     handle_job_errors(cfg, job, id, "embed")
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = crate::crates::jobs::embed::list_embed_jobs(cfg, 50, 0).await?;
+    let jobs = embed_service::embed_list_raw(cfg, 50, 0).await?;
     if cfg.json_output {
         return handle_job_list(cfg, jobs, "Embed");
     }
@@ -187,11 +187,7 @@ fn resolve_embed_input(cfg: &Config) -> String {
 }
 
 async fn enqueue_embed_job(cfg: &Config, input: &str) -> Result<(), Box<dyn Error>> {
-    // Route through the services layer; the service resolves input from cfg.positional
-    // using the same fallback logic, so we temporarily set positional to the resolved input.
-    let mut derived = cfg.clone();
-    derived.positional = vec![input.to_string()];
-    let result = embed_service::embed_start(&derived, None).await?;
+    let result = embed_service::embed_start_with_input(cfg, input, None).await?;
     let job_id = result.job_id;
     if cfg.json_output {
         println!(

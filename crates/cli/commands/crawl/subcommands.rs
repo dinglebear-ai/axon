@@ -8,10 +8,8 @@ use crate::crates::core::config::Config;
 use crate::crates::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
 };
-use crate::crates::jobs::crawl::{
-    CrawlJob, cancel_job, cleanup_jobs, clear_jobs, get_job, list_jobs, recover_stale_crawl_jobs,
-    run_worker,
-};
+use crate::crates::services::crawl as crawl_service;
+use crate::crates::services::crawl::CrawlJob;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -22,27 +20,27 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
     match subcmd {
         "status" => {
             let id = parse_required_job_id(cfg, "status")?;
-            let job = get_job(cfg, id).await?;
+            let job = crawl_service::crawl_status_raw(cfg, id).await?;
             handle_status_subcommand(cfg, job, id).await?;
         }
         "cancel" => {
             let id = parse_required_job_id(cfg, "cancel")?;
-            let canceled = cancel_job(cfg, id).await?;
+            let canceled = crawl_service::crawl_cancel(cfg, id).await?;
             handle_job_cancel(cfg, id, canceled, "crawl")?;
         }
         "errors" => {
             let id = parse_required_job_id(cfg, "errors")?;
-            let job = get_job(cfg, id).await?;
+            let job = crawl_service::crawl_status_raw(cfg, id).await?;
             handle_job_errors(cfg, job, id, "crawl")?;
         }
         "list" => handle_list_subcommand(cfg).await?,
         "cleanup" => {
-            let removed = cleanup_jobs(cfg).await?;
+            let removed = crawl_service::crawl_cleanup(cfg).await?;
             handle_job_cleanup(cfg, removed, "crawl")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all crawl jobs and purge crawl queue?")? {
-                let removed = clear_jobs(cfg).await?;
+                let removed = crawl_service::crawl_clear(cfg).await?;
                 handle_job_clear(cfg, removed, "crawl")?;
             } else if cfg.json_output {
                 println!(
@@ -53,9 +51,9 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => run_worker(cfg).await?,
+        "worker" => crawl_service::crawl_worker(cfg).await?,
         "recover" => {
-            let reclaimed = recover_stale_crawl_jobs(cfg).await?;
+            let reclaimed = crawl_service::crawl_recover(cfg).await?;
             handle_job_recover(cfg, reclaimed, "crawl")?;
         }
         "audit" => {
@@ -222,7 +220,7 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 }
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = list_jobs(cfg, 50, 0).await?;
+    let jobs = crawl_service::crawl_list_raw(cfg, 50, 0).await?;
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);

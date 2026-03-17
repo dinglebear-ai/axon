@@ -8,7 +8,6 @@ use crate::crates::core::content::{
 };
 use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{accent, confirm_destructive, muted, primary, symbol_for_status};
-use crate::crates::jobs::extract as extract_jobs;
 use crate::crates::services::extract as extract_service;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
@@ -57,30 +56,30 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
     match subcmd {
         "status" => {
             let id = parse_extract_job_id(cfg, "status")?;
-            let job = extract_jobs::get_extract_job(cfg, id).await?;
+            let job = extract_service::extract_status_raw(cfg, id).await?;
             handle_job_status(cfg, job, id, "Extract")?;
         }
         "cancel" => {
             let id = parse_extract_job_id(cfg, "cancel")?;
-            let canceled = extract_jobs::cancel_extract_job(cfg, id).await?;
+            let canceled = extract_service::extract_cancel(cfg, id).await?;
             handle_job_cancel(cfg, id, canceled, "extract")?;
         }
         "errors" => {
             let id = parse_extract_job_id(cfg, "errors")?;
-            let job = extract_jobs::get_extract_job(cfg, id).await?;
+            let job = extract_service::extract_status_raw(cfg, id).await?;
             handle_job_errors(cfg, job, id, "extract")?;
         }
         "list" => {
-            let jobs = extract_jobs::list_extract_jobs(cfg, 50, 0).await?;
+            let jobs = extract_service::extract_list_raw(cfg, 50, 0).await?;
             handle_job_list(cfg, jobs, "Extract")?;
         }
         "cleanup" => {
-            let removed = extract_jobs::cleanup_extract_jobs(cfg).await?;
+            let removed = extract_service::extract_cleanup(cfg).await?;
             handle_job_cleanup(cfg, removed, "extract")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all extract jobs and purge extract queue?")? {
-                let removed = extract_jobs::clear_extract_jobs(cfg).await?;
+                let removed = extract_service::extract_clear(cfg).await?;
                 handle_job_clear(cfg, removed, "extract")?;
             } else if cfg.json_output {
                 println!(
@@ -91,9 +90,9 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => extract_jobs::run_extract_worker(cfg).await?,
+        "worker" => extract_service::extract_worker(cfg).await?,
         "recover" => {
-            let reclaimed = extract_jobs::recover_stale_extract_jobs(cfg).await?;
+            let reclaimed = extract_service::extract_recover(cfg).await?;
             handle_job_recover(cfg, reclaimed, "extract")?;
         }
         _ => return Ok(false),
@@ -106,7 +105,7 @@ fn parse_extract_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Erro
     let id = cfg
         .positional
         .get(1)
-        .ok_or(format!("extract {action} requires <job-id>"))?;
+        .ok_or_else(|| format!("extract {action} requires <job-id>"))?;
     Ok(Uuid::parse_str(id)?)
 }
 
@@ -123,10 +122,7 @@ async fn enqueue_extract_job(
     urls: &[String],
     prompt: String,
 ) -> Result<(), Box<dyn Error>> {
-    // Route through the services layer; set cfg.query to the prompt so the service picks it up.
-    let mut derived = cfg.clone();
-    derived.query = Some(prompt);
-    let result = extract_service::extract_start(&derived, urls, None).await?;
+    let result = extract_service::extract_start_with_prompt(cfg, urls, Some(prompt), None).await?;
     let job_id = result.job_id;
     if cfg.json_output {
         println!(
