@@ -239,3 +239,43 @@ pub(crate) async fn embed_session_text(
 
     Ok(summary.chunks_embedded)
 }
+
+/// Embed session text with up to 3 retries on transient failures.
+///
+/// Backoff: 500ms × attempt (500ms, 1000ms, 1500ms). All three session
+/// parsers share this retry policy — callers no longer need their own loops.
+pub(crate) async fn embed_with_retry(
+    cfg: &Config,
+    session_text: &str,
+    url: &str,
+    source_type: &str,
+    title: Option<&str>,
+) -> IngestResult<usize> {
+    const MAX_RETRIES: u8 = 3;
+    let mut attempt: u8 = 0;
+    loop {
+        match embed_session_text(
+            cfg,
+            session_text.to_owned(),
+            url.to_owned(),
+            source_type,
+            title,
+        )
+        .await
+        {
+            Ok(n) => return Ok(n),
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    attempt += 1;
+                    let backoff_ms = u64::from(attempt) * 500;
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    log_warn(&format!(
+                        "embed_retry attempt={attempt}/max={MAX_RETRIES} backoff_ms={backoff_ms} url={url} error={e}"
+                    ));
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+}

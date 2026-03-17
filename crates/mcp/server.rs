@@ -147,10 +147,37 @@ fn mcp_tool_schema_markdown() -> String {
 impl ServerHandler for AxonMcpServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
-        info.instructions = Some(
-            "Use the single axon tool with action/subaction to drive crawl and RAG workflows"
-                .into(),
-        );
+        info.instructions = Some(concat!(
+            "Axon is a self-hosted RAG engine for web crawl, scrape, extract, embed, and semantic search.\n",
+            "\n",
+            "Use the single `axon` tool with `action`/`subaction` routing for all operations.\n",
+            "Call `action:help` first to discover all available actions, subactions, and parameter defaults.\n",
+            "\n",
+            "Search for this server's tools when the user wants to:\n",
+            "- Crawl or scrape websites and index their content\n",
+            "- Embed documents or URLs into the vector knowledge base\n",
+            "- Run semantic search or RAG queries over indexed content\n",
+            "- Ingest external sources (GitHub repos, Reddit threads/subreddits, YouTube videos/playlists)\n",
+            "- Ask grounded questions against indexed docs (RAG with LLM synthesis)\n",
+            "- Research topics via web search with automatic indexing\n",
+            "- Extract structured data from pages using LLM-powered extraction\n",
+            "- Check job queue status, cancel jobs, or manage async workers\n",
+            "- Take screenshots, map site URLs, retrieve stored documents\n",
+            "\n",
+            "Key capabilities:\n",
+            "- `crawl` — full-site async crawl with HTTP/Chrome auto-switch\n",
+            "- `scrape` — single-page markdown extraction\n",
+            "- `embed` — index file, directory, or URL into Qdrant\n",
+            "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
+            "- `query` — dense + BM42 hybrid semantic search\n",
+            "- `ask` — RAG: retrieve context + LLM answer\n",
+            "- `research` — Tavily AI search with LLM synthesis\n",
+            "- `extract` — structured data extraction via LLM\n",
+            "- `status` / `doctor` — job queue health and service diagnostics\n",
+            "- `artifacts` — read/grep/inspect large output files\n",
+            "\n",
+            "All async operations (crawl, embed, ingest, extract) return a job_id. Poll with `action:status` or pass `wait:true` for synchronous execution."
+        ).into());
         info.capabilities = ServerCapabilities::builder()
             .enable_tools()
             .enable_resources()

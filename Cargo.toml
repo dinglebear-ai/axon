@@ -47,7 +47,7 @@ spider = { version = "2", default-features = false, features = [
     "chrome_stealth", "chrome_screenshot", "chrome_store_page",
     "chrome_headless_new", "chrome_simd",
     "simd", "inline-more", "cache_mem",
-    "ua_generator", "headers", "glob", "time", "control",
+    "ua_generator", "headers", "time", "control",
     "firewall",
 ] }
 spider_agent = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }

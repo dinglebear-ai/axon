@@ -1,9 +1,8 @@
 use super::{
-    IngestResult, SessionStateTracker, embed_session_text, expand_home, handle_spawn_result,
+    IngestResult, SessionStateTracker, embed_with_retry, expand_home, handle_spawn_result,
     matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_warn;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -127,78 +126,18 @@ async fn process_claude_file(
     let content = fs::read_to_string(&path)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let mut session_text = String::new();
+    let session_text = parse_claude_jsonl(&content);
 
     let mut session_cfg = cfg.clone();
     session_cfg.collection = collection;
 
-    for line in content.lines() {
-        let Ok(val) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let role = if val["type"] == "user" {
-            "user"
-        } else if val["type"] == "assistant" {
-            "assistant"
-        } else {
-            continue;
-        };
-
-        let msg_content = &val["message"]["content"];
-        let text = if msg_content.is_string() {
-            msg_content.as_str().unwrap().to_string()
-        } else if let Some(arr) = msg_content.as_array() {
-            let mut combined = String::new();
-            for item in arr {
-                if let Some(t) = item["text"].as_str() {
-                    combined.push_str(t);
-                    combined.push('\n');
-                }
-            }
-            combined
-        } else {
-            continue;
-        };
-
-        if !text.trim().is_empty() {
-            session_text.push_str(&format!("\n\n### {}:\n{}", role.to_uppercase(), text));
-        }
-    }
-
     let url = format!("file://{}", path.display());
     let title = path.file_name().and_then(|n| n.to_str());
-
-    let mut attempt = 0;
-    loop {
-        let res = embed_session_text(
-            &session_cfg,
-            session_text.clone(),
-            url.clone(),
-            "claude_session",
-            title,
-        )
-        .await;
-        match res {
-            Ok(n) => return Ok(n),
-            Err(e) => {
-                if attempt < 3 {
-                    attempt += 1;
-                    let backoff_ms = attempt * 500;
-                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                    log_warn(&format!(
-                        "retry attempt={attempt}/max=3 backoff_ms={backoff_ms} url={url} error={e}"
-                    ));
-                } else {
-                    return Err(e);
-                }
-            }
-        }
-    }
+    embed_with_retry(&session_cfg, &session_text, &url, "claude_session", title).await
 }
 
-/// Extract session text from Claude JSONL (pure, no I/O) for unit tests.
-#[cfg(test)]
-fn parse_claude_jsonl(content: &str) -> String {
+/// Extract session text from Claude JSONL (pure, no I/O).
+pub(crate) fn parse_claude_jsonl(content: &str) -> String {
     let mut session_text = String::new();
     for line in content.lines() {
         let Ok(val) = serde_json::from_str::<Value>(line) else {

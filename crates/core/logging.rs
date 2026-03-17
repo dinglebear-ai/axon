@@ -395,6 +395,11 @@ fn build_filter_with_noise(
 pub fn init_tracing() {
     use tracing_subscriber::prelude::*;
 
+    // Note: tracing-subscriber's .init() (SubscriberInitExt::try_init) automatically
+    // calls tracing_log::LogTracer::init() when its "tracing-log" feature is enabled
+    // (the default). Calling it explicitly here before .init() causes a double-init
+    // SetLoggerError panic. The bridge is set up by .init() below.
+
     let json_log_file = resolve_json_log_file();
     let (max_bytes, max_files_total) = resolve_rotation_limits();
 

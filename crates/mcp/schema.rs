@@ -241,6 +241,14 @@ pub struct QueryRequest {
     pub query: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    /// Qdrant collection to search. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    /// Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.
+    /// Restricts results to content indexed on or after this date.
+    pub since: Option<String>,
+    /// Upper bound for temporal filter. Same formats as `since`.
+    /// Restricts results to content indexed on or before this date.
+    pub before: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
@@ -336,6 +344,14 @@ pub struct AskRequest {
     pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,
+    /// Qdrant collection to search. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    /// Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.
+    /// Restricts results to content indexed on or after this date.
+    pub since: Option<String>,
+    /// Upper bound for temporal filter. Same formats as `since`.
+    /// Restricts results to content indexed on or before this date.
+    pub before: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

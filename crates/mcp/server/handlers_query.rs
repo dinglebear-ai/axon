@@ -25,7 +25,19 @@ impl AxonMcpServer {
         let offset = parse_offset(req.offset);
         let response_mode = req.response_mode;
         let pagination = to_pagination(Some(limit), Some(offset), self.cfg.search_limit);
-        let result = query_svc::query(self.cfg.as_ref(), &query, pagination)
+
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(collection) = req.collection {
+            cfg.collection = collection;
+        }
+        if let Some(since) = req.since {
+            cfg.since = Some(since);
+        }
+        if let Some(before) = req.before {
+            cfg.before = Some(before);
+        }
+
+        let result = query_svc::query(&cfg, &query, pagination)
             .await
             .map_err(|e| logged_internal_error("operation", e))?;
 
@@ -253,6 +265,15 @@ impl AxonMcpServer {
         }
         if let Some(diagnostics) = req.diagnostics {
             cfg.ask_diagnostics = diagnostics;
+        }
+        if let Some(collection) = req.collection {
+            cfg.collection = collection;
+        }
+        if let Some(since) = req.since {
+            cfg.since = Some(since);
+        }
+        if let Some(before) = req.before {
+            cfg.before = Some(before);
         }
 
         let result = query_svc::ask(&cfg, &query, None)

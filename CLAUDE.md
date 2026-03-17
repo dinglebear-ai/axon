@@ -436,7 +436,7 @@ spider = { version = "2", default-features = false, features = [
     "chrome_stealth", "chrome_screenshot", "chrome_store_page",
     "chrome_headless_new", "chrome_simd",
     "simd", "inline-more", "cache_mem",
-    "ua_generator", "headers", "glob", "time", "control",
+    "ua_generator", "headers", "time", "control",
     "firewall",
 ] }
 spider_agent = { version = "2.45", default-features = false, features = ["search_tavily", "openai"] }
@@ -446,6 +446,7 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 - **`firewall`**: Blocks known-bad domains (malware, phishing, spam) before fetch via `spider_firewall` crate. Some URLs may be rejected that weren't before — this is defense-in-depth on top of `validate_url()`.
 - **`chrome_headless_new`**: Uses `--headless=new` instead of legacy headless. Better DOM fidelity but slightly different rendering behavior on some sites.
 - **`balance`**: NOT enabled — silently throttles concurrency with zero logging. We manage concurrency explicitly via performance profiles.
+- **`glob`**: NOT enabled — glob URL patterns (`{a,b}`, `[0-9]`) change `crawl_establish` to use `is_allowed()` (budget-aware) instead of `is_allowed_default()`. With `with_limit(1)`, the budget check immediately returns `BudgetExceeded` for the FIRST URL, producing 0 pages from Chrome crawls. axon doesn't use URL glob patterns in its CLI, so this feature is excluded. Do NOT add it back.
 - Full flag inventory: [`docs/spider-feature-flags.md`](docs/spider-feature-flags.md)
 
 ### Subprocess stdout vs stderr

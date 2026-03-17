@@ -1,6 +1,6 @@
 use super::{
-    IngestResult, SessionStateTracker, embed_session_text, matches_project_filter,
-    resolve_collection,
+    IngestResult, SessionStateTracker, embed_with_retry, handle_spawn_result,
+    matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
@@ -40,19 +40,7 @@ pub(super) async fn ingest_gemini_sessions(
     }
 
     while let Some(res) = futures.next().await {
-        match res {
-            Ok((p, m, s, r)) => match r {
-                Ok(count) => {
-                    total += count;
-                    state.mark_indexed(&p, m, s).await;
-                }
-                Err(e) => log_warn(&format!("Gemini file {}: {e}", p.display())),
-            },
-            Err(join_err) => {
-                log_warn(&format!("Gemini ingest task panicked: {join_err}"));
-                continue;
-            }
-        }
+        total += handle_spawn_result(res, state, "Gemini").await;
     }
 
     pb.finish_with_message(format!("indexed {} chunks", total));
@@ -153,18 +141,7 @@ async fn enqueue_gemini_chat_files(
         if futures.len() >= 32
             && let Some(res) = futures.next().await
         {
-            match res {
-                Ok((p, m, s, r)) => match r {
-                    Ok(count) => {
-                        *total += count;
-                        state.mark_indexed(&p, m, s).await;
-                    }
-                    Err(e) => log_warn(&format!("Gemini file {}: {e}", p.display())),
-                },
-                Err(join_err) => {
-                    log_warn(&format!("Gemini ingest task panicked: {join_err}"));
-                }
-            }
+            *total += handle_spawn_result(res, state, "Gemini").await;
         }
     }
     Ok(())
@@ -195,68 +172,19 @@ async fn process_gemini_file(
     collection: String,
 ) -> IngestResult<usize> {
     let content = fs::read_to_string(&path).await?;
-    let val: Value = serde_json::from_str(&content)?;
+    let session_text = parse_gemini_json(&content)?;
 
     let mut session_cfg = cfg.clone();
     session_cfg.collection = collection;
 
-    let mut session_text = String::new();
-    if let Some(messages) = val["messages"].as_array() {
-        for msg in messages {
-            let role = msg["type"].as_str().unwrap_or("unknown");
-            if let Some(content_arr) = msg["content"].as_array() {
-                let mut combined = String::new();
-                for item in content_arr {
-                    if let Some(t) = item["text"].as_str() {
-                        combined.push_str(t);
-                        combined.push('\n');
-                    }
-                }
-                if !combined.trim().is_empty() {
-                    session_text.push_str(&format!(
-                        "\n\n### {}:\n{}",
-                        role.to_uppercase(),
-                        combined
-                    ));
-                }
-            }
-        }
-    }
-
     let url = format!("file://{}", path.display());
     let title = path.file_name().and_then(|n| n.to_str());
-
-    let mut attempt = 0;
-    loop {
-        let res = embed_session_text(
-            &session_cfg,
-            session_text.clone(),
-            url.clone(),
-            "gemini_session",
-            title,
-        )
-        .await;
-        let err_msg = match res.map_err(|e| format!("{e:#}")) {
-            Ok(n) => return Ok(n),
-            Err(msg) => msg,
-        };
-        if attempt < 3 {
-            attempt += 1;
-            let backoff_ms = attempt * 500;
-            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-            log_warn(&format!(
-                "retry attempt={attempt}/max=3 backoff_ms={backoff_ms} url={url} error={err_msg}"
-            ));
-        } else {
-            return Err(anyhow::anyhow!(err_msg));
-        }
-    }
+    embed_with_retry(&session_cfg, &session_text, &url, "gemini_session", title).await
 }
 
-/// Parse Gemini chat JSON into session text (pure, no I/O) for unit tests.
-#[cfg(test)]
-fn parse_gemini_json(content: &str) -> Result<String, String> {
-    let val: Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
+/// Parse Gemini chat JSON into session text (pure, no I/O).
+pub(crate) fn parse_gemini_json(content: &str) -> IngestResult<String> {
+    let val: Value = serde_json::from_str(content)?;
     let mut session_text = String::new();
     if let Some(messages) = val["messages"].as_array() {
         for msg in messages {

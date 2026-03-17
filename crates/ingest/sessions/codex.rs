@@ -1,8 +1,8 @@
 use super::{
-    IngestResult, SessionStateTracker, embed_session_text, handle_spawn_result, resolve_collection,
+    IngestResult, SessionStateTracker, embed_with_retry, handle_spawn_result,
+    matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_warn;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -30,11 +30,23 @@ pub(super) async fn ingest_codex_sessions(
     pb.enable_steady_tick(Duration::from_millis(100));
 
     let mut total = 0;
-    let mut dir_entries = vec![root];
+    // Track (dir, depth): depth 1 = direct children of root (project dirs) — apply filter.
+    let mut dir_entries: Vec<(PathBuf, usize)> = vec![(root, 0)];
     let mut futures = FuturesUnordered::new();
 
-    while let Some(current_dir) = dir_entries.pop() {
-        let mut read_dir = fs::read_dir(current_dir)
+    while let Some((current_dir, depth)) = dir_entries.pop() {
+        if depth == 1 {
+            // Direct children of root are project directories — apply the project filter.
+            let dir_name = current_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if !matches_project_filter(cfg, dir_name) {
+                continue;
+            }
+        }
+
+        let mut read_dir = fs::read_dir(&current_dir)
             .await
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         while let Some(entry) = read_dir
@@ -44,7 +56,7 @@ pub(super) async fn ingest_codex_sessions(
         {
             let path = entry.path();
             if path.is_dir() {
-                dir_entries.push(path);
+                dir_entries.push((path, depth + 1));
                 continue;
             }
             if path.extension().is_none_or(|ext| ext != "jsonl") {
@@ -92,70 +104,18 @@ async fn process_codex_file(
     let content = fs::read_to_string(&path)
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let mut session_text = String::new();
+    let session_text = parse_codex_jsonl(&content);
 
     let mut session_cfg = cfg.clone();
     session_cfg.collection = collection;
 
-    for line in content.lines() {
-        let Ok(val) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if val["type"] != "response_item" {
-            continue;
-        }
-        let role = val["payload"]["role"].as_str().unwrap_or("unknown");
-        if let Some(arr) = val["payload"]["content"].as_array() {
-            let mut combined = String::new();
-            for item in arr {
-                if let Some(t) = item["text"].as_str() {
-                    combined.push_str(t);
-                    combined.push('\n');
-                } else if let Some(t) = item["input_text"].as_str() {
-                    combined.push_str(t);
-                    combined.push('\n');
-                }
-            }
-            if !combined.trim().is_empty() {
-                session_text.push_str(&format!("\n\n### {}:\n{}", role.to_uppercase(), combined));
-            }
-        }
-    }
-
     let url = format!("file://{}", path.display());
     let title = path.file_name().and_then(|n| n.to_str());
-
-    let mut attempt = 0;
-    loop {
-        let res = embed_session_text(
-            &session_cfg,
-            session_text.clone(),
-            url.clone(),
-            "codex_session",
-            title,
-        )
-        .await;
-        match res {
-            Ok(n) => return Ok(n),
-            Err(e) => {
-                if attempt < 3 {
-                    attempt += 1;
-                    let backoff_ms = attempt * 500;
-                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                    log_warn(&format!(
-                        "retry attempt={attempt}/max=3 backoff_ms={backoff_ms} url={url} error={e}"
-                    ));
-                } else {
-                    return Err(e);
-                }
-            }
-        }
-    }
+    embed_with_retry(&session_cfg, &session_text, &url, "codex_session", title).await
 }
 
-/// Extract session text from Codex JSONL (pure, no I/O) for unit tests.
-#[cfg(test)]
-fn parse_codex_jsonl(content: &str) -> String {
+/// Extract session text from Codex JSONL (pure, no I/O).
+pub(crate) fn parse_codex_jsonl(content: &str) -> String {
     let mut session_text = String::new();
     for line in content.lines() {
         let Ok(val) = serde_json::from_str::<Value>(line) else {

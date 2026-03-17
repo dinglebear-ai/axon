@@ -73,7 +73,7 @@ services:
       - ${AXON_DATA_DIR:-./data}/axon/rabbitmq:/var/lib/rabbitmq
       - ./docker/rabbitmq/20-axon.conf:/etc/rabbitmq/conf.d/20-axon.conf:ro
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

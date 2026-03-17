@@ -142,31 +142,21 @@ pub(super) async fn run_single_url_extract_chrome(
     let mut rx = website.subscribe(16).ok_or("subscribe failed")?;
 
     // Spider's canonical single-page Chrome fetch pattern:
-    // tokio::join! + oneshot avoids tokio::spawn (no Send bound required).
-    // The biased select! checks done_rx first — exits the collect loop
-    // immediately when crawl signals done, even if the channel hasn't closed.
-    let (done_tx, mut done_rx) = tokio::sync::oneshot::channel::<()>();
-
+    // tokio::join! runs crawl and collection concurrently on the same thread
+    // (no tokio::spawn / no Send bound required).
+    //
+    // `sub` reads pages in arrival order. When the broadcast sender is dropped
+    // (via website.unsubscribe() inside `crawl`), rx.recv() returns Err and the
+    // loop exits cleanly — no race between a "done" signal and buffered pages.
     let crawl = async move {
         website.crawl().await;
-        website.unsubscribe();
-        let _ = done_tx.send(());
+        website.unsubscribe(); // drops the broadcast sender → signals EOF to rx
     };
 
-    // Collect pages into a Vec; return it so tokio::join! can hand it back.
     let sub = async move {
         let mut pages: Vec<spider::page::Page> = Vec::new();
-        loop {
-            tokio::select! {
-                biased;
-                _ = &mut done_rx => break,
-                result = rx.recv() => {
-                    match result {
-                        Ok(page) => pages.push(page),
-                        Err(_) => break,
-                    }
-                }
-            }
+        while let Ok(page) = rx.recv().await {
+            pages.push(page);
         }
         pages
     };
