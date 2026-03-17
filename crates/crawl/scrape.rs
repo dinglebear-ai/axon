@@ -237,9 +237,9 @@ pub(crate) async fn fetch_single_page(
     website: &mut Website,
     requested_url: &str,
 ) -> Result<ScrapedPage, Box<dyn Error>> {
-    let mut rx = website
-        .subscribe(16)
-        .ok_or("failed to subscribe to spider broadcast")?;
+    let mut rx = website.subscribe(16).ok_or_else(|| {
+        format!("failed to subscribe to spider broadcast for scrape of {requested_url}")
+    })?;
     // Spawn the collector BEFORE the crawl so it is ready to receive the broadcast.
     let collect: tokio::task::JoinHandle<Vec<ScrapedPage>> = tokio::spawn(async move {
         let mut pages = Vec::new();
@@ -259,7 +259,7 @@ pub(crate) async fn fetch_single_page(
     website.unsubscribe();
     let mut candidates = collect
         .await
-        .map_err(|e| format!("page collector panicked: {e}"))?;
+        .map_err(|e| format!("page collector panicked for scrape of {requested_url}: {e}"))?;
 
     // Include any pages retained by Spider internals and prefer a URL that
     // matches the requested target over whichever page arrived first.
@@ -336,10 +336,13 @@ pub fn select_output(
 /// No CLI output or formatting — just fetches, validates, and returns data.
 pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
     let normalized = normalize_url(url);
-    validate_url(&normalized)?;
+    validate_url(&normalized).map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
 
-    let mut website = build_scrape_website(cfg, &normalized)?;
-    let page = fetch_single_page(cfg, &mut website, &normalized).await?;
+    let mut website = build_scrape_website(cfg, &normalized)
+        .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
+    let page = fetch_single_page(cfg, &mut website, &normalized)
+        .await
+        .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
     let html = page.html;
     let status_code = page.status_code;
     if !(200..300).contains(&status_code) {

@@ -141,8 +141,11 @@ pub(crate) async fn append_html_anchor_backfill(
         cfg.max_pages as usize
     };
 
-    let client = http_client()?;
-    let html = fetch_html(client, &crawl_start_url).await?;
+    let client =
+        http_client().map_err(|e| format!("http client init for backfill of {start_url}: {e}"))?;
+    let html = fetch_html(client, &crawl_start_url)
+        .await
+        .map_err(|e| format!("fetch failed for backfill of {crawl_start_url}: {e}"))?;
     let fallback_urls = extract_anchor_hrefs(&crawl_start_url, &html, fallback_limit);
 
     let existing_urls: Vec<String> = seen_urls.iter().cloned().collect();
@@ -203,8 +206,9 @@ fn derive_map_scope(requested_url: &str, resolved_url: &str) -> Option<MapScope>
 
 async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>> {
     let normalized = normalize_url(start_url);
-    validate_url(&normalized)?;
-    let client = http_client()?;
+    validate_url(&normalized).map_err(|e| format!("invalid map seed URL {normalized}: {e}"))?;
+    let client =
+        http_client().map_err(|e| format!("http client init for map seed {normalized}: {e}"))?;
 
     if let Ok(response) = client.head(&normalized).send().await
         && response.status().is_success()
@@ -212,7 +216,13 @@ async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>>
         return Ok(response.url().to_string());
     }
 
-    let response = client.get(&normalized).send().await?.error_for_status()?;
+    let response = client
+        .get(&normalized)
+        .send()
+        .await
+        .map_err(|e| format!("GET failed resolving map seed {normalized}: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("non-success status resolving map seed {normalized}: {e}"))?;
     Ok(response.url().to_string())
 }
 
@@ -222,7 +232,9 @@ pub(crate) async fn crawl_and_collect_map(
     mode: RenderMode,
     scope: &MapScope,
 ) -> Result<(CrawlSummary, Vec<String>), Box<dyn Error>> {
-    let mut website = configure_website(cfg, start_url, mode).await?;
+    let mut website = configure_website(cfg, start_url, mode)
+        .await
+        .map_err(|e| format!("failed to configure website for map of {start_url}: {e}"))?;
     let start = Instant::now();
 
     match mode {
@@ -351,17 +363,25 @@ pub async fn run_crawl_once(
     let markdown_dir = output_dir.join("markdown");
     let recycling_bin = output_dir.join("markdown.old");
 
-    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg).await?;
+    prepare_crawl_output_dir(output_dir, &markdown_dir, &recycling_bin, cfg)
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to prepare output dir {} for crawl of {start_url}: {e}",
+                output_dir.display()
+            )
+        })?;
 
-    let mut website =
-        runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id).await?;
+    let mut website = runtime::configure_website_with_crawl_id(cfg, start_url, mode, crawl_id)
+        .await
+        .map_err(|e| format!("failed to configure crawl website for {start_url}: {e}"))?;
     // Buffer at least max_pages worth of messages to prevent silent page drops
     // under high-throughput crawls (extreme/max profiles). Clamp to 16 384 so
     // a large --max-pages value can't allocate an unbounded broadcast ring buffer.
     let subscribe_buf = (cfg.max_pages as usize).clamp(4096, 16_384);
-    let rx = website
-        .subscribe(subscribe_buf)
-        .ok_or("failed to subscribe to spider broadcast channel")?;
+    let rx = website.subscribe(subscribe_buf).ok_or_else(|| {
+        format!("failed to subscribe to spider broadcast channel for {start_url}")
+    })?;
     let markdown_dir = output_dir.join("markdown");
     let manifest_path = output_dir.join("manifest.jsonl");
 
@@ -418,12 +438,19 @@ pub async fn run_crawl_once(
 
     let (mut summary, urls) = join
         .await
-        .map_err(|e| format!("collector join failure: {e}"))?
-        .map_err(|e| format!("collector failure: {e}"))?;
+        .map_err(|e| format!("collector join failure for {start_url}: {e}"))?
+        .map_err(|e| format!("collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
 
     if recycling_bin.exists() {
-        tokio::fs::remove_dir_all(&recycling_bin).await?;
+        tokio::fs::remove_dir_all(&recycling_bin)
+            .await
+            .map_err(|e| {
+                format!(
+                    "failed to remove recycling bin {}: {e}",
+                    recycling_bin.display()
+                )
+            })?;
         log_info("Purged recycling bin — armory is now synchronized with battlefield.");
     }
 
@@ -444,16 +471,24 @@ pub async fn run_sitemap_only(
     output_dir: &Path,
     previous_manifest: Arc<HashMap<String, ManifestEntry>>,
 ) -> Result<(CrawlSummary, HashSet<String>), Box<dyn Error>> {
-    tokio::fs::create_dir_all(output_dir.join("markdown")).await?;
+    tokio::fs::create_dir_all(output_dir.join("markdown"))
+        .await
+        .map_err(|e| {
+            format!("failed to create markdown dir for sitemap crawl of {start_url}: {e}")
+        })?;
 
-    let mut website = configure_website(cfg, start_url, cfg.render_mode).await?;
+    let mut website = configure_website(cfg, start_url, cfg.render_mode)
+        .await
+        .map_err(|e| {
+            format!("failed to configure website for sitemap crawl of {start_url}: {e}")
+        })?;
     // Override the default set by configure_website: sitemap IS the crawl here.
     website.with_ignore_sitemap(false);
 
     let subscribe_buf = (cfg.max_pages as usize).clamp(4096, 16_384);
-    let rx = website
-        .subscribe(subscribe_buf)
-        .ok_or("failed to subscribe to spider broadcast channel")?;
+    let rx = website.subscribe(subscribe_buf).ok_or_else(|| {
+        format!("failed to subscribe to spider broadcast for sitemap crawl of {start_url}")
+    })?;
     let manifest_path = output_dir.join("manifest.jsonl");
     let markdown_dir = output_dir.join("markdown");
     let transform_cfg = build_transform_config();
@@ -484,8 +519,8 @@ pub async fn run_sitemap_only(
 
     let (mut summary, urls) = join
         .await
-        .map_err(|e| format!("collector join failure: {e}"))?
-        .map_err(|e| format!("collector failure: {e}"))?;
+        .map_err(|e| format!("sitemap collector join failure for {start_url}: {e}"))?
+        .map_err(|e| format!("sitemap collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
 
     Ok((summary, urls))

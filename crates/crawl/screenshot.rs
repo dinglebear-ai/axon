@@ -65,21 +65,21 @@ pub(crate) async fn spider_screenshot_with_options(
     // Build the website config (required after Chrome settings).
     let mut website = website
         .build()
-        .map_err(|_| "failed to build Spider website config for screenshot")?;
+        .map_err(|_| format!("failed to build Spider website config for screenshot of {url}"))?;
 
     website.crawl().await;
 
     let pages = website
         .get_pages()
-        .ok_or("no pages returned from screenshot crawl")?;
+        .ok_or_else(|| format!("no pages returned from screenshot crawl of {url}"))?;
 
-    let page = pages
-        .first()
-        .ok_or("screenshot crawl returned zero pages — Chrome may not be reachable")?;
+    let page = pages.first().ok_or_else(|| {
+        format!("screenshot crawl of {url} returned zero pages — Chrome may not be reachable")
+    })?;
 
-    page.screenshot_bytes
-        .clone()
-        .ok_or_else(|| "screenshot bytes not captured — Chrome may not be reachable".into())
+    page.screenshot_bytes.clone().ok_or_else(|| {
+        format!("screenshot bytes not captured for {url} — Chrome may not be reachable").into()
+    })
 }
 
 /// Sanitize a URL into a safe screenshot filename.
