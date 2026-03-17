@@ -234,9 +234,13 @@ pub async fn discover_sitemap_urls(
     cfg: &Config,
     start_url: &str,
 ) -> Result<SitemapDiscovery, Box<dyn Error>> {
-    let parsed = Url::parse(start_url)?;
+    let parsed = Url::parse(start_url)
+        .map_err(|e| format!("invalid start URL for sitemap discovery {start_url}: {e}"))?;
     let scheme = parsed.scheme().to_string();
-    let bare_host = parsed.host_str().ok_or("missing host")?.to_string();
+    let bare_host = parsed
+        .host_str()
+        .ok_or_else(|| format!("missing host in sitemap start URL {start_url}"))?
+        .to_string();
     // Include port when non-standard — without this, sitemap URLs targeting
     // hosts on custom ports (e.g. dev servers, test mocks) silently hit 80/443.
     let host = match parsed.port() {
@@ -248,7 +252,9 @@ pub async fn discover_sitemap_urls(
     let seeded_default_sitemaps = queue.len();
 
     let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs, None)?;
+    let client = build_client(timeout_secs, None).map_err(|e| {
+        format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
+    })?;
     let robots_declared_sitemaps =
         enqueue_robots_sitemaps(&client, &scheme, &host, cfg, &mut queue).await;
 
@@ -432,18 +438,38 @@ pub(crate) async fn append_candidate_backfill(
     summary: &mut CrawlSummary,
 ) -> Result<(BackfillStats, Vec<String>), Box<dyn Error>> {
     let manifest_path = output_dir.join("manifest.jsonl");
-    let candidates = filter_seen_candidates(&manifest_path, seen_urls, candidates).await?;
+    let candidates = filter_seen_candidates(&manifest_path, seen_urls, candidates)
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to filter backfill candidates from {}: {e}",
+                manifest_path.display()
+            )
+        })?;
 
     if candidates.is_empty() {
         return Ok((BackfillStats::default(), Vec::new()));
     }
 
     let markdown_dir = output_dir.join("markdown");
-    tokio::fs::create_dir_all(&markdown_dir).await?;
+    tokio::fs::create_dir_all(&markdown_dir)
+        .await
+        .map_err(|e| {
+            format!(
+                "failed to create backfill markdown dir {}: {e}",
+                markdown_dir.display()
+            )
+        })?;
 
     let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs, None)?;
-    let mut manifest = open_append_manifest(&manifest_path).await?;
+    let client = build_client(timeout_secs, None)
+        .map_err(|e| format!("failed to build HTTP client for backfill: {e}"))?;
+    let mut manifest = open_append_manifest(&manifest_path).await.map_err(|e| {
+        format!(
+            "failed to open manifest for backfill at {}: {e}",
+            manifest_path.display()
+        )
+    })?;
 
     let mut idx = summary.markdown_files;
     let mut stats = BackfillStats {
