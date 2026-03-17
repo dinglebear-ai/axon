@@ -116,8 +116,11 @@ pub async fn ingest_github(
     )
     .await;
 
-    let chunks =
-        ingest::github::ingest_github(cfg, &repo_slug, cfg.github_include_source, None).await?;
+    let chunks = ingest::github::ingest_github(cfg, &repo_slug, cfg.github_include_source, None)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!("github ingest failed for {repo_slug}: {e}").into()
+        })?;
 
     emit(
         &tx,
@@ -153,7 +156,12 @@ pub async fn ingest_reddit(
     )
     .await;
 
-    let chunks = ingest::reddit::ingest_reddit(cfg, target).await?;
+    let chunks =
+        ingest::reddit::ingest_reddit(cfg, target)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                format!("reddit ingest failed for {target}: {e}").into()
+            })?;
 
     emit(
         &tx,
@@ -190,7 +198,12 @@ pub async fn ingest_youtube(
     )
     .await;
 
-    let chunks = ingest::youtube::ingest_youtube(cfg, url).await?;
+    let chunks =
+        ingest::youtube::ingest_youtube(cfg, url)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                format!("youtube ingest failed for {url}: {e}").into()
+            })?;
 
     emit(
         &tx,
@@ -226,7 +239,9 @@ pub async fn ingest_sessions(
     )
     .await;
 
-    let chunks = ingest::sessions::ingest_sessions(cfg).await?;
+    let chunks = ingest::sessions::ingest_sessions(cfg)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
 
     emit(
         &tx,

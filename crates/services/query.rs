@@ -64,7 +64,15 @@ pub async fn query(
     text: &str,
     opts: Pagination,
 ) -> Result<QueryResult, Box<dyn Error>> {
-    let results = query_results(cfg, text, opts.limit.max(1), opts.offset).await?;
+    let results = query_results(cfg, text, opts.limit.max(1), opts.offset)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!(
+                "vector query failed for {}: {e}",
+                text.chars().take(80).collect::<String>()
+            )
+            .into()
+        })?;
     Ok(map_query_results(results))
 }
 
@@ -74,7 +82,9 @@ pub async fn retrieve(
     url: &str,
     opts: RetrieveOptions,
 ) -> Result<RetrieveResult, Box<dyn Error>> {
-    let (chunk_count, content) = retrieve_result(cfg, url, opts.max_points).await?;
+    let (chunk_count, content) = retrieve_result(cfg, url, opts.max_points)
+        .await
+        .map_err(|e| -> Box<dyn Error> { format!("retrieve failed for {url}: {e}").into() })?;
     Ok(map_retrieve_result(chunk_count, content))
 }
 
@@ -97,7 +107,13 @@ pub async fn ask(
     .await;
     let payload = ask_payload(cfg, question)
         .await
-        .map_err(|e| -> Box<dyn Error> { e.into() })?;
+        .map_err(|e| -> Box<dyn Error> {
+            format!(
+                "ask failed for {}: {e}",
+                question.chars().take(80).collect::<String>()
+            )
+            .into()
+        })?;
     emit(
         &tx,
         ServiceEvent::Log {
@@ -116,7 +132,15 @@ pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Bo
     let mut derived = cfg.clone();
     derived.query = Some(question.to_string());
     derived.positional = Vec::new();
-    let payload = evaluate_payload(&derived).await?;
+    let payload = evaluate_payload(&derived)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!(
+                "evaluate failed for {}: {e}",
+                question.chars().take(80).collect::<String>()
+            )
+            .into()
+        })?;
     Ok(map_evaluate_payload(payload))
 }
 
@@ -129,8 +153,11 @@ pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult,
     derived.positional = Vec::new();
     let desired = derived.search_limit.clamp(1, 100);
     let focus_str = focus.unwrap_or_default().to_string();
-    let pairs: Vec<(String, String)> =
-        discover_crawl_suggestions(&derived, &focus_str, desired).await?;
+    let pairs: Vec<(String, String)> = discover_crawl_suggestions(&derived, &focus_str, desired)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!("crawl suggestion discovery failed: {e}").into()
+        })?;
     let urls = pairs.into_iter().map(|(url, _reason)| url).collect();
     Ok(SuggestResult { urls })
 }
