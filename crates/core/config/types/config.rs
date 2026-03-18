@@ -234,6 +234,10 @@ pub struct Config {
     /// Env: `AXON_ACP_ADAPTER_ARGS`.
     pub acp_adapter_args: Option<String>,
 
+    /// Whether to pre-warm the default ACP adapter on server boot.
+    /// Sourced from `AXON_ACP_PREWARM` (default: `true`).
+    pub acp_prewarm: bool,
+
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 
@@ -365,6 +369,12 @@ pub struct Config {
 
     /// Status mode: include only watchdog-reclaimed jobs. Flag: `--reclaimed`.
     pub reclaimed_status_only: bool,
+
+    /// List/status mode: include only active jobs (`running`/`pending`). Flag: `--active`.
+    pub active_status_only: bool,
+
+    /// List/status mode: include active + completed jobs, hide failed/canceled. Flag: `--recent`.
+    pub recent_status_only: bool,
 
     /// Deduplicate trailing-slash URL variants (e.g. `/about` and `/about/` treated as one).
     /// Spider: `with_normalize(bool)`. Default false. Flag: `--normalize`.

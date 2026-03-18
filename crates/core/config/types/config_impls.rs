@@ -85,6 +85,7 @@ impl Default for Config {
             openai_model: String::new(),
             acp_adapter_cmd: None,
             acp_adapter_args: None,
+            acp_prewarm: true,
             tavily_api_key: String::new(),
             neo4j_url: String::new(),
             neo4j_user: "neo4j".to_string(),
@@ -128,6 +129,8 @@ impl Default for Config {
                 .unwrap_or(60),
             json_output: false,
             reclaimed_status_only: false,
+            active_status_only: false,
+            recent_status_only: false,
             normalize: false,
             chrome_network_idle_timeout_secs: 15,
             auto_switch_thin_ratio: 0.60,
@@ -259,6 +262,7 @@ impl fmt::Debug for Config {
             .field("openai_model", &self.openai_model)
             .field("acp_adapter_cmd", &self.acp_adapter_cmd)
             .field("acp_adapter_args", &self.acp_adapter_args)
+            .field("acp_prewarm", &self.acp_prewarm)
             .field("tavily_api_key", &"[REDACTED]")
             .field("neo4j_url", &"[REDACTED]")
             .field("neo4j_user", &self.neo4j_user)
@@ -308,6 +312,8 @@ impl fmt::Debug for Config {
             .field("watchdog_confirm_secs", &self.watchdog_confirm_secs)
             .field("json_output", &self.json_output)
             .field("reclaimed_status_only", &self.reclaimed_status_only)
+            .field("active_status_only", &self.active_status_only)
+            .field("recent_status_only", &self.recent_status_only)
             .field("normalize", &self.normalize)
             .field(
                 "chrome_network_idle_timeout_secs",

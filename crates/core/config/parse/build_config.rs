@@ -350,6 +350,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         tei_url: global
             .tei_url
             .or_else(|| env::var("TEI_URL").ok())
+            .map(normalize_local_service_url)
             .unwrap_or_default(),
         qdrant_url: global
             .qdrant_url
@@ -376,6 +377,9 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .ok()
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
+        acp_prewarm: env::var("AXON_ACP_PREWARM")
+            .map(|v| !matches!(v.as_str(), "false" | "0"))
+            .unwrap_or(true),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
         neo4j_url: env::var("AXON_NEO4J_URL").ok().unwrap_or_default(),
         neo4j_user: env::var("AXON_NEO4J_USER")
@@ -492,6 +496,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         watchdog_confirm_secs: global.watchdog_confirm_secs.max(10),
         json_output: global.json,
         reclaimed_status_only: global.reclaimed,
+        active_status_only: global.active,
+        recent_status_only: global.recent,
         normalize: global.normalize,
         chrome_network_idle_timeout_secs: global.chrome_network_idle_timeout,
         auto_switch_thin_ratio: global.auto_switch_thin_ratio,
@@ -655,5 +661,27 @@ mod tests {
             env::remove_var(WEB);
             env::remove_var(SHELL);
         }
+    }
+
+    #[test]
+    fn into_config_normalizes_tei_url_like_other_services() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--tei-url",
+            "http://axon-tei:80",
+            "status",
+        ]);
+        let cfg = into_config(cli).expect("status config should parse");
+        assert_eq!(
+            cfg.tei_url,
+            normalize_local_service_url("http://axon-tei:80".to_string())
+        );
     }
 }
