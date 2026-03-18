@@ -8,6 +8,7 @@ use crate::crates::core::ui::{
 use crate::crates::jobs::crawl::CrawlJob;
 use crate::crates::jobs::embed::EmbedJob;
 use crate::crates::jobs::extract::ExtractJob;
+use crate::crates::jobs::graph::GraphJob;
 use crate::crates::jobs::ingest::IngestJob;
 use crate::crates::jobs::refresh::RefreshJob;
 use chrono::{DateTime, Utc};
@@ -18,6 +19,7 @@ pub(super) fn emit_status_human(
     embed_jobs: &[EmbedJob],
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
+    graph_jobs: &[GraphJob],
 ) {
     print_totals(
         crawl_jobs,
@@ -25,11 +27,13 @@ pub(super) fn emit_status_human(
         embed_jobs,
         ingest_jobs,
         refresh_jobs,
+        graph_jobs,
     );
     print_crawls(crawl_jobs);
     print_refreshes(refresh_jobs);
     print_embeds(embed_jobs, crawl_jobs);
     print_ingests(ingest_jobs);
+    print_graphs(graph_jobs);
     print_extracts(extract_jobs);
 }
 
@@ -70,12 +74,14 @@ fn print_totals(
     embed_jobs: &[EmbedJob],
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
+    graph_jobs: &[GraphJob],
 ) {
     let crawl_statuses: Vec<&str> = crawl_jobs.iter().map(|j| j.status.as_str()).collect();
     let extract_statuses: Vec<&str> = extract_jobs.iter().map(|j| j.status.as_str()).collect();
     let embed_statuses: Vec<&str> = embed_jobs.iter().map(|j| j.status.as_str()).collect();
     let ingest_statuses: Vec<&str> = ingest_jobs.iter().map(|j| j.status.as_str()).collect();
     let refresh_statuses: Vec<&str> = refresh_jobs.iter().map(|j| j.status.as_str()).collect();
+    let graph_statuses: Vec<&str> = graph_jobs.iter().map(|j| j.status.as_str()).collect();
 
     println!("{}", primary("Job Status"));
     println!(
@@ -93,6 +99,11 @@ fn print_totals(
         "  {}  {}",
         muted("Refresh"),
         status_breakdown(&refresh_statuses),
+    );
+    println!(
+        "  {}  {}",
+        muted("Graph"),
+        status_breakdown(&graph_statuses),
     );
     println!();
 }
@@ -258,6 +269,51 @@ fn print_extracts(extract_jobs: &[ExtractJob]) {
             status: &job.status,
             id: &job.id,
             target: &target,
+            metrics_suffix: &metrics_suffix,
+            collection: None,
+            started_at: job.started_at.as_ref(),
+            finished_at: job.finished_at.as_ref(),
+            updated_at: &job.updated_at,
+            error_text: job.error_text.as_deref(),
+        });
+    }
+    println!();
+}
+
+fn graph_metrics_suffix(job: &GraphJob) -> String {
+    if job.chunk_count == 0 && job.entity_count == 0 && job.relation_count == 0 {
+        return String::new();
+    }
+    format!(
+        "{}{}{}{}{}{}",
+        subtle(" | "),
+        metric(job.chunk_count as usize, "chunks"),
+        subtle(" | "),
+        metric(job.entity_count as usize, "entities"),
+        subtle(" | "),
+        metric(job.relation_count as usize, "relations"),
+    )
+}
+
+fn print_graphs(graph_jobs: &[GraphJob]) {
+    let statuses: Vec<&str> = graph_jobs.iter().map(|j| j.status.as_str()).collect();
+    let header_sym = if graph_jobs.is_empty() {
+        symbol_for_status("completed")
+    } else {
+        section_symbol(&statuses)
+    };
+    println!("{}", primary(&format!("{header_sym} Graph")));
+    if graph_jobs.is_empty() {
+        println!("  {}", muted("None."));
+        println!();
+        return;
+    }
+    for job in graph_jobs.iter().take(5) {
+        let metrics_suffix = graph_metrics_suffix(job);
+        print_job_row(&JobRow {
+            status: &job.status,
+            id: &job.id,
+            target: &job.url,
             metrics_suffix: &metrics_suffix,
             collection: None,
             started_at: job.started_at.as_ref(),

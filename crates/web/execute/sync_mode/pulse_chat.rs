@@ -1,5 +1,6 @@
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
 use tokio::sync::{mpsc, oneshot};
@@ -8,6 +9,18 @@ use crate::crates::core::config::Config;
 use crate::crates::services::acp::{self as acp_svc, AcpConnectionHandle, SESSION_CACHE};
 use crate::crates::services::events::{LogLevel, ServiceEvent};
 use crate::crates::services::types::{AcpBridgeEvent, AcpPromptTurnRequest};
+
+/// Default per-turn timeout (5 minutes). Overridable via `AXON_ACP_TURN_TIMEOUT_MS`.
+const DEFAULT_TURN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+/// Read the per-turn timeout from the environment, falling back to the default.
+fn turn_timeout() -> Duration {
+    env::var("AXON_ACP_TURN_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_TURN_TIMEOUT)
+}
 
 /// System prompt preamble injected into the first turn of an editor-integrated
 /// Pulse session (i.e. when `session_id` is `None`).
@@ -154,6 +167,32 @@ async fn drive_turn_events(
     }
 }
 
+/// Build the session cache key for an ACP adapter.
+///
+/// The key encodes agent type, assistant mode, MCP config fingerprint, and
+/// capability flags so that sessions with different configurations get
+/// separate adapter processes.
+pub(crate) fn build_agent_key(
+    agent: PulseChatAgent,
+    assistant_mode: bool,
+    mcp_servers: &[crate::crates::services::types::AcpMcpServerConfig],
+    caps: &AdapterCapabilities,
+) -> String {
+    let mcp_fingerprint = fingerprint_mcp_servers(mcp_servers);
+    let caps_fingerprint = format!(
+        "fs={},term={},ptimeout={:?},atimeout={:?}",
+        caps.enable_fs,
+        caps.enable_terminal,
+        caps.permission_timeout_secs,
+        caps.adapter_timeout_secs,
+    );
+    if assistant_mode {
+        format!("{agent:?}:assistant:mcp={mcp_fingerprint}:{caps_fingerprint}")
+    } else {
+        format!("{agent:?}:mcp={mcp_fingerprint}:{caps_fingerprint}")
+    }
+}
+
 /// Get or create the persistent ACP adapter connection from the global cache.
 ///
 /// If the requested agent+MCP config (agent_key) matches a cached entry, it is
@@ -166,27 +205,21 @@ async fn get_or_create_acp_connection(
     cfg: &Arc<Config>,
     permission_responders: &acp_svc::PermissionResponderMap,
 ) -> Result<(String, Arc<AcpConnectionHandle>), String> {
-    let mcp_fingerprint = fingerprint_mcp_servers(&req.mcp_servers);
-    // Include capability flags in the cache key so that requests with different
-    // ACP capabilities (enable_fs, enable_terminal, timeouts) are routed to
-    // separate adapter sessions.  Without this, a reused session would silently
-    // retain the capabilities from the original spawn, ignoring updated flags.
-    let caps_fingerprint = format!(
-        "fs={},term={},ptimeout={:?},atimeout={:?}",
-        caps.enable_fs,
-        caps.enable_terminal,
-        caps.permission_timeout_secs,
-        caps.adapter_timeout_secs,
-    );
-    let agent_key = if assistant_mode {
-        format!("{agent:?}:assistant:mcp={mcp_fingerprint}:{caps_fingerprint}")
-    } else {
-        format!("{agent:?}:mcp={mcp_fingerprint}:{caps_fingerprint}")
-    };
+    let agent_key = build_agent_key(agent, assistant_mode, &req.mcp_servers, &caps);
 
-    // Check global cache first.
+    // Check global cache first. If a turn has been in-flight longer than the
+    // timeout threshold, the adapter is likely hung — evict and spawn fresh.
     if let Some(cached) = SESSION_CACHE.get(&agent_key) {
-        return Ok((agent_key, Arc::clone(&cached.handle)));
+        if cached.is_turn_hung(turn_timeout()) {
+            tracing::warn!(
+                context = "pulse_chat",
+                agent_key = %agent_key,
+                "evicting cached session with hung turn — spawning fresh adapter",
+            );
+            SESSION_CACHE.remove(&agent_key);
+        } else {
+            return Ok((agent_key, Arc::clone(&cached.handle)));
+        }
     }
 
     // Spawn a new adapter subprocess.
@@ -332,7 +365,8 @@ pub(super) async fn handle_pulse_chat(
 ///
 /// Sends the turn request to the adapter, drives the event loop until completion,
 /// and evicts the session from cache on fatal adapter errors (channel closed,
-/// adapter exited) while preserving it for recoverable per-turn errors.
+/// adapter exited, turn timeout) while preserving it for recoverable per-turn
+/// errors.
 async fn execute_acp_turn(
     conn_handle: Arc<AcpConnectionHandle>,
     req: AcpPromptTurnRequest,
@@ -342,6 +376,11 @@ async fn execute_acp_turn(
 ) -> Result<(), String> {
     let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(256);
     let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
+
+    // Record that a turn is now in-flight for liveness detection.
+    if let Some(cached) = SESSION_CACHE.get_sync(agent_key) {
+        cached.mark_turn_started();
+    }
 
     let send_result = conn_handle
         .run_turn(acp_svc::TurnRequest {
@@ -361,7 +400,33 @@ async fn execute_acp_turn(
         return send_result;
     }
 
-    let turn_result = drive_turn_events(result_rx, event_rx, tx, ws_ctx, agent_key).await;
+    let timeout = turn_timeout();
+    let turn_result = match tokio::time::timeout(
+        timeout,
+        drive_turn_events(result_rx, event_rx, tx, ws_ctx, agent_key),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_elapsed) => {
+            tracing::error!(
+                context = "acp",
+                agent_key,
+                timeout_secs = timeout.as_secs(),
+                "turn timed out — evicting session from cache",
+            );
+            SESSION_CACHE.remove(agent_key);
+            Err(format!(
+                "ACP turn timed out after {} seconds",
+                timeout.as_secs()
+            ))
+        }
+    };
+
+    // Record turn completion for liveness tracking.
+    if let Some(cached) = SESSION_CACHE.get_sync(agent_key) {
+        cached.mark_turn_completed();
+    }
 
     if let Err(ref err) = turn_result {
         // Only evict if the error indicates the adapter process/channel is
@@ -460,4 +525,41 @@ async fn run_acp_event_loop(
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_agent_key_includes_agent_and_caps() {
+        let key = build_agent_key(
+            PulseChatAgent::Claude,
+            false,
+            &[],
+            &AdapterCapabilities {
+                enable_fs: true,
+                enable_terminal: true,
+                permission_timeout_secs: None,
+                adapter_timeout_secs: None,
+            },
+        );
+        assert!(key.starts_with("Claude:"));
+        assert!(key.contains("fs=true"));
+        assert!(key.contains("term=true"));
+    }
+
+    #[test]
+    fn build_agent_key_assistant_mode_differs() {
+        let caps = AdapterCapabilities {
+            enable_fs: true,
+            enable_terminal: true,
+            permission_timeout_secs: None,
+            adapter_timeout_secs: None,
+        };
+        let normal = build_agent_key(PulseChatAgent::Claude, false, &[], &caps);
+        let assistant = build_agent_key(PulseChatAgent::Claude, true, &[], &caps);
+        assert_ne!(normal, assistant);
+        assert!(assistant.contains(":assistant:"));
+    }
 }

@@ -3,6 +3,7 @@ use crate::crates::core::health::build_doctor_report;
 use crate::crates::jobs::crawl::{CrawlJob, list_jobs};
 use crate::crates::jobs::embed::{EmbedJob, list_embed_jobs};
 use crate::crates::jobs::extract::{ExtractJob, list_extract_jobs};
+use crate::crates::jobs::graph::{GraphJob, list_graph_jobs};
 use crate::crates::jobs::ingest::{IngestJob, list_ingest_jobs};
 use crate::crates::jobs::refresh::{RefreshJob, list_refresh_jobs};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
@@ -243,6 +244,7 @@ pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
         &jobs.embed,
         &jobs.ingest,
         &jobs.refresh,
+        &jobs.graph,
     );
     let text = [
         "Axon Status".to_string(),
@@ -251,6 +253,7 @@ pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
         format!("embed jobs:   {}", jobs.embed.len()),
         format!("ingest jobs:  {}", jobs.ingest.len()),
         format!("refresh jobs: {}", jobs.refresh.len()),
+        format!("graph jobs:   {}", jobs.graph.len()),
     ]
     .join("\n");
     Ok(StatusResult { payload, text })
@@ -264,6 +267,7 @@ pub(crate) struct StatusJobs {
     pub embed: Vec<EmbedJob>,
     pub ingest: Vec<IngestJob>,
     pub refresh: Vec<RefreshJob>,
+    pub graph: Vec<GraphJob>,
 }
 
 fn filter_status_jobs<T, FStatus, FError>(
@@ -311,13 +315,20 @@ async fn list_refresh_status(cfg: &Config) -> Result<Vec<RefreshJob>, String> {
         .map_err(|e| format!("refresh status lookup failed: {e}"))
 }
 
+async fn list_graph_status(cfg: &Config) -> Result<Vec<GraphJob>, String> {
+    list_graph_jobs(cfg, 20, 0)
+        .await
+        .map_err(|e| format!("graph status lookup failed: {e}"))
+}
+
 pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn Error>> {
-    let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw) = tokio::join!(
+    let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
         list_crawl_status(cfg),
         list_extract_status(cfg),
         list_embed_status(cfg),
         list_ingest_status(cfg),
         list_refresh_status(cfg),
+        list_graph_status(cfg),
     );
     let reclaimed_only = cfg.reclaimed_status_only;
     let crawl = filter_status_jobs(
@@ -350,12 +361,25 @@ pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn
         |job| &job.status,
         |job| job.error_text.as_deref(),
     );
+    let graph = graph_raw?
+        .into_iter()
+        .filter(|job| include_status_job(&job.status, job.error_text.as_deref(), reclaimed_only))
+        .collect();
+
+    let crawl = apply_status_view_mode(cfg, crawl, |job| &job.status);
+    let extract = apply_status_view_mode(cfg, extract, |job| &job.status);
+    let embed = apply_status_view_mode(cfg, embed, |job| &job.status);
+    let ingest = apply_status_view_mode(cfg, ingest, |job| &job.status);
+    let refresh = apply_status_view_mode(cfg, refresh, |job| &job.status);
+    let graph = apply_status_view_mode(cfg, graph, |job| &job.status);
+
     Ok(StatusJobs {
         crawl,
         extract,
         embed,
         ingest,
         refresh,
+        graph,
     })
 }
 
@@ -365,6 +389,7 @@ pub(crate) fn build_status_payload(
     embed_jobs: &[EmbedJob],
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
+    graph_jobs: &[GraphJob],
 ) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": crawl_jobs,
@@ -372,7 +397,36 @@ pub(crate) fn build_status_payload(
         "local_embed_jobs": embed_jobs,
         "local_ingest_jobs": ingest_jobs,
         "local_refresh_jobs": refresh_jobs,
+        "local_graph_jobs": graph_jobs,
     })
+}
+
+fn include_status_view(status: &str, active_only: bool, recent_only: bool) -> bool {
+    if active_only {
+        return matches!(status, "pending" | "running" | "processing" | "scraping");
+    }
+    if recent_only {
+        return matches!(
+            status,
+            "pending" | "running" | "processing" | "scraping" | "completed"
+        );
+    }
+    true
+}
+
+fn apply_status_view_mode<T, FStatus>(cfg: &Config, jobs: Vec<T>, status_of: FStatus) -> Vec<T>
+where
+    FStatus: Fn(&T) -> &str,
+{
+    jobs.into_iter()
+        .filter(|job| {
+            include_status_view(
+                status_of(job),
+                cfg.active_status_only,
+                cfg.recent_status_only,
+            )
+        })
+        .collect()
 }
 
 fn include_status_job(status: &str, error_text: Option<&str>, reclaimed_only: bool) -> bool {
@@ -639,7 +693,16 @@ mod tests {
 
     #[test]
     fn status_payload_includes_refresh_jobs_key() {
-        let payload = build_status_payload(&[], &[], &[], &[], &[]);
+        let payload = build_status_payload(&[], &[], &[], &[], &[], &[]);
         assert!(payload.get("local_refresh_jobs").is_some());
+        assert!(payload.get("local_graph_jobs").is_some());
+    }
+
+    #[test]
+    fn status_view_mode_filters_active_and_recent() {
+        assert!(include_status_view("running", true, false));
+        assert!(!include_status_view("failed", true, false));
+        assert!(include_status_view("completed", false, true));
+        assert!(!include_status_view("canceled", false, true));
     }
 }

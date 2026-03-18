@@ -29,7 +29,8 @@ mod worker;
 
 use crate::crates::core::logging::log_warn;
 use crate::crates::jobs::common::{
-    JobTable, cancel_pending_or_running_job, make_pool, purge_queue_safe,
+    JobTable, begin_schema_migration_tx, cancel_pending_or_running_job, make_pool,
+    purge_queue_safe, sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -54,6 +55,7 @@ static SCHEMA_INIT: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 const TABLE: JobTable = JobTable::Refresh;
 const REFRESH_HEARTBEAT_INTERVAL_SECS: u64 = 15;
 const SCHEDULE_CLAIM_LEASE_SECS: i64 = 300;
+const REFRESH_SCHEMA_LOCK_KEY: i64 = 0x7265_6672_6573_6800_i64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RefreshJobConfig {
@@ -146,6 +148,8 @@ pub(crate) async fn ensure_schema_once(pool: &PgPool) -> Result<(), sqlx::Error>
 }
 
 async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let mut tx = begin_schema_migration_tx(pool, REFRESH_SCHEMA_LOCK_KEY).await?;
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS axon_refresh_jobs (
@@ -162,8 +166,77 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
         )
         "#,
     )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS axon_refresh_targets (
+            url TEXT PRIMARY KEY,
+            etag TEXT,
+            last_modified TEXT,
+            content_hash TEXT,
+            markdown_chars INTEGER,
+            last_status INTEGER,
+            last_checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_changed_at TIMESTAMPTZ,
+            error_text TEXT
+        )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS axon_refresh_schedules (
+            id UUID PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            seed_url TEXT,
+            urls_json JSONB,
+            every_seconds BIGINT NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            next_run_at TIMESTAMPTZ NOT NULL,
+            last_run_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // Drop invalid index before re-creating (same pattern as above).
+    let invalid: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pg_class c \
+         JOIN pg_index i ON c.oid = i.indexrelid \
+         WHERE c.relname = 'idx_axon_refresh_schedules_due' AND NOT i.indisvalid",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    if invalid > 0 {
+        sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS idx_axon_refresh_schedules_due")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_schedules_due ON axon_refresh_schedules(next_run_at ASC) WHERE enabled = TRUE",
+    )
     .execute(pool)
     .await?;
+
+    // Schema evolution: add source_type + target columns for non-URL refresh schedules (e.g. GitHub repos).
+    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS source_type TEXT")
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS target TEXT")
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
 
     // CREATE INDEX CONCURRENTLY avoids blocking writes to the table during index builds.
     // Safe to run outside a transaction (pool executor uses autocommit).
@@ -171,6 +244,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
     // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
     for idx_name in [
+        "idx_axon_refresh_jobs_status_created_desc",
         "idx_axon_refresh_jobs_pending",
         "idx_axon_refresh_jobs_running_updated",
     ] {
@@ -191,6 +265,13 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     }
 
     sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_jobs_status_created_desc \
+         ON axon_refresh_jobs(status, created_at DESC)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_jobs_pending ON axon_refresh_jobs(created_at ASC) WHERE status = 'pending'",
     )
     .execute(pool)
@@ -204,74 +285,6 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS axon_refresh_targets (
-            url TEXT PRIMARY KEY,
-            etag TEXT,
-            last_modified TEXT,
-            content_hash TEXT,
-            markdown_chars INTEGER,
-            last_status INTEGER,
-            last_checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_changed_at TIMESTAMPTZ,
-            error_text TEXT
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS axon_refresh_schedules (
-            id UUID PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            seed_url TEXT,
-            urls_json JSONB,
-            every_seconds BIGINT NOT NULL,
-            enabled BOOLEAN NOT NULL DEFAULT TRUE,
-            next_run_at TIMESTAMPTZ NOT NULL,
-            last_run_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    // Drop invalid index before re-creating (same pattern as above).
-    let invalid: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM pg_class c \
-         JOIN pg_index i ON c.oid = i.indexrelid \
-         WHERE c.relname = 'idx_axon_refresh_schedules_due' AND NOT i.indisvalid",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
-    if invalid > 0 {
-        sqlx::query("DROP INDEX CONCURRENTLY IF EXISTS idx_axon_refresh_schedules_due")
-            .execute(pool)
-            .await
-            .ok();
-    }
-
-    sqlx::query(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_refresh_schedules_due ON axon_refresh_schedules(next_run_at ASC) WHERE enabled = TRUE",
-    )
-    .execute(pool)
-    .await?;
-
-    // Schema evolution: add source_type + target columns for non-URL refresh schedules (e.g. GitHub repos).
-    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS source_type TEXT")
-        .execute(pool)
-        .await?;
-
-    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS target TEXT")
-        .execute(pool)
-        .await?;
 
     Ok(())
 }
@@ -297,13 +310,33 @@ pub async fn list_refresh_jobs(
 ) -> Result<Vec<RefreshJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema_once(&pool).await?;
-    Ok(sqlx::query_as::<_, RefreshJob>(
-        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json,config_json FROM axon_refresh_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
+    let mut rows = sqlx::query_as::<_, RefreshJob>(
+        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json,config_json
+           FROM axon_refresh_jobs
+           ORDER BY
+             CASE status
+               WHEN 'running' THEN 0
+               WHEN 'pending' THEN 1
+               WHEN 'completed' THEN 2
+               WHEN 'failed' THEN 3
+               WHEN 'canceled' THEN 4
+               ELSE 5
+             END,
+             created_at DESC,
+             updated_at DESC
+           LIMIT $1 OFFSET $2"#,
     )
     .bind(limit)
     .bind(offset)
     .fetch_all(&pool)
-    .await?)
+    .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
+    Ok(rows)
 }
 
 pub async fn cancel_refresh_job(
