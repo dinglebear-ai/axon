@@ -329,3 +329,6 @@ pub(super) async fn run_parallel_answers_streaming(
         baseline_result.ok_or("missing baseline answer from parallel streaming")?,
     ))
 }
+
+#[cfg(test)]
+mod tests;
