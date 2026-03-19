@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::ingest;
+use crate::crates::ingest::progress::PhaseReporter;
 pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{
     cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
@@ -116,11 +117,16 @@ pub async fn ingest_github(
     )
     .await;
 
-    let chunks = ingest::github::ingest_github(cfg, &repo_slug, cfg.github_include_source, None)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            format!("github ingest failed for {repo_slug}: {e}").into()
-        })?;
+    let chunks = ingest::github::ingest_github(
+        cfg,
+        &repo_slug,
+        cfg.github_include_source,
+        PhaseReporter::noop(),
+    )
+    .await
+    .map_err(|e| -> Box<dyn Error> {
+        format!("github ingest failed for {repo_slug}: {e}").into()
+    })?;
 
     emit(
         &tx,
@@ -156,12 +162,12 @@ pub async fn ingest_reddit(
     )
     .await;
 
-    let chunks =
-        ingest::reddit::ingest_reddit(cfg, target)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                format!("reddit ingest failed for {target}: {e}").into()
-            })?;
+    let noop = PhaseReporter::noop();
+    let chunks = ingest::reddit::ingest_reddit(cfg, target, &noop)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!("reddit ingest failed for {target}: {e}").into()
+        })?;
 
     emit(
         &tx,
@@ -198,12 +204,12 @@ pub async fn ingest_youtube(
     )
     .await;
 
-    let chunks =
-        ingest::youtube::ingest_youtube(cfg, url)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                format!("youtube ingest failed for {url}: {e}").into()
-            })?;
+    let noop = PhaseReporter::noop();
+    let chunks = ingest::youtube::ingest_youtube(cfg, url, &noop)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!("youtube ingest failed for {url}: {e}").into()
+        })?;
 
     emit(
         &tx,
@@ -239,7 +245,8 @@ pub async fn ingest_sessions(
     )
     .await;
 
-    let chunks = ingest::sessions::ingest_sessions(cfg)
+    let noop = PhaseReporter::noop();
+    let chunks = ingest::sessions::ingest_sessions(cfg, &noop)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
 

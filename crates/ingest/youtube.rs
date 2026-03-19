@@ -6,9 +6,14 @@ pub use vtt::parse_vtt_to_text;
 use crate::crates::core::config::Config;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use spider::url::Url;
 use std::error::Error;
+
+const PHASE_DOWNLOADING: &str = "downloading_transcript";
+const PHASE_PARSING: &str = "parsing_transcript";
+const PHASE_EMBEDDING: &str = "embedding_transcript";
 
 /// Extract a YouTube video ID from a URL or return the string as-is if already an ID.
 pub fn extract_video_id(input: &str) -> Option<String> {
@@ -186,7 +191,11 @@ fn resolve_video_id_and_safe_url(url: &str) -> Result<(String, String), Box<dyn 
 /// 3. Embedding each transcript into Qdrant via the PreparedDoc pipeline
 ///
 /// Requires `yt-dlp` to be installed and on PATH.
-pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Error>> {
+pub async fn ingest_youtube(
+    cfg: &Config,
+    url: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
     log_info(&format!("command=ingest source=youtube target={url}"));
     // Extract and validate YouTube video ID to prevent argument injection.
     // This must happen before the SSRF check because bare 11-character video IDs
@@ -198,6 +207,8 @@ pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Er
     // YouTube.com is always a public host, so this is belt-and-suspenders against
     // any unexpected bypass in extract_video_id.
     validate_url(&safe_url)?;
+
+    reporter.report_phase(PHASE_DOWNLOADING).await;
 
     // Create a temp directory; cleaned up automatically when `tmp` is dropped
     let tmp = tempfile::tempdir()?;
@@ -230,6 +241,8 @@ pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Er
                 .into(),
         );
     }
+
+    reporter.report_phase(PHASE_PARSING).await;
 
     // Parse video metadata from info.json if available
     let video_meta = match info_json {
@@ -316,6 +329,7 @@ pub async fn ingest_youtube(cfg: &Config, url: &str) -> Result<usize, Box<dyn Er
             }
         }
 
+        reporter.report_phase(PHASE_EMBEDDING).await;
         if let Ok(summary) = embed_prepared_docs(cfg, docs, None).await {
             count += summary.chunks_embedded;
         }

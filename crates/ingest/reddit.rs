@@ -8,16 +8,27 @@ pub use types::{RedditTarget, classify_target};
 
 use crate::crates::core::config::{Config, RedditSort};
 use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use std::error::Error;
 use std::time::Duration;
+
+const PHASE_AUTHENTICATING: &str = "authenticating";
+const PHASE_FETCHING_POSTS: &str = "fetching_posts";
+const PHASE_EMBEDDING_POSTS: &str = "embedding_posts";
 
 use client::fetch_reddit_json;
 use comments::{collect_comments_recursive, fetch_thread_comments};
 use types::{CommentWithContext, validate_subreddit};
 
 /// Embed posts from a subreddit concurrently, including recursive comments per post.
-async fn ingest_subreddit(cfg: &Config, token: &str, name: &str) -> Result<usize, Box<dyn Error>> {
+async fn ingest_subreddit(
+    cfg: &Config,
+    token: &str,
+    name: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
+    reporter.report_phase(PHASE_FETCHING_POSTS).await;
     validate_subreddit(name)?;
 
     use futures_util::StreamExt;
@@ -136,7 +147,13 @@ async fn ingest_subreddit(cfg: &Config, token: &str, name: &str) -> Result<usize
 }
 
 /// Embed a single Reddit thread (post + full recursive comment tree) by its URL.
-async fn ingest_thread(cfg: &Config, token: &str, url: &str) -> Result<usize, Box<dyn Error>> {
+async fn ingest_thread(
+    cfg: &Config,
+    token: &str,
+    url: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
+    reporter.report_phase(PHASE_FETCHING_POSTS).await;
     let permalink = url
         .strip_prefix("https://www.reddit.com")
         .or_else(|| url.strip_prefix("https://old.reddit.com"))
@@ -215,8 +232,14 @@ fn format_comments_into(content: &mut String, title: &str, comments: &[CommentWi
 /// - For a subreddit: fetches posts (configurable sort/limit/score/depth) + recursive comments
 /// - For a thread URL: fetches that thread + full recursive comment tree
 /// - Embeds all content into Qdrant via PreparedDoc pipeline with reddit_* metadata
-pub async fn ingest_reddit(cfg: &Config, target: &str) -> Result<usize, Box<dyn Error>> {
+pub async fn ingest_reddit(
+    cfg: &Config,
+    target: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
     log_info(&format!("command=ingest source=reddit target={target}"));
+    reporter.report_phase(PHASE_AUTHENTICATING).await;
+
     let client_id = cfg
         .reddit_client_id
         .as_deref()
@@ -230,9 +253,17 @@ pub async fn ingest_reddit(cfg: &Config, target: &str) -> Result<usize, Box<dyn 
     log_info("reddit oauth_acquired");
 
     let chunk_count = match classify_target(target) {
-        RedditTarget::Subreddit(name) => ingest_subreddit(cfg, &token, &name).await?,
-        RedditTarget::Thread(url) => ingest_thread(cfg, &token, &url).await?,
+        RedditTarget::Subreddit(name) => ingest_subreddit(cfg, &token, &name, reporter).await?,
+        RedditTarget::Thread(url) => ingest_thread(cfg, &token, &url, reporter).await?,
     };
+
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_EMBEDDING_POSTS,
+            "chunks_embedded": chunk_count,
+        }))
+        .await;
+
     log_done(&format!(
         "command=ingest source=reddit target={target} chunk_count={chunk_count}"
     ));

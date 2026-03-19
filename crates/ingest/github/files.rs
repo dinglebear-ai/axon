@@ -3,6 +3,7 @@ mod line_range;
 
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::PreparedDoc;
 use crate::crates::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name,
@@ -11,13 +12,16 @@ use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 use super::meta::{GitHubPayloadParams, build_github_payload};
 use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
 
-use batch::{collect_and_embed_batched, send_progress};
+use batch::collect_and_embed_batched;
 use line_range::line_range_for_chunk;
+
+const PHASE_CLONING: &str = "cloning";
+const PHASE_ENUMERATING_FILES: &str = "enumerating_files";
+const PHASE_EMBEDDED_FILES: &str = "embedded_files";
 
 /// Skip files larger than 50 MB — guards against true binary blobs and multi-GB generated files
 /// while allowing large-but-legitimate source files (generated impls, large grammar tables, etc.).
@@ -285,24 +289,22 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
 /// fetching each file individually via the GitHub API. Files are read from
 /// disk and embedded with AST-aware chunking (tree-sitter) where supported.
 ///
-/// If `progress_tx` is provided, sends `{"files_done", "files_total", "chunks_embedded"}`
+/// If a `PhaseReporter` is wired, sends `{"files_done", "files_total", "chunks_embedded"}`
 /// after every file completes so the worker can persist live progress to the DB.
 pub async fn embed_files(
     cfg: &Config,
     common: &GitHubCommonFields,
     include_source: bool,
     token: Option<&str>,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
     // Heartbeat: signal activity before git clone (may take minutes on large repos)
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "phase": "cloning",
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_CLONING,
             "repo": common.repo_slug,
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     log_info(&format!(
         "github clone_start repo={} branch={}",
@@ -312,14 +314,12 @@ pub async fn embed_files(
     let repo_root = tmp.path().to_path_buf();
 
     // Heartbeat: clone complete, about to enumerate files
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "phase": "enumerating_files",
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_ENUMERATING_FILES,
             "repo": common.repo_slug,
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     let file_items = collect_indexable_files(&repo_root, include_source).await?;
     let files_total = file_items.len();
@@ -341,18 +341,16 @@ pub async fn embed_files(
     });
 
     let (chunks_embedded, failed) =
-        collect_and_embed_batched(&ctx, file_items, files_total, progress_tx).await?;
+        collect_and_embed_batched(&ctx, file_items, files_total, reporter).await?;
 
-    send_progress(
-        progress_tx,
-        serde_json::json!({
+    reporter
+        .report(serde_json::json!({
             "files_done": files_total,
             "files_total": files_total,
             "chunks_embedded": chunks_embedded,
-            "phase": "embedded_files",
-        }),
-    )
-    .await;
+            "phase": PHASE_EMBEDDED_FILES,
+        }))
+        .await;
 
     log_info(&format!(
         "github files_embedded total={files_total} failed={failed} chunks={chunks_embedded}"

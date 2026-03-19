@@ -1,9 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use anyhow::Result;
 use octocrab::Octocrab;
-use tokio::sync::mpsc;
 
 mod files;
 mod issues;
@@ -128,7 +128,9 @@ async fn embed_repo_metadata(
     cfg: &Config,
     repo: &octocrab::models::Repository,
     common: &GitHubCommonFields,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
+    reporter.report_phase("embedding_metadata").await;
     let owner_name = &common.repo_slug;
     let mut parts: Vec<String> = Vec::new();
 
@@ -200,16 +202,6 @@ async fn embed_repo_metadata(
 
 // ── Main entry point ───────────────────────────────────────────────────────────
 
-async fn send_progress(tx: Option<&mpsc::Sender<serde_json::Value>>, progress: serde_json::Value) {
-    if let Some(tx) = tx
-        && let Err(err) = tx.send(progress).await
-    {
-        log_warn(&format!(
-            "command=ingest_github progress_send_failed err={err}"
-        ));
-    }
-}
-
 fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usize, usize) {
     let mut total = 0usize;
     let mut issues_count = 0usize;
@@ -235,23 +227,113 @@ fn tally_results(results: [(&str, Result<usize>); 5], repo: &str) -> (usize, usi
     (total, issues_count, prs_count)
 }
 
-/// Ingest a GitHub repository: files, metadata, issues, PRs, and wiki.
+/// Run all five GitHub sub-tasks concurrently and report per-task progress.
 ///
-/// - File tree + raw content: raw reqwest (existing, reliable)
-/// - Repo metadata, issues, PRs: octocrab (typed, paginated)
-/// - Wiki: `git clone --depth=1` subprocess
+/// `tokio::join!` runs all branches on the same task (not spawned), so shared
+/// borrows of `cfg`, `common`, `octo`, and `repo_info` work without Send issues.
+/// Only `reporter` and `tasks_done` are cloned into per-branch local bindings.
+async fn run_github_subtasks(
+    cfg: &Config,
+    common: &GitHubCommonFields,
+    repo_info: &octocrab::models::Repository,
+    octo: &Octocrab,
+    include_source: bool,
+    reporter: &PhaseReporter,
+) -> [(&'static str, Result<usize>); 5] {
+    let tasks_done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let (files_result, metadata_result, issues_result, prs_result, wiki_result) = tokio::join!(
+        async {
+            let r = reporter.clone();
+            let td = tasks_done.clone();
+            let result =
+                files::embed_files(cfg, common, include_source, cfg.github_token.as_deref(), &r)
+                    .await;
+            let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            r.report(serde_json::json!({"tasks_done": done})).await;
+            log_info(&format!(
+                "github task_complete task=files tasks_done={done}/5 repo={}",
+                common.repo_slug
+            ));
+            result
+        },
+        async {
+            let r = reporter.clone();
+            let td = tasks_done.clone();
+            let result = embed_repo_metadata(cfg, repo_info, common, &r).await;
+            let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            r.report(serde_json::json!({"tasks_done": done})).await;
+            log_info(&format!(
+                "github task_complete task=metadata tasks_done={done}/5 repo={}",
+                common.repo_slug
+            ));
+            result
+        },
+        async {
+            let r = reporter.clone();
+            let td = tasks_done.clone();
+            let result = issues::ingest_issues(cfg, octo, common, cfg.github_max_issues, &r).await;
+            let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            r.report(serde_json::json!({"tasks_done": done})).await;
+            log_info(&format!(
+                "github task_complete task=issues tasks_done={done}/5 repo={}",
+                common.repo_slug
+            ));
+            result
+        },
+        async {
+            let r = reporter.clone();
+            let td = tasks_done.clone();
+            let result =
+                issues::ingest_pull_requests(cfg, octo, common, cfg.github_max_prs, &r).await;
+            let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            r.report(serde_json::json!({"tasks_done": done})).await;
+            log_info(&format!(
+                "github task_complete task=prs tasks_done={done}/5 repo={}",
+                common.repo_slug
+            ));
+            result
+        },
+        async {
+            let r = reporter.clone();
+            let td = tasks_done.clone();
+            let result = if common.has_wiki {
+                wiki::ingest_wiki(cfg, common, cfg.github_token.as_deref(), &r).await
+            } else {
+                Ok(0)
+            };
+            let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            r.report(serde_json::json!({"tasks_done": done})).await;
+            log_info(&format!(
+                "github task_complete task=wiki tasks_done={done}/5 repo={}",
+                common.repo_slug
+            ));
+            result
+        },
+    );
+
+    [
+        ("files", files_result),
+        ("metadata", metadata_result),
+        ("issues", issues_result),
+        ("prs", prs_result),
+        ("wiki", wiki_result),
+    ]
+}
+
+/// Ingest a GitHub repository: files, metadata, issues, PRs, and wiki.
 ///
 /// Each sub-task is run concurrently via `tokio::join!`. Individual failures
 /// are logged and counted as zero rather than aborting the whole run.
 ///
-/// If `progress_tx` is provided, sends live progress updates as files are
-/// embedded and sub-tasks complete. The worker uses this to persist progress
-/// to `result_json` so `axon ingest list` and `axon status` show live data.
+/// The `reporter` sends live progress updates as files are embedded and
+/// sub-tasks complete. The worker uses this to persist progress to
+/// `result_json` so `axon ingest list` and `axon status` show live data.
 pub async fn ingest_github(
     cfg: &Config,
     repo: &str,
     include_source: bool,
-    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+    reporter: PhaseReporter,
 ) -> Result<usize> {
     log_info(&format!("command=ingest source=github repo={repo}"));
     let (owner, name) =
@@ -269,68 +351,38 @@ pub async fn ingest_github(
         repo_slug: format!("{owner}/{name}"),
         owner: owner.clone(),
         name: name.clone(),
-        default_branch: default_branch.clone(),
+        default_branch,
         repo_description: repo_info.description.clone(),
         pushed_at: repo_info.pushed_at.map(|dt| dt.to_rfc3339()),
         is_private: repo_info.private,
         has_wiki: repo_info.has_wiki.unwrap_or(false),
     };
 
-    send_progress(
-        progress_tx.as_ref(),
-        serde_json::json!({
+    reporter
+        .report(serde_json::json!({
             "phase": "ingesting",
             "tasks_total": 5,
             "tasks_done": 0,
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     log_info(&format!(
         "github tasks_start repo={} has_wiki={} include_source={include_source}",
         common.repo_slug, common.has_wiki
     ));
-    let (files_result, metadata_result, issues_result, prs_result, wiki_result) = tokio::join!(
-        files::embed_files(
-            cfg,
-            &common,
-            include_source,
-            cfg.github_token.as_deref(),
-            progress_tx.as_ref(),
-        ),
-        embed_repo_metadata(cfg, &repo_info, &common),
-        issues::ingest_issues(cfg, &octo, &common),
-        issues::ingest_pull_requests(cfg, &octo, &common),
-        async {
-            if common.has_wiki {
-                wiki::ingest_wiki(cfg, &common, cfg.github_token.as_deref()).await
-            } else {
-                Ok(0)
-            }
-        },
-    );
 
-    let (total, issues_count, prs_count) = tally_results(
-        [
-            ("files", files_result),
-            ("metadata", metadata_result),
-            ("issues", issues_result),
-            ("prs", prs_result),
-            ("wiki", wiki_result),
-        ],
-        repo,
-    );
+    let results =
+        run_github_subtasks(cfg, &common, &repo_info, &octo, include_source, &reporter).await;
+    let (total, issues_count, prs_count) = tally_results(results, repo);
 
-    send_progress(
-        progress_tx.as_ref(),
-        serde_json::json!({
+    reporter
+        .report(serde_json::json!({
             "tasks_done": 5,
             "tasks_total": 5,
             "chunks_embedded": total,
             "phase": "completed",
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     log_info(&format!(
         "github issues_fetched={issues_count} prs_fetched={prs_count}"

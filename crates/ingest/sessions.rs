@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::jobs::common::make_pool;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -7,6 +8,9 @@ use sqlx::{PgPool, Row};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
+
+const PHASE_SCANNING: &str = "scanning_sessions";
+const PHASE_EMBEDDING: &str = "embedding_sessions";
 
 mod claude;
 mod codex;
@@ -107,8 +111,13 @@ impl SessionStateTracker {
     }
 }
 
-pub async fn ingest_sessions(cfg: &Config) -> Result<usize, Box<dyn Error>> {
+pub async fn ingest_sessions(
+    cfg: &Config,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
     log_info("command=ingest source=sessions");
+    reporter.report_phase(PHASE_SCANNING).await;
+
     let state = SessionStateTracker::new(cfg).await;
     let multi = MultiProgress::new();
     let main_pb = multi.add(ProgressBar::new_spinner());
@@ -122,6 +131,8 @@ pub async fn ingest_sessions(cfg: &Config) -> Result<usize, Box<dyn Error>> {
 
     let mut total_chunks = 0;
     let all_platforms = !cfg.sessions_claude && !cfg.sessions_codex && !cfg.sessions_gemini;
+
+    reporter.report_phase(PHASE_EMBEDDING).await;
 
     if cfg.sessions_claude || all_platforms {
         let count = claude::ingest_claude_sessions(cfg, &state, &multi)

@@ -1,4 +1,6 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::logging::log_info;
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use anyhow::Result;
 use octocrab::Octocrab;
@@ -7,15 +9,27 @@ use octocrab::{models, params};
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload, issue_state_str};
 
-/// Ingest all issues (open + closed) from a repository.
+const PHASE_FETCHING_ISSUES: &str = "fetching_issues";
+const PHASE_FETCHING_PRS: &str = "fetching_prs";
+
+/// Ingest issues (open + closed) from a repository, up to `max_issues`.
 ///
 /// GitHub's Issues API returns both issues AND pull requests — items where
 /// `pull_request` is `Some` are filtered out to avoid double-embedding.
+/// Results are sorted by most-recently-updated so the cap keeps the freshest items.
 pub async fn ingest_issues(
     cfg: &Config,
     octo: &Octocrab,
     common: &GitHubCommonFields,
+    max_issues: usize,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_FETCHING_ISSUES,
+            "max_issues": max_issues,
+        }))
+        .await;
     let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .issues(&common.owner, &common.name)
@@ -25,12 +39,19 @@ pub async fn ingest_issues(
         .send()
         .await?;
 
-    loop {
+    let mut issues_seen = 0usize;
+
+    'outer: loop {
         for issue in &page {
             // Skip pull requests — the Issues API returns both
             if issue.pull_request.is_some() {
                 continue;
             }
+
+            if max_issues > 0 && issues_seen >= max_issues {
+                break 'outer;
+            }
+            issues_seen += 1;
 
             let body = issue.body.as_deref().unwrap_or("");
             let labels: Vec<String> = issue.labels.iter().map(|l| l.name.clone()).collect();
@@ -89,18 +110,40 @@ pub async fn ingest_issues(
         };
     }
 
+    log_info(&format!(
+        "github issues_fetched={issues_seen} max={max_issues} repo={}",
+        common.repo_slug
+    ));
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_FETCHING_ISSUES,
+            "issues_fetched": issues_seen,
+        }))
+        .await;
+
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(summary.chunks_embedded)
 }
 
-/// Ingest all pull requests (open + closed) from a repository.
+/// Ingest pull requests (open + closed) from a repository, up to `max_prs`.
+///
+/// Results are sorted by most-recently-updated so the cap keeps the freshest items.
 pub async fn ingest_pull_requests(
     cfg: &Config,
     octo: &Octocrab,
     common: &GitHubCommonFields,
+    max_prs: usize,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_FETCHING_PRS,
+            "max_prs": max_prs,
+        }))
+        .await;
+
     let mut docs: Vec<PreparedDoc> = Vec::new();
     let mut page = octo
         .pulls(&common.owner, &common.name)
@@ -110,8 +153,14 @@ pub async fn ingest_pull_requests(
         .send()
         .await?;
 
-    loop {
+    let mut prs_seen = 0usize;
+
+    'outer: loop {
         for pr in &page {
+            if max_prs > 0 && prs_seen >= max_prs {
+                break 'outer;
+            }
+            prs_seen += 1;
             let title = pr.title.as_deref().unwrap_or("(no title)");
             let body = pr.body.as_deref().unwrap_or("");
             let content = format!("# PR #{}: {}\n\n{}", pr.number, title, body);
@@ -173,6 +222,17 @@ pub async fn ingest_pull_requests(
             None => break,
         };
     }
+
+    log_info(&format!(
+        "github prs_fetched={prs_seen} max={max_prs} repo={}",
+        common.repo_slug
+    ));
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_FETCHING_PRS,
+            "prs_fetched": prs_seen,
+        }))
+        .await;
 
     let summary = embed_prepared_docs(cfg, docs, None)
         .await

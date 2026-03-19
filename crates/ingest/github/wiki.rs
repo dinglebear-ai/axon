@@ -1,11 +1,15 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
 use super::GitHubCommonFields;
 use super::meta::{GitHubPayloadParams, build_github_payload};
+
+const PHASE_CLONING_WIKI: &str = "cloning_wiki";
+const PHASE_EMBEDDING_WIKI: &str = "embedding_wiki";
 
 /// Walk a directory iteratively and collect all file paths.
 /// Skips `.git` directories. Uses an explicit stack to avoid recursive heap allocation.
@@ -110,7 +114,9 @@ pub async fn ingest_wiki(
     cfg: &Config,
     common: &GitHubCommonFields,
     token: Option<&str>,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
+    reporter.report_phase(PHASE_CLONING_WIKI).await;
     // Create a temp directory; cleaned up automatically when `_tmp` is dropped
     let _tmp = tempfile::tempdir()?;
     let tmp_path = _tmp.path().to_string_lossy().to_string();
@@ -167,6 +173,12 @@ pub async fn ingest_wiki(
     }
 
     let docs = build_wiki_docs(&tmp_path, common).await?;
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_EMBEDDING_WIKI,
+            "wiki_pages": docs.len(),
+        }))
+        .await;
     let summary = embed_prepared_docs(cfg, docs, None)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;

@@ -1,15 +1,17 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::{log_info, log_warn};
+use crate::crates::core::logging::log_info;
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::mpsc;
 
 use super::FileEmbedCtx;
 
 const FILE_PROGRESS_EVERY: usize = 25;
+const PHASE_COLLECTING_FILES: &str = "collecting_files";
+const PHASE_EMBEDDING_BATCH: &str = "embedding_batch";
 
 /// Flush accumulated PreparedDocs to the embed pipeline every N docs to bound memory.
 pub(super) const EMBED_BATCH_SIZE: usize = 50;
@@ -20,7 +22,7 @@ pub(super) async fn collect_and_embed_batched(
     ctx: &Arc<FileEmbedCtx>,
     file_items: Vec<String>,
     files_total: usize,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
+    reporter: &PhaseReporter,
 ) -> Result<(usize, usize)> {
     let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
     let mut file_stream = stream::iter(file_items)
@@ -48,29 +50,27 @@ pub(super) async fn collect_and_embed_batched(
 
         // Flush when the batch is large enough to keep memory bounded.
         if batch.len() >= EMBED_BATCH_SIZE {
-            total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
+            total_chunks += flush_batch(&ctx.cfg, &mut batch, reporter).await?;
         }
 
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
             log_info(&format!(
                 "github files_progress files_done={files_done} files_total={files_total} chunks_embedded={total_chunks}"
             ));
-            send_progress(
-                progress_tx,
-                serde_json::json!({
+            reporter
+                .report(serde_json::json!({
                     "files_done": files_done,
                     "files_total": files_total,
                     "chunks_embedded": total_chunks,
-                    "phase": "collecting_files",
-                }),
-            )
-            .await;
+                    "phase": PHASE_COLLECTING_FILES,
+                }))
+                .await;
         }
     }
 
     // Flush any remaining docs.
     if !batch.is_empty() {
-        total_chunks += flush_batch(&ctx.cfg, &mut batch, progress_tx).await?;
+        total_chunks += flush_batch(&ctx.cfg, &mut batch, reporter).await?;
     }
 
     Ok((total_chunks, failed))
@@ -80,20 +80,18 @@ pub(super) async fn collect_and_embed_batched(
 async fn flush_batch(
     cfg: &Config,
     batch: &mut Vec<PreparedDoc>,
-    progress_tx: Option<&mpsc::Sender<serde_json::Value>>,
+    reporter: &PhaseReporter,
 ) -> Result<usize> {
     let docs = std::mem::take(batch);
     let count = docs.len();
 
     log_info(&format!("github embed_batch_start batch_size={count}"));
-    send_progress(
-        progress_tx,
-        serde_json::json!({
-            "phase": "embedding_batch",
+    reporter
+        .report(serde_json::json!({
+            "phase": PHASE_EMBEDDING_BATCH,
             "batch_size": count,
-        }),
-    )
-    .await;
+        }))
+        .await;
 
     let batch_start = Instant::now();
     let summary = embed_prepared_docs(cfg, docs, None)
@@ -105,18 +103,4 @@ async fn flush_batch(
         summary.chunks_embedded
     ));
     Ok(summary.chunks_embedded)
-}
-
-/// Send a progress heartbeat if a channel is available.
-pub(super) async fn send_progress(
-    tx: Option<&mpsc::Sender<serde_json::Value>>,
-    progress: serde_json::Value,
-) {
-    if let Some(tx) = tx
-        && let Err(err) = tx.send(progress).await
-    {
-        log_warn(&format!(
-            "command=ingest_github progress_send_failed err={err}"
-        ));
-    }
 }

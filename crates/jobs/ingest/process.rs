@@ -1,6 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::ingest;
+use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::jobs::common::{JobTable, mark_job_failed};
 use futures::Future;
 use futures_util::stream::{FuturesUnordered, StreamExt};
@@ -84,11 +85,15 @@ async fn update_ingest_progress(pool: &PgPool, job_id: Uuid, progress: &serde_js
 /// Ingest a single video with up to `RETRY_429_MAX_ATTEMPTS` retries on 429 errors.
 ///
 /// Non-429 errors are returned immediately. Backoff: 10s, 20s, 40s.
-async fn ingest_video_with_retry(cfg: &Config, video_url: &str) -> Result<usize, String> {
+async fn ingest_video_with_retry(
+    cfg: &Config,
+    video_url: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, String> {
     for attempt in 0..=RETRY_429_MAX_ATTEMPTS {
         // Convert Box<dyn Error> to String immediately so the state machine never
         // holds a non-Send type across an await point.
-        let result = ingest::youtube::ingest_youtube(cfg, video_url)
+        let result = ingest::youtube::ingest_youtube(cfg, video_url, reporter)
             .await
             .map_err(|e| e.to_string());
         match result {
@@ -134,11 +139,16 @@ async fn drain_playlist_videos_with_pool(
     let mut inflight: FuturesUnordered<IngestFuture> = FuturesUnordered::new();
     let mut pending_iter = pending.into_iter();
 
+    // Playlist progress uses direct SQL updates (per-video), so individual videos
+    // get a noop reporter to avoid double-writing progress.
+    let noop = PhaseReporter::noop();
+
     // Pre-fill up to PLAYLIST_CONCURRENCY
     for video_url in pending_iter.by_ref().take(PLAYLIST_CONCURRENCY) {
         let cfg_clone = cfg.clone();
+        let r = noop.clone();
         inflight.push(Box::pin(async move {
-            let result = ingest_video_with_retry(&cfg_clone, &video_url).await;
+            let result = ingest_video_with_retry(&cfg_clone, &video_url, &r).await;
             (video_url, result)
         }));
     }
@@ -172,8 +182,9 @@ async fn drain_playlist_videos_with_pool(
         // Queue next pending video to maintain PLAYLIST_CONCURRENCY
         if let Some(next_url) = pending_iter.next() {
             let cfg_clone = cfg.clone();
+            let r = noop.clone();
             inflight.push(Box::pin(async move {
-                let result = ingest_video_with_retry(&cfg_clone, &next_url).await;
+                let result = ingest_video_with_retry(&cfg_clone, &next_url, &r).await;
                 (next_url, result)
             }));
         }
@@ -311,36 +322,41 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
     ));
     let job_start = Instant::now();
 
+    // Shared progress channel — all ingest sources feed into the same receiver
+    // that persists updates to result_json in the database.
+    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<serde_json::Value>(256);
+    let progress_pool = pool.clone();
+    let progress_id = id;
+    let progress_task = tokio::spawn(
+        async move {
+            while let Some(progress) = progress_rx.recv().await {
+                update_ingest_progress(&progress_pool, progress_id, &progress).await;
+            }
+        }
+        .instrument(tracing::Span::current()),
+    );
+    let reporter = PhaseReporter::new(Some(progress_tx));
+
     let result = match &job_cfg.source {
         IngestSource::Github {
             repo,
             include_source,
         } => {
-            let (progress_tx, mut progress_rx) =
-                tokio::sync::mpsc::channel::<serde_json::Value>(256);
-            let progress_pool = pool.clone();
-            let progress_id = id;
-            let progress_task = tokio::spawn(
-                async move {
-                    while let Some(progress) = progress_rx.recv().await {
-                        update_ingest_progress(&progress_pool, progress_id, &progress).await;
-                    }
-                }
-                .instrument(tracing::Span::current()),
-            );
+            // ingest_github takes ownership of the reporter (clones per branch internally)
             let r =
-                ingest::github::ingest_github(&cfg, repo, *include_source, Some(progress_tx)).await;
-            // Wait for final DB write to complete before marking done
-            let _ = progress_task.await;
+                ingest::github::ingest_github(&cfg, repo, *include_source, reporter.clone()).await;
             // ingest_github returns anyhow::Result; map to Box<dyn Error> for unified match type.
             r.map_err(|e| -> Box<dyn std::error::Error> { e.into() })
         }
-        IngestSource::Reddit { target } => ingest::reddit::ingest_reddit(&cfg, target).await,
+        IngestSource::Reddit { target } => {
+            ingest::reddit::ingest_reddit(&cfg, target, &reporter).await
+        }
         IngestSource::Youtube { target } => {
             if ingest::youtube::is_playlist_or_channel_url(target) {
+                // Playlist uses direct SQL progress per-video, so noop reporter
                 ingest_youtube_playlist_with_pool(&cfg, &pool, id, target).await
             } else {
-                ingest::youtube::ingest_youtube(&cfg, target).await
+                ingest::youtube::ingest_youtube(&cfg, target, &reporter).await
             }
         }
         IngestSource::Sessions {
@@ -354,9 +370,13 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
             sessions_cfg.sessions_codex = *sessions_codex;
             sessions_cfg.sessions_gemini = *sessions_gemini;
             sessions_cfg.sessions_project = sessions_project.clone();
-            ingest::sessions::ingest_sessions(&sessions_cfg).await
+            ingest::sessions::ingest_sessions(&sessions_cfg, &reporter).await
         }
     };
+
+    // Close the sender so the progress receiver task can finish
+    drop(reporter);
+    let _ = progress_task.await;
 
     let elapsed = job_start.elapsed().as_secs();
     match result {
