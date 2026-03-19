@@ -212,4 +212,20 @@ mod tests {
         let prev = Some(serde_json::json!({"files_done": 5}));
         assert!(!is_content_stale(&prev, &None));
     }
+
+    #[test]
+    fn content_aware_heartbeat_detects_stale_content() {
+        let snap1 = Some(serde_json::json!({"phase": "embedding_batch", "files_done": 150}));
+        let snap2 = Some(serde_json::json!({"phase": "embedding_batch", "files_done": 150}));
+        let snap3 = Some(serde_json::json!({"phase": "fetching_issues", "issues_fetched": 5}));
+
+        assert!(
+            is_content_stale(&snap1, &snap2),
+            "identical snapshots should be stale"
+        );
+        assert!(
+            !is_content_stale(&snap2, &snap3),
+            "different snapshots should not be stale"
+        );
+    }
 }
