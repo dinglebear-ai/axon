@@ -1,7 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::services::acp::{AcpClientScaffold, PermissionResponderMap};
 use crate::crates::services::events::ServiceEvent;
-use crate::crates::services::types::{AcpAdapterCommand, AcpBridgeEvent, AcpPromptTurnRequest};
+use crate::crates::services::types::{
+    AcpAdapterCommand, AcpBridgeEvent, AcpPromptTurnRequest, AcpSessionUpdateKind,
+};
 use std::error::Error as StdError;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -338,7 +340,8 @@ where
 {
     match event {
         AcpBridgeEvent::SessionUpdate(update) => {
-            if let Some(delta) = update.text_delta.as_deref()
+            if update.kind == AcpSessionUpdateKind::AssistantDelta
+                && let Some(delta) = update.text_delta.as_deref()
                 && let Some(handler) = on_delta.as_mut()
             {
                 handler(delta)?;
@@ -356,6 +359,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::services::types::AcpSessionUpdateEvent;
 
     type DeltaHandler = fn(&str) -> Result<(), Box<dyn StdError>>;
 
@@ -390,5 +394,70 @@ mod tests {
 
         assert_eq!(state.text.as_deref(), Some("final answer"));
         assert_eq!(state.usage, None);
+    }
+
+    #[test]
+    fn only_assistant_deltas_are_forwarded_to_stream_callback() {
+        let mut state = CompletionTurnState::default();
+        let mut emitted = Vec::new();
+        let mut on_delta = Some(|delta: &str| -> Result<(), Box<dyn StdError>> {
+            emitted.push(delta.to_string());
+            Ok(())
+        });
+
+        let user_update = AcpSessionUpdateEvent {
+            session_id: "session-1".to_string(),
+            kind: AcpSessionUpdateKind::UserDelta,
+            text_delta: Some("user text".to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_status: None,
+            tool_content: None,
+            tool_input: None,
+            tool_locations: None,
+        };
+        let thinking_update = AcpSessionUpdateEvent {
+            session_id: "session-1".to_string(),
+            kind: AcpSessionUpdateKind::ThinkingDelta,
+            text_delta: Some("thinking text".to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_status: None,
+            tool_content: None,
+            tool_input: None,
+            tool_locations: None,
+        };
+        let assistant_update = AcpSessionUpdateEvent {
+            session_id: "session-1".to_string(),
+            kind: AcpSessionUpdateKind::AssistantDelta,
+            text_delta: Some("assistant text".to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_status: None,
+            tool_content: None,
+            tool_input: None,
+            tool_locations: None,
+        };
+
+        handle_completion_bridge_event(
+            &AcpBridgeEvent::SessionUpdate(user_update),
+            &mut state,
+            &mut on_delta,
+        )
+        .expect("user delta should be ignored");
+        handle_completion_bridge_event(
+            &AcpBridgeEvent::SessionUpdate(thinking_update),
+            &mut state,
+            &mut on_delta,
+        )
+        .expect("thinking delta should be ignored");
+        handle_completion_bridge_event(
+            &AcpBridgeEvent::SessionUpdate(assistant_update),
+            &mut state,
+            &mut on_delta,
+        )
+        .expect("assistant delta should be forwarded");
+
+        assert_eq!(emitted, vec!["assistant text".to_string()]);
     }
 }
