@@ -82,10 +82,7 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
                 let removed = extract_service::extract_clear(cfg).await?;
                 handle_job_clear(cfg, removed, "extract")?;
             } else if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({ "removed": 0, "queue_purged": false })
-                );
+                println!("{}", serde_json::json!({ "removed": 0 }));
             } else {
                 println!("{} aborted", symbol_for_status("canceled"));
             }

@@ -225,12 +225,13 @@ vi.mock('@/components/ui/tooltip', () => ({
 import { AxonShell } from '@/components/shell/axon-shell'
 
 describe('AxonShell', () => {
-  it('renders from extracted desktop and pane subtrees', () => {
+  it('renders the desktop shell layout when mobile is inactive', () => {
     viewportState.isMobile = false
 
     render(<AxonShell />)
 
-    expect(screen.getByText('desktop-shell')).toBeTruthy()
+    expect(screen.getByText('sidebar-desktop')).toBeTruthy()
+    expect(screen.getByText('prompt-composer')).toBeTruthy()
   })
 
   it('renders from the extracted mobile subtree when mobile is active', () => {

@@ -100,11 +100,26 @@ clean:
 docker-build tag="axon:local":
     docker build -f docker/Dockerfile -t {{tag}} .
 
+# Start infrastructure services (postgres, redis, rabbitmq, qdrant, tei, chrome)
+services-up:
+    docker compose -f docker-compose.services.yaml up -d
+
+# Stop infrastructure services
+services-down:
+    docker compose -f docker-compose.services.yaml down
+
+# Start app containers (workers + web) — requires services-up first
 up:
     ./scripts/rebuild-fresh.sh
 
+# Stop app containers
 down:
     docker compose down
+
+# Stop everything (app + infra)
+down-all:
+    docker compose down
+    docker compose -f docker-compose.services.yaml down
 
 test-infra-up:
     docker compose -f docker-compose.test.yaml up -d
@@ -117,6 +132,7 @@ docker-up:
 
 docker-down:
     docker compose down
+    docker compose -f docker-compose.services.yaml down
 
 rebuild-fresh:
     ./scripts/rebuild-fresh.sh
@@ -204,7 +220,7 @@ dev:
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    docker compose up -d --wait axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+    docker compose -f docker-compose.services.yaml up -d --wait axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-tei axon-chrome
     PIDS=()
     cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
     trap cleanup INT TERM EXIT

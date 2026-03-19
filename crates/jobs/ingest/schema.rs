@@ -34,6 +34,13 @@ pub(crate) async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(&mut *tx)
     .await?;
 
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_axon_ingest_jobs_status_created_desc \
+         ON axon_ingest_jobs(status, created_at DESC)",
+    )
+    .execute(&mut *tx)
+    .await?;
+
     // Partial index for stale-job watchdog sweeps (WHERE status='running' AND updated_at < threshold).
     // Without this, reclaim_stale_running_jobs does a full table scan that blocks heartbeat UPDATEs.
     sqlx::query(

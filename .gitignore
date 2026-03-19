@@ -1,6 +1,7 @@
 # Secrets and local environment
 .env
 .env.*
+services.env
 !.env.example
 
 .pnpm-store*

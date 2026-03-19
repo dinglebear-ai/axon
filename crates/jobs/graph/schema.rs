@@ -31,9 +31,25 @@ pub async fn ensure_graph_schema(pool: &PgPool) -> Result<(), Box<dyn std::error
     .execute(&mut *tx)
     .await?;
 
+    sqlx::query(
+        r#"DO $$ BEGIN
+            ALTER TABLE axon_graph_jobs ADD CONSTRAINT axon_graph_jobs_status_check
+                CHECK (status IN ('pending', 'running', 'completed', 'failed', 'canceled'));
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$"#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_graph_jobs_status ON axon_graph_jobs(status)")
         .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_graph_jobs_status_created_desc \
+         ON axon_graph_jobs(status, created_at DESC)",
+    )
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_graph_jobs_url ON axon_graph_jobs(url)")
         .execute(&mut *tx)
         .await?;

@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertCircle, Bot, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo } from 'react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,

@@ -10,10 +10,10 @@ export function AxonShellResizeDivider({
   onNudge?: (delta: number) => void
 }) {
   return (
-    <div
+    <button
+      type="button"
       aria-label="Resize panel divider"
       title="Drag to resize · Double-click to reset · Arrow keys to nudge"
-      tabIndex={0}
       className="group relative z-10 flex w-1.5 shrink-0 cursor-col-resize items-stretch focus-visible:outline-none"
       onMouseDown={(e) => {
         e.preventDefault()
@@ -29,6 +29,6 @@ export function AxonShellResizeDivider({
       }}
     >
       <div className="mx-auto h-full w-px bg-[var(--border-subtle)] transition-colors group-hover:bg-[rgba(175,215,255,0.3)] group-focus-visible:bg-[rgba(175,215,255,0.3)]" />
-    </div>
+    </button>
   )
 }

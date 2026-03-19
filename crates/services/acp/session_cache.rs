@@ -18,6 +18,11 @@ use super::persistent_conn::AcpConnectionHandle;
 /// Default idle TTL before a cached session is evicted.
 const SESSION_TTL: Duration = Duration::from_secs(30 * 60);
 
+/// A turn in-flight longer than this threshold is considered hung. The reaper
+/// evicts such sessions so the next request spawns a fresh adapter. Aligned
+/// with the default per-turn timeout in `pulse_chat.rs` (`DEFAULT_TURN_TIMEOUT`).
+const SESSION_HUNG_TURN_THRESHOLD: Duration = Duration::from_secs(5 * 60);
+
 /// Hard cap on message count per session replay buffer. Secondary guard against
 /// pathological cases with many tiny messages (primary limit is byte-based).
 const MAX_REPLAY_BUFFER: usize = 4096;
@@ -40,6 +45,12 @@ pub struct CachedSession {
     replay_buffer: std::sync::Mutex<Vec<String>>,
     /// Cumulative byte size of all messages in `replay_buffer`.
     replay_buffer_bytes: std::sync::Mutex<usize>,
+    /// When the current in-flight turn started, if any. `None` means no turn
+    /// is currently running. Used by the reaper and `get_or_create_acp_connection`
+    /// to detect adapters that are stuck (turn in-flight longer than threshold).
+    turn_in_flight_since: std::sync::Mutex<Option<Instant>>,
+    /// When the last turn completed successfully. Used for diagnostics.
+    last_turn_completed_at: std::sync::Mutex<Option<Instant>>,
 }
 
 impl CachedSession {
@@ -53,6 +64,8 @@ impl CachedSession {
             last_active: std::sync::Mutex::new(Instant::now()),
             replay_buffer: std::sync::Mutex::new(Vec::new()),
             replay_buffer_bytes: std::sync::Mutex::new(0),
+            turn_in_flight_since: std::sync::Mutex::new(None),
+            last_turn_completed_at: std::sync::Mutex::new(None),
         }
     }
 
@@ -114,6 +127,35 @@ impl CachedSession {
     fn is_expired(&self) -> bool {
         let last = *self.last_active.lock().expect("last_active mutex poisoned");
         last.elapsed() > SESSION_TTL
+    }
+
+    /// Record that a turn has started on this session.
+    pub fn mark_turn_started(&self) {
+        *self
+            .turn_in_flight_since
+            .lock()
+            .expect("turn_in_flight_since mutex poisoned") = Some(Instant::now());
+    }
+
+    /// Record that the current turn has completed.
+    pub fn mark_turn_completed(&self) {
+        *self
+            .turn_in_flight_since
+            .lock()
+            .expect("turn_in_flight_since mutex poisoned") = None;
+        *self
+            .last_turn_completed_at
+            .lock()
+            .expect("last_turn_completed_at mutex poisoned") = Some(Instant::now());
+    }
+
+    /// Returns `true` if a turn has been in-flight longer than `threshold`,
+    /// indicating the adapter is likely hung.
+    pub fn is_turn_hung(&self, threshold: Duration) -> bool {
+        self.turn_in_flight_since
+            .lock()
+            .expect("turn_in_flight_since mutex poisoned")
+            .is_some_and(|started| started.elapsed() > threshold)
     }
 }
 
@@ -201,7 +243,7 @@ impl AcpSessionCache {
         }
     }
 
-    /// Evict expired sessions.
+    /// Evict expired and hung sessions.
     async fn reap_expired(&self) {
         // Pass 1: clone keys + Arc refs (sync — releases DashMap shard locks immediately)
         let candidates: Vec<(String, Arc<CachedSession>)> = self
@@ -209,15 +251,24 @@ impl AcpSessionCache {
             .iter()
             .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
             .collect();
-        // Pass 2: check expiry — no DashMap locks held
+        // Pass 2: check expiry and liveness — no DashMap locks held
+        let hung_threshold = SESSION_HUNG_TURN_THRESHOLD;
         let mut to_remove = Vec::new();
         for (key, session) in &candidates {
             if session.is_expired() {
+                tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
+                to_remove.push(key.clone());
+            } else if session.is_turn_hung(hung_threshold) {
+                tracing::warn!(
+                    context = "acp_cache",
+                    key = %key,
+                    threshold_secs = hung_threshold.as_secs(),
+                    "evicting session with hung turn",
+                );
                 to_remove.push(key.clone());
             }
         }
         for key in &to_remove {
-            tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
             self.remove(key);
         }
     }

@@ -1,6 +1,6 @@
 use crate::crates::cli::commands::common::{
-    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
-    handle_job_recover, handle_job_status,
+    filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
+    handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
 };
 use crate::crates::cli::commands::status::metrics::{
     collection_from_config, display_embed_input, embed_metrics_suffix, format_error,
@@ -99,7 +99,7 @@ async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = embed_service::embed_list_raw(cfg, 50, 0).await?;
+    let jobs = filter_jobs_for_status_view(cfg, embed_service::embed_list_raw(cfg, 50, 0).await?);
     if cfg.json_output {
         return handle_job_list(cfg, jobs, "Embed");
     }
@@ -158,10 +158,7 @@ async fn handle_embed_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
 async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if !confirm_destructive(cfg, "Clear all embed jobs and purge embed queue?")? {
         if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::json!({"removed": 0, "queue_purged": false})
-            );
+            println!("{}", serde_json::json!({ "removed": 0 }));
         } else {
             println!("{} aborted", symbol_for_status("canceled"));
         }

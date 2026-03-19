@@ -105,6 +105,8 @@ mod tests {
         assert_eq!(cfg.mcp_http_host, "127.0.0.1");
         assert_eq!(cfg.mcp_http_port, 8001);
         assert!(!cfg.reclaimed_status_only);
+        assert!(!cfg.active_status_only);
+        assert!(!cfg.recent_status_only);
     }
 
     #[test]

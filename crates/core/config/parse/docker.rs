@@ -10,6 +10,7 @@ const HOST_MAP: &[(&str, &str, u16)] = &[
     ("axon-redis", "127.0.0.1", 53379),
     ("axon-rabbitmq", "127.0.0.1", 45535),
     ("axon-qdrant", "127.0.0.1", 53333),
+    ("axon-tei", "127.0.0.1", 52000),
     ("axon-chrome", "127.0.0.1", 6000),
 ];
 

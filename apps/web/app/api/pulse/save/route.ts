@@ -6,35 +6,7 @@ import type { SavedDocMeta } from '@/lib/pulse/storage'
 import { savePulseDoc, updatePulseDoc } from '@/lib/pulse/storage'
 import { logError, logInfo } from '@/lib/server/logger'
 import { enforceRateLimit } from '@/lib/server/rate-limit'
-
-/**
- * Rewrite Docker-internal hostnames to localhost with mapped ports when
- * running outside Docker (local dev). Mirrors the Rust CLI's
- * `normalize_local_service_url()` logic.
- */
-const DOCKER_HOST_MAP: Record<string, string> = {
-  'axon-qdrant:6333': '127.0.0.1:53333',
-  'axon-qdrant:6334': '127.0.0.1:53334',
-}
-
-function resolveLocalUrl(raw: string | undefined): string | undefined {
-  if (!raw) return raw
-  try {
-    const url = new URL(raw)
-    const hostPort = `${url.hostname}:${url.port || (url.protocol === 'https:' ? '443' : '80')}`
-    const mapped = DOCKER_HOST_MAP[hostPort]
-    if (mapped) {
-      // DOCKER_HOST_MAP values are always "host:port" strings — split always yields 2 parts
-      const [host, port] = mapped.split(':') as [string, string]
-      url.hostname = host
-      url.port = port
-      return url.toString().replace(/\/$/, '')
-    }
-  } catch {
-    /* malformed URL — return as-is */
-  }
-  return raw
-}
+import { normalizeLocalServiceUrl } from '@/lib/server/service-url'
 
 const SaveRequestSchema = z.object({
   title: z.string().min(1).max(200),
@@ -145,13 +117,8 @@ export async function POST(request: Request) {
     if (embed) {
       after(async () => {
         const start = Date.now()
-        const isLocalDev =
-          process.env.NODE_ENV === 'development' ||
-          process.env.AXON_WEB_ALLOW_INSECURE_DEV === 'true'
-        const teiUrl = process.env.TEI_URL
-        const qdrantUrl = isLocalDev
-          ? resolveLocalUrl(process.env.QDRANT_URL)
-          : process.env.QDRANT_URL
+        const teiUrl = normalizeLocalServiceUrl(process.env.TEI_URL)
+        const qdrantUrl = normalizeLocalServiceUrl(process.env.QDRANT_URL)
         const collection = collections?.[0] ?? process.env.AXON_COLLECTION ?? 'cortex'
 
         if (teiUrl && qdrantUrl && markdown.trim()) {

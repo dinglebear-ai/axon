@@ -11,6 +11,7 @@ mod amqp;
 mod job_ops;
 pub(crate) mod pool;
 mod schema;
+pub(crate) mod sort;
 pub(crate) mod stats;
 pub(crate) mod watchdog;
 
@@ -43,6 +44,7 @@ pub use job_ops::{
 };
 pub use pool::make_pool;
 pub(crate) use schema::begin_schema_migration_tx;
+pub(crate) use sort::sort_rows_for_status_view;
 pub use stats::{count_stale_and_pending_jobs, count_stale_and_pending_jobs_with_pool};
 #[cfg(test)]
 pub(crate) use watchdog::stale_watchdog_confirmed;

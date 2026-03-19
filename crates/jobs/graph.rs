@@ -1,8 +1,11 @@
 //! Graph extraction job persistence and schema entry points.
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::common::enqueue_job;
+use crate::crates::jobs::common::{enqueue_job, make_pool, sort_rows_for_status_view};
 use crate::crates::jobs::status::JobStatus;
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use sqlx::FromRow;
 use sqlx::PgPool;
 
 pub(crate) mod context;
@@ -14,6 +17,21 @@ pub(crate) mod worker;
 
 pub use schema::{ensure_graph_schema, ensure_neo4j_schema};
 pub use worker::run_graph_worker;
+
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct GraphJob {
+    pub id: uuid::Uuid,
+    pub url: String,
+    pub status: String,
+    pub chunk_count: i32,
+    pub entity_count: i32,
+    pub relation_count: i32,
+    pub error_text: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+}
 
 pub async fn enqueue_graph_job(
     pool: &PgPool,
@@ -77,6 +95,45 @@ pub async fn enqueue_graph_job(
     }
 
     Ok(id)
+}
+
+pub async fn list_graph_jobs(
+    cfg: &Config,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<GraphJob>, Box<dyn std::error::Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    let mut rows = sqlx::query_as::<_, GraphJob>(
+        r#"
+        SELECT id, url, status, chunk_count, entity_count, relation_count, error_text,
+               created_at, updated_at, started_at, finished_at
+        FROM axon_graph_jobs
+        ORDER BY
+            CASE status
+                WHEN 'running' THEN 0
+                WHEN 'pending' THEN 1
+                WHEN 'completed' THEN 2
+                WHEN 'failed' THEN 3
+                WHEN 'canceled' THEN 4
+                ELSE 5
+            END,
+            created_at DESC,
+            updated_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&pool)
+    .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
+    Ok(rows)
 }
 
 #[cfg(test)]

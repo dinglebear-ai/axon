@@ -15,6 +15,12 @@ if [[ "${AXON_ENFORCE_DOCKER_CONTEXT_PROBE:-true}" == "true" ]]; then
   "$repo_root/scripts/check_docker_context_size.sh"
 fi
 
+# Ensure the shared axon network exists (created by docker-compose.services.yaml).
+if ! docker network inspect axon >/dev/null 2>&1; then
+  echo "Creating axon network (run 'just services-up' to start infra)..."
+  docker network create axon
+fi
+
 AXON_GIT_SHA="$sha" docker compose up -d --build --force-recreate axon-workers axon-web
 
 echo

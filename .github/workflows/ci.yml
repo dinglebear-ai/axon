@@ -391,8 +391,9 @@ jobs:
           }
           EOF
 
-      - name: Create CI .env for docker compose
+      - name: Create CI env files for docker compose
         run: |
+          # .env — compose YAML interpolation (read by both compose files)
           {
             echo "AXON_DATA_DIR=./data"
             echo "HOST_HOME=/home/runner"
@@ -402,16 +403,26 @@ jobs:
             echo "REDIS_PASSWORD=axonredis"
             echo "RABBITMQ_USER=axon"
             echo "RABBITMQ_PASS=axonrabbit"
-            echo "AXON_PG_URL=postgresql://axon:postgres@axon-postgres:5432/axon"
+            echo "AXON_PG_URL=postgresql://axon:postgres@127.0.0.1:53432/axon"
             echo "AXON_REDIS_URL=redis://:axonredis@axon-redis:6379"
             echo "AXON_AMQP_URL=amqp://axon:axonrabbit@axon-rabbitmq:5672/%2f"
             echo "QDRANT_URL=http://axon-qdrant:6333"
             echo "TEI_URL=http://localhost:52000"
             echo "AXON_GIT_SHA=$(git rev-parse HEAD)"
           } > .env
+          # services.env — infra container env (postgres, redis, rabbitmq, qdrant)
+          {
+            echo "AXON_DATA_DIR=./data"
+            echo "POSTGRES_USER=axon"
+            echo "POSTGRES_PASSWORD=postgres"
+            echo "POSTGRES_DB=axon"
+            echo "REDIS_PASSWORD=axonredis"
+            echo "RABBITMQ_USER=axon"
+            echo "RABBITMQ_PASS=axonrabbit"
+          } > services.env
 
       - name: Start Axon infra
-        run: docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant
+        run: docker compose -f docker-compose.services.yaml up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant
 
       - name: Start TEI
         run: |
@@ -487,3 +498,4 @@ jobs:
           kill "$(cat /tmp/axon-mcp.pid 2>/dev/null)" 2>/dev/null || true
           docker rm -f axon-tei || true
           docker compose down || true
+          docker compose -f docker-compose.services.yaml down || true

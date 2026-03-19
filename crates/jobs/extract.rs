@@ -9,7 +9,7 @@ use crate::crates::core::health::redis_healthy;
 use crate::crates::core::logging::{log_debug, log_done, log_info, log_warn};
 use crate::crates::jobs::common::{
     JobTable, begin_schema_migration_tx, enqueue_job, make_pool, mark_job_failed,
-    open_amqp_channel, purge_queue_safe, reclaim_stale_running_jobs,
+    open_amqp_channel, purge_queue_safe, reclaim_stale_running_jobs, sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -77,6 +77,13 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_axon_extract_jobs_pending ON axon_extract_jobs(created_at ASC) WHERE status = 'pending'"
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_axon_extract_jobs_status_created_desc \
+         ON axon_extract_jobs(status, created_at DESC)",
     )
     .execute(&mut *tx)
     .await?;
@@ -195,13 +202,33 @@ pub async fn list_extract_jobs(
 ) -> Result<Vec<ExtractJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
-    Ok(sqlx::query_as::<_, ExtractJob>(
-        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json FROM axon_extract_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
+    let mut rows = sqlx::query_as::<_, ExtractJob>(
+        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json
+           FROM axon_extract_jobs
+           ORDER BY
+             CASE status
+               WHEN 'running' THEN 0
+               WHEN 'pending' THEN 1
+               WHEN 'completed' THEN 2
+               WHEN 'failed' THEN 3
+               WHEN 'canceled' THEN 4
+               ELSE 5
+             END,
+             created_at DESC,
+             updated_at DESC
+           LIMIT $1 OFFSET $2"#,
     )
     .bind(limit)
     .bind(offset)
     .fetch_all(&pool)
-    .await?)
+    .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
+    Ok(rows)
 }
 
 pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {

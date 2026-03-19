@@ -379,7 +379,7 @@ fi
 if [[ "$NO_DOCKER" == "false" ]]; then
   sep
   info "Starting Docker infrastructure..."
-  (cd "$REPO" && docker compose up -d \
+  (cd "$REPO" && docker compose -f docker-compose.services.yaml up -d \
     axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome)
 
   info "Starting test infrastructure..."
@@ -388,13 +388,13 @@ if [[ "$NO_DOCKER" == "false" ]]; then
   # Wait for Postgres to be ready
   info "Waiting for Postgres..."
   for i in $(seq 1 30); do
-    if (cd "$REPO" && docker compose exec -T axon-postgres \
+    if (cd "$REPO" && docker compose -f docker-compose.services.yaml exec -T axon-postgres \
         pg_isready -U axon >/dev/null 2>&1); then
       ok "Postgres is ready"
       break
     fi
     if (( i == 30 )); then
-      warn "Postgres did not become ready after 30s — check: docker compose logs axon-postgres"
+      warn "Postgres did not become ready after 30s — check: docker compose -f docker-compose.services.yaml logs axon-postgres"
     fi
     sleep 1
   done
@@ -413,9 +413,9 @@ if [[ "$NO_DOCKER" == "false" ]]; then
   done
 
   ok "Infrastructure containers:"
-  (cd "$REPO" && docker compose ps --format "  {{.Name}}: {{.Status}}" \
+  (cd "$REPO" && docker compose -f docker-compose.services.yaml ps --format "  {{.Name}}: {{.Status}}" \
     axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome 2>/dev/null \
-    || docker compose ps axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome)
+    || docker compose -f docker-compose.services.yaml ps axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome)
 
   ok "Test infrastructure containers:"
   (cd "$REPO" && docker compose -f docker-compose.test.yaml ps --format "  {{.Name}}: {{.Status}}" 2>/dev/null \

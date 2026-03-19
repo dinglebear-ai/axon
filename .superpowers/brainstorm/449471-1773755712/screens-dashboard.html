@@ -1,0 +1,138 @@
+<h2>Screen 1: Dashboard</h2>
+<p class="subtitle">Quick glance — "is my brain online?" Pull-to-refresh, no persistent connection.</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Dashboard — Connected</div>
+    <div class="mockup-body" style="background: #0f172a; padding: 0; max-width: 360px; margin: 0 auto;">
+      <!-- Status Bar -->
+      <div style="background: #1e293b; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="font-size: 18px; font-weight: bold; color: #e2e8f0;">Axon</div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></div>
+          <span style="color: #4ade80; font-size: 12px;">Connected</span>
+        </div>
+      </div>
+
+      <!-- Stats Cards -->
+      <div style="padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="background: #1e293b; border-radius: 12px; padding: 16px;">
+          <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Collection</div>
+          <div style="color: #e2e8f0; font-size: 24px; font-weight: bold; margin-top: 4px;">7.06M</div>
+          <div style="color: #64748b; font-size: 11px;">points in cortex</div>
+        </div>
+        <div style="background: #1e293b; border-radius: 12px; padding: 16px;">
+          <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Domains</div>
+          <div style="color: #e2e8f0; font-size: 24px; font-weight: bold; margin-top: 4px;">342</div>
+          <div style="color: #64748b; font-size: 11px;">indexed domains</div>
+        </div>
+        <div style="background: #1e293b; border-radius: 12px; padding: 16px;">
+          <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Active Jobs</div>
+          <div style="color: #e2e8f0; font-size: 24px; font-weight: bold; margin-top: 4px;">3</div>
+          <div style="color: #64748b; font-size: 11px;">2 crawl · 1 embed</div>
+        </div>
+        <div style="background: #1e293b; border-radius: 12px; padding: 16px;">
+          <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Sources</div>
+          <div style="color: #e2e8f0; font-size: 24px; font-weight: bold; margin-top: 4px;">12.4K</div>
+          <div style="color: #64748b; font-size: 11px;">indexed URLs</div>
+        </div>
+      </div>
+
+      <!-- Service Health -->
+      <div style="padding: 0 16px 16px;">
+        <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Services</div>
+        <div style="background: #1e293b; border-radius: 12px; overflow: hidden;">
+          <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+            <span style="color: #e2e8f0; font-size: 14px;">Qdrant</span>
+            <span style="color: #4ade80; font-size: 12px;">● healthy</span>
+          </div>
+          <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+            <span style="color: #e2e8f0; font-size: 14px;">TEI</span>
+            <span style="color: #4ade80; font-size: 12px;">● healthy</span>
+          </div>
+          <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+            <span style="color: #e2e8f0; font-size: 14px;">Postgres</span>
+            <span style="color: #4ade80; font-size: 12px;">● healthy</span>
+          </div>
+          <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
+            <span style="color: #e2e8f0; font-size: 14px;">RabbitMQ</span>
+            <span style="color: #4ade80; font-size: 12px;">● healthy</span>
+          </div>
+          <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #e2e8f0; font-size: 14px;">LLM</span>
+            <span style="color: #fbbf24; font-size: 12px;">● slow (2.1s)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Nav -->
+      <div style="background: #1e293b; padding: 12px 0; display: flex; justify-content: space-around; border-top: 1px solid #334155;">
+        <div style="text-align: center;">
+          <div style="color: #7c83ff; font-size: 11px; font-weight: bold;">Dashboard</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="color: #64748b; font-size: 11px;">Chat</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="color: #64748b; font-size: 11px;">History</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Dashboard — Unreachable</div>
+    <div class="mockup-body" style="background: #0f172a; padding: 0; max-width: 360px; margin: 0 auto;">
+      <!-- Status Bar -->
+      <div style="background: #1e293b; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="font-size: 18px; font-weight: bold; color: #e2e8f0;">Axon</div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></div>
+          <span style="color: #ef4444; font-size: 12px;">Unreachable</span>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div style="padding: 48px 32px; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;">⚡</div>
+        <div style="color: #e2e8f0; font-size: 16px; font-weight: bold; margin-bottom: 8px;">Can't reach Axon</div>
+        <div style="color: #94a3b8; font-size: 14px; margin-bottom: 24px;">Check that your Tailscale VPN is connected and the server is running.</div>
+        <div style="display: inline-block; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 24px; color: #60a5fa; font-size: 14px;">Retry</div>
+        <div style="margin-top: 16px;">
+          <span style="color: #64748b; font-size: 12px;">Server: http://100.120.242.29:49010</span>
+        </div>
+      </div>
+
+      <!-- Bottom Nav -->
+      <div style="background: #1e293b; padding: 12px 0; display: flex; justify-content: space-around; border-top: 1px solid #334155; margin-top: auto;">
+        <div style="text-align: center;">
+          <div style="color: #7c83ff; font-size: 11px; font-weight: bold;">Dashboard</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="color: #64748b; font-size: 11px;">Chat</div>
+        </div>
+        <div style="text-align: center;">
+          <div style="color: #64748b; font-size: 11px;">History</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>Data Sources</h3>
+  <div style="display: grid; gap: 8px; font-size: 14px;">
+    <div style="background: #1e293b; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between;">
+      <span style="color: #cbd5e1;">Stats cards</span>
+      <code style="color: #4ade80; background: #0f172a; padding: 2px 8px; border-radius: 4px;">GET /api/cortex/overview</code>
+    </div>
+    <div style="background: #1e293b; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between;">
+      <span style="color: #cbd5e1;">Service health</span>
+      <code style="color: #4ade80; background: #0f172a; padding: 2px 8px; border-radius: 4px;">GET /api/cortex/doctor</code>
+    </div>
+    <div style="background: #1e293b; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between;">
+      <span style="color: #cbd5e1;">Active jobs</span>
+      <code style="color: #4ade80; background: #0f172a; padding: 2px 8px; border-radius: 4px;">GET /api/cortex/status</code>
+    </div>
+  </div>
+</div>

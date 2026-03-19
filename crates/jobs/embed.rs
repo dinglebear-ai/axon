@@ -5,6 +5,7 @@ use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::jobs::common::{
     JobTable, begin_schema_migration_tx, enqueue_job, make_pool, mark_job_failed,
     open_amqp_connection_and_channel, purge_queue_safe, reclaim_stale_running_jobs,
+    sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -87,6 +88,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
     // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
     for idx_name in [
+        "idx_axon_embed_jobs_status_created_desc",
         "idx_axon_embed_jobs_pending",
         "idx_axon_embed_jobs_running_updated",
     ] {
@@ -105,6 +107,13 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
                 .await?;
         }
     }
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_embed_jobs_status_created_desc \
+         ON axon_embed_jobs(status, created_at DESC)",
+    )
+    .execute(pool)
+    .await?;
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_embed_jobs_pending ON axon_embed_jobs(created_at ASC) WHERE status = 'pending'"
@@ -217,13 +226,33 @@ pub async fn list_embed_jobs(
         ensure_schema(&pool).await?;
         let _ = SCHEMA_INIT.set(());
     }
-    Ok(sqlx::query_as::<_, EmbedJob>(
-        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,input_text,result_json,config_json FROM axon_embed_jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
+    let mut rows = sqlx::query_as::<_, EmbedJob>(
+        r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,input_text,result_json,config_json
+           FROM axon_embed_jobs
+           ORDER BY
+             CASE status
+               WHEN 'running' THEN 0
+               WHEN 'pending' THEN 1
+               WHEN 'completed' THEN 2
+               WHEN 'failed' THEN 3
+               WHEN 'canceled' THEN 4
+               ELSE 5
+             END,
+             created_at DESC,
+             updated_at DESC
+           LIMIT $1 OFFSET $2"#,
     )
     .bind(limit)
     .bind(offset)
     .fetch_all(&pool)
-    .await?)
+    .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
+    Ok(rows)
 }
 
 pub async fn cancel_embed_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {

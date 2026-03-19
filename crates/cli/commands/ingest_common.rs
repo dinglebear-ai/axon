@@ -1,6 +1,6 @@
 use crate::crates::cli::commands::common::{
-    JobStatus, handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors,
-    handle_job_list, handle_job_recover, handle_job_status,
+    JobStatus, filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup,
+    handle_job_clear, handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_done;
@@ -63,10 +63,7 @@ pub async fn maybe_handle_ingest_subcommand(
                 let removed = ingest_jobs::clear_ingest_jobs(cfg).await?;
                 handle_job_clear(cfg, removed, "ingest")?;
             } else if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({ "removed": 0, "queue_purged": false })
-                );
+                println!("{}", serde_json::json!({ "removed": 0 }));
             } else {
                 println!("{} aborted", symbol_for_status("canceled"));
             }
@@ -201,6 +198,7 @@ async fn handle_ingest_status(
 }
 
 async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Box<dyn Error>> {
+    let jobs = filter_jobs_for_status_view(cfg, jobs);
     if cfg.json_output {
         handle_job_list(cfg, jobs, "Ingest")?;
     } else {

@@ -176,6 +176,7 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     // before re-creating.
     for idx_name in [
         "idx_axon_crawl_jobs_status",
+        "idx_axon_crawl_jobs_status_created_desc",
         "idx_axon_crawl_jobs_pending",
         "idx_axon_crawl_jobs_running_updated",
     ] {
@@ -197,6 +198,13 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
 
     sqlx::query(
         "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_crawl_jobs_status ON axon_crawl_jobs(status)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_axon_crawl_jobs_status_created_desc \
+         ON axon_crawl_jobs(status, created_at DESC)",
     )
     .execute(pool)
     .await?;

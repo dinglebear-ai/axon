@@ -1,4 +1,5 @@
 import { Pool } from 'pg'
+import { normalizeLocalServiceUrl } from '@/lib/server/service-url'
 
 const DEFAULT_AXON_PG_URL = 'postgresql://axon:postgres@127.0.0.1:53432/axon'
 
@@ -9,8 +10,9 @@ type GlobalWithPgPool = typeof globalThis & {
 const globalWithPgPool = globalThis as GlobalWithPgPool
 
 function createPool(): Pool {
-  const connectionString =
+  const rawConnectionString =
     process.env.AXON_PG_URL ?? process.env.AXON_PG_MCP_URL ?? DEFAULT_AXON_PG_URL
+  const connectionString = normalizeLocalServiceUrl(rawConnectionString) ?? rawConnectionString
   const pool = new Pool({
     connectionString,
     max: 5,

@@ -133,7 +133,7 @@ export function MessageBranch({
       branches,
       setBranches,
     }),
-    [currentBranch, branches, goToNext, goToPrevious, setBranches],
+    [currentBranch, branches, goToNext, goToPrevious],
   )
 
   return (

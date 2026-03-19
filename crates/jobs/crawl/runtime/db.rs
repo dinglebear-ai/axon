@@ -3,6 +3,7 @@ use crate::crates::core::health::redis_healthy;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::jobs::common::{
     batch_enqueue_jobs, enqueue_job, make_pool, open_amqp_channel, purge_queue_safe,
+    sort_rows_for_status_view,
 };
 use redis::AsyncCommands;
 use std::error::Error;
@@ -98,7 +99,13 @@ pub async fn start_crawl_jobs_batch(
     ensure_schema(&pool).await?;
 
     let cfg_json = serde_json::to_value(to_job_config(cfg))?;
-    let url_strings: Vec<String> = start_urls.iter().map(|u| u.to_string()).collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut url_strings = Vec::with_capacity(start_urls.len());
+    for url in start_urls {
+        if seen.insert(*url) {
+            url_strings.push((*url).to_string());
+        }
+    }
 
     // 1. Find existing active jobs for all URLs in a single query.
     // Dedup by URL only — config differences are immaterial for an active crawl.
@@ -131,7 +138,7 @@ pub async fn start_crawl_jobs_batch(
         let inserted_rows = sqlx::query_as::<_, (Uuid, String)>(
             r#"
             WITH new_urls AS (
-                SELECT u FROM unnest($1::text[]) AS u
+                SELECT DISTINCT u FROM unnest($1::text[]) AS u
                 WHERE NOT EXISTS (
                     SELECT 1 FROM axon_crawl_jobs
                     WHERE url = u AND status IN ('pending','running')
@@ -162,7 +169,31 @@ pub async fn start_crawl_jobs_batch(
         ));
     }
 
-    // 4. Build results in original input order.
+    // 4. Fill race-guarded gaps by re-reading active jobs for unresolved URLs.
+    let unresolved_urls: Vec<String> = url_strings
+        .iter()
+        .filter(|url| !existing_map.contains_key(*url) && !new_map.contains_key(*url))
+        .cloned()
+        .collect();
+    if !unresolved_urls.is_empty() {
+        let raced_rows = sqlx::query_as::<_, (String, Uuid)>(
+            r#"
+            SELECT DISTINCT ON (url) url, id
+            FROM axon_crawl_jobs
+            WHERE status IN ('pending','running')
+              AND url = ANY($1)
+            ORDER BY url, created_at DESC
+            "#,
+        )
+        .bind(&unresolved_urls)
+        .fetch_all(&pool)
+        .await?;
+        for (url, id) in raced_rows {
+            new_map.entry(url).or_insert(id);
+        }
+    }
+
+    // 5. Build results in original input order.
     let mut results: Vec<(String, Uuid)> = Vec::with_capacity(start_urls.len());
     for url in &url_strings {
         if let Some(&id) = existing_map.get(url) {
@@ -170,11 +201,9 @@ pub async fn start_crawl_jobs_batch(
         } else if let Some(&id) = new_map.get(url) {
             results.push((url.clone(), id));
         }
-        // URLs that were filtered by the race guard in the CTE are silently
-        // dropped — they are now active via another concurrent insert.
     }
 
-    // 5. Enqueue only newly inserted jobs.
+    // 6. Enqueue only newly inserted jobs.
     let new_ids: Vec<Uuid> = new_map.values().copied().collect();
     if !new_ids.is_empty()
         && let Err(err) = batch_enqueue_jobs(cfg, &cfg.crawl_queue, &new_ids).await
@@ -212,12 +241,22 @@ pub async fn list_jobs(
 ) -> Result<Vec<CrawlJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
-    let rows = sqlx::query_as::<_, CrawlJob>(
+    let mut rows = sqlx::query_as::<_, CrawlJob>(
         r#"
         SELECT id, url, status, created_at, updated_at, started_at, finished_at, error_text
             , result_json
         FROM axon_crawl_jobs
-        ORDER BY created_at DESC
+        ORDER BY
+            CASE status
+                WHEN 'running' THEN 0
+                WHEN 'pending' THEN 1
+                WHEN 'completed' THEN 2
+                WHEN 'failed' THEN 3
+                WHEN 'canceled' THEN 4
+                ELSE 5
+            END,
+            created_at DESC,
+            updated_at DESC
         LIMIT $1 OFFSET $2
         "#,
     )
@@ -225,6 +264,12 @@ pub async fn list_jobs(
     .bind(offset)
     .fetch_all(&pool)
     .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
     Ok(rows)
 }
 
@@ -240,28 +285,36 @@ pub async fn cancel_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> 
     .await?
     .rows_affected();
 
-    let redis_client = redis::Client::open(cfg.redis_url.clone())?;
-    match tokio::time::timeout(
-        Duration::from_secs(3),
-        redis_client.get_multiplexed_async_connection(),
-    )
-    .await
-    {
-        Ok(Ok(mut conn)) => {
-            let key = format!("axon:crawl:cancel:{id}");
-            if let Err(err) = conn.set_ex::<_, _, ()>(key, "1", 24 * 60 * 60).await {
-                log_warn(&format!("crawl cancel signal failed for job {id}: {err}"));
+    if rows > 0 {
+        match redis::Client::open(cfg.redis_url.clone()) {
+            Ok(redis_client) => match tokio::time::timeout(
+                Duration::from_secs(3),
+                redis_client.get_multiplexed_async_connection(),
+            )
+            .await
+            {
+                Ok(Ok(mut conn)) => {
+                    let key = format!("axon:crawl:cancel:{id}");
+                    if let Err(err) = conn.set_ex::<_, _, ()>(key, "1", 24 * 60 * 60).await {
+                        log_warn(&format!("crawl cancel signal failed for job {id}: {err}"));
+                    }
+                }
+                Ok(Err(err)) => {
+                    log_warn(&format!(
+                        "crawl cancel signal skipped for job {id}: redis connect failed: {err}"
+                    ));
+                }
+                Err(_) => {
+                    log_warn(&format!(
+                        "crawl cancel signal skipped for job {id}: redis connect timeout after 3s"
+                    ));
+                }
+            },
+            Err(err) => {
+                log_warn(&format!(
+                    "crawl cancel signal skipped for job {id}: redis client open failed: {err}"
+                ));
             }
-        }
-        Ok(Err(err)) => {
-            log_warn(&format!(
-                "crawl cancel signal skipped for job {id}: redis connect failed: {err}"
-            ));
-        }
-        Err(_) => {
-            log_warn(&format!(
-                "crawl cancel signal skipped for job {id}: redis connect timeout after 3s"
-            ));
         }
     }
 

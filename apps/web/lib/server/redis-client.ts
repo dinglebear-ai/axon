@@ -1,5 +1,6 @@
 import { createClient, type RedisClientType } from 'redis'
 import { logError, logInfo } from '@/lib/server/logger'
+import { normalizeLocalServiceUrl } from '@/lib/server/service-url'
 
 let client: RedisClientType | null = null
 let connectPromise: Promise<void> | null = null
@@ -7,7 +8,7 @@ let connectPromise: Promise<void> | null = null
 function buildRedisUrl(): string | null {
   const raw = process.env.AXON_REDIS_URL?.trim()
   if (!raw) return null
-  return raw
+  return normalizeLocalServiceUrl(raw) ?? raw
 }
 
 export function getRedisClient(): RedisClientType | null {

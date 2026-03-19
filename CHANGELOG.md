@@ -1,5 +1,44 @@
 # Changelog
-Last Modified: 2026-03-16 (session: v0.26.0 — Chrome stealth extract, temporal vector search, spawn_blocking ingest, logging/client improvements)
+Last Modified: 2026-03-18 (session: v0.27.0 — ACP prewarm, services layer routing, error context, docker-compose split)
+
+## [0.27.0] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.26.0.
+
+### Highlights
+
+- **ACP adapter pre-warming** — `spawn_prewarm_task()` on server boot spawns the default Claude ACP adapter and sends a ping turn to force `establish_acp_session()`, eliminating ~45-second cold start on first chat message. Controlled via `AXON_ACP_PREWARM` (default: true). Includes per-turn timeout, hung session detection/eviction, and liveness tracking (`mark_turn_started`/`mark_turn_completed`).
+- **Services layer routing** — CLI commands (`embed`, `extract`, `crawl`, `refresh`, `status`) now dispatch through the services layer instead of calling job functions directly. Web cancel dispatch also routed through services.
+- **Error context improvements** — Replaced `anyhow!(e.to_string())` anti-patterns with descriptive `.map_err()` context across vector ops, services, crawl engine, and CLI. Added `thiserror` dep with `HttpError` derive and `JobError` enum.
+- **Structured tracing migration** — Converted `log::` macros to structured `tracing::` macros in ACP and web modules.
+- **Docker Compose split** — Services (Postgres, Redis, Qdrant, RabbitMQ, TEI) extracted to `docker-compose.services.yaml`.
+- **MCP HTTP transport** — MCP config now supports `http` transport mode alongside `stdio`.
+
+### Commits since v0.26.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| f2eb21bd | fix | prevent mark_turn_completed skip on prewarm timeout/channel errors |
+| cf81cdd5 | feat | wire ACP prewarm into server startup |
+| fc8d0564 | feat | add ACP adapter pre-warming module |
+| aad02369 | feat | add AXON_ACP_PREWARM config option (default: true) |
+| 24b86975 | refactor | extract build_agent_key() helper from pulse_chat |
+| bc268fd0 | fix | route sync_crawl embed job through services layer |
+| 54e4ea4f | refactor | route web cancel dispatch through services layer |
+| cdea4645 | refactor | route CLI refresh schedule through services layer |
+| 4ef11251 | refactor | route CLI embed/extract/crawl subcommands through services |
+| d8cff293 | fix | replace anyhow!(e.to_string()) anti-patterns with descriptive context |
+| 26fc0229 | fix | add descriptive .map_err() context to crawl engine errors |
+| 5719ffc2 | fix | convert log:: to structured tracing:: in web module |
+| cfd8999d | fix | add descriptive .map_err() context to services error propagation |
+| ddd38583 | refactor | extract update_latest_reflink + prepare_crawl_output_dir to dir_ops |
+| 0bf1e05d | fix | replace Err(string.into()) with anyhow::anyhow! in CLI handlers |
+| 78cee3b5 | fix | replace .map_err(\|e\| e.to_string().into()) with descriptive context |
+| b5bf9a28 | feat | add thiserror dep, migrate HttpError to derive, add JobError enum |
+| cc23b36a | fix | convert log:: to structured tracing:: in ACP module |
+| 62be990f | feat | shared embed_with_retry, session refactors, MCP query filters |
+| 67351322 | fix | error on malformed vector elements instead of silent zero-fill |
+| b717e441 | docs | document migrate command in CLAUDE.md |
 
 ## [0.26.0] — feat/pulse-shell-and-hybrid-search
 
@@ -21,7 +60,7 @@ This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.
 
 | SHA | Type | Description |
 |-----|------|-------------|
-| *(this commit)* | feat | Chrome stealth extract, temporal search, spawn_blocking ingest, logging/client improvements |
+| 3d9f3476 | feat | Chrome stealth extract, temporal search, spawn_blocking ingest, logging/client improvements |
 | ff50c232 | fix | wire CDP URL resolution, network-idle wait, render_mode persistence in Chrome extract path |
 | cb60b108 | refactor | extract Chrome path to engine/chrome.rs (monolith limit) |
 | 516628ec | feat | temporal search via --since / --before flags |

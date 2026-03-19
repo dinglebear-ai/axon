@@ -1,3 +1,4 @@
+import { normalizeLocalServiceUrl } from '@/lib/server/service-url'
 import type { PulseChatRequest, PulseCitation } from './types'
 
 interface QdrantPoint {
@@ -60,8 +61,8 @@ export async function retrieveFromCollections(
   selectedCollections: string[],
   limit = 4,
 ): Promise<PulseCitation[]> {
-  const qdrantUrl = process.env.QDRANT_URL
-  const teiUrl = process.env.TEI_URL
+  const qdrantUrl = normalizeLocalServiceUrl(process.env.QDRANT_URL)
+  const teiUrl = normalizeLocalServiceUrl(process.env.TEI_URL)
   if (!qdrantUrl || !teiUrl) return []
 
   try {

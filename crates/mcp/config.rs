@@ -29,7 +29,7 @@ pub fn load_mcp_config() -> Config {
         cfg.qdrant_url = normalize_local_service_url(v);
     }
     if let Some(v) = env("TEI_URL") {
-        cfg.tei_url = v;
+        cfg.tei_url = normalize_local_service_url(v);
     }
     if let Some(v) = env("OPENAI_BASE_URL") {
         cfg.openai_base_url = v;
@@ -173,6 +173,30 @@ mod tests {
         match prev_shell {
             Some(v) => unsafe { env::set_var(SHELL, v) },
             None => unsafe { env::remove_var(SHELL) },
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn load_mcp_config_normalizes_tei_url() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const TEI: &str = "TEI_URL";
+        let prev_tei = env::var(TEI).ok();
+
+        unsafe {
+            env::set_var(TEI, "http://axon-tei:80");
+        }
+
+        let cfg = load_mcp_config();
+
+        assert_eq!(
+            cfg.tei_url,
+            normalize_local_service_url("http://axon-tei:80".to_string())
+        );
+
+        match prev_tei {
+            Some(v) => unsafe { env::set_var(TEI, v) },
+            None => unsafe { env::remove_var(TEI) },
         }
     }
 }

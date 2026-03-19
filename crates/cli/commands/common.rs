@@ -262,6 +262,25 @@ pub trait JobStatus {
     fn to_errors_response_json(&self) -> serde_json::Value;
 }
 
+pub fn include_job_for_status_view(cfg: &Config, status: &str) -> bool {
+    if cfg.active_status_only {
+        return matches!(status, "pending" | "running" | "processing" | "scraping");
+    }
+    if cfg.recent_status_only {
+        return matches!(
+            status,
+            "pending" | "running" | "processing" | "scraping" | "completed"
+        );
+    }
+    true
+}
+
+pub fn filter_jobs_for_status_view<T: JobStatus>(cfg: &Config, jobs: Vec<T>) -> Vec<T> {
+    jobs.into_iter()
+        .filter(|job| include_job_for_status_view(cfg, job.status()))
+        .collect()
+}
+
 macro_rules! impl_job_status {
     ($ty:path, $status_ctor:path, $summary_ctor:path) => {
         impl JobStatus for $ty {
@@ -455,6 +474,7 @@ pub fn handle_job_list<T: JobStatus + serde::Serialize>(
     jobs: Vec<T>,
     command_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let jobs = filter_jobs_for_status_view(cfg, jobs);
     if cfg.json_output {
         let entries: Vec<serde_json::Value> =
             jobs.iter().map(|j| j.to_summary_entry_json()).collect();
@@ -502,13 +522,10 @@ pub fn handle_job_clear(
     command_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({ "removed": removed, "queue_purged": true })
-        );
+        println!("{}", serde_json::json!({ "removed": removed }));
     } else {
         println!(
-            "{} cleared {} {command_name} jobs and purged queue",
+            "{} cleared {} {command_name} jobs and attempted queue purge",
             symbol_for_status("completed"),
             removed
         );

@@ -173,7 +173,15 @@ export function QueueItemAttachment({ className, ...props }: ComponentProps<'div
   return <div className={cn('mt-1 flex flex-wrap gap-2', className)} {...props} />
 }
 
-export function QueueItemImage({ className, src, alt, ...props }: ComponentProps<'img'>) {
+type QueueItemImageProps = Omit<
+  ComponentProps<typeof Image>,
+  'width' | 'height' | 'src' | 'alt'
+> & {
+  src?: string
+  alt?: string
+}
+
+export function QueueItemImage({ className, src, alt, ...props }: QueueItemImageProps) {
   if (!src) return null
   return (
     <Image
@@ -182,7 +190,7 @@ export function QueueItemImage({ className, src, alt, ...props }: ComponentProps
       width={32}
       height={32}
       className={cn('h-8 w-8 rounded border object-cover', className)}
-      {...(props as any)}
+      {...props}
     />
   )
 }

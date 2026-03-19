@@ -1,6 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
-use crate::crates::jobs::common::{enqueue_job, make_pool, purge_queue_safe};
+use crate::crates::jobs::common::{
+    enqueue_job, make_pool, purge_queue_safe, sort_rows_for_status_view,
+};
 use crate::crates::jobs::status::JobStatus;
 use sqlx::PgPool;
 use std::error::Error;
@@ -74,24 +76,34 @@ pub async fn list_ingest_jobs(
     ));
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
-    Ok(sqlx::query_as::<_, IngestJob>(
+    let mut rows = sqlx::query_as::<_, IngestJob>(
         "SELECT id,status,source_type,target,created_at,updated_at,started_at,finished_at,\
          error_text,result_json,config_json FROM axon_ingest_jobs \
          WHERE ($3::text IS NULL OR source_type = $3) \
          ORDER BY CASE status \
            WHEN 'running' THEN 0 \
            WHEN 'pending' THEN 1 \
-           WHEN 'failed'  THEN 2 \
-           WHEN 'completed' THEN 3 \
-           ELSE 4 \
-         END, created_at DESC \
+           WHEN 'completed' THEN 2 \
+           WHEN 'failed' THEN 3 \
+           WHEN 'canceled' THEN 4 \
+           ELSE 5 \
+         END, \
+         created_at DESC, \
+         updated_at DESC \
          LIMIT $1 OFFSET $2",
     )
     .bind(limit)
     .bind(offset)
     .bind(source_filter)
     .fetch_all(&pool)
-    .await?)
+    .await?;
+    sort_rows_for_status_view(
+        &mut rows,
+        |job| job.status.as_str(),
+        |job| &job.created_at,
+        |job| &job.updated_at,
+    );
+    Ok(rows)
 }
 
 pub async fn cancel_ingest_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {

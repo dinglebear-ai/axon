@@ -109,6 +109,7 @@ When adding a **non-`Option`** field:
 | `axon-redis` | `127.0.0.1:53379` |
 | `axon-rabbitmq` | `127.0.0.1:45535` |
 | `axon-qdrant` | `127.0.0.1:53333` |
+| `axon-tei` | `127.0.0.1:52000` |
 | `axon-chrome` | `127.0.0.1:6000` |
 
 `.env` can safely use container-internal DNS — the CLI rewrites transparently.

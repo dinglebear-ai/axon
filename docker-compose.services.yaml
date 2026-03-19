@@ -1,0 +1,205 @@
+name: axon-services
+
+# Infrastructure services: postgres, redis, rabbitmq, qdrant, tei, chrome.
+# Start these before app containers in docker-compose.yaml:
+#   docker compose -f docker-compose.services.yaml up -d
+#   docker compose up -d
+
+x-common-service: &common-service
+  env_file:
+    - services.env
+  networks:
+    - axon
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+      compress: "true"
+
+services:
+  axon-postgres:
+    <<: *common-service
+    image: postgres:17-alpine
+    container_name: axon-postgres
+    ports:
+      - "127.0.0.1:53432:5432"
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/axon/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  axon-redis:
+    <<: *common-service
+    image: redis:8.2-alpine
+    container_name: axon-redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-changeme}"]
+    ports:
+      - "127.0.0.1:53379:6379"
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/axon/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  axon-rabbitmq:
+    <<: *common-service
+    image: rabbitmq:4.0-management
+    container_name: axon-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-axon}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-axonrabbit}
+    ports:
+      - "127.0.0.1:45535:5672"
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/axon/rabbitmq:/var/lib/rabbitmq
+      - ./docker/rabbitmq/20-axon.conf:/etc/rabbitmq/conf.d/20-axon.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  axon-qdrant:
+    <<: *common-service
+    image: qdrant/qdrant:v1.13.1
+    container_name: axon-qdrant
+    ports:
+      - "127.0.0.1:53333:6333"
+      - "127.0.0.1:53334:6334"  # gRPC
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
+      - ./docker/qdrant/production.yaml:/qdrant/config/production.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/bin/bash",
+          "-ec",
+          "exec 3<>/dev/tcp/127.0.0.1/6333; printf \"GET /readyz HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q \"200\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  axon-tei:
+    <<: *common-service
+    image: ghcr.io/huggingface/text-embeddings-inference:89-latest
+    container_name: axon-tei
+    ports:
+      - "${TEI_HTTP_PORT:-52000}:80"
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/tei:/data
+    command:
+      - --model-id
+      - ${TEI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
+      - --dtype
+      - float16
+      - --default-prompt
+      - "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+      - --max-concurrent-requests
+      - "${TEI_MAX_CONCURRENT_REQUESTS:-80}"
+      - --max-batch-tokens
+      - "${TEI_MAX_BATCH_TOKENS:-163840}"
+      - --max-batch-requests
+      - "${TEI_MAX_BATCH_REQUESTS:-80}"
+      - --max-client-batch-size
+      - "${TEI_MAX_CLIENT_BATCH_SIZE:-128}"
+      - --pooling
+      - ${TEI_POOLING:-last-token}
+      - --tokenization-workers
+      - "${TEI_TOKENIZATION_WORKERS:-8}"
+      - --auto-truncate
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
+      NVIDIA_REQUIRE_CUDA: "cuda>=12.2"
+      CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-0}"
+      PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:1024
+      OMP_NUM_THREADS: 8
+      MKL_NUM_THREADS: 8
+      TOKENIZERS_PARALLELISM: "true"
+      CUDA_CACHE_DISABLE: 0
+      RUST_LOG: text_embeddings_router=info
+      HF_HUB_CACHE: /data/cache
+      HF_HUB_ENABLE_HF_TRANSFER: 1
+      HF_TOKEN: ${HF_TOKEN}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  axon-chrome:
+    # headless_browser manager + chrome-headless-shell
+    # Port 6000: management API (/json/version, /fork, /shutdown)
+    # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
+    container_name: axon-chrome
+    build:
+      context: .
+      dockerfile: docker/chrome/Dockerfile
+    env_file: []  # no app secrets needed in the browser container
+    shm_size: "2gb"
+    ports:
+      - "127.0.0.1:9222:9222"  # CDP proxy
+      - "127.0.0.1:9223:9223"  # raw Chrome DevTools
+      - "127.0.0.1:6000:6000"  # management API
+    environment:
+      HOSTNAME_OVERRIDE: axon-chrome
+    networks:
+      - axon
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL --max-time 4 http://127.0.0.1:6000/json/version > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+networks:
+  axon:
+    driver: bridge
+    name: axon

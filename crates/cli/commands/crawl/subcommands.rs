@@ -1,7 +1,7 @@
 use super::audit;
 use crate::crates::cli::commands::common::{
-    handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_recover,
-    handle_job_status, truncate_chars,
+    filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
+    handle_job_errors, handle_job_recover, handle_job_status, truncate_chars,
 };
 use crate::crates::cli::commands::job_contracts::JobSummaryEntry;
 use crate::crates::core::config::Config;
@@ -43,10 +43,7 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
                 let removed = crawl_service::crawl_clear(cfg).await?;
                 handle_job_clear(cfg, removed, "crawl")?;
             } else if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({ "removed": 0, "queue_purged": false })
-                );
+                println!("{}", serde_json::json!({ "removed": 0 }));
             } else {
                 println!("{} aborted", symbol_for_status("canceled"));
             }
@@ -104,14 +101,14 @@ fn print_status_metrics(metrics: &serde_json::Value) {
         .unwrap_or(0);
     let pages_target = pages_discovered.saturating_sub(filtered_urls);
     let thin_md = metrics.get("thin_md").and_then(|v| v.as_u64()).unwrap_or(0);
-    let thin_pct = if pages_discovered > 0 {
-        (thin_md as f64 / pages_discovered as f64) * 100.0
+    let thin_pct = if pages_target > 0 {
+        (thin_md as f64 / pages_target as f64) * 100.0
     } else {
         0.0
     };
     println!("  {} {}", muted("md created:"), md_created);
     println!("  {} {}", muted("pages target:"), pages_target);
-    println!("  {} {:.1}%", muted("thin % of discovered:"), thin_pct);
+    println!("  {} {:.1}%", muted("thin % of target:"), thin_pct);
     println!("  {} {}", muted("filtered urls:"), filtered_urls);
     println!("  {} {}", muted("pages crawled:"), pages_crawled);
     println!("  {} {}", muted("pages discovered:"), pages_discovered);
@@ -220,7 +217,7 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 }
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = crawl_service::crawl_list_raw(cfg, 50, 0).await?;
+    let jobs = filter_jobs_for_status_view(cfg, crawl_service::crawl_list_raw(cfg, 50, 0).await?);
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);

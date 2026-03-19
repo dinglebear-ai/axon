@@ -133,8 +133,21 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     pub(in crate::crates::core::config) graph: bool,
 
     /// Status mode: show only watchdog-reclaimed jobs.
-    #[arg(global = true, long, action = ArgAction::SetTrue)]
+    #[arg(
+        global = true,
+        long,
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["active", "recent"]
+    )]
     pub(in crate::crates::core::config) reclaimed: bool,
+
+    /// Show only active jobs (running/pending) in list and status views.
+    #[arg(global = true, long, action = ArgAction::SetTrue, conflicts_with = "recent")]
+    pub(in crate::crates::core::config) active: bool,
+
+    /// Show active + completed jobs (hide failed/canceled) in list and status views.
+    #[arg(global = true, long, action = ArgAction::SetTrue, conflicts_with = "active")]
+    pub(in crate::crates::core::config) recent: bool,
 
     #[arg(global = true, long, value_enum, default_value_t = PerformanceProfile::HighStable)]
     pub(in crate::crates::core::config) performance_profile: PerformanceProfile,
@@ -281,7 +294,7 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     pub(in crate::crates::core::config) research_depth: Option<usize>,
 
     /// Time range filter for search (day|week|month|year). Default: none.
-    #[arg(global = true, long)]
+    #[arg(global = true, long, value_parser = ["day", "week", "month", "year"])]
     pub(in crate::crates::core::config) search_time_range: Option<String>,
 
     /// Lower bound for temporal search filter. Formats: 7d, 30d, 1w, YYYY-MM-DD, RFC3339.

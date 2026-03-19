@@ -1,15 +1,16 @@
 # axon_cli — Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-03-10
+Last Modified: 2026-03-18
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
 ## Quick Start
 
-> **Local dev mode**: Workers and the web frontend run as local processes, not in Docker. Only infrastructure (Postgres, Redis, RabbitMQ, Qdrant, Chrome) runs via Docker Compose.
+> **Local dev mode**: Workers and the web frontend run as local processes, not in Docker. Infrastructure (Postgres, Redis, RabbitMQ, Qdrant, Chrome, TEI) runs via a separate Docker Compose file (`docker-compose.services.yaml`).
 
 ```bash
 # 1. Start infrastructure only
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+docker compose -f docker-compose.services.yaml up -d
+# or: just services-up
 
 # 2. Recommended: use the wrapper script (auto-sources .env)
 ./scripts/axon doctor
@@ -215,7 +216,18 @@ High-level subsystem map:
 
 ## Infrastructure
 
-### Docker Services
+### Docker Compose Split
+
+The stack is split into two compose files sharing a named `axon` bridge network:
+
+| File | Contents | Env file |
+|------|----------|----------|
+| `docker-compose.services.yaml` | Infrastructure (postgres, redis, rabbitmq, qdrant, chrome, TEI) | `services.env` |
+| `docker-compose.yaml` | App containers (workers, web) | `.env` |
+
+Start infra first, then app containers. Both compose files read `.env` for YAML `${VAR}` interpolation (Docker Compose default). Container environment is injected via `env_file:`.
+
+### Infrastructure Services (`docker-compose.services.yaml`)
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
@@ -223,15 +235,29 @@ High-level subsystem map:
 | `axon-redis` | redis:8.2-alpine | `53379` | Queue state / caching |
 | `axon-rabbitmq` | rabbitmq:4.0-management | `45535` | AMQP job queue |
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | `53333`, `53334` (gRPC) | Vector store |
+| `axon-tei` | ghcr.io/huggingface/text-embeddings-inference:latest | `52000` | Embedding generation (GPU, NVIDIA) |
 | `axon-chrome` | built from docker/chrome/Dockerfile | `6000` (management), `9222` (CDP proxy) | headless_browser + chrome-headless-shell |
-| `axon-workers` | **local process** | — | Run with `cargo run --bin axon -- crawl worker` (and equivalent for extract/embed/ingest). Not in Docker for local dev. |
-| `axon-web` | **local process** | `49010` | Run with `cd apps/web && pnpm dev`. Not in Docker for local dev. |
 
-Infrastructure services (postgres, redis, rabbitmq, qdrant, chrome) live on the `axon` bridge network. Data volumes use `${AXON_DATA_DIR:-./data}/axon/...` (override with `AXON_DATA_DIR` in `.env`).
+### App Services (`docker-compose.yaml`)
+
+| Service | Image | Exposed Port | Purpose |
+|---------|-------|-------------|---------|
+| `axon-workers` | built from docker/Dockerfile | `49000`, `8001` | Workers + axon serve + MCP HTTP |
+| `axon-web` | built from docker/web/Dockerfile | `49010` | Next.js dashboard |
+
+For local dev, workers and web run as local processes instead:
+
+| Service | Local dev | Command |
+|---------|-----------|---------|
+| `axon-workers` | **local process** | `cargo run --bin axon -- crawl worker` (and equivalent for extract/embed/ingest) |
+| `axon-web` | **local process** | `cd apps/web && pnpm dev` (port 49010) |
+
+All services live on the `axon` bridge network. Data volumes use `${AXON_DATA_DIR:-./data}/axon/...` (override with `AXON_DATA_DIR`).
 
 ```bash
-# Start infrastructure only (no workers or web)
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+# Start infrastructure (postgres, redis, rabbitmq, qdrant, tei, chrome)
+just services-up
+# or: docker compose -f docker-compose.services.yaml up -d
 
 # Run workers locally (each in its own terminal or via a process manager)
 cargo run --bin axon -- crawl worker
@@ -242,30 +268,35 @@ cargo run --bin axon -- extract worker
 cd apps/web && pnpm dev    # → http://localhost:49010
 
 # Check infra health
-docker compose ps
+docker compose -f docker-compose.services.yaml ps
 
 # Tail infra logs
-docker compose logs -f axon-postgres axon-redis axon-rabbitmq axon-qdrant
-```
+docker compose -f docker-compose.services.yaml logs -f
 
-### External Service: TEI (Text Embeddings Inference)
+# Full local dev (infra + all workers + web server + MCP + Next.js)
+just dev
 
-TEI is **not** in docker-compose — it's an external self-hosted service. Set `TEI_URL` in `.env`.
-
-```bash
-TEI_URL=http://YOUR_TEI_HOST:52000
+# Stop everything
+just down-all
 ```
 
 ## Environment Variables
 
-Copy `.env.example` → `.env` and fill in values:
+Two env files:
+
+- **`.env`** — App runtime vars for workers/web + shared compose interpolation vars (credentials, `AXON_DATA_DIR`). Docker Compose reads this automatically for `${VAR}` substitution in both compose files.
+- **`services.env`** — Infrastructure credentials injected into service containers via `env_file:`.
+
+Copy `.env.example` → `.env` and `services.env`, then fill in values:
 
 ```bash
+# === .env (app runtime + shared interpolation) ===
+
 # Compose persistent data root on host
 AXON_DATA_DIR=/home/yourname/appdata
 
 # Postgres
-AXON_PG_URL=postgresql://axon:postgres@axon-postgres:5432/axon
+AXON_PG_URL=postgresql://axon:CHANGE_ME@127.0.0.1:53432/axon
 
 # Redis
 AXON_REDIS_URL=redis://:CHANGE_ME@axon-redis:6379
@@ -276,8 +307,8 @@ AXON_AMQP_URL=amqp://axon:CHANGE_ME@axon-rabbitmq:5672
 # Qdrant
 QDRANT_URL=http://axon-qdrant:6333
 
-# TEI embeddings (external — required for embed/query/ask)
-TEI_URL=http://REPLACE_WITH_TEI_HOST:52000
+# TEI embeddings (on axon network — container DNS)
+TEI_URL=http://axon-tei:80
 
 # LLM (required for extract and ask commands)
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
@@ -424,7 +455,7 @@ The `Dockerfile` builds from `docker/Dockerfile`. The build command inside the c
 cargo build --release --bin axon
 ```
 
-`docker-compose.yaml` sets `context: .` — run `docker compose build` from this directory, not from a parent workspace.
+Both compose files set `context: .` — run `docker compose build` from this directory, not from a parent workspace.
 
 ### `spider_agent` path dep (CI / fresh environments)
 
@@ -511,8 +542,12 @@ just fix         # cargo fmt + clippy --fix (auto-repair)
 just precommit   # full pre-commit: monolith check + verify
 just watch-check # cargo watch: check + test-lib on every file save
 just rebuild     # check + test + docker-build (pre-deploy gate)
-just up          # docker compose up -d --build
-just down        # docker compose down
+just services-up # start infra (postgres, redis, rabbitmq, qdrant, tei, chrome)
+just services-down # stop infra
+just up          # build + start app containers (workers + web)
+just down        # stop app containers
+just down-all    # stop everything (app + infra)
+just dev         # full local dev (infra + workers + web + MCP)
 ```
 
 ### Run directly

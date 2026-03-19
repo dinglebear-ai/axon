@@ -27,6 +27,7 @@ pub async fn status_snapshot(cfg: &Config) -> Result<serde_json::Value, Box<dyn 
         &jobs.embed,
         &jobs.ingest,
         &jobs.refresh,
+        &jobs.graph,
     ))
 }
 
@@ -39,6 +40,7 @@ pub async fn status_text(cfg: &Config) -> Result<String, Box<dyn Error>> {
     lines.push(format!("embed jobs:   {}", jobs.embed.len()));
     lines.push(format!("ingest jobs:  {}", jobs.ingest.len()));
     lines.push(format!("refresh jobs: {}", jobs.refresh.len()));
+    lines.push(format!("graph jobs:   {}", jobs.graph.len()));
     Ok(lines.join("\n"))
 }
 
@@ -50,6 +52,7 @@ async fn run_status_impl(cfg: &Config) -> Result<(), Box<dyn Error>> {
         &jobs.embed,
         &jobs.ingest,
         &jobs.refresh,
+        &jobs.graph,
     );
     Ok(())
 }

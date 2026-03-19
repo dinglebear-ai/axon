@@ -141,10 +141,7 @@ async fn handle_refresh_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
 async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if !confirm_destructive(cfg, "Clear all refresh jobs and purge refresh queue?")? {
         if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::json!({"removed": 0, "queue_purged": false})
-            );
+            println!("{}", serde_json::json!({ "removed": 0 }));
         } else {
             println!("{} aborted", symbol_for_status("canceled"));
         }
