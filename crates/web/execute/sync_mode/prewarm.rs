@@ -15,6 +15,8 @@
 
 use std::sync::Arc;
 
+use anyhow::Context as _;
+
 use crate::crates::core::config::Config;
 use crate::crates::services::acp::{self as acp_svc, SESSION_CACHE};
 use crate::crates::services::events::ServiceEvent;
@@ -36,7 +38,7 @@ fn default_prewarm_caps() -> AdapterCapabilities {
 
 /// Pre-warm a single ACP adapter by spawning it and sending a ping turn
 /// to force session establishment.
-async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<String, String> {
+async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Result<String> {
     let caps = default_prewarm_caps();
     let agent_key = build_agent_key(agent, false, &[], &caps);
 
@@ -50,7 +52,9 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
         return Ok(agent_key);
     }
 
-    let adapter = resolve_acp_adapter_command(cfg, agent, caps)?;
+    let adapter = resolve_acp_adapter_command(cfg, agent, caps)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .context("resolve adapter command")?;
     let adapter_name = std::path::Path::new(&adapter.program)
         .file_name()
         .and_then(|n| n.to_str())
@@ -65,7 +69,10 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
     );
 
     let scaffold = acp_svc::AcpClientScaffold::new(adapter.clone());
-    let initialize = scaffold.prepare_initialize().map_err(|e| e.to_string())?;
+    let initialize = scaffold
+        .prepare_initialize()
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .context("prepare_initialize failed")?;
     let cwd = resolve_prewarm_working_dir().await?;
 
     // Use prepare_session_setup with a minimal AcpPromptTurnRequest.
@@ -80,7 +87,8 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
     };
     let session_setup = scaffold
         .prepare_session_setup(&minimal_req, &cwd)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .context("prepare_session_setup failed")?;
 
     let permission_responders: acp_svc::PermissionResponderMap = Arc::new(dashmap::DashMap::new());
 
@@ -119,7 +127,8 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
             result_tx,
         })
         .await
-        .map_err(|e| format!("prewarm turn dispatch failed: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .context("prewarm turn dispatch failed")?;
 
     // Drain events so the adapter loop doesn't block.
     let drain_handle = tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
@@ -165,7 +174,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
 }
 
 /// Resolve the working directory for pre-warmed adapters.
-async fn resolve_prewarm_working_dir() -> Result<std::path::PathBuf, String> {
+async fn resolve_prewarm_working_dir() -> anyhow::Result<std::path::PathBuf> {
     let base = std::env::var("AXON_DATA_DIR").unwrap_or_else(|_| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
         format!("{home}/.local/share")
@@ -173,7 +182,7 @@ async fn resolve_prewarm_working_dir() -> Result<std::path::PathBuf, String> {
     let path = std::path::PathBuf::from(base).join("axon").join("prewarm");
     tokio::fs::create_dir_all(&path)
         .await
-        .map_err(|e| format!("failed to create prewarm dir: {e}"))?;
+        .context("failed to create prewarm working dir")?;
     Ok(path)
 }
 

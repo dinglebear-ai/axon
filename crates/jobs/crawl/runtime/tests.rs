@@ -130,6 +130,47 @@ async fn crawl_start_job_dedupes_active_pending_job() -> Result<(), Box<dyn Erro
 
 #[tokio::test]
 #[serial]
+async fn crawl_start_jobs_batch_dedupes_duplicate_input_urls() -> Result<(), Box<dyn Error>> {
+    let Some(pg_url) = resolve_test_pg_url() else {
+        return Ok(());
+    };
+    let cfg = test_config(&pg_url);
+    if make_pool(&cfg).await.is_err() {
+        return Ok(());
+    }
+
+    let url = format!("https://example.com/crawl-batch/{}", Uuid::new_v4());
+    let urls = vec![url.as_str(), url.as_str(), url.as_str()];
+    let results = start_crawl_jobs_batch(&cfg, &urls).await?;
+
+    assert_eq!(
+        results.len(),
+        1,
+        "batch insert should normalize duplicate URLs"
+    );
+    assert_eq!(results[0].0, url);
+
+    let pool = make_pool(&cfg).await?;
+    let row_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_crawl_jobs WHERE url = $1 AND status = 'pending'",
+    )
+    .bind(&url)
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(
+        row_count, 1,
+        "only one pending row should exist per deduped URL"
+    );
+
+    let _ = sqlx::query("DELETE FROM axon_crawl_jobs WHERE url = $1")
+        .bind(&url)
+        .execute(&pool)
+        .await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
 async fn crawl_recover_reclaims_confirmed_stale_running_job() -> Result<(), Box<dyn Error>> {
     let Some(pg_url) = resolve_test_pg_url() else {
         return Ok(());

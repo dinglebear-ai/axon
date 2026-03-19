@@ -366,7 +366,7 @@ pub(super) enum JobSubcommand {
 #[cfg(test)]
 mod tests {
     use super::Cli;
-    use clap::Parser;
+    use clap::{Parser, error::ErrorKind};
 
     #[test]
     fn parse_mcp_transport_stdio_flag() {
@@ -393,6 +393,39 @@ mod tests {
         assert!(
             result.is_ok(),
             "migrate --from --to should parse: {result:?}"
+        );
+    }
+
+    #[test]
+    fn parse_rejects_active_and_recent_together() {
+        let result = Cli::try_parse_from(["axon", "--active", "--recent", "status"]);
+        assert!(result.is_err(), "active/recent should conflict");
+        assert_eq!(
+            result.expect_err("conflict expected").kind(),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    #[test]
+    fn parse_rejects_reclaimed_and_active_together() {
+        let result = Cli::try_parse_from(["axon", "--reclaimed", "--active", "status"]);
+        assert!(result.is_err(), "reclaimed/active should conflict");
+        assert_eq!(
+            result.expect_err("conflict expected").kind(),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    #[test]
+    fn parse_rejects_invalid_search_time_range_value() {
+        let result = Cli::try_parse_from(["axon", "--search-time-range", "decade", "search", "q"]);
+        assert!(
+            result.is_err(),
+            "invalid search-time-range should fail clap parsing"
+        );
+        assert_eq!(
+            result.expect_err("invalid value expected").kind(),
+            ErrorKind::InvalidValue
         );
     }
 }
