@@ -238,7 +238,7 @@ Use CLI-identical action names:
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
-- `scrape`, `research`, `ask`, `screenshot`, `help`, `status`
+- `scrape`, `research`, `ask`, `screenshot`, `export`, `help`, `status`
 
 Examples:
 - `action: "ingest", subaction: "start"`
@@ -261,6 +261,7 @@ Direct actions:
 - `research`
 - `ask`
 - `screenshot`
+- `export`
 
 Lifecycle families:
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover`
