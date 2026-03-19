@@ -1,9 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::services::acp::{AcpClientScaffold, PermissionResponderMap};
 use crate::crates::services::events::ServiceEvent;
-use crate::crates::services::types::{
-    AcpAdapterCommand, AcpBridgeEvent, AcpPromptTurnRequest, AcpUsageUpdate,
-};
+use crate::crates::services::types::{AcpAdapterCommand, AcpBridgeEvent, AcpPromptTurnRequest};
 use std::error::Error as StdError;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -116,7 +114,7 @@ pub async fn complete_streaming<F>(
     on_delta: F,
 ) -> Result<AcpCompletionResponse, Box<dyn StdError>>
 where
-    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send + 'static,
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
     let runner = AcpRuntimeCompletionRunner::from_config(cfg)?;
     complete_streaming_with_runner(&runner, req, on_delta).await
@@ -129,7 +127,9 @@ pub async fn complete_text_with_runner<R>(
 where
     R: AcpCompletionRunner + ?Sized,
 {
-    let turn_result = runner.complete_text(req).await?;
+    let turn_result = runner
+        .complete_text(normalize_stream_flag(req, false))
+        .await?;
     Ok(extract_completion_result(turn_result))
 }
 
@@ -140,9 +140,11 @@ pub async fn complete_streaming_with_runner<R, F>(
 ) -> Result<AcpCompletionResponse, Box<dyn StdError>>
 where
     R: AcpCompletionRunner + ?Sized,
-    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send + 'static,
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
-    let turn_result = runner.complete_streaming(req, &mut on_delta).await?;
+    let turn_result = runner
+        .complete_streaming(normalize_stream_flag(req, true), &mut on_delta)
+        .await?;
     Ok(extract_completion_result(turn_result))
 }
 
@@ -270,9 +272,8 @@ where
         }
     });
 
+    let mut state = CompletionTurnState::default();
     let mut prompt_finished = false;
-    let mut usage: Option<AcpUsageSnapshot> = None;
-    let mut final_text: Option<String> = None;
 
     loop {
         tokio::select! {
@@ -283,22 +284,7 @@ where
             maybe_event = rx.recv() => {
                 match maybe_event {
                     Some(ServiceEvent::AcpBridge { event }) => {
-                        match event {
-                            AcpBridgeEvent::SessionUpdate(update) => {
-                                if let Some(delta) = update.text_delta.as_deref()
-                                    && let Some(handler) = on_delta.as_mut()
-                                {
-                                    handler(delta)?;
-                                }
-                            }
-                            AcpBridgeEvent::UsageUpdate(update) => {
-                                usage = Some(usage_snapshot_from_update(&update));
-                            }
-                            AcpBridgeEvent::TurnResult(result) => {
-                                final_text = Some(result.result);
-                            }
-                            _ => {}
-                        }
+                        handle_completion_bridge_event(&event, &mut state, &mut on_delta)?;
                     }
                     Some(_) => {}
                     None => break,
@@ -307,8 +293,12 @@ where
         }
     }
 
-    final_text
-        .map(|text| AcpCompletionTurnResult { text, usage })
+    state
+        .text
+        .map(|text| AcpCompletionTurnResult {
+            text,
+            usage: state.usage,
+        })
         .ok_or_else(|| {
             std::io::Error::other("ACP completion runner did not emit a turn result").into()
         })
@@ -327,10 +317,78 @@ fn compose_prompt(req: &AcpCompletionRequest) -> String {
     }
 }
 
-fn usage_snapshot_from_update(usage: &AcpUsageUpdate) -> AcpUsageSnapshot {
-    AcpUsageSnapshot {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: usage.used,
+fn normalize_stream_flag(mut req: AcpCompletionRequest, stream: bool) -> AcpCompletionRequest {
+    req.stream = stream;
+    req
+}
+
+#[derive(Default)]
+struct CompletionTurnState {
+    text: Option<String>,
+    usage: Option<AcpUsageSnapshot>,
+}
+
+fn handle_completion_bridge_event<F>(
+    event: &AcpBridgeEvent,
+    state: &mut CompletionTurnState,
+    on_delta: &mut Option<F>,
+) -> Result<(), Box<dyn StdError>>
+where
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+{
+    match event {
+        AcpBridgeEvent::SessionUpdate(update) => {
+            if let Some(delta) = update.text_delta.as_deref()
+                && let Some(handler) = on_delta.as_mut()
+            {
+                handler(delta)?;
+            }
+        }
+        AcpBridgeEvent::UsageUpdate(_) => {}
+        AcpBridgeEvent::TurnResult(result) => {
+            state.text = Some(result.result.clone());
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type DeltaHandler = fn(&str) -> Result<(), Box<dyn StdError>>;
+
+    #[test]
+    fn usage_update_does_not_become_completion_usage_snapshot() {
+        let mut state = CompletionTurnState::default();
+        let mut on_delta: Option<DeltaHandler> = None;
+
+        handle_completion_bridge_event(
+            &AcpBridgeEvent::UsageUpdate(crate::crates::services::types::AcpUsageUpdate {
+                session_id: "session-1".to_string(),
+                used: 42,
+                size: 100,
+                cost_amount: None,
+                cost_currency: None,
+            }),
+            &mut state,
+            &mut on_delta,
+        )
+        .expect("usage update should be ignored");
+
+        handle_completion_bridge_event(
+            &AcpBridgeEvent::TurnResult(crate::crates::services::types::AcpTurnResultEvent {
+                session_id: "session-1".to_string(),
+                stop_reason: "end_turn".to_string(),
+                result: "final answer".to_string(),
+            }),
+            &mut state,
+            &mut on_delta,
+        )
+        .expect("turn result should be recorded");
+
+        assert_eq!(state.text.as_deref(), Some("final answer"));
+        assert_eq!(state.usage, None);
     }
 }
