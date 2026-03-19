@@ -202,7 +202,9 @@ async fn enqueue_suggested_crawls(
 #[cfg(test)]
 mod tests {
     use super::display::{build_side_by_side_frame, wrap_fixed_width};
+    use super::evaluate_query;
     use super::scoring::{build_suggestion_focus, rag_underperformed, score_totals_from_analysis};
+    use crate::crates::core::config::Config;
 
     #[test]
     fn wrap_fixed_width_respects_limit() {
@@ -246,5 +248,34 @@ mod tests {
         assert!(focus.contains("How does crawl fallback work?"));
         assert!(focus.contains("RAG scored below baseline"));
         assert!(focus.contains("## Accuracy"));
+    }
+
+    #[test]
+    fn evaluate_query_accepts_acp_only_config() {
+        let mut cfg = Config::test_default();
+        cfg.openai_base_url.clear();
+        cfg.openai_model.clear();
+        cfg.acp_adapter_cmd = Some("codex".to_string());
+        cfg.query = Some("How does ACP validation work?".to_string());
+
+        let query = evaluate_query(&cfg).expect("ACP-only config should pass");
+
+        assert_eq!(query, "How does ACP validation work?");
+    }
+
+    #[test]
+    fn evaluate_query_rejects_missing_acp_adapter_command() {
+        let mut cfg = Config::test_default();
+        cfg.openai_base_url.clear();
+        cfg.openai_model.clear();
+        cfg.acp_adapter_cmd = None;
+        cfg.query = Some("How does ACP validation work?".to_string());
+
+        let err = evaluate_query(&cfg).expect_err("missing adapter should fail");
+
+        assert!(
+            err.to_string()
+                .contains("AXON_ACP_ADAPTER_CMD is required for ask/evaluate commands")
+        );
     }
 }

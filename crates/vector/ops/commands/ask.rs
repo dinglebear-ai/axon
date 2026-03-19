@@ -13,8 +13,10 @@ pub(crate) use context::{AskContext, build_ask_context};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     anyhow::ensure!(
-        !cfg.openai_base_url.trim().is_empty() && !cfg.openai_model.trim().is_empty(),
-        "OPENAI_BASE_URL and OPENAI_MODEL are required for ask/evaluate commands"
+        cfg.acp_adapter_cmd
+            .as_deref()
+            .is_some_and(|program| !program.trim().is_empty()),
+        "AXON_ACP_ADAPTER_CMD is required for ask/evaluate commands"
     );
     Ok(())
 }

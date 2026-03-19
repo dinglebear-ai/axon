@@ -167,6 +167,26 @@ async fn ask_llm_streaming_with_runner_builds_acp_request_and_collects_tokens() 
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn ask_llm_streaming_with_runner_omits_blank_model_for_acp_only_config() {
+    let mut cfg = Config::test_default();
+    cfg.openai_model.clear();
+    let runner = MockRunner::with_streaming(&["hello"], "hello");
+
+    let answer = ask_llm_streaming_with_runner(&runner, &cfg, "How?", "Context block", false)
+        .await
+        .expect("streaming ask should succeed");
+
+    assert_eq!(answer, "hello");
+    let observed = runner.observed.lock().expect("lock poisoned");
+    assert_eq!(
+        observed[0],
+        AcpCompletionRequest::new("Question: How?\n\nContext:\nContext block")
+            .system_prompt(ASK_RAG_SYSTEM_PROMPT)
+            .stream(true)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn baseline_llm_non_streaming_with_runner_builds_acp_request() {
     let cfg = Config::test_default();
     let runner = MockRunner::with_text("baseline answer");

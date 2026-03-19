@@ -1,4 +1,5 @@
 use super::normalize::{extract_cited_source_ids, normalize_ask_answer, parse_context_source_map};
+use super::validate_ask_llm_config;
 use crate::crates::core::config::Config;
 
 fn cfg() -> Config {
@@ -75,4 +76,31 @@ fn non_trivial_answer_requires_minimum_citation_count() {
     );
     assert!(normalized.starts_with("Insufficient evidence in indexed sources"));
     assert!(normalized.contains("requires at least 2 unique citations"));
+}
+
+#[test]
+fn validate_ask_llm_config_accepts_acp_only_config_without_openai_settings() {
+    let mut cfg = Config::test_default();
+    cfg.openai_base_url.clear();
+    cfg.openai_model.clear();
+    cfg.acp_adapter_cmd = Some("codex".to_string());
+
+    let result = validate_ask_llm_config(&cfg);
+
+    assert!(result.is_ok(), "ACP-only config should pass validation");
+}
+
+#[test]
+fn validate_ask_llm_config_rejects_missing_acp_adapter_command() {
+    let mut cfg = Config::test_default();
+    cfg.openai_base_url.clear();
+    cfg.openai_model.clear();
+    cfg.acp_adapter_cmd = None;
+
+    let err = validate_ask_llm_config(&cfg).expect_err("missing adapter should fail");
+
+    assert!(
+        err.to_string()
+            .contains("AXON_ACP_ADAPTER_CMD is required for ask/evaluate commands")
+    );
 }

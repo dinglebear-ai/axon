@@ -194,17 +194,17 @@ fn ask_completion_request(
     context: &str,
     stream: bool,
 ) -> AcpCompletionRequest {
-    AcpCompletionRequest::new(format!("Question: {query}\n\nContext:\n{context}"))
+    let req = AcpCompletionRequest::new(format!("Question: {query}\n\nContext:\n{context}"))
         .system_prompt(ASK_RAG_SYSTEM_PROMPT)
-        .model(cfg.openai_model.clone())
-        .stream(stream)
+        .stream(stream);
+    apply_optional_model(req, &cfg.openai_model)
 }
 
 fn baseline_completion_request(cfg: &Config, query: &str, stream: bool) -> AcpCompletionRequest {
-    AcpCompletionRequest::new(query)
+    let req = AcpCompletionRequest::new(query)
         .system_prompt(BASELINE_SYSTEM_PROMPT)
-        .model(cfg.openai_model.clone())
-        .stream(stream)
+        .stream(stream);
+    apply_optional_model(req, &cfg.openai_model)
 }
 
 fn judge_completion_request(
@@ -212,10 +212,18 @@ fn judge_completion_request(
     ctx: &JudgeContext<'_>,
     stream: bool,
 ) -> AcpCompletionRequest {
-    AcpCompletionRequest::new(judge_user_msg(ctx))
+    let req = AcpCompletionRequest::new(judge_user_msg(ctx))
         .system_prompt(judge_system_prompt())
-        .model(cfg.openai_model.clone())
-        .stream(stream)
+        .stream(stream);
+    apply_optional_model(req, &cfg.openai_model)
+}
+
+fn apply_optional_model(req: AcpCompletionRequest, model: &str) -> AcpCompletionRequest {
+    if model.trim().is_empty() {
+        req
+    } else {
+        req.model(model.to_string())
+    }
 }
 
 async fn run_acp_streaming_completion(
