@@ -167,7 +167,7 @@ pub async fn ingest_wiki(
     }
 
     let ctx = format!("wiki clone {}/{}", common.owner, common.name);
-    let output = run_command_with_timeout(cmd.output(), SUBPROCESS_TIMEOUT, &ctx).await?;
+    let output = run_command_with_timeout(cmd, SUBPROCESS_TIMEOUT, &ctx).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

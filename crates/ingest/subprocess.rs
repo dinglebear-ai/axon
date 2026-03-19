@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::process::Output;
 use std::time::Duration;
 
@@ -16,11 +15,12 @@ pub const MAX_INGEST_FILE_BYTES: u64 = 50 * 1024 * 1024;
 /// Returns the raw `Output` on success. On timeout or spawn failure, returns
 /// an error with `context` embedded in the message for diagnostics.
 pub async fn run_command_with_timeout(
-    child: impl Future<Output = std::io::Result<Output>>,
+    mut command: tokio::process::Command,
     timeout: Duration,
     context: &str,
 ) -> Result<Output, anyhow::Error> {
-    tokio::time::timeout(timeout, child)
+    command.kill_on_drop(true);
+    tokio::time::timeout(timeout, command.output())
         .await
         .map_err(|_| anyhow::anyhow!("{context} timed out after {}s", timeout.as_secs()))?
         .map_err(|e| anyhow::anyhow!("{context}: process failed to start: {e}"))

@@ -73,13 +73,13 @@ async fn clone_repo(
 
     // Try authenticated first, fall back to unauthenticated for public repos.
     if let Some(t) = token {
-        let child = tokio::process::Command::new("git")
+        let mut command = tokio::process::Command::new("git");
+        command
             .args(base_args)
             .env("GIT_CONFIG_COUNT", "1")
             .env("GIT_CONFIG_KEY_0", "http.extraHeader")
-            .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"))
-            .output();
-        let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, &ctx).await?;
+            .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"));
+        let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
 
         if output.status.success() {
             return Ok(tmp);
@@ -97,8 +97,9 @@ async fn clone_repo(
         })?;
     }
 
-    let child = tokio::process::Command::new("git").args(base_args).output();
-    let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, &ctx).await?;
+    let mut command = tokio::process::Command::new("git");
+    command.args(base_args);
+    let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

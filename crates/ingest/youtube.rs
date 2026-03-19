@@ -120,21 +120,20 @@ pub async fn enumerate_playlist_videos(url: &str) -> Result<Vec<String>, Box<dyn
     validate_url(url)?;
 
     let playlist_end = MAX_PLAYLIST_VIDEOS.to_string();
-    let child = tokio::process::Command::new("yt-dlp")
-        .args([
-            "--flat-playlist",
-            "--print",
-            "%(url)s",
-            "--playlist-end",
-            &playlist_end,
-            "--no-exec",
-            "--",
-            url,
-        ])
-        .output();
+    let mut command = tokio::process::Command::new("yt-dlp");
+    command.args([
+        "--flat-playlist",
+        "--print",
+        "%(url)s",
+        "--playlist-end",
+        &playlist_end,
+        "--no-exec",
+        "--",
+        url,
+    ]);
 
     let output =
-        run_command_with_timeout(child, SUBPROCESS_TIMEOUT, "yt-dlp --flat-playlist").await?;
+        run_command_with_timeout(command, SUBPROCESS_TIMEOUT, "yt-dlp --flat-playlist").await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -157,29 +156,28 @@ async fn run_ytdlp(safe_url: &str, tmp_path: &str) -> Result<(), Box<dyn Error>>
     // --write-info-json writes <id>.info.json (title, channel, tags, description, etc.)
     // --no-exec prevents execution of post-processing commands.
     // "--" separates flags from the URL argument to prevent argument injection.
-    let child = tokio::process::Command::new("yt-dlp")
-        .args([
-            "--write-auto-sub",
-            "--write-info-json",
-            "--skip-download",
-            "--sub-format",
-            "vtt",
-            "--convert-subs",
-            "vtt",
-            "--sub-langs",
-            "en",
-            "--no-exec",
-            "--no-warnings",
-            "--sleep-requests",
-            "1",
-            "-o",
-            &format!("{tmp_path}/%(id)s"),
-            "--",
-            safe_url,
-        ])
-        .output();
+    let mut command = tokio::process::Command::new("yt-dlp");
+    command.args([
+        "--write-auto-sub",
+        "--write-info-json",
+        "--skip-download",
+        "--sub-format",
+        "vtt",
+        "--convert-subs",
+        "vtt",
+        "--sub-langs",
+        "en",
+        "--no-exec",
+        "--no-warnings",
+        "--sleep-requests",
+        "1",
+        "-o",
+        &format!("{tmp_path}/%(id)s"),
+        "--",
+        safe_url,
+    ]);
 
-    let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, "yt-dlp subtitle download")
+    let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, "yt-dlp subtitle download")
         .await
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
 
