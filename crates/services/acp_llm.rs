@@ -1,16 +1,13 @@
 use crate::crates::core::config::Config;
-use crate::crates::services::acp::AcpClientScaffold;
-use crate::crates::services::types::AcpAdapterCommand;
-use agent_client_protocol::{
-    Agent, Client, ClientSideConnection, ContentBlock, Error, NewSessionRequest, PromptRequest,
-    PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SessionNotification, SessionUpdate, Usage,
+use crate::crates::services::acp::{AcpClientScaffold, PermissionResponderMap};
+use crate::crates::services::events::ServiceEvent;
+use crate::crates::services::types::{
+    AcpAdapterCommand, AcpBridgeEvent, AcpPromptTurnRequest, AcpUsageUpdate,
 };
-use std::cell::RefCell;
 use std::error::Error as StdError;
-use std::rc::Rc;
-use std::time::Duration;
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::time::Duration;
 
 const ACP_COMPLETION_TIMEOUT_SECS: u64 = 300;
 
@@ -59,8 +56,8 @@ pub struct AcpUsageSnapshot {
     pub total_tokens: u64,
 }
 
-impl From<Usage> for AcpUsageSnapshot {
-    fn from(value: Usage) -> Self {
+impl From<agent_client_protocol::Usage> for AcpUsageSnapshot {
+    fn from(value: agent_client_protocol::Usage) -> Self {
         Self {
             prompt_tokens: value.input_tokens,
             completion_tokens: value.output_tokens,
@@ -75,14 +72,33 @@ pub struct AcpCompletionResponse {
     pub usage: Option<AcpUsageSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcpCompletionTurnResult {
+    pub text: String,
+    pub usage: Option<AcpUsageSnapshot>,
+}
+
+#[async_trait::async_trait(?Send)]
+pub trait AcpCompletionRunner {
+    async fn complete_text(
+        &self,
+        req: AcpCompletionRequest,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>;
+
+    async fn complete_streaming<F>(
+        &self,
+        req: AcpCompletionRequest,
+        on_delta: &mut F,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+    where
+        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send;
+}
+
 #[must_use]
-pub fn extract_completion_result(
-    text: impl Into<String>,
-    usage: Option<AcpUsageSnapshot>,
-) -> AcpCompletionResponse {
+pub fn extract_completion_result(turn_result: AcpCompletionTurnResult) -> AcpCompletionResponse {
     AcpCompletionResponse {
-        text: text.into(),
-        usage,
+        text: turn_result.text,
+        usage: turn_result.usage,
     }
 }
 
@@ -90,7 +106,8 @@ pub async fn complete_text(
     cfg: &Config,
     req: AcpCompletionRequest,
 ) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
-    complete_with_runner(cfg, req.stream(false), None).await
+    let runner = AcpRuntimeCompletionRunner::from_config(cfg)?;
+    complete_text_with_runner(&runner, req).await
 }
 
 pub async fn complete_streaming<F>(
@@ -101,69 +118,99 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send + 'static,
 {
-    complete_with_runner(cfg, req.stream(true), Some(Box::new(on_delta))).await
+    let runner = AcpRuntimeCompletionRunner::from_config(cfg)?;
+    complete_streaming_with_runner(&runner, req, on_delta).await
 }
 
-type DeltaHandler = Box<dyn FnMut(&str) -> Result<(), Box<dyn StdError>> + Send>;
+pub async fn complete_text_with_runner<R>(
+    runner: &R,
+    req: AcpCompletionRequest,
+) -> Result<AcpCompletionResponse, Box<dyn StdError>>
+where
+    R: AcpCompletionRunner + ?Sized,
+{
+    let turn_result = runner.complete_text(req).await?;
+    Ok(extract_completion_result(turn_result))
+}
 
-struct CompletionRunner {
+pub async fn complete_streaming_with_runner<R, F>(
+    runner: &R,
+    req: AcpCompletionRequest,
+    mut on_delta: F,
+) -> Result<AcpCompletionResponse, Box<dyn StdError>>
+where
+    R: AcpCompletionRunner + ?Sized,
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send + 'static,
+{
+    let turn_result = runner.complete_streaming(req, &mut on_delta).await?;
+    Ok(extract_completion_result(turn_result))
+}
+
+struct AcpRuntimeCompletionRunner {
     scaffold: AcpClientScaffold,
 }
 
-impl CompletionRunner {
-    fn new(scaffold: AcpClientScaffold) -> Self {
-        Self { scaffold }
-    }
-
-    async fn complete(
-        self,
-        req: AcpCompletionRequest,
-        on_delta: Option<DeltaHandler>,
-    ) -> Result<AcpCompletionResponse, String> {
-        let scaffold = self.scaffold.clone();
-        let req = req.clone();
-        tokio::task::spawn_blocking(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|err| format!("failed to create ACP runtime: {err}"))?;
-            let local = tokio::task::LocalSet::new();
-            local.block_on(&rt, async move {
-                match tokio::time::timeout(
-                    Duration::from_secs(ACP_COMPLETION_TIMEOUT_SECS),
-                    run_completion_local(scaffold, req, on_delta),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => Err(format!(
-                        "ACP completion timed out after {} seconds",
-                        ACP_COMPLETION_TIMEOUT_SECS
-                    )),
-                }
-            })
+impl AcpRuntimeCompletionRunner {
+    fn from_config(cfg: &Config) -> Result<Self, Box<dyn StdError>> {
+        Ok(Self {
+            scaffold: AcpClientScaffold::new(resolve_adapter_command(cfg)?),
         })
+    }
+
+    async fn run_text(
+        &self,
+        req: AcpCompletionRequest,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>> {
+        self.run_completion_inner(req, None::<fn(&str) -> Result<(), Box<dyn StdError>>>)
+            .await
+    }
+
+    async fn run_completion_inner<F>(
+        &self,
+        req: AcpCompletionRequest,
+        on_delta: Option<F>,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+    where
+        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+    {
+        let scaffold = self.scaffold.clone();
+        let timeout = Duration::from_secs(ACP_COMPLETION_TIMEOUT_SECS);
+        let local = tokio::task::LocalSet::new();
+        match tokio::time::timeout(
+            timeout,
+            local.run_until(run_completion_local(scaffold, req, on_delta)),
+        )
         .await
-        .map_err(|err| format!("failed to join ACP completion runner: {err}"))?
+        {
+            Ok(result) => result,
+            Err(_) => Err(format!(
+                "ACP completion timed out after {} seconds",
+                ACP_COMPLETION_TIMEOUT_SECS
+            )
+            .into()),
+        }
     }
 }
 
-async fn complete_with_runner(
-    cfg: &Config,
-    req: AcpCompletionRequest,
-    on_delta: Option<DeltaHandler>,
-) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
-    let scaffold = build_scaffold(cfg)?;
-    let runner = CompletionRunner::new(scaffold);
-    runner
-        .complete(req, on_delta)
-        .await
-        .map_err(|err| Box::new(std::io::Error::other(err)) as Box<dyn StdError>)
-}
+#[async_trait::async_trait(?Send)]
+impl AcpCompletionRunner for AcpRuntimeCompletionRunner {
+    async fn complete_text(
+        &self,
+        req: AcpCompletionRequest,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>> {
+        self.run_text(req).await
+    }
 
-fn build_scaffold(cfg: &Config) -> Result<AcpClientScaffold, Box<dyn StdError>> {
-    let adapter = resolve_adapter_command(cfg)?;
-    Ok(AcpClientScaffold::new(adapter))
+    async fn complete_streaming<F>(
+        &self,
+        req: AcpCompletionRequest,
+        on_delta: &mut F,
+    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+    where
+        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+    {
+        self.run_completion_inner(req, Some(on_delta)).await
+    }
 }
 
 fn resolve_adapter_command(cfg: &Config) -> Result<AcpAdapterCommand, Box<dyn StdError>> {
@@ -195,85 +242,76 @@ fn parse_adapter_args(raw: &str) -> Vec<String> {
         .collect()
 }
 
-async fn run_completion_local(
+async fn run_completion_local<F>(
     scaffold: AcpClientScaffold,
     req: AcpCompletionRequest,
-    on_delta: Option<DeltaHandler>,
-) -> Result<AcpCompletionResponse, String> {
-    let initialize = scaffold
-        .prepare_initialize()
-        .map_err(|err| err.to_string())?;
-    let child = scaffold
-        .spawn_adapter()
-        .map_err(|err| format!("failed to spawn ACP adapter: {err}"))?;
-    let mut child = child;
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "ACP adapter stdin unavailable".to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "ACP adapter stdout unavailable".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "ACP adapter stderr unavailable".to_string())?;
-
-    tokio::task::spawn_local(async move {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        let mut reader = BufReader::new(stderr);
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line).await {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        tracing::warn!(context = "acp_llm", stderr = %trimmed, "ACP adapter stderr");
-                    }
-                }
-            }
+    mut on_delta: Option<F>,
+) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+where
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+{
+    let prompt_request = AcpPromptTurnRequest {
+        session_id: None,
+        prompt: vec![compose_prompt(&req)],
+        model: req.model.clone(),
+        session_mode: None,
+        blocked_mcp_tools: vec![],
+        mcp_servers: vec![],
+    };
+    let cwd = std::env::current_dir().map_err(|err| err.to_string())?;
+    let (tx, mut rx) = mpsc::channel::<ServiceEvent>(64);
+    let permission_responders: PermissionResponderMap = Arc::new(dashmap::DashMap::new());
+    let mut prompt_handle = tokio::task::spawn_local({
+        let scaffold = scaffold.clone();
+        async move {
+            scaffold
+                .start_prompt_turn(&prompt_request, cwd, Some(tx), permission_responders)
+                .await
         }
     });
 
-    let state = Rc::new(RefCell::new(CompletionState {
-        text: String::new(),
-        delta_handler: on_delta,
-    }));
-    let client = CompletionClient {
-        state: Rc::clone(&state),
-    };
+    let mut prompt_finished = false;
+    let mut usage: Option<AcpUsageSnapshot> = None;
+    let mut final_text: Option<String> = None;
 
-    let (conn, io_task) =
-        ClientSideConnection::new(client, stdin.compat_write(), stdout.compat(), |task| {
-            tokio::task::spawn_local(task);
-        });
+    loop {
+        tokio::select! {
+            prompt_result = &mut prompt_handle, if !prompt_finished => {
+                prompt_result.map_err(|err| format!("failed to join ACP prompt turn: {err}"))??;
+                prompt_finished = true;
+            }
+            maybe_event = rx.recv() => {
+                match maybe_event {
+                    Some(ServiceEvent::AcpBridge { event }) => {
+                        match event {
+                            AcpBridgeEvent::SessionUpdate(update) => {
+                                if let Some(delta) = update.text_delta.as_deref()
+                                    && let Some(handler) = on_delta.as_mut()
+                                {
+                                    handler(delta)?;
+                                }
+                            }
+                            AcpBridgeEvent::UsageUpdate(update) => {
+                                usage = Some(usage_snapshot_from_update(&update));
+                            }
+                            AcpBridgeEvent::TurnResult(result) => {
+                                final_text = Some(result.result);
+                            }
+                            _ => {}
+                        }
+                    }
+                    Some(_) => {}
+                    None => break,
+                }
+            }
+        }
+    }
 
-    tokio::task::spawn_local(async move {
-        let _ = io_task.await;
-    });
-
-    conn.initialize(initialize)
-        .await
-        .map_err(|err| err.to_string())?;
-
-    let cwd = std::env::current_dir().map_err(|err| err.to_string())?;
-    let session_id = conn
-        .new_session(NewSessionRequest::new(cwd))
-        .await
-        .map_err(|err| err.to_string())?
-        .session_id;
-
-    let prompt_text = compose_prompt(&req);
-    let prompt = PromptRequest::new(session_id, vec![prompt_text.into()]);
-    let prompt_response: PromptResponse =
-        conn.prompt(prompt).await.map_err(|err| err.to_string())?;
-
-    let text = state.borrow().text.clone();
-    let usage = prompt_response.usage.map(AcpUsageSnapshot::from);
-    Ok(extract_completion_result(text, usage))
+    final_text
+        .map(|text| AcpCompletionTurnResult { text, usage })
+        .ok_or_else(|| {
+            std::io::Error::other("ACP completion runner did not emit a turn result").into()
+        })
 }
 
 fn compose_prompt(req: &AcpCompletionRequest) -> String {
@@ -289,48 +327,10 @@ fn compose_prompt(req: &AcpCompletionRequest) -> String {
     }
 }
 
-struct CompletionState {
-    text: String,
-    delta_handler: Option<DeltaHandler>,
-}
-
-#[derive(Clone)]
-struct CompletionClient {
-    state: Rc<RefCell<CompletionState>>,
-}
-
-#[async_trait::async_trait(?Send)]
-impl Client for CompletionClient {
-    async fn request_permission(
-        &self,
-        _args: RequestPermissionRequest,
-    ) -> agent_client_protocol::Result<RequestPermissionResponse> {
-        Ok(RequestPermissionResponse::new(
-            RequestPermissionOutcome::Cancelled,
-        ))
-    }
-
-    async fn session_notification(
-        &self,
-        args: SessionNotification,
-    ) -> agent_client_protocol::Result<()> {
-        if let Some(delta) = extract_text_delta(&args.update) {
-            let mut state = self.state.borrow_mut();
-            state.text.push_str(&delta);
-            if let Some(handler) = state.delta_handler.as_mut() {
-                handler(&delta).map_err(|err| Error::internal_error().data(err.to_string()))?;
-            }
-        }
-        Ok(())
-    }
-}
-
-fn extract_text_delta(update: &SessionUpdate) -> Option<String> {
-    match update {
-        SessionUpdate::AgentMessageChunk(chunk) => match &chunk.content {
-            ContentBlock::Text(text) => Some(text.text.clone()),
-            _ => None,
-        },
-        _ => None,
+fn usage_snapshot_from_update(usage: &AcpUsageUpdate) -> AcpUsageSnapshot {
+    AcpUsageSnapshot {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: usage.used,
     }
 }
