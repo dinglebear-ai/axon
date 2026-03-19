@@ -12,6 +12,9 @@ mod wiki;
 
 use meta::{GitHubPayloadParams, build_github_payload};
 
+/// Number of concurrent sub-tasks in `run_github_subtasks` (files, metadata, issues, PRs, wiki).
+const GITHUB_SUBTASK_COUNT: usize = 5;
+
 // ── Shared repo context passed to all sub-tasks ──────────────────────────────
 
 /// Common fields extracted once from `repos().get()` and shared across all
@@ -252,8 +255,8 @@ async fn run_github_subtasks(
             let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             r.report(serde_json::json!({"tasks_done": done})).await;
             log_info(&format!(
-                "github task_complete task=files tasks_done={done}/5 repo={}",
-                common.repo_slug
+                "github task_complete task=files tasks_done={done}/{} repo={}",
+                GITHUB_SUBTASK_COUNT, common.repo_slug
             ));
             result
         },
@@ -264,8 +267,8 @@ async fn run_github_subtasks(
             let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             r.report(serde_json::json!({"tasks_done": done})).await;
             log_info(&format!(
-                "github task_complete task=metadata tasks_done={done}/5 repo={}",
-                common.repo_slug
+                "github task_complete task=metadata tasks_done={done}/{} repo={}",
+                GITHUB_SUBTASK_COUNT, common.repo_slug
             ));
             result
         },
@@ -276,8 +279,8 @@ async fn run_github_subtasks(
             let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             r.report(serde_json::json!({"tasks_done": done})).await;
             log_info(&format!(
-                "github task_complete task=issues tasks_done={done}/5 repo={}",
-                common.repo_slug
+                "github task_complete task=issues tasks_done={done}/{} repo={}",
+                GITHUB_SUBTASK_COUNT, common.repo_slug
             ));
             result
         },
@@ -289,8 +292,8 @@ async fn run_github_subtasks(
             let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             r.report(serde_json::json!({"tasks_done": done})).await;
             log_info(&format!(
-                "github task_complete task=prs tasks_done={done}/5 repo={}",
-                common.repo_slug
+                "github task_complete task=prs tasks_done={done}/{} repo={}",
+                GITHUB_SUBTASK_COUNT, common.repo_slug
             ));
             result
         },
@@ -305,8 +308,8 @@ async fn run_github_subtasks(
             let done = td.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             r.report(serde_json::json!({"tasks_done": done})).await;
             log_info(&format!(
-                "github task_complete task=wiki tasks_done={done}/5 repo={}",
-                common.repo_slug
+                "github task_complete task=wiki tasks_done={done}/{} repo={}",
+                GITHUB_SUBTASK_COUNT, common.repo_slug
             ));
             result
         },
@@ -361,7 +364,7 @@ pub async fn ingest_github(
     reporter
         .report(serde_json::json!({
             "phase": "ingesting",
-            "tasks_total": 5,
+            "tasks_total": GITHUB_SUBTASK_COUNT,
             "tasks_done": 0,
         }))
         .await;
@@ -377,8 +380,8 @@ pub async fn ingest_github(
 
     reporter
         .report(serde_json::json!({
-            "tasks_done": 5,
-            "tasks_total": 5,
+            "tasks_done": GITHUB_SUBTASK_COUNT,
+            "tasks_total": GITHUB_SUBTASK_COUNT,
             "chunks_embedded": total,
             "phase": "completed",
         }))

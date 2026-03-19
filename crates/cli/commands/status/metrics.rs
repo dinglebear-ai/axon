@@ -275,23 +275,8 @@ fn format_fraction(r: &Value, done_key: &str, total_key: &str, label: &str) -> O
 /// Contextual detail string for the current phase.
 fn phase_detail(r: &Value, phase: Option<&str>) -> Option<String> {
     match phase? {
-        "fetching_issues" | "fetching_prs" => {
-            let fetched = r
-                .get("issues_fetched")
-                .or_else(|| r.get("prs_fetched"))
-                .and_then(|v| v.as_u64());
-            let page = r.get("issues_page").and_then(|v| v.as_u64());
-            match (fetched, page) {
-                (Some(n), Some(p)) => Some(format!(
-                    "{} issues, page {}",
-                    accent(&n.to_string()),
-                    accent(&p.to_string()),
-                )),
-                (Some(n), None) => Some(format!("{} issues", accent(&n.to_string()))),
-                (None, Some(p)) => Some(format!("page {}", accent(&p.to_string()))),
-                (None, None) => None,
-            }
-        }
+        "fetching_issues" => fetch_detail(r, "issues_fetched", "issues_page", "issues"),
+        "fetching_prs" => fetch_detail(r, "prs_fetched", "issues_page", "PRs"),
         "embedding_issues" | "embedding_prs" | "embedding_wiki" => {
             let total = r
                 .get("issues_total")
@@ -301,6 +286,21 @@ fn phase_detail(r: &Value, phase: Option<&str>) -> Option<String> {
             total.map(|n| format!("{} items", accent(&n.to_string())))
         }
         _ => None,
+    }
+}
+
+fn fetch_detail(r: &Value, count_key: &str, page_key: &str, label: &str) -> Option<String> {
+    let fetched = r.get(count_key).and_then(|v| v.as_u64());
+    let page = r.get(page_key).and_then(|v| v.as_u64());
+    match (fetched, page) {
+        (Some(n), Some(p)) => Some(format!(
+            "{} {label}, page {}",
+            accent(&n.to_string()),
+            accent(&p.to_string()),
+        )),
+        (Some(n), None) => Some(format!("{} {label}", accent(&n.to_string()))),
+        (None, Some(p)) => Some(format!("page {}", accent(&p.to_string()))),
+        (None, None) => None,
     }
 }
 
@@ -458,24 +458,9 @@ mod tests {
     use super::*;
     use chrono::Duration;
 
-    /// Strip ANSI SGR escape sequences so test assertions compare plain text.
+    /// Strip ANSI escape sequences so test assertions compare plain text.
     fn strip_ansi(s: &str) -> String {
-        let mut out = String::with_capacity(s.len());
-        let mut in_escape = false;
-        for c in s.chars() {
-            if c == '\x1b' {
-                in_escape = true;
-                continue;
-            }
-            if in_escape {
-                if c == 'm' {
-                    in_escape = false;
-                }
-                continue;
-            }
-            out.push(c);
-        }
-        out
+        console::strip_ansi_codes(s).into_owned()
     }
 
     #[test]

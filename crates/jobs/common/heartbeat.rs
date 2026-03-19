@@ -75,10 +75,8 @@ pub fn spawn_content_aware_heartbeat(
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
-                    // Keep the watchdog happy (same as the old blind heartbeat).
-                    let _ = super::job_ops::touch_running_job(&pool, table, id).await;
-
-                    let curr = read_result_json(&pool, table, id).await;
+                    // Touch updated_at AND read result_json in a single round-trip.
+                    let curr = touch_and_read_result_json(&pool, table, id).await;
 
                     if is_content_stale(&prev_snapshot, &curr) {
                         stale_streak += 1;
@@ -164,10 +162,17 @@ pub fn spawn_heartbeat_task(
     (stop_tx, handle)
 }
 
-/// Read `result_json` for a job. Returns `None` on any error (network, missing row).
-/// Never panics — callers treat missing data as "no snapshot available".
-async fn read_result_json(pool: &PgPool, table: JobTable, id: Uuid) -> Option<serde_json::Value> {
-    let query = format!("SELECT result_json FROM {} WHERE id = $1", table.as_str());
+/// Touch `updated_at` and read `result_json` in a single round-trip.
+/// Replaces the old two-query pattern (UPDATE + SELECT) to halve DB load per tick.
+async fn touch_and_read_result_json(
+    pool: &PgPool,
+    table: JobTable,
+    id: Uuid,
+) -> Option<serde_json::Value> {
+    let query = format!(
+        "UPDATE {} SET updated_at = NOW() WHERE id = $1 RETURNING result_json",
+        table.as_str()
+    );
     sqlx::query_scalar::<_, Option<serde_json::Value>>(&query)
         .bind(id)
         .fetch_optional(pool)
