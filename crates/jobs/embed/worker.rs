@@ -93,6 +93,7 @@ async fn run_embed_core(
     id: Uuid,
     input_text: String,
     collection: String,
+    source_type: Option<&str>,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
     let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<EmbedProgress>(256);
     let progress_pool = pool.clone();
@@ -117,7 +118,8 @@ async fn run_embed_core(
     let mut embed_cfg = cfg.clone();
     embed_cfg.collection = collection.clone();
     let summary_result =
-        embed_path_native_with_progress(&embed_cfg, &input_text, Some(progress_tx)).await;
+        embed_path_native_with_progress(&embed_cfg, &input_text, Some(progress_tx), source_type)
+            .await;
     if let Err(err) = progress_task.await {
         log_warn(&format!(
             "embed progress_task panicked for job {id}: {err:?}"
@@ -156,7 +158,15 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
             return Ok(None);
         }
         let job_cfg: EmbedJobConfig = serde_json::from_value(cfg_json)?;
-        let result = run_embed_core(cfg, pool, id, input_text, job_cfg.collection).await?;
+        let result = run_embed_core(
+            cfg,
+            pool,
+            id,
+            input_text,
+            job_cfg.collection,
+            job_cfg.source_type.as_deref(),
+        )
+        .await?;
         Ok(Some(result))
     }
     .await;

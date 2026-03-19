@@ -47,6 +47,7 @@ async fn read_inputs(input: &str) -> Result<Vec<(String, String)>, Box<dyn Error
 pub(super) async fn prepare_embed_docs(
     input: &str,
     exclude_prefixes: &[String],
+    source_type: &str,
 ) -> Result<Vec<PreparedDoc>, Box<dyn Error>> {
     let mut docs = read_inputs(input).await?;
     if docs.len() == 1 && !Path::new(input).exists() && input.starts_with("http") {
@@ -72,7 +73,7 @@ pub(super) async fn prepare_embed_docs(
             url,
             domain,
             chunks,
-            source_type: "embed".to_string(),
+            source_type: source_type.to_string(),
             content_type: "markdown",
             title: None,
             extra: None,
@@ -114,5 +115,43 @@ pub(super) fn emit_embed_summary(
             chunks_embedded,
             accent(&cfg.collection)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prepare_embed_docs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn prepare_embed_docs_uses_given_source_type() {
+        let temp_dir = TempDir::new().expect("tempdir");
+        let input_path = temp_dir.path().join("doc.md");
+        tokio::fs::write(&input_path, "# Crawl doc\n\nhello there")
+            .await
+            .expect("write markdown fixture");
+
+        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], "crawl")
+            .await
+            .expect("prepare docs");
+
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].source_type, "crawl");
+    }
+
+    #[tokio::test]
+    async fn prepare_embed_docs_defaults_to_embed() {
+        let temp_dir = TempDir::new().expect("tempdir");
+        let input_path = temp_dir.path().join("doc.md");
+        tokio::fs::write(&input_path, "# Embed doc\n\nthis is a test")
+            .await
+            .expect("write markdown fixture");
+
+        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], "embed")
+            .await
+            .expect("prepare docs");
+
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].source_type, "embed");
     }
 }

@@ -24,7 +24,7 @@ pub(crate) async fn embed_prepared_docs(
 
 /// Embed a file or directory from the local filesystem into Qdrant.
 pub async fn embed_path_native(cfg: &Config, input: &str) -> Result<EmbedSummary, Box<dyn Error>> {
-    embed_path_native_with_progress(cfg, input, None).await
+    embed_path_native_with_progress(cfg, input, None, None).await
 }
 
 /// Like `embed_path_native` but sends progress updates through the given channel.
@@ -32,6 +32,7 @@ pub async fn embed_path_native_with_progress(
     cfg: &Config,
     input: &str,
     progress_tx: Option<tokio::sync::mpsc::Sender<EmbedProgress>>,
+    source_type: Option<&str>,
 ) -> Result<EmbedSummary, Box<dyn Error>> {
     if cfg.tei_url.is_empty() {
         return Err("TEI_URL not configured".into());
@@ -39,7 +40,12 @@ pub async fn embed_path_native_with_progress(
     if cfg.qdrant_url.is_empty() {
         return Err("QDRANT_URL not configured".into());
     }
-    let prepared = prepare::prepare_embed_docs(input, &cfg.exclude_path_prefix).await?;
+    let prepared = prepare::prepare_embed_docs(
+        input,
+        &cfg.exclude_path_prefix,
+        source_type.unwrap_or("embed"),
+    )
+    .await?;
     if prepared.is_empty() {
         return prepare::emit_empty_embed(progress_tx);
     }
