@@ -41,6 +41,11 @@ fn default_prewarm_caps() -> AdapterCapabilities {
 /// to force session establishment.
 async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Result<String> {
     let start = Instant::now();
+    let span = tracing::info_span!(
+        "acp_prewarm",
+        agent = %format!("{agent:?}"),
+    );
+    let _guard = span.enter();
     let caps = default_prewarm_caps();
     let agent_key = build_agent_key(agent, false, &[], &caps);
 
