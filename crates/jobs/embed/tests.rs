@@ -4,6 +4,23 @@ use chrono::{Duration, Utc};
 use serial_test::serial;
 use tokio::time::{Duration as TokioDuration, sleep, timeout};
 
+#[test]
+fn embed_job_config_includes_source_type() {
+    let cfg = EmbedJobConfig {
+        collection: "test".into(),
+        source_type: Some("crawl".into()),
+    };
+    let json = serde_json::to_value(&cfg).unwrap();
+    assert_eq!(json["source_type"], "crawl");
+}
+
+#[test]
+fn embed_job_config_deserializes_without_source_type() {
+    let json = r#"{"collection":"cortex"}"#;
+    let cfg: EmbedJobConfig = serde_json::from_str(json).unwrap();
+    assert_eq!(cfg.source_type, None);
+}
+
 fn amqp_url() -> Option<String> {
     // Do not fall through to AXON_AMQP_URL — that is the production broker.
     // If AXON_TEST_AMQP_URL is not set, AMQP tests are skipped.

@@ -28,6 +28,9 @@ pub use worker::run_embed_worker;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EmbedJobConfig {
     collection: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_type: Option<String>,
 }
 
 #[derive(Debug, FromRow, Serialize, Deserialize)]
@@ -151,6 +154,7 @@ pub(crate) async fn start_embed_job_with_pool(
 
     let cfg_json = serde_json::to_value(EmbedJobConfig {
         collection: cfg.collection.clone(),
+        source_type: None,
     })?;
     let running_fresh_secs = cfg.watchdog_stale_timeout_secs.max(30).min(i32::MAX as i64) as i32;
     if let Some(existing_id) = sqlx::query_scalar::<_, Uuid>(
