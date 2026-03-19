@@ -14,6 +14,7 @@
 //! will cold-start normally.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Context as _;
 
@@ -39,6 +40,7 @@ fn default_prewarm_caps() -> AdapterCapabilities {
 /// Pre-warm a single ACP adapter by spawning it and sending a ping turn
 /// to force session establishment.
 async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Result<String> {
+    let start = Instant::now();
     let caps = default_prewarm_caps();
     let agent_key = build_agent_key(agent, false, &[], &caps);
 
@@ -47,6 +49,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
         tracing::info!(
             context = "acp_prewarm",
             agent_key = %agent_key,
+            elapsed_ms = start.elapsed().as_millis() as u64,
             "adapter already cached — skipping prewarm",
         );
         return Ok(agent_key);
@@ -157,6 +160,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
                 context = "acp_prewarm",
                 agent_key = %agent_key,
                 program = %adapter_name,
+                elapsed_ms = start.elapsed().as_millis() as u64,
                 "adapter pre-warmed successfully",
             );
             Ok(agent_key)
@@ -166,6 +170,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
                 context = "acp_prewarm",
                 agent_key = %agent_key,
                 error = %e,
+                elapsed_ms = start.elapsed().as_millis() as u64,
                 "prewarm turn failed (adapter may still be usable)",
             );
             Ok(agent_key)
@@ -203,12 +208,23 @@ pub(crate) fn spawn_prewarm_task(cfg: Arc<Config>) {
         // Small delay to let the server bind first.
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        let start = Instant::now();
         match prewarm_adapter(&cfg, PulseChatAgent::Claude).await {
             Ok(key) => {
-                tracing::info!(context = "acp_prewarm", agent_key = %key, "prewarm complete")
+                tracing::info!(
+                    context = "acp_prewarm",
+                    agent_key = %key,
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "prewarm complete",
+                )
             }
             Err(e) => {
-                tracing::warn!(context = "acp_prewarm", error = %e, "prewarm failed (will cold-start on first request)")
+                tracing::warn!(
+                    context = "acp_prewarm",
+                    error = %e,
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "prewarm failed (will cold-start on first request)",
+                )
             }
         }
     });

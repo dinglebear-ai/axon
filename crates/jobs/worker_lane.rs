@@ -6,7 +6,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::jobs::common::{
     JobTable, batch_enqueue_jobs, open_amqp_connection_and_channel, reclaim_stale_running_jobs,
-    spawn_heartbeat_task,
+    spawn_content_aware_heartbeat,
 };
 use crate::crates::jobs::status::JobStatus;
 use sqlx::PgPool;
@@ -62,12 +62,15 @@ pub(crate) struct WorkerConfig {
     pub heartbeat_interval_secs: u64,
 }
 
-/// Wrap a [`ProcessFn`] so every job it processes automatically gets a background
-/// heartbeat that calls `touch_running_job` every `interval_secs` seconds.
+/// Wrap a [`ProcessFn`] so every job it processes automatically gets a
+/// content-aware heartbeat.
 ///
 /// The heartbeat starts immediately before the inner future and is stopped
 /// (gracefully awaited) after the inner future resolves. No individual worker
 /// needs to manage heartbeat lifetimes — the runner handles it centrally.
+///
+/// Unlike the old blind heartbeat, this also reads `result_json` each interval
+/// and warns when content is unchanged for extended periods (diagnostic only).
 pub(crate) fn wrap_with_heartbeat(
     process_fn: ProcessFn,
     table: JobTable,
@@ -77,7 +80,8 @@ pub(crate) fn wrap_with_heartbeat(
         let pool_hb = pool.clone();
         let inner = process_fn(cfg, pool, id);
         Box::pin(async move {
-            let (stop_tx, hb_task) = spawn_heartbeat_task(pool_hb, table, id, interval_secs);
+            let (stop_tx, hb_task) =
+                spawn_content_aware_heartbeat(pool_hb, table, id, interval_secs);
             inner.await;
             let _ = stop_tx.send(true);
             let _ = hb_task.await;
