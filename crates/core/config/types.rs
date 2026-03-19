@@ -338,4 +338,11 @@ mod tests {
         assert!(cfg.research_depth.is_none());
         assert!(cfg.search_time_range.is_none());
     }
+
+    #[test]
+    fn default_config_has_github_issue_pr_limits() {
+        let cfg = Config::default();
+        assert_eq!(cfg.github_max_issues, 100);
+        assert_eq!(cfg.github_max_prs, 100);
+    }
 }

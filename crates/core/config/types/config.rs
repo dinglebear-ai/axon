@@ -186,6 +186,12 @@ pub struct Config {
     /// Also index source code files when ingesting a GitHub repository. Flag: `--include-source`.
     pub github_include_source: bool,
 
+    /// Maximum issues to fetch per GitHub repository (0 = unlimited). Flag: `--max-issues`. Env: `GITHUB_MAX_ISSUES`.
+    pub github_max_issues: usize,
+
+    /// Maximum pull requests to fetch per GitHub repository (0 = unlimited). Flag: `--max-prs`. Env: `GITHUB_MAX_PRS`.
+    pub github_max_prs: usize,
+
     /// Reddit OAuth2 client ID. Env: `REDDIT_CLIENT_ID`. **Secret.**
     pub reddit_client_id: Option<String>,
 

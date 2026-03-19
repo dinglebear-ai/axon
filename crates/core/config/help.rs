@@ -193,6 +193,16 @@ fn print_top_level_help() {
     );
     println!(
         "  {:<28} {}",
+        cmd("  --max-issues <n>"),
+        dim("Max issues per repo (0=all, default 100)")
+    );
+    println!(
+        "  {:<28} {}",
+        cmd("  --max-prs <n>"),
+        dim("Max PRs per repo (0=all, default 100)")
+    );
+    println!(
+        "  {:<28} {}",
         cmd("debug [context]"),
         dim("LLM-assisted stack troubleshooting")
     );

@@ -70,6 +70,8 @@ impl Default for Config {
             sessions_project: None,
             github_token: None,
             github_include_source: true,
+            github_max_issues: 100,
+            github_max_prs: 100,
             reddit_client_id: None,
             reddit_client_secret: None,
             reddit_sort: RedditSort::Hot,
@@ -247,6 +249,8 @@ impl fmt::Debug for Config {
             .field("sessions_project", &self.sessions_project)
             .field("github_token", &"[REDACTED]")
             .field("github_include_source", &self.github_include_source)
+            .field("github_max_issues", &self.github_max_issues)
+            .field("github_max_prs", &self.github_max_prs)
             .field("reddit_client_id", &"[REDACTED]")
             .field("reddit_client_secret", &"[REDACTED]")
             .field("reddit_sort", &self.reddit_sort)

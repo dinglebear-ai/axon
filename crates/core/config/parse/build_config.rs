@@ -37,6 +37,14 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut ask_diagnostics = false;
     let mut evaluate_responses_mode = EvaluateResponsesMode::Inline;
     let mut github_include_source = true;
+    let mut github_max_issues: usize = env::var("GITHUB_MAX_ISSUES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    let mut github_max_prs: usize = env::var("GITHUB_MAX_PRS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
     let mut reddit_sort = RedditSort::Hot;
     let mut reddit_time = RedditTime::Day;
     let mut reddit_max_posts = 25usize;
@@ -152,6 +160,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             if args.no_source {
                 github_include_source = false;
             }
+            github_max_issues = args.max_issues;
+            github_max_prs = args.max_prs;
             reddit_sort = args.sort;
             reddit_time = args.time;
             reddit_max_posts = args.max_posts;
@@ -339,6 +349,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         sessions_project,
         github_token: env::var("GITHUB_TOKEN").ok(),
         github_include_source,
+        github_max_issues,
+        github_max_prs,
         reddit_client_id: env::var("REDDIT_CLIENT_ID").ok(),
         reddit_client_secret: env::var("REDDIT_CLIENT_SECRET").ok(),
         reddit_sort,

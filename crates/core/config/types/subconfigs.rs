@@ -62,6 +62,8 @@ impl fmt::Debug for ServiceUrls {
 pub struct IngestConfig {
     pub github_token: Option<String>, // TODO(A-M-07): Option<Secret<String>>
     pub github_include_source: bool,
+    pub github_max_issues: usize,
+    pub github_max_prs: usize,
     pub reddit_client_id: Option<String>,
     pub reddit_client_secret: Option<String>, // TODO(A-M-07): Option<Secret<String>>
     pub reddit_max_posts: usize,
@@ -75,6 +77,8 @@ impl Default for IngestConfig {
         Self {
             github_token: None,
             github_include_source: true,
+            github_max_issues: 100,
+            github_max_prs: 100,
             reddit_client_id: None,
             reddit_client_secret: None,
             // These defaults must stay in sync with Config::default() in config_impls.rs.
@@ -299,6 +303,8 @@ mod tests {
         assert_eq!(c.reddit_depth, 2);
         assert!(!c.reddit_scrape_links);
         assert!(c.github_include_source);
+        assert_eq!(c.github_max_issues, 100);
+        assert_eq!(c.github_max_prs, 100);
     }
 
     #[test]

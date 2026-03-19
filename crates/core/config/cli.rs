@@ -310,6 +310,13 @@ pub(super) struct IngestArgs {
     /// (GitHub only) Skip source code files when ingesting a GitHub repository (default: include source).
     #[arg(long = "no-source")]
     pub(super) no_source: bool,
+    // ── GitHub-specific limits (ignored for Reddit / YouTube) ────────────
+    /// Maximum issues to fetch per repository (0 = unlimited, default 100)
+    #[arg(long = "max-issues", default_value_t = 100)]
+    pub(super) max_issues: usize,
+    /// Maximum pull requests to fetch per repository (0 = unlimited, default 100)
+    #[arg(long = "max-prs", default_value_t = 100)]
+    pub(super) max_prs: usize,
 
     // ── Reddit-specific filters (ignored for GitHub / YouTube) ────────────
     /// Subreddit sorting (hot, top, new, rising)
