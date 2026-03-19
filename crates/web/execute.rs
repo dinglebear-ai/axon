@@ -38,6 +38,8 @@ mod ws_protocol_tests;
 
 pub(crate) use context::ExecCommandContext;
 pub(crate) use files::handle_read_file;
+#[allow(unused_imports)] // wired in Task 4 (start_server integration)
+pub(crate) use sync_mode::prewarm;
 
 #[cfg(test)]
 fn build_args(mode: &str, input: &str, flags: &serde_json::Value) -> Vec<String> {
