@@ -94,7 +94,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
     SESSION_CACHE.insert(
         agent_key.clone(),
         Arc::clone(&handle),
-        permission_responders.clone(),
+        permission_responders,
     );
 
     // Send a lightweight ping turn to force establish_acp_session().
@@ -125,11 +125,17 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> Result<Str
     let drain_handle = tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
 
     // Wait for the turn to complete (this is the ~45s cold start).
-    let turn_result = tokio::time::timeout(std::time::Duration::from_secs(120), result_rx)
-        .await
-        .map_err(|_| "prewarm turn timed out after 120s".to_string())?
-        .map_err(|_| "prewarm turn result channel dropped".to_string())?;
+    // Flatten timeout + oneshot errors into a single Result so
+    // mark_turn_completed is always called regardless of outcome.
+    let turn_result =
+        match tokio::time::timeout(std::time::Duration::from_secs(120), result_rx).await {
+            Ok(Ok(inner)) => inner,
+            Ok(Err(_)) => Err("prewarm turn result channel dropped".to_string()),
+            Err(_) => Err("prewarm turn timed out after 120s".to_string()),
+        };
 
+    // Always mark the turn completed so the session is not permanently
+    // flagged as "in-flight" and reaped by the hung-turn detector.
     if let Some(cached) = SESSION_CACHE.get_sync(&agent_key) {
         cached.mark_turn_completed();
     }
@@ -213,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn spawn_prewarm_skips_when_disabled() {
+    fn default_config_has_prewarm_enabled() {
         let cfg = Config::default();
         assert!(
             cfg.acp_prewarm,

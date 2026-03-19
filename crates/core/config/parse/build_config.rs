@@ -377,9 +377,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .ok()
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
-        acp_prewarm: env::var("AXON_ACP_PREWARM")
-            .map(|v| !matches!(v.as_str(), "false" | "0"))
-            .unwrap_or(true),
+        acp_prewarm: env_bool("AXON_ACP_PREWARM", true),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
         neo4j_url: env::var("AXON_NEO4J_URL").ok().unwrap_or_default(),
         neo4j_user: env::var("AXON_NEO4J_USER")
