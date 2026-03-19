@@ -37,6 +37,21 @@ fn default_prewarm_caps() -> AdapterCapabilities {
     }
 }
 
+/// Returns a minimal `AcpPromptTurnRequest` for use in pre-warming.
+///
+/// The `prompt` arg differentiates the session-setup probe (`"_"`) from the
+/// warm ping (`"Respond with exactly: WARM"`).
+fn minimal_turn_req(prompt: &str) -> AcpPromptTurnRequest {
+    AcpPromptTurnRequest {
+        session_id: None,
+        prompt: vec![prompt.to_string()],
+        model: None,
+        session_mode: None,
+        blocked_mcp_tools: vec![],
+        mcp_servers: vec![],
+    }
+}
+
 /// Pre-warm a single ACP adapter by spawning it and sending a ping turn
 /// to force session establishment.
 async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Result<String> {
@@ -85,14 +100,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
 
     // Use prepare_session_setup with a minimal AcpPromptTurnRequest.
     // Routes through the same code path as real requests.
-    let minimal_req = AcpPromptTurnRequest {
-        session_id: None,
-        prompt: vec!["_".to_string()], // non-empty to pass validation
-        model: None,
-        session_mode: None,
-        blocked_mcp_tools: vec![],
-        mcp_servers: vec![],
-    };
+    let minimal_req = minimal_turn_req("_"); // non-empty to pass validation
     let session_setup = scaffold
         .prepare_session_setup(&minimal_req, &cwd)
         .map_err(|e| anyhow::anyhow!("{e}"))
@@ -123,14 +131,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
 
     handle
         .run_turn(acp_svc::TurnRequest {
-            req: AcpPromptTurnRequest {
-                session_id: None,
-                prompt: vec!["Respond with exactly: WARM".to_string()],
-                model: None,
-                session_mode: None,
-                blocked_mcp_tools: vec![],
-                mcp_servers: vec![],
-            },
+            req: minimal_turn_req("Respond with exactly: WARM"),
             service_tx: Some(event_tx),
             result_tx,
         })
@@ -157,7 +158,13 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
         cached.mark_turn_completed();
     }
 
-    let _ = drain_handle.await;
+    if let Err(e) = drain_handle.await {
+        tracing::warn!(
+            context = "acp_prewarm",
+            error = %e,
+            "prewarm event drain task panicked",
+        );
+    }
 
     match turn_result {
         Ok(()) => {
@@ -171,14 +178,18 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
             Ok(agent_key)
         }
         Err(e) => {
+            // Log with structured fields at the module level (agent_key, program,
+            // elapsed_ms) so these are searchable in JSON logs, then propagate
+            // as Err so the caller logs at warn level instead of info.
             tracing::warn!(
                 context = "acp_prewarm",
                 agent_key = %agent_key,
+                program = %adapter_name,
                 error = %e,
                 elapsed_ms = start.elapsed().as_millis() as u64,
                 "prewarm turn failed (adapter may still be usable)",
             );
-            Ok(agent_key)
+            anyhow::bail!("prewarm turn failed for {agent_key}: {e}")
         }
     }
 }
@@ -186,7 +197,13 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
 /// Resolve the working directory for pre-warmed adapters.
 async fn resolve_prewarm_working_dir() -> anyhow::Result<std::path::PathBuf> {
     let base = std::env::var("AXON_DATA_DIR").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let home = std::env::var("HOME").unwrap_or_else(|_| {
+            tracing::warn!(
+                context = "acp_prewarm",
+                "neither AXON_DATA_DIR nor HOME set, falling back to /tmp",
+            );
+            "/tmp".to_string()
+        });
         format!("{home}/.local/share")
     });
     let path = std::path::PathBuf::from(base).join("axon").join("prewarm");
