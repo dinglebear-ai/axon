@@ -43,7 +43,7 @@ pub async fn embed_path_native_with_progress(
     let prepared = prepare::prepare_embed_docs(
         input,
         &cfg.exclude_path_prefix,
-        source_type.unwrap_or("embed"),
+        source_type,
     )
     .await?;
     if prepared.is_empty() {

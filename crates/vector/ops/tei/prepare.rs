@@ -47,8 +47,9 @@ async fn read_inputs(input: &str) -> Result<Vec<(String, String)>, Box<dyn Error
 pub(super) async fn prepare_embed_docs(
     input: &str,
     exclude_prefixes: &[String],
-    source_type: &str,
+    source_type: Option<&str>,
 ) -> Result<Vec<PreparedDoc>, Box<dyn Error>> {
+    let resolved_source_type = source_type.unwrap_or("embed");
     let mut docs = read_inputs(input).await?;
     if docs.len() == 1 && !Path::new(input).exists() && input.starts_with("http") {
         let client = http_client()?.clone();
@@ -73,7 +74,7 @@ pub(super) async fn prepare_embed_docs(
             url,
             domain,
             chunks,
-            source_type: source_type.to_string(),
+            source_type: resolved_source_type.to_string(),
             content_type: "markdown",
             title: None,
             extra: None,
@@ -131,7 +132,7 @@ mod tests {
             .await
             .expect("write markdown fixture");
 
-        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], "crawl")
+        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], Some("crawl"))
             .await
             .expect("prepare docs");
 
@@ -147,7 +148,7 @@ mod tests {
             .await
             .expect("write markdown fixture");
 
-        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], "embed")
+        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], None)
             .await
             .expect("prepare docs");
 
