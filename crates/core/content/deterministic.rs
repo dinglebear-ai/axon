@@ -1,3 +1,5 @@
+use crate::crates::core::config::Config;
+use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use html5gum::{Token, Tokenizer};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -280,60 +282,58 @@ pub(crate) struct FallbackResponse {
 }
 
 pub(crate) async fn extract_items_fallback(
-    client: &reqwest::Client,
-    api_url: &str,
-    openai_api_key: &str,
+    _client: &reqwest::Client,
+    acp_adapter_cmd: Option<&str>,
+    acp_adapter_args: Option<&str>,
     openai_model: &str,
     prompt: &str,
     page_url: &str,
     markdown: &str,
 ) -> Result<FallbackResponse, Box<dyn Error>> {
+    let cfg = Config {
+        acp_adapter_cmd: acp_adapter_cmd.map(ToString::to_string),
+        acp_adapter_args: acp_adapter_args.map(ToString::to_string),
+        ..Config::default()
+    };
+
     let trimmed_markdown: String = markdown.chars().take(12_000).collect();
-    let response = client
-        .post(api_url)
-        .bearer_auth(openai_api_key)
-        .json(&serde_json::json!({
-            "model": openai_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": format!(
-                        "{} Return JSON with a top-level key \"results\" containing an array of extracted items.",
-                        prompt
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": format!("URL: {}\n\nContent (markdown):\n{}", page_url, trimmed_markdown)
-                }
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.1
-        }))
-        .send()
-        .await?
-        .error_for_status()?;
-
-    let body: serde_json::Value = response.json().await?;
-    let usage = body.get("usage").cloned().unwrap_or_default();
-
-    let prompt_tokens = usage
-        .get("prompt_tokens")
-        .and_then(|v| v.as_u64())
+    let mut request = AcpCompletionRequest::new(format!(
+        "URL: {page_url}\n\nContent (markdown):\n{trimmed_markdown}"
+    ))
+    .system_prompt(format!(
+        "{prompt} Return JSON with a top-level key \"results\" containing an array of extracted items."
+    ));
+    if !openai_model.trim().is_empty() {
+        request = request.model(openai_model.to_string());
+    }
+    let response = tokio::task::spawn_blocking(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to build ACP completion runtime: {err}"))?;
+        rt.block_on(acp_llm::complete_text(&cfg, request))
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| format!("failed to join ACP completion task: {err}"))?
+    .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    let prompt_tokens = response
+        .usage
+        .as_ref()
+        .map(|usage| usage.prompt_tokens)
         .unwrap_or(0);
-    let completion_tokens = usage
-        .get("completion_tokens")
-        .and_then(|v| v.as_u64())
+    let completion_tokens = response
+        .usage
+        .as_ref()
+        .map(|usage| usage.completion_tokens)
         .unwrap_or(0);
-    let total_tokens = usage
-        .get("total_tokens")
-        .and_then(|v| v.as_u64())
+    let total_tokens = response
+        .usage
+        .as_ref()
+        .map(|usage| usage.total_tokens)
         .unwrap_or(prompt_tokens + completion_tokens);
 
-    let content = body["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("{}");
-    let parsed = serde_json::from_str::<serde_json::Value>(content).unwrap_or_default();
+    let parsed = serde_json::from_str::<serde_json::Value>(&response.text).unwrap_or_default();
     let mut items = Vec::new();
     flatten_results(&parsed, &mut items);
 
@@ -367,4 +367,22 @@ pub(crate) fn estimate_llm_cost_usd(
 
     ((prompt_tokens as f64 / 1_000_000.0) * input_per_million)
         + ((completion_tokens as f64 / 1_000_000.0) * output_per_million)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flatten_results;
+
+    #[test]
+    fn extract_items_fallback_parses_results_from_acp_json_text() {
+        let parsed = serde_json::json!({
+            "results": [
+                {"title": "first"},
+                {"title": "second"}
+            ]
+        });
+        let mut out = Vec::new();
+        flatten_results(&parsed, &mut out);
+        assert_eq!(out.len(), 2);
+    }
 }

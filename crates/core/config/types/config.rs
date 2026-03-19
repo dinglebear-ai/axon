@@ -228,13 +228,18 @@ pub struct Config {
     /// Base URL of the Qdrant vector store. Env: `QDRANT_URL`. Flag: `--qdrant-url`.
     pub qdrant_url: String,
 
-    /// OpenAI-compatible API base URL (e.g. `http://ollama:11434/v1`). Env: `OPENAI_BASE_URL`.
+    /// Legacy OpenAI-compatible API base URL (e.g. `http://ollama:11434/v1`).
+    /// Kept for compatibility and transitional commands; ACP-backed paths do not require it.
+    /// Env: `OPENAI_BASE_URL`.
     pub openai_base_url: String,
 
-    /// API key for the OpenAI-compatible LLM endpoint. Env: `OPENAI_API_KEY`. **Secret.**
+    /// Legacy API key for OpenAI-compatible LLM endpoints.
+    /// Kept for compatibility and transitional commands; ACP-backed paths do not require it.
+    /// Env: `OPENAI_API_KEY`. **Secret.**
     pub openai_api_key: String,
 
-    /// Model name to use for LLM completions (e.g. `llama3`). Env: `OPENAI_MODEL`.
+    /// Model name used as the ACP completion model override when supplied.
+    /// Retained as `OPENAI_MODEL` for backward compatibility.
     pub openai_model: String,
 
     /// ACP adapter command used by `pulse_chat` execution mode.

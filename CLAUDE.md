@@ -311,7 +311,11 @@ QDRANT_URL=http://axon-qdrant:6333
 # TEI embeddings (on axon network — container DNS)
 TEI_URL=http://axon-tei:80
 
-# LLM (required for extract and ask commands)
+# LLM / ACP completion settings
+# ACP adapter is required for ask/evaluate/suggest/extract fallback/debug/research synthesis.
+AXON_ACP_ADAPTER_CMD=codex
+AXON_ACP_ADAPTER_ARGS=
+# OPENAI_MODEL is used as ACP model override (compatibility key name retained).
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key-or-empty
 OPENAI_MODEL=your-model-name
@@ -412,10 +416,9 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 ### `crawl_raw()` vs `crawl()`
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
-### `ask` LLM call pattern
-`ask` constructs the URL as: `{OPENAI_BASE_URL}/chat/completions`
-- **Correct:** `OPENAI_BASE_URL=http://host/v1`
-- **Wrong:** `OPENAI_BASE_URL=http://host/v1/chat/completions` — double path
+### ACP-backed completion path
+`ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis run through ACP (`AXON_ACP_ADAPTER_CMD`).
+`OPENAI_MODEL` remains the model override knob for ACP-backed calls.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

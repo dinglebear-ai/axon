@@ -199,6 +199,8 @@ async fn execute_extract_runs(
             openai_base_url: openai_base_url_top.clone(),
             openai_api_key: openai_api_key_top.clone(),
             openai_model: openai_model_top.clone(),
+            acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
+            acp_adapter_args: cfg.acp_adapter_args.clone(),
             custom_headers: custom_headers.clone(),
             render_mode: cfg.render_mode,
             chrome_remote_url: cfg.chrome_remote_url.clone(),

@@ -77,11 +77,16 @@ fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.tavily_api_key.is_empty() {
         return Err(anyhow::anyhow!("research requires TAVILY_API_KEY — set it in .env").into());
     }
-    if cfg.openai_base_url.is_empty() || cfg.openai_model.is_empty() {
-        return Err(anyhow::anyhow!(
-            "research requires OPENAI_BASE_URL and OPENAI_MODEL — set them in .env"
-        )
-        .into());
+    if cfg
+        .acp_adapter_cmd
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
+        return Err(
+            anyhow::anyhow!("research requires AXON_ACP_ADAPTER_CMD — set it in .env").into(),
+        );
     }
     Ok(())
 }
@@ -183,20 +188,23 @@ mod tests {
     use super::*;
     use crate::crates::core::config::CommandKind;
 
-    fn make_research_cfg(tavily_key: &str, openai_url: &str, openai_model: &str) -> Config {
+    fn make_research_cfg(
+        tavily_key: &str,
+        adapter_cmd: Option<&str>,
+        openai_model: &str,
+    ) -> Config {
         let mut cfg = Config::test_default();
         cfg.command = CommandKind::Research;
         cfg.positional = vec!["test query".to_string()];
         cfg.tavily_api_key = tavily_key.to_string();
-        cfg.openai_base_url = openai_url.to_string();
-        cfg.openai_api_key = "test-key".to_string();
+        cfg.acp_adapter_cmd = adapter_cmd.map(ToString::to_string);
         cfg.openai_model = openai_model.to_string();
         cfg
     }
 
     #[tokio::test]
     async fn test_run_research_rejects_empty_tavily_key() {
-        let cfg = make_research_cfg("", "http://localhost/v1", "gpt-4o-mini");
+        let cfg = make_research_cfg("", Some("codex"), "gpt-4o-mini");
         let err = run_research(&cfg).await.unwrap_err();
         assert!(
             err.to_string().contains("TAVILY_API_KEY"),
@@ -205,28 +213,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_run_research_rejects_empty_openai_config() {
-        let cfg = make_research_cfg("tvly-key", "", "gpt-4o-mini");
+    async fn test_run_research_rejects_empty_acp_adapter() {
+        let cfg = make_research_cfg("tvly-key", None, "gpt-4o-mini");
         let err = run_research(&cfg).await.unwrap_err();
         assert!(
-            err.to_string().contains("OPENAI_BASE_URL"),
-            "expected OPENAI_BASE_URL error, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_run_research_rejects_empty_openai_model() {
-        let cfg = make_research_cfg("tvly-key", "http://localhost/v1", "");
-        let err = run_research(&cfg).await.unwrap_err();
-        assert!(
-            err.to_string().contains("OPENAI_MODEL"),
-            "expected OPENAI_MODEL error, got: {err}"
+            err.to_string().contains("AXON_ACP_ADAPTER_CMD"),
+            "expected AXON_ACP_ADAPTER_CMD error, got: {err}"
         );
     }
 
     #[tokio::test]
     async fn test_run_research_rejects_missing_query() {
-        let mut cfg = make_research_cfg("tvly-key", "http://localhost/v1", "gpt-4o-mini");
+        let mut cfg = make_research_cfg("tvly-key", Some("codex"), "gpt-4o-mini");
         cfg.positional = vec![];
         cfg.query = None;
         let err = run_research(&cfg).await.unwrap_err();
@@ -236,34 +234,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_run_research_rejects_double_chat_completions() {
-        let cfg = make_research_cfg(
-            "tvly-key",
-            "http://localhost/v1/chat/completions",
-            "gpt-4o-mini",
-        );
-        let err = run_research(&cfg).await.unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("should not include /chat/completions"),
-            "expected /chat/completions validation error, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_run_research_rejects_invalid_url() {
-        let cfg = make_research_cfg("tvly-key", "not a valid url", "gpt-4o-mini");
-        let err = run_research(&cfg).await.unwrap_err();
-        assert!(
-            err.to_string().contains("invalid OPENAI_BASE_URL"),
-            "expected URL parse error, got: {err}"
-        );
-    }
-
     #[test]
     fn research_cfg_depth_defaults_to_none() {
-        let cfg = make_research_cfg("tvly-key", "http://localhost/v1", "gpt-4o-mini");
+        let cfg = make_research_cfg("tvly-key", Some("codex"), "gpt-4o-mini");
         assert!(
             cfg.research_depth.is_none(),
             "research_depth should default to None"

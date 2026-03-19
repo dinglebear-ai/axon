@@ -30,6 +30,8 @@ pub struct ExtractWebConfig {
     pub openai_base_url: String,
     pub openai_api_key: String,
     pub openai_model: String,
+    pub acp_adapter_cmd: Option<String>,
+    pub acp_adapter_args: Option<String>,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
     // ── Rendering / Chrome ──────────────────────────────────────────────────
@@ -51,9 +53,9 @@ pub struct ExtractWebConfig {
 }
 
 struct FallbackConfig {
-    api_url: String,
-    api_key: String,
     model: String,
+    acp_adapter_cmd: Option<String>,
+    acp_adapter_args: Option<String>,
     prompt_text: String,
     has_fallback: bool,
 }
@@ -93,9 +95,9 @@ fn queue_fallback_extraction(
     page_url: String,
     html: String,
 ) {
-    let api_url_c = cfg.api_url.clone();
-    let api_key_c = cfg.api_key.clone();
     let model_c = cfg.model.clone();
+    let acp_adapter_cmd_c = cfg.acp_adapter_cmd.clone();
+    let acp_adapter_args_c = cfg.acp_adapter_args.clone();
     let prompt_c = cfg.prompt_text.clone();
     fallback_tasks.spawn(async move {
         let _permit = match fallback_limiter.acquire_owned().await {
@@ -106,7 +108,13 @@ fn queue_fallback_extraction(
         };
         let markdown = to_markdown(&html, None);
         let res = extract_items_fallback(
-            &client, &api_url_c, &api_key_c, &model_c, &prompt_c, &page_url, &markdown,
+            &client,
+            acp_adapter_cmd_c.as_deref(),
+            acp_adapter_args_c.as_deref(),
+            &model_c,
+            &prompt_c,
+            &page_url,
+            &markdown,
         )
         .await
         .map_err(|e| e.to_string());
@@ -258,8 +266,8 @@ async fn run_single_url_extract(
         let markdown = to_markdown(&html, None);
         match extract_items_fallback(
             &client,
-            &cfg.api_url,
-            &cfg.api_key,
+            cfg.acp_adapter_cmd.as_deref(),
+            cfg.acp_adapter_args.as_deref(),
             &cfg.model,
             &cfg.prompt_text,
             url,
@@ -297,14 +305,14 @@ pub async fn run_extract_with_engine(
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    let api_url = format!(
-        "{}/chat/completions",
-        wcfg.openai_base_url.trim_end_matches('/')
-    );
-    let has_fallback = !wcfg.openai_base_url.is_empty()
-        && !wcfg.openai_api_key.is_empty()
+    let has_fallback = wcfg
+        .acp_adapter_cmd
+        .as_deref()
+        .map(str::trim)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
         && !wcfg.openai_model.is_empty()
-        && wcfg.openai_base_url.starts_with("http");
+        && !wcfg.prompt.trim().is_empty();
 
     validate_url(&wcfg.start_url)?;
 
@@ -312,9 +320,9 @@ pub async fn run_extract_with_engine(
     let start_url = wcfg.start_url.clone();
 
     let fallback_cfg = FallbackConfig {
-        api_url,
-        api_key: wcfg.openai_api_key.clone(),
         model: wcfg.openai_model.clone(),
+        acp_adapter_cmd: wcfg.acp_adapter_cmd.clone(),
+        acp_adapter_args: wcfg.acp_adapter_args.clone(),
         prompt_text: wcfg.prompt.clone(),
         has_fallback,
     };
@@ -409,6 +417,8 @@ mod tests {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
+            acp_adapter_cmd: None,
+            acp_adapter_args: None,
             custom_headers: vec![],
             render_mode: RenderMode::Chrome,
             chrome_remote_url: None, // ← no Chrome configured

@@ -20,7 +20,7 @@ Axon is a single CLI for crawl/scrape/extract plus local vector retrieval and Q&
 - Async queue-backed jobs for `crawl`/`extract`/`embed`/`refresh`/ingest
 - **Surgical Incremental Crawling**: SHA-256 content hashing, Reflink/Hardlink storage reuse, and smart embedding skips for unchanged pages.
 - TEI embeddings + Qdrant vector storage
-- OpenAI-compatible extraction and answer generation
+- ACP-backed extraction and answer generation (with `OPENAI_MODEL` compatibility override)
 - Chrome CDP rendering for dynamic sites
 - Automation-friendly JSON mode via `--json`
 - `axon serve` hosts the core Axon WebSocket/download/output bridge used by `apps/web`; only the old static page UX is deprecated — see `docs/SERVE.md`
@@ -134,9 +134,14 @@ Copy `.env.example` to `.env`. At minimum set the `[REQUIRED]` vars:
 | `AXON_AMQP_URL` | AMQP DSN for queue-backed jobs |
 | `QDRANT_URL` | Qdrant base URL |
 | `TEI_URL` | TEI embeddings base URL (external — not in compose) |
-| `OPENAI_BASE_URL` | OpenAI-compatible base URL for extract/ask/suggest/debug (e.g. `http://host/v1`) |
-| `OPENAI_API_KEY` | API key for OPENAI_BASE_URL |
-| `OPENAI_MODEL` | Model name for completions |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command used by ask/evaluate/suggest/extract fallback/debug/research synthesis |
+| `OPENAI_MODEL` | Model override used by ACP-backed completions (kept for compatibility) |
+| `OPENAI_BASE_URL` / `OPENAI_API_KEY` | Legacy OpenAI-compatible settings kept for compatibility paths |
+
+Migration note:
+- `ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis now execute via ACP (`AXON_ACP_ADAPTER_CMD`).
+- `OPENAI_MODEL` remains the model override knob for those ACP calls.
+- `OPENAI_BASE_URL` and `OPENAI_API_KEY` are retained for compatibility and transitional paths.
 
 ### Optional Queue and Collection
 
@@ -534,15 +539,15 @@ Concurrency tuned relative to available CPU cores:
 
 ## Troubleshooting
 
-- `axon doctor` for service reachability (Postgres/Redis/AMQP/Qdrant/TEI/OpenAI)
-- `axon debug` to run doctor + LLM-assisted troubleshooting with your configured OpenAI-compatible endpoint
+- `axon doctor` for service reachability (Postgres/Redis/AMQP/Qdrant/TEI/LLM)
+- `axon debug` to run doctor + LLM-assisted troubleshooting through ACP (`AXON_ACP_ADAPTER_CMD`)
 - Check your worker terminal output for failures (workers run locally, not in Docker)
 - Jobs stuck in pending: ensure worker processes are running and AMQP/Redis are reachable (`./scripts/axon doctor`)
 - Manually reclaim stale jobs if needed:
   - `axon crawl recover`
   - `axon extract recover`
   - `axon embed recover`
-- `ask`/`extract` failures: verify `OPENAI_BASE_URL` is a base URL (e.g. `http://host/v1`, not `/chat/completions`)
+- `ask`/`evaluate`/`suggest`/`debug`/`research` failures: verify `AXON_ACP_ADAPTER_CMD` is configured and runnable
 - `embed`/`query` failures: verify `TEI_URL` and `QDRANT_URL`
 - Browser fallback failures: verify `AXON_CHROME_REMOTE_URL` points to a live Chrome management endpoint (e.g. `http://127.0.0.1:6000`). The `axon-chrome` compose service exposes this at `127.0.0.1:6000` (management) and `127.0.0.1:9222` (CDP proxy) when running.
 
@@ -664,10 +669,10 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 ### `crawl_raw()` vs `crawl()`
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
-### `ask` LLM call pattern
-`ask` constructs the URL as: `{OPENAI_BASE_URL}/chat/completions`
-- **Correct:** `OPENAI_BASE_URL=http://host/v1`
-- **Wrong:** `OPENAI_BASE_URL=http://host/v1/chat/completions` — double path
+### ACP completion path
+`ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis route through ACP.
+- **Required:** `AXON_ACP_ADAPTER_CMD=<adapter-binary>`
+- **Optional model override:** `OPENAI_MODEL=<model-name>`
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, effective max: 128).
