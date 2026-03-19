@@ -35,6 +35,8 @@ pub async fn ingest_issues(
         .issues(&common.owner, &common.name)
         .list()
         .state(params::State::All)
+        .sort(params::issues::Sort::Updated)
+        .direction(params::Direction::Descending)
         .per_page(100)
         .send()
         .await?;
@@ -149,6 +151,8 @@ pub async fn ingest_pull_requests(
         .pulls(&common.owner, &common.name)
         .list()
         .state(params::State::All)
+        .sort(params::pulls::Sort::Updated)
+        .direction(params::Direction::Descending)
         .per_page(100)
         .send()
         .await?;

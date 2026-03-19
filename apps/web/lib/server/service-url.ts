@@ -24,7 +24,7 @@ function defaultPortForProtocol(protocol: string): string {
     'redis:': '6379',
     'rediss:': '6379',
     'amqp:': '5672',
-    'amqps:': '5672',
+    'amqps:': '5671',
   }
   return PROTOCOL_PORTS[protocol] ?? '80'
 }

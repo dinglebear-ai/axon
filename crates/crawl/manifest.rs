@@ -83,7 +83,7 @@ pub async fn write_audit_diff(
 }
 
 pub async fn read_manifest_urls(path: &Path) -> Result<HashSet<String>, std::io::Error> {
-    if !tokio::fs::try_exists(path).await.unwrap_or(false) {
+    if !tokio::fs::try_exists(path).await? {
         return Ok(HashSet::new());
     }
     let file = tokio::fs::File::open(path).await?;
@@ -111,7 +111,7 @@ pub async fn read_manifest_urls(path: &Path) -> Result<HashSet<String>, std::io:
 pub async fn read_manifest_data(
     path: &Path,
 ) -> Result<HashMap<String, ManifestEntry>, std::io::Error> {
-    if !tokio::fs::try_exists(path).await.unwrap_or(false) {
+    if !tokio::fs::try_exists(path).await? {
         return Ok(HashMap::new());
     }
     let file = tokio::fs::File::open(path).await?;

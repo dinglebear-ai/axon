@@ -31,4 +31,12 @@ describe('normalizeLocalServiceUrl', () => {
       }),
     ).toBe('not-a-url')
   })
+
+  it('does not remap amqps URLs without an explicit port', () => {
+    expect(
+      normalizeLocalServiceUrl('amqps://axon-rabbitmq', {
+        runningInDocker: false,
+      }),
+    ).toBe('amqps://axon-rabbitmq')
+  })
 })

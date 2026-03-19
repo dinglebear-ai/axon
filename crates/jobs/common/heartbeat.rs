@@ -76,7 +76,16 @@ pub fn spawn_content_aware_heartbeat(
             tokio::select! {
                 _ = ticker.tick() => {
                     // Touch updated_at AND read result_json in a single round-trip.
-                    let curr = touch_and_read_result_json(&pool, table, id).await;
+                    let curr = match touch_and_read_result_json(&pool, table, id).await {
+                        Ok(value) => value,
+                        Err(error) => {
+                            log_warn(&format!(
+                                "heartbeat read_result_json_failed job_id={id} table={} err={error}",
+                                table.as_str(),
+                            ));
+                            continue;
+                        }
+                    };
 
                     if is_content_stale(&prev_snapshot, &curr) {
                         stale_streak += 1;
@@ -168,18 +177,16 @@ async fn touch_and_read_result_json(
     pool: &PgPool,
     table: JobTable,
     id: Uuid,
-) -> Option<serde_json::Value> {
+) -> Result<Option<serde_json::Value>, sqlx::Error> {
     let query = format!(
         "UPDATE {} SET updated_at = NOW() WHERE id = $1 RETURNING result_json",
         table.as_str()
     );
-    sqlx::query_scalar::<_, Option<serde_json::Value>>(&query)
+    let row = sqlx::query_scalar::<_, Option<serde_json::Value>>(&query)
         .bind(id)
         .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .flatten()
+        .await?;
+    Ok(row.flatten())
 }
 
 #[cfg(test)]

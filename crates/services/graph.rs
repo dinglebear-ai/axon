@@ -46,6 +46,10 @@ pub async fn graph_build(
 
     let mut urls = if let Some(url) = url {
         vec![url.to_string()]
+    } else if domain.is_some() {
+        // Domain-scoped builds must filter first, then cap, otherwise large
+        // collections can omit relevant URLs from the requested domain.
+        qdrant_indexed_urls(cfg, None).await?
     } else {
         qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_URL_LIMIT)).await?
     };
@@ -59,6 +63,9 @@ pub async fn graph_build(
 
     urls.sort();
     urls.dedup();
+    if url.is_none() && urls.len() > GRAPH_BUILD_URL_LIMIT {
+        urls.truncate(GRAPH_BUILD_URL_LIMIT);
+    }
 
     let mut job_ids = Vec::new();
     for item in &urls {

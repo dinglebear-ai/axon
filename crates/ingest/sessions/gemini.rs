@@ -62,7 +62,17 @@ async fn enqueue_gemini_dir(
     let mut read_dir = fs::read_dir(root).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let path = entry.path();
-        if !entry.file_type().await?.is_dir() {
+        let file_type = match entry.file_type().await {
+            Ok(kind) => kind,
+            Err(error) => {
+                log_warn(&format!(
+                    "gemini: skipping unreadable directory entry {}: {error}",
+                    path.display()
+                ));
+                continue;
+            }
+        };
+        if !file_type.is_dir() {
             continue;
         }
         let dir_name = path

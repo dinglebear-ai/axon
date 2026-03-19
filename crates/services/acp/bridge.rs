@@ -123,12 +123,13 @@ pub(super) async fn finalize_successful_turn(
         // EditorWrite events (which may be the only update for a completed turn)
         // are not silently dropped. 5s timeout caps worst-case per block while
         // still providing backpressure visibility.
-        if !emit_with_timeout(
-            service_tx,
-            ServiceEvent::EditorWrite { content, operation },
-            std::time::Duration::from_secs(5),
-        )
-        .await
+        if service_tx.is_some()
+            && !emit_with_timeout(
+                service_tx,
+                ServiceEvent::EditorWrite { content, operation },
+                std::time::Duration::from_secs(5),
+            )
+            .await
         {
             tracing::warn!(
                 context = "acp_bridge",
