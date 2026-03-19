@@ -1,4 +1,5 @@
 pub mod acp;
+pub mod acp_llm;
 pub mod crawl;
 pub mod debug;
 pub mod embed;
