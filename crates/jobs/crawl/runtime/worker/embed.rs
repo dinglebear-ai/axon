@@ -17,9 +17,13 @@ pub(super) async fn maybe_enqueue_embed_job(
         return Ok(());
     }
     let markdown_dir = ctx.job_cfg.output_dir.join("markdown");
-    let embed_job_id =
-        start_embed_job_with_pool(pool, &ctx.job_cfg, &markdown_dir.to_string_lossy(), None)
-            .await?;
+    let embed_job_id = start_embed_job_with_pool(
+        pool,
+        &ctx.job_cfg,
+        &markdown_dir.to_string_lossy(),
+        Some("crawl"),
+    )
+    .await?;
     log_info(&format!(
         "command=crawl enqueue_embed crawl_job_id={} embed_job_id={}",
         crawl_job_id, embed_job_id

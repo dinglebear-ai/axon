@@ -1,0 +1,108 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "America/New_York",
+  "schedule": ["every weekend"],
+
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "automerge": true,
+    "schedule": ["at any time"]
+  },
+
+  "osvVulnerabilityAlerts": true,
+  "transitiveRemediation": true,
+
+  "packageRules": [
+    {
+      "description": "Auto-merge all patch updates that pass CI",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+
+    {
+      "description": "Group platejs packages (20+ packages, always release together)",
+      "matchPackageNames": ["platejs", "@platejs/*", "@udecode/*"],
+      "groupName": "platejs",
+      "groupSlug": "platejs"
+    },
+
+    {
+      "description": "Group radix-ui packages",
+      "matchPackageNames": ["radix-ui", "@radix-ui/*"],
+      "groupName": "radix-ui",
+      "groupSlug": "radix-ui"
+    },
+
+    {
+      "description": "Group xterm packages",
+      "matchPackageNames": ["@xterm/*"],
+      "groupName": "xterm",
+      "groupSlug": "xterm"
+    },
+
+    {
+      "description": "Group hono packages (the transitive vuln source)",
+      "matchPackageNames": ["hono", "@hono/*"],
+      "groupName": "hono",
+      "groupSlug": "hono"
+    },
+
+    {
+      "description": "Group Biome (lint + format, always move together)",
+      "matchPackageNames": ["@biomejs/biome"],
+      "groupName": "biome"
+    },
+
+    {
+      "description": "Group AI SDK packages",
+      "matchPackageNames": ["ai", "@ai-sdk/*"],
+      "groupName": "ai-sdk",
+      "groupSlug": "ai-sdk"
+    },
+
+    {
+      "description": "Group Tailwind packages",
+      "matchPackageNames": ["tailwindcss", "@tailwindcss/*"],
+      "groupName": "tailwindcss",
+      "groupSlug": "tailwindcss"
+    },
+
+    {
+      "description": "Pin Next.js minor bumps for manual review (breaking changes are common)",
+      "matchPackageNames": ["next"],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false,
+      "labels": ["needs-review"]
+    },
+
+    {
+      "description": "React major requires manual review",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["needs-review"]
+    },
+
+    {
+      "description": "Rust patch updates — auto-merge",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    },
+
+    {
+      "description": "Rust minor/major — manual review",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false
+    }
+  ],
+
+  "npm": {
+    "minimumReleaseAge": "3 days"
+  }
+}

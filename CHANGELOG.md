@@ -1,5 +1,26 @@
 # Changelog
-Last Modified: 2026-03-19 (session: v0.27.1 — security hardening, code quality, multi-crate full-review remediation)
+Last Modified: 2026-03-19 (session: v0.27.2 — dependency security updates, CI audit gate, crawl embed provenance fix)
+
+## [0.27.2] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.27.1.
+
+### Highlights
+
+- **Dependency security updates** — `apps/web` upgraded `next` to `16.1.7`, added `pnpm.overrides` for vulnerable transitive packages (`undici`, `hono`, `@hono/node-server`, `dompurify`, `express-rate-limit`), and refreshed `apps/web/pnpm-lock.yaml`.
+- **CI security enforcement** — Web CI now runs `pnpm audit --prod --audit-level=high` before lint/test.
+- **Crawl embed provenance fix** — crawl worker now enqueues embed jobs with `source_type = "crawl"` so downstream provenance metadata is preserved.
+- **Rust dependency refresh** — lockfile updates include `quinn-proto` bump to `0.11.14` and transitive metadata refresh.
+
+### Commits since v0.27.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix(security) | bump web dependencies, enforce CI audit, and set crawl embed source_type |
+| 17a751ee | fix(embed) | propagate source_type from embed job config and harden tests |
+| d76cbfea | feat(embed) | thread source_type through full embed pipeline (prepare→text_embed→worker) |
+| 778a7884 | refactor | multi-crate security hardening, full-review remediation, shared utilities |
+| 0f5ea1a4 | feat(embed) | add source_type field to EmbedJobConfig for provenance tracking |
 
 ## [0.27.1] — feat/pulse-shell-and-hybrid-search
 
