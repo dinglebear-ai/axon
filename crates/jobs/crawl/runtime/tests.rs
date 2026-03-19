@@ -143,12 +143,22 @@ async fn crawl_start_jobs_batch_dedupes_duplicate_input_urls() -> Result<(), Box
     let urls = vec![url.as_str(), url.as_str(), url.as_str()];
     let results = start_crawl_jobs_batch(&cfg, &urls).await?;
 
+    // Results preserve input cardinality — all 3 duplicate inputs get a result
+    // pointing to the same single job.
     assert_eq!(
         results.len(),
-        1,
-        "batch insert should normalize duplicate URLs"
+        3,
+        "batch results should match input cardinality (one result per input URL)"
     );
     assert_eq!(results[0].0, url);
+    assert_eq!(
+        results[0].1, results[1].1,
+        "duplicate URLs should share the same job ID"
+    );
+    assert_eq!(
+        results[1].1, results[2].1,
+        "duplicate URLs should share the same job ID"
+    );
 
     let pool = make_pool(&cfg).await?;
     let row_count: i64 = sqlx::query_scalar(

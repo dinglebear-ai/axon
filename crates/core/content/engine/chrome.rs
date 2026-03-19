@@ -136,7 +136,15 @@ pub(super) async fn run_single_url_extract_chrome(
 ) -> Result<ExtractRun, Box<dyn Error>> {
     let Some(mut website) = build_chrome_extract_website(url, cfg).await else {
         // No Chrome configured — delegate to the HTTP path.
-        return run_single_url_extract(url, http_client()?.clone(), engine, fallback_cfg).await;
+        return run_single_url_extract(
+            url,
+            http_client()?.clone(),
+            engine,
+            fallback_cfg,
+            &cfg.custom_headers,
+            cfg.user_agent.as_deref(),
+        )
+        .await;
     };
 
     let mut rx = website.subscribe(16).ok_or("subscribe failed")?;

@@ -206,7 +206,26 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(&mut *tx)
     .await?;
 
-    // Drop invalid index before re-creating (same pattern as above).
+    // Schema evolution: add source_type + target columns for non-URL refresh schedules (e.g. GitHub repos).
+    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS source_type TEXT")
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS target TEXT")
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    // CREATE INDEX CONCURRENTLY avoids blocking writes to the table during index builds.
+    // Safe to run outside a transaction (pool executor uses autocommit).
+    // Must run AFTER tx.commit() — the table must be visible to other connections.
+    //
+    // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
+    // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
+
+    // Schedules index (moved here from before tx.commit — CREATE INDEX CONCURRENTLY
+    // cannot run inside a transaction and needs the table to be committed first).
     let invalid: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM pg_class c \
          JOIN pg_index i ON c.oid = i.indexrelid \
@@ -227,22 +246,6 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    // Schema evolution: add source_type + target columns for non-URL refresh schedules (e.g. GitHub repos).
-    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS source_type TEXT")
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query("ALTER TABLE axon_refresh_schedules ADD COLUMN IF NOT EXISTS target TEXT")
-        .execute(&mut *tx)
-        .await?;
-
-    tx.commit().await?;
-
-    // CREATE INDEX CONCURRENTLY avoids blocking writes to the table during index builds.
-    // Safe to run outside a transaction (pool executor uses autocommit).
-    //
-    // Drop any INVALID indexes left by a previously interrupted CREATE INDEX
-    // CONCURRENTLY — IF NOT EXISTS would skip over the broken index forever.
     for idx_name in [
         "idx_axon_refresh_jobs_status_created_desc",
         "idx_axon_refresh_jobs_pending",

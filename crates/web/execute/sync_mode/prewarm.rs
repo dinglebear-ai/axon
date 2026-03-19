@@ -27,6 +27,15 @@ use super::acp_adapter::{AdapterCapabilities, resolve_acp_adapter_command};
 use super::pulse_chat::build_agent_key;
 use super::types::PulseChatAgent;
 
+/// Prompt used for the session-setup probe (must be non-empty to pass validation).
+const SESSION_SETUP_PROMPT: &str = "_";
+
+/// Prompt for the warm-ping turn that forces `establish_acp_session()`.
+const WARM_PING_PROMPT: &str = "Respond with exactly: WARM";
+
+/// Maximum time to wait for the warm-ping turn to complete.
+const PREWARM_TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Default capabilities used for pre-warmed sessions.
 fn default_prewarm_caps() -> AdapterCapabilities {
     AdapterCapabilities {
@@ -95,7 +104,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
 
     // Use prepare_session_setup with a minimal AcpPromptTurnRequest.
     // Routes through the same code path as real requests.
-    let minimal_req = minimal_turn_req("_"); // non-empty to pass validation
+    let minimal_req = minimal_turn_req(SESSION_SETUP_PROMPT);
     let session_setup = scaffold
         .prepare_session_setup(&minimal_req, &cwd)
         .map_err(|e| anyhow::anyhow!("{e}"))
@@ -110,23 +119,15 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
         permission_responders.clone(),
     ));
 
-    SESSION_CACHE.insert(
-        agent_key.clone(),
-        Arc::clone(&handle),
-        permission_responders,
-    );
-
     // Send a lightweight ping turn to force establish_acp_session().
+    // Insert into SESSION_CACHE *after* successful dispatch so a failed
+    // dispatch never leaves a stale/broken session in the cache.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<ServiceEvent>(64);
     let (result_tx, result_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
 
-    if let Some(cached) = SESSION_CACHE.get_sync(&agent_key) {
-        cached.mark_turn_started();
-    }
-
     handle
         .run_turn(acp_svc::TurnRequest {
-            req: minimal_turn_req("Respond with exactly: WARM"),
+            req: minimal_turn_req(WARM_PING_PROMPT),
             service_tx: Some(event_tx),
             result_tx,
         })
@@ -134,18 +135,31 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
         .map_err(|e| anyhow::anyhow!("{e}"))
         .context("prewarm turn dispatch failed")?;
 
+    // Dispatch succeeded — safe to cache the session now.
+    SESSION_CACHE.insert(
+        agent_key.clone(),
+        Arc::clone(&handle),
+        permission_responders,
+    );
+
+    if let Some(cached) = SESSION_CACHE.get_sync(&agent_key) {
+        cached.mark_turn_started();
+    }
+
     // Drain events so the adapter loop doesn't block.
     let drain_handle = tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
 
     // Wait for the turn to complete (this is the ~45s cold start).
     // Flatten timeout + oneshot errors into a single Result so
     // mark_turn_completed is always called regardless of outcome.
-    let turn_result =
-        match tokio::time::timeout(std::time::Duration::from_secs(120), result_rx).await {
-            Ok(Ok(inner)) => inner,
-            Ok(Err(_)) => Err("prewarm turn result channel dropped".to_string()),
-            Err(_) => Err("prewarm turn timed out after 120s".to_string()),
-        };
+    let turn_result = match tokio::time::timeout(PREWARM_TURN_TIMEOUT, result_rx).await {
+        Ok(Ok(inner)) => inner,
+        Ok(Err(_)) => Err("prewarm turn result channel dropped".to_string()),
+        Err(_) => Err(format!(
+            "prewarm turn timed out after {}s",
+            PREWARM_TURN_TIMEOUT.as_secs()
+        )),
+    };
 
     // Always mark the turn completed so the session is not permanently
     // flagged as "in-flight" and reaped by the hung-turn detector.
@@ -153,12 +167,23 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
         cached.mark_turn_completed();
     }
 
-    if let Err(e) = drain_handle.await {
-        tracing::warn!(
-            context = "acp_prewarm",
-            error = %e,
-            "prewarm event drain task panicked",
-        );
+    // Wrap the drain-task await in a short timeout so a stuck event channel
+    // cannot hold prewarm open indefinitely after the turn result resolves.
+    match tokio::time::timeout(std::time::Duration::from_secs(5), drain_handle).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            tracing::warn!(
+                context = "acp_prewarm",
+                error = %e,
+                "prewarm event drain task panicked",
+            );
+        }
+        Err(_) => {
+            tracing::warn!(
+                context = "acp_prewarm",
+                "prewarm event drain timed out after 5s — aborting drain task",
+            );
+        }
     }
 
     match turn_result {

@@ -119,9 +119,22 @@ pub(super) async fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        // Non-blocking: EditorWrite events are best-effort. Awaiting them under
-        // backpressure adds up to 5s per block, delaying turn completion.
-        emit_nonblocking(service_tx, ServiceEvent::EditorWrite { content, operation });
+        // Use timeout-guarded send instead of fire-and-forget try_send so that
+        // EditorWrite events (which may be the only update for a completed turn)
+        // are not silently dropped. 5s timeout caps worst-case per block while
+        // still providing backpressure visibility.
+        if !emit_with_timeout(
+            service_tx,
+            ServiceEvent::EditorWrite { content, operation },
+            std::time::Duration::from_secs(5),
+        )
+        .await
+        {
+            tracing::warn!(
+                context = "acp_bridge",
+                "EditorWrite event dropped: channel full after 5s timeout",
+            );
+        }
     }
 
     let emitted = emit_with_timeout(

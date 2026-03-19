@@ -243,14 +243,18 @@ async fn run_single_url_extract(
     client: reqwest::Client,
     engine: Arc<DeterministicExtractionEngine>,
     cfg: FallbackConfig,
+    custom_headers: &[String],
+    user_agent: Option<&str>,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    let html = client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
+    let mut req = client.get(url);
+    let header_map = parse_custom_headers(custom_headers);
+    if !header_map.is_empty() {
+        req = req.headers(header_map);
+    }
+    if let Some(ua) = user_agent {
+        req = req.header(reqwest::header::USER_AGENT, ua);
+    }
+    let html = req.send().await?.error_for_status()?.text().await?;
 
     let mut metrics = ExtractionMetrics::default();
     let mut pages_with_data = 0usize;
@@ -338,14 +342,21 @@ pub async fn run_extract_with_engine(
     // requests for /wiki/Rust or /recipe/12345 land on the site homepage instead.
     // For Chrome mode, we use spider with limit=1 to get stealth + fingerprint
     // patches. For HTTP mode, plain reqwest fetches the exact URL directly.
-    if wcfg.limit <= 1 {
+    if wcfg.limit == 1 {
         return match wcfg.render_mode {
             RenderMode::Chrome => {
                 run_single_url_extract_chrome(&start_url, engine, &wcfg, fallback_cfg).await
             }
             _ => {
-                run_single_url_extract(&start_url, http_client()?.clone(), engine, fallback_cfg)
-                    .await
+                run_single_url_extract(
+                    &start_url,
+                    http_client()?.clone(),
+                    engine,
+                    fallback_cfg,
+                    &wcfg.custom_headers,
+                    wcfg.user_agent.as_deref(),
+                )
+                .await
             }
         };
     }

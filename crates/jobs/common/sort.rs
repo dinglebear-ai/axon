@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
 
+use crate::crates::jobs::status::JobStatus;
+
 pub(crate) fn list_status_rank(status: &str) -> u8 {
     match status {
-        "running" => 0,
-        "pending" => 1,
-        "completed" => 2,
-        "failed" => 3,
-        "canceled" => 4,
+        s if s == JobStatus::Running.as_str() => 0,
+        s if s == JobStatus::Pending.as_str() => 1,
+        s if s == JobStatus::Completed.as_str() => 2,
+        s if s == JobStatus::Failed.as_str() => 3,
+        s if s == JobStatus::Canceled.as_str() => 4,
         _ => 5,
     }
 }

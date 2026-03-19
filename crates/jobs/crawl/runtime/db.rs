@@ -170,6 +170,10 @@ pub async fn start_crawl_jobs_batch(
     }
 
     // 4. Fill race-guarded gaps by re-reading active jobs for unresolved URLs.
+    //    These are already-active jobs that appeared between step 1 and step 3 —
+    //    they must NOT be enqueued again (they already have an AMQP message).
+    let mut race_gap_map: std::collections::HashMap<String, Uuid> =
+        std::collections::HashMap::new();
     let unresolved_urls: Vec<String> = url_strings
         .iter()
         .filter(|url| !existing_map.contains_key(*url) && !new_map.contains_key(*url))
@@ -189,21 +193,26 @@ pub async fn start_crawl_jobs_batch(
         .fetch_all(&pool)
         .await?;
         for (url, id) in raced_rows {
-            new_map.entry(url).or_insert(id);
+            race_gap_map.insert(url, id);
         }
     }
 
-    // 5. Build results in original input order.
+    // 5. Build results in original input order, preserving cardinality for
+    //    deduplicated inputs (all duplicates map to the same job ID).
     let mut results: Vec<(String, Uuid)> = Vec::with_capacity(start_urls.len());
-    for url in &url_strings {
-        if let Some(&id) = existing_map.get(url) {
-            results.push((url.clone(), id));
-        } else if let Some(&id) = new_map.get(url) {
-            results.push((url.clone(), id));
+    for url_str in start_urls {
+        let url = (*url_str).to_string();
+        if let Some(&id) = existing_map.get(&url) {
+            results.push((url, id));
+        } else if let Some(&id) = new_map.get(&url) {
+            results.push((url, id));
+        } else if let Some(&id) = race_gap_map.get(&url) {
+            results.push((url, id));
         }
     }
 
-    // 6. Enqueue only newly inserted jobs.
+    // 6. Enqueue only genuinely new inserts — NOT race-gap recoveries which
+    //    already have active AMQP messages from a concurrent caller.
     let new_ids: Vec<Uuid> = new_map.values().copied().collect();
     if !new_ids.is_empty()
         && let Err(err) = batch_enqueue_jobs(cfg, &cfg.crawl_queue, &new_ids).await

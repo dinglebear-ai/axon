@@ -16,7 +16,17 @@ type NormalizeUrlOptions = {
 }
 
 function defaultPortForProtocol(protocol: string): string {
-  return protocol === 'https:' ? '443' : '80'
+  const PROTOCOL_PORTS: Record<string, string> = {
+    'https:': '443',
+    'http:': '80',
+    'postgresql:': '5432',
+    'postgres:': '5432',
+    'redis:': '6379',
+    'rediss:': '6379',
+    'amqp:': '5672',
+    'amqps:': '5672',
+  }
+  return PROTOCOL_PORTS[protocol] ?? '80'
 }
 
 function runningInDocker(): boolean {
