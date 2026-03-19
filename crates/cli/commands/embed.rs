@@ -184,7 +184,7 @@ fn resolve_embed_input(cfg: &Config) -> String {
 }
 
 async fn enqueue_embed_job(cfg: &Config, input: &str) -> Result<(), Box<dyn Error>> {
-    let result = embed_service::embed_start_with_input(cfg, input, None).await?;
+    let result = embed_service::embed_start_with_input(cfg, input, None, None).await?;
     let job_id = result.job_id;
     if cfg.json_output {
         println!(

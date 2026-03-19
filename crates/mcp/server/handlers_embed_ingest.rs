@@ -66,10 +66,14 @@ impl AxonMcpServer {
         input: Option<String>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
-        let result =
-            crate::crates::services::embed::embed_start_with_input(self.cfg.as_ref(), &input, None)
-                .await
-                .map_err(|e| logged_internal_error("embed.start", e))?;
+        let result = crate::crates::services::embed::embed_start_with_input(
+            self.cfg.as_ref(),
+            &input,
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| logged_internal_error("embed.start", e))?;
         Ok(AxonToolResponse::ok(
             "embed",
             "start",

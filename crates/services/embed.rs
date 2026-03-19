@@ -85,6 +85,7 @@ pub async fn embed_start_with_input(
     cfg: &Config,
     input: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
+    source_type: Option<&str>,
 ) -> Result<EmbedStartResult, Box<dyn Error>> {
     emit(
         &tx,
@@ -95,7 +96,7 @@ pub async fn embed_start_with_input(
     )
     .await;
 
-    let job_id = start_embed_job(cfg, input).await?;
+    let job_id = start_embed_job(cfg, input, source_type).await?;
 
     emit(
         &tx,
@@ -122,7 +123,7 @@ pub async fn embed_start(
             .to_string_lossy()
             .to_string()
     });
-    embed_start_with_input(cfg, &input, tx).await
+    embed_start_with_input(cfg, &input, tx, None).await
 }
 
 pub async fn embed_now(cfg: &Config, input: &str) -> Result<EmbedJobResult, Box<dyn Error>> {

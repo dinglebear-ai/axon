@@ -9,7 +9,7 @@ mod text_embed;
 
 pub(crate) use tei_client::tei_embed;
 
-// Re-export public API so callers outside this module see no change.
+// Re-export the embed API for crate callers.
 pub(crate) use text_embed::embed_prepared_docs;
 pub use text_embed::{embed_path_native, embed_path_native_with_progress};
 

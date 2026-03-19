@@ -135,9 +135,13 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 /// Start an embed job, creating a new pool for this call (CLI / one-shot use).
-pub async fn start_embed_job(cfg: &Config, input: &str) -> Result<Uuid, Box<dyn Error>> {
+pub async fn start_embed_job(
+    cfg: &Config,
+    input: &str,
+    source_type: Option<&str>,
+) -> Result<Uuid, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    start_embed_job_with_pool(&pool, cfg, input).await
+    start_embed_job_with_pool(&pool, cfg, input, source_type).await
 }
 
 /// Start an embed job using a pre-existing pool. Used by workers that already
@@ -146,6 +150,7 @@ pub(crate) async fn start_embed_job_with_pool(
     pool: &PgPool,
     cfg: &Config,
     input: &str,
+    source_type: Option<&str>,
 ) -> Result<Uuid, Box<dyn Error>> {
     if SCHEMA_INIT.get().is_none() {
         ensure_schema(pool).await?;
@@ -154,7 +159,7 @@ pub(crate) async fn start_embed_job_with_pool(
 
     let cfg_json = serde_json::to_value(EmbedJobConfig {
         collection: cfg.collection.clone(),
-        source_type: None,
+        source_type: source_type.map(str::to_string),
     })?;
     let running_fresh_secs = cfg.watchdog_stale_timeout_secs.max(30).min(i32::MAX as i64) as i32;
     if let Some(existing_id) = sqlx::query_scalar::<_, Uuid>(

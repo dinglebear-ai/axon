@@ -6,6 +6,7 @@ use crate::crates::jobs::worker_lane::{
     ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker, validate_worker_env_vars,
 };
 use crate::crates::vector::ops::{EmbedProgress, embed_path_native_with_progress};
+use futures_util::future::LocalBoxFuture;
 use tokio::time::Duration;
 
 /// Open a Redis connection for embed cancel checks. Returns None (with warning)
@@ -135,7 +136,22 @@ async fn run_embed_core(
     }))
 }
 
-async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), Box<dyn Error>> {
+pub(crate) async fn process_embed_job_with_runner<F>(
+    cfg: &Config,
+    pool: &PgPool,
+    id: Uuid,
+    runner: F,
+) -> Result<(), Box<dyn Error>>
+where
+    F: for<'a> FnOnce(
+        &'a Config,
+        &'a PgPool,
+        Uuid,
+        String,
+        String,
+        Option<&'a str>,
+    ) -> LocalBoxFuture<'a, Result<serde_json::Value, Box<dyn Error>>>,
+{
     // Open a single Redis connection for cancel checks (reused across the job lifecycle).
     let mut redis_conn = open_embed_redis(cfg).await;
     let job_start = std::time::Instant::now();
@@ -158,7 +174,7 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
             return Ok(None);
         }
         let job_cfg: EmbedJobConfig = serde_json::from_value(cfg_json)?;
-        let result = run_embed_core(
+        let result = runner(
             cfg,
             pool,
             id,
@@ -211,6 +227,25 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
     }
 
     Ok(())
+}
+
+async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), Box<dyn Error>> {
+    process_embed_job_with_runner(
+        cfg,
+        pool,
+        id,
+        |cfg, pool, id, input_text, collection, source_type| {
+            Box::pin(run_embed_core(
+                cfg,
+                pool,
+                id,
+                input_text,
+                collection,
+                source_type,
+            ))
+        },
+    )
+    .await
 }
 
 async fn process_claimed_embed_job(cfg: Config, pool: PgPool, id: Uuid) {

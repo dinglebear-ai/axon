@@ -304,7 +304,7 @@ async fn finalize_crawl(
     if cfg.embed {
         let markdown_dir = cfg.output_dir.join("markdown");
         let embed_result =
-            embed_start_with_input(cfg, &markdown_dir.to_string_lossy(), None).await?;
+            embed_start_with_input(cfg, &markdown_dir.to_string_lossy(), None, None).await?;
         let embed_job_id = embed_result.job_id;
         println!(
             "{} {}",
