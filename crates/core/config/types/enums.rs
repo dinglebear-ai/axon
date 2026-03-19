@@ -32,6 +32,7 @@ pub enum CommandKind {
     Mcp,
     Serve,
     Migrate,
+    Export,
 }
 
 impl CommandKind {
@@ -66,6 +67,7 @@ impl CommandKind {
             Self::Mcp => "mcp",
             Self::Serve => "serve",
             Self::Migrate => "migrate",
+            Self::Export => "export",
         }
     }
 }

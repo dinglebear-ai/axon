@@ -62,6 +62,7 @@ MCP docs:
 | `search <query>` | Web search via Tavily, auto-queues crawl jobs for results | No |
 | `research <query>` | Web research via Tavily AI search with LLM synthesis | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
+| `export` | Export full index manifest (jobs + ingest targets + refresh schedules + Qdrant summary) to JSON | No |
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer. Use `--graph` to inject Neo4j graph context when configured. | No |

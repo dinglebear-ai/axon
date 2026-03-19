@@ -7,11 +7,12 @@ use super::common::{
     MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, parse_limit_usize, parse_offset,
     to_pagination,
 };
+use crate::crates::jobs::common::make_pool;
 use crate::crates::mcp::schema::{
     ArtifactsRequest, ArtifactsSubaction, AxonToolResponse, DoctorRequest, DomainsRequest,
-    HelpRequest, SourcesRequest, StatsRequest,
+    ExportRequest, HelpRequest, SourcesRequest, StatsRequest,
 };
-use crate::crates::services::system;
+use crate::crates::services::{export, system};
 use regex::Regex;
 use rmcp::ErrorData;
 use std::path::Path;
@@ -284,6 +285,7 @@ impl AxonMcpServer {
                     "domains": ["domains"],
                     "sources": ["sources"],
                     "stats": ["stats"],
+                    "export": ["export"],
                     "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
                     "elicit_demo": []
                 },
@@ -358,5 +360,25 @@ impl AxonMcpServer {
             .await
             .map_err(|e| logged_internal_error("stats", e))?;
         respond_with_mode("stats", "stats", response_mode, "stats", result.payload).await
+    }
+
+    pub(super) async fn handle_export(
+        &self,
+        req: ExportRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let pool = make_pool(self.cfg.as_ref())
+            .await
+            .map_err(|e| logged_internal_error("export pool", e))?;
+        let options = export::ExportOptions {
+            include_urls: req.include_urls.unwrap_or(true),
+            url_limit: req.url_limit.unwrap_or(100_000),
+            statuses: vec![],
+        };
+        let manifest = export::export_manifest(self.cfg.as_ref(), &pool, &options)
+            .await
+            .map_err(|e| logged_internal_error("export", e))?;
+        let payload =
+            serde_json::to_value(manifest).map_err(|e| logged_internal_error("export", e))?;
+        respond_with_mode("export", "export", req.response_mode, "export", payload).await
     }
 }

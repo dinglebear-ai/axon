@@ -3,6 +3,7 @@ pub mod crawl;
 pub mod debug;
 pub mod embed;
 pub mod events;
+pub mod export;
 pub mod extract;
 pub mod graph;
 pub mod ingest;

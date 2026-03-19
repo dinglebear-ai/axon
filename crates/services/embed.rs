@@ -7,7 +7,7 @@ use crate::crates::jobs::embed::{
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{EmbedJobResult, EmbedStartResult};
-use crate::crates::vector::ops::embed_path_native;
+use crate::crates::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -128,6 +128,19 @@ pub async fn embed_start(
 
 pub async fn embed_now(cfg: &Config, input: &str) -> Result<EmbedJobResult, Box<dyn Error>> {
     embed_path_native(cfg, input).await?;
+    Ok(map_embed_job_result(serde_json::json!({
+        "input": input,
+        "collection": cfg.collection,
+        "completed": true,
+    })))
+}
+
+pub async fn embed_now_with_source(
+    cfg: &Config,
+    input: &str,
+    source_type: Option<&str>,
+) -> Result<EmbedJobResult, Box<dyn Error>> {
+    embed_path_native_with_progress(cfg, input, None, source_type).await?;
     Ok(map_embed_job_result(serde_json::json!({
         "input": input,
         "collection": cfg.collection,

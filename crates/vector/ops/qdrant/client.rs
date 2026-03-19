@@ -362,42 +362,24 @@ pub(crate) async fn qdrant_domain_facets(
     cfg: &Config,
     limit: usize,
 ) -> Result<Vec<(String, usize)>> {
-    let client = http_client()?;
-    let url = format!("{}/collections/{}/facet", qdrant_base(cfg), cfg.collection);
-    let value = client
-        .post(url)
-        .json(&serde_json::json!({
-            "key": "domain",
-            "limit": limit,
-        }))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<serde_json::Value>()
-        .await?;
-
-    let mut out = Vec::new();
-    if let Some(hits) = value["result"]["hits"].as_array() {
-        for hit in hits {
-            let domain = hit
-                .get("value")
-                .and_then(|v| v.as_str())
-                .map_or_else(|| "unknown".to_string(), str::to_string);
-            let vectors = hit.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            out.push((domain, vectors));
-        }
-    }
-    out.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(out)
+    qdrant_facet(cfg, "domain", limit).await
 }
 
 pub(crate) async fn qdrant_url_facets(cfg: &Config, limit: usize) -> Result<Vec<(String, usize)>> {
+    qdrant_facet(cfg, "url", limit).await
+}
+
+pub(crate) async fn qdrant_facet(
+    cfg: &Config,
+    key: &str,
+    limit: usize,
+) -> Result<Vec<(String, usize)>> {
     let client = http_client()?;
     let url = format!("{}/collections/{}/facet", qdrant_base(cfg), cfg.collection);
     let value = client
         .post(url)
         .json(&serde_json::json!({
-            "key": "url",
+            "key": key,
             "limit": limit,
         }))
         .send()
@@ -405,18 +387,20 @@ pub(crate) async fn qdrant_url_facets(cfg: &Config, limit: usize) -> Result<Vec<
         .error_for_status()?
         .json::<serde_json::Value>()
         .await?;
+    parse_facet_response(&value)
+}
 
+fn parse_facet_response(value: &serde_json::Value) -> Result<Vec<(String, usize)>> {
     let mut out = Vec::new();
     if let Some(hits) = value["result"]["hits"].as_array() {
         for hit in hits {
-            let source_url = hit
+            let facet_value = hit
                 .get("value")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                .map_or_else(|| "unknown".to_string(), str::to_string);
             let chunks = hit.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            if !source_url.is_empty() {
-                out.push((source_url, chunks));
+            if !facet_value.is_empty() {
+                out.push((facet_value, chunks));
             }
         }
     }

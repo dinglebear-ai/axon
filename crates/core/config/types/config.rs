@@ -45,6 +45,12 @@ pub struct Config {
     /// Explicit single-file output path (overrides `output_dir` for single-URL commands). Flag: `--output`.
     pub output_path: Option<PathBuf>,
 
+    /// Exclude indexed URL list from export output. Flag: `export --no-urls`.
+    pub export_no_urls: bool,
+
+    /// Maximum indexed URLs to include in export output. Flag: `export --url-limit`.
+    pub export_url_limit: usize,
+
     /// Browser rendering strategy: `http`, `chrome`, or `auto-switch`. Flag: `--render-mode`.
     pub render_mode: RenderMode,
 

@@ -48,6 +48,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_project = None;
     let mut serve_port = 49000u16;
     let mut mcp_transport = None;
+    let mut export_no_urls = false;
+    let mut export_url_limit = 100_000usize;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
         CliCommand::Crawl(args) => (
@@ -210,6 +212,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             (CommandKind::Serve, Vec::new())
         }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
+        CliCommand::Export(args) => {
+            export_no_urls = args.no_urls;
+            export_url_limit = args.url_limit;
+            (CommandKind::Export, Vec::new())
+        }
     };
 
     if matches!(command, CommandKind::Completions) {
@@ -272,6 +279,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         exclude_path_prefix: normalized_excludes.prefixes,
         output_dir: global.output_dir,
         output_path: global.output,
+        export_no_urls,
+        export_url_limit,
         render_mode: global.render_mode,
         chrome_remote_url: global
             .chrome_remote_url

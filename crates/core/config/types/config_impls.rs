@@ -23,6 +23,8 @@ impl Default for Config {
             exclude_path_prefix: Vec::new(),
             output_dir: PathBuf::from(".cache/axon-rust/output"),
             output_path: None,
+            export_no_urls: false,
+            export_url_limit: 100_000,
             render_mode: RenderMode::AutoSwitch,
             chrome_remote_url: None,
             chrome_proxy: None,
@@ -196,6 +198,8 @@ impl fmt::Debug for Config {
             .field("exclude_path_prefix", &self.exclude_path_prefix)
             .field("output_dir", &self.output_dir)
             .field("output_path", &self.output_path)
+            .field("export_no_urls", &self.export_no_urls)
+            .field("export_url_limit", &self.export_url_limit)
             .field("render_mode", &self.render_mode)
             .field("chrome_remote_url", &self.chrome_remote_url)
             .field("chrome_proxy", &self.chrome_proxy)

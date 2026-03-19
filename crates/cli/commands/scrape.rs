@@ -62,7 +62,8 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
         for (normalized, markdown) in &to_embed {
             tokio::fs::write(embed_dir.join(url_to_filename(normalized, 1)), markdown).await?;
         }
-        embed_service::embed_now(cfg, &embed_dir.to_string_lossy()).await?;
+        embed_service::embed_now_with_source(cfg, &embed_dir.to_string_lossy(), Some("scrape"))
+            .await?;
     }
 
     if !errors.is_empty() {

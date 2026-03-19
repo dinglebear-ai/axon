@@ -77,7 +77,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo."
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, export, elicit_demo."
     )]
     async fn axon<'a>(
         &'a self,
@@ -129,6 +129,7 @@ impl AxonMcpServer {
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
             AxonRequest::Refresh(req) => self.handle_refresh(req).await?,
             AxonRequest::Graph(req) => self.handle_graph(req).await?,
+            AxonRequest::Export(req) => self.handle_export(req).await?,
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))

@@ -49,6 +49,8 @@ pub(super) enum CliCommand {
     Serve(ServeArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
+    /// Export indexed data manifest to JSON
+    Export(ExportArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -86,6 +88,17 @@ pub(super) struct MigrateArgs {
     /// Destination collection to create with named dense + bm42 sparse vectors
     #[arg(long)]
     pub(super) to: String,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ExportArgs {
+    /// Exclude indexed URL list from export.
+    #[arg(long, default_value_t = false)]
+    pub(super) no_urls: bool,
+
+    /// Maximum URLs to include in export payload.
+    #[arg(long, default_value_t = 100_000)]
+    pub(super) url_limit: usize,
 }
 
 #[derive(Debug, Args)]

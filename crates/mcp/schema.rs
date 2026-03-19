@@ -26,6 +26,7 @@ pub enum AxonRequest {
     Screenshot(ScreenshotRequest),
     Refresh(RefreshRequest),
     Graph(GraphRequest),
+    Export(ExportRequest),
     ElicitDemo(ElicitDemoRequest),
 }
 
@@ -409,6 +410,14 @@ pub struct GraphRequest {
     pub domain: Option<String>,
     pub all: Option<bool>,
     pub entity: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExportRequest {
+    pub include_urls: Option<bool>,
+    pub url_limit: Option<usize>,
     pub response_mode: Option<ResponseMode>,
 }
 
