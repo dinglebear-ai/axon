@@ -31,6 +31,10 @@ const BASELINE_SYSTEM_PROMPT: &str = "You are a knowledgeable technical assistan
 
 /// Build a POST request to the OpenAI-compatible chat completions endpoint with
 /// optional bearer auth. Retained for legacy command paths outside ask/evaluate.
+#[expect(
+    dead_code,
+    reason = "legacy command paths outside ask/evaluate still import this helper"
+)]
 pub(super) fn build_openai_chat_request(
     client: &reqwest::Client,
     cfg: &Config,

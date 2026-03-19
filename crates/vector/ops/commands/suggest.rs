@@ -1,9 +1,13 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::http::{http_client, normalize_url};
+use crate::crates::core::http::normalize_url;
+use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use crate::crates::vector::ops::{input, qdrant};
 use spider::url::Url;
 use std::collections::HashSet;
 use std::error::Error;
+
+#[cfg(test)]
+use crate::crates::services::acp_llm::AcpCompletionRunner;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Suggestion {
@@ -232,26 +236,53 @@ ALREADY_INDEXED_URLS (sample — more may be indexed):\n{}",
     user_prompt
 }
 
+fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> AcpCompletionRequest {
+    let req = AcpCompletionRequest::new(user_prompt)
+        .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
+        .stream(false);
+    if cfg.openai_model.trim().is_empty() {
+        req
+    } else {
+        req.model(cfg.openai_model.clone())
+    }
+}
+
+#[cfg(test)]
+async fn request_suggestions_from_runner<R>(
+    runner: &R,
+    user_prompt: &str,
+) -> Result<String, Box<dyn Error>>
+where
+    R: AcpCompletionRunner + ?Sized,
+{
+    let req = AcpCompletionRequest::new(user_prompt)
+        .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
+        .stream(false);
+    let response = acp_llm::complete_text_with_runner(runner, req).await?;
+    Ok(response.text)
+}
+
 async fn request_suggestions_from_llm(
     cfg: &Config,
     user_prompt: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let client = http_client()?;
-    let req = super::streaming::build_openai_chat_request(client, cfg).json(&serde_json::json!({
-        "model": cfg.openai_model,
-        "messages": [
-            {"role": "system", "content": "You propose complementary documentation crawl targets. Output JSON only."},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.2,
-    }));
-
-    let response = req.send().await?.error_for_status()?;
-    let json: serde_json::Value = response.json().await?;
-    Ok(json["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string())
+    let req = build_suggest_completion_request(cfg, user_prompt);
+    let cfg = cfg.clone();
+    tokio::task::spawn_blocking(move || -> Result<String, std::io::Error> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| std::io::Error::other(err.to_string()))?;
+        runtime.block_on(async move {
+            let response = acp_llm::complete_text(&cfg, req)
+                .await
+                .map_err(|err| std::io::Error::other(err.to_string()))?;
+            Ok(response.text)
+        })
+    })
+    .await
+    .map_err(|err| -> Box<dyn Error> { Box::new(err) })?
+    .map_err(|err| -> Box<dyn Error> { Box::new(err) })
 }
 
 fn filter_new_suggestions(
@@ -338,8 +369,47 @@ pub async fn discover_crawl_suggestions(
 
 #[cfg(test)]
 mod tests {
-    use super::{already_indexed, filter_new_suggestions, parse_suggestions_from_llm};
+    use super::{
+        already_indexed, filter_new_suggestions, parse_suggestions_from_llm,
+        request_suggestions_from_runner,
+    };
+    use crate::crates::services::acp_llm::{
+        AcpCompletionRequest, AcpCompletionRunner, AcpCompletionTurnResult,
+    };
     use std::collections::HashSet;
+    use std::error::Error;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct FakeCompletionRunner {
+        captured_requests: Arc<Mutex<Vec<AcpCompletionRequest>>>,
+        result: AcpCompletionTurnResult,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl AcpCompletionRunner for FakeCompletionRunner {
+        async fn complete_text(
+            &self,
+            req: AcpCompletionRequest,
+        ) -> Result<AcpCompletionTurnResult, Box<dyn Error>> {
+            self.captured_requests
+                .lock()
+                .expect("lock request capture")
+                .push(req);
+            Ok(self.result.clone())
+        }
+
+        async fn complete_streaming<F>(
+            &self,
+            _req: AcpCompletionRequest,
+            _on_delta: &mut F,
+        ) -> Result<AcpCompletionTurnResult, Box<dyn Error>>
+        where
+            F: FnMut(&str) -> Result<(), Box<dyn Error>> + Send,
+        {
+            unreachable!("suggestions request path should use complete_text")
+        }
+    }
 
     #[test]
     fn parses_json_suggestions() {
@@ -391,5 +461,30 @@ mod tests {
         assert_eq!(accepted.len(), 2);
         assert_eq!(accepted[0].url, "https://docs.a.com/reference/api");
         assert_eq!(accepted[1].url, "https://docs.b.com/guide");
+    }
+
+    #[tokio::test]
+    async fn request_suggestions_from_runner_reads_gateway_text() {
+        let captured_requests = Arc::new(Mutex::new(Vec::new()));
+        let runner = FakeCompletionRunner {
+            captured_requests: Arc::clone(&captured_requests),
+            result: AcpCompletionTurnResult {
+                text: r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"ACP gateway text"}]}"#.to_string(),
+                usage: None,
+            },
+        };
+
+        let response = request_suggestions_from_runner(&runner, "docs focus")
+            .await
+            .expect("runner response should be read");
+
+        assert_eq!(
+            response,
+            r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"ACP gateway text"}]}"#
+        );
+
+        let captured = captured_requests.lock().expect("request capture lock");
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].user_prompt, "docs focus");
     }
 }
