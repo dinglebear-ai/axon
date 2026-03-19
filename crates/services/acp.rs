@@ -254,8 +254,8 @@ impl AcpClientScaffold {
     /// Used by env-isolation integration tests that need to spawn a real shell
     /// (e.g. `sh`) without being blocked by the shell-name validator.
     ///
-    /// Gated behind the `test-helpers` feature so it cannot be called in
-    /// production builds.  Enable with `cargo test --features test-helpers`.
+    /// This is intentionally `pub` to allow access from integration tests in
+    /// `tests/`. Do not call this from production code paths.
     #[doc(hidden)]
     pub fn spawn_adapter_skip_validation(
         &self,

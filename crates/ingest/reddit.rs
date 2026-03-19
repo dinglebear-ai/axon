@@ -7,6 +7,7 @@ pub use client::get_access_token;
 pub use types::{RedditTarget, classify_target};
 
 use crate::crates::core::config::{Config, RedditSort};
+use crate::crates::core::content::url_to_domain;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
@@ -110,21 +111,22 @@ async fn ingest_subreddit(
                     let extra = meta::build_reddit_post_extra_payload(data);
                     let chunks = chunk_text(&content);
                     if !chunks.is_empty() {
-                        let domain = spider::url::Url::parse(&post_url)
-                            .ok()
-                            .and_then(|u| u.host_str().map(|s| s.to_string()))
-                            .unwrap_or_else(|| "reddit.com".to_string());
                         let doc = PreparedDoc {
                             url: post_url.clone(),
-                            domain,
+                            domain: url_to_domain(&post_url),
                             chunks,
                             source_type: "reddit".to_string(),
                             content_type: "text",
                             title: Some(title.to_string()),
                             extra: Some(extra.clone()),
                         };
-                        if let Ok(summary) = embed_prepared_docs(cfg, vec![doc], None).await {
-                            count_ref.fetch_add(summary.chunks_embedded, Ordering::SeqCst);
+                        match embed_prepared_docs(cfg, vec![doc], None).await {
+                            Ok(summary) => {
+                                count_ref.fetch_add(summary.chunks_embedded, Ordering::Relaxed);
+                            }
+                            Err(e) => log_warn(&format!(
+                                "command=ingest_reddit embed_failed post={permalink} err={e}"
+                            )),
                         }
                     }
                 }
@@ -141,9 +143,9 @@ async fn ingest_subreddit(
         }
     }
 
-    // Use load(SeqCst) rather than into_inner() — all concurrent tasks have completed
-    // at this point (for_each_concurrent.await), so this reads the final settled value.
-    Ok(total_count.load(Ordering::SeqCst))
+    // Relaxed is sufficient — for_each_concurrent.await provides a happens-before
+    // guarantee that all fetch_add calls have completed before this load.
+    Ok(total_count.load(Ordering::Relaxed))
 }
 
 /// Embed a single Reddit thread (post + full recursive comment tree) by its URL.
@@ -199,13 +201,9 @@ async fn ingest_thread(
     if chunks.is_empty() {
         return Ok(0);
     }
-    let domain = spider::url::Url::parse(&canonical_url)
-        .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "reddit.com".to_string());
     let doc = PreparedDoc {
-        url: canonical_url,
-        domain,
+        url: canonical_url.clone(),
+        domain: url_to_domain(&canonical_url),
         chunks,
         source_type: "reddit".to_string(),
         content_type: "text",

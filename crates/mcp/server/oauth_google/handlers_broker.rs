@@ -9,9 +9,9 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::helpers::{
-    append_query_pairs, bearer_token_from_headers, extract_cookie_value, is_allowed_redirect_uri,
-    normalize_loopback_redirect_uri, request_identity, request_identity_from_headers,
-    session_cookie_name, unix_now_secs,
+    append_query_pairs, bearer_token_from_headers, constant_time_eq, extract_cookie_value,
+    is_allowed_redirect_uri, normalize_loopback_redirect_uri, request_identity,
+    request_identity_from_headers, session_cookie_name, unix_now_secs,
 };
 use super::types::{
     AuthCodeRecord, AuthorizeErrorResponse, AuthorizeParams, DynamicClientRegistrationRequest,
@@ -26,7 +26,11 @@ fn validate_registration_auth_token(
 ) -> Result<(), Response> {
     if let Some(expected) = expected_token {
         let provided = bearer_token_from_headers(headers);
-        if provided.as_deref() != Some(expected.as_str()) {
+        let token_valid = provided
+            .as_deref()
+            .map(|p| constant_time_eq(p.as_bytes(), expected.as_bytes()))
+            .unwrap_or(false);
+        if !token_valid {
             warn!(
                 target: "axon.mcp.oauth",
                 identity,

@@ -3,6 +3,11 @@ use crate::crates::core::logging::{log_info, log_warn};
 use std::error::Error;
 use std::path::Path;
 
+/// Non-blocking path existence check. Returns `false` on any I/O error.
+pub(super) async fn path_exists(path: &Path) -> bool {
+    tokio::fs::try_exists(path).await.unwrap_or(false)
+}
+
 /// Update the `latest/` symlink directory to point at the new crawl output via
 /// reflink copies. Guards against self-delete and accidental deletion of parent
 /// directories.
@@ -17,7 +22,7 @@ pub async fn update_latest_reflink(
         return Err("source_dir must not be inside latest_dir".into());
     }
 
-    if latest_dir.exists() {
+    if path_exists(latest_dir).await {
         tokio::fs::remove_dir_all(latest_dir).await.map_err(|e| {
             format!(
                 "failed to remove old latest dir {}: {e}",
@@ -31,7 +36,7 @@ pub async fn update_latest_reflink(
 
     let manifest = "manifest.jsonl";
     let source_manifest = source_dir.join(manifest);
-    if source_manifest.exists() {
+    if path_exists(&source_manifest).await {
         let src = source_manifest.clone();
         let dst = latest_dir.join(manifest);
         tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst)).await??;
@@ -40,7 +45,7 @@ pub async fn update_latest_reflink(
     let markdown = "markdown";
     let source_md = source_dir.join(markdown);
     let target_md = latest_dir.join(markdown);
-    if source_md.exists() {
+    if path_exists(&source_md).await {
         tokio::fs::create_dir_all(&target_md).await?;
         let mut entries = tokio::fs::read_dir(source_md).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -76,10 +81,10 @@ pub(super) async fn prepare_crawl_output_dir(
     recycling_bin: &Path,
     cfg: &Config,
 ) -> Result<(), Box<dyn Error>> {
-    if output_dir.exists() {
+    if path_exists(output_dir).await {
         if cfg.cache {
-            if markdown_dir.exists() {
-                if recycling_bin.exists() {
+            if path_exists(markdown_dir).await {
+                if path_exists(recycling_bin).await {
                     tokio::fs::remove_dir_all(recycling_bin).await?;
                 }
                 tokio::fs::rename(markdown_dir, recycling_bin).await?;

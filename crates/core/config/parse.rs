@@ -1,7 +1,7 @@
 mod build_config;
 pub(crate) mod docker;
 pub(crate) mod excludes;
-mod helpers;
+pub(crate) mod helpers;
 mod performance;
 
 use super::cli::Cli;

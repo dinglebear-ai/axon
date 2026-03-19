@@ -1,9 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
     invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
-    respond_with_mode,
+    respond_with_mode, validate_mcp_urls,
 };
-use crate::crates::core::http::validate_url;
 use crate::crates::mcp::schema::{
     AxonToolResponse, RefreshRequest, RefreshSubaction, ResponseMode, StatusRequest,
 };
@@ -77,6 +76,7 @@ impl AxonMcpServer {
         if urls.is_empty() {
             return Err(invalid_params("urls cannot be empty"));
         }
+        validate_mcp_urls(&urls)?;
         let result = refresh_service::refresh_start(self.cfg.as_ref(), &urls)
             .await
             .map_err(|e| logged_internal_error("refresh.start", e))?;
@@ -242,9 +242,7 @@ impl AxonMcpServer {
                 "refresh schedule create requires at least one URL",
             ));
         }
-        for url in &urls {
-            validate_url(url).map_err(|e| invalid_params(e.to_string()))?;
-        }
+        validate_mcp_urls(&urls)?;
         let schedule = refresh_service::refresh_schedule_create(
             self.cfg.as_ref(),
             &RefreshScheduleCreate {

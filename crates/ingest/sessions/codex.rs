@@ -17,7 +17,7 @@ pub(super) async fn ingest_codex_sessions(
     multi: &MultiProgress,
 ) -> IngestResult<usize> {
     let root = super::expand_home("~/.codex/sessions");
-    if !root.exists() {
+    if !fs::try_exists(&root).await.unwrap_or(false) {
         return Ok(0);
     }
 
@@ -55,7 +55,7 @@ pub(super) async fn ingest_codex_sessions(
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
         {
             let path = entry.path();
-            if path.is_dir() {
+            if entry.file_type().await?.is_dir() {
                 dir_entries.push((path, depth + 1));
                 continue;
             }

@@ -29,8 +29,8 @@ mod worker;
 
 use crate::crates::core::logging::log_warn;
 use crate::crates::jobs::common::{
-    JobTable, begin_schema_migration_tx, cancel_pending_or_running_job, make_pool,
-    purge_queue_safe, sort_rows_for_status_view,
+    JobTable, batched_cleanup_terminal_jobs, begin_schema_migration_tx,
+    cancel_pending_or_running_job, make_pool, purge_queue_safe, sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -356,22 +356,7 @@ pub async fn cleanup_refresh_jobs(
 ) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema_once(&pool).await?;
-    let mut total = 0u64;
-    loop {
-        let deleted = sqlx::query(
-            "DELETE FROM axon_refresh_jobs WHERE id IN (SELECT id FROM axon_refresh_jobs WHERE status IN ($1,$2) LIMIT 1000)",
-        )
-        .bind(JobStatus::Failed.as_str())
-        .bind(JobStatus::Canceled.as_str())
-        .execute(&pool)
-        .await?
-        .rows_affected();
-        total += deleted;
-        if deleted == 0 {
-            break;
-        }
-    }
-    Ok(total)
+    Ok(batched_cleanup_terminal_jobs(&pool, TABLE).await?)
 }
 
 pub async fn clear_refresh_jobs(

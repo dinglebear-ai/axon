@@ -5,7 +5,8 @@ use crate::crates::vector::ops::qdrant::{env_usize_clamped, qdrant_base};
 use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::{Mutex, OnceLock};
+use std::future::Future;
+use std::sync::{OnceLock, RwLock};
 
 #[cfg(test)]
 mod tests;
@@ -22,21 +23,46 @@ pub(crate) enum VectorMode {
     Named,
 }
 
-static COLLECTION_MODES: OnceLock<Mutex<HashMap<String, VectorMode>>> = OnceLock::new();
+/// Process-lifetime cache: entries are never evicted. A process restart is required
+/// to pick up collection schema changes (e.g., migration from Unnamed to Named).
+/// Uses `RwLock` (not `Mutex`) because after initial population all accesses are
+/// read-only -- `RwLock` allows unlimited concurrent readers.
+static COLLECTION_MODES: OnceLock<RwLock<HashMap<String, VectorMode>>> = OnceLock::new();
 
 /// Return the cached `VectorMode` for `name`, or `None` if not yet initialized.
 fn cached_vector_mode(name: &str) -> Option<VectorMode> {
     COLLECTION_MODES
         .get()
-        .and_then(|m| m.lock().ok())
+        .and_then(|m| m.read().ok())
         .and_then(|map| map.get(name).copied())
 }
 
 /// Store `mode` in the collection-mode cache for `name`.
 fn cache_vector_mode(name: &str, mode: VectorMode) {
-    let map = COLLECTION_MODES.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut m) = map.lock() {
-        m.insert(name.to_owned(), mode);
+    let map = COLLECTION_MODES.get_or_init(|| RwLock::new(HashMap::new()));
+    match map.write() {
+        Ok(mut m) => {
+            m.insert(name.to_owned(), mode);
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "COLLECTION_MODES RwLock poisoned, cache write skipped for '{}': {e}",
+                name
+            ));
+        }
+    }
+}
+
+/// Clear a specific entry from the collection mode cache.
+///
+/// Useful for long-running workers that need to re-detect collection schema
+/// after a migration (e.g., Unnamed -> Named via `axon migrate`).
+#[expect(dead_code, reason = "reserved for long-running workers post-migration")]
+pub(crate) fn clear_collection_mode_cache(name: &str) {
+    if let Some(map) = COLLECTION_MODES.get()
+        && let Ok(mut m) = map.write()
+    {
+        m.remove(name);
     }
 }
 
@@ -180,6 +206,9 @@ fn validate_existing_dim(
 /// These indexes are required by the Qdrant `/facet` endpoint used by the
 /// `domains` and `sources` MCP actions.  The operation is idempotent --
 /// Qdrant returns HTTP 200 when the index already exists.
+///
+/// All index PUT requests are issued concurrently (they are independent
+/// and idempotent), avoiding 5 sequential round-trips on cold collection init.
 async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let client = http_client()?;
     let index_url = format!(
@@ -187,35 +216,55 @@ async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
         qdrant_base(cfg),
         cfg.collection
     );
-    // Code-specific indexes enable filtered searches without full collection scans
-    // chunking_method: universal field present on all chunk types (not just GitHub)
-    for field in &[
+
+    // Build all index requests as futures and run them concurrently.
+    let keyword_fields = [
         "url",
         "domain",
         "source_type",
         "gh_file_language",
         "chunking_method",
-    ] {
+    ];
+    type IndexFut<'a> = std::pin::Pin<
+        Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'a>,
+    >;
+    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(keyword_fields.len() + 1);
+
+    for field in &keyword_fields {
+        let url = index_url.clone();
+        futures.push(Box::pin(async move {
+            client
+                .put(&url)
+                .json(&serde_json::json!({
+                    "field_name": field,
+                    "field_schema": "keyword"
+                }))
+                .send()
+                .await?
+                .error_for_status()?;
+            Ok(())
+        }));
+    }
+
+    // datetime index for scraped_at range queries (--since / --before)
+    let datetime_url = index_url;
+    futures.push(Box::pin(async move {
         client
-            .put(&index_url)
+            .put(&datetime_url)
             .json(&serde_json::json!({
-                "field_name": field,
-                "field_schema": "keyword"
+                "field_name": "scraped_at",
+                "field_schema": "datetime"
             }))
             .send()
             .await?
             .error_for_status()?;
+        Ok(())
+    }));
+
+    let results = futures_util::future::join_all(futures).await;
+    for result in results {
+        result.map_err(|e| -> Box<dyn Error> { e })?;
     }
-    // datetime index enables efficient range queries on scraped_at (--since / --before)
-    client
-        .put(&index_url)
-        .json(&serde_json::json!({
-            "field_name": "scraped_at",
-            "field_schema": "datetime"
-        }))
-        .send()
-        .await?
-        .error_for_status()?;
     Ok(())
 }
 
@@ -317,6 +366,11 @@ async fn patch_add_sparse(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Upsert points into Qdrant with automatic batching and retry.
+///
+/// Points are split into batches of `AXON_QDRANT_UPSERT_BATCH_SIZE` (default 256)
+/// and each batch is retried up to 3 times with exponential backoff (500ms, 1s, 2s).
+/// Uses `?wait=true` so the call blocks until Qdrant has committed the write.
 pub(super) async fn qdrant_upsert(
     cfg: &Config,
     points: &[serde_json::Value],

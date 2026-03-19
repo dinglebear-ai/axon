@@ -1,47 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::source_display::display_source;
-use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
-use crate::crates::vector::ops::{qdrant, ranking, sparse, tei};
+use crate::crates::vector::ops::{qdrant, ranking, tei};
 use std::error::Error;
-
-/// Dispatch vector search based on collection mode and hybrid config.
-///
-/// Named + hybrid enabled + non-empty sparse -> hybrid search (dense + BM42 + RRF)
-/// Named + hybrid disabled or empty sparse  -> named dense-only search
-/// Unnamed                                   -> legacy `/points/search`
-async fn dispatch_search(
-    cfg: &Config,
-    vector: &[f32],
-    query: &str,
-    limit: usize,
-) -> Result<Vec<qdrant::QdrantSearchHit>, Box<dyn Error>> {
-    let filter = qdrant::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
-    let filter_ref = filter.as_ref();
-    let mode = get_or_fetch_vector_mode(cfg).await?;
-    match mode {
-        VectorMode::Named => {
-            let sv = sparse::compute_sparse_vector(query);
-            if cfg.hybrid_search_enabled && !sv.is_empty() {
-                qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
-                    .await
-                    .map_err(|e| -> Box<dyn Error> {
-                        format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
-                    })
-            } else {
-                qdrant::qdrant_named_dense_search(cfg, vector, limit, filter_ref)
-                    .await
-                    .map_err(|e| -> Box<dyn Error> {
-                        format!("named dense search on '{}' failed: {e}", cfg.collection).into()
-                    })
-            }
-        }
-        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                format!("vector search on '{}' failed: {e}", cfg.collection).into()
-            }),
-    }
-}
 
 pub async fn query_results(
     cfg: &Config,
@@ -56,7 +16,7 @@ pub async fn query_results(
     let vector = query_vectors.remove(0);
 
     let fetch_limit = ((limit + offset).max(1) * 8).max(limit + offset).min(500);
-    let hits = dispatch_search(cfg, &vector, query, fetch_limit).await?;
+    let hits = qdrant::dispatch_vector_search(cfg, &vector, query, fetch_limit).await?;
     let query_tokens = ranking::tokenize_query(query);
     let candidates: Vec<ranking::AskCandidate> = hits
         .into_iter()
@@ -67,13 +27,15 @@ pub async fn query_results(
                 return None;
             }
             let path = ranking::extract_path_from_url(&url);
+            let url_tokens = ranking::tokenize_path_set(&path);
+            let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
             Some(ranking::AskCandidate {
                 score: h.score,
                 url,
-                path: path.clone(),
-                chunk_text: chunk_text.clone(),
-                url_tokens: ranking::tokenize_path_set(&path),
-                chunk_tokens: ranking::tokenize_text_set(&chunk_text),
+                path,
+                chunk_text,
+                url_tokens,
+                chunk_tokens,
                 rerank_score: h.score,
             })
         })

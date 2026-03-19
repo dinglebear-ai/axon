@@ -56,6 +56,10 @@ where
         .map_err(|e| format!("WS send failed for {method}: {e}"))?;
 
     let deadline = tokio::time::Instant::now() + timeout;
+    // Safety bound on non-matching frames to prevent unbounded CPU drain if
+    // Chrome sends excessive events (e.g. from an adversarial page).
+    let mut skipped: u32 = 0;
+    const MAX_SKIPPED_FRAMES: u32 = 10_000;
     loop {
         let frame = tokio::time::timeout_at(deadline, rx.next())
             .await
@@ -72,6 +76,12 @@ where
                 }
                 return Ok(v.get("result").cloned().unwrap_or(serde_json::Value::Null));
             }
+        }
+        skipped += 1;
+        if skipped > MAX_SKIPPED_FRAMES {
+            return Err(format!(
+                "CDP response loop exceeded {MAX_SKIPPED_FRAMES} non-matching frames for {method}"
+            ));
         }
     }
 }

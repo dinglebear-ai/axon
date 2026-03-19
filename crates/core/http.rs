@@ -8,6 +8,7 @@
 mod cdp;
 mod client;
 mod error;
+mod headers;
 mod normalize;
 #[cfg(test)]
 mod proptest_tests;
@@ -18,10 +19,11 @@ mod tests;
 // Re-export the full public API so downstream `use crate::crates::core::http::*` continues to work.
 pub use client::{build_client, fetch_html, http_client};
 pub use error::HttpError;
+pub use headers::parse_custom_headers;
 pub use normalize::normalize_url;
-pub(crate) use ssrf::ssrf_blacklist_patterns;
 pub use ssrf::validate_url;
 #[cfg(test)]
 pub(crate) use ssrf::{get_allow_loopback, set_allow_loopback};
+pub(crate) use ssrf::{ssrf_blacklist_compact_strings, ssrf_blacklist_patterns};
 
 pub(crate) use cdp::cdp_discovery_url;

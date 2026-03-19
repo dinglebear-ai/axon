@@ -5,21 +5,12 @@ use super::super::types::{
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    parse_viewport, positional_from_graph_subcommand, positional_from_job,
+    env_bool, parse_viewport, positional_from_graph_subcommand, positional_from_job,
     positional_from_refresh_subcommand, positional_from_watch_subcommand,
 };
 use super::performance;
 use clap::ValueEnum;
 use std::env;
-
-fn env_bool(key: &str, default: bool) -> bool {
-    match env::var(key).ok().as_deref().map(str::trim) {
-        None | Some("") => default,
-        Some("true" | "1" | "yes") => true,
-        Some("false" | "0" | "no") => false,
-        Some(_) => default,
-    }
-}
 
 fn parse_origin_allowlist(raw: &str) -> Vec<String> {
     raw.split(',')
@@ -265,6 +256,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     }
 
     let normalized_excludes = excludes::normalize_exclude_prefixes(global.exclude_path_prefix);
+    let (viewport_width, viewport_height) = parse_viewport(&global.viewport);
 
     let mut cfg = Config {
         command,
@@ -533,14 +525,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         bypass_csp: global.bypass_csp,
         accept_invalid_certs: global.accept_invalid_certs,
         screenshot_full_page: global.screenshot_full_page,
-        viewport_width: {
-            let (w, _) = parse_viewport(&global.viewport);
-            w
-        },
-        viewport_height: {
-            let (_, h) = parse_viewport(&global.viewport);
-            h
-        },
+        viewport_width,
+        viewport_height,
         serve_port,
         mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
         mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
@@ -580,12 +566,9 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     // Derive output_dir from AXON_DATA_DIR when still at the clap default.
     // This unifies local dev and Docker: both write to $AXON_DATA_DIR/axon/output.
     if cfg.output_dir == std::path::Path::new(".cache/axon-rust/output")
-        && let Ok(data_dir) = env::var("AXON_DATA_DIR")
+        && let Some(data_dir) = crate::crates::core::paths::axon_data_dir()
     {
-        let data_dir = data_dir.trim();
-        if !data_dir.is_empty() {
-            cfg.output_dir = std::path::PathBuf::from(data_dir).join("axon/output");
-        }
+        cfg.output_dir = data_dir.join("axon/output");
     }
 
     Ok(cfg)

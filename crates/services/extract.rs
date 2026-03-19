@@ -88,33 +88,7 @@ pub async fn extract_start(
     urls: &[String],
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ExtractStartResult, Box<dyn Error>> {
-    if urls.is_empty() {
-        return Err("extract_start requires at least one URL".into());
-    }
-
-    let prompt = cfg.query.clone();
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueueing extract job for {} URL(s)", urls.len()),
-        },
-    )
-    .await;
-
-    let job_id = start_extract_job(cfg, urls, prompt).await?;
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueued extract job: {job_id}"),
-        },
-    )
-    .await;
-
-    Ok(map_extract_start_result(job_id.to_string()))
+    extract_start_with_prompt(cfg, urls, cfg.query.clone(), tx).await
 }
 
 pub async fn extract_start_with_prompt(

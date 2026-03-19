@@ -49,7 +49,12 @@ pub(super) struct CollectorConfig {
 /// Outcome of `process_page` — what the collector loop should do next.
 pub(super) enum PageOutcome {
     /// Page is thin; skip writing it (when `drop_thin` is true).
-    Thin,
+    /// Carries the already-transformed markdown and its content hash so
+    /// `write_thin_page_if_needed` does not re-run the transform pipeline.
+    Thin {
+        trimmed: String,
+        content_hash: String,
+    },
     /// Page body is empty after transformation; skip it.
     Empty,
     /// Page is unchanged from a previous crawl; reuse the cached file.
@@ -86,13 +91,6 @@ pub(super) fn process_page(
     let trimmed = clean_markdown_whitespace(markdown.trim());
     let chars = trimmed.len();
 
-    if chars < col.min_chars {
-        log_debug(&format!(
-            "content thin_page url={url} chars={chars} min={}",
-            col.min_chars
-        ));
-        return PageOutcome::Thin;
-    }
     if trimmed.is_empty() {
         return PageOutcome::Empty;
     }
@@ -100,6 +98,17 @@ pub(super) fn process_page(
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let content_hash = hex::encode(hasher.finalize());
+
+    if chars < col.min_chars {
+        log_debug(&format!(
+            "content thin_page url={url} chars={chars} min={}",
+            col.min_chars
+        ));
+        return PageOutcome::Thin {
+            trimmed,
+            content_hash,
+        };
+    }
 
     if let Some(prev) = col.previous_manifest.get(url)
         && prev.content_hash.as_deref() == Some(&content_hash)
@@ -258,7 +267,10 @@ async fn apply_page_outcome(
     chrome_semaphore: Arc<Semaphore>,
 ) -> Result<bool, String> {
     match outcome {
-        PageOutcome::Thin => {
+        PageOutcome::Thin {
+            trimmed,
+            content_hash,
+        } => {
             return apply_thin_page_outcome(
                 html_bytes,
                 url,
@@ -267,6 +279,8 @@ async fn apply_page_outcome(
                 manifest,
                 chrome_tasks,
                 chrome_semaphore,
+                trimmed,
+                content_hash,
             )
             .await;
         }
@@ -278,6 +292,10 @@ async fn apply_page_outcome(
     Ok(false)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "all params are pass-through from dispatch_page_outcome"
+)]
 async fn apply_thin_page_outcome(
     html_bytes: &[u8],
     url: &str,
@@ -286,6 +304,8 @@ async fn apply_thin_page_outcome(
     manifest: &mut tokio::io::BufWriter<tokio::fs::File>,
     chrome_tasks: &mut JoinSet<RefetchResult>,
     chrome_semaphore: Arc<Semaphore>,
+    trimmed: String,
+    content_hash: String,
 ) -> Result<bool, String> {
     summary.thin_pages += 1;
     summary.thin_urls.insert(url.to_string());
@@ -306,33 +326,23 @@ async fn apply_thin_page_outcome(
     if col.drop_thin {
         return Ok(true);
     }
-    write_thin_page_if_needed(html_bytes, url, col, summary, manifest).await?;
+    write_thin_page_if_needed(url, col, summary, manifest, trimmed, content_hash).await?;
     Ok(false)
 }
 
+/// Write a thin page to disk using the already-transformed markdown and hash
+/// from `process_page`. This avoids re-running the transform pipeline.
 async fn write_thin_page_if_needed(
-    html_bytes: &[u8],
     url: &str,
     col: &CollectorConfig,
     summary: &mut CrawlSummary,
     manifest: &mut tokio::io::BufWriter<tokio::fs::File>,
+    trimmed: String,
+    content_hash: String,
 ) -> Result<(), String> {
-    let input = TransformInput {
-        url: None,
-        content: html_bytes,
-        screenshot_bytes: None,
-        encoding: None,
-        selector_config: col.selector_config.as_ref(),
-        ignore_tags: Some(BOILERPLATE_SELECTORS),
-    };
-    let markdown = transform_content_input(input, col.transform_cfg);
-    let trimmed = clean_markdown_whitespace(markdown.trim());
     if trimmed.is_empty() {
         return Ok(());
     }
-    let mut hasher = Sha256::new();
-    hasher.update(trimmed.as_bytes());
-    let content_hash = hex::encode(hasher.finalize());
     let filename = url_to_filename(url, summary.markdown_files + 1);
     let entry = ManifestEntry {
         url: url.to_string(),

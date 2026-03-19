@@ -2,11 +2,12 @@ pub mod doctor;
 
 pub use doctor::build_doctor_report;
 
+use crate::crates::core::config::parse::helpers::env_bool;
 use crate::crates::core::logging::log_info;
+use crate::crates::core::paths::axon_data_dir;
 use std::env;
 use std::time::Duration;
 use std::time::Instant;
-use tokio;
 
 const DIAGNOSTICS_DIR_DEFAULT: &str = ".cache/chrome-diagnostics";
 
@@ -19,7 +20,7 @@ pub struct BrowserDiagnosticsPattern {
 }
 
 pub async fn redis_healthy(redis_url: &str) -> bool {
-    let _probe_start = Instant::now();
+    let probe_start = Instant::now();
     let url =
         crate::crates::core::config::parse::normalize_local_service_url(redis_url.to_string());
     // Redact credentials — the raw URL may contain a password; log only host:port.
@@ -35,7 +36,7 @@ pub async fn redis_healthy(redis_url: &str) -> bool {
         Err(_) => {
             log_info(&format!(
                 "health_probe service=redis host={host_label} result=false duration_ms={}",
-                _probe_start.elapsed().as_millis()
+                probe_start.elapsed().as_millis()
             ));
             return false;
         }
@@ -55,26 +56,20 @@ pub async fn redis_healthy(redis_url: &str) -> bool {
     );
     log_info(&format!(
         "health_probe service=redis host={host_label} result={result} duration_ms={}",
-        _probe_start.elapsed().as_millis()
+        probe_start.elapsed().as_millis()
     ));
     result
 }
 
 pub fn browser_diagnostics_pattern() -> BrowserDiagnosticsPattern {
-    let enabled = env_flag("AXON_CHROME_DIAGNOSTICS");
-    let screenshot = env_flag_or("AXON_CHROME_DIAGNOSTICS_SCREENSHOT", enabled);
-    let events = env_flag_or("AXON_CHROME_DIAGNOSTICS_EVENTS", enabled);
+    let enabled = env_bool("AXON_CHROME_DIAGNOSTICS", false);
+    let screenshot = env_bool("AXON_CHROME_DIAGNOSTICS_SCREENSHOT", enabled);
+    let events = env_bool("AXON_CHROME_DIAGNOSTICS_EVENTS", enabled);
 
     let output_dir = env::var("AXON_CHROME_DIAGNOSTICS_DIR")
         .ok()
         .filter(|v| !v.trim().is_empty())
-        .or_else(|| {
-            env::var("AXON_DATA_DIR")
-                .ok()
-                .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
-                .map(|d| format!("{d}/axon/chrome-diagnostics"))
-        })
+        .or_else(|| axon_data_dir().map(|d| format!("{}/axon/chrome-diagnostics", d.display())))
         .unwrap_or_else(|| DIAGNOSTICS_DIR_DEFAULT.to_string());
 
     BrowserDiagnosticsPattern {
@@ -83,30 +78,6 @@ pub fn browser_diagnostics_pattern() -> BrowserDiagnosticsPattern {
         events,
         output_dir,
     }
-}
-
-fn env_flag(key: &str) -> bool {
-    env::var(key)
-        .ok()
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "y" | "on"
-            )
-        })
-        .unwrap_or(false)
-}
-
-fn env_flag_or(key: &str, fallback: bool) -> bool {
-    env::var(key)
-        .ok()
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "y" | "on"
-            )
-        })
-        .unwrap_or(fallback)
 }
 
 #[cfg(test)]
@@ -137,11 +108,8 @@ mod tests {
         with_env_lock(|| {
             reset_env();
             let pattern = browser_diagnostics_pattern();
-            let expected_output_dir = env::var("AXON_DATA_DIR")
-                .ok()
-                .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
-                .map(|d| format!("{d}/axon/chrome-diagnostics"))
+            let expected_output_dir = axon_data_dir()
+                .map(|d| format!("{}/axon/chrome-diagnostics", d.display()))
                 .unwrap_or_else(|| ".cache/chrome-diagnostics".to_string());
             assert!(!pattern.enabled);
             assert!(!pattern.screenshot);

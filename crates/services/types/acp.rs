@@ -98,6 +98,15 @@ pub enum AcpMcpServerConfig {
     },
 }
 
+impl AcpMcpServerConfig {
+    /// Returns the server name regardless of transport variant.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Stdio { name, .. } | Self::Http { name, .. } => name,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcpSessionProbeRequest {
     pub session_id: Option<String>,

@@ -1,5 +1,35 @@
 # Changelog
-Last Modified: 2026-03-18 (session: v0.27.0 — ACP prewarm, services layer routing, error context, docker-compose split)
+Last Modified: 2026-03-19 (session: v0.27.1 — security hardening, code quality, multi-crate full-review remediation)
+
+## [0.27.1] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.27.0.
+
+### Highlights
+
+- **Security hardening** — SSRF guards added to all missing paths (Chrome re-fetch, screenshot, MCP handlers, post-redirect seed URL validation). `GoogleOAuthConfig` secrets redacted in `Debug`, removed from `Serialize`. DCR token and ACP auto-approve comparison use constant-time equality. MCP bind changed from `0.0.0.0` → `127.0.0.1`.
+- **Full-review remediation** — Systematically addressed all critical issues across 8 crates from multi-agent `.full-review` reports: timing attack fixes, TOCTOU race elimination, unbounded scroll capping, subprocess timeout guards, async I/O migration.
+- **Shared utilities extracted** — `crates/core/paths.rs` (`axon_data_dir`, `axon_data_base_dir`, `path_basename`), `crates/core/http/headers.rs` (`parse_custom_headers`), `crates/core/http/ssrf.rs` (`ssrf_blacklist_compact_strings`), `crates/ingest/subprocess.rs` (`run_command_with_timeout`) — each eliminating 3–7 duplicate implementations.
+- **Monolith splits** — `pulse_chat.rs` (565→243 lines) split into `connection.rs` + `events.rs`; `ws_handler.rs` (543→386 lines) split into `acp_session.rs`; `schema.rs` split into `schema/tests.rs`; net -411 lines across 63 files.
+- **`Arc<Config>` in job workers** — Config no longer deep-cloned per AMQP job; wrapped in `Arc` at worker startup and shared by reference. Concurrent `ensure_payload_indexes` (6 sequential PUTs → `join_all`).
+- **IngestProgress phase reporter** — `PhaseReporter` wired across all ingest sources with per-task phase/progress tracking visible in `axon status`.
+- **GitHub ingest limits** — `github_max_issues` and `github_max_prs` config caps prevent runaway API pagination on large repos.
+
+### Commits since v0.27.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | refactor | multi-crate security hardening, full-review remediation, shared utility extraction |
+| a3ac1acd | refactor | simplify review — fix PR label bug, use console strip_ansi, extract GITHUB_SUBTASK_COUNT, combine heartbeat queries |
+| 0cf80dd9 | fix | address all 13 PR review comments from cubic-dev-ai |
+| b1eabe32 | test(ingest) | integration tests for progress reporting and heartbeat |
+| 61f796c7 | feat(ingest) | wire PhaseReporter across all ingest sources |
+| 14b9f9ee | fix(prewarm) | eliminate silent fallbacks and error masking |
+| bc519aa6 | feat(prewarm) | add tracing span for structured log correlation |
+| 4c305c9d | feat(status) | show per-task phase and progress in ingest status |
+| 44b0e0cc | feat(config) | add github_max_issues and github_max_prs limits |
+| ec3b979a | refactor(prewarm) | switch to anyhow::Result with .context() chains |
+| 217ae733 | feat | v0.27.0 — ACP prewarm, services routing, error context, docker split |
 
 ## [0.27.0] — feat/pulse-shell-and-hybrid-search
 

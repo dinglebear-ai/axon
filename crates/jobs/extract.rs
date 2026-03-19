@@ -8,8 +8,9 @@ use crate::crates::core::content::{
 use crate::crates::core::health::redis_healthy;
 use crate::crates::core::logging::{log_debug, log_done, log_info, log_warn};
 use crate::crates::jobs::common::{
-    JobTable, begin_schema_migration_tx, enqueue_job, make_pool, mark_job_failed,
-    open_amqp_channel, purge_queue_safe, reclaim_stale_running_jobs, sort_rows_for_status_view,
+    JobTable, batched_cleanup_terminal_jobs, begin_schema_migration_tx, enqueue_job, make_pool,
+    mark_job_failed, open_amqp_channel, purge_queue_safe, reclaim_stale_running_jobs,
+    sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -291,28 +292,7 @@ pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn 
 pub async fn cleanup_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
-    let mut total = 0u64;
-    loop {
-        let deleted = sqlx::query(
-            "DELETE FROM axon_extract_jobs WHERE id IN (
-                SELECT id FROM axon_extract_jobs
-                WHERE status = ANY($1)
-                LIMIT 1000
-            )",
-        )
-        .bind(vec![
-            JobStatus::Failed.as_str(),
-            JobStatus::Canceled.as_str(),
-        ])
-        .execute(&pool)
-        .await?
-        .rows_affected();
-        total += deleted;
-        if deleted == 0 {
-            break;
-        }
-    }
-    Ok(total)
+    Ok(batched_cleanup_terminal_jobs(&pool, TABLE).await?)
 }
 
 pub async fn clear_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {

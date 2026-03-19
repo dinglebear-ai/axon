@@ -23,7 +23,15 @@ use std::sync::LazyLock;
 /// Number of sparse vector buckets. Matches BERT vocabulary size for compatibility.
 pub const SPARSE_DIM: u32 = 30_522;
 
-static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+/// Shared stop word set used by both sparse vector computation and BM25-style ranking.
+///
+/// Structural/syntactic words only. Content verbs like "make", "create", "build"
+/// encode user intent and must NOT be stripped — they distinguish "how to USE a
+/// library" from "how to IMPLEMENT an interface."
+///
+/// Extended from TS counterpart: high-frequency doc words that add noise without
+/// distinguishing what a page is actually about.
+pub(crate) static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         "the", "and", "for", "with", "that", "this", "from", "into", "how", "what", "where",
         "when", "you", "your", "are", "can", "does", "use", "using", "used", "get", "set", "via",
@@ -80,7 +88,9 @@ pub fn term_to_index(term: &str) -> u32 {
 /// stopwords, and non-alphanumeric tokens are excluded.
 /// On hash collision two distinct terms map to the same bucket; their TF counts are summed.
 pub fn compute_sparse_vector(text: &str) -> SparseVector {
-    let mut bucket_tf: HashMap<u32, u32> = HashMap::new();
+    // Pre-allocate for typical chunk sizes (~150 unique terms) to avoid 3-4 resizes.
+    let estimated_capacity = if text.len() > 200 { 128 } else { 16 };
+    let mut bucket_tf: HashMap<u32, u32> = HashMap::with_capacity(estimated_capacity);
     for term in text.split(|c: char| !c.is_ascii_alphanumeric()) {
         let lower = term.to_ascii_lowercase();
         if lower.len() < 3 || STOP_WORDS.contains(lower.as_str()) {

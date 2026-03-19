@@ -133,8 +133,8 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
 }
 
 fn resolve_mcp_config_path() -> Option<PathBuf> {
-    if let Ok(data_dir) = env::var("AXON_DATA_DIR") {
-        Some(PathBuf::from(data_dir).join("axon/mcp.json"))
+    if let Some(data_dir) = crate::crates::core::paths::axon_data_dir() {
+        Some(data_dir.join("axon/mcp.json"))
     } else if let Ok(home) = env::var("HOME") {
         Some(PathBuf::from(home).join(".config/axon/mcp.json"))
     } else {

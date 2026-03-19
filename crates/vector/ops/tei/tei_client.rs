@@ -178,8 +178,7 @@ pub(crate) async fn tei_embed(
     let client = http_client()?;
     let mut vectors = Vec::new();
 
-    let configured = env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 128, 1, 4096);
-    let batch_size = configured.min(128);
+    let batch_size = env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 128, 1, 128);
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
     let max_attempts = env_usize_clamped("TEI_MAX_RETRIES", TEI_MAX_RETRIES_DEFAULT, 1, 20);
     let request_timeout_ms = request_timeout_ms_from_env();

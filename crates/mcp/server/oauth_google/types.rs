@@ -31,7 +31,10 @@ pub(crate) struct GoogleOAuthInner {
     pub(crate) rate_limits: Mutex<HashMap<String, RateLimitRecord>>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+/// OAuth config for Google. `Serialize` is intentionally omitted — the struct
+/// holds `client_secret` and `dcr_token` which must never appear in serialized
+/// output. `Debug` is implemented manually to redact both secret fields.
+#[derive(Clone)]
 pub(crate) struct GoogleOAuthConfig {
     pub(crate) auth_url: String,
     pub(crate) token_url: String,
@@ -48,6 +51,28 @@ pub(crate) struct GoogleOAuthConfig {
     pub(crate) scopes: Vec<String>,
     pub(crate) dcr_token: Option<String>,
     pub(crate) redirect_policy: RedirectPolicy,
+}
+
+impl std::fmt::Debug for GoogleOAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleOAuthConfig")
+            .field("auth_url", &self.auth_url)
+            .field("token_url", &self.token_url)
+            .field("broker_issuer", &self.broker_issuer)
+            .field("authorization_endpoint", &self.authorization_endpoint)
+            .field("token_endpoint", &self.token_endpoint)
+            .field("registration_endpoint", &self.registration_endpoint)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("redirect_uri", &self.redirect_uri)
+            .field("resource_server_url", &self.resource_server_url)
+            .field("resource_metadata_url", &self.resource_metadata_url)
+            .field("redis_key_prefix", &self.redis_key_prefix)
+            .field("scopes", &self.scopes)
+            .field("dcr_token", &self.dcr_token.as_ref().map(|_| "[REDACTED]"))
+            .field("redirect_policy", &self.redirect_policy)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

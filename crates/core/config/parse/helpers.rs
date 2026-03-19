@@ -1,6 +1,25 @@
 use super::super::cli::{
     GraphSubcommand, JobSubcommand, RefreshScheduleSubcommand, RefreshSubcommand, WatchSubcommand,
 };
+use std::env;
+
+/// Read an environment variable as a boolean flag with a default fallback.
+///
+/// Recognized truthy values: `"1"`, `"true"`, `"yes"`, `"y"`, `"on"`.
+/// Recognized falsy values: `"0"`, `"false"`, `"no"`, `"n"`, `"off"`.
+/// Unset, empty, or unrecognized values return `default`.
+///
+/// Single source of truth for boolean env-var parsing — do not duplicate.
+pub(crate) fn env_bool(key: &str, default: bool) -> bool {
+    match env::var(key).ok().as_deref().map(|v| v.trim()) {
+        None | Some("") => default,
+        Some(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "y" | "on" => true,
+            "0" | "false" | "no" | "n" | "off" => false,
+            _ => default,
+        },
+    }
+}
 
 pub(super) fn positional_from_job(job: JobSubcommand) -> Vec<String> {
     match job {

@@ -40,13 +40,7 @@ pub fn output_dir() -> PathBuf {
         .ok()
         .filter(|v| !v.trim().is_empty())
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var("AXON_DATA_DIR")
-                .ok()
-                .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
-                .map(|d| PathBuf::from(d).join("axon/output"))
-        })
+        .or_else(|| crate::crates::core::paths::axon_data_dir().map(|d| d.join("axon/output")))
         .unwrap_or_else(|| PathBuf::from(".cache/axon-rust/output"))
 }
 

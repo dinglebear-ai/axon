@@ -3,7 +3,9 @@ use super::deterministic::{
 };
 use super::{ExtractionMetrics, to_markdown};
 use crate::crates::core::config::RenderMode;
-use crate::crates::core::http::{http_client, ssrf_blacklist_patterns, validate_url};
+use crate::crates::core::http::{
+    http_client, parse_custom_headers, ssrf_blacklist_patterns, validate_url,
+};
 use crate::crates::core::logging::log_warn;
 use spider::website::Website;
 use std::collections::HashMap;
@@ -16,26 +18,6 @@ mod chrome;
 use chrome::run_single_url_extract_chrome;
 
 const FALLBACK_CONCURRENCY_LIMIT: usize = 4;
-
-/// Parse `"Key: Value"` header strings into a `HeaderMap`.
-///
-/// TODO: Extract a shared version of this into `crates/core/http.rs` and use
-/// it here, in `scrape.rs`, and in `crawl/engine/runtime.rs` to eliminate the
-/// duplicated parsing logic across all three call sites.
-fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMap {
-    let mut map = reqwest::header::HeaderMap::new();
-    for raw in raw_headers {
-        if let Some((k, v)) = raw.split_once(": ")
-            && let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            )
-        {
-            map.insert(name, val);
-        }
-    }
-    map
-}
 
 /// Configuration bundle for `run_extract_with_engine`.
 ///
@@ -370,9 +352,6 @@ pub async fn run_extract_with_engine(
     website.with_limit(wcfg.limit);
     website.with_blacklist_url(Some(ssrf_patterns));
     // Wire custom headers so `--header` applies to extract crawls too.
-    // TODO: Extract a shared `parse_custom_headers(&[String]) -> HeaderMap` helper
-    // in `crates/core/http.rs` and use it here, in `scrape.rs`, and in
-    // `crawl/engine/runtime.rs` to eliminate this duplicated parsing logic.
     if !wcfg.custom_headers.is_empty() {
         let map = parse_custom_headers(&wcfg.custom_headers);
         if !map.is_empty() {

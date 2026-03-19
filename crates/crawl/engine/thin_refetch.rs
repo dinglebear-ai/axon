@@ -52,21 +52,17 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
     }
     // Wire custom headers so `--header` applies to Chrome re-fetches too.
     if !cfg.custom_headers.is_empty() {
-        let mut map = reqwest::header::HeaderMap::new();
-        for raw in &cfg.custom_headers {
-            if let Some((k, v)) = raw.split_once(": ")
-                && let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                )
-            {
-                map.insert(name, val);
-            }
-        }
+        let map = crate::crates::core::http::parse_custom_headers(&cfg.custom_headers);
         if !map.is_empty() {
             website.with_headers(Some(map));
         }
     }
+    // Wire SSRF blacklist so Chrome re-fetches cannot reach internal
+    // services via DNS rebinding or redirects.
+    website.with_blacklist_url(Some(
+        crate::crates::core::http::ssrf_blacklist_compact_strings(),
+    ));
+
     if cfg.bypass_csp {
         website.with_csp_bypass(true);
     }

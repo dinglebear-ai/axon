@@ -16,12 +16,17 @@ use super::bridge::AcpRuntimeState;
 
 /// Resolve whether ACP permissions should be auto-approved.
 ///
-/// Returns `true` (auto-approve) unless `AXON_ACP_AUTO_APPROVE` is explicitly
-/// set to `"false"`. Default is `true` for containerized deployments.
+/// Returns `true` only when `AXON_ACP_AUTO_APPROVE` is explicitly set to a
+/// truthy value (`"true"`, `"1"`, or `"yes"`). The default is `false` —
+/// unset or any other value means interactive approval is required.
 pub(super) fn resolve_acp_auto_approve() -> bool {
-    std::env::var("AXON_ACP_AUTO_APPROVE")
-        .map(|v| v != "false")
-        .unwrap_or(true)
+    matches!(
+        std::env::var("AXON_ACP_AUTO_APPROVE")
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Ok("true") | Ok("1") | Ok("yes")
+    )
 }
 
 /// Select the best auto-approve outcome from the permission request options.
@@ -135,23 +140,16 @@ pub(super) async fn handle_interactive_permission(
 
     // Wait up to N seconds for a response from the frontend.
     let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), resp_rx).await;
-    resolve_permission_response(
-        args,
-        tx,
-        permission_responders,
-        session_id,
-        tool_call_id,
-        result,
-    )
-    .await
+    resolve_permission_response(args, tx, tool_call_id, result).await
 }
 
 /// Map a raw timeout/oneshot result to a `RequestPermissionOutcome` with log events.
+///
+/// The `PermissionGuard` RAII in the caller handles DashMap entry cleanup on
+/// drop, so this function no longer needs access to the map or session_id.
 async fn resolve_permission_response(
     args: &RequestPermissionRequest,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
-    permission_responders: &PermissionResponderMap,
-    session_id: &str,
     tool_call_id: &str,
     result: Result<
         Result<String, tokio::sync::oneshot::error::RecvError>,
@@ -200,8 +198,8 @@ async fn resolve_permission_response(
             }
         }
         // Disconnect: oneshot sender dropped without sending.
+        // Note: the PermissionGuard RAII in the caller handles map entry cleanup on drop.
         Ok(Err(_)) => {
-            permission_responders.remove(&(session_id.to_string(), tool_call_id.to_string()));
             let msg = format!("ACP permission: responder dropped for tool_call={tool_call_id}");
             crate::crates::core::logging::log_warn(&msg);
             emit(
@@ -228,7 +226,7 @@ async fn resolve_permission_response(
                 },
             )
             .await;
-            permission_responders.remove(&(session_id.to_string(), tool_call_id.to_string()));
+            // Note: the PermissionGuard RAII in the caller handles map entry cleanup on drop.
             RequestPermissionOutcome::Cancelled
         }
     }

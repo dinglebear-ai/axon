@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
+use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
@@ -8,9 +9,53 @@ use super::client::{
     qdrant_delete_points, qdrant_domain_facets, qdrant_retrieve_by_url, qdrant_scroll_pages,
     qdrant_url_facets,
 };
+use super::hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
+use super::types::QdrantSearchHit;
 use super::utils::{
     env_usize_clamped, payload_url, render_full_doc_from_points, retrieve_max_points,
 };
+
+/// Dispatch vector search based on collection mode and hybrid config.
+///
+/// Named + hybrid enabled + non-empty sparse -> hybrid search (dense + BM42 + RRF)
+/// Named + hybrid disabled or empty sparse  -> named dense-only search
+/// Unnamed                                   -> legacy `/points/search`
+///
+/// Shared by both `query` and `ask` command paths to avoid duplicated routing logic.
+pub(crate) async fn dispatch_vector_search(
+    cfg: &Config,
+    vector: &[f32],
+    query: &str,
+    limit: usize,
+) -> Result<Vec<QdrantSearchHit>, Box<dyn Error>> {
+    let filter =
+        super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
+    let filter_ref = filter.as_ref();
+    let mode = get_or_fetch_vector_mode(cfg).await?;
+    match mode {
+        VectorMode::Named => {
+            let sv = crate::crates::vector::ops::sparse::compute_sparse_vector(query);
+            if cfg.hybrid_search_enabled && !sv.is_empty() {
+                qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
+                    .await
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
+                    })
+            } else {
+                qdrant_named_dense_search(cfg, vector, limit, filter_ref)
+                    .await
+                    .map_err(|e| -> Box<dyn Error> {
+                        format!("named dense search on '{}' failed: {e}", cfg.collection).into()
+                    })
+            }
+        }
+        VectorMode::Unnamed => super::client::qdrant_search(cfg, vector, limit, filter_ref)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                format!("vector search on '{}' failed: {e}", cfg.collection).into()
+            }),
+    }
+}
 
 pub async fn retrieve_result(
     cfg: &Config,
@@ -111,6 +156,11 @@ struct DedupeRecord {
     scraped_at: String,
 }
 
+/// Remove duplicate points that share the same (url, chunk_index) key.
+///
+/// **Performance**: O(n) full collection scroll -- on large collections (millions of
+/// points) this can take 60-120+ seconds. This is inherent to deduplication and
+/// cannot be replaced with a facet query.
 pub async fn dedupe_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
     let mut by_key: HashMap<(String, i64), Vec<DedupeRecord>> = HashMap::new();
     qdrant_scroll_pages(cfg, |points| {

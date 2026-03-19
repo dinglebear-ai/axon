@@ -2,13 +2,26 @@ use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::content::{
     build_selector_config, extract_meta_description, find_between, to_markdown,
 };
-use crate::crates::core::http::{normalize_url, ssrf_blacklist_patterns, validate_url};
-use spider::compact_str::CompactString;
+use crate::crates::core::http::{normalize_url, ssrf_blacklist_compact_strings, validate_url};
+use crate::crates::core::logging::log_warn;
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::error::Error;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::time::sleep;
+
+/// Emit the `accept_invalid_certs` security warning exactly once per process
+/// regardless of how many URLs are scraped in a session.
+fn warn_invalid_certs_once() {
+    static WARNED: OnceLock<()> = OnceLock::new();
+    WARNED.get_or_init(|| {
+        log_warn(
+            "accept_invalid_certs is enabled — TLS certificate validation is disabled. \
+             This exposes all connections to MITM attacks.",
+        );
+    });
+}
 
 // ── Spider Website configuration ─────────────────────────────────────────────
 
@@ -17,11 +30,7 @@ use tokio::time::sleep;
 /// Applies SSRF blacklist, timeout, retry, user-agent, and limit=1 so Spider
 /// never follows links beyond the target page.
 pub(crate) fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn Error>> {
-    let ssrf_patterns: Vec<CompactString> = ssrf_blacklist_patterns()
-        .iter()
-        .copied()
-        .map(Into::into)
-        .collect();
+    let ssrf_patterns = ssrf_blacklist_compact_strings();
 
     let mut website = Website::new(url);
     // Single page only — do not follow any discovered links.
@@ -47,17 +56,7 @@ pub(crate) fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, B
     }
     // Wire custom headers so `--header` works for single-page scrapes too.
     if !cfg.custom_headers.is_empty() {
-        let mut map = reqwest::header::HeaderMap::new();
-        for raw in &cfg.custom_headers {
-            if let Some((k, v)) = raw.split_once(": ")
-                && let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                )
-            {
-                map.insert(name, val);
-            }
-        }
+        let map = crate::crates::core::http::parse_custom_headers(&cfg.custom_headers);
         if !map.is_empty() {
             website.with_headers(Some(map));
         }
@@ -65,6 +64,7 @@ pub(crate) fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, B
     // Apply the same safe defaults as configure_website().
     website.with_no_control_thread(true);
     if cfg.accept_invalid_certs {
+        warn_invalid_certs_once();
         website.with_danger_accept_invalid_certs(true);
     }
     if matches!(cfg.render_mode, RenderMode::Chrome) {
@@ -158,6 +158,7 @@ pub(crate) async fn direct_fetch_requested_page(
         builder = builder.timeout(Duration::from_millis(timeout_ms));
     }
     if cfg.accept_invalid_certs {
+        warn_invalid_certs_once();
         builder = builder.danger_accept_invalid_certs(true);
     }
     if let Some(ua) = cfg.chrome_user_agent.as_deref() {
@@ -167,17 +168,7 @@ pub(crate) async fn direct_fetch_requested_page(
         builder = builder.proxy(reqwest::Proxy::all(proxy)?);
     }
     if !cfg.custom_headers.is_empty() {
-        let mut map = reqwest::header::HeaderMap::new();
-        for raw in &cfg.custom_headers {
-            if let Some((k, v)) = raw.split_once(": ")
-                && let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                )
-            {
-                map.insert(name, val);
-            }
-        }
+        let map = crate::crates::core::http::parse_custom_headers(&cfg.custom_headers);
         if !map.is_empty() {
             builder = builder.default_headers(map);
         }

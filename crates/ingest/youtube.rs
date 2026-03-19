@@ -4,9 +4,13 @@ mod vtt;
 pub use vtt::parse_vtt_to_text;
 
 use crate::crates::core::config::Config;
+use crate::crates::core::content::url_to_domain;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
+use crate::crates::ingest::subprocess::{
+    MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
+};
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use spider::url::Url;
 use std::error::Error;
@@ -14,6 +18,10 @@ use std::error::Error;
 const PHASE_DOWNLOADING: &str = "downloading_transcript";
 const PHASE_PARSING: &str = "parsing_transcript";
 const PHASE_EMBEDDING: &str = "embedding_transcript";
+
+/// Maximum videos to enumerate from a playlist or channel. Prevents runaway yt-dlp
+/// subprocesses and unbounded temp disk usage on channels with 10K+ videos.
+const MAX_PLAYLIST_VIDEOS: usize = 500;
 
 /// Extract a YouTube video ID from a URL or return the string as-is if already an ID.
 pub fn extract_video_id(input: &str) -> Option<String> {
@@ -103,23 +111,30 @@ pub fn is_playlist_or_channel_url(url: &str) -> bool {
 }
 
 /// Run `yt-dlp --flat-playlist` to enumerate all individual video URLs in a playlist or channel.
+///
+/// Caps results at [`MAX_PLAYLIST_VIDEOS`] to prevent runaway subprocesses on
+/// channels with 10K+ videos.
 pub async fn enumerate_playlist_videos(url: &str) -> Result<Vec<String>, Box<dyn Error>> {
     // SSRF guard: validate before invoking yt-dlp so malicious targets cannot make
     // yt-dlp fetch internal/private network resources.
     validate_url(url)?;
 
-    let output = tokio::process::Command::new("yt-dlp")
+    let playlist_end = MAX_PLAYLIST_VIDEOS.to_string();
+    let child = tokio::process::Command::new("yt-dlp")
         .args([
             "--flat-playlist",
             "--print",
             "%(url)s",
+            "--playlist-end",
+            &playlist_end,
             "--no-exec",
             "--",
             url,
         ])
-        .output()
-        .await
-        .map_err(|e| format!("yt-dlp not found or failed to start: {e}"))?;
+        .output();
+
+    let output =
+        run_command_with_timeout(child, SUBPROCESS_TIMEOUT, "yt-dlp --flat-playlist").await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -142,7 +157,7 @@ async fn run_ytdlp(safe_url: &str, tmp_path: &str) -> Result<(), Box<dyn Error>>
     // --write-info-json writes <id>.info.json (title, channel, tags, description, etc.)
     // --no-exec prevents execution of post-processing commands.
     // "--" separates flags from the URL argument to prevent argument injection.
-    let output = tokio::process::Command::new("yt-dlp")
+    let child = tokio::process::Command::new("yt-dlp")
         .args([
             "--write-auto-sub",
             "--write-info-json",
@@ -162,9 +177,11 @@ async fn run_ytdlp(safe_url: &str, tmp_path: &str) -> Result<(), Box<dyn Error>>
             "--",
             safe_url,
         ])
-        .output()
+        .output();
+
+    let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, "yt-dlp subtitle download")
         .await
-        .map_err(|e| format!("yt-dlp not found or failed to start: {e}"))?;
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -255,16 +272,13 @@ pub async fn ingest_youtube(
 
     let mut count = 0usize;
 
-    /// Maximum VTT file size accepted before reading into memory (50 MiB).
-    const MAX_VTT_BYTES: u64 = 50 * 1024 * 1024;
-
     for vtt_path in &vtt_files {
         let file_meta = tokio::fs::metadata(vtt_path).await?;
-        if file_meta.len() > MAX_VTT_BYTES {
+        if file_meta.len() > MAX_INGEST_FILE_BYTES {
             log_warn(&format!(
                 "skipping oversized VTT file ({} bytes > {} limit): {}",
                 file_meta.len(),
-                MAX_VTT_BYTES,
+                MAX_INGEST_FILE_BYTES,
                 vtt_path.display()
             ));
             continue;
@@ -291,13 +305,9 @@ pub async fn ingest_youtube(
 
         let transcript_chunks = chunk_text(&text);
         if !transcript_chunks.is_empty() {
-            let domain = Url::parse(&source_url)
-                .ok()
-                .and_then(|u| u.host_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| "youtube.com".to_string());
             docs.push(PreparedDoc {
                 url: source_url.clone(),
-                domain,
+                domain: url_to_domain(&source_url),
                 chunks: transcript_chunks,
                 source_type: "youtube".to_string(),
                 content_type: "text",
@@ -313,13 +323,9 @@ pub async fn ingest_youtube(
             let desc_url = format!("{source_url}?section=description");
             let desc_chunks = chunk_text(&m.description);
             if !desc_chunks.is_empty() {
-                let domain = Url::parse(&desc_url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "youtube.com".to_string());
                 docs.push(PreparedDoc {
-                    url: desc_url,
-                    domain,
+                    url: desc_url.clone(),
+                    domain: url_to_domain(&desc_url),
                     chunks: desc_chunks,
                     source_type: "youtube".to_string(),
                     content_type: "text",
@@ -330,8 +336,11 @@ pub async fn ingest_youtube(
         }
 
         reporter.report_phase(PHASE_EMBEDDING).await;
-        if let Ok(summary) = embed_prepared_docs(cfg, docs, None).await {
-            count += summary.chunks_embedded;
+        match embed_prepared_docs(cfg, docs, None).await {
+            Ok(summary) => count += summary.chunks_embedded,
+            Err(e) => log_warn(&format!(
+                "command=ingest source=youtube embed_failed video={vid_id} err={e}"
+            )),
         }
     }
 

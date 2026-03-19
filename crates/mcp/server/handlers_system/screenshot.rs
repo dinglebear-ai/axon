@@ -3,7 +3,7 @@ use crate::crates::mcp::server::AxonMcpServer;
 use crate::crates::mcp::server::artifacts::{
     ensure_artifact_root, resolve_artifact_output_path, respond_with_mode,
 };
-use crate::crates::mcp::server::common::{invalid_params, logged_internal_error};
+use crate::crates::mcp::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
 use rmcp::ErrorData;
 
 impl AxonMcpServer {
@@ -52,6 +52,7 @@ impl AxonMcpServer {
         let url = req
             .url
             .ok_or_else(|| invalid_params("url is required for screenshot"))?;
+        validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
 
         let (width, height) = Self::parse_viewport(

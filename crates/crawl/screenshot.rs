@@ -1,5 +1,5 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::http::cdp_discovery_url;
+use crate::crates::core::http::{cdp_discovery_url, validate_url};
 use crate::crates::crawl::engine::resolve_cdp_ws_url;
 use spider::configuration::Viewport;
 use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
@@ -18,6 +18,11 @@ pub(crate) async fn spider_screenshot_with_options(
     height: u32,
     full_page: bool,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
+    // Validate the URL through the SSRF guard before passing it to Chrome.
+    // Without this, an attacker-controlled URL could reach internal services
+    // via the Chrome rendering path.
+    validate_url(url).map_err(|e| format!("screenshot blocked — SSRF guard: {e}"))?;
+
     let remote_url = cfg
         .chrome_remote_url
         .as_deref()

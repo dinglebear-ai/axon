@@ -17,7 +17,7 @@ pub(super) async fn ingest_claude_sessions(
     multi: &MultiProgress,
 ) -> IngestResult<usize> {
     let root = expand_home("~/.claude/projects");
-    if !root.exists() {
+    if !fs::try_exists(&root).await.unwrap_or(false) {
         return Ok(0);
     }
 
@@ -41,7 +41,7 @@ pub(super) async fn ingest_claude_sessions(
         .map_err(|e| anyhow::anyhow!(e.to_string()))?
     {
         let path = entry.path();
-        if !path.is_dir() {
+        if !entry.file_type().await?.is_dir() {
             continue;
         }
         let project_dir_name = path

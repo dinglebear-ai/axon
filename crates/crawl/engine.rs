@@ -213,7 +213,12 @@ async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>>
     if let Ok(response) = client.head(&normalized).send().await
         && response.status().is_success()
     {
-        return Ok(response.url().to_string());
+        let final_url = response.url().to_string();
+        // Re-validate the final URL after redirects to prevent a public URL
+        // from redirecting to an internal/private address.
+        validate_url(&final_url)
+            .map_err(|e| format!("map seed redirect target blocked: {final_url}: {e}"))?;
+        return Ok(final_url);
     }
 
     let response = client
@@ -223,7 +228,10 @@ async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>>
         .map_err(|e| format!("GET failed resolving map seed {normalized}: {e}"))?
         .error_for_status()
         .map_err(|e| format!("non-success status resolving map seed {normalized}: {e}"))?;
-    Ok(response.url().to_string())
+    let final_url = response.url().to_string();
+    validate_url(&final_url)
+        .map_err(|e| format!("map seed redirect target blocked: {final_url}: {e}"))?;
+    Ok(final_url)
 }
 
 pub(crate) async fn crawl_and_collect_map(
@@ -358,7 +366,7 @@ pub async fn run_crawl_once(
         "crawl start url={} render_mode={:?} max_pages={} max_depth={}",
         start_url, mode, cfg.max_pages, cfg.max_depth
     ));
-    let _crawl_start = Instant::now();
+    let total_start = Instant::now();
 
     let markdown_dir = output_dir.join("markdown");
     let recycling_bin = output_dir.join("markdown.old");
@@ -442,7 +450,7 @@ pub async fn run_crawl_once(
         .map_err(|e| format!("collector failure for {start_url}: {e}"))?;
     summary.elapsed_ms = crawl_start.elapsed().as_millis();
 
-    if recycling_bin.exists() {
+    if dir_ops::path_exists(&recycling_bin).await {
         tokio::fs::remove_dir_all(&recycling_bin)
             .await
             .map_err(|e| {
@@ -458,7 +466,7 @@ pub async fn run_crawl_once(
         "crawl done url={} pages_fetched={} duration_ms={}",
         start_url,
         summary.pages_seen,
-        _crawl_start.elapsed().as_millis()
+        total_start.elapsed().as_millis()
     ));
     Ok((summary, urls))
 }

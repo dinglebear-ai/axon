@@ -33,7 +33,7 @@ pub(super) async fn ingest_gemini_sessions(
     let mut futures = FuturesUnordered::new();
 
     for root in [gemini_root.join("history"), gemini_root.join("tmp")] {
-        if !root.exists() {
+        if !fs::try_exists(&root).await.unwrap_or(false) {
             continue;
         }
         enqueue_gemini_dir(cfg, state, &projects_map, root, &mut futures, &mut total).await?;
@@ -62,7 +62,7 @@ async fn enqueue_gemini_dir(
     let mut read_dir = fs::read_dir(root).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let path = entry.path();
-        if !path.is_dir() {
+        if !entry.file_type().await?.is_dir() {
             continue;
         }
         let dir_name = path
@@ -76,7 +76,7 @@ async fn enqueue_gemini_dir(
 
         let collection = resolve_collection(cfg, &project_name);
         let chats_dir = path.join("chats");
-        if !chats_dir.exists() {
+        if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
         enqueue_gemini_chat_files(cfg, state, chats_dir, collection, futures, total).await?;

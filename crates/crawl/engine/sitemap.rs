@@ -8,7 +8,6 @@ use crate::crates::core::http::{build_client, validate_url};
 use crate::crates::core::logging::log_info;
 use crate::crates::crawl::manifest::ManifestEntry;
 use sha2::{Digest, Sha256};
-use spider::tokio;
 use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;

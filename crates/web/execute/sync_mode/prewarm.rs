@@ -19,6 +19,7 @@ use std::time::Instant;
 use anyhow::Context as _;
 
 use crate::crates::core::config::Config;
+use crate::crates::core::paths::{axon_data_base_dir, axon_data_dir, path_basename};
 use crate::crates::services::acp::{self as acp_svc, SESSION_CACHE};
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::types::AcpPromptTurnRequest;
@@ -82,11 +83,7 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
     let adapter = resolve_acp_adapter_command(cfg, agent, caps)
         .map_err(|e| anyhow::anyhow!("{e}"))
         .context("resolve adapter command")?;
-    let adapter_name = std::path::Path::new(&adapter.program)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(&adapter.program)
-        .to_string();
+    let adapter_name = path_basename(&adapter.program, &adapter.program).to_string();
 
     tracing::info!(
         context = "acp_prewarm",
@@ -215,18 +212,19 @@ async fn prewarm_adapter(cfg: &Arc<Config>, agent: PulseChatAgent) -> anyhow::Re
 }
 
 /// Resolve the working directory for pre-warmed adapters.
+///
+/// Falls back through: `AXON_DATA_DIR` → `$HOME/.local/share` → `/tmp`.
+/// Logs a warning if neither `AXON_DATA_DIR` nor `HOME` is set, since `/tmp`
+/// is not a persistent data directory and the prewarm session file may be lost
+/// on reboot.
 async fn resolve_prewarm_working_dir() -> anyhow::Result<std::path::PathBuf> {
-    let base = std::env::var("AXON_DATA_DIR").unwrap_or_else(|_| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| {
-            tracing::warn!(
-                context = "acp_prewarm",
-                "neither AXON_DATA_DIR nor HOME set, falling back to /tmp",
-            );
-            "/tmp".to_string()
-        });
-        format!("{home}/.local/share")
-    });
-    let path = std::path::PathBuf::from(base).join("axon").join("prewarm");
+    if axon_data_dir().is_none() && std::env::var("HOME").is_err() {
+        tracing::warn!(
+            context = "acp_prewarm",
+            "neither AXON_DATA_DIR nor HOME is set; falling back to /tmp for prewarm working dir",
+        );
+    }
+    let path = axon_data_base_dir().join("axon").join("prewarm");
     tokio::fs::create_dir_all(&path)
         .await
         .context("failed to create prewarm working dir")?;

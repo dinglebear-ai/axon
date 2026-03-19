@@ -15,13 +15,21 @@ fn require_neo4j(cfg: &Config) -> Result<Neo4jClient, Box<dyn Error>> {
     Neo4jClient::from_config(cfg)?.ok_or_else(|| "graph operations require AXON_NEO4J_URL".into())
 }
 
-fn url_matches_domain(url: &str, domain: &str) -> bool {
+/// Maximum number of URLs to retrieve from Qdrant for graph build operations.
+/// Prevents unbounded full-collection scrolls that cause DoS on large collections.
+const GRAPH_BUILD_URL_LIMIT: usize = 50_000;
+
+/// Check whether `url` belongs to `domain` (exact match or subdomain).
+///
+/// `domain_suffix` must be `".{domain}"` — pre-computed by the caller to avoid
+/// a per-URL allocation when filtering large URL lists.
+fn url_matches_domain(url: &str, domain: &str, domain_suffix: &str) -> bool {
     Url::parse(url)
         .ok()
         .and_then(|parsed| {
             parsed
                 .host_str()
-                .map(|host| host == domain || host.ends_with(&format!(".{domain}")))
+                .map(|host| host == domain || host.ends_with(domain_suffix))
         })
         .unwrap_or(false)
 }
@@ -39,11 +47,12 @@ pub async fn graph_build(
     let mut urls = if let Some(url) = url {
         vec![url.to_string()]
     } else {
-        qdrant_indexed_urls(cfg, None).await?
+        qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_URL_LIMIT)).await?
     };
 
     if let Some(domain) = domain {
-        urls.retain(|candidate| url_matches_domain(candidate, domain));
+        let suffix = format!(".{domain}");
+        urls.retain(|candidate| url_matches_domain(candidate, domain, &suffix));
     } else if !all && url.is_none() {
         return Err("graph_build requires a URL, --all, or domain filter".into());
     }
@@ -81,10 +90,7 @@ pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Err
     .fetch_all(&pool)
     .await?;
 
-    let mut counts = BTreeMap::<String, i64>::new();
-    for (status, count) in rows {
-        counts.insert(status, count);
-    }
+    let counts: BTreeMap<String, i64> = rows.into_iter().collect();
 
     let recent = sqlx::query_as::<_, (Uuid, String, String, i32, i32, i32, Option<String>)>(
         r#"
@@ -119,6 +125,13 @@ pub async fn graph_explore(
     cfg: &Config,
     entity: &str,
 ) -> Result<GraphExploreResult, Box<dyn Error>> {
+    let entity = entity.trim();
+    if entity.is_empty() {
+        return Err("graph_explore requires a non-empty entity name".into());
+    }
+    if entity.len() > 1000 {
+        return Err("graph_explore entity name exceeds 1000 character limit".into());
+    }
     let neo4j = require_neo4j(cfg)?;
     let rows = neo4j
         .query(

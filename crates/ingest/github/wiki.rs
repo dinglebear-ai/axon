@@ -1,6 +1,10 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::log_warn;
 use crate::crates::ingest::progress::PhaseReporter;
+use crate::crates::ingest::subprocess::{
+    MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
+};
 use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
@@ -10,6 +14,9 @@ use super::meta::{GitHubPayloadParams, build_github_payload};
 
 const PHASE_CLONING_WIKI: &str = "cloning_wiki";
 const PHASE_EMBEDDING_WIKI: &str = "embedding_wiki";
+
+/// Maximum wiki file size accepted before reading into memory.
+const MAX_WIKI_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
 
 /// Walk a directory iteratively and collect all file paths.
 /// Skips `.git` directories. Uses an explicit stack to avoid recursive heap allocation.
@@ -49,6 +56,24 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
 
         if !matches!(ext.as_str(), "md" | "rst" | "txt") {
             continue;
+        }
+
+        // Guard against oversized wiki files that would spike memory.
+        match tokio::fs::metadata(&path).await {
+            Ok(meta) if meta.len() > MAX_WIKI_FILE_BYTES => {
+                log_warn(&format!(
+                    "command=ingest_github skip_large_wiki path={path:?} size_bytes={}",
+                    meta.len()
+                ));
+                continue;
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "command=ingest_github wiki_stat_failed path={path:?} err={e}"
+                ));
+                continue;
+            }
+            _ => {}
         }
 
         let content = match tokio::fs::read_to_string(&path).await {
@@ -127,6 +152,9 @@ pub async fn ingest_wiki(
         common.owner, common.name
     );
 
+    // SSRF guard: validate the clone URL against private IP ranges.
+    validate_url(&clone_url)?;
+
     // "--" separates flags from the URL argument to prevent argument injection
     let mut cmd = tokio::process::Command::new("git");
     cmd.args(["clone", "--depth=1", "--", &clone_url, &tmp_path]);
@@ -138,10 +166,8 @@ pub async fn ingest_wiki(
         cmd.env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"));
     }
 
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| anyhow::anyhow!("git not found or failed to start: {e}"))?;
+    let ctx = format!("wiki clone {}/{}", common.owner, common.name);
+    let output = run_command_with_timeout(cmd.output(), SUBPROCESS_TIMEOUT, &ctx).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

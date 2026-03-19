@@ -158,3 +158,14 @@ pub(crate) fn ssrf_blacklist_patterns() -> &'static [&'static str] {
         r"^https?://\[fd[0-9a-f]{2}:",
     ]
 }
+
+/// SSRF blacklist patterns pre-converted to `CompactString` for spider's
+/// `with_blacklist_url()`. Avoids the 5x duplication of the
+/// `.iter().copied().map(Into::into).collect()` chain across callers.
+pub(crate) fn ssrf_blacklist_compact_strings() -> Vec<spider::compact_str::CompactString> {
+    ssrf_blacklist_patterns()
+        .iter()
+        .copied()
+        .map(Into::into)
+        .collect()
+}

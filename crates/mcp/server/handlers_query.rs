@@ -2,7 +2,7 @@ use super::AxonMcpServer;
 use super::common::{
     invalid_params, logged_internal_error, map_render_mode, map_scrape_format, paginate_vec,
     parse_offset, respond_with_mode, slugify, to_map_options, to_pagination, to_retrieve_options,
-    to_search_options,
+    to_search_options, validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -102,6 +102,7 @@ impl AxonMcpServer {
         let url = req
             .url
             .ok_or_else(|| invalid_params("url is required for map"))?;
+        validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
         let map_opts = to_map_options(req.limit, req.offset);
         let (limit, offset) = (map_opts.limit, map_opts.offset);
@@ -117,8 +118,9 @@ impl AxonMcpServer {
             .filter_map(|v| v.as_str().map(ToString::to_string))
             .collect::<Vec<_>>();
         // limit=0 means "no limit" (return all); positive values paginate normally.
+        let total_urls = urls.len();
         let paged_urls = if limit == 0 {
-            urls.clone()
+            urls
         } else {
             paginate_vec(&urls, offset, limit)
         };
@@ -134,7 +136,7 @@ impl AxonMcpServer {
                 "thin_pages": payload["thin_pages"].as_u64().unwrap_or(0),
                 "limit": limit,
                 "offset": offset,
-                "total_urls": urls.len(),
+                "total_urls": total_urls,
                 "urls": paged_urls,
             }),
         )
@@ -184,6 +186,7 @@ impl AxonMcpServer {
         let url = req
             .url
             .ok_or_else(|| invalid_params("url is required for scrape"))?;
+        validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
 
         let mut cfg = self.cfg.as_ref().clone();

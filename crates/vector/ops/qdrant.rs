@@ -8,6 +8,7 @@ mod types;
 mod utils;
 
 pub use client::{qdrant_delete_stale_domain_urls, qdrant_indexed_urls};
+pub(crate) use commands::dispatch_vector_search;
 pub use commands::{dedupe_payload, domains_payload, retrieve_result, sources_payload};
 pub use types::{QdrantPayload, QdrantPoint, QdrantSearchHit};
 pub use utils::{
@@ -19,6 +20,4 @@ pub(crate) use client::{
     qdrant_delete_stale_tail, qdrant_domain_facets, qdrant_retrieve_by_url,
     qdrant_scroll_pages_while, qdrant_search,
 };
-pub(crate) use filter::build_scraped_at_filter;
-pub(crate) use hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 pub(crate) use utils::{env_usize_clamped, payload_domain, payload_url};

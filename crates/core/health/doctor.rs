@@ -345,30 +345,21 @@ pub async fn build_doctor_report(cfg: &Config) -> Result<Value, Box<dyn Error>> 
     let (openai_live_ok, _) = probes.openai_probe.clone();
 
     // Structured per-service probe logging
-    log_info(&format!(
-        "doctor probe service=tei status={}",
-        if probes.tei_probe.0 { "ok" } else { "fail" }
-    ));
-    log_info(&format!(
-        "doctor probe service=qdrant status={}",
-        if probes.qdrant_probe.0 { "ok" } else { "fail" }
-    ));
-    log_info(&format!(
-        "doctor probe service=chrome status={}",
-        if probes.chrome_probe.0 { "ok" } else { "fail" }
-    ));
-    log_info(&format!(
-        "doctor probe service=openai status={}",
-        if openai_live_ok { "ok" } else { "fail" }
-    ));
-    log_info(&format!(
-        "doctor probe service=crawl_infra status={}",
-        if probes.crawl_report["all_ok"].as_bool().unwrap_or(false) {
-            "ok"
-        } else {
-            "fail"
-        }
-    ));
+    for (service, ok) in [
+        ("tei", probes.tei_probe.0),
+        ("qdrant", probes.qdrant_probe.0),
+        ("chrome", probes.chrome_probe.0),
+        ("openai", openai_live_ok),
+        (
+            "crawl_infra",
+            probes.crawl_report["all_ok"].as_bool().unwrap_or(false),
+        ),
+    ] {
+        log_info(&format!(
+            "doctor probe service={service} status={}",
+            if ok { "ok" } else { "fail" }
+        ));
+    }
 
     let pipelines = build_pipeline_status(&probes, openai_live_ok);
     let services = build_services_status(cfg, &probes, &openai_model);

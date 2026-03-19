@@ -28,6 +28,21 @@ pub(super) fn logged_internal_error(context: &str, e: impl std::fmt::Display) ->
     internal_error(format!("{context} failed"))
 }
 
+// --- URL validation wrappers ---
+
+/// Validate a single URL via the SSRF guard, converting errors to MCP `invalid_params`.
+pub(super) fn validate_mcp_url(url: &str) -> Result<(), ErrorData> {
+    crate::crates::core::http::validate_url(url).map_err(|e| invalid_params(e.to_string()))
+}
+
+/// Validate every URL in a slice via the SSRF guard.
+pub(super) fn validate_mcp_urls(urls: &[String]) -> Result<(), ErrorData> {
+    for url in urls {
+        validate_mcp_url(url)?;
+    }
+    Ok(())
+}
+
 // --- Param parsers ---
 
 pub(super) fn parse_job_id(job_id: Option<&String>) -> Result<Uuid, ErrorData> {

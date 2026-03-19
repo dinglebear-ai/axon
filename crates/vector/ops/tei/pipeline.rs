@@ -108,25 +108,38 @@ async fn embed_prepared_doc_with_timeout(
 fn rebuild_points_as_named(points: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     points
         .into_iter()
-        .map(|pt| {
-            let id = pt["id"].as_str().unwrap_or_default().to_string();
+        .filter_map(|pt| {
+            // Handle both string and numeric point IDs (Qdrant supports both).
+            let id = match &pt["id"] {
+                serde_json::Value::String(s) if !s.is_empty() => {
+                    serde_json::Value::String(s.clone())
+                }
+                serde_json::Value::Number(n) => serde_json::Value::Number(n.clone()),
+                other => {
+                    log_warn(&format!(
+                        "rebuild_points_as_named: unexpected point id type: {other}, skipping"
+                    ));
+                    return None;
+                }
+            };
             let payload = pt["payload"].clone();
+            let empty_vec = vec![];
             let dense: Vec<f32> = pt["vector"]
                 .as_array()
-                .unwrap_or(&vec![])
+                .unwrap_or(&empty_vec)
                 .iter()
                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                 .collect();
             let chunk = payload["chunk_text"].as_str().unwrap_or_default();
             let sv = super::super::sparse::compute_sparse_vector(chunk);
-            serde_json::json!({
+            Some(serde_json::json!({
                 "id": id,
                 "vector": {
                     "dense": dense,
                     "bm42": sv.to_json()
                 },
                 "payload": payload,
-            })
+            }))
         })
         .collect()
 }
@@ -193,35 +206,44 @@ async fn flush_and_cleanup(
     Ok(())
 }
 
-/// Drive the concurrent doc-processing loop (Phase 2) after mode is known.
-///
-/// Drains remaining docs from `work`, processing up to `doc_concurrency` in
-/// parallel. Returns `(chunks_embedded, docs_completed, docs_failed)`.
-#[allow(clippy::too_many_arguments)]
-async fn drain_concurrent_docs<'a>(
-    cfg: &'a Config,
-    work: &mut impl Iterator<Item = PreparedDoc>,
+/// Immutable pipeline configuration resolved once at startup.
+struct PipelineParams {
     doc_concurrency: usize,
     doc_timeout_secs: u64,
     mode: VectorMode,
     flush_point_threshold: usize,
     docs_total: usize,
-    mut docs_completed: usize,
+}
+
+/// Mutable pipeline state accumulated across the concurrent drain loop.
+struct PipelineState {
+    docs_completed: usize,
+    pending_points: Vec<serde_json::Value>,
+    stale_tail_queue: Vec<(String, usize)>,
+}
+
+/// Drive the concurrent doc-processing loop (Phase 2) after mode is known.
+///
+/// Drains remaining docs from `work`, processing up to `doc_concurrency` in
+/// parallel. Returns `(chunks_embedded, docs_completed, docs_failed)`.
+async fn drain_concurrent_docs<'a>(
+    cfg: &'a Config,
+    work: &mut impl Iterator<Item = PreparedDoc>,
+    params: &PipelineParams,
+    state: &mut PipelineState,
     progress_tx: &Option<tokio::sync::mpsc::Sender<EmbedProgress>>,
-    pending_points: &mut Vec<serde_json::Value>,
-    stale_tail_queue: &mut Vec<(String, usize)>,
 ) -> Result<(usize, usize, usize), SendError> {
     let mut inflight: FuturesUnordered<DocFuture<'a>> = FuturesUnordered::new();
     let mut chunks_embedded = 0usize;
     let mut docs_failed = 0usize;
 
-    for _ in 0..doc_concurrency {
+    for _ in 0..params.doc_concurrency {
         if let Some(doc) = work.next() {
             inflight.push(Box::pin(embed_prepared_doc_with_timeout(
                 cfg,
                 doc,
-                doc_timeout_secs,
-                mode,
+                params.doc_timeout_secs,
+                params.mode,
             )));
         }
     }
@@ -230,10 +252,11 @@ async fn drain_concurrent_docs<'a>(
         match result {
             Ok((_dim, url, chunk_count, mut points)) => {
                 chunks_embedded += points.len();
-                pending_points.append(&mut points);
-                stale_tail_queue.push((url, chunk_count));
-                if pending_points.len() >= flush_point_threshold {
-                    flush_and_cleanup(cfg, pending_points, stale_tail_queue).await?;
+                state.pending_points.append(&mut points);
+                state.stale_tail_queue.push((url, chunk_count));
+                if state.pending_points.len() >= params.flush_point_threshold {
+                    flush_and_cleanup(cfg, &mut state.pending_points, &mut state.stale_tail_queue)
+                        .await?;
                 }
             }
             Err(e) => {
@@ -241,11 +264,11 @@ async fn drain_concurrent_docs<'a>(
                 log_warn(&format!("embed_pipeline doc_failed: {e}"));
             }
         }
-        docs_completed += 1;
+        state.docs_completed += 1;
         if let Some(tx) = progress_tx {
             tx.send(EmbedProgress {
-                docs_total,
-                docs_completed,
+                docs_total: params.docs_total,
+                docs_completed: state.docs_completed,
                 chunks_embedded,
             })
             .await
@@ -255,12 +278,12 @@ async fn drain_concurrent_docs<'a>(
             inflight.push(Box::pin(embed_prepared_doc_with_timeout(
                 cfg,
                 doc,
-                doc_timeout_secs,
-                mode,
+                params.doc_timeout_secs,
+                params.mode,
             )));
         }
     }
-    Ok((chunks_embedded, docs_completed, docs_failed))
+    Ok((chunks_embedded, state.docs_completed, docs_failed))
 }
 
 pub(super) async fn run_embed_pipeline(
@@ -294,8 +317,11 @@ pub(super) async fn run_embed_pipeline(
             .await;
     }
 
-    let mut pending_points: Vec<serde_json::Value> = Vec::new();
-    let mut stale_tail_queue: Vec<(String, usize)> = Vec::new();
+    let mut state = PipelineState {
+        docs_completed: 0,
+        pending_points: Vec::new(),
+        stale_tail_queue: Vec::new(),
+    };
 
     // Phase 1: process first doc serially to learn dim + VectorMode.
     // Named collections require named vectors with BM42 sparse; Unnamed expects flat arrays.
@@ -310,40 +336,36 @@ pub(super) async fn run_embed_pipeline(
         cfg,
         first_doc,
         doc_timeout_secs,
-        &mut pending_points,
-        &mut stale_tail_queue,
+        &mut state.pending_points,
+        &mut state.stale_tail_queue,
     )
     .await?;
-    let docs_completed = 1usize;
+    state.docs_completed = 1;
     if let Some(tx) = &progress_tx {
         tx.send(EmbedProgress {
             docs_total,
-            docs_completed,
+            docs_completed: state.docs_completed,
             chunks_embedded,
         })
         .await
         .ok();
     }
 
-    // Phase 2: process remaining docs concurrently with the known mode.
-    let (phase2_chunks, _phase2_completed, phase2_failed) = drain_concurrent_docs(
-        cfg,
-        &mut work,
+    let params = PipelineParams {
         doc_concurrency,
         doc_timeout_secs,
         mode,
-        flush_threshold,
+        flush_point_threshold: flush_threshold,
         docs_total,
-        docs_completed,
-        &progress_tx,
-        &mut pending_points,
-        &mut stale_tail_queue,
-    )
-    .await?;
+    };
+
+    // Phase 2: process remaining docs concurrently with the known mode.
+    let (phase2_chunks, _phase2_completed, phase2_failed) =
+        drain_concurrent_docs(cfg, &mut work, &params, &mut state, &progress_tx).await?;
     chunks_embedded += phase2_chunks;
     docs_failed += phase2_failed;
 
-    flush_and_cleanup(cfg, &mut pending_points, &mut stale_tail_queue).await?;
+    flush_and_cleanup(cfg, &mut state.pending_points, &mut state.stale_tail_queue).await?;
 
     let elapsed_secs = pipeline_start.elapsed().as_secs();
     let docs_embedded = docs_total - docs_failed;

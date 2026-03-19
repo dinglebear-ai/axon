@@ -215,8 +215,8 @@ pub(crate) fn matches_project_filter(cfg: &Config, name: &str) -> bool {
 
 pub(crate) async fn embed_session_text(
     cfg: &Config,
-    session_text: String,
-    url: String,
+    session_text: &str,
+    url: &str,
     source_type: &str,
     title: Option<&str>,
 ) -> IngestResult<usize> {
@@ -224,19 +224,15 @@ pub(crate) async fn embed_session_text(
         return Ok(0);
     }
 
-    let chunks = chunk_text(&session_text);
+    let chunks = chunk_text(session_text);
     if chunks.is_empty() {
         return Ok(0);
     }
 
-    let domain = spider::url::Url::parse(&url)
-        .ok()
-        .and_then(|u| u.host_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "local".to_string());
-
+    // Session URLs are always file:// — "local" is the correct domain.
     let doc = PreparedDoc {
-        url,
-        domain,
+        url: url.to_string(),
+        domain: "local".to_string(),
         chunks,
         source_type: source_type.to_string(),
         content_type: "text",
@@ -265,15 +261,7 @@ pub(crate) async fn embed_with_retry(
     const MAX_RETRIES: u8 = 3;
     let mut attempt: u8 = 0;
     loop {
-        match embed_session_text(
-            cfg,
-            session_text.to_owned(),
-            url.to_owned(),
-            source_type,
-            title,
-        )
-        .await
-        {
+        match embed_session_text(cfg, session_text, url, source_type, title).await {
             Ok(n) => return Ok(n),
             Err(e) => {
                 if attempt < MAX_RETRIES {

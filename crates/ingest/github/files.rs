@@ -4,6 +4,9 @@ mod line_range;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
+use crate::crates::ingest::subprocess::{
+    MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
+};
 use crate::crates::vector::ops::PreparedDoc;
 use crate::crates::vector::ops::input::classify::{
     classify_file_type, is_test_path, language_name,
@@ -23,9 +26,9 @@ const PHASE_CLONING: &str = "cloning";
 const PHASE_ENUMERATING_FILES: &str = "enumerating_files";
 const PHASE_EMBEDDED_FILES: &str = "embedded_files";
 
-/// Skip files larger than 50 MB — guards against true binary blobs and multi-GB generated files
+/// Skip files larger than 50 MiB — guards against true binary blobs and multi-GB generated files
 /// while allowing large-but-legitimate source files (generated impls, large grammar tables, etc.).
-const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
 
 /// Extract the file extension from a path (lowercase, no dot).
 fn file_extension(path: &str) -> String {
@@ -34,7 +37,7 @@ fn file_extension(path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Run `git clone --depth=1` into a temp directory.
+/// Run `git clone --depth=1` into a temp directory with SSRF validation and timeout.
 ///
 /// Tries authenticated clone first (if token provided), then falls back to
 /// unauthenticated for public repos. Uses `token` prefix (not `Bearer`) for
@@ -45,9 +48,15 @@ async fn clone_repo(
     branch: &str,
     token: Option<&str>,
 ) -> Result<tempfile::TempDir> {
+    use crate::crates::core::http::validate_url;
+
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
     let clone_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
+
+    // SSRF guard: validate the clone URL against private IP ranges.
+    // Git follows redirects, so a malicious repo name could redirect to an internal host.
+    validate_url(&clone_url)?;
 
     let base_args = [
         "clone",
@@ -60,16 +69,17 @@ async fn clone_repo(
         &tmp_path,
     ];
 
+    let ctx = format!("git clone {}", common.repo_slug);
+
     // Try authenticated first, fall back to unauthenticated for public repos.
     if let Some(t) = token {
-        let output = tokio::process::Command::new("git")
+        let child = tokio::process::Command::new("git")
             .args(base_args)
             .env("GIT_CONFIG_COUNT", "1")
             .env("GIT_CONFIG_KEY_0", "http.extraHeader")
             .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"))
-            .output()
-            .await
-            .map_err(|e| anyhow::anyhow!("git not found or failed to start: {e}"))?;
+            .output();
+        let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, &ctx).await?;
 
         if output.status.success() {
             return Ok(tmp);
@@ -87,11 +97,8 @@ async fn clone_repo(
         })?;
     }
 
-    let output = tokio::process::Command::new("git")
-        .args(base_args)
-        .output()
-        .await
-        .map_err(|e| anyhow::anyhow!("git not found or failed to start: {e}"))?;
+    let child = tokio::process::Command::new("git").args(base_args).output();
+    let output = run_command_with_timeout(child, SUBPROCESS_TIMEOUT, &ctx).await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

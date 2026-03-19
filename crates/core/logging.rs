@@ -352,11 +352,7 @@ fn resolve_json_log_file() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            std::env::var("AXON_DATA_DIR")
-                .ok()
-                .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
-                .map(|d| format!("{d}/axon/logs/axon.log"))
+            super::paths::axon_data_dir().map(|d| format!("{}/axon/logs/axon.log", d.display()))
         })
         .unwrap_or_else(|| "logs/axon.log".to_string())
 }

@@ -3,8 +3,7 @@ use super::heuristics::{
     query_requests_low_signal_sources, top_domains, url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
-use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
-use crate::crates::vector::ops::{qdrant, ranking, sparse, tei};
+use crate::crates::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
 pub(super) struct AskRetrieval {
@@ -18,31 +17,6 @@ pub(super) struct AskRetrieval {
     pub(super) dropped_by_allowlist: usize,
 }
 
-/// Dispatch vector search based on collection mode and hybrid config.
-async fn dispatch_ask_search(
-    cfg: &Config,
-    vector: &[f32],
-    query: &str,
-    limit: usize,
-) -> Result<Vec<qdrant::QdrantSearchHit>> {
-    let filter = qdrant::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
-    let filter_ref = filter.as_ref();
-    let mode = get_or_fetch_vector_mode(cfg)
-        .await
-        .map_err(|e| anyhow!("vector mode detection: {e}"))?;
-    match mode {
-        VectorMode::Named => {
-            let sv = sparse::compute_sparse_vector(query);
-            if cfg.hybrid_search_enabled && !sv.is_empty() {
-                qdrant::qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref).await
-            } else {
-                qdrant::qdrant_named_dense_search(cfg, vector, limit, filter_ref).await
-            }
-        }
-        VectorMode::Unnamed => qdrant::qdrant_search(cfg, vector, limit, filter_ref).await,
-    }
-}
-
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let mut ask_vectors = tei::tei_embed(cfg, &[query.to_string()])
@@ -54,7 +28,9 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let vecq = ask_vectors.remove(0);
     let query_tokens = ranking::tokenize_query(query);
     let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
-    let hits = dispatch_ask_search(cfg, &vecq, query, cfg.ask_candidate_limit).await?;
+    let hits = qdrant::dispatch_vector_search(cfg, &vecq, query, cfg.ask_candidate_limit)
+        .await
+        .map_err(|e| anyhow!("vector search dispatch: {e}"))?;
     let mut candidates = Vec::new();
     let mut dropped_by_allowlist = 0usize;
     for hit in hits {
@@ -73,13 +49,15 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
             continue;
         }
         let path = ranking::extract_path_from_url(&url);
+        let url_tokens = ranking::tokenize_path_set(&path);
+        let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
         candidates.push(ranking::AskCandidate {
             score: hit.score,
-            url: url.clone(),
-            path: path.clone(),
-            chunk_text: chunk_text.clone(),
-            url_tokens: ranking::tokenize_path_set(&path),
-            chunk_tokens: ranking::tokenize_text_set(&chunk_text),
+            url,
+            path,
+            chunk_text,
+            url_tokens,
+            chunk_tokens,
             rerank_score: hit.score,
         });
     }

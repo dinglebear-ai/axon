@@ -196,5 +196,34 @@ pub async fn touch_running_job(pool: &PgPool, table: JobTable, id: Uuid) -> Resu
     Ok(())
 }
 
+/// Batch-delete terminal jobs (failed + canceled) from the given table in 1000-row
+/// chunks, yielding between iterations to avoid starving other tasks.
+///
+/// Returns the total number of rows deleted.
+pub async fn batched_cleanup_terminal_jobs(pool: &PgPool, table: JobTable) -> Result<u64> {
+    let table_name = table.as_str();
+    let query = format!(
+        "DELETE FROM {table_name} WHERE id IN (\
+             SELECT id FROM {table_name} WHERE status IN ('{failed}','{canceled}') LIMIT 1000\
+         )",
+        failed = JobStatus::Failed.as_str(),
+        canceled = JobStatus::Canceled.as_str(),
+    );
+    let mut total = 0u64;
+    loop {
+        let deleted = sqlx::query(&query)
+            .execute(pool)
+            .await
+            .with_context(|| format!("batched_cleanup_terminal_jobs in {table_name}"))?
+            .rows_affected();
+        total += deleted;
+        if deleted == 0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    Ok(total)
+}
+
 // Heartbeat functions (`spawn_heartbeat_task`, `spawn_content_aware_heartbeat`)
 // have been moved to `super::heartbeat` and are re-exported through `common.rs`.

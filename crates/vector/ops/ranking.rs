@@ -1,28 +1,20 @@
+use super::sparse::STOP_WORDS;
 use spider::url::Url;
 use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
 
 mod snippet;
 pub use snippet::{get_meaningful_snippet, select_best_preview_chunk};
 
-static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    // Structural/syntactic words only. Content verbs like "make", "create", "build"
-    // encode user intent and must NOT be stripped — they distinguish "how to USE a
-    // library" from "how to IMPLEMENT an interface."
-    //
-    // Extended from TS counterpart: high-frequency doc words that add noise without
-    // distinguishing what a page is actually about.
-    [
-        "the", "and", "for", "with", "that", "this", "from", "into", "how", "what", "where",
-        "when", "you", "your", "are", "can", "does",
-        // Extended set (ported from axon/src/utils/deduplication.ts)
-        "use", "using", "used", "get", "set", "via", "not", "all", "any", "but", "too", "out",
-        "our", "their", "them", "they", "its", "then", "than", "also", "have", "has", "had", "was",
-        "were", "who", "why",
-    ]
-    .into_iter()
-    .collect()
-});
+// Reranking boost constants. URL tokens are weighted 3x chunk tokens because
+// a query term appearing in the URL path is a stronger signal of topical relevance
+// than appearing in body text. The cap prevents lexical boosts from overwhelming
+// the cosine similarity score. Use `axon evaluate --ask-diagnostics` to measure
+// the impact of retuning these values.
+const LEXICAL_URL_TOKEN_BOOST: f64 = 0.045;
+const LEXICAL_CHUNK_TOKEN_BOOST: f64 = 0.015;
+const LEXICAL_BOOST_CAP: f64 = 0.30;
+const DOCS_PATH_BOOST: f64 = 0.04;
+const PHRASE_MATCH_BOOST: f64 = 0.06;
 
 #[derive(Debug, Clone)]
 pub struct AskCandidate {
@@ -85,20 +77,20 @@ pub fn rerank_ask_candidates(
             let mut lexical_boost = 0.0f64;
             for token in query_tokens {
                 if candidate.url_tokens.contains(token) {
-                    lexical_boost += 0.045;
+                    lexical_boost += LEXICAL_URL_TOKEN_BOOST;
                 }
                 if candidate.chunk_tokens.contains(token) {
-                    lexical_boost += 0.015;
+                    lexical_boost += LEXICAL_CHUNK_TOKEN_BOOST;
                 }
             }
-            lexical_boost = lexical_boost.min(0.30);
+            lexical_boost = lexical_boost.min(LEXICAL_BOOST_CAP);
 
             let docs_boost = if candidate.path.contains("/docs/")
                 || candidate.path.contains("/guides/")
                 || candidate.path.contains("/api/")
                 || candidate.path.contains("/reference/")
             {
-                0.04
+                DOCS_PATH_BOOST
             } else {
                 0.0
             };
@@ -118,7 +110,7 @@ pub fn rerank_ask_candidates(
                     .to_ascii_lowercase()
                     .contains(phrase.as_str())
             {
-                0.06
+                PHRASE_MATCH_BOOST
             } else {
                 0.0
             };
@@ -180,13 +172,13 @@ pub fn select_diverse_candidates_from_indices(
         if selected.len() >= target_count {
             break;
         }
-        let candidate = &candidates[candidate_idx];
-        if per_url_count.contains_key(&candidate.url) {
+        let url = &candidates[candidate_idx].url;
+        if per_url_count.contains_key(url.as_str()) {
             continue;
         }
         selected.push(candidate_idx);
         selected_set.insert(candidate_idx);
-        per_url_count.insert(candidate.url.clone(), 1);
+        per_url_count.insert(url.clone(), 1);
     }
 
     // Pass 2: fill remaining slots up to max_per_url per URL.
@@ -194,18 +186,17 @@ pub fn select_diverse_candidates_from_indices(
         if selected.len() >= target_count {
             break;
         }
-        // Skip indices already chosen in pass 1.
         if selected_set.contains(&candidate_idx) {
             continue;
         }
-        let candidate = &candidates[candidate_idx];
-        let used = *per_url_count.get(&candidate.url).unwrap_or(&0);
-        if used >= max_per_url {
+        let url = &candidates[candidate_idx].url;
+        let count = per_url_count.entry(url.clone()).or_insert(0);
+        if *count >= max_per_url {
             continue;
         }
+        *count += 1;
         selected.push(candidate_idx);
         selected_set.insert(candidate_idx);
-        per_url_count.insert(candidate.url.clone(), used + 1);
     }
 
     selected

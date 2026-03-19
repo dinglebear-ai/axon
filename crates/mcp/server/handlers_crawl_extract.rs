@@ -1,9 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
     apply_crawl_overrides, invalid_params, logged_internal_error, parse_job_id, parse_limit,
-    parse_offset, respond_with_mode,
+    parse_offset, respond_with_mode, validate_mcp_urls,
 };
-use crate::crates::core::http::validate_url;
 use crate::crates::mcp::schema::{
     AxonToolResponse, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction,
 };
@@ -21,9 +20,7 @@ impl AxonMcpServer {
         if urls.is_empty() {
             return Err(invalid_params("urls cannot be empty"));
         }
-        for url in &urls {
-            validate_url(url).map_err(|e| invalid_params(e.to_string()))?;
-        }
+        validate_mcp_urls(&urls)?;
         let result = crawl_svc::crawl_start(cfg, &urls, None)
             .await
             .map_err(|e| logged_internal_error("crawl.start", e))?;
@@ -86,9 +83,7 @@ impl AxonMcpServer {
         if urls.is_empty() {
             return Err(invalid_params("urls cannot be empty"));
         }
-        for url in &urls {
-            validate_url(url).map_err(|e| invalid_params(e.to_string()))?;
-        }
+        validate_mcp_urls(&urls)?;
         let mut cfg = self.cfg.as_ref().clone();
         cfg.query = prompt;
         if let Some(mp) = max_pages {

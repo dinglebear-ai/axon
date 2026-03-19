@@ -1,7 +1,7 @@
 use super::url_utils::{build_exclude_blacklist_patterns, is_junk_discovered_url};
 use crate::crates::core::config::parse::is_docker_service_host;
 use crate::crates::core::config::{Config, RenderMode};
-use crate::crates::core::http::{cdp_discovery_url, ssrf_blacklist_patterns};
+use crate::crates::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings};
 use spider::CaseInsensitiveString;
 use spider::configuration::RedirectPolicy;
 use spider::features::chrome_common::{
@@ -159,11 +159,7 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     if cfg.shared_queue {
         website.with_shared_queue(true);
     }
-    let mut blacklist_patterns: Vec<spider::compact_str::CompactString> = ssrf_blacklist_patterns()
-        .iter()
-        .copied()
-        .map(Into::into)
-        .collect();
+    let mut blacklist_patterns = ssrf_blacklist_compact_strings();
     if !cfg.exclude_path_prefix.is_empty() {
         blacklist_patterns.extend(
             build_exclude_blacklist_patterns(start_url, &cfg.exclude_path_prefix)
@@ -201,17 +197,7 @@ fn apply_custom_headers(cfg: &Config, website: &mut Website) {
     if cfg.custom_headers.is_empty() {
         return;
     }
-    let mut map = reqwest::header::HeaderMap::new();
-    for raw in &cfg.custom_headers {
-        if let Some((k, v)) = raw.split_once(": ")
-            && let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            )
-        {
-            map.insert(name, val);
-        }
-    }
+    let map = crate::crates::core::http::parse_custom_headers(&cfg.custom_headers);
     if !map.is_empty() {
         website.with_headers(Some(map));
     }
