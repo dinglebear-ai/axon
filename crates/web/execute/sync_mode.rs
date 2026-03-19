@@ -1,7 +1,6 @@
 mod acp_adapter;
 mod dispatch;
 mod params;
-#[allow(dead_code)] // wired in Task 4 (start_server integration)
 pub(crate) mod prewarm;
 mod pulse_chat;
 mod service_calls;

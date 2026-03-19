@@ -159,6 +159,9 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
         }
     });
 
+    // Pre-warm the default ACP adapter so the first chat message is fast.
+    execute::prewarm::spawn_prewarm_task(cfg.clone());
+
     let download_state = Arc::new(DownloadAuthState {
         job_dirs: job_dirs.clone(),
         api_token,
