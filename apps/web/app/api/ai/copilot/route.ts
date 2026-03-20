@@ -3,12 +3,9 @@ import { generateText } from 'ai'
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { apiError } from '@/lib/server/api-error'
-import {
-  type CopilotStreamEvent,
-  encodeCopilotStreamEvent,
-  parseOpenAiSseChunk,
-} from '@/lib/server/openai-sse'
+import { encodeCopilotStreamEvent, parseOpenAiSseChunk } from '@/lib/server/openai-sse'
 
+export type { CopilotStreamEvent } from '@/lib/server/openai-sse'
 export { encodeCopilotStreamEvent, parseOpenAiSseChunk }
 
 const DEFAULT_MODEL = 'gpt-4o-mini'
