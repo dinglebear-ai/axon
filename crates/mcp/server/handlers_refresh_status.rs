@@ -40,10 +40,10 @@ impl AxonMcpServer {
         match req.subaction.unwrap_or(RefreshSubaction::Start) {
             RefreshSubaction::Start => self.handle_refresh_start(req.urls, req.url).await,
             RefreshSubaction::Status => {
-                self.handle_refresh_status(req.job_id.as_ref(), response_mode)
+                self.handle_refresh_status(req.job_id.as_deref(), response_mode)
                     .await
             }
-            RefreshSubaction::Cancel => self.handle_refresh_cancel(req.job_id.as_ref()).await,
+            RefreshSubaction::Cancel => self.handle_refresh_cancel(req.job_id.as_deref()).await,
             RefreshSubaction::List => {
                 self.handle_refresh_list(req.limit, req.offset, response_mode)
                     .await
@@ -89,7 +89,7 @@ impl AxonMcpServer {
 
     async fn handle_refresh_status(
         &self,
-        job_id: Option<&String>,
+        job_id: Option<&str>,
         response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let id = parse_job_id(job_id)?;
@@ -108,7 +108,7 @@ impl AxonMcpServer {
 
     async fn handle_refresh_cancel(
         &self,
-        job_id: Option<&String>,
+        job_id: Option<&str>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let id = parse_job_id(job_id)?;
         let canceled = refresh_service::refresh_cancel(self.cfg.as_ref(), id)
@@ -129,9 +129,13 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = refresh_service::refresh_list(self.cfg.as_ref(), limit, offset as i64)
-            .await
-            .map_err(|e| logged_internal_error("refresh.list", e))?;
+        let jobs = refresh_service::refresh_list(
+            self.cfg.as_ref(),
+            limit,
+            i64::try_from(offset).unwrap_or(i64::MAX),
+        )
+        .await
+        .map_err(|e| logged_internal_error("refresh.list", e))?;
         respond_with_mode(
             "refresh",
             "list",

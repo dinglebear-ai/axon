@@ -60,7 +60,7 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = crawl_svc::crawl_list(cfg, limit, offset as i64)
+        let jobs = crawl_svc::crawl_list(cfg, limit, i64::try_from(offset).unwrap_or(i64::MAX))
             .await
             .map_err(|e| logged_internal_error("crawl.list", e))?;
         respond_with_mode(
@@ -107,9 +107,13 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = extract_svc::extract_list(self.cfg.as_ref(), limit, offset as i64)
-            .await
-            .map_err(|e| logged_internal_error("extract.list", e))?;
+        let jobs = extract_svc::extract_list(
+            self.cfg.as_ref(),
+            limit,
+            i64::try_from(offset).unwrap_or(i64::MAX),
+        )
+        .await
+        .map_err(|e| logged_internal_error("extract.list", e))?;
         respond_with_mode(
             "extract",
             "list",
@@ -129,7 +133,7 @@ impl AxonMcpServer {
         match req.subaction.unwrap_or(CrawlSubaction::Start) {
             CrawlSubaction::Start => self.handle_crawl_start(&cfg, req.urls).await,
             CrawlSubaction::Status => {
-                let id = parse_job_id(req.job_id.as_ref())?;
+                let id = parse_job_id(req.job_id.as_deref())?;
                 let result = crawl_svc::crawl_status(&cfg, id)
                     .await
                     .map_err(|e| logged_internal_error("crawl.status", e))?;
@@ -144,7 +148,7 @@ impl AxonMcpServer {
                 ))
             }
             CrawlSubaction::Cancel => {
-                let id = parse_job_id(req.job_id.as_ref())?;
+                let id = parse_job_id(req.job_id.as_deref())?;
                 let canceled = crawl_svc::crawl_cancel(&cfg, id)
                     .await
                     .map_err(|e| logged_internal_error("crawl.cancel", e))?;
@@ -202,7 +206,7 @@ impl AxonMcpServer {
                     .await
             }
             ExtractSubaction::Status => {
-                let id = parse_job_id(req.job_id.as_ref())?;
+                let id = parse_job_id(req.job_id.as_deref())?;
                 let job = extract_svc::extract_status(self.cfg.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("extract.status", e))?;
@@ -216,7 +220,7 @@ impl AxonMcpServer {
                 .await
             }
             ExtractSubaction::Cancel => {
-                let id = parse_job_id(req.job_id.as_ref())?;
+                let id = parse_job_id(req.job_id.as_deref())?;
                 let canceled = extract_svc::extract_cancel(self.cfg.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("extract.cancel", e))?;

@@ -1,4 +1,11 @@
+use std::sync::LazyLock;
+
 use spider::url::Url;
+
+use crate::crates::core::logging::log_warn;
+
+/// Cached Docker detection -- avoids hitting the filesystem on every call.
+static IN_DOCKER: LazyLock<bool> = LazyLock::new(|| std::path::Path::new("/.dockerenv").exists());
 
 /// Mapping from Docker-internal service hostnames to their host-side addresses.
 ///
@@ -24,7 +31,7 @@ pub(crate) fn is_docker_service_host(host: &str) -> bool {
 }
 
 pub(crate) fn normalize_local_service_url(url: String) -> String {
-    if std::path::Path::new("/.dockerenv").exists() {
+    if *IN_DOCKER {
         return url;
     }
 
@@ -37,8 +44,18 @@ pub(crate) fn normalize_local_service_url(url: String) -> String {
     };
     for (container_host, local_host, local_port) in HOST_MAP {
         if host == *container_host {
-            let _ = parsed.set_host(Some(local_host));
-            let _ = parsed.set_port(Some(*local_port));
+            if parsed.set_host(Some(local_host)).is_err() {
+                log_warn(&format!(
+                    "docker_url_rewrite action=set_host_failed url={url} target_host={local_host}"
+                ));
+                return url;
+            }
+            if parsed.set_port(Some(*local_port)).is_err() {
+                log_warn(&format!(
+                    "docker_url_rewrite action=set_port_failed url={url} target_port={local_port}"
+                ));
+                return url;
+            }
             return parsed.to_string();
         }
     }

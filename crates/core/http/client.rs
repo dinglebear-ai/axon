@@ -26,6 +26,10 @@ pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
     // In tests, each #[tokio::test] runs on its own runtime. A process-wide
     // reqwest::Client can hold a handle to a dropped runtime and intermittently
     // fail with "dispatch task is gone". Use a fresh client per call.
+    //
+    // The `Box::leak` is intentional and bounded: each test leaks one
+    // reqwest::Client (~200 bytes). For a typical test suite this is negligible
+    // and avoids lifetime issues with static references to runtime-scoped data.
     let client = build_client(30, None)
         .map_err(|err| anyhow::Error::msg(format!("failed to initialize HTTP client: {err}")))?;
     Ok(Box::leak(Box::new(client)))
@@ -57,7 +61,7 @@ pub async fn fetch_html(client: &reqwest::Client, url: &str) -> Result<String, a
     let normalized = normalize_url(url);
     validate_url(&normalized)?;
     let body = client
-        .get(&normalized)
+        .get(normalized.as_ref())
         .send()
         .await?
         .error_for_status()?

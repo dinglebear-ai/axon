@@ -177,7 +177,7 @@ pub fn parse_urls(cfg: &Config) -> Vec<String> {
     let mut seen = HashSet::new();
     for seed in raw {
         for expanded in expand_url_glob_seed(&seed) {
-            let normalized = normalize_url(&expanded);
+            let normalized = normalize_url(&expanded).into_owned();
             if seen.insert(normalized.clone()) {
                 out.push(normalized);
             }
@@ -210,7 +210,7 @@ pub fn start_url_from_cfg(cfg: &Config) -> String {
             .first()
             .cloned()
             .unwrap_or_else(|| cfg.start_url.clone());
-        return normalize_url(&selected);
+        return normalize_url(&selected).into_owned();
     }
 
     cfg.start_url.clone()

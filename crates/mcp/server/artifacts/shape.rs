@@ -1,11 +1,11 @@
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-pub fn line_count(text: &str) -> usize {
+pub(crate) fn line_count(text: &str) -> usize {
     text.lines().count()
 }
 
-pub fn sha256_hex(bytes: &[u8]) -> String {
+pub(super) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
@@ -13,9 +13,13 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 pub fn clip_inline_json(value: &serde_json::Value, max_chars: usize) -> (serde_json::Value, bool) {
     match serde_json::to_string(value) {
-        Ok(raw) if raw.chars().count() <= max_chars => (value.clone(), false),
+        // JSON serialization is ASCII-safe (non-ASCII is \uXXXX escaped),
+        // so byte length == char count. Use .len() to avoid O(n) char scan.
+        Ok(raw) if raw.len() <= max_chars => (value.clone(), false),
         Ok(raw) => {
-            let clipped = raw.chars().take(max_chars).collect::<String>();
+            // Truncate at a byte boundary that is safe because the serialized
+            // JSON is pure ASCII (serde_json escapes all non-ASCII).
+            let clipped = &raw[..max_chars];
             (serde_json::json!({ "clipped_json": clipped }), true)
         }
         Err(_) => (
@@ -49,10 +53,10 @@ fn status_histogram(arr: &[serde_json::Value]) -> Option<serde_json::Value> {
 }
 
 /// Recursive shape summary for path-mode responses.
-/// Objects: key → shape of value.
+/// Objects: key -> shape of value.
 /// Arrays with a status-like field: `{"total": N, "by_status": {...}}`.
 /// Arrays without: `"<array[N]>"`.
-/// Strings ≤ 100 chars: verbatim. Longer strings: `"<string N>"`.
+/// Strings <= 100 chars: verbatim. Longer strings: `"<string N>"`.
 /// Primitives: verbatim.
 pub fn json_shape_preview(value: &serde_json::Value) -> serde_json::Value {
     match value {

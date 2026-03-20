@@ -36,16 +36,18 @@ pub(super) fn validate_mcp_url(url: &str) -> Result<(), ErrorData> {
 }
 
 /// Validate every URL in a slice via the SSRF guard.
+/// Error messages include the index so the client can identify which URL failed.
 pub(super) fn validate_mcp_urls(urls: &[String]) -> Result<(), ErrorData> {
-    for url in urls {
-        validate_mcp_url(url)?;
+    for (i, url) in urls.iter().enumerate() {
+        crate::crates::core::http::validate_url(url)
+            .map_err(|e| invalid_params(format!("urls[{i}]: {e}")))?;
     }
     Ok(())
 }
 
 // --- Param parsers ---
 
-pub(super) fn parse_job_id(job_id: Option<&String>) -> Result<Uuid, ErrorData> {
+pub(super) fn parse_job_id(job_id: Option<&str>) -> Result<Uuid, ErrorData> {
     let raw = job_id.ok_or_else(|| invalid_params("job_id is required for this subaction"))?;
     Uuid::parse_str(raw).map_err(|e| invalid_params(format!("invalid job_id: {e}")))
 }
@@ -87,6 +89,19 @@ pub(super) fn slugify(value: &str, max_len: usize) -> String {
     let trimmed = out.trim_matches('-').to_string();
     if trimmed.is_empty() {
         "artifact".to_string()
+    } else if trimmed.len() < 4 {
+        // Non-ASCII input degenerates to very short slugs — append a hash
+        // of the original value so distinct inputs produce distinct stems.
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        let hash = hasher.finish();
+        let combined = format!("{trimmed}-{hash:08x}");
+        if combined.len() > max_len {
+            combined[..max_len].to_string()
+        } else {
+            combined
+        }
     } else {
         trimmed
     }

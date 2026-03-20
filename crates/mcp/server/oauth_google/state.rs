@@ -12,7 +12,7 @@ use tracing::{info, warn};
 use super::helpers::unix_now_secs;
 use super::types::{
     AccessTokenRecord, AuthCodeRecord, GoogleOAuthConfig, GoogleOAuthInner, GoogleOAuthState,
-    GoogleTokenResponse, OAUTH_SESSION_TTL_SECS, OAuthError, PendingStateRecord, RateLimitRecord,
+    GoogleTokenResponse, OAUTH_SESSION_TTL_SECS, OAuthError, PendingStateRecord,
     RefreshTokenRecord, RegisteredClient,
 };
 use crate::crates::core::config::parse::normalize_local_service_url;
@@ -333,12 +333,15 @@ impl GoogleOAuthState {
     }
 
     pub(crate) async fn consume_auth_code(&self, code: &str) -> Option<AuthCodeRecord> {
+        // Always remove from memory regardless of Redis result to prevent
+        // a second token exchange succeeding against the in-memory fallback.
+        let mem_record = self.inner.auth_codes.lock().await.remove(code);
         let key = self.key(&format!("auth_code:{code}"));
         if let Some(record) = self.redis_get_json::<AuthCodeRecord>(&key).await {
             self.redis_del(&key).await;
             return Some(record);
         }
-        self.inner.auth_codes.lock().await.remove(code)
+        mem_record
     }
 
     pub(crate) async fn put_access_token(

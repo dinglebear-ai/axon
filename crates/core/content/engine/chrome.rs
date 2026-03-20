@@ -9,7 +9,6 @@ use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::url::Url;
 use spider::website::Website;
 use std::error::Error;
-use std::path::Path;
 use std::sync::Arc;
 
 /// Pre-resolve the Chrome CDP WebSocket URL, mirroring the logic in
@@ -29,7 +28,7 @@ async fn resolve_chrome_url(remote_url: &str) -> String {
         return remote_url.to_string();
     }
 
-    if Path::new("/.dockerenv").exists() {
+    if tokio::fs::try_exists("/.dockerenv").await.unwrap_or(false) {
         return remote_url.to_string();
     }
 

@@ -40,7 +40,7 @@ pub fn url_lookup_candidates(target: &str) -> Vec<String> {
     let normalized = normalize_url(target);
     let variants = [
         target.to_string(),
-        normalized.clone(),
+        normalized.to_string(),
         normalized.trim_end_matches('/').to_string(),
         format!("{}/", normalized.trim_end_matches('/')),
     ];

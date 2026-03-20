@@ -4,8 +4,8 @@ use super::artifacts::{
     list_artifact_files, respond_with_mode, search_artifact_files, validate_artifact_path,
 };
 use super::common::{
-    MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error, parse_limit_usize, parse_offset,
-    to_pagination,
+    MCP_TOOL_SCHEMA_URI, internal_error, invalid_params, logged_internal_error, parse_limit_usize,
+    parse_offset, to_pagination,
 };
 use crate::crates::jobs::common::make_pool;
 use crate::crates::mcp::schema::{
@@ -31,6 +31,9 @@ impl AxonMcpServer {
         offset: usize,
         ctx: usize,
     ) -> Result<AxonToolResponse, ErrorData> {
+        if pattern.len() > 1024 {
+            return Err(invalid_params("regex pattern too long (max 1024 chars)"));
+        }
         let re = Regex::new(pattern)
             .map_err(|e| invalid_params(format!("invalid regex pattern: {e}")))?;
         let lines: Vec<&str> = text.lines().collect();
@@ -76,6 +79,9 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         match (pattern, full) {
             (Some(pattern), _) => {
+                if pattern.len() > 1024 {
+                    return Err(invalid_params("regex pattern too long (max 1024 chars)"));
+                }
                 let re = Regex::new(pattern)
                     .map_err(|e| invalid_params(format!("invalid regex pattern: {e}")))?;
                 let limit = parse_limit_usize(limit, 200, 5_000);
@@ -246,11 +252,7 @@ impl AxonMcpServer {
                 req.limit,
                 req.offset,
             ),
-            // Already handled above
-            ArtifactsSubaction::List
-            | ArtifactsSubaction::Search
-            | ArtifactsSubaction::Clean
-            | ArtifactsSubaction::Delete => unreachable!(),
+            _ => Err(internal_error("unexpected subaction in path handler")),
         }
     }
 
@@ -317,7 +319,7 @@ impl AxonMcpServer {
         &self,
         req: DomainsRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit.or(Some(25)), req.offset, 25);
+        let pagination = to_pagination(req.limit, req.offset, 25);
         let response_mode = req.response_mode;
         let result = system::domains(self.cfg.as_ref(), pagination)
             .await
@@ -337,7 +339,7 @@ impl AxonMcpServer {
         &self,
         req: SourcesRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let pagination = to_pagination(req.limit.or(Some(25)), req.offset, 25);
+        let pagination = to_pagination(req.limit, req.offset, 25);
         let response_mode = req.response_mode;
         let result = system::sources(self.cfg.as_ref(), pagination)
             .await

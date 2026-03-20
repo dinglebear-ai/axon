@@ -109,11 +109,9 @@ fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
-            let octets = v4.octets();
-            let is_link_local = octets[0] == 169 && octets[1] == 254;
-            let is_private = octets[0] == 10
-                || (a == 172 && (16..=31).contains(&b))
-                || octets[0..2] == [192, 168];
+            let is_link_local = a == 169 && b == 254;
+            let is_private =
+                a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168);
             if is_link_local || is_private {
                 return Err(HttpError::BlockedIpRange(IpAddr::V4(v4)));
             }
@@ -160,12 +158,17 @@ pub(crate) fn ssrf_blacklist_patterns() -> &'static [&'static str] {
 }
 
 /// SSRF blacklist patterns pre-converted to `CompactString` for spider's
-/// `with_blacklist_url()`. Avoids the 5x duplication of the
-/// `.iter().copied().map(Into::into).collect()` chain across callers.
-pub(crate) fn ssrf_blacklist_compact_strings() -> Vec<spider::compact_str::CompactString> {
-    ssrf_blacklist_patterns()
-        .iter()
-        .copied()
-        .map(Into::into)
-        .collect()
+/// `with_blacklist_url()`. Computed once via `LazyLock` to avoid repeated
+/// allocation on every call. Callers that need a `Vec` for spider's API
+/// can `.to_vec()` the returned slice.
+pub(crate) fn ssrf_blacklist_compact_strings() -> &'static [spider::compact_str::CompactString] {
+    use std::sync::LazyLock;
+    static PATTERNS: LazyLock<Vec<spider::compact_str::CompactString>> = LazyLock::new(|| {
+        ssrf_blacklist_patterns()
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect()
+    });
+    &PATTERNS
 }

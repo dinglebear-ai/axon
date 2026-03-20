@@ -60,7 +60,7 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
     // Wire SSRF blacklist so Chrome re-fetches cannot reach internal
     // services via DNS rebinding or redirects.
     website.with_blacklist_url(Some(
-        crate::crates::core::http::ssrf_blacklist_compact_strings(),
+        crate::crates::core::http::ssrf_blacklist_compact_strings().to_vec(),
     ));
 
     if cfg.bypass_csp {

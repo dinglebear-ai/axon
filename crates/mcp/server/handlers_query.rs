@@ -1,8 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
-    invalid_params, logged_internal_error, map_render_mode, map_scrape_format, paginate_vec,
-    parse_offset, respond_with_mode, slugify, to_map_options, to_pagination, to_retrieve_options,
-    to_search_options, validate_mcp_url,
+    internal_error, invalid_params, logged_internal_error, map_render_mode, map_scrape_format,
+    paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options, to_pagination,
+    to_retrieve_options, to_search_options, validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -110,13 +110,14 @@ impl AxonMcpServer {
             .await
             .map_err(|e| logged_internal_error(&format!("map '{url}'"), e))?;
         let payload = result.payload;
-        let urls = payload["urls"]
+        let urls: Vec<String> = payload["urls"]
             .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|v| v.as_str().map(ToString::to_string))
-            .collect::<Vec<_>>();
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
         // limit=0 means "no limit" (return all); positive values paginate normally.
         let total_urls = urls.len();
         let paged_urls = if limit == 0 {
@@ -158,8 +159,9 @@ impl AxonMcpServer {
             self.cfg.search_limit,
         );
         if self.cfg.tavily_api_key.is_empty() {
-            return Err(invalid_params("TAVILY_API_KEY is required for search"));
+            return Err(internal_error("TAVILY_API_KEY is required for search"));
         }
+        let (limit, offset) = (opts.limit, opts.offset);
         let result = search_svc::search(self.cfg.as_ref(), &query, opts, None)
             .await
             .map_err(|e| logged_internal_error(&format!("search '{query}'"), e))?;
@@ -171,8 +173,8 @@ impl AxonMcpServer {
             &format!("search-{}", slugify(&query, 56)),
             serde_json::json!({
                 "query": query,
-                "limit": opts.limit,
-                "offset": opts.offset,
+                "limit": limit,
+                "offset": offset,
                 "results": result.results,
             }),
         )
@@ -224,10 +226,10 @@ impl AxonMcpServer {
         req: ResearchRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         if self.cfg.tavily_api_key.is_empty() {
-            return Err(invalid_params("TAVILY_API_KEY is required for research"));
+            return Err(internal_error("TAVILY_API_KEY is required for research"));
         }
         if self.cfg.openai_base_url.is_empty() || self.cfg.openai_model.is_empty() {
-            return Err(invalid_params(
+            return Err(internal_error(
                 "OPENAI_BASE_URL and OPENAI_MODEL are required for research",
             ));
         }

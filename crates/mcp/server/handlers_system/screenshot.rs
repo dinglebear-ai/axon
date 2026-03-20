@@ -65,13 +65,14 @@ impl AxonMcpServer {
         let output_path = if let Some(output) = req.output {
             resolve_artifact_output_path(&output).await?
         } else {
-            ensure_artifact_root()
-                .await?
-                .join("screenshots")
-                .join(format!(
-                    "{}.png",
-                    chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
-                ))
+            let screenshots_dir = ensure_artifact_root().await?.join("screenshots");
+            tokio::fs::create_dir_all(&screenshots_dir)
+                .await
+                .map_err(|e| logged_internal_error("screenshot dir", e))?;
+            screenshots_dir.join(format!(
+                "{}.png",
+                chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
+            ))
         };
 
         let mut cfg = self.cfg.as_ref().clone();
@@ -80,25 +81,24 @@ impl AxonMcpServer {
         cfg.screenshot_full_page = full_page;
         cfg.output_path = Some(output_path.clone());
 
-        let shot = crate::crates::services::screenshot::screenshot_capture(&cfg, &url)
+        let mut shot = crate::crates::services::screenshot::screenshot_capture(&cfg, &url)
             .await
             .map_err(|e| logged_internal_error("screenshot", e))?;
 
-        let size_bytes = shot
-            .payload
-            .get("size_bytes")
-            .cloned()
-            .unwrap_or(serde_json::json!(0));
-        let normalized = shot
-            .payload
-            .get("url")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!(url));
-        let path = shot
-            .payload
-            .get("path")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!(output_path));
+        let (size_bytes, normalized, path) = if let Some(map) = shot.payload.as_object_mut() {
+            (
+                map.remove("size_bytes").unwrap_or(serde_json::json!(0)),
+                map.remove("url").unwrap_or_else(|| serde_json::json!(url)),
+                map.remove("path")
+                    .unwrap_or_else(|| serde_json::json!(output_path)),
+            )
+        } else {
+            (
+                serde_json::json!(0),
+                serde_json::json!(url),
+                serde_json::json!(output_path),
+            )
+        };
 
         let payload = serde_json::json!({
             "url": normalized,

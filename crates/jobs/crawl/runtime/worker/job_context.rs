@@ -64,7 +64,7 @@ fn build_job_config(cfg: &Config, parsed: &CrawlJobConfig, id: Uuid, url: &str) 
     // Jobs serialized before locale-prefix defaults were added would otherwise
     // silently bypass all locale filtering.
     job_cfg.exclude_path_prefix = if parsed.exclude_path_prefix.is_empty() {
-        crate::crates::core::config::parse::excludes::default_exclude_prefixes()
+        crate::crates::core::config::parse::excludes::default_exclude_prefixes_vec()
     } else {
         parsed.exclude_path_prefix.clone()
     };

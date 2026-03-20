@@ -132,7 +132,7 @@ pub(crate) async fn append_html_anchor_backfill(
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let crawl_start_url = resolve_map_seed_url(start_url)
         .await
-        .unwrap_or_else(|_| normalize_url(start_url));
+        .unwrap_or_else(|_| normalize_url(start_url).into_owned());
     let scope =
         derive_map_scope(start_url, &crawl_start_url).ok_or("failed to derive map scope")?;
     let fallback_limit = if cfg.max_pages == 0 {
@@ -210,7 +210,7 @@ async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>>
     let client =
         http_client().map_err(|e| format!("http client init for map seed {normalized}: {e}"))?;
 
-    if let Ok(response) = client.head(&normalized).send().await
+    if let Ok(response) = client.head(normalized.as_ref()).send().await
         && response.status().is_success()
     {
         let final_url = response.url().to_string();
@@ -222,7 +222,7 @@ async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>>
     }
 
     let response = client
-        .get(&normalized)
+        .get(normalized.as_ref())
         .send()
         .await
         .map_err(|e| format!("GET failed resolving map seed {normalized}: {e}"))?
@@ -300,7 +300,7 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     };
     let crawl_start_url = resolve_map_seed_url(start_url)
         .await
-        .unwrap_or_else(|_| normalize_url(start_url));
+        .unwrap_or_else(|_| normalize_url(start_url).into_owned());
     let scope =
         derive_map_scope(start_url, &crawl_start_url).ok_or("failed to derive map scope")?;
     let scope_start_url = derive_map_scope_url(start_url, &crawl_start_url)

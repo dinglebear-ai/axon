@@ -1,5 +1,30 @@
 # Changelog
-Last Modified: 2026-03-19 (session: v0.27.2 — dependency security updates, CI audit gate, crawl embed provenance fix)
+Last Modified: 2026-03-20 (session: v0.28.0 — Pulse shell UI, web server utilities, MCP/core refactoring)
+
+## [0.28.0] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.27.2.
+
+### Highlights
+
+- **Pulse shell UI** — Full `apps/web/components/shell/` workspace with conversation pane, MCP pane, settings dialog, terminal pane, sidebar, and responsive mobile/desktop layouts. Shell state split into focused modules (`state-messages`, `state-session`, `state-layout`, `state-settings`, `state-tools`).
+- **Web server utilities** — `cortex-proxy.ts` factory eliminates per-route duplication across five cortex endpoints; `openai-sse.ts` provides SSE streaming helpers; `mcp-config.ts` centralises MCP server registration.
+- **New shared web lib** — `lib/pulse/` (chat-api, chat-helpers, chat-stream, claude-response, doc-ops, permissions, rag, session-store, types, workspace-persistence, etc.); `lib/error-utils.ts`, `lib/format.ts`, `lib/type-guards.ts`, `lib/url-utils.ts`.
+- **MCP handler refactoring** — `parse_ingest_source` decomposed from struct mutation to positional params; `validate_mcp_urls` includes index in error messages; `parse_job_id` accepts `&str`; `artifacts/path.rs` cleanup.
+- **Config parse improvements** — Generic `parse_csv_env` helper eliminates four identical split/trim/filter patterns across `build_config.rs`.
+- **Logging TOCTOU fixes** — `SizeRotatingFile` log rotation eliminates TOCTOU races in `logging.rs`: `exists()`+`rename/remove` replaced with match-on-`NotFound` patterns; warns on unexpected remove errors.
+- **ACP gateway migration** — `refactor(acp)`: extract/fallback/debug/research synthesis routed through ACP; suggest generation uses ACP gateway; ask/evaluate config validation aligned with ACP routing.
+
+### Commits since v0.27.2
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat(web) | Pulse shell UI, web server utilities, MCP/core refactoring, logging fixes |
+| 3a286289 | refactor(acp) | migrate extract fallback/debug/research synthesis and docs |
+| 47207a8f | refactor(suggest) | use ACP gateway for suggestion generation |
+| 042dd661 | fix(vector) | align ask/evaluate config validation with ACP routing |
+| 3f3a1152 | refactor(vector) | route ask and evaluate LLM calls through ACP |
+| 22b0d44a | fix(acp) | stream only assistant deltas in acp_llm gateway |
 
 ## [0.27.2] — feat/pulse-shell-and-hybrid-search
 

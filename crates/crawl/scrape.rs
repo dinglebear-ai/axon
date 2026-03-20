@@ -30,7 +30,7 @@ fn warn_invalid_certs_once() {
 /// Applies SSRF blacklist, timeout, retry, user-agent, and limit=1 so Spider
 /// never follows links beyond the target page.
 pub(crate) fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn Error>> {
-    let ssrf_patterns = ssrf_blacklist_compact_strings();
+    let ssrf_patterns = ssrf_blacklist_compact_strings().to_vec();
 
     let mut website = Website::new(url);
     // Single page only — do not follow any discovered links.

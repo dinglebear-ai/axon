@@ -60,7 +60,16 @@ use rmcp::{
         },
     },
 };
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+
+static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
+    let schema = rmcp::schemars::schema_for!(AxonRequest);
+    let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
+    format!(
+        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for lifecycle actions\n- `response_mode` supports `path|inline|both` and defaults to `path`\n\n## JSON Schema\n\n```json\n{}\n```\n",
+        MCP_TOOL_SCHEMA_URI, schema_json
+    )
+});
 
 #[derive(Clone)]
 pub struct AxonMcpServer {
@@ -118,14 +127,7 @@ impl AxonMcpServer {
             AxonRequest::Artifacts(req) => self.handle_artifacts(req).await?,
             AxonRequest::Scrape(req) => self.handle_scrape(req).await?,
             AxonRequest::Research(req) => self.handle_research(req).await?,
-            AxonRequest::Ask(req) => {
-                let server = self.clone();
-                tokio::task::spawn_blocking(move || {
-                    tokio::runtime::Handle::current().block_on(server.handle_ask(req))
-                })
-                .await
-                .map_err(|e| internal_error(format!("ask task join error: {e}")))??
-            }
+            AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
             AxonRequest::Refresh(req) => self.handle_refresh(req).await?,
             AxonRequest::Graph(req) => self.handle_graph(req).await?,
@@ -136,13 +138,8 @@ impl AxonMcpServer {
     }
 }
 
-fn mcp_tool_schema_markdown() -> String {
-    let schema = rmcp::schemars::schema_for!(AxonRequest);
-    let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
-    format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for lifecycle actions\n- `response_mode` supports `path|inline|both` and defaults to `path`\n\n## JSON Schema\n\n```json\n{}\n```\n",
-        MCP_TOOL_SCHEMA_URI, schema_json
-    )
+fn mcp_tool_schema_markdown() -> &'static str {
+    &MCP_TOOL_SCHEMA_MD
 }
 
 #[tool_handler(router = Self::tool_router())]
@@ -228,7 +225,7 @@ impl ServerHandler for AxonMcpServer {
             ResourceContents::TextResourceContents {
                 uri: MCP_TOOL_SCHEMA_URI.to_string(),
                 mime_type: Some("text/markdown".to_string()),
-                text: mcp_tool_schema_markdown(),
+                text: mcp_tool_schema_markdown().to_string(),
                 meta: None,
             },
         ]))

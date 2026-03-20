@@ -20,7 +20,6 @@ use super::types::{
     OAuthTokenResponse, RefreshTokenRecord, TokenRequest,
 };
 
-#[derive(Debug)]
 struct AuthCodeGrantInput {
     client_id: String,
     code: String,
@@ -366,16 +365,11 @@ pub(crate) async fn require_google_auth(
             if let Some(record) = record
                 && unix_now_secs() <= record.expires_at_unix
             {
-                let token_scopes = record
-                    .scope
-                    .split_whitespace()
-                    .map(ToString::to_string)
-                    .collect::<std::collections::HashSet<String>>();
                 let needed_scopes = required_scopes(&state);
-                if needed_scopes
+                let has_all_scopes = needed_scopes
                     .iter()
-                    .all(|scope| token_scopes.contains(scope))
-                {
+                    .all(|scope| record.scope.split_whitespace().any(|s| s == scope));
+                if has_all_scopes {
                     return next.run(req).await;
                 }
                 return unauthorized_response(
@@ -401,7 +395,7 @@ pub(crate) async fn require_google_auth(
             &state,
             serde_json::json!({
                 "error": "authorization_unavailable",
-                "error_description": "configure GOOGLE_OAUTH_CLIENT_ID/GOOGLE_OAUTH_CLIENT_SECRET or AXON_MCP_API_KEY"
+                "error_description": "authorization is not configured — see server documentation"
             }),
         );
     }

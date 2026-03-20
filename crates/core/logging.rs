@@ -2,7 +2,7 @@ use chrono::Local;
 use console::Style;
 use std::fmt;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
@@ -73,21 +73,34 @@ impl SizeRotatingFile {
             return Ok(());
         }
 
+        // Issue #5/#6: Eliminate TOCTOU race by operating directly and matching on NotFound.
+        // Issue #5: Warn on non-NotFound remove_file errors instead of silently discarding.
         let oldest = self.indexed_path(rotated_slots);
-        if oldest.exists() {
-            let _ = std::fs::remove_file(oldest);
+        match std::fs::remove_file(&oldest) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                eprintln!(
+                    "warning: failed to remove old log file {}: {e}",
+                    oldest.display()
+                );
+            }
         }
 
         for idx in (1..rotated_slots).rev() {
             let src = self.indexed_path(idx);
             let dst = self.indexed_path(idx + 1);
-            if src.exists() {
-                std::fs::rename(&src, &dst)?;
+            match std::fs::rename(&src, &dst) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
             }
         }
 
-        if self.path.exists() {
-            std::fs::rename(&self.path, self.indexed_path(1))?;
+        match std::fs::rename(&self.path, self.indexed_path(1)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
         }
 
         self.file = std::fs::OpenOptions::new()
@@ -157,18 +170,14 @@ enum RotatingOutcome {
 /// Try to open `log_path` for rotating writes; fall back to `logs/axon.log`
 /// if that fails with a different path. Reports which errors came from which
 /// paths so both failures are visible when debugging.
-fn open_rotating_file(
-    log_path: &PathBuf,
-    max_bytes: u64,
-    max_files_total: usize,
-) -> RotatingOutcome {
-    match SizeRotatingFile::new(log_path.clone(), max_bytes, max_files_total) {
+fn open_rotating_file(log_path: &Path, max_bytes: u64, max_files_total: usize) -> RotatingOutcome {
+    match SizeRotatingFile::new(log_path.to_path_buf(), max_bytes, max_files_total) {
         Ok(r) => RotatingOutcome::Opened(r),
         Err(primary_err) => {
             let fallback = PathBuf::from("logs/axon.log");
-            if &fallback == log_path {
+            if fallback == log_path {
                 return RotatingOutcome::SamePathFailed {
-                    path: log_path.clone(),
+                    path: log_path.to_path_buf(),
                     err: primary_err,
                 };
             }
@@ -181,7 +190,7 @@ fn open_rotating_file(
             match SizeRotatingFile::new(fallback.clone(), max_bytes, max_files_total) {
                 Ok(r) => RotatingOutcome::Opened(r),
                 Err(fallback_err) => RotatingOutcome::BothFailed {
-                    primary_path: log_path.clone(),
+                    primary_path: log_path.to_path_buf(),
                     primary_err,
                     fallback_path: fallback,
                     fallback_err,
@@ -255,16 +264,31 @@ where
         }
 
         // LEVEL ───────────────────────────────────────────────────────────────
+        // Write styled level directly to the writer instead of allocating an
+        // intermediate String via .to_string().
         let level = *event.metadata().level();
         if ansi {
-            let s = match level {
-                tracing::Level::ERROR => Style::new().red().bold().apply_to("ERROR").to_string(),
-                tracing::Level::WARN => Style::new().yellow().bold().apply_to(" WARN").to_string(),
-                tracing::Level::INFO => Style::new().green().apply_to(" INFO").to_string(),
-                tracing::Level::DEBUG => Style::new().dim().apply_to("DEBUG").to_string(),
-                tracing::Level::TRACE => Style::new().dim().apply_to("TRACE").to_string(),
-            };
-            write!(writer, "{s}  ")?;
+            match level {
+                tracing::Level::ERROR => {
+                    write!(writer, "{}  ", Style::new().red().bold().apply_to("ERROR"))?;
+                }
+                tracing::Level::WARN => {
+                    write!(
+                        writer,
+                        "{}  ",
+                        Style::new().yellow().bold().apply_to(" WARN")
+                    )?;
+                }
+                tracing::Level::INFO => {
+                    write!(writer, "{}  ", Style::new().green().apply_to(" INFO"))?;
+                }
+                tracing::Level::DEBUG => {
+                    write!(writer, "{}  ", Style::new().dim().apply_to("DEBUG"))?;
+                }
+                tracing::Level::TRACE => {
+                    write!(writer, "{}  ", Style::new().dim().apply_to("TRACE"))?;
+                }
+            }
         } else {
             write!(writer, "{level:5}  ")?;
         }
@@ -274,14 +298,14 @@ where
         event.record(&mut v);
 
         if ansi && !v.message.is_empty() {
-            let tokens: Vec<&str> = v.message.split_whitespace().collect();
-            for (i, token) in tokens.iter().enumerate() {
+            // Iterate directly instead of collecting into an intermediate Vec.
+            for (i, token) in v.message.split_whitespace().enumerate() {
                 if i > 0 {
                     write!(writer, " ")?;
                 }
                 if i == 0 {
                     // event name — bold
-                    write!(writer, "{}", Style::new().bold().apply_to(*token))?;
+                    write!(writer, "{}", Style::new().bold().apply_to(token))?;
                 } else if let Some(eq) = token.find('=') {
                     // key=value — dim key, normal value
                     write!(
@@ -319,6 +343,10 @@ where
         // default WARN filter this is negligible. If the console filter is ever lowered
         // to INFO (e.g. via RUST_LOG=info), high-throughput paths (embed batches, crawl
         // pages) will walk spans on every emit. Consider gating on Level if observed.
+        //
+        // NOTE: clone() on fields.fields is required — extensions() returns a temporary
+        // guard that drops at the end of each loop iteration, so we cannot borrow &str
+        // across iterations. The reverse() below also requires owned data.
         let mut span_fields: Vec<String> = Vec::new();
         let mut current = ctx.lookup_current();
         while let Some(span) = current {
@@ -329,7 +357,7 @@ where
             }
             current = span.parent();
         }
-        span_fields.reverse(); // root → leaf order
+        span_fields.reverse(); // root -> leaf order
         for fields_str in &span_fields {
             if ansi {
                 write!(
@@ -378,8 +406,13 @@ fn build_filter_with_noise(
     use tracing_subscriber::EnvFilter;
     EnvFilter::try_from_default_env()
         .map(|f| {
-            noise_directives.iter().fold(f, |acc, d| {
-                acc.add_directive(d.parse().expect("hard-coded directive is valid"))
+            // Logger is not yet initialized — use eprintln! for warnings.
+            noise_directives.iter().fold(f, |acc, d| match d.parse() {
+                Ok(directive) => acc.add_directive(directive),
+                Err(e) => {
+                    eprintln!("warning: failed to parse log directive '{d}': {e} -- skipping");
+                    acc
+                }
             })
         })
         .unwrap_or_else(|_| {
@@ -472,6 +505,12 @@ pub fn init_tracing() {
     }
 }
 
+// TODO(QUALITY): These wrapper functions lose the caller's `target` metadata -- tracing records
+// this module (`crates::core::logging`) as the target instead of the actual call site. This makes
+// filtering by target (e.g. `RUST_LOG=crates::jobs::crawl=debug`) miss log lines emitted through
+// these wrappers. The proper fix is to replace them with macros (which expand at the call site and
+// preserve target) or remove them entirely in favor of direct `tracing::info!()` / `tracing::warn!()`
+// calls. Left as-is to avoid a large cross-crate refactor.
 pub fn log_info(msg: &str) {
     info!("{}", msg);
 }

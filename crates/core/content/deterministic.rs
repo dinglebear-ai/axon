@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::logging::log_warn;
 use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use html5gum::{Token, Tokenizer};
 use std::collections::hash_map::DefaultHasher;
@@ -306,6 +307,17 @@ pub(crate) async fn extract_items_fallback(
     if !openai_model.trim().is_empty() {
         request = request.model(openai_model.to_string());
     }
+    // TODO(perf): Nested runtime anti-pattern — `spawn_blocking` runs on a
+    // blocking thread pool, but we create a *new* Tokio runtime inside it just
+    // to call an async function (`acp_llm::complete_text`). This wastes an OS
+    // thread and risks panics if the outer runtime is single-threaded.
+    //
+    // Proper fix: call `acp_llm::complete_text` directly (it is already async)
+    // and remove the `spawn_blocking` wrapper entirely. The only reason this
+    // exists is because the function was originally sync and was later migrated
+    // to async without updating this call-site. The `Config` and
+    // `AcpCompletionRequest` are already `Send`, so no `spawn_blocking` is
+    // needed — just `.await` the future on the current task.
     let response = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -333,7 +345,17 @@ pub(crate) async fn extract_items_fallback(
         .map(|usage| usage.total_tokens)
         .unwrap_or(prompt_tokens + completion_tokens);
 
-    let parsed = serde_json::from_str::<serde_json::Value>(&response.text).unwrap_or_default();
+    let parsed = match serde_json::from_str::<serde_json::Value>(&response.text) {
+        Ok(v) => v,
+        Err(err) => {
+            log_warn(&format!(
+                "ACP fallback response is not valid JSON for {page_url}: {err} — \
+                 first 200 chars: {:?}",
+                response.text.chars().take(200).collect::<String>()
+            ));
+            serde_json::Value::default()
+        }
+    };
     let mut items = Vec::new();
     flatten_results(&parsed, &mut items);
 
@@ -352,6 +374,12 @@ pub(crate) fn estimate_llm_cost_usd(
     completion_tokens: u64,
 ) -> f64 {
     // Pricing map is best-effort and intended for operational visibility.
+    //
+    // ORDERING CONTRACT: More-specific model names MUST appear before their
+    // prefixes. We use `contains()` matching, so "gpt-4o-mini" must be checked
+    // before "gpt-4o" (which is a substring), and "gpt-4.1-mini" before
+    // "gpt-4.1". Adding a new model? Insert it ABOVE any broader pattern that
+    // would match it as a substring.
     let model_lc = model.to_ascii_lowercase();
     let (input_per_million, output_per_million) = if model_lc.contains("gpt-4o-mini") {
         (0.15_f64, 0.60_f64)

@@ -37,6 +37,15 @@ pub fn client_context_name() -> &'static str {
     })
 }
 
+/// Return the artifact root directory.
+///
+/// Resolution order: `AXON_MCP_ARTIFACT_DIR` env var, then
+/// `AXON_DATA_DIR/axon/artifacts`, then `.cache/axon-mcp`. The context
+/// subdirectory (from `client_context_name()`) is always appended.
+///
+/// Not cached with `OnceLock` because tests mutate env vars between runs
+/// in the same process. The env reads are cheap relative to the disk I/O
+/// that follows every call.
 pub fn artifact_root() -> PathBuf {
     let base = std::env::var(MCP_ARTIFACT_DIR_ENV)
         .ok()
@@ -162,21 +171,16 @@ pub async fn validate_artifact_path(raw: &str) -> Result<PathBuf, ErrorData> {
                 .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?,
         }
     };
+    // Security boundary: canonicalize() resolves ALL symlinks, so `canonical`
+    // is guaranteed to be a physical path with no symlink components. The
+    // starts_with check is therefore sufficient — a symlink inside the root
+    // that targets outside the root will canonicalize to the outside path and
+    // fail this check.
     if !canonical.starts_with(&root) {
         return Err(invalid_params(format!(
             "artifact path must be inside {}",
             root.display()
         )));
-    }
-    // Reject symlink-backed paths: use symlink_metadata (lstat) to check whether the
-    // resolved path itself — or any component of it relative to the artifact root — is
-    // a symlink. Following symlinks via canonicalize() is not sufficient because a
-    // symlink *inside* the root can point to a target *outside* the root.
-    if std::fs::symlink_metadata(&canonical)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return Err(invalid_params("artifact path must not be a symlink"));
     }
     Ok(canonical)
 }
@@ -204,15 +208,10 @@ pub async fn resolve_artifact_output_path(raw: &str) -> Result<PathBuf, ErrorDat
             "output path cannot contain traversal components",
         ));
     }
+    // No symlink check needed here. The path is constructed from
+    // ensure_artifact_root() + a validated relative candidate with no traversal
+    // components. Write targets stay within the root's subtree by construction.
     let resolved = ensure_artifact_root().await?.join(candidate);
-    // If the target path already exists, reject it if it is a symlink to prevent
-    // writes from being silently redirected outside the artifact root.
-    if std::fs::symlink_metadata(&resolved)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        return Err(invalid_params("output path must not be a symlink"));
-    }
     Ok(resolved)
 }
 

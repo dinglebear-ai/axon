@@ -106,6 +106,12 @@ fn queue_fallback_extraction(
                 return (page_url, Err("fallback limiter closed".to_string()));
             }
         };
+        // TODO(perf): `to_markdown` is CPU-bound HTML-to-markdown conversion that
+        // runs while holding the async semaphore permit. This blocks the executor
+        // thread and inflates permit hold-time, reducing effective concurrency.
+        // Fix: either (a) move `to_markdown` into `tokio::task::spawn_blocking`
+        // and `.await` the result here, or (b) run it BEFORE acquiring the permit
+        // since it does not need the permit — only the downstream LLM call does.
         let markdown = to_markdown(&html, None);
         let res = extract_items_fallback(
             &client,
@@ -174,7 +180,7 @@ async fn collect_page_results(
             client.clone(),
             &cfg,
             page_url,
-            html.to_string(),
+            html,
         );
         while let Some(joined) = fallback_tasks.try_join_next() {
             drain_fallback_result(joined, &mut pages_with_data, &mut all_results, &mut metrics);

@@ -22,7 +22,4 @@ pub enum HttpError {
     /// Network-level error from reqwest.
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
-    /// DNS resolution would target a blocked host.
-    #[error("DNS error: {0}")]
-    Dns(String),
 }

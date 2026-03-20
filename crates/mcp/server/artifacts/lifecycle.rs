@@ -174,6 +174,10 @@ pub async fn clean_artifact_files(
     }))
 }
 
+/// Maximum file size (in bytes) that `search_artifact_files` will read.
+/// Files larger than this are skipped to avoid memory pressure.
+const MAX_SEARCH_FILE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
 pub async fn search_artifact_files(
     pattern: &str,
     limit: usize,
@@ -188,6 +192,10 @@ pub async fn search_artifact_files(
     let sem = Arc::new(tokio::sync::Semaphore::new(8));
     let mut set: JoinSet<Vec<serde_json::Value>> = JoinSet::new();
     for file in files {
+        // Skip files larger than 10 MB to avoid memory pressure from read_to_string.
+        if file.bytes > MAX_SEARCH_FILE_BYTES {
+            continue;
+        }
         let re = Arc::clone(&re);
         let sem = Arc::clone(&sem);
         let relative_path = file.relative_path;

@@ -5,8 +5,11 @@ pub(crate) struct NormalizedExcludePrefixes {
     pub(crate) disable_defaults: bool,
 }
 
-pub fn default_exclude_prefixes() -> Vec<String> {
-    vec![
+/// Returns the static default exclude-path prefixes without allocating.
+///
+/// Callers that need `Vec<String>` should use [`default_exclude_prefixes_vec`].
+pub fn default_exclude_prefixes() -> &'static [&'static str] {
+    &[
         // Auth / account / transactional -- no indexable content
         "/account",
         "/admin",
@@ -110,13 +113,18 @@ pub fn default_exclude_prefixes() -> Vec<String> {
         "/zh-cn",
         "/zh-tw",
     ]
-    .into_iter()
-    .map(str::to_string)
-    .collect()
+}
+
+/// Allocating wrapper for serde `#[serde(default = "...")]` and call sites
+/// that need an owned `Vec<String>`.
+pub fn default_exclude_prefixes_vec() -> Vec<String> {
+    default_exclude_prefixes()
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 pub(crate) fn normalize_exclude_prefixes(input: Vec<String>) -> NormalizedExcludePrefixes {
-    let disable_by_empty = input.iter().any(|v| matches!(v.trim(), "" | "/"));
     let disable_by_none = input.iter().any(|v| v.trim().eq_ignore_ascii_case("none"));
     if disable_by_none {
         let ignored: Vec<&str> = input
@@ -136,6 +144,10 @@ pub(crate) fn normalize_exclude_prefixes(input: Vec<String>) -> NormalizedExclud
             disable_defaults: true,
         };
     }
+
+    // Computed after the disable_by_none early return to avoid a wasted scan
+    // when the entire list is being disabled anyway.
+    let disable_by_empty = input.iter().any(|v| matches!(v.trim(), "" | "/"));
 
     let mut out = Vec::new();
     for raw in input {
@@ -190,7 +202,7 @@ mod tests {
     #[test]
     fn defaults_no_duplicates() {
         let prefixes = default_exclude_prefixes();
-        let unique: HashSet<&str> = prefixes.iter().map(|s| s.as_str()).collect();
+        let unique: HashSet<&str> = prefixes.iter().copied().collect();
         assert_eq!(
             prefixes.len(),
             unique.len(),

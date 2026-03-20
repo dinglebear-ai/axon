@@ -12,12 +12,21 @@ use super::performance;
 use clap::ValueEnum;
 use std::env;
 
-fn parse_origin_allowlist(raw: &str) -> Vec<String> {
+/// Parse a comma-separated string, trimming each item and discarding empties.
+/// Used for env vars like `AXON_WEB_ALLOWED_ORIGINS`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, etc.
+fn parse_csv_env<F, T>(raw: &str, map_fn: F) -> Vec<T>
+where
+    F: Fn(&str) -> T,
+{
     raw.split(',')
         .map(str::trim)
-        .filter(|origin| !origin.is_empty())
-        .map(ToOwned::to_owned)
+        .filter(|item| !item.is_empty())
+        .map(map_fn)
         .collect()
+}
+
+fn parse_origin_allowlist(raw: &str) -> Vec<String> {
+    parse_csv_env(raw, ToOwned::to_owned)
 }
 
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
@@ -466,12 +475,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ),
         ask_authoritative_domains: env::var("AXON_ASK_AUTHORITATIVE_DOMAINS")
             .ok()
-            .map(|raw| {
-                raw.split(',')
-                    .map(|item| item.trim().to_ascii_lowercase())
-                    .filter(|item| !item.is_empty())
-                    .collect::<Vec<_>>()
-            })
+            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
             .unwrap_or_default(),
         ask_authoritative_boost: performance::env_f64_clamped(
             "AXON_ASK_AUTHORITATIVE_BOOST",
@@ -481,12 +485,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ),
         ask_authoritative_allowlist: env::var("AXON_ASK_AUTHORITATIVE_ALLOWLIST")
             .ok()
-            .map(|raw| {
-                raw.split(',')
-                    .map(|item| item.trim().to_ascii_lowercase())
-                    .filter(|item| !item.is_empty())
-                    .collect::<Vec<_>>()
-            })
+            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
             .unwrap_or_default(),
         ask_min_citations_nontrivial: performance::env_usize_clamped(
             "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
@@ -549,7 +548,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     };
 
     if cfg.exclude_path_prefix.is_empty() && !normalized_excludes.disable_defaults {
-        cfg.exclude_path_prefix = excludes::default_exclude_prefixes();
+        cfg.exclude_path_prefix = excludes::default_exclude_prefixes_vec();
     }
 
     let ps = performance::profile_settings(cfg.performance_profile);
