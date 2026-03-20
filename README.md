@@ -114,7 +114,7 @@ alias axon='./scripts/axon'
 
 axon doctor
 axon query "spider crawler"
-axon ask "what does spider.rs support?"
+axon ask "what does spider.rs support?"   # requires AXON_ACP_ADAPTER_CMD
 ```
 
 ## Environment
@@ -134,7 +134,7 @@ Copy `.env.example` to `.env`. At minimum set the `[REQUIRED]` vars:
 | `AXON_AMQP_URL` | AMQP DSN for queue-backed jobs |
 | `QDRANT_URL` | Qdrant base URL |
 | `TEI_URL` | TEI embeddings base URL (external — not in compose) |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command used by ask/evaluate/suggest/extract fallback/debug/research synthesis |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command required for ask/evaluate/suggest/debug/research (and extract fallback) |
 | `OPENAI_MODEL` | Model override used by ACP-backed completions (kept for compatibility) |
 | `OPENAI_BASE_URL` / `OPENAI_API_KEY` | Legacy OpenAI-compatible settings kept for compatibility paths |
 
