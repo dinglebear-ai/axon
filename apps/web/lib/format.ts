@@ -3,7 +3,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
   if (bytes === 0) return '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${(bytes / k ** i).toFixed(decimals)} ${sizes[i]}`
 }
 
@@ -12,7 +12,7 @@ export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
   const mins = Math.floor(ms / 60000)
-  const secs = Math.round((ms % 60000) / 1000)
+  const secs = Math.floor((ms % 60000) / 1000)
   return `${mins}m ${secs}s`
 }
 
@@ -20,6 +20,7 @@ export function formatDuration(ms: number): string {
 export function formatRelativeTime(date: Date | string | number): string {
   const now = Date.now()
   const then = typeof date === 'number' ? date : new Date(date).getTime()
+  if (Number.isNaN(then)) return 'unknown'
   const diffMs = now - then
   const diffSec = Math.floor(diffMs / 1000)
   const diffMin = Math.floor(diffSec / 60)

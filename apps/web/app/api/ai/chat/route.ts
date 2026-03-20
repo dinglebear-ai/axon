@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { parseOpenAiSseChunk } from '@/app/api/ai/copilot/route'
 import { ensureRepoRootEnvLoaded } from '@/lib/pulse/server-env'
 import { apiError } from '@/lib/server/api-error'
 import { logError } from '@/lib/server/logger'
+import { parseOpenAiSseChunk } from '@/lib/server/openai-sse'
 
 const AIChatRequestSchema = z.object({
   prompt: z.string().min(1).max(16_000),

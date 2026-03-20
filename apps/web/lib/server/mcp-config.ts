@@ -55,5 +55,8 @@ export async function readMcpConfig(): Promise<McpConfig> {
 export async function writeMcpConfig(config: McpConfig): Promise<void> {
   const dir = path.dirname(MCP_JSON_PATH)
   await fs.mkdir(dir, { recursive: true })
-  await fs.writeFile(MCP_JSON_PATH, JSON.stringify(config, null, 2), 'utf8')
+  await fs.writeFile(MCP_JSON_PATH, JSON.stringify(config, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
 }

@@ -23,8 +23,12 @@ export function getSafeHref(url: string | undefined): string {
   const trimmed = url.trim()
   if (!trimmed) return '#'
 
-  // Allow relative paths
-  if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+  // Allow relative paths (but not protocol-relative URLs like //evil.com)
+  if (
+    (trimmed.startsWith('/') && !trimmed.startsWith('//')) ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../')
+  ) {
     return trimmed
   }
 

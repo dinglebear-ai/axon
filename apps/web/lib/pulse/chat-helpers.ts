@@ -41,6 +41,18 @@ export interface StreamAccumulator {
 
 // ── Extracted helpers ───────────────────────────────────────────────────────
 
+function appendDeduped(prev: string[], items: string[], cap: number): string[] {
+  const seen = new Set(prev)
+  const next = [...prev]
+  for (const item of items) {
+    if (!seen.has(item)) {
+      seen.add(item)
+      next.push(item)
+    }
+  }
+  return next.slice(-cap)
+}
+
 /**
  * Handle the "source" intent — index URLs and produce a summary message.
  * Returns true if handled (caller should return early).
@@ -58,28 +70,8 @@ export async function handleSourceIntent(
 ): Promise<void> {
   const result = await runSourcePrompt(urls, signal)
   if (inFlightRef.current !== promptId) return
-  setIndexedSources((prev) => {
-    const seen = new Set(prev)
-    const next = [...prev]
-    for (const url of result.indexed) {
-      if (!seen.has(url)) {
-        seen.add(url)
-        next.push(url)
-      }
-    }
-    return next.slice(-200)
-  })
-  setActiveThreadSources((prev) => {
-    const seen = new Set(prev)
-    const merged = [...prev]
-    for (const url of result.indexed) {
-      if (!seen.has(url)) {
-        seen.add(url)
-        merged.push(url)
-      }
-    }
-    return merged.slice(-200)
-  })
+  setIndexedSources((prev) => appendDeduped(prev, result.indexed, 200))
+  setActiveThreadSources((prev) => appendDeduped(prev, result.indexed, 200))
   if (result.markdownBySrc && Object.keys(result.markdownBySrc).length > 0) {
     const firstUrl = result.indexed[0]
     const md = firstUrl ? result.markdownBySrc[firstUrl] : undefined

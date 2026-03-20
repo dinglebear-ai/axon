@@ -8,5 +8,5 @@ export function hasKeys<K extends string>(
   obj: Record<string, unknown>,
   ...keys: K[]
 ): obj is Record<K, unknown> {
-  return keys.every((k) => k in obj)
+  return keys.every((k) => Object.hasOwn(obj, k))
 }
