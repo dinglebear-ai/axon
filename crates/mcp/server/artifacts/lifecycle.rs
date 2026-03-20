@@ -187,7 +187,10 @@ pub async fn search_artifact_files(
     );
     let root = ensure_artifact_root().await?;
     let files = collect_artifact_files(&root).await?;
-    let files_scanned = files.len();
+    let files_scanned = files
+        .iter()
+        .filter(|f| f.bytes <= MAX_SEARCH_FILE_BYTES)
+        .count();
 
     let sem = Arc::new(tokio::sync::Semaphore::new(8));
     let mut set: JoinSet<Vec<serde_json::Value>> = JoinSet::new();

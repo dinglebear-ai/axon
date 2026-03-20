@@ -9,9 +9,7 @@ pub fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMa
     let mut map = reqwest::header::HeaderMap::new();
     for raw in raw_headers {
         let Some((k, v)) = raw.split_once(": ") else {
-            log_warn(&format!(
-                "skipping malformed header (no ': ' separator): {raw:?}"
-            ));
+            log_warn("skipping malformed header (no ': ' separator)");
             continue;
         };
         match (

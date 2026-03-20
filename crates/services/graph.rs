@@ -19,6 +19,11 @@ fn require_neo4j(cfg: &Config) -> Result<Neo4jClient, Box<dyn Error>> {
 /// Prevents unbounded full-collection scrolls that cause DoS on large collections.
 const GRAPH_BUILD_URL_LIMIT: usize = 50_000;
 
+/// Pre-fetch limit for domain-scoped graph builds.
+/// Larger than GRAPH_BUILD_URL_LIMIT to improve domain coverage,
+/// but still capped to prevent unbounded full-collection scrolls.
+const GRAPH_BUILD_DOMAIN_FETCH_LIMIT: usize = 500_000;
+
 /// Check whether `url` belongs to `domain` (exact match or subdomain).
 ///
 /// `domain_suffix` must be `".{domain}"` — pre-computed by the caller to avoid
@@ -47,9 +52,9 @@ pub async fn graph_build(
     let mut urls = if let Some(url) = url {
         vec![url.to_string()]
     } else if domain.is_some() {
-        // Domain-scoped builds must filter first, then cap, otherwise large
-        // collections can omit relevant URLs from the requested domain.
-        qdrant_indexed_urls(cfg, None).await?
+        // Domain-scoped builds fetch more URLs to improve domain coverage,
+        // then filter down to only matching domain URLs.
+        qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_DOMAIN_FETCH_LIMIT)).await?
     } else {
         qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_URL_LIMIT)).await?
     };

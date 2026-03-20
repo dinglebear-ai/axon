@@ -13,13 +13,9 @@ pub(super) fn sha256_hex(bytes: &[u8]) -> String {
 
 pub fn clip_inline_json(value: &serde_json::Value, max_chars: usize) -> (serde_json::Value, bool) {
     match serde_json::to_string(value) {
-        // JSON serialization is ASCII-safe (non-ASCII is \uXXXX escaped),
-        // so byte length == char count. Use .len() to avoid O(n) char scan.
-        Ok(raw) if raw.len() <= max_chars => (value.clone(), false),
+        Ok(raw) if raw.chars().count() <= max_chars => (value.clone(), false),
         Ok(raw) => {
-            // Truncate at a byte boundary that is safe because the serialized
-            // JSON is pure ASCII (serde_json escapes all non-ASCII).
-            let clipped = &raw[..max_chars];
+            let clipped = raw.chars().take(max_chars).collect::<String>();
             (serde_json::json!({ "clipped_json": clipped }), true)
         }
         Err(_) => (

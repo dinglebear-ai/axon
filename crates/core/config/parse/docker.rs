@@ -46,7 +46,7 @@ pub(crate) fn normalize_local_service_url(url: String) -> String {
         if host == *container_host {
             if parsed.set_host(Some(local_host)).is_err() {
                 log_warn(&format!(
-                    "docker_url_rewrite action=set_host_failed url={url} target_host={local_host}"
+                    "docker_url_rewrite action=set_host_failed source_host={host} target_host={local_host}"
                 ));
                 return url;
             }

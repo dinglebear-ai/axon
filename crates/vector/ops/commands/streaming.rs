@@ -230,6 +230,8 @@ fn apply_optional_model(req: AcpCompletionRequest, model: &str) -> AcpCompletion
     }
 }
 
+const REPEAT_GUARD_STOP: &str = "repeat_guard_stop";
+
 async fn run_acp_streaming_completion(
     cfg: &Config,
     req: AcpCompletionRequest,
@@ -248,9 +250,9 @@ async fn run_acp_streaming_completion(
             let mut first_sources_pos: Option<usize> = None;
             let mut sources_search_from = 0usize;
             let mut repeat_guard_triggered = false;
-            let response = acp_llm::complete_streaming(&cfg, req, |delta| {
+            let stream_result = acp_llm::complete_streaming(&cfg, req, |delta| {
                 if repeat_guard_triggered {
-                    return Ok(());
+                    return Err(anyhow::anyhow!(REPEAT_GUARD_STOP).into());
                 }
                 let _ = process_stream_delta(
                     delta,
@@ -269,10 +271,15 @@ async fn run_acp_streaming_completion(
                 sources_search_from = answer.len().saturating_sub(15);
                 Ok(())
             })
-            .await
-            .map_err(|err| anyhow!(err.to_string()))?;
+            .await;
 
-            finalize_stream_answer(answer, saw_stream_payload, response.text)
+            let fallback_text = match stream_result {
+                Ok(r) => r.text,
+                Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
+                Err(e) => return Err(anyhow!(e.to_string())),
+            };
+
+            finalize_stream_answer(answer, saw_stream_payload, fallback_text)
                 .map_err(|err| anyhow!(err.to_string()))
         })
     })
