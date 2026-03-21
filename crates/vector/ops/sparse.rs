@@ -9,19 +9,27 @@
 //! so the same term always maps to the same bucket index across process restarts.
 //!
 //! # Collision characteristics
-//! With `SPARSE_DIM = 30_522` buckets and FNV-1a hashing, the birthday paradox gives
-//! approximately 15% collision probability for 100 unique terms, 48% for 200 terms.
-//! For typical web documents this means some distinct terms will share a bucket and
-//! have their TF counts summed. This is a deliberate trade-off: using the actual BERT
-//! tokenizer vocabulary would eliminate collisions but requires an external dependency.
-//! Qdrant's IDF weighting mitigates the impact — high-IDF terms are unlikely to collide.
+//! With `SPARSE_DIM = 65_536` buckets and FNV-1a hashing, the birthday paradox gives
+//! approximately 12% collision probability for 100 unique terms, 24% for 200 terms —
+//! half the collision rate of the original 30,522-bucket configuration.
+//! No memory overhead: sparse vectors store only non-zero (index, value) pairs.
 
 use crate::crates::core::logging::log_debug;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-/// Number of sparse vector buckets. Matches BERT vocabulary size for compatibility.
-pub const SPARSE_DIM: u32 = 30_522;
+/// Number of sparse vector buckets.
+///
+/// Set to 65,536 (2^16) — double the original BERT vocabulary size (30,522).
+/// The birthday paradox gives approximately 24% collision probability for 200 unique
+/// terms at this bucket count, vs 48% at 30,522. The memory overhead is zero:
+/// sparse vectors only store non-zero entries.
+///
+/// **Migration note:** Changing this constant makes existing sparse vectors (encoded
+/// with 30,522 buckets) incompatible with new ones. When deploying, re-index all
+/// content into a new named collection (`cortex_v2`) via `axon migrate` before
+/// flipping `AXON_COLLECTION`. Do not apply this change to a live collection in place.
+pub const SPARSE_DIM: u32 = 65_536;
 
 /// Shared stop word set used by both sparse vector computation and BM25-style ranking.
 ///
@@ -260,6 +268,14 @@ mod tests {
         assert!(
             !sv.indices.contains(&is_idx),
             "short token 'is' must not appear"
+        );
+    }
+
+    #[test]
+    fn sparse_dim_is_65536() {
+        assert_eq!(
+            SPARSE_DIM, 65_536,
+            "SPARSE_DIM must be 65536 to halve collision probability vs the old 30522"
         );
     }
 }
