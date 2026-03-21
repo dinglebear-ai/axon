@@ -3,6 +3,7 @@ use super::heuristics::{
     query_requests_low_signal_sources, top_domains, url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
+use crate::crates::core::logging::log_debug;
 use crate::crates::services::error::ServiceError;
 use crate::crates::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
@@ -116,6 +117,13 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         ));
     }
 
+    // Log the candidate funnel for diagnosing prefetch window adequacy.
+    log_debug(&format!(
+        "ask context_built candidates_retrieved={} candidates_after_score_filter={} candidates_selected={}",
+        candidates.len(),
+        reranked.len(),
+        reranked.len().min(cfg.ask_chunk_limit),
+    ));
     Ok(AskRetrieval {
         top_chunk_indices: ranking::select_diverse_candidates(&reranked, cfg.ask_chunk_limit, 1),
         top_full_doc_indices: ranking::select_diverse_candidates(&reranked, cfg.ask_full_docs, 1),

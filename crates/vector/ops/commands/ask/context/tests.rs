@@ -141,6 +141,20 @@ fn topical_overlap_requires_multiple_query_tokens_for_longer_queries() {
 }
 
 #[test]
+fn context_built_log_format_is_valid() {
+    let candidates_retrieved = 150usize;
+    let candidates_after_score_filter = 42usize;
+    let candidates_selected = 10usize;
+    let line = format!(
+        "ask context_built candidates_retrieved={candidates_retrieved} candidates_after_score_filter={candidates_after_score_filter} candidates_selected={candidates_selected}"
+    );
+    assert!(line.contains("ask context_built"));
+    assert!(line.contains("candidates_retrieved=150"));
+    assert!(line.contains("candidates_after_score_filter=42"));
+    assert!(line.contains("candidates_selected=10"));
+}
+
+#[test]
 fn authoritative_allowlist_matches_exact_and_suffix_hosts() {
     let allow = vec!["docs.claude.com".to_string(), "openai.com".to_string()];
     assert!(url_matches_domain_list(
