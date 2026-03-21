@@ -9,6 +9,17 @@ use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
+/// Instruction prefix for Qwen3-Embedding asymmetric query encoding.
+///
+/// Prepend this to every query text before calling `tei_embed`.
+/// Do NOT apply to document chunks — document embedding must use raw text.
+///
+/// This prefix activates query-mode encoding in Qwen3-Embedding models.
+/// TEI's `--default-prompt` config flag has been removed; the prefix is
+/// now applied in Rust so documents and queries get different embeddings.
+pub(crate) const QUERY_INSTRUCTION: &str =
+    "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ";
+
 const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;

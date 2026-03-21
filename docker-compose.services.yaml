@@ -123,8 +123,6 @@ services:
       - ${TEI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - --dtype
       - float16
-      - --default-prompt
-      - "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
       - --max-concurrent-requests
       - "${TEI_MAX_CONCURRENT_REQUESTS:-80}"
       - --max-batch-tokens

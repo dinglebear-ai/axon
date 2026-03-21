@@ -4647,6 +4647,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e8bbe1a966bd2f362681a44f6edce3c2310ac21e4d5067a6e7ec396297a6ea0"
+dependencies = [
+ "bitflags 2.11.0",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6786,6 +6797,7 @@ dependencies = [
  "icu_segmenter",
  "itertools 0.14.0",
  "memchr",
+ "pulldown-cmark",
  "strum 0.27.2",
  "thiserror 2.0.18",
  "tree-sitter",

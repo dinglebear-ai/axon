@@ -5,7 +5,8 @@ use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::ingest::subprocess::{
     MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
 };
-use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::crates::vector::ops::input::chunk_markdown;
+use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 
@@ -108,7 +109,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
             ..Default::default()
         });
 
-        let chunks = chunk_text(&content);
+        let chunks = chunk_markdown(&content);
         if !chunks.is_empty() {
             docs.push(PreparedDoc {
                 url: wiki_url,

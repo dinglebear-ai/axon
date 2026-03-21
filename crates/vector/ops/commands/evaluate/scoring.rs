@@ -8,7 +8,8 @@ pub(super) async fn build_judge_reference(
     cfg: &Config,
     question: &str,
 ) -> Result<(String, usize), Box<dyn Error>> {
-    let mut vecs = tei::tei_embed(cfg, &[question.to_string()]).await?;
+    let question_with_instruction = format!("{}{question}", tei::QUERY_INSTRUCTION);
+    let mut vecs = tei::tei_embed(cfg, &[question_with_instruction]).await?;
     if vecs.is_empty() {
         return Err("TEI returned no vector for judge reference".into());
     }

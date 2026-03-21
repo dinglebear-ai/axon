@@ -135,14 +135,15 @@ TEI_URL=http://steamy-wsl:52000
 - **Max batch tokens**: 163,840 — large budget; unlikely to hit in practice
 - **Auto-truncate**: enabled — chunks exceeding the model's max sequence length are **silently truncated**, not rejected. Long chunks lose their tail without error.
 
-### Default Prompt (Query Instruction)
-TEI is configured with:
-```
---default-prompt "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
-```
-This prefix is prepended to **all** embedding requests by TEI automatically. The Rust code does **not** need to prepend it manually. Qwen3-Embedding is asymmetric (queries vs documents use different representations) — the instruction prefix is what activates query-mode encoding.
+### Query Instruction (Asymmetric Encoding)
+`--default-prompt` has been **removed** from the TEI Docker config. The instruction is now applied in Rust at query time only.
 
-**Implication:** If you ever switch TEI to a model that doesn't use instruction prompts (e.g. `nomic-embed-text`), you must remove `--default-prompt` from the TEI config and potentially update the query path in `tei.rs`.
+- **`QUERY_INSTRUCTION`** constant in `crates/vector/ops/tei/tei_client.rs` — single source of truth
+- Prepended by `query.rs`, `ask/context/retrieval.rs`, and `evaluate/scoring.rs` before calling `tei_embed`
+- Document embeds (`pipeline.rs`) do **not** get the prefix — raw text only
+- This is correct per the Qwen3-Embedding spec: queries need the instruction, documents must not have it
+
+**If you switch models:** check whether the new model is asymmetric (instruction-aware). If not, remove `QUERY_INSTRUCTION` from the three query callers.
 
 ### Connectivity
 - TEI is on `jakenet` (external Docker network, Tailscale-accessible)

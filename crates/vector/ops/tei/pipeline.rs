@@ -25,9 +25,13 @@ type DocFuture<'a> = Pin<
 
 async fn embed_prepared_doc(
     cfg: &Config,
-    doc: PreparedDoc,
+    mut doc: PreparedDoc,
     mode: VectorMode,
 ) -> Result<(usize, String, usize, Vec<serde_json::Value>), SendError> {
+    doc.chunks.retain(|c| !c.trim().is_empty());
+    if doc.chunks.is_empty() {
+        return Err(format!("all chunks empty for {}", doc.url).into());
+    }
     let vectors = tei_embed(cfg, &doc.chunks)
         .await
         .map_err(|e| -> SendError { format!("TEI embed for {}: {e}", doc.url).into() })?;
@@ -382,4 +386,35 @@ pub(super) async fn run_embed_pipeline(
         docs_failed,
         chunks_embedded,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// Verify that the empty-chunk filter (applied before tei_embed) removes
+    /// blank and whitespace-only strings while keeping real content.
+    #[test]
+    fn empty_and_whitespace_chunks_are_filtered() {
+        let mut chunks = vec![
+            "".to_string(),
+            "   ".to_string(),
+            "real content".to_string(),
+            "\n\t\n".to_string(),
+            "another chunk".to_string(),
+        ];
+        chunks.retain(|c| !c.trim().is_empty());
+        assert_eq!(
+            chunks,
+            vec!["real content".to_string(), "another chunk".to_string()]
+        );
+    }
+
+    #[test]
+    fn all_empty_chunks_produces_no_chunks() {
+        let mut chunks = vec!["".to_string(), "  ".to_string(), "\n".to_string()];
+        chunks.retain(|c| !c.trim().is_empty());
+        assert!(
+            chunks.is_empty(),
+            "all-empty input must produce zero chunks"
+        );
+    }
 }

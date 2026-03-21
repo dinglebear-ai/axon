@@ -4,7 +4,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_filename;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::crawl::manifest::ManifestEntry;
-use crate::crates::vector::ops::input::chunk_text;
+use crate::crates::vector::ops::input::chunk_markdown;
 use crate::crates::vector::ops::tei::{PreparedDoc, embed_prepared_docs};
 use sqlx::PgPool;
 use std::path::Path;
@@ -147,7 +147,7 @@ pub(crate) async fn process_single_refresh_url(
                             .ok()
                             .and_then(|u| u.host_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| "unknown".to_string());
-                        let chunks = chunk_text(markdown);
+                        let chunks = chunk_markdown(markdown);
                         if chunks.is_empty() {
                             log_warn(&format!("refresh embed skipped (no chunks) for url={url}"));
                         } else {

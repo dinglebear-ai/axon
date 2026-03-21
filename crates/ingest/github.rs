@@ -1,7 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
-use crate::crates::vector::ops::{PreparedDoc, chunk_text, embed_prepared_docs};
+use crate::crates::vector::ops::input::chunk_markdown;
+use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use octocrab::Octocrab;
 
@@ -183,7 +184,7 @@ async fn embed_repo_metadata(
         is_archived: repo.archived,
         ..Default::default()
     });
-    let chunks = chunk_text(&content);
+    let chunks = chunk_markdown(&content);
     if chunks.is_empty() {
         return Ok(0);
     }

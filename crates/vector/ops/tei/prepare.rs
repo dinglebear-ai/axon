@@ -65,7 +65,7 @@ pub(super) async fn prepare_embed_docs(
         if input_is_dir && url.starts_with("http") && is_excluded_url_path(&url, exclude_prefixes) {
             continue;
         }
-        let chunks = input::chunk_text(&raw);
+        let chunks = input::chunk_markdown(&raw);
         let domain = Url::parse(&url)
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))

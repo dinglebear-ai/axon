@@ -34,9 +34,9 @@ pub const SPARSE_DIM: u32 = 30_522;
 pub(crate) static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         "the", "and", "for", "with", "that", "this", "from", "into", "how", "what", "where",
-        "when", "you", "your", "are", "can", "does", "use", "using", "used", "get", "set", "via",
-        "not", "all", "any", "but", "too", "out", "our", "their", "them", "they", "its", "then",
-        "than", "also", "have", "has", "had", "was", "were", "who", "why",
+        "when", "you", "your", "are", "can", "does", "via", "not", "all", "any", "but", "too",
+        "out", "our", "their", "them", "they", "its", "then", "than", "also", "have", "has", "had",
+        "was", "were", "who", "why",
     ]
     .into_iter()
     .collect()
@@ -214,6 +214,38 @@ mod tests {
         let idx_a = term_to_index("embedding");
         let idx_b = term_to_index("embedding");
         assert_eq!(idx_a, idx_b, "term_to_index must be deterministic");
+    }
+
+    #[test]
+    fn compute_sparse_vector_tech_terms_not_stopwords() {
+        // "use", "using", "used", "get", "set" are domain-significant in tech docs
+        // and must NOT be filtered as stopwords.
+        let sv = compute_sparse_vector("use the api to get and set values using rust used before");
+        let use_idx = term_to_index("use");
+        let using_idx = term_to_index("using");
+        let used_idx = term_to_index("used");
+        let get_idx = term_to_index("get");
+        let set_idx = term_to_index("set");
+        assert!(
+            sv.indices.contains(&use_idx),
+            "tech term 'use' must not be a stopword"
+        );
+        assert!(
+            sv.indices.contains(&using_idx),
+            "tech term 'using' must not be a stopword"
+        );
+        assert!(
+            sv.indices.contains(&used_idx),
+            "tech term 'used' must not be a stopword"
+        );
+        assert!(
+            sv.indices.contains(&get_idx),
+            "tech term 'get' must not be a stopword"
+        );
+        assert!(
+            sv.indices.contains(&set_idx),
+            "tech term 'set' must not be a stopword"
+        );
     }
 
     #[test]

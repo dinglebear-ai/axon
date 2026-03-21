@@ -10,7 +10,9 @@ pub async fn query_results(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    let mut query_vectors = tei::tei_embed(cfg, std::slice::from_ref(&query.to_string())).await?;
+    let query_with_instruction = format!("{}{query}", tei::QUERY_INSTRUCTION);
+    let mut query_vectors =
+        tei::tei_embed(cfg, std::slice::from_ref(&query_with_instruction)).await?;
     if query_vectors.is_empty() {
         return Err("TEI returned no vector for query".into());
     }
@@ -95,4 +97,18 @@ pub async fn query_results(
             })
         })
         .collect::<Vec<_>>())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crates::vector::ops::tei::QUERY_INSTRUCTION;
+
+    #[test]
+    fn query_instruction_is_nonempty_and_ends_with_query_colon() {
+        assert!(!QUERY_INSTRUCTION.is_empty());
+        assert!(
+            QUERY_INSTRUCTION.ends_with("Query: "),
+            "instruction must end with 'Query: ', got: {QUERY_INSTRUCTION:?}"
+        );
+    }
 }

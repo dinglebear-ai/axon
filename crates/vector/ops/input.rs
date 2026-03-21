@@ -3,6 +3,7 @@ pub mod code;
 
 use crate::crates::core::http::normalize_url;
 use std::collections::HashSet;
+use text_splitter::{ChunkConfig, MarkdownSplitter};
 
 pub fn chunk_text(text: &str) -> Vec<String> {
     const MAX: usize = 2000;
@@ -32,6 +33,26 @@ pub fn chunk_text(text: &str) -> Vec<String> {
         i = end.saturating_sub(OVERLAP);
     }
     out
+}
+
+/// Split markdown content at structural boundaries (headers, paragraphs).
+///
+/// Uses `MarkdownSplitter` from the `text_splitter` crate. Chunks target
+/// 200–2000 characters, splitting on `##`/`###` headers and `\n\n` paragraph
+/// breaks before falling back to sentence or word boundaries. Empty and
+/// whitespace-only chunks are filtered.
+///
+/// Use this for all markdown content (web crawl, GitHub READMEs, wikis).
+/// Use `chunk_text()` for plain text (Reddit posts, YouTube transcripts).
+pub fn chunk_markdown(text: &str) -> Vec<String> {
+    let config = ChunkConfig::new(500..2000)
+        .with_overlap(200)
+        .expect("overlap 200 < min capacity 500");
+    MarkdownSplitter::new(config)
+        .chunks(text)
+        .map(|c| c.to_string())
+        .filter(|c| !c.trim().is_empty())
+        .collect()
 }
 
 pub fn url_lookup_candidates(target: &str) -> Vec<String> {
@@ -202,5 +223,46 @@ mod tests {
         let chunks = chunk_text(&text);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], text);
+    }
+
+    // ── chunk_markdown ───────────────────────────────────────────────────────
+
+    #[test]
+    fn chunk_markdown_splits_on_headers() {
+        // Each section needs >500 chars to exceed the minimum chunk size.
+        let filler_a = "content about topic A ".repeat(30); // ~660 chars
+        let filler_b = "content about topic B ".repeat(30); // ~660 chars
+        let text = format!("# Section One\n\n{filler_a}\n\n# Section Two\n\n{filler_b}");
+        let chunks = chunk_markdown(&text);
+        assert!(
+            chunks.len() >= 2,
+            "markdown with two headers should produce at least 2 chunks, got: {chunks:?}"
+        );
+    }
+
+    #[test]
+    fn chunk_markdown_no_empty_chunks() {
+        let text = "# Title\n\n\n\n## Subtitle\n\nSome content here.\n\n";
+        let chunks = chunk_markdown(text);
+        for (i, chunk) in chunks.iter().enumerate() {
+            assert!(
+                !chunk.trim().is_empty(),
+                "chunk {i} must not be empty or whitespace-only"
+            );
+        }
+    }
+
+    #[test]
+    fn chunk_markdown_empty_input_returns_no_chunks() {
+        let chunks = chunk_markdown("");
+        assert!(chunks.is_empty(), "empty markdown must produce no chunks");
+    }
+
+    #[test]
+    fn chunk_markdown_short_returns_single_chunk() {
+        let text = "Just a short paragraph with no headers.";
+        let chunks = chunk_markdown(text);
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].contains("short paragraph"));
     }
 }
