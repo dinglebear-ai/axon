@@ -183,12 +183,12 @@ web-format:
 
 # Kill any running axon serve, mcp, workers, or Next.js dev processes
 stop:
-    -pkill -f 'axon.*(serve|mcp|crawl worker|embed worker|extract worker|ingest worker|refresh worker)' 2>/dev/null || true
+    -pkill -f 'axon.*(serve|mcp|crawl worker|embed worker|extract worker|ingest worker|refresh worker|graph worker)' 2>/dev/null || true
     -pkill -f 'next dev' 2>/dev/null || true
     -pkill -f 'shell-server.mjs' 2>/dev/null || true
     @echo "Stopped running servers and workers"
 
-# Start workers only (crawl, embed, extract, ingest, refresh)
+# Start workers only (crawl, embed, extract, ingest, refresh, graph)
 workers:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -204,6 +204,7 @@ workers:
     "$AXON_BIN" extract worker & PIDS+=($!)
     "$AXON_BIN" ingest worker & PIDS+=($!)
     "$AXON_BIN" refresh worker & PIDS+=($!)
+    "$AXON_BIN" graph worker & PIDS+=($!)
     EXIT=0
     for pid in "${PIDS[@]}"; do wait "$pid" || EXIT=$?; done
     exit "$EXIT"
@@ -231,6 +232,7 @@ dev:
     "$AXON_BIN" extract worker & PIDS+=($!)
     "$AXON_BIN" ingest worker & PIDS+=($!)
     "$AXON_BIN" refresh worker & PIDS+=($!)
+    "$AXON_BIN" graph worker & PIDS+=($!)
     (cd apps/web && node shell-server.mjs) & PIDS+=($!)
     (cd apps/web && pnpm dev) & PIDS+=($!)
     EXIT=0

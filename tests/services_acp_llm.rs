@@ -143,7 +143,11 @@ async fn services_acp_llm_complete_streaming_with_runner_normalizes_stream_and_p
 
 #[tokio::test]
 async fn services_acp_llm_complete_text_requires_adapter_config() {
-    let err = complete_text(&Config::default(), AcpCompletionRequest::new("user prompt"))
+    let cfg = Config {
+        acp_adapter_cmd: None,
+        ..Config::default()
+    };
+    let err = complete_text(&cfg, AcpCompletionRequest::new("user prompt"))
         .await
         .expect_err("missing adapter config should fail");
 

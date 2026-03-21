@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::crates::core::config::Config;
 use crate::crates::services::debug as debug_svc;
+use crate::crates::services::error::{ServiceError, diagnostics_from_error};
 use crate::crates::services::ingest as ingest_svc;
 use crate::crates::services::map as map_svc;
 use crate::crates::services::query as query_svc;
@@ -63,12 +64,14 @@ pub(super) async fn send_error_owned(
     tx: mpsc::Sender<String>,
     ctx: CommandContext,
     message: String,
+    diagnostics: Option<serde_json::Value>,
     elapsed_ms: Option<u64>,
 ) {
     if let Some(v2) = serialize_v2_event(WsEventV2::CommandError {
         ctx,
         payload: CommandErrorPayload {
             message,
+            diagnostics,
             elapsed_ms,
         },
     }) {
@@ -111,9 +114,18 @@ pub(super) async fn send_error_owned(
 // infrastructure details to the browser.
 
 /// Log a service error at warn level and return a sanitized generic error for the client.
-fn sanitize_svc_error(context: &str, e: impl std::fmt::Display) -> SvcError {
-    tracing::warn!("service error in {context} (not sent to client): {e}");
-    "Internal service error".into()
+fn sanitize_svc_error(context: &str, e: &(dyn std::error::Error + 'static)) -> SvcError {
+    // e may include internal infra detail; only the diagnostics payload is
+    // forwarded when it was explicitly attached by a service path.
+    tracing::warn!("service error in {context} (sanitized for client): {e}");
+    if let Some(diagnostics) = diagnostics_from_error(e) {
+        Box::new(ServiceError::with_diagnostics(
+            "Internal service error",
+            diagnostics.clone(),
+        ))
+    } else {
+        Box::new(ServiceError::new("Internal service error"))
+    }
 }
 
 pub(super) fn call_scrape(
@@ -123,7 +135,7 @@ pub(super) fn call_scrape(
     Box::pin(async move {
         scrape_svc::scrape(&cfg, &url)
             .await
-            .map_err(|e| sanitize_svc_error("scrape", e))
+            .map_err(|e| sanitize_svc_error("scrape", e.as_ref()))
     })
 }
 
@@ -135,7 +147,7 @@ pub(super) fn call_map(
     Box::pin(async move {
         map_svc::discover(&cfg, &url, opts, None)
             .await
-            .map_err(|e| sanitize_svc_error("map", e))
+            .map_err(|e| sanitize_svc_error("map", e.as_ref()))
     })
 }
 
@@ -147,7 +159,7 @@ pub(super) fn call_query(
     Box::pin(async move {
         query_svc::query(&cfg, &text, pagination)
             .await
-            .map_err(|e| sanitize_svc_error("query", e))
+            .map_err(|e| sanitize_svc_error("query", e.as_ref()))
     })
 }
 
@@ -159,7 +171,7 @@ pub(super) fn call_retrieve(
     Box::pin(async move {
         query_svc::retrieve(&cfg, &url, opts)
             .await
-            .map_err(|e| sanitize_svc_error("retrieve", e))
+            .map_err(|e| sanitize_svc_error("retrieve", e.as_ref()))
     })
 }
 
@@ -170,7 +182,7 @@ pub(super) fn call_ask(
     Box::pin(async move {
         query_svc::ask(&cfg, &question, None)
             .await
-            .map_err(|e| sanitize_svc_error("ask", e))
+            .map_err(|e| sanitize_svc_error("ask", e.as_ref()))
     })
 }
 
@@ -182,7 +194,7 @@ pub(super) fn call_search(
     Box::pin(async move {
         search_svc::search(&cfg, &query, opts, None)
             .await
-            .map_err(|e| sanitize_svc_error("search", e))
+            .map_err(|e| sanitize_svc_error("search", e.as_ref()))
     })
 }
 
@@ -194,7 +206,7 @@ pub(super) fn call_research(
     Box::pin(async move {
         search_svc::research(&cfg, &query, opts, None)
             .await
-            .map_err(|e| sanitize_svc_error("research", e))
+            .map_err(|e| sanitize_svc_error("research", e.as_ref()))
     })
 }
 
@@ -204,7 +216,7 @@ pub(super) fn call_stats(
     Box::pin(async move {
         system_svc::stats(&cfg)
             .await
-            .map_err(|e| sanitize_svc_error("stats", e))
+            .map_err(|e| sanitize_svc_error("stats", e.as_ref()))
     })
 }
 
@@ -215,7 +227,7 @@ pub(super) fn call_sources(
     Box::pin(async move {
         system_svc::sources(&cfg, pagination)
             .await
-            .map_err(|e| sanitize_svc_error("sources", e))
+            .map_err(|e| sanitize_svc_error("sources", e.as_ref()))
     })
 }
 
@@ -226,7 +238,7 @@ pub(super) fn call_domains(
     Box::pin(async move {
         system_svc::domains(&cfg, pagination)
             .await
-            .map_err(|e| sanitize_svc_error("domains", e))
+            .map_err(|e| sanitize_svc_error("domains", e.as_ref()))
     })
 }
 
@@ -236,7 +248,7 @@ pub(super) fn call_doctor(
     Box::pin(async move {
         system_svc::doctor(&cfg)
             .await
-            .map_err(|e| sanitize_svc_error("doctor", e))
+            .map_err(|e| sanitize_svc_error("doctor", e.as_ref()))
     })
 }
 
@@ -246,7 +258,7 @@ pub(super) fn call_status(
     Box::pin(async move {
         system_svc::full_status(&cfg)
             .await
-            .map_err(|e| sanitize_svc_error("status", e))
+            .map_err(|e| sanitize_svc_error("status", e.as_ref()))
     })
 }
 
@@ -257,7 +269,7 @@ pub(super) fn call_suggest(
     Box::pin(async move {
         query_svc::suggest(&cfg, focus.as_deref())
             .await
-            .map_err(|e| sanitize_svc_error("suggest", e))
+            .map_err(|e| sanitize_svc_error("suggest", e.as_ref()))
     })
 }
 
@@ -278,7 +290,7 @@ pub(super) fn call_evaluate(
             {
                 Ok(rt) => rt,
                 Err(e) => {
-                    let _ = tx.send(Err(sanitize_svc_error("evaluate runtime build", e)));
+                    let _ = tx.send(Err(sanitize_svc_error("evaluate runtime build", &e)));
                     return;
                 }
             };
@@ -286,7 +298,7 @@ pub(super) fn call_evaluate(
             local.block_on(&rt, async move {
                 let result = query_svc::evaluate(&cfg, &question)
                     .await
-                    .map_err(|e| sanitize_svc_error("evaluate", e));
+                    .map_err(|e| sanitize_svc_error("evaluate", e.as_ref()));
                 let _ = tx.send(result);
             });
         });
@@ -301,7 +313,7 @@ pub(super) fn call_dedupe(
     Box::pin(async move {
         system_svc::dedupe(&cfg, None)
             .await
-            .map_err(|e| sanitize_svc_error("dedupe", e))
+            .map_err(|e| sanitize_svc_error("dedupe", e.as_ref()))
     })
 }
 
@@ -312,7 +324,7 @@ pub(super) fn call_screenshot(
     Box::pin(async move {
         screenshot_svc::screenshot_capture(&cfg, &url)
             .await
-            .map_err(|e| sanitize_svc_error("screenshot", e))
+            .map_err(|e| sanitize_svc_error("screenshot", e.as_ref()))
     })
 }
 
@@ -323,7 +335,7 @@ pub(super) fn call_debug(
     Box::pin(async move {
         debug_svc::debug_report(&cfg, &context)
             .await
-            .map_err(|e| sanitize_svc_error("debug", e))
+            .map_err(|e| sanitize_svc_error("debug", e.as_ref()))
     })
 }
 
@@ -333,6 +345,6 @@ pub(super) fn call_sessions(
     Box::pin(async move {
         ingest_svc::ingest_sessions(&cfg, None)
             .await
-            .map_err(|e| sanitize_svc_error("sessions", e))
+            .map_err(|e| sanitize_svc_error("sessions", e.as_ref()))
     })
 }

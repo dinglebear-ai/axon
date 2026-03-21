@@ -26,6 +26,7 @@ This document defines lifecycle behavior for async jobs across:
 - Crawl
 - Extract
 - Embed
+- Graph
 - Ingest (`github`, `reddit`, `youtube`, `sessions`)
 - Refresh (schedule-triggered or manual URL re-checking)
 - Watch (top-level recurring scheduler definitions and run history)
@@ -37,6 +38,7 @@ This document defines lifecycle behavior for async jobs across:
 | Crawl | `axon_crawl_jobs` | `AXON_CRAWL_QUEUE` | `start_crawl_job`, `start_crawl_jobs_batch` |
 | Extract | `axon_extract_jobs` | `AXON_EXTRACT_QUEUE` | `start_extract_job_with_pool` |
 | Embed | `axon_embed_jobs` | `AXON_EMBED_QUEUE` | `start_embed_job_with_pool` |
+| Graph | `axon_graph_jobs` | `AXON_GRAPH_QUEUE` | `enqueue_graph_job`, `graph_build` |
 | Ingest | `axon_ingest_jobs` | `AXON_INGEST_QUEUE` | `start_ingest_job` (`sessions` uses same ingest table and queue) |
 | Refresh | `axon_refresh_jobs` | `AXON_REFRESH_QUEUE` | `start_refresh_job` (schedule-triggered), `run_refresh_once` (manual/`--wait true`) |
 | Watch | `axon_watch_defs`, `axon_watch_runs` | N/A (direct DB poll loop) | `run_watch_scheduler_tick`, `run_watch_worker` |
@@ -141,6 +143,7 @@ Full schema lives in `docs/SCHEMA.md`. Summary:
 - Crawl-specific: `url`
 - Extract-specific: `urls_json`
 - Embed-specific: `input_text`
+- Graph-specific: `url`, `chunk_count`, `entity_count`, `relation_count`
 - Ingest-specific: `source_type`, `target`
 - Refresh-specific: `urls_json` (array of URLs to re-check)
 - Refresh targets: `axon_refresh_targets` (per-URL ETag/hash state, separate table)
@@ -162,6 +165,16 @@ axon <family> recover
 axon <family> cleanup
 axon <family> clear
 axon <family> worker
+```
+
+Graph commands:
+
+```bash
+axon graph build [--url <url> | --domain <domain> | --all]
+axon graph status
+axon graph explore <entity>
+axon graph stats
+axon graph worker
 ```
 
 Ingest aliases route through ingest lifecycle:
@@ -239,6 +252,7 @@ Top-level watch scheduling is handled by a dedicated poll loop (`run_watch_worke
 | All | Postgres connection pool exhausted | Worker hangs waiting for pool slot | Increase pool size; reduce concurrent workers/lanes |
 | All | Advisory lock timeout (5s) | Schema init returns error | Retry; investigate long-running migrations |
 | Crawl | spider.rs future panics | Job marked `failed` by crawl process error handler | Retry via `axon crawl recover` |
+| Graph | Neo4j not configured/reachable | Worker fails to start or jobs fail with Neo4j error text | Set `AXON_NEO4J_URL` + credentials; verify Neo4j HTTP endpoint and auth |
 | Refresh | HTTP timeout on all URLs | Job marked `failed` with per-URL error detail in `axon_refresh_targets` | Retry manually or wait for next schedule trigger |
 | Ingest | YouTube: yt-dlp not found | Job marked `failed` immediately | Install yt-dlp in the worker container |
 | Ingest | GitHub: token rate-limited | Job marked `failed` with 403 | Set `GITHUB_TOKEN` env var for higher rate limits |

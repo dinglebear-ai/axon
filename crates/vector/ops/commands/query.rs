@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::services::error::ServiceError;
 use crate::crates::vector::ops::source_display::display_source;
 use crate::crates::vector::ops::{qdrant, ranking, tei};
 use std::error::Error;
@@ -16,7 +17,25 @@ pub async fn query_results(
     let vector = query_vectors.remove(0);
 
     let fetch_limit = ((limit + offset).max(1) * 8).max(limit + offset).min(500);
-    let hits = qdrant::dispatch_vector_search(cfg, &vector, query, fetch_limit).await?;
+    let hits = qdrant::dispatch_vector_search(cfg, &vector, query, fetch_limit)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            if cfg.ask_diagnostics {
+                let diagnostics = serde_json::json!({
+                    "stage": "query_vector_search_dispatch",
+                    "collection": cfg.collection,
+                    "qdrant_url": cfg.qdrant_url,
+                    "query_len": query.len(),
+                    "error": e.to_string(),
+                });
+                Box::new(ServiceError::with_diagnostics(
+                    format!("vector search dispatch: {e}"),
+                    diagnostics,
+                ))
+            } else {
+                Box::new(ServiceError::new(format!("vector search dispatch: {e}")))
+            }
+        })?;
     let query_tokens = ranking::tokenize_query(query);
     let candidates: Vec<ranking::AskCandidate> = hits
         .into_iter()

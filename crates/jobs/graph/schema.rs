@@ -19,6 +19,7 @@ pub async fn ensure_graph_schema(pool: &PgPool) -> Result<(), Box<dyn std::error
             chunk_count    INTEGER DEFAULT 0,
             entity_count   INTEGER DEFAULT 0,
             relation_count INTEGER DEFAULT 0,
+            result_json    JSONB,
             config_json    JSONB,
             error_text     TEXT,
             created_at     TIMESTAMPTZ DEFAULT now(),
@@ -30,6 +31,10 @@ pub async fn ensure_graph_schema(pool: &PgPool) -> Result<(), Box<dyn std::error
     )
     .execute(&mut *tx)
     .await?;
+
+    sqlx::query("ALTER TABLE axon_graph_jobs ADD COLUMN IF NOT EXISTS result_json JSONB")
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query(
         r#"DO $$ BEGIN

@@ -103,6 +103,7 @@ pub(super) async fn handle_sync_direct(
                     tx,
                     ws_ctx,
                     "sync semaphore closed unexpectedly".to_string(),
+                    None,
                     Some(start.elapsed().as_millis() as u64),
                 )
                 .await;
@@ -120,7 +121,11 @@ pub(super) async fn handle_sync_direct(
 
     match svc_result {
         Ok(()) => send_done_owned(tx, ws_ctx, 0, elapsed_ms).await,
-        Err(e) => send_error_owned(tx, ws_ctx, e.to_string(), elapsed_ms).await,
+        Err(e) => {
+            let diagnostics =
+                crate::crates::services::error::diagnostics_from_error(e.as_ref()).cloned();
+            send_error_owned(tx, ws_ctx, e.to_string(), diagnostics, elapsed_ms).await
+        }
     }
 
     // _permit drops here, releasing the semaphore slot.

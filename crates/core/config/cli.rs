@@ -28,7 +28,7 @@ pub(super) enum CliCommand {
     Embed(EmbedArgs),
     Debug(TextArg),
     Doctor,
-    Query(TextArg),
+    Query(QueryArgs),
     Retrieve(UrlArg),
     Ask(AskArgs),
     Evaluate(EvaluateArgs),
@@ -91,14 +91,25 @@ pub(super) struct MigrateArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
 pub(super) struct ExportArgs {
-    /// Exclude indexed URL list from export.
+    /// Include full job history sections (`crawls`, `scrapes`, `extractions`, `embeds`, `ingests`, `refreshes`, `watches`).
+    /// By default, export is seed-only for compact backup/rebuild payloads.
     #[arg(long, default_value_t = false)]
-    pub(super) no_urls: bool,
+    pub(super) include_history: bool,
 
-    /// Maximum URLs to include in export payload.
-    #[arg(long, default_value_t = 100_000)]
-    pub(super) url_limit: usize,
+    #[command(subcommand)]
+    pub(super) action: Option<ExportSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ExportSubcommand {
+    /// Verify an existing export file against the current index.
+    Verify {
+        /// Path to the export JSON file to verify.
+        #[arg(value_name = "FILE")]
+        file: std::path::PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -202,6 +213,14 @@ pub(super) struct TextArg {
 
 #[derive(Debug, Args)]
 pub(super) struct AskArgs {
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) diagnostics: bool,
+    #[arg(value_name = "TEXT")]
+    pub(super) value: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct QueryArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) diagnostics: bool,
     #[arg(value_name = "TEXT")]
@@ -385,7 +404,7 @@ pub(super) enum JobSubcommand {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::{Cli, CliCommand, ExportSubcommand};
     use clap::{Parser, error::ErrorKind};
 
     #[test]
@@ -414,6 +433,21 @@ mod tests {
             result.is_ok(),
             "migrate --from --to should parse: {result:?}"
         );
+    }
+
+    #[test]
+    fn parse_export_verify_subcommand() {
+        let cli = Cli::try_parse_from(["axon", "export", "verify", "backup.json"])
+            .expect("export verify should parse");
+        match cli.command {
+            CliCommand::Export(args) => match args.action {
+                Some(ExportSubcommand::Verify { file }) => {
+                    assert_eq!(file, std::path::PathBuf::from("backup.json"));
+                }
+                _ => panic!("expected export verify subcommand"),
+            },
+            other => panic!("expected export command, got {other:?}"),
+        }
     }
 
     #[test]

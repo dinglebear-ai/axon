@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::services::error::{ServiceError, diagnostics_from_error};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{
     AskResult, EvaluateResult, Pagination, QueryResult, RetrieveOptions, RetrieveResult,
@@ -11,6 +12,17 @@ use crate::crates::vector::ops::commands::query_results;
 use crate::crates::vector::ops::qdrant::retrieve_result;
 use std::error::Error;
 use tokio::sync::mpsc;
+
+fn wrap_service_error(
+    message: String,
+    err: &(dyn Error + 'static),
+) -> Box<dyn Error + Send + Sync + 'static> {
+    if let Some(diagnostics) = diagnostics_from_error(err) {
+        Box::new(ServiceError::with_diagnostics(message, diagnostics.clone()))
+    } else {
+        Box::new(ServiceError::new(message))
+    }
+}
 
 // ── Pure mapping helpers (unit-testable, no live services required) ──────────
 
@@ -67,11 +79,11 @@ pub async fn query(
     let results = query_results(cfg, text, opts.limit.max(1), opts.offset)
         .await
         .map_err(|e| -> Box<dyn Error> {
-            format!(
+            let message = format!(
                 "vector query failed for {}: {e}",
                 text.chars().take(80).collect::<String>()
-            )
-            .into()
+            );
+            wrap_service_error(message, e.as_ref())
         })?;
     Ok(map_query_results(results))
 }
@@ -108,11 +120,11 @@ pub async fn ask(
     let payload = ask_payload(cfg, question)
         .await
         .map_err(|e| -> Box<dyn Error> {
-            format!(
+            let message = format!(
                 "ask failed for {}: {e}",
                 question.chars().take(80).collect::<String>()
-            )
-            .into()
+            );
+            wrap_service_error(message, e.as_ref())
         })?;
     emit(
         &tx,
@@ -250,5 +262,54 @@ mod tests {
         assert_eq!(result.results.len(), 2);
         assert_eq!(result.results[0], items[0]);
         assert_eq!(result.results[1], items[1]);
+    }
+
+    #[tokio::test]
+    async fn query_reports_typed_diagnostics_payload_when_enabled() {
+        use crate::crates::jobs::common::test_config;
+        use httpmock::Method::POST;
+        use httpmock::MockServer;
+
+        // TEI succeeds so query proceeds to vector mode probe.
+        let tei = MockServer::start_async().await;
+        tei.mock_async(|when, then| {
+            when.method(POST).path("/embed");
+            then.status(200)
+                .json_body(json!([[0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32]]));
+        })
+        .await;
+
+        // Qdrant probe fails with 404, which should surface as structured diagnostics.
+        let qdrant = MockServer::start_async().await;
+        qdrant
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path_matches(regex::Regex::new("/collections/").unwrap());
+                then.status(404);
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.tei_url = tei.base_url();
+        cfg.qdrant_url = qdrant.base_url();
+        cfg.collection = "diag_test_collection".to_string();
+        cfg.ask_diagnostics = true;
+
+        let err = query(
+            &cfg,
+            "diagnostics regression test query",
+            Pagination {
+                limit: 5,
+                offset: 0,
+            },
+        )
+        .await
+        .expect_err("query should fail when collection is missing");
+
+        let diag = diagnostics_from_error(err.as_ref())
+            .expect("diagnostics payload should be attached when ask_diagnostics=true");
+        assert_eq!(diag["stage"], "query_vector_search_dispatch");
+        assert_eq!(diag["collection"], "diag_test_collection");
+        assert!(diag["error"].as_str().unwrap_or("").contains("404"));
     }
 }

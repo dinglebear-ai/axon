@@ -267,13 +267,17 @@ pub(super) async fn run_prompt_turn(
         }
         // FINDING-14: Sender is dropped on clean exit (code 0), so the receiver
         // sees Err(RecvError) — treat that as a clean shutdown, not a crash.
-        // Only return an error when the adapter sent an explicit crash message.
+        // If this happens before a prompt result, it is still a runtime failure:
+        // no turn result can ever be emitted.
         exit_msg = &mut exit_rx => {
             if let Ok(msg) = exit_msg {
                 return Err(format!("ACP adapter crashed mid-session: {msg}"));
             }
-            // Err variant: channel was dropped → clean exit, nothing to do.
-            false
+            return Err(
+                "ACP adapter exited before returning a prompt result; \
+                 verify AXON_ACP_ADAPTER_CMD points to an ACP adapter binary (for example codex-acp)"
+                    .to_string(),
+            );
         }
     };
 

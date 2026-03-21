@@ -44,6 +44,7 @@ services:
       AXON_MCP_ARTIFACT_DIR: /data/axon/artifacts
       AXON_CHROME_DIAGNOSTICS_DIR: /data/axon/chrome-diagnostics
       AXON_ENFORCE_IMAGE_SHA: ${AXON_ENFORCE_IMAGE_SHA:-false}
+      AXON_GRAPH_LLM_URL: ${AXON_GRAPH_LLM_URL:-http://axon-ollama:11434}
     ports:
       - "49000:49000"             # axon serve (HTTP + WebSocket)
       - "8001:8001"               # MCP HTTP transport
@@ -59,7 +60,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && /command/s6-svstat -u /run/service/web-server >/dev/null",
+          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && /command/s6-svstat -u /run/service/graph-worker >/dev/null && /command/s6-svstat -u /run/service/web-server >/dev/null",
         ]
       interval: 30s
       timeout: 10s

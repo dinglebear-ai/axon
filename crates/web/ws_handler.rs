@@ -304,6 +304,7 @@ async fn handle_execute_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: 
             ctx,
             payload: CommandErrorPayload {
                 message: "rate limit exceeded".into(),
+                diagnostics: None,
                 elapsed_ms: None,
             },
         };

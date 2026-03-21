@@ -3,7 +3,7 @@
 //! service event channel.
 
 use crate::crates::services::events::{
-    EditorOperation, LogLevel, ServiceEvent, emit, emit_nonblocking, emit_with_timeout,
+    EditorOperation, LogLevel, ServiceEvent, emit, emit_nonblocking,
 };
 use crate::crates::services::types::AcpConfigOption;
 use crate::crates::services::types::AcpSessionUpdateKind;
@@ -25,8 +25,8 @@ use super::persistent_conn::editor::parse_editor_blocks;
 
 // ── Runtime state ───────────────────────────────────────────────────────────
 
-/// FINDING-2: Use RefCell for single-threaded hot path — avoids Mutex lock on
-/// every streaming token delta. Safe because the ACP runtime runs on a
+/// Use RefCell for single-threaded hot path — avoids Mutex lock on every
+/// streaming token delta. Safe because the ACP runtime runs on a
 /// `current_thread` tokio runtime inside `LocalSet` (all tasks on one thread).
 #[derive(Debug, Default)]
 pub struct AcpRuntimeState {
@@ -56,7 +56,7 @@ pub struct AcpRuntimeState {
     pub(super) limit_warning_emitted: std::cell::Cell<bool>,
 }
 
-// ── FIX L-1: return &'static str instead of String ──────────────────────────
+// ── Stop reason → &'static str ──────────────────────────────────────────────
 
 pub(super) fn stop_reason_to_str(reason: StopReason) -> &'static str {
     match reason {
@@ -98,10 +98,8 @@ pub(super) async fn finalize_successful_turn(
     } else {
         crate::crates::core::logging::log_warn(&msg);
     }
-    // Non-blocking emits: turn finalization must never block on a full
-    // service event channel — otherwise completed turns hang waiting for
-    // the downstream consumer to drain, preventing the caller from
-    // receiving the result.
+    // Log events are fire-and-forget: silently drop if channel is full.
+    // EditorWrite and TurnResult below use blocking emit() to guarantee delivery.
     emit_nonblocking(
         service_tx,
         ServiceEvent::Log {
@@ -119,26 +117,14 @@ pub(super) async fn finalize_successful_turn(
         } else {
             EditorOperation::Replace
         };
-        // Use timeout-guarded send instead of fire-and-forget try_send so that
-        // EditorWrite events (which may be the only update for a completed turn)
-        // are not silently dropped. 5s timeout caps worst-case per block while
-        // still providing backpressure visibility.
-        if service_tx.is_some()
-            && !emit_with_timeout(
-                service_tx,
-                ServiceEvent::EditorWrite { content, operation },
-                std::time::Duration::from_secs(5),
-            )
-            .await
-        {
-            tracing::warn!(
-                context = "acp_bridge",
-                "EditorWrite event dropped: channel full after 5s timeout",
-            );
-        }
+        // Block until the receiver drains enough space. `emit` returns Err
+        // immediately if the receiver is dropped (WS disconnected), so there
+        // is no risk of an infinite hang. We must not drop EditorWrite events
+        // or TurnResult — they are required for the UI to display the response.
+        emit(service_tx, ServiceEvent::EditorWrite { content, operation }).await;
     }
 
-    let emitted = emit_with_timeout(
+    emit(
         service_tx,
         ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
@@ -147,30 +133,23 @@ pub(super) async fn finalize_successful_turn(
                 result: text,
             }),
         },
-        std::time::Duration::from_secs(5),
     )
     .await;
-    if emitted {
-        let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
-        crate::crates::core::logging::log_info(&msg);
-        emit_nonblocking(
-            service_tx,
-            ServiceEvent::Log {
-                level: LogLevel::Info,
-                message: msg,
-            },
-        );
-    } else {
-        crate::crates::core::logging::log_warn(&format!(
-            "ACP runtime: TurnResult dropped — channel full after 5s timeout (session_id={session})"
-        ));
-    }
+    let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
+    crate::crates::core::logging::log_info(&msg);
+    emit_nonblocking(
+        service_tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: msg,
+        },
+    );
     Ok(())
 }
 
 // ── Bridge client ───────────────────────────────────────────────────────────
 
-/// FINDING-2: `Arc<AcpRuntimeState>` — no Mutex wrapper needed because
+/// `Arc<AcpRuntimeState>` — no Mutex wrapper needed because
 /// `AcpRuntimeState` uses `RefCell` internally (not thread-safe).  Cloning
 /// `AcpBridgeClient` shares the same state across spawned tasks safely
 /// because the ACP runtime runs on a `current_thread` tokio runtime inside
@@ -193,21 +172,14 @@ impl Client for AcpBridgeClient {
     ) -> agent_client_protocol::Result<RequestPermissionResponse> {
         // Use the current turn's service_tx. Clone to release borrow before awaits.
         let service_tx = self.runtime_state.service_tx.borrow().clone();
-        // Timeout-guarded emit: permission handling must not hang indefinitely
-        // when the service event channel is full.  A 5-second timeout lets
-        // transient backpressure resolve while guaranteeing forward progress.
-        if !emit_with_timeout(
-            &service_tx,
-            map_permission_request_event(&args),
-            std::time::Duration::from_secs(5),
-        )
-        .await
-        {
-            tracing::warn!(
-                context = "acp_bridge",
-                "permission request event dropped: channel full after 5s timeout"
-            );
-        }
+        // Blocking emit: the permission request event MUST reach the frontend
+        // for the interactive approval dialog to appear.  If the channel is
+        // full (backpressure from streaming deltas), we wait for space rather
+        // than dropping — a dropped permission event leaves the user with no
+        // dialog and the turn hanging until the 60-second permission timeout.
+        // `emit` returns Err immediately if the receiver (event_rx) is dropped
+        // (WS disconnected), so there is no deadlock risk.
+        emit(&service_tx, map_permission_request_event(&args)).await;
 
         let tool_call_id = args.tool_call.tool_call_id.0.to_string();
         let tool_name = args
@@ -267,7 +239,7 @@ impl Client for AcpBridgeClient {
         args: SessionNotification,
     ) -> agent_client_protocol::Result<()> {
         {
-            // FINDING-2: RefCell — no Mutex lock on the hot streaming token path.
+            // RefCell — no Mutex lock on the hot streaming token path.
             // Safe: current_thread runtime + LocalSet ensures single-threaded access.
             let state = &*self.runtime_state;
 

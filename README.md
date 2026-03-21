@@ -1,5 +1,5 @@
 # ⚡ **Axon**
-Last Modified: 2026-03-11
+Last Modified: 2026-03-20
 
 Self-hosted web crawling and RAG pipeline powered by Spider.rs. Single binary (`axon`) backed by a local Docker stack.
 
@@ -16,7 +16,7 @@ Axon is a single CLI for crawl/scrape/extract plus local vector retrieval and Q&
 
 ## Features
 
-- Commands: `scrape`, `crawl`, `watch`, `refresh`, `map`, `search`, `research`, `extract`, `embed`, `query`, `retrieve`, `ask`, `evaluate`, `suggest`, `ingest`, `sessions`, `screenshot`, `completions`, `sources`, `domains`, `stats`, `status`, `doctor`, `dedupe`, `debug`, `mcp`, `serve`
+- Commands: `scrape`, `crawl`, `watch`, `refresh`, `map`, `search`, `research`, `extract`, `embed`, `query`, `retrieve`, `ask`, `evaluate`, `suggest`, `graph`, `ingest`, `sessions`, `screenshot`, `completions`, `sources`, `domains`, `stats`, `status`, `doctor`, `dedupe`, `debug`, `mcp`, `serve`
 - Async queue-backed jobs for `crawl`/`extract`/`embed`/`refresh`/ingest
 - **Surgical Incremental Crawling**: SHA-256 content hashing, Reflink/Hardlink storage reuse, and smart embedding skips for unchanged pages.
 - TEI embeddings + Qdrant vector storage
@@ -30,6 +30,7 @@ Axon is a single CLI for crawl/scrape/extract plus local vector retrieval and Q&
 ## Architecture
 
 - Canonical architecture and end-to-end data flow: `docs/ARCHITECTURE.md`
+- Graph-specific reference: `docs/GRAPH.md`
 - Runtime entrypoint: `main.rs` -> `lib.rs` (`run`/`run_once`)
 - Core subsystems:
   - `crates/cli`: command handlers and routing
@@ -154,6 +155,22 @@ Migration note:
 | `AXON_INGEST_QUEUE` | `axon.ingest.jobs` | Ingest job queue name (github/reddit/youtube) |
 | `AXON_INGEST_LANES` | `2` | Number of parallel ingest worker lanes |
 | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
+
+### Optional Graph / Neo4j
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_NEO4J_URL` | `` | Neo4j HTTP base URL. Empty disables graph features. Example: `http://127.0.0.1:7474` |
+| `AXON_NEO4J_USER` | `neo4j` | Neo4j username |
+| `AXON_NEO4J_PASSWORD` | `` | Neo4j password |
+| `AXON_GRAPH_QUEUE` | `axon.graph.jobs` | AMQP queue for graph jobs |
+| `AXON_GRAPH_CONCURRENCY` | `4` | Worker parallelism for graph extraction |
+| `AXON_GRAPH_LLM_URL` | `http://localhost:11434` | LLM endpoint for ambiguous graph extraction |
+| `AXON_GRAPH_LLM_MODEL` | `qwen3.5:4b` | LLM model used for graph extraction |
+| `AXON_GRAPH_SIMILARITY_THRESHOLD` | `0.75` | Minimum score for graph similarity edges |
+| `AXON_GRAPH_SIMILARITY_LIMIT` | `20` | Maximum similar URLs considered per source URL |
+| `AXON_GRAPH_CONTEXT_MAX_CHARS` | `2000` | Max chars injected into `ask --graph` context |
+| `AXON_GRAPH_TAXONOMY_PATH` | `` | Optional taxonomy file override path |
 
 ### Optional Ingest Credentials
 
@@ -297,6 +314,7 @@ Axon implements a multi-layered incremental crawl mechanism to minimize network 
 | `search <query>` | Web search via Tavily, auto-queues crawl jobs for results | No |
 | `research <query>` | Web research via Tavily AI search with LLM synthesis | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
+| `export` | Export backup manifest (seeds + settings + integrity; optional history) to JSON | No |
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
 | `ask <question>` | RAG: search + LLM answer | No |
@@ -305,7 +323,7 @@ Axon implements a multi-layered incremental crawl mechanism to minimize network 
 | `ingest <target>` | Ingest GitHub, Reddit, or YouTube — source type auto-detected from target (slug, URL, @handle, r/name) | Yes (default) |
 | `sessions [--claude] [--codex] [--gemini] [--project <name>]` | Ingest AI session exports (Claude/Codex/Gemini) into Qdrant | No |
 | `screenshot <url>...` | Capture page screenshot(s) via Chrome | No |
-| `completions <bash|zsh|fish>` | Generate shell completion scripts (`completion` alias also works) | No |
+| `completions <bash|zsh|fish>` | Generate shell completion scripts | No |
 | `sources` | List all indexed URLs + chunk counts | No |
 | `domains` | List indexed domains + stats | No |
 | `stats` | Qdrant collection stats | No |

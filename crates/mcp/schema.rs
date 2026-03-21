@@ -416,8 +416,7 @@ pub struct GraphRequest {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExportRequest {
-    pub include_urls: Option<bool>,
-    pub url_limit: Option<usize>,
+    pub include_history: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 

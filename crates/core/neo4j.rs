@@ -32,6 +32,13 @@ impl Neo4jClient {
         if trimmed.is_empty() {
             return Ok(None);
         }
+        let parsed = reqwest::Url::parse(trimmed)?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err(
+                "AXON_NEO4J_URL must use http:// or https:// (example: http://127.0.0.1:7474)"
+                    .into(),
+            );
+        }
 
         let endpoint = format!("{}/db/neo4j/tx/commit", trimmed.trim_end_matches('/'));
         let auth_header = (!password.is_empty()).then(|| {
@@ -112,6 +119,17 @@ mod tests {
     fn new_returns_some_when_url_set() {
         let client = Neo4jClient::from_parts("http://localhost:7474", "neo4j", "pass").unwrap();
         assert!(client.is_some());
+    }
+
+    #[test]
+    fn rejects_non_http_scheme() {
+        match Neo4jClient::from_parts("bolt://localhost:7687", "neo4j", "pass") {
+            Ok(_) => panic!("bolt scheme must be rejected"),
+            Err(err) => assert!(
+                err.to_string()
+                    .contains("AXON_NEO4J_URL must use http:// or https://")
+            ),
+        }
     }
 
     #[test]

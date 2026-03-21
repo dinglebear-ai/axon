@@ -68,7 +68,7 @@ impl AxonMcpServer {
             None,
         )
         .await
-        .map_err(|e| logged_internal_error("embed.start", e))?;
+        .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "embed",
             "start",
@@ -90,7 +90,7 @@ impl AxonMcpServer {
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
         .await
-        .map_err(|e| logged_internal_error("embed.list", e))?;
+        .map_err(|e| logged_internal_error("embed.list", e.as_ref()))?;
         respond_with_mode(
             "embed",
             "list",
@@ -112,7 +112,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let job = crate::crates::services::embed::embed_status(self.cfg.as_ref(), id)
                     .await
-                    .map_err(|e| logged_internal_error("embed.status", e))?;
+                    .map_err(|e| logged_internal_error("embed.status", e.as_ref()))?;
                 respond_with_mode(
                     "embed",
                     "status",
@@ -126,7 +126,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let canceled = crate::crates::services::embed::embed_cancel(self.cfg.as_ref(), id)
                     .await
-                    .map_err(|e| logged_internal_error("embed.cancel", e))?;
+                    .map_err(|e| logged_internal_error("embed.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "embed",
                     "cancel",
@@ -140,7 +140,7 @@ impl AxonMcpServer {
             EmbedSubaction::Cleanup => {
                 let deleted = crate::crates::services::embed::embed_cleanup(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("embed.cleanup", e))?;
+                    .map_err(|e| logged_internal_error("embed.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "embed",
                     "cleanup",
@@ -150,7 +150,7 @@ impl AxonMcpServer {
             EmbedSubaction::Clear => {
                 let deleted = crate::crates::services::embed::embed_clear(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("embed.clear", e))?;
+                    .map_err(|e| logged_internal_error("embed.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "embed",
                     "clear",
@@ -160,7 +160,7 @@ impl AxonMcpServer {
             EmbedSubaction::Recover => {
                 let recovered = crate::crates::services::embed::embed_recover(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("embed.recover", e))?;
+                    .map_err(|e| logged_internal_error("embed.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "embed",
                     "recover",
@@ -183,7 +183,7 @@ impl AxonMcpServer {
         )?;
         let result = crate::crates::services::ingest::ingest_start(self.cfg.as_ref(), source)
             .await
-            .map_err(|e| logged_internal_error("ingest.start", e))?;
+            .map_err(|e| logged_internal_error("ingest.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "ingest",
             "start",
@@ -205,7 +205,7 @@ impl AxonMcpServer {
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
         .await
-        .map_err(|e| logged_internal_error("ingest.list", e))?;
+        .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
         respond_with_mode(
             "ingest",
             "list",
@@ -227,7 +227,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let job = crate::crates::services::ingest::ingest_status(self.cfg.as_ref(), id)
                     .await
-                    .map_err(|e| logged_internal_error("ingest.status", e))?;
+                    .map_err(|e| logged_internal_error("ingest.status", e.as_ref()))?;
                 respond_with_mode(
                     "ingest",
                     "status",
@@ -242,7 +242,7 @@ impl AxonMcpServer {
                 let canceled =
                     crate::crates::services::ingest::ingest_cancel(self.cfg.as_ref(), id)
                         .await
-                        .map_err(|e| logged_internal_error("ingest.cancel", e))?;
+                        .map_err(|e| logged_internal_error("ingest.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "ingest",
                     "cancel",
@@ -256,7 +256,7 @@ impl AxonMcpServer {
             IngestSubaction::Cleanup => {
                 let deleted = crate::crates::services::ingest::ingest_cleanup(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("ingest.cleanup", e))?;
+                    .map_err(|e| logged_internal_error("ingest.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "ingest",
                     "cleanup",
@@ -266,7 +266,7 @@ impl AxonMcpServer {
             IngestSubaction::Clear => {
                 let deleted = crate::crates::services::ingest::ingest_clear(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("ingest.clear", e))?;
+                    .map_err(|e| logged_internal_error("ingest.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "ingest",
                     "clear",
@@ -276,7 +276,7 @@ impl AxonMcpServer {
             IngestSubaction::Recover => {
                 let recovered = crate::crates::services::ingest::ingest_recover(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("ingest.recover", e))?;
+                    .map_err(|e| logged_internal_error("ingest.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "ingest",
                     "recover",

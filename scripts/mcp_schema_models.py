@@ -117,6 +117,9 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Ask": "ask",
     "Screenshot": "screenshot",
     "Refresh": "refresh",
+    "Graph": "graph",
+    "Export": "export",
+    "ElicitDemo": "elicit_demo",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {

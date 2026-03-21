@@ -31,16 +31,33 @@ pub(crate) async fn dispatch_vector_search(
     let filter =
         super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
     let filter_ref = filter.as_ref();
-    let mode = get_or_fetch_vector_mode(cfg).await?;
+    let mode = get_or_fetch_vector_mode(cfg)
+        .await
+        .map_err(|e| -> Box<dyn Error> {
+            format!(
+                "vector mode probe failed for collection '{}' at '{}': {e}. \
+             verify Qdrant is reachable and the collection exists",
+                cfg.collection, cfg.qdrant_url
+            )
+            .into()
+        })?;
     match mode {
         VectorMode::Named => {
-            let sv = crate::crates::vector::ops::sparse::compute_sparse_vector(query);
-            if cfg.hybrid_search_enabled && !sv.is_empty() {
-                qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
-                    .await
-                    .map_err(|e| -> Box<dyn Error> {
-                        format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
-                    })
+            if cfg.hybrid_search_enabled {
+                let sv = crate::crates::vector::ops::sparse::compute_sparse_vector(query);
+                if !sv.is_empty() {
+                    qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
+                        .await
+                        .map_err(|e| -> Box<dyn Error> {
+                            format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
+                        })
+                } else {
+                    qdrant_named_dense_search(cfg, vector, limit, filter_ref)
+                        .await
+                        .map_err(|e| -> Box<dyn Error> {
+                            format!("named dense search on '{}' failed: {e}", cfg.collection).into()
+                        })
+                }
             } else {
                 qdrant_named_dense_search(cfg, vector, limit, filter_ref)
                     .await

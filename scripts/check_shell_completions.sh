@@ -6,7 +6,7 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 "$bin" completions bash >"$tmp_dir/axon.bash"
-"$bin" completion zsh >"$tmp_dir/_axon"
+"$bin" completions zsh >"$tmp_dir/_axon"
 "$bin" completions fish >"$tmp_dir/axon.fish"
 
 grep -q 'complete -F _axon' "$tmp_dir/axon.bash"

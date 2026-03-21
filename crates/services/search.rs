@@ -6,6 +6,7 @@ use crate::crates::services::types::{
     ResearchResult, SearchOptions, SearchResult, ServiceTimeRange,
 };
 use spider_agent::{Agent, SearchOptions as SpiderSearchOptions, TimeRange, TokenUsage};
+use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -36,6 +37,16 @@ pub async fn search_results(
     if cfg.tavily_api_key.is_empty() {
         return Err("search requires TAVILY_API_KEY — set it in .env".into());
     }
+    tokio::spawn(record_query_history(
+        cfg.clone(),
+        "search",
+        query.to_string(),
+        serde_json::json!({
+            "limit": limit,
+            "offset": offset,
+            "time_range": time_range.as_ref().map(|tr| format!("{tr:?}").to_lowercase()),
+        }),
+    ));
     let mut search_opts = SpiderSearchOptions::new().with_limit((limit + offset).clamp(1, 100));
     if let Some(tr) = time_range {
         search_opts = search_opts.with_time_range(tr);
@@ -85,6 +96,17 @@ pub async fn research_payload(
     {
         return Err("research requires AXON_ACP_ADAPTER_CMD — set it in .env".into());
     }
+    tokio::spawn(record_query_history(
+        cfg.clone(),
+        "research",
+        query.to_string(),
+        serde_json::json!({
+            "limit": limit,
+            "offset": offset,
+            "time_range": time_range.as_ref().map(|tr| format!("{tr:?}").to_lowercase()),
+            "model": cfg.openai_model,
+        }),
+    ));
 
     let agent = Agent::builder()
         .with_search_tavily(&cfg.tavily_api_key)
@@ -97,12 +119,16 @@ pub async fn research_payload(
     }
     let search_results = agent.search_with_options(query, search_options).await?;
 
-    // Step 2: use Tavily's content excerpts directly — skip redundant fetch+extract
-    let extractions: Vec<serde_json::Value> = search_results
+    // Step 2: use Tavily's content excerpts directly — skip redundant fetch+extract.
+    // Compute the page slice once and reuse it for both extractions and search_results_json.
+    let page = search_results
         .results
         .iter()
         .skip(offset)
         .take(limit)
+        .collect::<Vec<_>>();
+    let extractions: Vec<serde_json::Value> = page
+        .iter()
         .map(|r| {
             serde_json::json!({
                 "url": r.url,
@@ -115,11 +141,8 @@ pub async fn research_payload(
     // Step 3: synthesize — one LLM call over the snippets
     let (summary, usage) = synthesize(query, &extractions, cfg).await;
 
-    let search_results_json = search_results
-        .results
+    let search_results_json = page
         .iter()
-        .skip(offset)
-        .take(limit)
         .map(|r| {
             serde_json::json!({
                 "position": r.position,
@@ -146,6 +169,74 @@ pub async fn research_payload(
             "total": started.elapsed().as_millis(),
         },
     }))
+}
+
+async fn record_query_history(
+    cfg: Config,
+    kind: &'static str,
+    query: String,
+    options: serde_json::Value,
+) {
+    if cfg.pg_url.trim().is_empty() {
+        return;
+    }
+    let pool = match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&cfg.pg_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            log_warn(&format!("query history db connect failed: {e}"));
+            return;
+        }
+    };
+
+    for attempt in 1..=3 {
+        let record = async {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS axon_query_history (
+                    id BIGSERIAL PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    query_text TEXT NOT NULL,
+                    options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                "#,
+            )
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_axon_query_history_kind_created_desc ON axon_query_history(kind, created_at DESC)",
+            )
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"INSERT INTO axon_query_history (kind, query_text, options_json) VALUES ($1, $2, $3)"#,
+            )
+            .bind(kind)
+            .bind(query.clone())
+            .bind(options.clone())
+            .execute(&pool)
+            .await?;
+            Ok::<(), sqlx::Error>(())
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), record).await {
+            Ok(Ok(())) => return,
+            Ok(Err(err)) => {
+                log_warn(&format!(
+                    "query history record attempt {attempt}/3 failed: {err}"
+                ));
+            }
+            Err(_) => {
+                log_warn(&format!(
+                    "query history record attempt {attempt}/3 timed out after 5s"
+                ));
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis((200 * attempt) as u64)).await;
+    }
 }
 
 /// Synthesize extracted content into a coherent summary via LLM.
@@ -212,13 +303,39 @@ async fn synthesize(
         }
         Ok(Err(e)) => {
             log_warn(&format!("synthesis failed: {e}"));
-            (None, TokenUsage::default())
+            (
+                Some(fallback_summary_from_extractions(query, extractions)),
+                TokenUsage::default(),
+            )
         }
         Err(e) => {
             log_warn(&format!("synthesis failed: {e}"));
-            (None, TokenUsage::default())
+            (
+                Some(fallback_summary_from_extractions(query, extractions)),
+                TokenUsage::default(),
+            )
         }
     }
+}
+
+fn fallback_summary_from_extractions(query: &str, extractions: &[serde_json::Value]) -> String {
+    let mut out = format!("Fallback summary for query '{query}':");
+    for extraction in extractions.iter().take(3) {
+        let title = extraction["title"].as_str().unwrap_or("untitled");
+        let snippet = extraction["extracted"]
+            .as_str()
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .take(180)
+            .collect::<String>();
+        if snippet.is_empty() {
+            out.push_str(&format!("\n- {title}"));
+        } else {
+            out.push_str(&format!("\n- {title}: {snippet}"));
+        }
+    }
+    out
 }
 
 /// Map a `Vec<serde_json::Value>` of raw search items into a typed [`SearchResult`].
@@ -394,5 +511,17 @@ mod tests {
         .await
         .expect("search_batch with empty queries should not fail");
         assert!(result.results.is_empty());
+    }
+
+    #[test]
+    fn fallback_summary_uses_extractions_when_synthesis_unavailable() {
+        let extractions = vec![json!({
+            "title": "Example Source",
+            "extracted": "Example extracted snippet text.",
+        })];
+        let summary = fallback_summary_from_extractions("test query", &extractions);
+        assert!(summary.contains("test query"));
+        assert!(summary.contains("Example Source"));
+        assert!(summary.contains("Example extracted snippet text."));
     }
 }

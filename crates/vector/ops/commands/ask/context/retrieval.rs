@@ -3,6 +3,7 @@ use super::heuristics::{
     query_requests_low_signal_sources, top_domains, url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
+use crate::crates::services::error::ServiceError;
 use crate::crates::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
@@ -30,7 +31,23 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
     let hits = qdrant::dispatch_vector_search(cfg, &vecq, query, cfg.ask_candidate_limit)
         .await
-        .map_err(|e| anyhow!("vector search dispatch: {e}"))?;
+        .map_err(|e| {
+            if cfg.ask_diagnostics {
+                let diagnostics = serde_json::json!({
+                    "stage": "ask_vector_search_dispatch",
+                    "collection": cfg.collection,
+                    "qdrant_url": cfg.qdrant_url,
+                    "query_len": query.len(),
+                    "error": e.to_string(),
+                });
+                anyhow::Error::new(ServiceError::with_diagnostics(
+                    format!("vector search dispatch: {e}"),
+                    diagnostics,
+                ))
+            } else {
+                anyhow::Error::new(ServiceError::new(format!("vector search dispatch: {e}")))
+            }
+        })?;
     let mut candidates = Vec::new();
     let mut dropped_by_allowlist = 0usize;
     for hit in hits {

@@ -23,9 +23,13 @@ pub(super) fn internal_error(msg: impl Into<String>) -> ErrorData {
 
 /// Log the raw error server-side and return a generic MCP error so internal
 /// details (DSNs, file paths, stack traces) are never forwarded to clients.
-pub(super) fn logged_internal_error(context: &str, e: impl std::fmt::Display) -> ErrorData {
+pub(super) fn logged_internal_error(
+    context: &str,
+    e: &(dyn std::error::Error + 'static),
+) -> ErrorData {
     tracing::error!("{context}: {e}");
-    internal_error(format!("{context} failed"))
+    let diagnostics = crate::crates::services::error::diagnostics_from_error(e).cloned();
+    ErrorData::internal_error(format!("{context} failed"), diagnostics)
 }
 
 // --- URL validation wrappers ---

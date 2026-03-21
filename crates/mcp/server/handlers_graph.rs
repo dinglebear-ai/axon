@@ -22,7 +22,7 @@ impl AxonMcpServer {
                 }
                 let result = graph_svc::graph_build(self.cfg.as_ref(), url, domain, all)
                     .await
-                    .map_err(|e| logged_internal_error("graph.build", e))?;
+                    .map_err(|e| logged_internal_error("graph.build", e.as_ref()))?;
                 let stem = url
                     .map(|value| format!("graph-build-{}", slugify(value, 56)))
                     .or_else(|| domain.map(|value| format!("graph-build-{}", slugify(value, 56))))
@@ -32,7 +32,7 @@ impl AxonMcpServer {
             GraphSubaction::Status => {
                 let result = graph_svc::graph_status(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("graph.status", e))?;
+                    .map_err(|e| logged_internal_error("graph.status", e.as_ref()))?;
                 respond_with_mode(
                     "graph",
                     "status",
@@ -48,7 +48,9 @@ impl AxonMcpServer {
                     .ok_or_else(|| invalid_params("graph explore requires entity"))?;
                 let result = graph_svc::graph_explore(self.cfg.as_ref(), &entity)
                     .await
-                    .map_err(|e| logged_internal_error(&format!("graph.explore '{entity}'"), e))?;
+                    .map_err(|e| {
+                        logged_internal_error(&format!("graph.explore '{entity}'"), e.as_ref())
+                    })?;
                 respond_with_mode(
                     "graph",
                     "explore",
@@ -61,7 +63,7 @@ impl AxonMcpServer {
             GraphSubaction::Stats => {
                 let result = graph_svc::graph_stats(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("graph.stats", e))?;
+                    .map_err(|e| logged_internal_error("graph.stats", e.as_ref()))?;
                 respond_with_mode(
                     "graph",
                     "stats",

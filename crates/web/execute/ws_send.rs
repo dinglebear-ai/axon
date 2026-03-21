@@ -90,6 +90,7 @@ pub(super) async fn send_error_dual(
         ctx: context.clone(),
         payload: CommandErrorPayload {
             message,
+            diagnostics: None,
             elapsed_ms,
         },
     }) {

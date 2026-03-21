@@ -1,4 +1,6 @@
-use super::super::cli::{Cli, CliCommand, RefreshScheduleSubcommand, RefreshSubcommand};
+use super::super::cli::{
+    Cli, CliCommand, ExportSubcommand, RefreshScheduleSubcommand, RefreshSubcommand,
+};
 use super::super::types::{
     CommandKind, Config, EvaluateResponsesMode, McpTransport, RedditSort, RedditTime,
 };
@@ -57,8 +59,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_project = None;
     let mut serve_port = 49000u16;
     let mut mcp_transport = None;
-    let mut export_no_urls = false;
-    let mut export_url_limit = 100_000usize;
+    let mut export_include_history = false;
+    let mut export_verify_input = None;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
         CliCommand::Crawl(args) => (
@@ -137,7 +139,10 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ),
         CliCommand::Debug(args) => (CommandKind::Debug, args.value),
         CliCommand::Doctor => (CommandKind::Doctor, Vec::new()),
-        CliCommand::Query(args) => (CommandKind::Query, args.value),
+        CliCommand::Query(args) => {
+            ask_diagnostics = args.diagnostics;
+            (CommandKind::Query, args.value)
+        }
         CliCommand::Retrieve(args) => (
             CommandKind::Retrieve,
             args.value.into_iter().collect::<Vec<String>>(),
@@ -222,8 +227,10 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
         CliCommand::Export(args) => {
-            export_no_urls = args.no_urls;
-            export_url_limit = args.url_limit;
+            export_include_history = args.include_history;
+            if let Some(ExportSubcommand::Verify { file }) = args.action {
+                export_verify_input = Some(file);
+            }
             (CommandKind::Export, Vec::new())
         }
     };
@@ -288,8 +295,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         exclude_path_prefix: normalized_excludes.prefixes,
         output_dir: global.output_dir,
         output_path: global.output,
-        export_no_urls,
-        export_url_limit,
+        export_include_history,
+        export_verify_input,
         render_mode: global.render_mode,
         chrome_remote_url: global
             .chrome_remote_url
@@ -394,7 +401,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         acp_adapter_cmd: env::var("AXON_ACP_ADAPTER_CMD")
             .ok()
             .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty()),
+            .filter(|v| !v.is_empty())
+            .or_else(|| Some("codex-acp".to_string())),
         acp_adapter_args: env::var("AXON_ACP_ADAPTER_ARGS")
             .ok()
             .map(|v| v.trim().to_string())
@@ -415,10 +423,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .unwrap_or(4),
         graph_llm_url: env::var("AXON_GRAPH_LLM_URL")
             .ok()
+            .map(normalize_local_service_url)
             .unwrap_or_else(|| "http://localhost:11434".to_string()),
         graph_llm_model: env::var("AXON_GRAPH_LLM_MODEL")
             .ok()
-            .unwrap_or_else(|| "qwen3.5:2b".to_string()),
+            .unwrap_or_else(|| "qwen3.5:4b".to_string()),
         graph_similarity_threshold: env::var("AXON_GRAPH_SIMILARITY_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -684,5 +693,39 @@ mod tests {
             cfg.tei_url,
             normalize_local_service_url("http://axon-tei:80".to_string())
         );
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_normalizes_graph_llm_url_like_other_services() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const GRAPH_LLM_URL: &str = "AXON_GRAPH_LLM_URL";
+
+        unsafe {
+            env::set_var(GRAPH_LLM_URL, "http://axon-ollama:11434");
+        }
+
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "status",
+        ]);
+        let cfg = into_config(cli).expect("status config should parse");
+        if std::path::Path::new("/.dockerenv").exists() {
+            assert_eq!(cfg.graph_llm_url, "http://axon-ollama:11434/");
+        } else {
+            let parsed = spider::url::Url::parse(&cfg.graph_llm_url).expect("valid graph llm url");
+            assert_eq!(parsed.host_str(), Some("127.0.0.1"));
+            assert_eq!(parsed.port(), Some(11434));
+        }
+
+        unsafe {
+            env::remove_var(GRAPH_LLM_URL);
+        }
     }
 }

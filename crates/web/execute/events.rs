@@ -25,6 +25,8 @@ pub struct CommandDonePayload {
 pub struct CommandErrorPayload {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub elapsed_ms: Option<u64>,
 }
 

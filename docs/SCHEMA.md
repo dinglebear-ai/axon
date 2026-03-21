@@ -53,6 +53,31 @@ Tables are auto-created on first worker/command start via `CREATE TABLE IF NOT E
 | `result_json` | JSONB | NULL | — | Embedding results (chunk count, point IDs) |
 | `config_json` | JSONB | NOT NULL | — | Serialized job configuration |
 
+## axon_graph_jobs
+
+Tracks graph extraction jobs that read indexed chunks from Qdrant and write graph entities/relationships into Neo4j.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | — | Primary key, job identifier |
+| `url` | TEXT | NOT NULL | — | Source document URL used to retrieve chunks from Qdrant |
+| `status` | TEXT | NOT NULL | `'pending'` | `pending` / `running` / `completed` / `failed` / `canceled` (CHECK constraint) |
+| `chunk_count` | INTEGER | NULL | `0` | Number of chunks processed for the URL |
+| `entity_count` | INTEGER | NULL | `0` | Number of entities written/updated |
+| `relation_count` | INTEGER | NULL | `0` | Number of relationships written/updated |
+| `result_json` | JSONB | NULL | — | Graph extraction summary payload |
+| `config_json` | JSONB | NULL | — | Job config payload (e.g., source type) |
+| `error_text` | TEXT | NULL | — | Error message on failure |
+| `created_at` | TIMESTAMPTZ | NULL | `NOW()` | Job creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NULL | `NOW()` | Last status change or heartbeat touch |
+| `started_at` | TIMESTAMPTZ | NULL | — | When worker began processing |
+| `finished_at` | TIMESTAMPTZ | NULL | — | When job completed/failed/canceled |
+
+**Indexes:**
+- `idx_graph_jobs_status` on `status`
+- `idx_graph_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_graph_jobs_url` on `url`
+
 ## axon_ingest_jobs
 
 This table differs structurally from the other four: it uses `source_type` and `target` to identify the ingest target rather than a `url` or `urls_json` column. The `source_type` discriminator routes processing to the correct ingest backend (GitHub API, Reddit OAuth2, yt-dlp).
@@ -89,6 +114,7 @@ This table differs structurally from the other four: it uses `source_type` and `
 | `axon_crawl_jobs` | `url TEXT NOT NULL` | Single crawl seed URL |
 | `axon_extract_jobs` | `urls_json JSONB NOT NULL` | Array of URLs |
 | `axon_embed_jobs` | `input_text TEXT NOT NULL` | File path, URL, or raw text |
+| `axon_graph_jobs` | `url TEXT NOT NULL` + counters | Graph extraction stats per URL |
 | `axon_ingest_jobs` | `source_type TEXT` + `target TEXT` | Discriminated source type + typed target |
 
 ## axon_refresh_jobs

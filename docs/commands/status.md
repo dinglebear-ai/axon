@@ -1,7 +1,7 @@
 # axon status
-Last Modified: 2026-03-03
+Last Modified: 2026-03-20
 
-Show local job state across crawl, extract, embed, ingest, and refresh queues.
+Show local job state across crawl, extract, embed, ingest, refresh, and graph queues.
 
 ## Synopsis
 
@@ -17,6 +17,8 @@ All global flags apply. Key flags for this command:
 |------|---------|-------------|
 | `--json` | `false` | Print machine-readable JSON status payload. |
 | `--reclaimed` | `false` | Show only watchdog-reclaimed stale-running failures. |
+| `--active` | `false` | Show only active jobs (pending/running). |
+| `--recent` | `false` | Show active + completed jobs (hide failed/canceled). |
 
 ## Output
 
@@ -27,6 +29,7 @@ Human output prints grouped sections and status breakdowns for:
 - Embeds
 - Ingests
 - Extracts
+- Graph
 
 JSON output shape:
 
@@ -36,7 +39,8 @@ JSON output shape:
   "local_extract_jobs": [...],
   "local_embed_jobs": [...],
   "local_ingest_jobs": [...],
-  "local_refresh_jobs": [...]
+  "local_refresh_jobs": [...],
+  "local_graph_jobs": [...]
 }
 ```
 
@@ -57,4 +61,5 @@ axon status --reclaimed --json
 
 - `status` loads up to 20 recent jobs per queue family.
 - By default, watchdog-reclaimed failures are hidden. `--reclaimed` flips to reclaimed-only mode.
+- `--active` and `--recent` apply to graph jobs as well as other job families.
 - This command is read-only and does not enqueue or mutate jobs.

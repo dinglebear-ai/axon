@@ -1,5 +1,34 @@
 # Changelog
-Last Modified: 2026-03-20 (session: v0.28.0 — Pulse shell UI, web server utilities, MCP/core refactoring)
+Last Modified: 2026-03-20 (session: v0.29.0 — export service v3, hybrid search, graph worker, query diagnostics)
+
+## [0.29.0] — feat/pulse-shell-and-hybrid-search
+
+This section documents commits on `feat/pulse-shell-and-hybrid-search` since v0.28.0.
+
+### Highlights
+
+- **Export service v3** — `crates/services/export.rs` rebuilt with schema versioning (`EXPORT_SCHEMA_VERSION=3`), SHA-256 integrity checks, `ExportMetadata`/`ExportIntegrity` types, seed tracking (`GithubSeedExport`, `QuerySeedExport`, `ScrapeSeedExport`), watch export, settings snapshot, and a `verify` path (`ExportVerifyReport`/`ExportVerifyMismatch`). New `migrations/003_export_seed_tracking.sql` and golden test `tests/export_schema_v3_golden.rs`.
+- **Hybrid search enhancements** — `qdrant_facet_filtered` added to `client.rs` (parameterised filter support); `commands.rs` wired for query diagnostics; `tests/query_diagnostics_error_contract.rs` validates the error contract.
+- **Query / retrieval improvements** — `crates/services/query.rs` (+73 lines) and `crates/services/search.rs` (+145 lines) expanded for hybrid search service wiring; `crates/vector/ops/commands/query.rs` and `ask/context/retrieval.rs` updated.
+- **Graph worker s6 service** — `docker/s6/s6-rc.d/graph-worker/` and `contents.d/graph-worker` added; graph worker now runs as a managed s6 service alongside crawl/embed/extract workers.
+- **Services layer** — `crates/services/scrape.rs` extracted as a dedicated module (+71 lines); `crates/services/error.rs` added; `crates/services.rs` re-export updated; `services/acp/bridge.rs` expanded (+90 lines) for richer ACP session lifecycle.
+- **MCP handler improvements** — All six handler files updated for cleaner URL validation, job-ID parsing, and error propagation; `schema.rs` minor correction; `handlers_system/screenshot.rs` cleaned.
+- **Config parse** — `build_config.rs` (+63 lines) adds new fields; `cli.rs` (+48 lines) expands CLI flags; `config.rs`/`config_impls.rs` updated with new defaults.
+- **Docs** — `docs/EXPORT.md`, `docs/GRAPH.md`, `docs/RESTORE.md`, `docs/commands/README.md`, `docs/commands/export.md`, `docs/commands/graph.md` added; `docs/MCP.md`, `docs/MCP-TOOL-SCHEMA.md`, `docs/SCHEMA.md`, `docs/JOB-LIFECYCLE.md` updated.
+- **Deleted stale plans** — Seven completed superpowers plan docs removed (`2026-03-10` through `2026-03-13`).
+
+### Commits since v0.28.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat | export service v3, hybrid search, graph worker, query diagnostics, docs |
+| ebd54a66 | fix | address PR review thread 13 — clarify AXON_ACP_ADAPTER_CMD in README |
+| ba913374 | fix | address PR review threads 1,4,5,6,10,14 — Rust security and correctness |
+| e1845e27 | fix(copilot) | remove unused type import, use direct re-export for CopilotStreamEvent |
+| eef95ee6 | fix | address PR review threads 2,3,7,8,9,11,15,16 — TS/web security and correctness |
+| d24f3ea2 | feat(web) | Pulse shell UI, web server utilities, MCP/core refactoring, logging fixes |
+
+---
 
 ## [0.28.0] — feat/pulse-shell-and-hybrid-search
 

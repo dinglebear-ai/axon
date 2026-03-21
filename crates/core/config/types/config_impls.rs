@@ -23,8 +23,8 @@ impl Default for Config {
             exclude_path_prefix: Vec::new(),
             output_dir: PathBuf::from(".cache/axon-rust/output"),
             output_path: None,
-            export_no_urls: false,
-            export_url_limit: 100_000,
+            export_include_history: false,
+            export_verify_input: None,
             render_mode: RenderMode::AutoSwitch,
             chrome_remote_url: None,
             chrome_proxy: None,
@@ -87,7 +87,7 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
-            acp_adapter_cmd: None,
+            acp_adapter_cmd: Some("codex-acp".to_string()),
             acp_adapter_args: None,
             acp_prewarm: true,
             tavily_api_key: String::new(),
@@ -97,7 +97,7 @@ impl Default for Config {
             graph_queue: "axon.graph.jobs".to_string(),
             graph_concurrency: 4,
             graph_llm_url: "http://localhost:11434".to_string(),
-            graph_llm_model: "qwen3.5:2b".to_string(),
+            graph_llm_model: "qwen3.5:4b".to_string(),
             graph_similarity_threshold: 0.75,
             graph_similarity_limit: 20,
             graph_context_max_chars: 2_000,
@@ -198,8 +198,8 @@ impl fmt::Debug for Config {
             .field("exclude_path_prefix", &self.exclude_path_prefix)
             .field("output_dir", &self.output_dir)
             .field("output_path", &self.output_path)
-            .field("export_no_urls", &self.export_no_urls)
-            .field("export_url_limit", &self.export_url_limit)
+            .field("export_include_history", &self.export_include_history)
+            .field("export_verify_input", &self.export_verify_input)
             .field("render_mode", &self.render_mode)
             .field("chrome_remote_url", &self.chrome_remote_url)
             .field("chrome_proxy", &self.chrome_proxy)

@@ -93,66 +93,92 @@ pub(super) async fn collection_init_or_cached(
 /// Used by search-only paths (query/ask) where `collection_init_or_cached` may not
 /// have been called yet. Checks cache first; falls back to a GET if not cached.
 ///
-/// # Degradation policy
-/// If Qdrant is unreachable or returns a non-2xx response, falls back to
-/// `VectorMode::Unnamed` (dense-only search) rather than propagating an error.
-/// This is a deliberate degradation choice: a transient connection failure causes
-/// silent fallback to legacy search rather than a hard query failure.
+/// # Failure policy
+/// If Qdrant is unreachable, returns a non-2xx response, or returns malformed JSON,
+/// this function returns an error instead of guessing a mode. Guessing `Unnamed`
+/// on probe failures can misroute Named collections to `/points/search`, which
+/// Qdrant rejects.
 pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode, Box<dyn Error>> {
     if let Some(mode) = cached_vector_mode(&cfg.collection) {
         return Ok(mode);
     }
     let client = http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
-
-    // Transport error (connection refused, timeout) -> degrade to Unnamed but do NOT cache.
-    // Caching here would permanently downgrade hybrid search for the process lifetime
-    // on a transient failure.
-    let resp = match client.get(&url).send().await {
-        Ok(r) => r,
-        Err(e) => {
-            log_warn(&format!(
-                "qdrant unreachable for collection '{}', degrading to dense-only (not cached): {e}",
-                cfg.collection
-            ));
-            return Ok(VectorMode::Unnamed);
+    const MODE_PROBE_MAX_ATTEMPTS: usize = 3;
+    let mut resp = None;
+    let mut last_transport_error = None;
+    for attempt in 1..=MODE_PROBE_MAX_ATTEMPTS {
+        match client.get(&url).send().await {
+            Ok(r) => {
+                let status = r.status();
+                let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if retryable && attempt < MODE_PROBE_MAX_ATTEMPTS {
+                    let backoff_ms = 150u64 * (1u64 << (attempt - 1));
+                    log_warn(&format!(
+                        "qdrant mode probe retrying collection='{}' status={} attempt={}/{} backoff_ms={}",
+                        cfg.collection, status, attempt, MODE_PROBE_MAX_ATTEMPTS, backoff_ms
+                    ));
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+                resp = Some(r);
+                break;
+            }
+            Err(e) => {
+                last_transport_error = Some(e.to_string());
+                if attempt < MODE_PROBE_MAX_ATTEMPTS {
+                    let backoff_ms = 150u64 * (1u64 << (attempt - 1));
+                    log_warn(&format!(
+                        "qdrant mode probe transport retry collection='{}' attempt={}/{} backoff_ms={} err={}",
+                        cfg.collection, attempt, MODE_PROBE_MAX_ATTEMPTS, backoff_ms, e
+                    ));
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+            }
         }
+    }
+
+    let Some(resp) = resp else {
+        return Err(format!(
+            "qdrant mode probe failed for collection '{}' after {} attempts: {}",
+            cfg.collection,
+            MODE_PROBE_MAX_ATTEMPTS,
+            last_transport_error.unwrap_or_else(|| "transport error".to_string())
+        )
+        .into());
     };
 
     let status = resp.status();
 
-    // 404 -> collection doesn't exist yet -> return Unnamed but do NOT cache.
-    // In long-lived processes (serve/MCP), the collection may be created later.
-    // Caching here would permanently skip mode detection after the collection
-    // is created, leaving hybrid search disabled for the process lifetime.
+    // 404 -> explicit not-found error.
+    // Do not silently assume Unnamed mode; callers need a clear operator signal.
     if status == StatusCode::NOT_FOUND {
-        log_debug(&format!(
-            "qdrant collection '{}' not found (404), returning Unnamed (not cached)",
+        return Err(format!(
+            "qdrant mode probe returned 404 for collection '{}': collection not found",
             cfg.collection
-        ));
-        return Ok(VectorMode::Unnamed);
+        )
+        .into());
     }
 
-    // Non-2xx (except 404 handled above) -> degrade but do NOT cache.
-    // 401/403 = misconfiguration; 500/503 = transient server error -- neither should
-    // poison the cache for the entire process lifetime.
+    // Non-2xx (except 404 handled above) -> fail explicitly.
     if !status.is_success() {
-        log_warn(&format!(
-            "qdrant returned {} for collection '{}', degrading to dense-only (not cached)",
+        return Err(format!(
+            "qdrant mode probe returned {} for collection '{}'",
             status, cfg.collection
-        ));
-        return Ok(VectorMode::Unnamed);
+        )
+        .into());
     }
 
     // HTTP 200 -> parse and cache the authoritative mode.
     let mode = match resp.json::<serde_json::Value>().await {
         Ok(body) => detect_vector_mode(&body),
         Err(e) => {
-            log_warn(&format!(
-                "qdrant malformed JSON for collection '{}', degrading to dense-only (not cached): {e}",
+            return Err(format!(
+                "qdrant mode probe returned malformed JSON for collection '{}': {e}",
                 cfg.collection
-            ));
-            return Ok(VectorMode::Unnamed);
+            )
+            .into());
         }
     };
     cache_vector_mode(&cfg.collection, mode);

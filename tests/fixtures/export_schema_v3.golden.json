@@ -1,0 +1,96 @@
+{
+  "version": 3,
+  "exported_at": "2026-03-21T00:00:00Z",
+  "collection": "cortex",
+  "metadata": {
+    "schema_version": 3,
+    "generated_by": "axon",
+    "generated_by_version": "0.0.0-test",
+    "history_included": false
+  },
+  "settings_snapshot": {
+    "collection": "cortex",
+    "performance_profile": "high-stable",
+    "render_mode": "auto-switch",
+    "max_pages": 0,
+    "max_depth": 5,
+    "include_subdomains": false,
+    "respect_robots": false,
+    "min_markdown_chars": 200,
+    "drop_thin_markdown": true,
+    "discover_sitemaps": true,
+    "sitemap_since_days": 0,
+    "request_timeout_ms": null,
+    "fetch_retries": 2,
+    "retry_backoff_ms": 250,
+    "batch_concurrency": 16,
+    "crawl_queue": "axon.crawl.jobs",
+    "extract_queue": "axon.extract.jobs",
+    "embed_queue": "axon.embed.jobs",
+    "ingest_queue": "axon.ingest.jobs",
+    "graph_queue": "axon.graph.jobs"
+  },
+  "integrity": {
+    "counts": {
+      "crawl_seed_urls": 0,
+      "scrape_urls": 0,
+      "scrape_requests": 0,
+      "github_repos": 0,
+      "github_requests": 0,
+      "reddit_targets": 0,
+      "youtube_targets": 0,
+      "session_targets": 0,
+      "local_paths": 0,
+      "extraction_requests": 0,
+      "search_requests": 0,
+      "research_requests": 0
+    },
+    "hashes": {
+      "crawl_seed_urls": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "scrape_urls": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "github_repos": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "reddit_targets": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "youtube_targets": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "session_targets": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "local_paths": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "search_queries": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "research_queries": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "rebuild_seeds": {
+    "crawl_seed_urls": [],
+    "scrape_urls": [],
+    "scrape_requests": [],
+    "github_repos": [],
+    "github_requests": [],
+    "reddit_targets": [],
+    "youtube_targets": [],
+    "session_targets": [],
+    "local_paths": [],
+    "extraction_requests": [],
+    "search_requests": [],
+    "research_requests": [],
+    "search_queries": [],
+    "research_queries": []
+  },
+  "crawls": [],
+  "scrapes": [],
+  "extractions": [],
+  "embeds": [],
+  "ingests": {
+    "github": [],
+    "reddit": [],
+    "youtube": [],
+    "sessions": []
+  },
+  "refreshes": {
+    "schedules": [],
+    "jobs": []
+  },
+  "watches": [],
+  "qdrant_summary": {
+    "total_points": 0,
+    "source_type_counts": {},
+    "domain_counts": {}
+  }
+}

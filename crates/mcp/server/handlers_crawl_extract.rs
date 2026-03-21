@@ -23,7 +23,7 @@ impl AxonMcpServer {
         validate_mcp_urls(&urls)?;
         let result = crawl_svc::crawl_start(cfg, &urls, None)
             .await
-            .map_err(|e| logged_internal_error("crawl.start", e))?;
+            .map_err(|e| logged_internal_error("crawl.start", e.as_ref()))?;
         let job_ids = result.job_ids;
         let output_dir = result.output_dir;
         let predicted_paths = result.predicted_paths;
@@ -62,7 +62,7 @@ impl AxonMcpServer {
         let offset = parse_offset(offset);
         let jobs = crawl_svc::crawl_list(cfg, limit, i64::try_from(offset).unwrap_or(i64::MAX))
             .await
-            .map_err(|e| logged_internal_error("crawl.list", e))?;
+            .map_err(|e| logged_internal_error("crawl.list", e.as_ref()))?;
         respond_with_mode(
             "crawl",
             "list",
@@ -91,7 +91,7 @@ impl AxonMcpServer {
         }
         let result = extract_svc::extract_start(&cfg, &urls, None)
             .await
-            .map_err(|e| logged_internal_error("extract.start", e))?;
+            .map_err(|e| logged_internal_error("extract.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "extract",
             "start",
@@ -113,7 +113,7 @@ impl AxonMcpServer {
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
         .await
-        .map_err(|e| logged_internal_error("extract.list", e))?;
+        .map_err(|e| logged_internal_error("extract.list", e.as_ref()))?;
         respond_with_mode(
             "extract",
             "list",
@@ -136,7 +136,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let result = crawl_svc::crawl_status(&cfg, id)
                     .await
-                    .map_err(|e| logged_internal_error("crawl.status", e))?;
+                    .map_err(|e| logged_internal_error("crawl.status", e.as_ref()))?;
                 let output_files = result.output_files;
                 Ok(AxonToolResponse::ok(
                     "crawl",
@@ -151,7 +151,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let canceled = crawl_svc::crawl_cancel(&cfg, id)
                     .await
-                    .map_err(|e| logged_internal_error("crawl.cancel", e))?;
+                    .map_err(|e| logged_internal_error("crawl.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "crawl",
                     "cancel",
@@ -165,7 +165,7 @@ impl AxonMcpServer {
             CrawlSubaction::Cleanup => {
                 let deleted = crawl_svc::crawl_cleanup(&cfg)
                     .await
-                    .map_err(|e| logged_internal_error("crawl.cleanup", e))?;
+                    .map_err(|e| logged_internal_error("crawl.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "crawl",
                     "cleanup",
@@ -175,7 +175,7 @@ impl AxonMcpServer {
             CrawlSubaction::Clear => {
                 let deleted = crawl_svc::crawl_clear(&cfg)
                     .await
-                    .map_err(|e| logged_internal_error("crawl.clear", e))?;
+                    .map_err(|e| logged_internal_error("crawl.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "crawl",
                     "clear",
@@ -185,7 +185,7 @@ impl AxonMcpServer {
             CrawlSubaction::Recover => {
                 let recovered = crawl_svc::crawl_recover(&cfg)
                     .await
-                    .map_err(|e| logged_internal_error("crawl.recover", e))?;
+                    .map_err(|e| logged_internal_error("crawl.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "crawl",
                     "recover",
@@ -209,7 +209,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let job = extract_svc::extract_status(self.cfg.as_ref(), id)
                     .await
-                    .map_err(|e| logged_internal_error("extract.status", e))?;
+                    .map_err(|e| logged_internal_error("extract.status", e.as_ref()))?;
                 respond_with_mode(
                     "extract",
                     "status",
@@ -223,7 +223,7 @@ impl AxonMcpServer {
                 let id = parse_job_id(req.job_id.as_deref())?;
                 let canceled = extract_svc::extract_cancel(self.cfg.as_ref(), id)
                     .await
-                    .map_err(|e| logged_internal_error("extract.cancel", e))?;
+                    .map_err(|e| logged_internal_error("extract.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "extract",
                     "cancel",
@@ -237,7 +237,7 @@ impl AxonMcpServer {
             ExtractSubaction::Cleanup => {
                 let deleted = extract_svc::extract_cleanup(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("extract.cleanup", e))?;
+                    .map_err(|e| logged_internal_error("extract.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "extract",
                     "cleanup",
@@ -247,7 +247,7 @@ impl AxonMcpServer {
             ExtractSubaction::Clear => {
                 let deleted = extract_svc::extract_clear(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("extract.clear", e))?;
+                    .map_err(|e| logged_internal_error("extract.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "extract",
                     "clear",
@@ -257,7 +257,7 @@ impl AxonMcpServer {
             ExtractSubaction::Recover => {
                 let recovered = extract_svc::extract_recover(self.cfg.as_ref())
                     .await
-                    .map_err(|e| logged_internal_error("extract.recover", e))?;
+                    .map_err(|e| logged_internal_error("extract.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "extract",
                     "recover",

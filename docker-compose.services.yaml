@@ -199,6 +199,21 @@ services:
       retries: 6
       start_period: 20s
 
+  axon-ollama:
+    <<: *common-service
+    image: ollama/ollama:latest
+    container_name: axon-ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ${AXON_DATA_DIR:-./data}/axon/ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
 networks:
   axon:
     driver: bridge

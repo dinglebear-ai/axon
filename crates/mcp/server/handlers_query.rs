@@ -39,7 +39,7 @@ impl AxonMcpServer {
 
         let result = query_svc::query(&cfg, &query, pagination)
             .await
-            .map_err(|e| logged_internal_error(&format!("query '{query}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("query '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "query",
@@ -67,7 +67,7 @@ impl AxonMcpServer {
         let opts = to_retrieve_options(req.max_points);
         let result = query_svc::retrieve(self.cfg.as_ref(), &target, opts)
             .await
-            .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
         // chunks is a Vec<Value> of 0 or 1 items; the actual Qdrant point count
         // lives inside result.chunks[0]["chunk_count"], not in Vec::len().
         let chunk_count = result
@@ -108,7 +108,7 @@ impl AxonMcpServer {
         let (limit, offset) = (map_opts.limit, map_opts.offset);
         let result = map_svc::discover(self.cfg.as_ref(), &url, map_opts, None)
             .await
-            .map_err(|e| logged_internal_error(&format!("map '{url}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("map '{url}'"), e.as_ref()))?;
         let payload = result.payload;
         let urls: Vec<String> = payload["urls"]
             .as_array()
@@ -164,7 +164,7 @@ impl AxonMcpServer {
         let (limit, offset) = (opts.limit, opts.offset);
         let result = search_svc::search(self.cfg.as_ref(), &query, opts, None)
             .await
-            .map_err(|e| logged_internal_error(&format!("search '{query}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "search",
@@ -210,7 +210,7 @@ impl AxonMcpServer {
 
         let result = scrape_svc::scrape(&cfg, &url)
             .await
-            .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e.as_ref()))?;
         respond_with_mode(
             "scrape",
             "scrape",
@@ -246,7 +246,7 @@ impl AxonMcpServer {
 
         let result = search_svc::research(self.cfg.as_ref(), &query, opts, None)
             .await
-            .map_err(|e| logged_internal_error(&format!("research '{query}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("research '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "research",
@@ -283,7 +283,7 @@ impl AxonMcpServer {
 
         let result = query_svc::ask(&cfg, &query, None)
             .await
-            .map_err(|e| logged_internal_error(&format!("ask '{query}'"), e))?;
+            .map_err(|e| logged_internal_error(&format!("ask '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "ask",

@@ -29,6 +29,7 @@ docker/
         ├── extract-worker/
         ├── embed-worker/
         ├── ingest-worker/
+        ├── graph-worker/
         ├── web-server/
         └── user/
             └── contents.d/   # Lists which services are in the user bundle

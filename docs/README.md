@@ -1,10 +1,13 @@
 # docs/
-Last Modified: 2026-02-25
+Last Modified: 2026-03-20
 
 Documentation index for Axon.
 
 ## Core Docs
 - [Architecture](./ARCHITECTURE.md)
+- [Export Backup Contract](./EXPORT.md)
+- [Restore Guide](./RESTORE.md)
+- [Graph Features](./GRAPH.md)
 - [Feature Delivery Framework](./FEATURE-DELIVERY-FRAMEWORK.md)
 - [API](./API.md)
 - [Deployment](./DEPLOYMENT.md)
@@ -23,7 +26,7 @@ Documentation index for Axon.
 - [MCP Tool Schema](./MCP-TOOL-SCHEMA.md)
 
 ## Guide Directories
-- [`commands/`](./commands)
+- [Command Reference](./commands/README.md)
 - [`ingest/`](./ingest)
 
 ## Working Directories

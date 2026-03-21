@@ -207,7 +207,7 @@ impl AxonMcpServer {
         // Head / Grep / Wc / Read — all need the file text
         let path = validate_artifact_path(raw_path).await?;
         let text = tokio::fs::read_to_string(&path).await.map_err(|e| {
-            logged_internal_error(&format!("artifacts read '{}'", path.display()), e)
+            logged_internal_error(&format!("artifacts read '{}'", path.display()), &e)
         })?;
 
         match req.subaction {
@@ -311,7 +311,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::doctor(self.cfg.as_ref())
             .await
-            .map_err(|e| logged_internal_error("doctor", e))?;
+            .map_err(|e| logged_internal_error("doctor", e.as_ref()))?;
         respond_with_mode("doctor", "doctor", response_mode, "doctor", result.payload).await
     }
 
@@ -323,7 +323,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::domains(self.cfg.as_ref(), pagination)
             .await
-            .map_err(|e| logged_internal_error("domains", e))?;
+            .map_err(|e| logged_internal_error("domains", e.as_ref()))?;
         let payload = serde_json::json!({
             "limit": result.limit,
             "offset": result.offset,
@@ -343,7 +343,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::sources(self.cfg.as_ref(), pagination)
             .await
-            .map_err(|e| logged_internal_error("sources", e))?;
+            .map_err(|e| logged_internal_error("sources", e.as_ref()))?;
         let payload = serde_json::json!({
             "count": result.count,
             "limit": result.limit,
@@ -360,7 +360,7 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let result = system::stats(self.cfg.as_ref())
             .await
-            .map_err(|e| logged_internal_error("stats", e))?;
+            .map_err(|e| logged_internal_error("stats", e.as_ref()))?;
         respond_with_mode("stats", "stats", response_mode, "stats", result.payload).await
     }
 
@@ -370,17 +370,16 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let pool = make_pool(self.cfg.as_ref())
             .await
-            .map_err(|e| logged_internal_error("export pool", e))?;
+            .map_err(|e| logged_internal_error("export pool", e.as_ref()))?;
         let options = export::ExportOptions {
-            include_urls: req.include_urls.unwrap_or(true),
-            url_limit: req.url_limit.unwrap_or(100_000),
+            include_history: req.include_history.unwrap_or(false),
             statuses: vec![],
         };
         let manifest = export::export_manifest(self.cfg.as_ref(), &pool, &options)
             .await
-            .map_err(|e| logged_internal_error("export", e))?;
+            .map_err(|e| logged_internal_error("export", e.as_ref()))?;
         let payload =
-            serde_json::to_value(manifest).map_err(|e| logged_internal_error("export", e))?;
+            serde_json::to_value(manifest).map_err(|e| logged_internal_error("export", &e))?;
         respond_with_mode("export", "export", req.response_mode, "export", payload).await
     }
 }

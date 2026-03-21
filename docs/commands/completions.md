@@ -7,7 +7,6 @@ Generate shell completion scripts for `axon`.
 
 ```bash
 axon completions <bash|zsh|fish>
-axon completion <bash|zsh|fish>
 ```
 
 ## Examples

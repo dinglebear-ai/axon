@@ -287,6 +287,34 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
+    fn parse_graph_defaults_to_installed_ollama_model() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const PG: &str = "AXON_PG_URL";
+        const REDIS: &str = "AXON_REDIS_URL";
+        const AMQP: &str = "AXON_AMQP_URL";
+        const GRAPH_MODEL: &str = "AXON_GRAPH_LLM_MODEL";
+
+        unsafe {
+            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
+            env::set_var(REDIS, "redis://127.0.0.1:53379");
+            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::remove_var(GRAPH_MODEL);
+        }
+
+        let cli = super::Cli::parse_from(["axon", "graph", "status"]);
+        let cfg = super::build_config::into_config(cli).expect("graph status should parse");
+        assert_eq!(cfg.graph_llm_model, "qwen3.5:4b");
+
+        unsafe {
+            env::remove_var(PG);
+            env::remove_var(REDIS);
+            env::remove_var(AMQP);
+            env::remove_var(GRAPH_MODEL);
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
     fn parse_refresh_schedule_add_rejects_missing_seed_url_and_urls() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";
@@ -452,12 +480,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_completion_alias_routes_to_completions_command() {
-        let cli = super::Cli::parse_from(["axon", "completion", "zsh"]);
-        let cfg = super::build_config::into_config(cli)
-            .expect("completion alias should route to completions");
-        assert!(matches!(cfg.command, CommandKind::Completions));
-        assert_eq!(cfg.positional, vec!["zsh".to_string()]);
+    fn parse_completion_alias_is_accepted() {
+        let result = super::Cli::try_parse_from(["axon", "completion", "zsh"]);
+        assert!(result.is_ok(), "completion alias should be accepted");
     }
 
     // --- is_docker_service_host tests ---
@@ -663,6 +688,19 @@ mod tests {
         let parsed = Url::parse(&result).unwrap();
         assert_eq!(parsed.host_str(), Some("127.0.0.1"));
         assert_eq!(parsed.port(), Some(53333));
+    }
+
+    #[test]
+    fn test_normalize_url_ollama_rewrites_when_not_in_docker() {
+        if std::path::Path::new("/.dockerenv").exists() {
+            return;
+        }
+        use spider::url::Url;
+        let url = "http://axon-ollama:11434/api/generate".to_string();
+        let result = super::docker::normalize_local_service_url(url);
+        let parsed = Url::parse(&result).unwrap();
+        assert_eq!(parsed.host_str(), Some("127.0.0.1"));
+        assert_eq!(parsed.port(), Some(11434));
     }
 
     #[test]

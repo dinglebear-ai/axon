@@ -170,7 +170,7 @@ async fn ensure_collection_is_idempotent() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// -- get_or_fetch_vector_mode: 401/403 must NOT be cached --
+// -- get_or_fetch_vector_mode: probe failures must return Err and must NOT be cached --
 
 #[tokio::test]
 async fn get_or_fetch_mode_auth_failure_is_not_cached() {
@@ -191,9 +191,13 @@ async fn get_or_fetch_mode_auth_failure_is_not_cached() {
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_401".to_string();
 
-    // Should degrade to Unnamed (not error) despite 401
-    let mode = get_or_fetch_vector_mode(&cfg).await.unwrap();
-    assert_eq!(mode, VectorMode::Unnamed);
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("401 mode probe must return Err");
+    assert!(
+        err.to_string().contains("returned 401"),
+        "error should mention status code, got: {err}"
+    );
 
     // Cache must NOT contain an entry for this collection (401 = don't cache)
     assert!(
@@ -221,8 +225,13 @@ async fn get_or_fetch_mode_403_is_not_cached() {
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_403".to_string();
 
-    let mode = get_or_fetch_vector_mode(&cfg).await.unwrap();
-    assert_eq!(mode, VectorMode::Unnamed);
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("403 mode probe must return Err");
+    assert!(
+        err.to_string().contains("returned 403"),
+        "error should mention status code, got: {err}"
+    );
 
     assert!(
         cached_vector_mode("auth_test_col_403").is_none(),
@@ -249,13 +258,124 @@ async fn get_or_fetch_mode_500_is_not_cached() {
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_500".to_string();
 
-    let mode = get_or_fetch_vector_mode(&cfg).await.unwrap();
-    assert_eq!(mode, VectorMode::Unnamed);
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("500 mode probe must return Err");
+    assert!(
+        err.to_string().contains("returned 500"),
+        "error should mention status code, got: {err}"
+    );
 
     // 500 must NOT be cached -- transient server errors should not permanently
     // downgrade the collection mode for the entire process lifetime.
     assert!(
         cached_vector_mode("auth_test_col_500").is_none(),
         "500 server error must not be cached (transient failure)"
+    );
+}
+
+#[tokio::test]
+async fn get_or_fetch_mode_404_returns_error_and_is_not_cached() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::MockServer;
+
+    let server = MockServer::start_async().await;
+
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path_matches(regex::Regex::new("/collections/").unwrap());
+            then.status(404);
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "auth_test_col_404".to_string();
+
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("404 mode probe must return Err");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("returned 404") && msg.contains("collection not found"),
+        "404 error should include not-found context, got: {msg}"
+    );
+    assert_eq!(
+        mock.calls_async().await,
+        1,
+        "404 should fail immediately without retries"
+    );
+    assert!(
+        cached_vector_mode("auth_test_col_404").is_none(),
+        "404 mode probe failure must not be cached"
+    );
+}
+
+#[tokio::test]
+async fn get_or_fetch_mode_500_retries_three_times() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::MockServer;
+
+    let server = MockServer::start_async().await;
+
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path_matches(regex::Regex::new("/collections/").unwrap());
+            then.status(500);
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "retry_test_col_500".to_string();
+
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("500 mode probe must return Err after retries");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("returned 500"),
+        "error should include final 500 status, got: {msg}"
+    );
+    assert_eq!(
+        mock.calls_async().await,
+        3,
+        "500 status should trigger exactly 3 probe attempts"
+    );
+}
+
+#[tokio::test]
+async fn get_or_fetch_mode_429_retries_three_times() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::MockServer;
+
+    let server = MockServer::start_async().await;
+
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path_matches(regex::Regex::new("/collections/").unwrap());
+            then.status(429);
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "retry_test_col_429".to_string();
+
+    let err = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect_err("429 mode probe must return Err after retries");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("returned 429"),
+        "error should include final 429 status, got: {msg}"
+    );
+    assert_eq!(
+        mock.calls_async().await,
+        3,
+        "429 status should trigger exactly 3 probe attempts"
     );
 }

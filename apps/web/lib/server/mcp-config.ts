@@ -59,4 +59,5 @@ export async function writeMcpConfig(config: McpConfig): Promise<void> {
     encoding: 'utf8',
     mode: 0o600,
   })
+  await fs.chmod(MCP_JSON_PATH, 0o600)
 }

@@ -43,6 +43,7 @@ specs/
 .emdash.json
 .docs/
 .config/
+.superpowers/
 
 # IDE/editor artifacts
 .idea/

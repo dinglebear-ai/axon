@@ -225,7 +225,7 @@ Lifecycle pattern when needed:
 
 ```json
 {
-  "action": "ingest|extract|embed|crawl|refresh",
+  "action": "ingest|extract|embed|crawl|refresh|graph",
   "subaction": "start|status|cancel|list|cleanup|clear|recover|schedule",
   "...": "subaction fields"
 }
@@ -234,6 +234,7 @@ Lifecycle pattern when needed:
 ## Preferred Action Names (Top-Level)
 Use CLI-identical action names:
 - `ingest`, `extract`, `embed`, `crawl`, `refresh`
+- `graph` (with subactions `build|status|explore|stats`)
 - `query`, `retrieve`
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
@@ -249,7 +250,7 @@ Examples:
 ## Parser Rules
 The server uses strict deserialization:
 - `action` is required and must match canonical schema names exactly
-- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|refresh|artifacts`)
+- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|refresh|graph|artifacts`)
 - No fallback fields (`command|op|operation`)
 - No action alias remapping
 - No token normalization (`-`/spaces/case are not rewritten)
@@ -269,6 +270,7 @@ Lifecycle families:
 - `embed`: `start|status|cancel|list|cleanup|clear|recover`
 - `ingest`: `start|status|cancel|list|cleanup|clear|recover`
 - `refresh`: `start|status|cancel|list|cleanup|clear|recover|schedule`
+- `graph`: `build|status|explore|stats`
 
 Refresh schedule subactions:
 - `list`
@@ -307,6 +309,7 @@ mcporter call axon.axon action:scrape url:https://example.com
 mcporter call axon.axon action:query query:'rust mcp sdk'
 mcporter call axon.axon action:ingest subaction:start source_type:github target:owner/repo
 mcporter call axon.axon action:crawl subaction:list limit:5 offset:0
+mcporter call axon.axon action:graph subaction:stats
 mcporter call axon.axon action:refresh subaction:list limit:5 offset:0
 mcporter call axon.axon action:refresh subaction:schedule schedule_subaction:list
 mcporter call axon.axon action:artifacts subaction:head path:.cache/axon-mcp/help-actions.json limit:20

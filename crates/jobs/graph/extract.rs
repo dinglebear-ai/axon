@@ -148,8 +148,8 @@ mod tests {
 
     #[test]
     fn build_extraction_request_has_required_fields() {
-        let req = build_extraction_request("qwen3.5:2b", "Some document text about Rust");
-        assert_eq!(req["model"], "qwen3.5:2b");
+        let req = build_extraction_request("qwen3.5:4b", "Some document text about Rust");
+        assert_eq!(req["model"], "qwen3.5:4b");
         assert_eq!(req["think"], false);
         assert_eq!(req["stream"], false);
         assert!(req["format"]["properties"]["entities"].is_object());

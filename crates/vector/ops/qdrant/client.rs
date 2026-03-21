@@ -374,14 +374,27 @@ pub(crate) async fn qdrant_facet(
     key: &str,
     limit: usize,
 ) -> Result<Vec<(String, usize)>> {
+    qdrant_facet_filtered(cfg, key, limit, serde_json::json!({})).await
+}
+
+pub(crate) async fn qdrant_facet_filtered(
+    cfg: &Config,
+    key: &str,
+    limit: usize,
+    filter: serde_json::Value,
+) -> Result<Vec<(String, usize)>> {
     let client = http_client()?;
     let url = format!("{}/collections/{}/facet", qdrant_base(cfg), cfg.collection);
+    let mut body = serde_json::json!({
+        "key": key,
+        "limit": limit,
+    });
+    if filter != serde_json::json!({}) {
+        body["filter"] = filter;
+    }
     let value = client
         .post(url)
-        .json(&serde_json::json!({
-            "key": key,
-            "limit": limit,
-        }))
+        .json(&body)
         .send()
         .await?
         .error_for_status()?

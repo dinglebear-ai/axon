@@ -61,8 +61,7 @@ pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some(GraphRuntimeSubcommand::Stats) => handle_stats(cfg).await,
         Some(GraphRuntimeSubcommand::Worker) => handle_worker(cfg).await,
         None => {
-            eprintln!("Usage: axon graph <build|status|explore|stats|worker>");
-            Ok(())
+            Err(anyhow::anyhow!("Usage: axon graph <build|status|explore|stats|worker>").into())
         }
     }
 }
@@ -253,6 +252,20 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("requires at least one of: <url>, --url, --domain, or --all")
+        );
+    }
+
+    #[tokio::test]
+    async fn run_graph_without_subcommand_errors() {
+        use crate::crates::core::config::Config;
+        let mut cfg = Config::test_default();
+        cfg.positional = vec![];
+        let err = super::run_graph(&cfg)
+            .await
+            .expect_err("missing subcommand should error");
+        assert!(
+            err.to_string()
+                .contains("Usage: axon graph <build|status|explore|stats|worker>")
         );
     }
 }

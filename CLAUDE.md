@@ -332,7 +332,7 @@ AXON_GRAPH_QUEUE=axon.graph.jobs
 AXON_COLLECTION=cortex              # Qdrant collection (default: cortex)
 
 # Neo4j / GraphRAG (optional — graph features are disabled when AXON_NEO4J_URL is empty)
-AXON_NEO4J_URL=bolt://localhost:7687
+AXON_NEO4J_URL=http://localhost:7474
 AXON_NEO4J_USER=neo4j
 AXON_NEO4J_PASSWORD=
 AXON_GRAPH_CONCURRENCY=4

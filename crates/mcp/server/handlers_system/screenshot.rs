@@ -68,7 +68,7 @@ impl AxonMcpServer {
             let screenshots_dir = ensure_artifact_root().await?.join("screenshots");
             tokio::fs::create_dir_all(&screenshots_dir)
                 .await
-                .map_err(|e| logged_internal_error("screenshot dir", e))?;
+                .map_err(|e| logged_internal_error("screenshot dir", &e))?;
             screenshots_dir.join(format!(
                 "{}.png",
                 chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
@@ -83,7 +83,7 @@ impl AxonMcpServer {
 
         let mut shot = crate::crates::services::screenshot::screenshot_capture(&cfg, &url)
             .await
-            .map_err(|e| logged_internal_error("screenshot", e))?;
+            .map_err(|e| logged_internal_error("screenshot", e.as_ref()))?;
 
         let (size_bytes, normalized, path) = if let Some(map) = shot.payload.as_object_mut() {
             (

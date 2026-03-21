@@ -92,24 +92,6 @@ pub fn emit_nonblocking(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceE
     }
 }
 
-/// Emit with a timeout — blocks up to `timeout` waiting for channel capacity,
-/// then drops the event if the deadline expires.  Returns `true` if sent,
-/// `false` on timeout or missing sender.
-pub async fn emit_with_timeout(
-    tx: &Option<mpsc::Sender<ServiceEvent>>,
-    event: ServiceEvent,
-    timeout: std::time::Duration,
-) -> bool {
-    if let Some(sender) = tx {
-        tokio::time::timeout(timeout, sender.send(event))
-            .await
-            .map(|r| r.is_ok())
-            .unwrap_or(false)
-    } else {
-        false
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

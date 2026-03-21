@@ -1,6 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{muted, primary};
+use crate::crates::services::error::diagnostics_from_error;
 use crate::crates::services::query as query_svc;
 use std::error::Error;
 
@@ -27,7 +28,17 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         cfg.collection
     ));
 
-    let result = query_svc::ask(cfg, &query, None).await?;
+    let result = match query_svc::ask(cfg, &query, None).await {
+        Ok(result) => result,
+        Err(err) => {
+            if cfg.ask_diagnostics
+                && let Some(diag) = diagnostics_from_error(err.as_ref())
+            {
+                eprintln!("{} {}", muted("Diagnostics:"), diag);
+            }
+            return Err(err);
+        }
+    };
     let payload = &result.payload;
 
     if cfg.json_output {
