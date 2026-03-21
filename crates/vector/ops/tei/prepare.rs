@@ -65,7 +65,16 @@ pub(super) async fn prepare_embed_docs(
         if input_is_dir && url.starts_with("http") && is_excluded_url_path(&url, exclude_prefixes) {
             continue;
         }
-        let chunks = input::chunk_markdown(&raw);
+        // Fall back to chunk_text for inputs containing control characters
+        // (e.g. binary or non-markdown data) — MarkdownSplitter can panic on them.
+        let chunks = if raw
+            .chars()
+            .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+        {
+            input::chunk_text(&raw)
+        } else {
+            input::chunk_markdown(&raw)
+        };
         let domain = Url::parse(&url)
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))

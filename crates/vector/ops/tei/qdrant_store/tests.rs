@@ -379,3 +379,217 @@ async fn get_or_fetch_mode_429_retries_three_times() {
         "429 status should trigger exactly 3 probe attempts"
     );
 }
+
+// -- Fix 5: ensure_collection sends hnsw_config on create --
+
+#[tokio::test]
+async fn ensure_collection_sends_hnsw_config_on_create() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+
+    // GET → 404 (collection does not exist) triggers the creation path.
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/hnsw_test_col");
+            then.status(404);
+        })
+        .await;
+
+    // PUT → expect hnsw_config in the body; respond 200 (success).
+    let put_mock = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/hnsw_test_col")
+                .json_body_includes(r#"{"hnsw_config":{"m":32,"ef_construct":256}}"#);
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    // PUT → payload indexes (idempotent, any body accepted).
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path_matches(regex::Regex::new("/collections/hnsw_test_col/index").unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "hnsw_test_col".to_string();
+
+    let result = ensure_collection(&cfg, 4).await;
+
+    put_mock.assert_async().await;
+    assert!(
+        result.is_ok(),
+        "ensure_collection must succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn ensure_collection_does_not_put_on_existing_named_collection() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+
+    // GET → 200 with a Named-mode collection body — triggers the early-return path.
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/existing_named_col");
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "config": {
+                        "params": {
+                            "vectors": {
+                                "dense": {"size": 4, "distance": "Cosine"}
+                            },
+                            "sparse_vectors": {
+                                "bm42": {"modifier": "idf"}
+                            }
+                        }
+                    }
+                }
+            }));
+        })
+        .await;
+
+    // PUT → payload indexes (idempotent). Accept any body.
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path_matches(regex::Regex::new("/collections/existing_named_col/index").unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    // Explicitly reject any PUT to the collection URL itself (creation must NOT fire).
+    let unexpected_create = server
+        .mock_async(|when, then| {
+            when.method(PUT).path("/collections/existing_named_col");
+            then.status(200);
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "existing_named_col".to_string();
+
+    let result = ensure_collection(&cfg, 4).await;
+
+    assert!(
+        result.is_ok(),
+        "must succeed on existing collection: {:?}",
+        result.err()
+    );
+    assert_eq!(
+        unexpected_create.calls_async().await,
+        0,
+        "collection PUT must NOT be called for an existing Named collection"
+    );
+}
+
+// -- Fix 6: ensure_collection sends quantization_config on create --
+
+#[tokio::test]
+async fn ensure_collection_sends_quantization_config_on_create() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/quant_test_col");
+            then.status(404);
+        })
+        .await;
+
+    let put_mock = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/quant_test_col")
+                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":true}}}"#);
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path_matches(regex::Regex::new("/collections/quant_test_col/index").unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "quant_test_col".to_string();
+
+    let result = ensure_collection(&cfg, 4).await;
+
+    put_mock.assert_async().await;
+    assert!(
+        result.is_ok(),
+        "ensure_collection must succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn ensure_collection_sends_full_create_body_with_hnsw_and_quantization() {
+    use crate::crates::jobs::common::test_config;
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/collections/full_body_col");
+            then.status(404);
+        })
+        .await;
+
+    // Assert that both hnsw_config AND quantization_config appear in the same PUT body.
+    let put_mock = server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path("/collections/full_body_col")
+                .json_body_includes(r#"{"hnsw_config":{"m":32,"ef_construct":256}}"#)
+                .json_body_includes(r#"{"quantization_config":{"scalar":{"type":"int8","quantile":0.99,"always_ram":true}}}"#);
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(PUT)
+                .path_matches(regex::Regex::new("/collections/full_body_col/index").unwrap());
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = "full_body_col".to_string();
+
+    let result = ensure_collection(&cfg, 4).await;
+
+    put_mock.assert_async().await;
+    assert!(
+        result.is_ok(),
+        "full body test must succeed: {:?}",
+        result.err()
+    );
+}

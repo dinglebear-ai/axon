@@ -1,12 +1,30 @@
 'use client'
 
 import type { MutableRefObject } from 'react'
-import { z } from 'zod'
-import { type AcpConfigOption, AcpConfigOption as AcpConfigOptionSchema } from '@/lib/pulse/types'
+import type { z } from 'zod'
+import type { AcpConfigOption } from '@/lib/pulse/types'
 import type { WsUsageStats } from '@/lib/ws-protocol'
 import type { AxonMessage } from '../use-axon-session'
 import { handleEditorMsg } from './editor-handler'
 import { applyToolUse, applyToolUseUpdate } from './tool-use-handlers'
+import {
+  AcpResumeResultSchema,
+  AssistantDeltaSchema,
+  CommandOutputJsonEnvelopeSchema,
+  CommandsUpdateSchema,
+  ConfigOptionsUpdateSchema,
+  EditorUpdateSchema,
+  ErrorSchema,
+  PermissionRequestSchema,
+  ResultSchema,
+  SessionFallbackSchema,
+  SessionInfoUpdateSchema,
+  SynthesisDeltaSchema,
+  ThinkingContentSchema,
+  ToolUseSchema,
+  ToolUseUpdateSchema,
+  UsageUpdateSchema,
+} from './ws-schemas'
 
 /** All refs the WS message handler reads or writes. */
 export interface WsHandlerRefs {
@@ -56,134 +74,6 @@ export interface WsHandlerTelemetry {
 
 const ACP_SESSION_STORAGE_KEY = 'axon-acp-session-id'
 
-const UnknownRecordSchema = z.record(z.string(), z.unknown())
-const WsUsageSchema = z
-  .object({
-    input_tokens: z.number().int().nonnegative().optional(),
-    output_tokens: z.number().int().nonnegative().optional(),
-    total_tokens: z.number().int().nonnegative().optional(),
-    cache_creation_input_tokens: z.number().int().nonnegative().optional(),
-    cache_read_input_tokens: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-const AssistantDeltaSchema = z
-  .object({
-    type: z.literal('assistant_delta'),
-    delta: z.string().default(''),
-    usage: WsUsageSchema.optional(),
-    tool_locations: z.array(z.string()).optional(),
-    tool_call_id: z.string().optional(),
-  })
-  .passthrough()
-const UsageUpdateSchema = z
-  .object({
-    type: z.literal('usage_update'),
-    usage: WsUsageSchema,
-  })
-  .passthrough()
-const ThinkingContentSchema = z
-  .object({
-    type: z.literal('thinking_content'),
-    content: z.string().default(''),
-  })
-  .passthrough()
-const SessionFallbackSchema = z
-  .object({
-    type: z.literal('session_fallback'),
-    old_session_id: z.string().default(''),
-    new_session_id: z.string().default(''),
-  })
-  .passthrough()
-const ResultSchema = z
-  .object({
-    type: z.literal('result'),
-    session_id: z.string().optional(),
-  })
-  .passthrough()
-const ErrorSchema = z
-  .object({
-    type: z.literal('error'),
-    message: z.string().optional(),
-    error: z.string().optional(),
-  })
-  .passthrough()
-const ToolUseSchema = z
-  .object({
-    type: z.literal('tool_use'),
-    tool_call_id: z.string().default(''),
-    tool_name: z.string().default('unknown'),
-    tool_input: UnknownRecordSchema.default({}),
-  })
-  .passthrough()
-const ToolUseUpdateSchema = z
-  .object({
-    type: z.literal('tool_use_update'),
-    tool_call_id: z.string().default(''),
-    tool_status: z.string().default(''),
-    tool_content: z.string().default(''),
-  })
-  .passthrough()
-const ConfigOptionsUpdateSchema = z
-  .object({
-    type: z.enum(['config_options_update', 'config_option_update']),
-    configOptions: z.array(AcpConfigOptionSchema),
-  })
-  .passthrough()
-const CommandsUpdateSchema = z
-  .object({
-    type: z.literal('commands_update'),
-    commands: z.array(
-      z.object({
-        name: z.string(),
-        description: z.string().optional(),
-      }),
-    ),
-  })
-  .passthrough()
-const AcpResumeResultSchema = z
-  .object({
-    type: z.literal('acp_resume_result'),
-    ok: z.boolean().optional(),
-    replayed: z.number().int().nonnegative().optional(),
-    session_id: z.string().optional(),
-    reason: z.string().optional(),
-  })
-  .passthrough()
-const PermissionRequestSchema = z
-  .object({
-    type: z.literal('permission_request'),
-    session_id: z.string(),
-    tool_call_id: z.string(),
-    options: z.array(z.string()),
-  })
-  .passthrough()
-const SessionInfoUpdateSchema = z
-  .object({
-    type: z.literal('session_info_update'),
-    session_id: z.string(),
-  })
-  .passthrough()
-const EditorUpdateSchema = z
-  .object({
-    type: z.literal('editor_update'),
-    content: z.string(),
-    operation: z.enum(['replace', 'append']).optional(),
-  })
-  .passthrough()
-const CommandOutputJsonEnvelopeSchema = z.object({
-  type: z.literal('command.output.json'),
-  data: z
-    .object({
-      ctx: z
-        .object({
-          mode: z.string(),
-        })
-        .passthrough(),
-      data: z.unknown(),
-    })
-    .passthrough(),
-})
-
 type ParsedAcpWsMessage =
   | z.infer<typeof AssistantDeltaSchema>
   | z.infer<typeof UsageUpdateSchema>
@@ -199,6 +89,7 @@ type ParsedAcpWsMessage =
   | z.infer<typeof EditorUpdateSchema>
   | z.infer<typeof PermissionRequestSchema>
   | z.infer<typeof SessionInfoUpdateSchema>
+  | z.infer<typeof SynthesisDeltaSchema>
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -232,7 +123,8 @@ export function isAcpRelevantWsMessage(rawMsg: unknown): boolean {
     type === 'commands_update' ||
     type === 'acp_resume_result' ||
     type === 'permission_request' ||
-    type === 'session_info_update'
+    type === 'session_info_update' ||
+    type === 'synthesis_delta'
   )
 }
 
@@ -298,6 +190,10 @@ function parseAcpWsMessage(rawMsg: unknown): ParsedAcpWsMessage | null {
     }
     case 'session_info_update': {
       const parsed = SessionInfoUpdateSchema.safeParse(msg)
+      return parsed.success ? parsed.data : null
+    }
+    case 'synthesis_delta': {
+      const parsed = SynthesisDeltaSchema.safeParse(msg)
       return parsed.success ? parsed.data : null
     }
     default:
@@ -380,6 +276,16 @@ export function handleAcpWsMessage(
       const sid = refs.streamingIdRef.current
       if (!sid || !content) return
       refs.pendingThinkingRef.current.push(content)
+      callbacks.scheduleFlushBufferedStream()
+      break
+    }
+
+    case 'synthesis_delta': {
+      // Research synthesis streaming — treated as assistant text so the UI
+      // renders it inline with the message being built.
+      const text = msg.text
+      if (!text || !refs.streamingIdRef.current) break
+      refs.pendingDeltaRef.current += text
       callbacks.scheduleFlushBufferedStream()
       break
     }

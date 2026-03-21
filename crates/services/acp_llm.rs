@@ -445,44 +445,68 @@ impl WarmAcpSession {
 
         let mut state = CompletionTurnState::default();
 
-        loop {
-            tokio::select! {
-                biased;
-                maybe_event = event_rx.recv() => {
-                    match maybe_event {
-                        Some(ServiceEvent::AcpBridge { event }) => {
-                            match &event {
-                                AcpBridgeEvent::SessionUpdate(update)
-                                    if update.kind == AcpSessionUpdateKind::AssistantDelta =>
-                                {
-                                    if let Some(delta) = update.text_delta.as_deref() {
-                                        on_delta(delta)?;
+        // Thread E: cap the entire event loop at 300 s so a stalled ACP turn
+        // cannot block the caller indefinitely.
+        let loop_result = tokio::time::timeout(Duration::from_secs(300), async {
+            loop {
+                tokio::select! {
+                    biased;
+                    maybe_event = event_rx.recv() => {
+                        match maybe_event {
+                            Some(ServiceEvent::AcpBridge { event }) => {
+                                match &event {
+                                    AcpBridgeEvent::SessionUpdate(update)
+                                        if update.kind == AcpSessionUpdateKind::AssistantDelta =>
+                                    {
+                                        if let Some(delta) = update.text_delta.as_deref() {
+                                            on_delta(delta)?;
+                                        }
                                     }
+                                    AcpBridgeEvent::TurnResult(result) => {
+                                        state.text = Some(result.result.clone());
+                                    }
+                                    _ => {}
                                 }
-                                AcpBridgeEvent::TurnResult(result) => {
-                                    state.text = Some(result.result.clone());
+                            }
+                            Some(_) => {}
+                            // Thread D: event channel closed — surface the turn result
+                            // (which may carry an error) instead of silently breaking.
+                            None => {
+                                match result_rx.try_recv() {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err(e)) => {
+                                        return Err::<(), Box<dyn StdError>>(e.into());
+                                    }
+                                    Err(_) => {}
                                 }
-                                _ => {}
+                                break;
                             }
                         }
-                        Some(_) => {}
-                        None => break,
                     }
-                }
-                result = &mut result_rx => {
-                    result
-                        .map_err(|_| "ACP turn result channel dropped")?
-                        .map_err(|e| -> Box<dyn StdError> { e.into() })?;
-                    // Drain any events queued after the turn completed.
-                    while let Ok(msg) = event_rx.try_recv() {
-                        if let ServiceEvent::AcpBridge { event } = msg
-                            && let AcpBridgeEvent::TurnResult(result) = &event
-                        {
-                            state.text = Some(result.result.clone());
+                    result = &mut result_rx => {
+                        result
+                            .map_err(|_| "ACP turn result channel dropped")?
+                            .map_err(|e| -> Box<dyn StdError> { e.into() })?;
+                        // Drain any events queued after the turn completed.
+                        while let Ok(msg) = event_rx.try_recv() {
+                            if let ServiceEvent::AcpBridge { event } = msg
+                                && let AcpBridgeEvent::TurnResult(result) = &event
+                            {
+                                state.text = Some(result.result.clone());
+                            }
                         }
+                        break;
                     }
-                    break;
                 }
+            }
+            Ok(())
+        })
+        .await;
+        match loop_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                return Err("ACP warm session timed out after 300s".into());
             }
         }
 

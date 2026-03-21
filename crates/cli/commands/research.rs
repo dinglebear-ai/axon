@@ -76,8 +76,9 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let payload = search_service::research(cfg, &query, opts, Some(event_tx))
         .await
         .map(|r| r.payload);
-    // Await the consumer — it exits once the sender is dropped (research() returned)
-    let _ = consumer.await;
+    // Await the consumer with a short timeout — it exits once the sender is dropped
+    // (research() returned), but guard against a hung consumer blocking the command.
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), consumer).await;
     let payload = payload?;
 
     if cfg.json_output {

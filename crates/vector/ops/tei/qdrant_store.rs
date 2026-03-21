@@ -357,6 +357,17 @@ pub(super) async fn ensure_collection(
         },
         "sparse_vectors": {
             "bm42": {"modifier": "idf"}
+        },
+        "hnsw_config": {
+            "m": 32,
+            "ef_construct": 256
+        },
+        "quantization_config": {
+            "scalar": {
+                "type": "int8",
+                "quantile": 0.99,
+                "always_ram": true
+            }
         }
     });
     let resp = client.put(&url).json(&create).send().await?;

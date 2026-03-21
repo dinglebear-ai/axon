@@ -38,7 +38,7 @@ pub fn chunk_text(text: &str) -> Vec<String> {
 /// Split markdown content at structural boundaries (headers, paragraphs).
 ///
 /// Uses `MarkdownSplitter` from the `text_splitter` crate. Chunks target
-/// 200–2000 characters, splitting on `##`/`###` headers and `\n\n` paragraph
+/// 500–2000 characters, splitting on `##`/`###` headers and `\n\n` paragraph
 /// breaks before falling back to sentence or word boundaries. Empty and
 /// whitespace-only chunks are filtered.
 ///

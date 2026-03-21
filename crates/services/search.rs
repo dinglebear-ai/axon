@@ -111,7 +111,19 @@ pub async fn research_payload(
 
     // Start warming the ACP adapter session in the background so its cold-start
     // (subprocess spawn → init → session setup) overlaps with the Tavily search.
-    let warm = acp_llm::warm_session(cfg, tx.clone())?;
+    // A warm-session failure is treated as degraded — search results are still
+    // returned without LLM synthesis rather than aborting the whole request.
+    // Convert to Option<_> immediately so Box<dyn Error> (!Send) is dropped
+    // before the first .await below.
+    let warm_opt = match acp_llm::warm_session(cfg, tx.clone()) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "ACP warm session failed (synthesis will be skipped): {e}"
+            ));
+            None
+        }
+    };
 
     let agent = Agent::builder()
         .with_search_tavily(&cfg.tavily_api_key)
@@ -160,7 +172,7 @@ pub async fn research_payload(
         },
     )
     .await;
-    let (summary, usage) = synthesize_warm(warm, query, &extractions, cfg, tx.clone()).await;
+    let (summary, usage) = synthesize_warm(warm_opt, query, &extractions, cfg, tx.clone()).await;
 
     let search_results_json = page
         .iter()
@@ -267,7 +279,7 @@ async fn record_query_history(
 /// Using a pre-warmed session eliminates the adapter cold-start cost because
 /// subprocess spawn + session initialization overlapped with the Tavily search.
 async fn synthesize_warm(
-    warm: acp_llm::WarmAcpSession,
+    warm_opt: Option<acp_llm::WarmAcpSession>,
     query: &str,
     extractions: &[serde_json::Value],
     cfg: &Config,
@@ -276,6 +288,15 @@ async fn synthesize_warm(
     if extractions.is_empty() {
         return (None, TokenUsage::default());
     }
+    let warm = match warm_opt {
+        Some(w) => w,
+        None => {
+            return (
+                Some(fallback_summary_from_extractions(query, extractions)),
+                TokenUsage::default(),
+            );
+        }
+    };
     let context = build_synthesis_context(extractions);
     let mut req = AcpCompletionRequest::new(format!(
         "Topic: {query}\n\nSources:{context}\n\nProvide a comprehensive summary of the findings, citing sources where appropriate. Return as JSON with a 'summary' field."
