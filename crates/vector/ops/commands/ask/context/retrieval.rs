@@ -30,7 +30,21 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let vecq = ask_vectors.remove(0);
     let query_tokens = ranking::tokenize_query(query);
     let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
-    let hits = qdrant::dispatch_vector_search(cfg, &vecq, query, cfg.ask_candidate_limit)
+    // Ask reranks candidates before context selection, so use a wider prefetch window
+    // than query (which skips reranking). cfg.ask_hybrid_candidates (default: 150)
+    // overrides cfg.hybrid_search_candidates (default: 100) for this path only.
+    let ask_cfg_override;
+    let search_cfg = if cfg.ask_hybrid_candidates != cfg.hybrid_search_candidates {
+        ask_cfg_override = {
+            let mut c = cfg.clone();
+            c.hybrid_search_candidates = cfg.ask_hybrid_candidates;
+            c
+        };
+        &ask_cfg_override
+    } else {
+        cfg
+    };
+    let hits = qdrant::dispatch_vector_search(search_cfg, &vecq, query, cfg.ask_candidate_limit)
         .await
         .map_err(|e| {
             if cfg.ask_diagnostics {

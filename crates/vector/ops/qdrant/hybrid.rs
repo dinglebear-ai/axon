@@ -410,6 +410,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn qdrant_hybrid_search_uses_candidates_from_config() {
+        // Verify cfg.hybrid_search_candidates controls the prefetch window size.
+        // json_body_includes does deep partial matching: the body must contain a prefetch
+        // array where at least one arm has "limit": 77 and "using": "dense".
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"prefetch":[{"using":"dense","limit":77}]}"#);
+                then.status(200)
+                    .json_body(make_search_response(vec![("https://example.com/a", 0.9)]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+        cfg.hybrid_search_candidates = 77;
+
+        let dense = vec![0.1f32, 0.2, 0.3, 0.4];
+        let sparse = compute_sparse_vector("hybrid search test");
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "hybrid search must succeed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
     async fn qdrant_named_dense_search_includes_filter_when_some() {
         let server = MockServer::start_async().await;
         let mock = server

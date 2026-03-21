@@ -3,6 +3,7 @@ use super::heuristics::{
     candidate_has_topical_overlap, is_low_signal_source_url, query_requests_low_signal_sources,
     should_inject_supplemental, url_matches_domain_list,
 };
+use crate::crates::core::config::Config;
 use crate::crates::vector::ops::ranking::AskCandidate;
 use std::collections::HashSet;
 
@@ -16,6 +17,21 @@ fn test_candidate(url: &str, rerank_score: f64) -> AskCandidate {
         chunk_tokens: HashSet::new(),
         rerank_score,
     }
+}
+
+#[test]
+fn ask_hybrid_candidates_is_distinct_from_query_candidates() {
+    let cfg = Config {
+        hybrid_search_candidates: 100,
+        ask_hybrid_candidates: 150,
+        ..Default::default()
+    };
+    assert_ne!(
+        cfg.ask_hybrid_candidates, cfg.hybrid_search_candidates,
+        "ask and query prefetch windows must be independently configurable"
+    );
+    assert_eq!(cfg.ask_hybrid_candidates, 150);
+    assert_eq!(cfg.hybrid_search_candidates, 100);
 }
 
 #[test]
