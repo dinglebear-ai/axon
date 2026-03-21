@@ -10,7 +10,7 @@ use crate::crates::vector::ops::sparse::SparseVector;
 use anyhow::{Result, anyhow};
 use std::time::Instant;
 
-use super::types::{QdrantSearchHit, QdrantSearchResponse};
+use super::types::{QdrantQueryResponse, QdrantSearchHit};
 use super::utils::qdrant_base;
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.
@@ -81,13 +81,13 @@ pub(crate) async fn qdrant_hybrid_search(
             anyhow!(e.to_string())
         })?;
 
-    let parsed: QdrantSearchResponse = resp.json().await?;
+    let parsed: QdrantQueryResponse = resp.json().await?;
     log_debug(&format!(
         "qdrant hybrid_search hits={} collection={}",
-        parsed.result.len(),
+        parsed.result.points.len(),
         cfg.collection
     ));
-    Ok(parsed.result)
+    Ok(parsed.result.points)
 }
 
 /// Dense-only search for Named collections using the `/points/query` endpoint.
@@ -147,13 +147,13 @@ pub(crate) async fn qdrant_named_dense_search(
             anyhow!(e.to_string())
         })?;
 
-    let parsed: QdrantSearchResponse = resp.json().await?;
+    let parsed: QdrantQueryResponse = resp.json().await?;
     log_debug(&format!(
         "qdrant named_dense_search hits={} collection={}",
-        parsed.result.len(),
+        parsed.result.points.len(),
         cfg.collection
     ));
-    Ok(parsed.result)
+    Ok(parsed.result.points)
 }
 
 #[cfg(test)]
@@ -164,7 +164,7 @@ mod tests {
     use httpmock::prelude::*;
 
     fn make_search_response(hits: Vec<(&str, f64)>) -> serde_json::Value {
-        let result: Vec<serde_json::Value> = hits
+        let points: Vec<serde_json::Value> = hits
             .iter()
             .map(|(url, score)| {
                 serde_json::json!({
@@ -174,7 +174,7 @@ mod tests {
                 })
             })
             .collect();
-        serde_json::json!({"result": result})
+        serde_json::json!({"result": {"points": points}})
     }
 
     #[tokio::test]

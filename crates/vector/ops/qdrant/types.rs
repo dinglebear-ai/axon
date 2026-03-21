@@ -28,10 +28,24 @@ pub struct QdrantSearchHit {
     pub payload: QdrantPayload,
 }
 
+/// Response from `/points/search` — `result` is a flat array.
 #[derive(Debug, Deserialize)]
 pub(crate) struct QdrantSearchResponse {
     #[serde(default)]
     pub(crate) result: Vec<QdrantSearchHit>,
+}
+
+/// Response from `/points/query` — `result` is `{"points": [...]}`.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct QdrantQueryResult {
+    #[serde(default)]
+    pub(crate) points: Vec<QdrantSearchHit>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct QdrantQueryResponse {
+    #[serde(default)]
+    pub(crate) result: QdrantQueryResult,
 }
 
 pub(crate) const RETRIEVE_MAX_POINTS_CEILING: usize = 500;
