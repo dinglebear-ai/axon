@@ -66,7 +66,7 @@ pub(crate) async fn dispatch_vector_search(
                     })
             }
         }
-        VectorMode::Unnamed => super::client::qdrant_search(cfg, vector, limit, filter_ref)
+        VectorMode::Unnamed => super::search::qdrant_search(cfg, vector, limit, filter_ref)
             .await
             .map_err(|e| -> Box<dyn Error> {
                 format!("vector search on '{}' failed: {e}", cfg.collection).into()

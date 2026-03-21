@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use super::client::{
     qdrant_delete_by_url_filter, qdrant_delete_stale_domain_urls, qdrant_domain_facets,
-    qdrant_retrieve_by_url, qdrant_scroll_pages, qdrant_search, qdrant_url_facets,
+    qdrant_retrieve_by_url, qdrant_scroll_pages, qdrant_url_facets,
 };
+use super::search::qdrant_search;
 
 /// Helper: create an isolated test collection via the Qdrant REST API.
 async fn create_test_collection(

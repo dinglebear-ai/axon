@@ -9,14 +9,13 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
-use crate::crates::core::logging::{log_debug, log_warn};
+use crate::crates::core::logging::log_warn;
 use anyhow::{Result, anyhow};
 use reqwest::StatusCode;
 use std::collections::HashSet;
 use std::time::Duration;
-use std::time::Instant;
 
-use super::types::{QdrantPoint, QdrantSearchHit, QdrantSearchResponse};
+use super::types::QdrantPoint;
 use super::utils::{qdrant_base, retrieve_max_points};
 
 async fn qdrant_delete_with_retry(
@@ -420,61 +419,6 @@ fn parse_facet_response(value: &serde_json::Value) -> Result<Vec<(String, usize)
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(out)
 }
-
-pub(crate) async fn qdrant_search(
-    cfg: &Config,
-    vector: &[f32],
-    limit: usize,
-    filter: Option<&serde_json::Value>,
-) -> Result<Vec<QdrantSearchHit>> {
-    let client = http_client()?;
-    let url = format!(
-        "{}/collections/{}/points/search",
-        qdrant_base(cfg),
-        cfg.collection
-    );
-    let search_start = Instant::now();
-    let mut body = serde_json::json!({
-        "vector": vector,
-        "limit": limit,
-        "with_payload": true,
-        "with_vector": false
-    });
-    if let Some(f) = filter {
-        body["filter"] = f.clone();
-    }
-    let res = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            log_warn(&format!(
-                "qdrant_search failed collection={} duration_ms={} error={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-            e
-        })?
-        .error_for_status()
-        .map_err(|e| {
-            log_warn(&format!(
-                "qdrant_search failed collection={} duration_ms={} error={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-            e
-        })?
-        .json::<QdrantSearchResponse>()
-        .await?;
-    log_debug(&format!(
-        "qdrant search hits={} collection={}",
-        res.result.len(),
-        cfg.collection
-    ));
-    Ok(res.result)
-}
-
 pub(crate) async fn qdrant_retrieve_by_url(
     cfg: &Config,
     url_match: &str,
