@@ -121,6 +121,7 @@ impl Default for Config {
             ask_min_citations_nontrivial: 2,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
+            ask_hybrid_candidates: 150,
             cron_every_seconds: None,
             cron_max_runs: None,
             watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
@@ -311,6 +312,7 @@ impl fmt::Debug for Config {
             )
             .field("hybrid_search_enabled", &self.hybrid_search_enabled)
             .field("hybrid_search_candidates", &self.hybrid_search_candidates)
+            .field("ask_hybrid_candidates", &self.ask_hybrid_candidates)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)
             .field(

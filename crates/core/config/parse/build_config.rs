@@ -509,6 +509,12 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             10,
             500,
         ),
+        ask_hybrid_candidates: performance::env_usize_clamped(
+            "AXON_ASK_HYBRID_CANDIDATES",
+            150,
+            10,
+            500,
+        ),
         cron_every_seconds: global.cron_every_seconds.filter(|value| *value > 0),
         cron_max_runs: global.cron_max_runs.filter(|value| *value > 0),
         watchdog_stale_timeout_secs: global.watchdog_stale_timeout_secs.max(30),

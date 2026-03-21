@@ -368,6 +368,13 @@ pub struct Config {
     /// Env: `AXON_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
     pub hybrid_search_candidates: usize,
 
+    /// Candidates fetched per prefetch arm before RRF fusion, for the `ask` pipeline only.
+    ///
+    /// Ask reranks with `ask_min_relevance_score` (default 0.45) before selecting context,
+    /// so it needs a wider prefetch window than `query` (which skips reranking).
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
+    pub ask_hybrid_candidates: usize,
+
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,
 
