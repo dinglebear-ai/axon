@@ -1,5 +1,27 @@
 # Changelog
-Last Modified: 2026-03-21 (session: v0.30.0 — streaming research synthesis, ACP eager warm-up, hybrid search fix, embedding quality tests)
+Last Modified: 2026-03-21 (session: v0.30.1 — HNSW/quantization search tuning, PR review resolution)
+
+## [0.30.1] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **HNSW params on dense prefetch arm** — `hnsw_ef` and `quantization` rescore params now set on the dense prefetch arm of the hybrid query (not the top-level fusion stage, which has no HNSW traversal). Fixes ineffective search tuning.
+- **PR review threads resolved** — All 147 review threads addressed: ACP warm-session degraded path, 300s completion timeout, `result_rx` drain on channel close, `synthesis_delta` in frontend WS handler, `MarkdownSplitter` control-char guard, research consumer timeout, doc comment fix.
+- **`dispatch_vector_search` in evaluate** — `scoring.rs` now uses the dispatch path (hybrid-aware) instead of the raw `qdrant_search` function, matching query/ask behavior.
+- **Error handling cleanup** — `.map_err(|e| anyhow!(e.to_string()))` replaced with `inspect_err` + `?` and `anyhow::Error::from(e)` across hybrid/search paths (preserves error chain).
+- **New tests** — `qdrant_search_propagates_filter_when_some`, `qdrant_search_sends_oversampling_param`, `qdrant_hybrid_search_sends_hnsw_ef_on_dense_prefetch_arm`.
+
+### Commits since v0.30.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix(vector) | move hnsw_ef to dense prefetch arm, use inspect_err, dispatch in evaluate |
+| f3950bd5 | chore | document AXON_HNSW_EF_SEARCH and AXON_HNSW_EF_SEARCH_LEGACY in .env.example |
+| 0e672072 | feat(vector) | add hnsw_ef + quantization rescore params to hybrid and named-dense search |
+| d3b123aa | refactor(vector) | extract qdrant_search() to search.rs to restore monolith budget |
+| 0a30c876 | feat(vector) | add HNSW config (m=32, ef_construct=256) and INT8 quantization to ensure_collection() |
+| bfc4654a | fix | address PR review threads 1–18 (18 threads, previous session) |
+| 758837ce | feat(research) | streaming synthesis, ACP eager warm-up, hybrid search fix, quality tests |
 
 ## [0.30.0] — feat/pulse-shell-and-hybrid-search
 

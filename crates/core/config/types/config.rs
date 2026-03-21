@@ -504,3 +504,17 @@ pub struct Config {
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
     pub custom_headers: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ask_hybrid_candidates_default_is_150() {
+        let cfg = Config::default();
+        assert_eq!(
+            cfg.ask_hybrid_candidates, 150,
+            "ask_hybrid_candidates must default to 150 for wider prefetch before reranking"
+        );
+    }
+}

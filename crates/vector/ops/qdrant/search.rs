@@ -161,6 +161,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn qdrant_search_propagates_filter_when_some() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/search")
+                    .json_body_includes(r#"{"filter":{"must":[{"key":"domain"}]}}"#);
+                then.status(200)
+                    .json_body(make_search_response(vec![("https://example.com/f", 0.80)]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let filter = serde_json::json!({
+            "must": [{"key": "domain", "match": {"value": "example.com"}}]
+        });
+        let result = qdrant_search(&cfg, &[0.1f32, 0.2, 0.3, 0.4], 5, Some(&filter)).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "filter propagation must succeed: {:?}",
+            result.err()
+        );
+        assert_eq!(result.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn qdrant_search_propagates_http_error() {
         let server = MockServer::start_async().await;
         server
@@ -177,5 +208,32 @@ mod tests {
 
         let result = qdrant_search(&cfg, &[0.1f32], 5, None).await;
         assert!(result.is_err(), "HTTP 500 must propagate as Err");
+    }
+
+    #[tokio::test]
+    async fn qdrant_search_sends_oversampling_param() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/search")
+                    .json_body_includes(r#"{"params":{"quantization":{"oversampling":1.5}}}"#);
+                then.status(200)
+                    .json_body(make_search_response(vec![("https://example.com/x", 0.77)]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let result = qdrant_search(&cfg, &[0.1f32, 0.2, 0.3, 0.4], 5, None).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "oversampling param test must succeed: {:?}",
+            result.err()
+        );
     }
 }
