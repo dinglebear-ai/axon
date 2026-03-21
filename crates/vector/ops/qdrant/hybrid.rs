@@ -11,7 +11,7 @@ use anyhow::{Result, anyhow};
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
-use super::utils::qdrant_base;
+use super::utils::{env_usize_clamped, qdrant_base};
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.
 ///
@@ -34,6 +34,7 @@ pub(crate) async fn qdrant_hybrid_search(
     );
 
     let candidates = cfg.hybrid_search_candidates.max(limit);
+    let hnsw_ef = env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512);
 
     let mut body = serde_json::json!({
         "prefetch": [
@@ -51,7 +52,14 @@ pub(crate) async fn qdrant_hybrid_search(
         "query": {"fusion": "rrf"},
         "limit": limit,
         "with_payload": true,
-        "with_vector": false
+        "with_vector": false,
+        "params": {
+            "hnsw_ef": hnsw_ef,
+            "quantization": {
+                "rescore": true,
+                "oversampling": 1.5
+            }
+        }
     });
     if let Some(f) = filter {
         body["filter"] = f.clone();
@@ -112,12 +120,20 @@ pub(crate) async fn qdrant_named_dense_search(
         cfg.collection
     );
 
+    let hnsw_ef = env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512);
     let mut body = serde_json::json!({
         "query": dense_vector,
         "using": "dense",
         "limit": limit,
         "with_payload": true,
-        "with_vector": false
+        "with_vector": false,
+        "params": {
+            "hnsw_ef": hnsw_ef,
+            "quantization": {
+                "rescore": true,
+                "oversampling": 1.5
+            }
+        }
     });
     if let Some(f) = filter {
         body["filter"] = f.clone();
@@ -304,6 +320,93 @@ mod tests {
 
         mock.assert_async().await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn qdrant_hybrid_search_sends_hnsw_ef_param() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"params":{"hnsw_ef":128}}"#);
+                then.status(200)
+                    .json_body(make_search_response(vec![("https://example.com/a", 0.9)]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let dense = vec![0.1f32, 0.2, 0.3, 0.4];
+        let sparse = compute_sparse_vector("hybrid hnsw ef test");
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "hybrid search must succeed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn qdrant_named_dense_search_sends_hnsw_ef_param() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"params":{"hnsw_ef":128}}"#);
+                then.status(200).json_body(make_search_response(vec![(
+                    "https://example.com/dense",
+                    0.88,
+                )]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let result = qdrant_named_dense_search(&cfg, &[0.1f32, 0.2, 0.3, 0.4], 5, None).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "named dense search must succeed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn qdrant_named_dense_search_sends_quantization_rescore_param() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/query")
+                    .json_body_includes(r#"{"params":{"quantization":{"rescore":true}}}"#);
+                then.status(200).json_body(make_search_response(vec![(
+                    "https://example.com/dense",
+                    0.88,
+                )]));
+            })
+            .await;
+
+        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let result = qdrant_named_dense_search(&cfg, &[0.1f32, 0.2, 0.3, 0.4], 5, None).await;
+
+        mock.assert_async().await;
+        assert!(
+            result.is_ok(),
+            "named dense search must succeed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
