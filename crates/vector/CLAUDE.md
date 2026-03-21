@@ -50,7 +50,7 @@ It also detects (and caches) the collection's **VectorMode**:
 | Collection exists with named `dense` | Ensure `bm42` sparse index exists; PATCH if missing | `VectorMode::Named` |
 | Collection exists with unnamed vector | No changes | `VectorMode::Unnamed` |
 
-`VectorMode` is cached in a process-wide `OnceLock<Mutex<HashMap>>`. Cache is populated on first embed and reused on all subsequent embeds and queries — no repeated Qdrant introspection calls.
+`VectorMode` is cached in a process-wide `OnceLock<RwLock<HashMap>>`. Cache is populated on first embed and reused on all subsequent embeds and queries — no repeated Qdrant introspection calls. `RwLock` allows unlimited concurrent readers; the rare write (first-time population per collection) briefly takes an exclusive lock.
 
 ### Scroll vs Facet — Performance Critical
 | Use case | Function | Cost |
