@@ -7,7 +7,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::{log_debug, log_warn};
 use crate::crates::vector::ops::sparse::SparseVector;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
@@ -41,7 +41,14 @@ pub(crate) async fn qdrant_hybrid_search(
             {
                 "query": dense_vector,
                 "using": "dense",
-                "limit": candidates
+                "limit": candidates,
+                "params": {
+                    "hnsw_ef": hnsw_ef,
+                    "quantization": {
+                        "rescore": true,
+                        "oversampling": 1.5
+                    }
+                }
             },
             {
                 "query": sparse_vector.to_json(),
@@ -52,14 +59,7 @@ pub(crate) async fn qdrant_hybrid_search(
         "query": {"fusion": "rrf"},
         "limit": limit,
         "with_payload": true,
-        "with_vector": false,
-        "params": {
-            "hnsw_ef": hnsw_ef,
-            "quantization": {
-                "rescore": true,
-                "oversampling": 1.5
-            }
-        }
+        "with_vector": false
     });
     if let Some(f) = filter {
         body["filter"] = f.clone();
@@ -71,13 +71,12 @@ pub(crate) async fn qdrant_hybrid_search(
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
+        .inspect_err(|e| {
             log_warn(&format!(
                 "qdrant_hybrid_search transport_error collection={} duration_ms={} err={e}",
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
         })?
         .error_for_status()
         .map_err(|e| {
@@ -86,7 +85,7 @@ pub(crate) async fn qdrant_hybrid_search(
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
+            anyhow::Error::from(e)
         })?;
 
     let parsed: QdrantQueryResponse = resp.json().await?;
@@ -145,13 +144,12 @@ pub(crate) async fn qdrant_named_dense_search(
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
+        .inspect_err(|e| {
             log_warn(&format!(
                 "qdrant_named_dense_search transport_error collection={} duration_ms={} err={e}",
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
         })?
         .error_for_status()
         .map_err(|e| {
@@ -160,7 +158,7 @@ pub(crate) async fn qdrant_named_dense_search(
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
+            anyhow::Error::from(e)
         })?;
 
     let parsed: QdrantQueryResponse = resp.json().await?;
@@ -323,13 +321,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn qdrant_hybrid_search_sends_hnsw_ef_param() {
+    async fn qdrant_hybrid_search_sends_hnsw_ef_on_dense_prefetch_arm() {
         let server = MockServer::start_async().await;
+        // hnsw_ef and quantization params must be on the dense prefetch arm,
+        // not at the top level -- the fusion stage doesn't do HNSW traversal.
         let mock = server
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/collections/test_col/points/query")
-                    .json_body_includes(r#"{"params":{"hnsw_ef":128}}"#);
+                    .json_body_includes(r#"{"prefetch":[{"params":{"hnsw_ef":128,"quantization":{"rescore":true}}}]}"#);
                 then.status(200)
                     .json_body(make_search_response(vec![("https://example.com/a", 0.9)]));
             })

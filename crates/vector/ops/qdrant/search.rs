@@ -7,7 +7,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::{log_debug, log_warn};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use std::time::Instant;
 
 use super::types::{QdrantSearchHit, QdrantSearchResponse};
@@ -28,7 +28,7 @@ pub(crate) async fn qdrant_search(
     limit: usize,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
-    let client = http_client().map_err(|e| anyhow!(e.to_string()))?;
+    let client = http_client()?;
     let url = format!(
         "{}/collections/{}/points/search",
         qdrant_base(cfg),
@@ -57,13 +57,12 @@ pub(crate) async fn qdrant_search(
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
+        .inspect_err(|e| {
             log_warn(&format!(
                 "qdrant_search failed collection={} duration_ms={} error={e}",
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
         })?
         .error_for_status()
         .map_err(|e| {
@@ -72,7 +71,7 @@ pub(crate) async fn qdrant_search(
                 cfg.collection,
                 search_start.elapsed().as_millis()
             ));
-            anyhow!(e.to_string())
+            anyhow::Error::from(e)
         })?
         .json::<QdrantSearchResponse>()
         .await?;

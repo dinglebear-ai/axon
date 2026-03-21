@@ -14,7 +14,12 @@ pub(super) async fn build_judge_reference(
         return Err("TEI returned no vector for judge reference".into());
     }
     let query_vec = vecs.remove(0);
-    let hits = qdrant::qdrant_search(cfg, &query_vec, cfg.ask_candidate_limit * 2, None).await?;
+    let hits =
+        qdrant::dispatch_vector_search(cfg, &query_vec, question, cfg.ask_candidate_limit * 2)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                format!("vector search dispatch for evaluate judge reference: {e}").into()
+            })?;
     let query_tokens = ranking::tokenize_query(question);
     let mut candidates: Vec<ranking::AskCandidate> = Vec::new();
     for hit in hits {
