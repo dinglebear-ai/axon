@@ -50,7 +50,7 @@ pub(super) fn build_rebuild_seeds(input: RebuildSeedsInput<'_>) -> RebuildSeedsE
         input
             .embeds
             .iter()
-            .filter(|embed| embed.source_type.as_deref() == Some("embed"))
+            .filter(|embed| embed.source_type.as_deref().is_none_or(|st| st == "embed"))
             .map(|embed| embed.input.as_str())
             .filter(|input| !input.starts_with("http://") && !input.starts_with("https://")),
     );

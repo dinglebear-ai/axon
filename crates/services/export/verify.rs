@@ -174,18 +174,15 @@ fn check_integrity_mismatches(
     }
 
     for (key, expected) in &expected_integrity.counts {
-        let actual = manifest
-            .integrity
-            .counts
-            .get(key)
-            .copied()
-            .unwrap_or_default();
-        if actual != *expected {
-            count_mismatches.push(ExportVerifyMismatch {
-                key: key.clone(),
-                expected: expected.to_string(),
-                actual: actual.to_string(),
-            });
+        match manifest.integrity.counts.get(key).copied() {
+            Some(actual) if actual == *expected => {}
+            actual_opt => {
+                count_mismatches.push(ExportVerifyMismatch {
+                    key: key.clone(),
+                    expected: expected.to_string(),
+                    actual: actual_opt.unwrap_or(0).to_string(),
+                });
+            }
         }
     }
 }

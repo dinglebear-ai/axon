@@ -213,26 +213,27 @@ async fn record_query_history(
         }
     };
 
+    // Run DDL once — outside the retry loop to avoid repeated schema lock round-trips.
+    for stmt in [
+        r#"
+        CREATE TABLE IF NOT EXISTS axon_query_history (
+            id BIGSERIAL PRIMARY KEY,
+            kind TEXT NOT NULL,
+            query_text TEXT NOT NULL,
+            options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        "#,
+        "CREATE INDEX IF NOT EXISTS idx_axon_query_history_kind_created_desc ON axon_query_history(kind, created_at DESC)",
+    ] {
+        if let Err(e) = sqlx::query(stmt).execute(&pool).await {
+            log_warn(&format!("query history schema setup failed: {e}"));
+            return;
+        }
+    }
+
     for attempt in 1..=3 {
         let record = async {
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS axon_query_history (
-                    id BIGSERIAL PRIMARY KEY,
-                    kind TEXT NOT NULL,
-                    query_text TEXT NOT NULL,
-                    options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                "#,
-            )
-            .execute(&pool)
-            .await?;
-            sqlx::query(
-                "CREATE INDEX IF NOT EXISTS idx_axon_query_history_kind_created_desc ON axon_query_history(kind, created_at DESC)",
-            )
-            .execute(&pool)
-            .await?;
             sqlx::query(
                 r#"INSERT INTO axon_query_history (kind, query_text, options_json) VALUES ($1, $2, $3)"#,
             )

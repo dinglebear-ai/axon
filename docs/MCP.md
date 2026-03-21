@@ -226,7 +226,7 @@ Lifecycle pattern when needed:
 ```json
 {
   "action": "ingest|extract|embed|crawl|refresh|graph",
-  "subaction": "start|status|cancel|list|cleanup|clear|recover|schedule",
+  "subaction": "<action-specific subaction>",
   "...": "subaction fields"
 }
 ```

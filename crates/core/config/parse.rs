@@ -294,6 +294,7 @@ mod tests {
         const AMQP: &str = "AXON_AMQP_URL";
         const GRAPH_MODEL: &str = "AXON_GRAPH_LLM_MODEL";
 
+        let prev_graph_model = env::var(GRAPH_MODEL).ok();
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
@@ -309,7 +310,10 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
-            env::remove_var(GRAPH_MODEL);
+            match prev_graph_model {
+                Some(val) => env::set_var(GRAPH_MODEL, val),
+                None => env::remove_var(GRAPH_MODEL),
+            }
         }
     }
 

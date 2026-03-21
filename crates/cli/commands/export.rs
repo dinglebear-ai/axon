@@ -10,7 +10,18 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         let report = verify_manifest_json(&raw)?;
         if cfg.json_output {
             println!("{}", serde_json::to_string_pretty(&report)?);
-            return Ok(());
+            if report.valid {
+                return Ok(());
+            }
+            return Err(format!(
+                "export verify failed path={} missing_keys={} parse_error={} hash_mismatches={} count_mismatches={}",
+                path.display(),
+                report.missing_required_keys.len(),
+                report.parse_error.as_deref().unwrap_or("none"),
+                report.hash_mismatches.len(),
+                report.count_mismatches.len(),
+            )
+            .into());
         }
         if report.valid {
             log_done(&format!(

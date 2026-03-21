@@ -28,8 +28,7 @@ pub(super) fn logged_internal_error(
     e: &(dyn std::error::Error + 'static),
 ) -> ErrorData {
     tracing::error!("{context}: {e}");
-    let diagnostics = crate::crates::services::error::diagnostics_from_error(e).cloned();
-    ErrorData::internal_error(format!("{context} failed"), diagnostics)
+    ErrorData::internal_error(format!("{context} failed"), None)
 }
 
 // --- URL validation wrappers ---

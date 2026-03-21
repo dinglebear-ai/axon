@@ -249,6 +249,7 @@ pub(super) async fn run_prompt_turn(
     // the adapter before it could flush the session file.
     let mut exit_rx = exit_rx;
     let prompt_fired = tokio::select! {
+        biased;
         prompt_result = conn.prompt(PromptRequest::new(session_id.clone(), prompt_blocks)) => {
             let prompt_response = prompt_result.map_err(|err| err.to_string())?;
             let session = runtime_state

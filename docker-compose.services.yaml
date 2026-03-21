@@ -199,7 +199,7 @@ services:
 
   axon-ollama:
     <<: *common-service
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.6.5
     container_name: axon-ollama
     ports:
       - "127.0.0.1:11434:11434"

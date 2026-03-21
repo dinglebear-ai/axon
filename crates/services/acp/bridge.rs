@@ -135,7 +135,7 @@ pub(super) async fn finalize_successful_turn(
         },
     )
     .await;
-    let msg = format!("ACP runtime: TurnResult emitted (session_id={session})");
+    let msg = format!("ACP runtime: TurnResult dispatch attempted (session_id={session})");
     crate::crates::core::logging::log_info(&msg);
     emit_nonblocking(
         service_tx,
@@ -173,13 +173,25 @@ impl Client for AcpBridgeClient {
         // Use the current turn's service_tx. Clone to release borrow before awaits.
         let service_tx = self.runtime_state.service_tx.borrow().clone();
         // Blocking emit: the permission request event MUST reach the frontend
-        // for the interactive approval dialog to appear.  If the channel is
-        // full (backpressure from streaming deltas), we wait for space rather
-        // than dropping — a dropped permission event leaves the user with no
-        // dialog and the turn hanging until the 60-second permission timeout.
-        // `emit` returns Err immediately if the receiver (event_rx) is dropped
-        // (WS disconnected), so there is no deadlock risk.
-        emit(&service_tx, map_permission_request_event(&args)).await;
+        // for the interactive approval dialog to appear.  Bound with a 5-second
+        // timeout so channel backpressure cannot cause the emit to block
+        // indefinitely — which would delay (or bypass) the 60-second permission
+        // timeout.  If delivery times out the turn is cancelled immediately.
+        if tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            emit(&service_tx, map_permission_request_event(&args)),
+        )
+        .await
+        .is_err()
+        {
+            tracing::warn!(
+                context = "acp_bridge",
+                "permission request event not delivered within 5s; cancelling turn"
+            );
+            return Ok(RequestPermissionResponse::new(
+                RequestPermissionOutcome::Cancelled,
+            ));
+        }
 
         let tool_call_id = args.tool_call.tool_call_id.0.to_string();
         let tool_name = args

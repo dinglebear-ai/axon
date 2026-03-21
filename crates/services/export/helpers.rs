@@ -85,8 +85,41 @@ pub(super) fn build_integrity(seeds: &RebuildSeedsExport) -> ExportIntegrity {
         "research_queries".to_string(),
         hash_sorted_strings(&seeds.research_queries),
     );
+    hashes.insert(
+        "scrape_requests".to_string(),
+        hash_serializable_items(&seeds.scrape_requests),
+    );
+    hashes.insert(
+        "github_requests".to_string(),
+        hash_serializable_items(&seeds.github_requests),
+    );
+    hashes.insert(
+        "extraction_requests".to_string(),
+        hash_serializable_items(&seeds.extraction_requests),
+    );
+    hashes.insert(
+        "search_requests".to_string(),
+        hash_serializable_items(&seeds.search_requests),
+    );
+    hashes.insert(
+        "research_requests".to_string(),
+        hash_serializable_items(&seeds.research_requests),
+    );
 
     ExportIntegrity { counts, hashes }
+}
+
+fn hash_serializable_items<T: serde::Serialize>(items: &[T]) -> String {
+    let mut strings: Vec<String> = items
+        .iter()
+        .map(|v| serde_json::to_string(v).unwrap_or_default())
+        .collect();
+    strings.sort();
+    strings.dedup();
+    let payload = strings.join("\n");
+    let mut hasher = Sha256::new();
+    hasher.update(payload.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 fn hash_sorted_strings(values: &[String]) -> String {

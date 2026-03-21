@@ -89,29 +89,38 @@ async fn record_scrape_seed(cfg: Config, url: String) {
         "chrome_intercept": cfg.chrome_intercept,
     });
 
+    let pool = match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&cfg.pg_url)
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            log_warn(&format!("scrape seed db connect failed: {e}"));
+            return;
+        }
+    };
+
+    // Run DDL once — outside the retry loop to avoid repeated schema lock round-trips.
+    for stmt in [
+        r#"
+        CREATE TABLE IF NOT EXISTS axon_scrape_seeds (
+            id BIGSERIAL PRIMARY KEY,
+            url TEXT NOT NULL,
+            options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        "#,
+        "CREATE INDEX IF NOT EXISTS idx_axon_scrape_seeds_created_desc ON axon_scrape_seeds(created_at DESC)",
+    ] {
+        if let Err(e) = sqlx::query(stmt).execute(&pool).await {
+            log_warn(&format!("scrape seed schema setup failed: {e}"));
+            return;
+        }
+    }
+
     for attempt in 1..=3 {
         let record = async {
-            let pool = PgPoolOptions::new()
-                .max_connections(1)
-                .connect(&cfg.pg_url)
-                .await?;
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS axon_scrape_seeds (
-                    id BIGSERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                "#,
-            )
-            .execute(&pool)
-            .await?;
-            sqlx::query(
-                "CREATE INDEX IF NOT EXISTS idx_axon_scrape_seeds_created_desc ON axon_scrape_seeds(created_at DESC)",
-            )
-            .execute(&pool)
-            .await?;
             sqlx::query(r#"INSERT INTO axon_scrape_seeds (url, options_json) VALUES ($1, $2)"#)
                 .bind(url.as_str())
                 .bind(options.clone())

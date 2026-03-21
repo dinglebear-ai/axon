@@ -60,7 +60,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && /command/s6-svstat -u /run/service/graph-worker >/dev/null && /command/s6-svstat -u /run/service/web-server >/dev/null",
+          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && ( [ -z \"${AXON_NEO4J_URL:-}\" ] || /command/s6-svstat -u /run/service/graph-worker >/dev/null ) && /command/s6-svstat -u /run/service/web-server >/dev/null",
         ]
       interval: 30s
       timeout: 10s

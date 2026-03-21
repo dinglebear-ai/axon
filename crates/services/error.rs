@@ -45,8 +45,10 @@ impl StdError for ServiceError {}
 pub fn diagnostics_from_error<'a>(err: &'a (dyn StdError + 'static)) -> Option<&'a Value> {
     let mut cursor = Some(err);
     while let Some(current) = cursor {
-        if let Some(service_error) = current.downcast_ref::<ServiceError>() {
-            return service_error.diagnostics();
+        if let Some(service_error) = current.downcast_ref::<ServiceError>()
+            && let Some(diag) = service_error.diagnostics()
+        {
+            return Some(diag);
         }
         cursor = current.source();
     }

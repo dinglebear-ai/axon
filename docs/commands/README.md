@@ -26,7 +26,6 @@ Index of Axon CLI command docs.
 - [screenshot](./screenshot.md)
 - [search](./search.md)
 - [serve](./serve.md)
-- [sessions](./sessions.md)
 - [sources](./sources.md)
 - [stats](./stats.md)
 - [status](./status.md)
@@ -36,6 +35,7 @@ Index of Axon CLI command docs.
 ## Ingest Source Commands
 - [github](./github.md)
 - [reddit](./reddit.md)
+- [sessions](./sessions.md)
 - [youtube](./youtube.md)
 
 ## Shell
