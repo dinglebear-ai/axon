@@ -76,9 +76,10 @@ pub(crate) async fn qdrant_search(
         .json::<QdrantSearchResponse>()
         .await?;
     log_debug(&format!(
-        "qdrant search hits={} collection={}",
+        "qdrant search_complete mode=unnamed_dense collection={} hits={} latency_ms={}",
+        cfg.collection,
         res.result.len(),
-        cfg.collection
+        search_start.elapsed().as_millis()
     ));
     Ok(res.result)
 }

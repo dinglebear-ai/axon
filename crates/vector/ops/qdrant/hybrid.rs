@@ -90,9 +90,10 @@ pub(crate) async fn qdrant_hybrid_search(
 
     let parsed: QdrantQueryResponse = resp.json().await?;
     log_debug(&format!(
-        "qdrant hybrid_search hits={} collection={}",
+        "qdrant search_complete mode=hybrid collection={} hits={} latency_ms={}",
+        cfg.collection,
         parsed.result.points.len(),
-        cfg.collection
+        search_start.elapsed().as_millis()
     ));
     Ok(parsed.result.points)
 }
@@ -163,9 +164,10 @@ pub(crate) async fn qdrant_named_dense_search(
 
     let parsed: QdrantQueryResponse = resp.json().await?;
     log_debug(&format!(
-        "qdrant named_dense_search hits={} collection={}",
+        "qdrant search_complete mode=named_dense collection={} hits={} latency_ms={}",
+        cfg.collection,
         parsed.result.points.len(),
-        cfg.collection
+        search_start.elapsed().as_millis()
     ));
     Ok(parsed.result.points)
 }
@@ -440,6 +442,20 @@ mod tests {
             "hybrid search must succeed: {:?}",
             result.err()
         );
+    }
+
+    #[test]
+    fn search_complete_log_format_is_valid() {
+        let collection = "cortex";
+        let hits = 10usize;
+        let latency_ms = 42u128;
+        let line = format!(
+            "qdrant search_complete mode=hybrid collection={collection} hits={hits} latency_ms={latency_ms}"
+        );
+        assert!(line.contains("mode=hybrid"));
+        assert!(line.contains("collection=cortex"));
+        assert!(line.contains("hits=10"));
+        assert!(line.contains("latency_ms=42"));
     }
 
     #[tokio::test]
