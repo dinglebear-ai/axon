@@ -20,6 +20,14 @@ use tokio::sync::Semaphore;
 pub(crate) const QUERY_INSTRUCTION: &str =
     "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ";
 
+/// Prepend the Qwen3-Embedding query instruction to `query`.
+///
+/// Must be called before `tei_embed()` for query vectors only.
+/// Document chunks must be embedded as raw text — do NOT call this for documents.
+pub(crate) fn prepend_query_instruction(query: &str) -> String {
+    format!("{QUERY_INSTRUCTION}{query}")
+}
+
 const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;

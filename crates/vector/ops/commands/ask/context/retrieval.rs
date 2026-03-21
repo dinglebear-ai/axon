@@ -20,7 +20,7 @@ pub(super) struct AskRetrieval {
 
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
-    let query_with_instruction = format!("{}{query}", tei::QUERY_INSTRUCTION);
+    let query_with_instruction = tei::prepend_query_instruction(query);
     let mut ask_vectors = tei::tei_embed(cfg, &[query_with_instruction])
         .await
         .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;

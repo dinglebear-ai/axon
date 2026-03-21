@@ -1,5 +1,24 @@
 # Changelog
-Last Modified: 2026-03-20 (session: v0.29.0 — export service v3, hybrid search, graph worker, query diagnostics)
+Last Modified: 2026-03-21 (session: v0.30.0 — streaming research synthesis, ACP eager warm-up, hybrid search fix, embedding quality tests)
+
+## [0.30.0] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **Streaming research synthesis** — `research` command streams LLM tokens to stderr in real time via `ServiceEvent::SynthesisDelta`; CLI renders inline with phase markers. Web handler forwards as `{"type":"synthesis_delta"}` WS frames.
+- **ACP eager session warm-up** — `AcpConnectionHandle::spawn_eager` starts adapter subprocess cold-start in the background while the Tavily search runs, hiding the ACP latency from the critical path.
+- **Hybrid search response shape fix** — `/points/query` returns `{"result":{"points":[]}}` (nested), not `{"result":[]}` (flat). Added `QdrantQueryResult`/`QdrantQueryResponse` types; 3 deserialization tests lock in the wire contract.
+- **`chunk_markdown` proptests** — 4 property tests: no chunk >2000 chars, no empty/whitespace chunks, deterministic output, non-whitespace input yields ≥1 chunk. `markdown_safe_input()` strategy avoids control-character panics in `MarkdownSplitter`.
+- **`prepend_query_instruction()` helper** — Consolidates 3 duplicated `format!("{}{query}", QUERY_INSTRUCTION)` sites in `query.rs`, `scoring.rs`, `retrieval.rs`.
+- **Refactors** — `build_synthesis_context` uses `write!()` (no temp alloc per iteration); `parse_synthesis_response` uses typed struct; `try_send` failure now logged; dead `tx_for_deltas` rename removed.
+
+### Commits since v0.29.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat | streaming research synthesis, ACP eager warm-up, hybrid search fix, embedding quality tests |
+| a8812398 | fix(qdrant) | /points/query returns {result:{points:[]}} not {result:[]} |
+| 79f8cf2f | feat(embed) | Tier 1 embedding quality — asymmetric encoding + semantic chunking |
 
 ## [0.29.0] — feat/pulse-shell-and-hybrid-search
 

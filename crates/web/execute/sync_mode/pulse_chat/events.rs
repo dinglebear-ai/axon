@@ -77,6 +77,14 @@ pub(in crate::crates::web) async fn dispatch_acp_event(
             .to_string();
             send_or_buffer(tx, standalone, agent_key).await;
         }
+        ServiceEvent::SynthesisDelta { text } => {
+            send_json_owned(
+                tx.clone(),
+                ws_ctx.clone(),
+                json!({"type": "synthesis_delta", "text": text}),
+            )
+            .await;
+        }
     }
 }
 

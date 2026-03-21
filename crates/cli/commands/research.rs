@@ -4,16 +4,14 @@ use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
 use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{muted, primary, print_phase};
+use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::search as search_service;
 use crate::crates::services::types::SearchOptions as ServiceSearchOptions;
 #[cfg(test)]
 use spider_agent::TimeRange;
 use std::error::Error;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::Instant;
+use tokio::sync::mpsc;
 
 pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     validate_research_prereqs(cfg)?;
@@ -27,25 +25,47 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     let started = Instant::now();
-    let running = Arc::new(AtomicBool::new(true));
-    let running_tick = Arc::clone(&running);
-    let tick_started = started;
-    let ticker = if !cfg.json_output {
-        Some(tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                if !running_tick.load(Ordering::Relaxed) {
-                    break;
-                }
-                log_info(&format!(
-                    "research status=in_progress elapsed_ms={}",
-                    tick_started.elapsed().as_millis()
-                ));
+
+    // Wire up event channel for phase markers and streaming synthesis output.
+    // The service layer emits:
+    //   - ServiceEvent::Log { message: "phase:searching" | "phase:synthesizing results=N" }
+    //   - ServiceEvent::SynthesisDelta { text } — one event per LLM token chunk
+    let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
+    let show_progress = !cfg.json_output;
+    let consumer = tokio::spawn(async move {
+        let mut in_synthesis = false;
+        while let Some(event) = event_rx.recv().await {
+            if !show_progress {
+                continue;
             }
-        }))
-    } else {
-        None
-    };
+            match event {
+                ServiceEvent::Log { message, .. } => {
+                    if in_synthesis {
+                        eprintln!(); // end streaming line before the next log
+                        in_synthesis = false;
+                    }
+                    if message == "phase:searching" {
+                        log_info("research phase=searching");
+                    } else if let Some(rest) = message.strip_prefix("phase:synthesizing ") {
+                        log_info(&format!("research phase=synthesizing {rest}"));
+                    }
+                    // other log messages (starting/complete) are ignored — run_research
+                    // already prints its own header
+                }
+                ServiceEvent::SynthesisDelta { text } => {
+                    if !in_synthesis {
+                        eprint!("  "); // indent the inline stream
+                        in_synthesis = true;
+                    }
+                    eprint!("{text}");
+                }
+                _ => {}
+            }
+        }
+        if in_synthesis {
+            eprintln!(); // flush streaming line if channel closed mid-synthesis
+        }
+    });
 
     // Route data-fetch through the services layer.
     let opts = ServiceSearchOptions {
@@ -53,13 +73,11 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         offset: 0,
         time_range: parse_service_time_range(cfg.search_time_range.as_deref()),
     };
-    let payload = search_service::research(cfg, &query, opts, None)
+    let payload = search_service::research(cfg, &query, opts, Some(event_tx))
         .await
         .map(|r| r.payload);
-    running.store(false, Ordering::Relaxed);
-    if let Some(t) = ticker {
-        let _ = t.await;
-    }
+    // Await the consumer — it exits once the sender is dropped (research() returned)
+    let _ = consumer.await;
     let payload = payload?;
 
     if cfg.json_output {

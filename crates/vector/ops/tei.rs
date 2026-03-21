@@ -7,8 +7,9 @@ mod tei_manifest;
 mod tests;
 mod text_embed;
 
+#[cfg(test)]
 pub(crate) use tei_client::QUERY_INSTRUCTION;
-pub(crate) use tei_client::tei_embed;
+pub(crate) use tei_client::{prepend_query_instruction, tei_embed};
 
 // Re-export the embed API for crate callers.
 pub(crate) use text_embed::embed_prepared_docs;

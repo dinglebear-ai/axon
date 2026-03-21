@@ -104,6 +104,62 @@ impl AcpConnectionHandle {
         Self { tx, _join: join }
     }
 
+    /// Spawn the background adapter thread and begin session establishment eagerly.
+    ///
+    /// Unlike [`spawn`] which defers setup to the first [`run_turn`] call, this
+    /// variant starts `establish_acp_session` immediately so the adapter subprocess
+    /// warm-up overlaps with other work (e.g. a Tavily search running concurrently).
+    /// Any [`run_turn`] call received while setup is still in progress is queued in
+    /// the channel (capacity 16) and executed as soon as the session is ready.
+    pub fn spawn_eager(
+        adapter: AcpAdapterCommand,
+        initialize: InitializeRequest,
+        session_setup: AcpSessionSetupRequest,
+        model: Option<String>,
+        setup_tx: Option<mpsc::Sender<ServiceEvent>>,
+        permission_responders: PermissionResponderMap,
+    ) -> Self {
+        let timeout = adapter
+            .adapter_timeout_secs
+            .map(std::time::Duration::from_secs)
+            .unwrap_or(std::time::Duration::from_secs(3600));
+
+        let (tx, rx) = mpsc::channel(16);
+        let join = tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("[acp_conn] failed to build tokio runtime");
+            let local = tokio::task::LocalSet::new();
+            local.block_on(&rt, async {
+                match tokio::time::timeout(
+                    timeout,
+                    adapter_loop_eager(
+                        adapter,
+                        initialize,
+                        session_setup,
+                        model,
+                        setup_tx,
+                        permission_responders,
+                        rx,
+                    ),
+                )
+                .await
+                {
+                    Ok(_) => {}
+                    Err(_) => {
+                        tracing::warn!(
+                            context = "acp_conn",
+                            timeout_secs = timeout.as_secs(),
+                            "adapter loop (eager) timed out"
+                        );
+                    }
+                }
+            });
+        });
+        Self { tx, _join: join }
+    }
+
     /// Dispatch a prompt turn to the background adapter thread.
     ///
     /// Returns `Err` if the channel is closed (adapter exited unexpectedly).
@@ -211,4 +267,84 @@ async fn adapter_loop(
     }
 
     tracing::info!(context = "acp_conn", "adapter loop ended");
+}
+
+/// Adapter loop that establishes the ACP session eagerly — before the first turn arrives.
+///
+/// After setup, waits for [`AdapterMessage::RunTurn`] messages on `rx` and runs each
+/// turn on the shared `ClientSideConnection`, identical to the main loop in
+/// [`adapter_loop`].  If setup fails, any queued turns are failed immediately and the
+/// loop exits; subsequent [`run_turn`] calls will see a closed-channel error.
+async fn adapter_loop_eager(
+    adapter: AcpAdapterCommand,
+    initialize: InitializeRequest,
+    session_setup: AcpSessionSetupRequest,
+    model: Option<String>,
+    setup_tx: Option<mpsc::Sender<ServiceEvent>>,
+    permission_responders: PermissionResponderMap,
+    mut rx: mpsc::Receiver<AdapterMessage>,
+) {
+    let session_cwd = match &session_setup {
+        AcpSessionSetupRequest::New(req) => req.cwd.clone(),
+        AcpSessionSetupRequest::Load(req) => req.cwd.clone(),
+    };
+
+    let setup_result = establish_acp_session(
+        adapter,
+        initialize,
+        session_setup,
+        model.as_deref(),
+        &setup_tx,
+        &permission_responders,
+    )
+    .await;
+
+    let EstablishedSession {
+        mut conn,
+        session_id,
+        mut exit_rx,
+        runtime_state,
+    } = match setup_result {
+        Ok(s) => {
+            tracing::info!(context = "acp_conn", session_id = %s.session_id.0, "adapter ready (eager)");
+            s
+        }
+        Err(e) => {
+            tracing::error!(context = "acp_conn", error = %e, "adapter setup failed (eager)");
+            while let Ok(AdapterMessage::RunTurn(turn)) = rx.try_recv() {
+                let _ = turn
+                    .result_tx
+                    .send(Err(format!("ACP adapter setup failed: {e}")));
+            }
+            return;
+        }
+    };
+
+    *runtime_state.current_session_id.borrow_mut() = Some(session_id.0.to_string());
+    *runtime_state.established_model.borrow_mut() = model;
+
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                match msg {
+                    Some(AdapterMessage::RunTurn(turn)) => {
+                        turn::run_turn_on_conn(&mut conn, &session_id, &session_cwd, &runtime_state, turn).await;
+                    }
+                    None => {
+                        tracing::info!(context = "acp_conn", "channel closed (eager connection ended)");
+                        break;
+                    }
+                }
+            }
+            exit_result = &mut exit_rx => {
+                match exit_result {
+                    Ok(msg) => tracing::error!(context = "acp_conn", message = %msg, "adapter exited unexpectedly"),
+                    Err(_) => tracing::info!(context = "acp_conn", "adapter exited cleanly"),
+                }
+                break;
+            }
+        }
+    }
+
+    tracing::info!(context = "acp_conn", "adapter loop ended (eager)");
 }

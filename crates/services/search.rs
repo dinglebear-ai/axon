@@ -82,6 +82,7 @@ pub async fn research_payload(
     limit: usize,
     offset: usize,
     time_range: Option<TimeRange>,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<serde_json::Value, Box<dyn Error>> {
     let started = Instant::now();
     if cfg.tavily_api_key.is_empty() {
@@ -108,11 +109,23 @@ pub async fn research_payload(
         }),
     ));
 
+    // Start warming the ACP adapter session in the background so its cold-start
+    // (subprocess spawn → init → session setup) overlaps with the Tavily search.
+    let warm = acp_llm::warm_session(cfg, tx.clone())?;
+
     let agent = Agent::builder()
         .with_search_tavily(&cfg.tavily_api_key)
         .build()?;
 
     // Step 1: search — Tavily returns URLs + content excerpts
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: "phase:searching".to_string(),
+        },
+    )
+    .await;
     let mut search_options = SpiderSearchOptions::new().with_limit((limit + offset).clamp(1, 100));
     if let Some(tr) = time_range {
         search_options = search_options.with_time_range(tr);
@@ -139,7 +152,15 @@ pub async fn research_payload(
         .collect();
 
     // Step 3: synthesize — one LLM call over the snippets
-    let (summary, usage) = synthesize(query, &extractions, cfg).await;
+    emit(
+        &tx,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: format!("phase:synthesizing results={}", page.len()),
+        },
+    )
+    .await;
+    let (summary, usage) = synthesize_warm(warm, query, &extractions, cfg, tx.clone()).await;
 
     let search_results_json = page
         .iter()
@@ -239,27 +260,22 @@ async fn record_query_history(
     }
 }
 
-/// Synthesize extracted content into a coherent summary via LLM.
-async fn synthesize(
+/// Synthesize extracted content via a pre-warmed ACP session, streaming tokens
+/// back through `tx` as [`ServiceEvent::SynthesisDelta`] events.
+///
+/// Using a pre-warmed session eliminates the adapter cold-start cost because
+/// subprocess spawn + session initialization overlapped with the Tavily search.
+async fn synthesize_warm(
+    warm: acp_llm::WarmAcpSession,
     query: &str,
     extractions: &[serde_json::Value],
     cfg: &Config,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> (Option<String>, TokenUsage) {
     if extractions.is_empty() {
         return (None, TokenUsage::default());
     }
-
-    let mut context = String::new();
-    for (i, e) in extractions.iter().enumerate() {
-        context.push_str(&format!(
-            "\n\nSource {} ({}): {}\n{}",
-            i + 1,
-            e["url"].as_str().unwrap_or(""),
-            e["title"].as_str().unwrap_or(""),
-            e["extracted"].as_str().unwrap_or(""),
-        ));
-    }
-
+    let context = build_synthesis_context(extractions);
     let mut req = AcpCompletionRequest::new(format!(
         "Topic: {query}\n\nSources:{context}\n\nProvide a comprehensive summary of the findings, citing sources where appropriate. Return as JSON with a 'summary' field."
     ))
@@ -269,45 +285,20 @@ async fn synthesize(
     if !cfg.openai_model.trim().is_empty() {
         req = req.model(cfg.openai_model.clone());
     }
-
-    let cfg_for_completion = cfg.clone();
-    match tokio::task::spawn_blocking(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| format!("failed to build research ACP runtime: {err}"))?;
-        rt.block_on(acp_llm::complete_text(&cfg_for_completion, req))
-            .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| format!("failed to join research ACP task: {err}"))
+    match warm
+        .complete_streaming(req, move |delta| {
+            if let Some(ref sender) = tx
+                && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
+                    text: delta.to_string(),
+                })
+            {
+                log_warn(&format!("synthesis_delta dropped: {e}"));
+            }
+            Ok(())
+        })
+        .await
     {
-        Ok(Ok(response)) => {
-            let summary = serde_json::from_str::<serde_json::Value>(&response.text)
-                .ok()
-                .and_then(|v| {
-                    v.get("summary")
-                        .and_then(|s| s.as_str())
-                        .map(str::to_string)
-                })
-                .unwrap_or(response.text);
-            let usage = response
-                .usage
-                .map(|u| TokenUsage {
-                    prompt_tokens: u32::try_from(u.prompt_tokens).unwrap_or(u32::MAX),
-                    completion_tokens: u32::try_from(u.completion_tokens).unwrap_or(u32::MAX),
-                    total_tokens: u32::try_from(u.total_tokens).unwrap_or(u32::MAX),
-                })
-                .unwrap_or_default();
-            (Some(summary), usage)
-        }
-        Ok(Err(e)) => {
-            log_warn(&format!("synthesis failed: {e}"));
-            (
-                Some(fallback_summary_from_extractions(query, extractions)),
-                TokenUsage::default(),
-            )
-        }
+        Ok(response) => parse_synthesis_response(response),
         Err(e) => {
             log_warn(&format!("synthesis failed: {e}"));
             (
@@ -316,6 +307,43 @@ async fn synthesize(
             )
         }
     }
+}
+
+fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {
+    use std::fmt::Write as _;
+    let mut context = String::new();
+    for (i, e) in extractions.iter().enumerate() {
+        let _ = write!(
+            context,
+            "\n\nSource {} ({}): {}\n{}",
+            i + 1,
+            e["url"].as_str().unwrap_or(""),
+            e["title"].as_str().unwrap_or(""),
+            e["extracted"].as_str().unwrap_or(""),
+        );
+    }
+    context
+}
+
+fn parse_synthesis_response(
+    response: acp_llm::AcpCompletionResponse,
+) -> (Option<String>, TokenUsage) {
+    #[derive(serde::Deserialize)]
+    struct SynthesisJson {
+        summary: String,
+    }
+    let summary = serde_json::from_str::<SynthesisJson>(&response.text)
+        .map(|j| j.summary)
+        .unwrap_or(response.text);
+    let usage = response
+        .usage
+        .map(|u| TokenUsage {
+            prompt_tokens: u32::try_from(u.prompt_tokens).unwrap_or(u32::MAX),
+            completion_tokens: u32::try_from(u.completion_tokens).unwrap_or(u32::MAX),
+            total_tokens: u32::try_from(u.total_tokens).unwrap_or(u32::MAX),
+        })
+        .unwrap_or_default();
+    (Some(summary), usage)
 }
 
 fn fallback_summary_from_extractions(query: &str, extractions: &[serde_json::Value]) -> String {
@@ -424,7 +452,8 @@ pub async fn research(
     .await;
 
     let time_range = opts.time_range.map(to_spider_time_range);
-    let payload = research_payload(cfg, query, opts.limit, opts.offset, time_range).await?;
+    let payload =
+        research_payload(cfg, query, opts.limit, opts.offset, time_range, tx.clone()).await?;
 
     emit(
         &tx,

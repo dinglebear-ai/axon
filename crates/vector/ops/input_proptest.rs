@@ -1,14 +1,22 @@
-//! Property-based tests for `chunk_text`.
+//! Property-based tests for `chunk_text` and `chunk_markdown`.
 //!
 //! The hand-written tests in `input.rs` cover specific boundary cases.
 //! These properties verify invariants across the full input space:
+//!
+//! **chunk_text** invariants:
 //! - Non-empty input always yields at least one chunk.
 //! - No chunk exceeds 2000 characters.
 //! - Output is deterministic for the same input.
 //! - Empty input returns exactly one empty chunk (fast-path behaviour).
 //! - All original content is preserved across the chunk sequence.
+//!
+//! **chunk_markdown** invariants:
+//! - No chunk exceeds 2000 characters.
+//! - No chunk is empty or whitespace-only (empty chunks are filtered).
+//! - Output is deterministic for the same input.
+//! - Non-empty, non-whitespace input yields at least one chunk.
 
-use super::chunk_text;
+use super::{chunk_markdown, chunk_text};
 use proptest::prelude::*;
 
 const MAX_CHUNK: usize = 2000;
@@ -200,5 +208,94 @@ proptest! {
                 "multi-byte chunk {i} has {char_count} chars, exceeding MAX={MAX_CHUNK}"
             );
         }
+    }
+}
+
+// ── chunk_markdown property tests ────────────────────────────────────────────
+//
+// chunk_markdown uses MarkdownSplitter with 500–2000 char range and 200-char
+// overlap. Its invariants differ from chunk_text:
+//   1. Empty input → empty Vec (not vec![""] — the fast-path difference).
+//   2. No empty/whitespace chunks — the retain() filter removes them.
+// Control characters panic inside text-splitter's regex engine, so all
+// chunk_markdown tests use markdown_safe_input() instead of unconstrained ".".
+
+/// Safe input strategy: printable ASCII + `\n` + `\t`.
+/// Excludes control characters (0x00–0x1F except space/newline/tab) that panic
+/// inside the text-splitter markdown regex engine.
+fn markdown_safe_input(max_len: usize) -> impl Strategy<Value = String> {
+    prop::collection::vec(
+        prop::char::ranges(
+            vec![
+                ' '..='~',   // printable ASCII (space through tilde)
+                '\n'..='\n', // newlines (needed for markdown paragraphs)
+                '\t'..='\t', // tabs
+            ]
+            .into(),
+        ),
+        0..=max_len,
+    )
+    .prop_map(|chars| chars.into_iter().collect::<String>())
+}
+
+proptest! {
+    /// No chunk produced by `chunk_markdown` may exceed 2000 characters.
+    #[test]
+    fn chunk_markdown_no_chunk_exceeds_max_chars(
+        s in markdown_safe_input(10000),
+    ) {
+        for (i, chunk) in chunk_markdown(&s).iter().enumerate() {
+            let char_count = chunk.chars().count();
+            prop_assert!(
+                char_count <= MAX_CHUNK,
+                "chunk_markdown chunk {i} has {char_count} chars, exceeding MAX={MAX_CHUNK}"
+            );
+        }
+    }
+}
+
+proptest! {
+    /// No chunk produced by `chunk_markdown` may be empty or whitespace-only.
+    /// This property locks in the `retain(|c| !c.trim().is_empty())` guard.
+    #[test]
+    fn chunk_markdown_no_empty_or_whitespace_chunks(
+        s in markdown_safe_input(10000),
+    ) {
+        for (i, chunk) in chunk_markdown(&s).iter().enumerate() {
+            prop_assert!(
+                !chunk.trim().is_empty(),
+                "chunk_markdown chunk {i} is empty or whitespace-only"
+            );
+        }
+    }
+}
+
+proptest! {
+    /// `chunk_markdown` must be deterministic: same input → same output.
+    #[test]
+    fn chunk_markdown_is_deterministic(
+        s in markdown_safe_input(5000),
+    ) {
+        let a = chunk_markdown(&s);
+        let b = chunk_markdown(&s);
+        prop_assert_eq!(
+            a, b,
+            "chunk_markdown must be deterministic for the same input"
+        );
+    }
+}
+
+proptest! {
+    /// Non-empty, non-whitespace input must produce at least one chunk.
+    /// (Empty input correctly returns an empty Vec — tested in input.rs.)
+    #[test]
+    fn chunk_markdown_non_whitespace_input_yields_at_least_one_chunk(
+        s in "[a-zA-Z0-9]{1,10000}",
+    ) {
+        let chunks = chunk_markdown(&s);
+        prop_assert!(
+            !chunks.is_empty(),
+            "non-whitespace input must produce at least one chunk"
+        );
     }
 }

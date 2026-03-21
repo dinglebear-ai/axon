@@ -72,6 +72,14 @@ pub enum ServiceEvent {
         content: String,
         operation: EditorOperation,
     },
+    /// Streaming token delta from research synthesis (one event per chunk).
+    ///
+    /// Emitted by [`crate::crates::services::search::research`] as the LLM
+    /// writes its synthesis response.  CLI handlers stream these to stderr
+    /// inline; web handlers forward them as `{"type":"synthesis_delta"}`.
+    SynthesisDelta {
+        text: String,
+    },
 }
 
 pub async fn emit(tx: &Option<mpsc::Sender<ServiceEvent>>, event: ServiceEvent) {

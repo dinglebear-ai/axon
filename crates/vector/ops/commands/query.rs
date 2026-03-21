@@ -10,7 +10,7 @@ pub async fn query_results(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    let query_with_instruction = format!("{}{query}", tei::QUERY_INSTRUCTION);
+    let query_with_instruction = tei::prepend_query_instruction(query);
     let mut query_vectors =
         tei::tei_embed(cfg, std::slice::from_ref(&query_with_instruction)).await?;
     if query_vectors.is_empty() {
@@ -101,7 +101,7 @@ pub async fn query_results(
 
 #[cfg(test)]
 mod tests {
-    use crate::crates::vector::ops::tei::QUERY_INSTRUCTION;
+    use crate::crates::vector::ops::tei::{QUERY_INSTRUCTION, prepend_query_instruction};
 
     #[test]
     fn query_instruction_is_nonempty_and_ends_with_query_colon() {
@@ -109,6 +109,28 @@ mod tests {
         assert!(
             QUERY_INSTRUCTION.ends_with("Query: "),
             "instruction must end with 'Query: ', got: {QUERY_INSTRUCTION:?}"
+        );
+    }
+
+    #[test]
+    fn query_instruction_prepend_produces_correct_string() {
+        // Tests the prepend_query_instruction() helper used in query_results().
+        // Locks in: instruction is prepended, query text is preserved verbatim,
+        // combined string is strictly longer than the query alone.
+        let query = "how does markdown splitting work";
+        let with_instruction = prepend_query_instruction(query);
+
+        assert!(
+            with_instruction.starts_with("Instruct:"),
+            "combined string must start with the instruction prefix"
+        );
+        assert!(
+            with_instruction.ends_with(query),
+            "combined string must end with the original query text verbatim"
+        );
+        assert!(
+            with_instruction.len() > query.len(),
+            "combined string must be longer than the query alone"
         );
     }
 }
