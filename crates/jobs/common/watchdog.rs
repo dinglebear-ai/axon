@@ -316,13 +316,14 @@ async fn batch_fail_exhausted_jobs(
     Ok((ids.len() as u64, ids))
 }
 
-/// Mark stale candidates via a single batched unnest() UPDATE. Returns the count marked.
+/// Mark stale candidates via a single batched unnest() UPDATE. Returns the count of
+/// rows actually updated (not the attempted count — rows may be skipped if their
+/// status changed between the SELECT and the UPDATE).
 async fn batch_mark_candidates(
     pool: &PgPool,
     table_name: &str,
     mark_batch: Vec<(Uuid, Value)>,
 ) -> Result<u64> {
-    let batch_len = mark_batch.len() as u64;
     let (mark_ids, mark_payloads): (Vec<Uuid>, Vec<Value>) = mark_batch.into_iter().unzip();
     let q = format!(
         "UPDATE {table_name} SET result_json=batch.payload \
@@ -330,7 +331,7 @@ async fn batch_mark_candidates(
          WHERE {table_name}.id=batch.id AND {table_name}.status='{running}'",
         running = JobStatus::Running.as_str(),
     );
-    sqlx::query(&q)
+    let rows_affected = sqlx::query(&q)
         .bind(&mark_ids)
         .bind(&mark_payloads)
         .execute(pool)
@@ -340,6 +341,7 @@ async fn batch_mark_candidates(
                 "watchdog: batch mark {} stale candidates in {table_name}",
                 mark_ids.len()
             )
-        })?;
-    Ok(batch_len)
+        })?
+        .rows_affected();
+    Ok(rows_affected)
 }

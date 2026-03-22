@@ -343,7 +343,7 @@ pub async fn run_extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
     ));
 
     let pool = make_pool(cfg).await?;
-    ensure_schema_once(&pool).await?;
+    ensure_schema(&pool).await?;
 
     let wc = WorkerConfig {
         table: TABLE,

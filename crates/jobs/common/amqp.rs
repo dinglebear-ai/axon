@@ -120,8 +120,14 @@ pub async fn batch_enqueue_jobs(cfg: &Config, queue_name: &str, job_ids: &[Uuid]
 /// Publish multiple job IDs, optionally reusing an existing AMQP channel.
 ///
 /// When `existing_ch` is `Some` and the channel is still connected, publishes
-/// reuse the existing TCP connection — zero connection overhead. Falls back to
-/// a fresh connection if the channel is broken or `None`.
+/// reuse the existing TCP connection — zero connection overhead. If the reused
+/// channel publish fails, the error is returned immediately without retrying on
+/// a fresh connection. Retrying the full batch after a partial publish could
+/// duplicate already-published jobs. Callers that need a retry should open a
+/// fresh channel themselves and call again.
+///
+/// Use [`batch_enqueue_jobs`] (no `existing_ch`) when a fresh connection is
+/// always acceptable.
 pub async fn batch_enqueue_jobs_with_channel(
     cfg: &Config,
     queue_name: &str,
@@ -133,20 +139,16 @@ pub async fn batch_enqueue_jobs_with_channel(
     }
 
     // Try the existing channel first — avoids a TCP connection + TLS handshake.
+    // On any error, fail fast: we cannot safely retry the full batch because some
+    // messages may have already been published and broker-confirmed, so retrying
+    // would produce duplicates.
     if let Some(ch) = existing_ch
         && ch.status().connected()
     {
-        match publish_to_channel(ch, queue_name, job_ids).await {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                log_debug(&format!(
-                    "amqp reuse channel publish failed queue={queue_name}: {e}; opening fresh connection"
-                ));
-            }
-        }
+        return publish_to_channel(ch, queue_name, job_ids).await;
     }
 
-    // Fallback: open a fresh connection.
+    // No usable existing channel — open a fresh connection.
     let (conn, ch) = open_amqp_connection_and_channel(cfg, queue_name).await?;
     publish_to_channel(&ch, queue_name, job_ids).await?;
     if let Err(e) = ch.close(0, "".into()).await {
