@@ -1,5 +1,24 @@
 # Changelog
-Last Modified: 2026-03-22 (session: v0.32.0 — pulse shell WebSocket, performance sweep, code consolidation)
+Last Modified: 2026-03-22 (session: v0.32.1 — PR review fixes: jobs, ingest, crawl, services, frontend)
+
+## [0.32.1] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **Jobs infrastructure fixes** — `extract.rs` P1: removed process-wide `OnceLock` for schema init (multi-DB safety); `watchdog.rs`: `batch_mark_candidates` now reports `rows_affected()` + docstring corrected; `amqp.rs`: reused-channel publish errors fail fast to prevent job duplication.
+- **Crawl & ingest fixes** — `collector.rs` P1: missing cache file now triggers fresh write instead of silent page drop; `dir_ops.rs`: `Semaphore(32)` caps concurrent `spawn_blocking` file copies; `reddit.rs`: drain task join errors propagated instead of `unwrap_or(0)`.
+- **Services & health fixes** — `doctor.rs`: `build_client` failure handled per-probe, no longer aborts entire doctor report; `taxonomy.rs`: `taxonomy_path.trim()` before `from_path`.
+- **Frontend & infra fixes** — `axon-shell-resize-divider.tsx`: `role="separator"` with live `aria-valuenow`; `message.tsx`: `useEffect` dep on full `childrenArray`; `docker-compose.yaml`: `group_add: ["981"]` restored for docker socket; CHANGELOG: removed duplicate commit row.
+- **Config files** — `axon.json` and `axon.schema.json` added to repo.
+
+### Commits since v0.32.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| e0a20b02 | fix | address frontend, docker, and changelog review issues |
+| 3484e789 | fix | address services, health, and graph review issues |
+| 24e7880a | fix | address ingest and crawl engine review issues |
+| d564266e | fix | address PR review issues in jobs infrastructure |
 
 ## [0.32.0] — feat/pulse-shell-and-hybrid-search
 
@@ -19,7 +38,7 @@ Last Modified: 2026-03-22 (session: v0.32.0 — pulse shell WebSocket, performan
 
 | SHA | Type | Description |
 |-----|------|-------------|
-| *(this commit)* | feat(web) | pulse shell WebSocket, performance sweep, code consolidation |
+| 99067651 | refactor | fix clippy dead-code and style warnings across all changed files |
 
 ## [0.31.0] — feat/pulse-shell-and-hybrid-search
 

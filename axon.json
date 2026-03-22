@@ -1,0 +1,159 @@
+{
+  "$schema": "./axon.schema.json",
+  "services": {
+    "qdrant_url": "http://axon-qdrant:6333",
+    "tei_url": "http://axon-tei:80",
+    "chrome_remote_url": "http://axon-chrome:6000",
+    "chrome_url": "http://axon-chrome:6000",
+    "neo4j_url": "",
+    "neo4j_user": "neo4j",
+    "backend_url": "http://axon-workers:49000",
+    "workers_ws_url": "",
+    "backend_hostname": ""
+  },
+  "llm": {
+    "base_url": "",
+    "model": ""
+  },
+  "tei": {
+    "max_retries": 5,
+    "request_timeout_ms": 30000,
+    "max_client_batch_size": 128,
+    "http_port": 52000,
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "max_concurrent_requests": 80,
+    "max_batch_tokens": 163840,
+    "max_batch_requests": 80,
+    "pooling": "last-token",
+    "tokenization_workers": 8
+  },
+  "search": {
+    "hybrid_enabled": true,
+    "hybrid_candidates": 100,
+    "ask_hybrid_candidates": 150,
+    "hnsw_ef": 128,
+    "hnsw_ef_legacy": 64
+  },
+  "ask": {
+    "max_context_chars": 120000,
+    "candidate_limit": 64,
+    "chunk_limit": 10,
+    "full_docs": 4,
+    "backfill_chunks": 3,
+    "doc_fetch_concurrency": 4,
+    "doc_chunk_limit": 192,
+    "min_relevance_score": 0.45,
+    "authoritative_domains": [],
+    "authoritative_boost": 0.0,
+    "authoritative_allowlist": [],
+    "min_citations_nontrivial": 2
+  },
+  "embed": {
+    "collection": "axon",
+    "doc_concurrency": null,
+    "doc_timeout_secs": 300,
+    "strict_predelete": true
+  },
+  "queues": {
+    "crawl": "axon.crawl.jobs",
+    "extract": "axon.extract.jobs",
+    "embed": "axon.embed.jobs",
+    "ingest": "axon.ingest.jobs",
+    "refresh": "axon.refresh.jobs",
+    "graph": "axon.graph.jobs"
+  },
+  "workers": {
+    "ingest_lanes": 2,
+    "max_pending_crawl_jobs": 100,
+    "crawl_size_warn_threshold": 10000,
+    "job_stale_timeout_secs": 300,
+    "job_stale_confirm_secs": 60,
+    "pg_pool_size": null,
+    "max_ws_connections": null,
+    "max_shell_connections": null,
+    "max_sync_concurrent": null
+  },
+  "graph": {
+    "concurrency": 4,
+    "llm_model": "qwen3.5:4b",
+    "similarity_threshold": 0.75,
+    "similarity_limit": 20,
+    "context_max_chars": 2000,
+    "taxonomy_path": ""
+  },
+  "acp": {
+    "adapter_cmd": "",
+    "adapter_args": "",
+    "prewarm": true,
+    "auto_approve": true,
+    "max_concurrent_sessions": 8,
+    "turn_timeout_ms": 300000,
+    "allowed_claude_betas": "interleaved-thinking",
+    "agents": {
+      "claude": { "cmd": "", "args": "" },
+      "codex":  { "cmd": "", "args": "" },
+      "gemini": { "cmd": "", "args": "" }
+    }
+  },
+  "web": {
+    "allowed_origins": [],
+    "allow_insecure_dev": false,
+    "allow_query_token": false,
+    "trust_proxy": false,
+    "pulse_chat_timeout_ms": 300000,
+    "shell_allowed_origins": [],
+    "shell_server_host": "127.0.0.1",
+    "shell_server_port": null,
+    "docker_socket_path": "",
+    "enable_docker_socket_logs": false
+  },
+  "mcp": {
+    "transport": "http",
+    "http_host": "0.0.0.0",
+    "http_port": 8001,
+    "artifact_dir": "",
+    "inline_bytes_threshold": 8192
+  },
+  "serve": {
+    "host": "",
+    "port": 49000
+  },
+  "chrome": {
+    "diagnostics": false,
+    "diagnostics_dir": "",
+    "diagnostics_events": false,
+    "diagnostics_screenshot": false,
+    "proxy": "",
+    "user_agent": ""
+  },
+  "logging": {
+    "file": "",
+    "max_bytes": 10485760,
+    "max_files": 3,
+    "no_color": false
+  },
+  "output": {
+    "dir": "",
+    "extract_est_cost_per_1k_tokens": null
+  },
+  "ingest": {
+    "github_max_issues": 100,
+    "github_max_prs": 100,
+    "download_max_bytes": null,
+    "download_max_files": null,
+    "domains_detailed": false,
+    "domains_facet_limit": null
+  },
+  "oauth": {
+    "auth_url": "",
+    "token_url": "",
+    "redirect_uri": "",
+    "redirect_host": "",
+    "redirect_path": "",
+    "redirect_policy": "",
+    "scopes": "",
+    "required_scopes": "",
+    "redis_prefix": "",
+    "broker_issuer": ""
+  }
+}
