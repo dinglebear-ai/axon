@@ -2,6 +2,7 @@ use crate::crates::core::config::Config;
 use std::error::Error;
 
 mod amqp_consumer;
+mod cancel_poll;
 mod embed;
 mod job_context;
 mod loops;

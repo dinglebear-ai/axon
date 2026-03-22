@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "0.30.1"
+version = "0.31.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -49,7 +49,7 @@ spider = { version = "2", default-features = false, features = [
     "chrome_headless_new", "chrome_simd",
     "simd", "inline-more", "cache_mem",
     "ua_generator", "headers", "time", "control",
-    "firewall",
+    "firewall", "hedge",
 ] }
 spider_agent = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"
@@ -64,7 +64,7 @@ tree-sitter-python = "0.23"
 tree-sitter-rust = "0.24"
 tree-sitter-typescript = "0.23"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "process", "signal", "sync", "time"] }
-tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-executor-trait = "3"

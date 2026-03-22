@@ -107,6 +107,49 @@ pub(crate) fn regex_escape(value: &str) -> String {
     escaped
 }
 
+/// Derive a whitelist regex pattern that scopes a crawl to the directory
+/// subtree of `start_url`.
+///
+/// Returns `None` when the URL path is `/` or a single non-empty segment
+/// (e.g. `/docs`), since those are already broad enough — no scoping needed.
+///
+/// Example: `https://ai.google.dev/api/python/google/generativeai/GenerativeModel`
+/// → `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`
+pub(crate) fn derive_auto_whitelist_pattern(
+    start_url: &str,
+) -> Option<spider::compact_str::CompactString> {
+    let parsed = Url::parse(start_url).ok()?;
+    let host = parsed.host_str()?;
+    let path = parsed.path();
+
+    // Find the directory prefix: everything up to and including the last `/`
+    // before a filename, or the path itself when it ends with `/`.
+    let dir_prefix = if path.ends_with('/') {
+        path.to_string()
+    } else {
+        // rfind('/') always finds at least the leading '/' for absolute paths.
+        let slash_pos = path.rfind('/')?;
+        path[..=slash_pos].to_string()
+    };
+
+    // Count meaningful segments (non-empty parts after splitting on '/').
+    let segment_count = dir_prefix.split('/').filter(|s| !s.is_empty()).count();
+
+    // Root ("/") or single segment ("/docs/") — no auto-scoping.
+    if segment_count <= 1 {
+        return None;
+    }
+
+    // Strip trailing slash from the prefix for the regex (we add `(/|$)` ourselves).
+    let prefix_for_regex = dir_prefix.trim_end_matches('/');
+    let pattern = format!(
+        "^https?://{}{}(/|$)",
+        regex_escape(host),
+        regex_escape(prefix_for_regex),
+    );
+    Some(spider::compact_str::CompactString::from(pattern))
+}
+
 pub(super) fn build_exclude_blacklist_patterns(
     start_url: &str,
     excludes: &[String],
@@ -133,6 +176,27 @@ pub(super) fn build_exclude_blacklist_patterns(
         .collect()
 }
 
+/// Extract the host portion from an absolute URL, stripping any port number.
+///
+/// Returns `None` for relative URLs (no `://`). Handles IPv6 bracket addresses
+/// by leaving them intact when port-stripping would be ambiguous.
+pub(super) fn extract_link_host(url: &str) -> Option<&str> {
+    let i = url.find("://")?;
+    let after = &url[i + 3..];
+    let end = after.find(['/', '?', '#']).unwrap_or(after.len());
+    let host_and_port = &after[..end];
+    // Strip decimal port number when present; leave IPv6 bracket addresses intact.
+    if !host_and_port.starts_with('[')
+        && let Some(colon) = host_and_port.rfind(':')
+    {
+        let port_str = &host_and_port[colon + 1..];
+        if !port_str.is_empty() && port_str.bytes().all(|b| b.is_ascii_digit()) {
+            return Some(&host_and_port[..colon]);
+        }
+    }
+    Some(host_and_port)
+}
+
 /// Returns `true` if the URL is garbage extracted from minified JS/CSS bundles
 /// rather than a real hyperlink.
 ///
@@ -141,14 +205,22 @@ pub(super) fn build_exclude_blacklist_patterns(
 /// like `https://example.com/belonging%20toclaimed%20that%3Cmeta%20name=` or
 /// `https://example.com/$%7BshareBaseUrl%7D/s/$%7BshareId%7D`.
 ///
-/// Heuristics (applied to the URL path, not query string):
+/// Heuristics (applied to the full URL, then path-only):
 /// - URL length > 2048 (standard browser limit)
+/// - HTML-encoded ampersand (`&amp;`) — URL came from unescaped HTML source and
+///   was never decoded; these always 404 because the server expects `&`, not `&amp;`
 /// - Encoded HTML tags: `%3C` (`<`) or `%3E` (`>`)
 /// - Template literals: `%7B` (`{`) or `%7D` (`}`)
 /// - 3+ encoded spaces (`%20`) — prose, not a URL
 /// - JS concatenation artifacts: `'%20` or `%20'`
 pub(crate) fn is_junk_discovered_url(url: &str) -> bool {
     if url.len() > 2048 {
+        return true;
+    }
+
+    // HTML-encoded ampersand: appears when spider extracts links from raw HTML
+    // without decoding entities. Real URLs never contain the literal string "&amp;".
+    if url.contains("&amp;") {
         return true;
     }
 
@@ -325,6 +397,33 @@ mod tests {
             normalize_map_candidate_url("https://example.github.io/other/docs", &scope, true)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn extract_link_host_returns_host_without_port() {
+        assert_eq!(
+            extract_link_host("https://github.com/foo"),
+            Some("github.com")
+        );
+        assert_eq!(
+            extract_link_host("https://github.com:443/foo"),
+            Some("github.com")
+        );
+        assert_eq!(
+            extract_link_host("http://127.0.0.1:8080/bar"),
+            Some("127.0.0.1")
+        );
+    }
+
+    #[test]
+    fn extract_link_host_returns_none_for_relative_urls() {
+        assert_eq!(extract_link_host("/docs/guide"), None);
+        assert_eq!(extract_link_host("relative/path"), None);
+    }
+
+    #[test]
+    fn extract_link_host_handles_ipv6() {
+        assert_eq!(extract_link_host("http://[::1]:8080/"), Some("[::1]:8080"));
     }
 
     #[test]

@@ -250,35 +250,24 @@ impl Client for AcpBridgeClient {
         &self,
         args: SessionNotification,
     ) -> agent_client_protocol::Result<()> {
+        let update_kind = map_session_update_kind(&args.update);
+
         {
             // RefCell — no Mutex lock on the hot streaming token path.
             // Safe: current_thread runtime + LocalSet ensures single-threaded access.
             let state = &*self.runtime_state;
 
-            // Capture the turn ID at the start of this notification to detect
-            // late results from a previous timed-out turn.  `run_turn_on_conn`
-            // increments `current_turn_id` before each prompt; if the value changed
-            // between when this notification was enqueued and now, we drop the delta.
-            let active_turn_id = state.current_turn_id.get();
-
             if let Some(text_delta) = extract_text_delta(&args.update)
-                && matches!(
-                    map_session_update_kind(&args.update),
-                    AcpSessionUpdateKind::AssistantDelta
-                )
+                && matches!(update_kind, AcpSessionUpdateKind::AssistantDelta)
             {
-                // Reject deltas that arrived after the current turn ended.  This
-                // guards against late results from a previous timed-out turn being
-                // attributed to the new active turn.
-                if active_turn_id != state.current_turn_id.get() {
-                    tracing::warn!(
-                        context = "acp_bridge",
-                        expected_turn_id = active_turn_id,
-                        current_turn_id = state.current_turn_id.get(),
-                        "dropping late text delta: turn_id mismatch"
-                    );
-                    return Ok(());
-                }
+                // Stale-delta protection is handled structurally: `run_turn_on_conn`
+                // sets `service_tx` to `None` after each turn completes, so late
+                // deltas from a timed-out turn are silently discarded by `emit` /
+                // `emit_nonblocking` (both are no-ops when tx is `None`).
+                // No turn-ID comparison is needed here — on a single-threaded
+                // `LocalSet`, no other task can run between synchronous reads,
+                // making an inline guard dead code.
+
                 // Cap at 1 MiB to prevent unbounded accumulation from long sessions.
                 const MAX_ASSISTANT_TEXT_BYTES: usize = 1024 * 1024;
                 let mut text = state.assistant_text.borrow_mut();
@@ -311,21 +300,34 @@ impl Client for AcpBridgeClient {
             text.len() >= 1024 * 1024 && !text.is_empty()
         };
         if text_at_limit && !self.runtime_state.limit_warning_emitted.get() {
-            // Only emit once: the text accumulation block (above) already stops
-            // appending past the cap, so the len == cap check is stable.  Guard
-            // with a flag so we don't re-emit on every subsequent notification.
             self.runtime_state.limit_warning_emitted.set(true);
-            emit(
+            emit_nonblocking(
                 &service_tx,
                 ServiceEvent::Log {
                     level: LogLevel::Warn,
                     message: "Assistant text limit hit (1 MiB); output truncated".to_string(),
                 },
-            )
-            .await;
+            );
         }
 
-        emit(&service_tx, map_session_notification_event(&args)).await;
+        // High-frequency delta variants (AssistantDelta, ThinkingDelta, UserDelta)
+        // use emit_nonblocking to avoid backpressure from a slow WS client stalling
+        // the adapter subprocess I/O loop.  These are lossy-safe — the complete
+        // text is always available in the final TurnResult.
+        // All other events (TurnResult, EditorWrite, PermissionRequest, config
+        // updates, tool calls) use blocking emit to guarantee delivery.
+        let event = map_session_notification_event(&args);
+        match update_kind {
+            AcpSessionUpdateKind::AssistantDelta
+            | AcpSessionUpdateKind::ThinkingDelta
+            | AcpSessionUpdateKind::UserDelta => {
+                emit_nonblocking(&service_tx, event);
+            }
+            _ => {
+                emit(&service_tx, event).await;
+            }
+        }
+
         Ok(())
     }
 }

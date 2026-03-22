@@ -31,7 +31,7 @@ pub(super) fn acp_resume_json(
 /// Handle `acp_resume` — reconnect to a cached ACP session and replay buffered
 /// events.
 ///
-/// M-6: Uses `read_replay_buffer()` which drains the buffer after the first
+/// M-6: Uses `drain_replay_buffer()` which drains the buffer after the first
 /// replay. The first reconnect receives all catch-up events; subsequent
 /// reconnects see only events buffered after the previous replay.
 ///
@@ -88,7 +88,7 @@ pub(super) async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
     }
 
     // M-6: drain-on-read — first reconnect gets catch-up, buffer cleared after.
-    let buffered = cached.read_replay_buffer();
+    let buffered = cached.drain_replay_buffer();
     let replayed = buffered.len();
     for msg in buffered {
         let _ = tx.send(msg).await;

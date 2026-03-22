@@ -15,6 +15,7 @@ docs/
 ├── screenshots/              # UI screenshots and visual references
 ├── sessions/                 # Session logs: YYYY-MM-DD-HH-MM-description.md
 │
+├── ACP.md                    # ACP protocol: one-shot vs persistent, wire format, session cache, prewarming
 ├── ARCHITECTURE.md           # System architecture diagrams and data-flow
 ├── API.md                    # HTTP API reference for axon serve
 ├── CLAUDE-HOT-RELOAD.md      # Claude config hot-reload in axon-web (watched paths, verification)

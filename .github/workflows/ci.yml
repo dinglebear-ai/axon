@@ -110,6 +110,23 @@ jobs:
           fi
           echo "OK: All ensure_schema() implementations use advisory lock"
 
+  ban-skip-validation:
+    name: ban-skip-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ban spawn_adapter_skip_validation outside tests/
+        run: |
+          set -euo pipefail
+          # This function bypasses all adapter command validation.
+          # The definition in acp.rs is allowed; calls must only exist in tests/.
+          if rg -n "spawn_adapter_skip_validation" crates/ --glob '*.rs' \
+               --glob '!crates/services/acp.rs'; then
+            echo "ERROR: spawn_adapter_skip_validation called in crates/ — gate it behind #[cfg(test)] or move call to tests/"
+            exit 1
+          fi
+          echo "OK: spawn_adapter_skip_validation not called from production code paths"
+
   monolith:
     name: monolith
     runs-on: ubuntu-latest
@@ -170,7 +187,7 @@ jobs:
       - name: cargo check (warnings are errors)
         env:
           RUSTFLAGS: -D warnings
-        run: cargo check --all-targets --locked
+        run: cargo check --all-targets --locked --features test-helpers
 
   msrv:
     name: msrv
@@ -182,7 +199,7 @@ jobs:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (MSRV)
-        run: cargo check --all-targets --locked
+        run: cargo check --all-targets --locked --features test-helpers
 
   clippy:
     name: clippy
@@ -195,7 +212,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --locked --features test-helpers -- -D warnings
 
   test:
     name: test

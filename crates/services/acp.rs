@@ -194,12 +194,34 @@ impl AcpClientScaffold {
         validate_adapter_command(&self.adapter)
     }
 
-    /// Spawn the adapter subprocess with a clean environment (env_clear allowlist).
+    /// Build the adapter subprocess `Command` with common configuration:
+    /// args, cwd, env allowlist, stdio pipes, and `kill_on_drop`.
     ///
-    /// `command.env_clear()` only affects the *subprocess* environment — it does NOT
-    /// modify the parent (Axon) process environment.  No `std::env::remove_var` or
-    /// `std::env::set_var` calls are made; the parent's environment is never touched
-    /// and needs no restoration.
+    /// Shared by `spawn_adapter` and `spawn_adapter_skip_validation` to
+    /// eliminate duplication.  `env_clear()` only affects the *subprocess*
+    /// environment — the parent (Axon) process environment is never touched.
+    fn build_adapter_command(&self) -> tokio::process::Command {
+        let mut command = tokio::process::Command::new(&self.adapter.program);
+        command.args(&self.adapter.args);
+        if let Some(cwd) = &self.adapter.cwd {
+            command.current_dir(cwd);
+        }
+        // Clear all inherited env vars, then allowlist only what adapters need.
+        // OPENAI_* vars are intentionally excluded — they point at Axon's local LLM
+        // proxy, not at OpenAI. Adapters (Claude CLI, Codex) use their own OAuth /
+        // stored API keys for authentication.
+        // CLAUDECODE is excluded to prevent nested-session detection.
+        apply_env_allowlist(&mut command);
+        command.stdin(std::process::Stdio::piped());
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+        // Ensure the child is killed if its handle is dropped without explicit
+        // cleanup — covers timeout paths where the outer future is cancelled.
+        command.kill_on_drop(true);
+        command
+    }
+
+    /// Spawn the adapter subprocess with a clean environment (env_clear allowlist).
     pub fn spawn_adapter(&self) -> Result<tokio::process::Child, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         if adapters::is_codex_adapter(&self.adapter) {
@@ -228,24 +250,7 @@ impl AcpClientScaffold {
                 }
             }
         }
-        let mut command = tokio::process::Command::new(&self.adapter.program);
-        command.args(&self.adapter.args);
-        if let Some(cwd) = &self.adapter.cwd {
-            command.current_dir(cwd);
-        }
-        // Clear all inherited env vars, then allowlist only what adapters need.
-        // OPENAI_* vars are intentionally excluded — they point at Axon's local LLM
-        // proxy, not at OpenAI. Adapters (Claude CLI, Codex) use their own OAuth /
-        // stored API keys for authentication.
-        // CLAUDECODE is excluded to prevent nested-session detection.
-        apply_env_allowlist(&mut command);
-        command.stdin(std::process::Stdio::piped());
-        command.stdout(std::process::Stdio::piped());
-        command.stderr(std::process::Stdio::piped());
-        // Ensure the child is killed if its handle is dropped without explicit
-        // cleanup — covers timeout paths where the outer future is cancelled.
-        command.kill_on_drop(true);
-        let child = command.spawn()?;
+        let child = self.build_adapter_command().spawn()?;
         Ok(child)
     }
 
@@ -253,24 +258,12 @@ impl AcpClientScaffold {
     ///
     /// Used by env-isolation integration tests that need to spawn a real shell
     /// (e.g. `sh`) without being blocked by the shell-name validator.
-    ///
-    /// This is intentionally `pub` to allow access from integration tests in
-    /// `tests/`. Do not call this from production code paths.
+    #[cfg(any(test, feature = "test-helpers"))]
     #[doc(hidden)]
     pub fn spawn_adapter_skip_validation(
         &self,
     ) -> Result<tokio::process::Child, Box<dyn std::error::Error>> {
-        let mut command = tokio::process::Command::new(&self.adapter.program);
-        command.args(&self.adapter.args);
-        if let Some(cwd) = &self.adapter.cwd {
-            command.current_dir(cwd);
-        }
-        apply_env_allowlist(&mut command);
-        command.stdin(std::process::Stdio::piped());
-        command.stdout(std::process::Stdio::piped());
-        command.stderr(std::process::Stdio::piped());
-        command.kill_on_drop(true);
-        let child = command.spawn()?;
+        let child = self.build_adapter_command().spawn()?;
         Ok(child)
     }
 

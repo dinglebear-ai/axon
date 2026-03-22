@@ -17,7 +17,14 @@ services/
 │   ├── preflight.rs        # Pre-flight checks before spawning an adapter
 │   ├── runtime.rs          # One-shot mode: spawn → init → turn → teardown per prompt
 │   ├── session.rs          # Session setup: context injection, system prompt assembly
-│   └── session_cache.rs    # WS reconnect replay buffer (TTL, byte cap, reaper)
+│   └── session_cache/      # WS reconnect replay buffer (TTL, byte cap, reaper)
+│       ├── cache.rs        # SessionCache impl — insert, replay, reap
+│       └── entry.rs        # SessionEntry type + message buffer
+├── acp_llm.rs              # ACP-backed LLM completion gateway (module root + re-exports)
+├── acp_llm/                # Submodules for the completion gateway
+│   ├── runner.rs           # AcpRuntimeCompletionRunner — one-shot adapter execution
+│   ├── types.rs            # AcpCompletionRequest/Response, AcpUsageSnapshot, helpers
+│   └── warm.rs             # WarmAcpSession — pre-warmed adapter (overlaps cold-start)
 ├── events.rs               # ServiceEvent enum + emit() — async channel helper
 ├── types/
 │   ├── acp.rs              # AcpBridgeEvent enum (all ACP → client wire events)
@@ -125,7 +132,7 @@ The ACP module orchestrates adapter subprocess execution (Claude Code, Codex, Ge
 
 Both paths call `bridge::finalize_successful_turn()` for consistent completion behavior: logging, `EditorWrite` emission, `TurnResult` dispatch.
 
-### Session Cache (`acp/session_cache.rs`)
+### Session Cache (`acp/session_cache/`)
 
 WS reconnect replay buffer. Hardcoded constants:
 
@@ -138,6 +145,23 @@ WS reconnect replay buffer. Hardcoded constants:
 | `AXON_ACP_MAX_CONCURRENT_SESSIONS` | 8 (default) | Semaphore limit on concurrent ACP sessions |
 
 The reaper starts lazily via `Once` on first session insertion.
+
+## ACP LLM Completion Gateway (`acp_llm/`)
+
+`acp_llm.rs` is a thin completion facade on top of the ACP adapter. Unlike the interactive session paths in `acp/`, this module is designed for request/response LLM calls (no streaming turns, no WS connection).
+
+Two code paths:
+
+| Path | Function | Use case |
+|------|----------|----------|
+| **One-shot** | `complete_text(cfg, req)` / `complete_streaming(cfg, req, callback)` | Spawns a fresh adapter per call — highest isolation |
+| **Pre-warmed** | `warm_session(cfg) -> WarmAcpSession` | Starts the adapter eagerly to overlap cold-start; call `.complete(req)` on the returned handle |
+
+`AcpCompletionRequest` fields: `system_prompt: Option<String>`, `prompt: String`, `model: Option<String>`, `stream: bool`.
+
+**When to use vs `acp/runtime.rs`:** Use `acp_llm` for fire-and-forget completions (ask synthesis, research summaries, extract fallback). Use `acp/runtime.rs` / `persistent_conn` for interactive Pulse Chat sessions where turn state and WS streaming matter.
+
+> Full ACP protocol reference: `docs/ACP.md`
 
 ## Testing
 

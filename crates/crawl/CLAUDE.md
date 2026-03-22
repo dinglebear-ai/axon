@@ -1,5 +1,5 @@
 # crates/crawl — Spider.rs Crawl Engine
-Last Modified: 2026-03-03
+Last Modified: 2026-03-21
 
 Wraps spider.rs for site crawling with HTTP and Chrome rendering paths.
 
@@ -40,17 +40,34 @@ website.with_retry(retries as u8)   // clamp to u8 — must not exceed 255
 
 Chrome requires `AXON_CHROME_REMOTE_URL` set. If not set, HTTP result is kept.
 
-### Junk URL Filter (`is_junk_discovered_url`)
-`engine.rs` registers `website.set_on_link_find()` during `configure_website()` which calls `is_junk_discovered_url()` on every discovered link **before** the blacklist regex and before any fetch. Rejecting here prevents bad URLs from entering the crawl queue at all.
+### Link Filter (`set_on_link_find`)
+`runtime.rs` registers `website.set_on_link_find()` in `apply_request_and_identity_settings()`. It fires on every discovered link **before** the blacklist regex and before any fetch. Two guards run in order:
 
-Heuristics (each sufficient to reject):
+**1. Junk URL detection** (`is_junk_discovered_url` in `url_utils.rs`):
+
+Heuristics (each sufficient to reject, checked against the full URL then path-only):
 - URL length > 2048 characters
+- HTML-encoded ampersand (`&amp;`) anywhere in the URL — indicates the link was extracted from raw HTML without entity decoding; the server expects `&`, not `&amp;`, so these always 404
 - Encoded HTML tags in URL path (`%3C`/`%3E`)
 - Template literal placeholders (`%7B`/`%7D`)
 - 3 or more `%20` sequences in the URL path
-- JS string concat artifact: `%20)` anywhere in path
+- JS string concat artifact: `'%20` or `%20'` in path
 
-Returns `CaseInsensitiveString::default()` to reject; returns the original string to allow. Only checks the URL path, not the query string, to avoid false positives on legitimate query parameters.
+The `&amp;` check is applied to the full URL (not path-only) because it typically appears in query strings (e.g. `?since=daily&amp;lang=en`).
+
+**2. Auto path-prefix scoping** (`derive_auto_whitelist_pattern` in `url_utils.rs`):
+
+Applied in `configure_website()` **before** the link-find callback. When no explicit `--url-whitelist` is provided and the start URL has ≥2 path segments, a whitelist regex scoping the crawl to that directory subtree is set automatically via `website.with_whitelist_url()`. Single-segment paths (`/docs`) and root paths get no auto-scope. Override by passing `--url-whitelist`.
+
+**3. Cross-domain rejection** (enforced when `include_subdomains = false`, the default):
+
+When `include_subdomains = false`, the start URL's host is extracted once at configuration time and captured in the `set_on_link_find` closure. Any absolute URL whose host does not match (case-insensitive) is dropped immediately.
+
+This prevents scope explosions where a page links out to a different domain (e.g. docs linking to GitHub repos) and spider follows those links across the entire external domain. Spider's own `with_subdomains(false)` only prevents *subdomain* expansion — it does not block following links to completely unrelated domains.
+
+Relative URLs (no `://`) always pass the cross-domain check; they resolve against the base URL at fetch time. Use `--include-subdomains true` to disable host enforcement when intentionally crawling multiple related domains.
+
+Returns `CaseInsensitiveString::default()` to reject; returns the original `(url, html)` pair to allow.
 
 ### Mid-Crawl Cancellation (Redis + Spider Control)
 Two-layer cancel: Redis for cross-process signaling, spider `control` feature for in-process graceful shutdown.
@@ -100,6 +117,8 @@ Engine tests use a live HTTP server (via `httpmock`) — no Docker services requ
 | Chrome fallback not triggering | Chrome not reachable | Check `AXON_CHROME_REMOTE_URL`; verify `axon-chrome` is up |
 | Crawl stops at first level | `--max-depth 0` set accidentally | Default is 5; check CLI args |
 | Crawling other subdomains instead of target host | `--include-subdomains true` enabled | Default is now `false`; only use `--include-subdomains true` when you intentionally want all `*.parent.com` |
+| Crawl explodes to unrelated domains (GitHub, CDN, etc.) | Spider follows cross-domain links by default | Fixed in `set_on_link_find`: cross-domain links are dropped when `include_subdomains = false`. If you see it again, verify the start URL's host is being parsed correctly from `apply_request_and_identity_settings`. |
+| External domain links you *want* to follow are being blocked | Cross-domain enforcement too strict for your use case | Pass `--include-subdomains true` to disable host enforcement, then use `--url-whitelist` to scope the crawl precisely. |
 | Locale pages being crawled | Default locale filter only blocks known prefixes | Pass `--exclude-path-prefix none` to disable, or add custom prefixes |
 
 ## Thin Page Lifecycle

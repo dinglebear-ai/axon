@@ -45,10 +45,10 @@ pre-commit:
       run: cargo fmt -- --check
     clippy:
       glob: "**/*.{rs,toml}"
-      run: cargo clippy --all-targets --locked -- -D warnings
+      run: cargo clippy --all-targets --locked --features test-helpers -- -D warnings
     check:
       glob: "**/*.{rs,toml}"
-      run: cargo check --all-targets --locked
+      run: cargo check --all-targets --locked --features test-helpers
     test:
       glob: "**/*.{rs,toml}"
       run: cargo test --all --locked --features test-helpers

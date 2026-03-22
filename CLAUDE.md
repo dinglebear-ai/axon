@@ -208,6 +208,7 @@ High-level subsystem map:
   - Each service function returns a typed result struct (defined in `crates/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
   - ACP orchestration lives in `crates/services/acp/` (session lifecycle, permission bridge, adapter subprocess)
+  - ACP-backed LLM completions (fire-and-forget, pre-warmed) live in `crates/services/acp_llm/` — used by ask synthesis, research, extract fallback; see `docs/ACP.md` for full protocol reference
 - MCP server:
   - `crates/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
@@ -486,6 +487,15 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 
 ### Subprocess stdout vs stderr
 CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). The web UI streams both: stdout as `"type": "output"`, stderr as `"type": "log"`. ANSI codes stripped via `console::strip_ansi_codes()`.
+
+### Crawl queue cap (`AXON_MAX_PENDING_CRAWL_JOBS`)
+New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `crates/jobs/crawl/runtime/db.rs` via `check_pending_cap()`.
+
+### Crawl size warning (`AXON_CRAWL_SIZE_WARN_THRESHOLD`)
+After an uncapped crawl completes (`--max-pages 0`, the default), if the total pages crawled exceeds `AXON_CRAWL_SIZE_WARN_THRESHOLD` (default 10,000), a warning is logged suggesting the user add `--max-pages`. Set to 0 to disable the warning.
+
+### Auto path-prefix scoping
+When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, the crawl is automatically scoped to the directory subtree of the start URL via a derived whitelist regex. For example, crawling `https://ai.google.dev/api/python/google/generativeai/GenerativeModel` auto-scopes to `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`. Root paths (`/`) and single-segment paths (`/docs`) are not scoped — they're already broad enough. Pass `--url-whitelist <pattern>` to override auto-scoping.
 
 ### AMQP reconnect backoff
 When a worker's AMQP channel dies (broker restart, consumer_timeout, network blip), the lane reconnects automatically with exponential backoff: starts at 2s, doubles each attempt, capped at 60s. On successful reconnect, the backoff resets to 2s **only if the connection was alive for >=60 seconds** (`ran_for_secs >= AMQP_RECONNECT_MAX_SECS` in `worker_lane.rs`). Short-lived connections that reconnect quickly retain their current backoff value. This prevents rapid reconnect loops from hammering the broker after a transient failure. The current job is not lost — it holds no AMQP reference and completes normally before the reconnect loop fires.

@@ -61,7 +61,7 @@ pub(super) async fn apply_requested_model_before_prompt(
         .set_session_config_option(SetSessionConfigOptionRequest::new(
             session_id.clone(),
             option_id,
-            requested.to_string(),
+            requested,
         ))
         .await
         .map_err(|err| format!("set_session_config_option failed: {err}"))?;
@@ -126,7 +126,7 @@ pub(super) async fn apply_requested_mode_before_prompt(
         .set_session_config_option(SetSessionConfigOptionRequest::new(
             session_id.clone(),
             option_id,
-            requested.to_string(),
+            requested,
         ))
         .await
         .map_err(|err| format!("set_session_config_option(session_mode) failed: {err}"))?;

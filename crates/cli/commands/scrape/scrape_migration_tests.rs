@@ -419,8 +419,7 @@ fn test_build_scrape_website_explicit_timeout_overrides_spider_default() {
     let default_timeout = ws_without
         .configuration
         .request_timeout
-        .as_ref()
-        .map(|d| d.as_ref().as_millis());
+        .map(|d| d.as_millis());
     assert_ne!(
         default_timeout,
         Some(7_500),

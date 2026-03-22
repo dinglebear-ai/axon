@@ -395,6 +395,21 @@ fn test_spider_max_page_bytes_wiring() {
 // --- Junk URL detection tests ---
 
 #[test]
+fn test_junk_url_html_encoded_ampersand() {
+    // Extracted from HTML without entity decoding — always 404 on the server.
+    assert!(is_junk_discovered_url(
+        "https://github.com/trending/rust?since=daily&amp;spoken_language_code=en"
+    ));
+    assert!(is_junk_discovered_url(
+        "https://example.com/search?q=foo&amp;page=2"
+    ));
+    // Real ampersand in query string is fine.
+    assert!(!is_junk_discovered_url(
+        "https://github.com/trending/rust?since=daily&spoken_language_code=en"
+    ));
+}
+
+#[test]
 fn test_junk_url_encoded_html_tags() {
     assert!(is_junk_discovered_url(
         "https://opencode.ai/introductionbelonging%20toclaimed%20thatconsequences%3Cmeta%20name="
@@ -472,6 +487,97 @@ fn test_junk_url_relative_urls() {
     assert!(is_junk_discovered_url("/foo%3Cbar%3Ebaz"));
     assert!(is_junk_discovered_url("/$%7Bvar%7D/path"));
     assert!(!is_junk_discovered_url("/docs/getting-started"));
+}
+
+// --- Auto path-prefix scoping tests ---
+
+#[test]
+fn test_auto_whitelist_deep_path_is_scoped() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    let pattern = derive_auto_whitelist_pattern(
+        "https://ai.google.dev/api/python/google/generativeai/GenerativeModel",
+    );
+    let pat = pattern.expect("expected Some pattern for deep path");
+    assert!(
+        pat.starts_with("^https?://ai\\.google\\.dev/api/python/google/generativeai"),
+        "pattern should anchor to the directory prefix, got: {pat}"
+    );
+    assert!(
+        pat.ends_with("(/|$)"),
+        "pattern should end with (/|$), got: {pat}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_root_path_returns_none() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    let pattern = derive_auto_whitelist_pattern("https://example.com/");
+    assert!(
+        pattern.is_none(),
+        "root path should produce no auto-scope, got: {pattern:?}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_root_no_slash_returns_none() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    let pattern = derive_auto_whitelist_pattern("https://example.com");
+    assert!(
+        pattern.is_none(),
+        "empty path should produce no auto-scope, got: {pattern:?}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_single_segment_returns_none() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    // /docs is a single meaningful segment — broad enough, no scoping.
+    let pattern = derive_auto_whitelist_pattern("https://example.com/docs");
+    assert!(
+        pattern.is_none(),
+        "single-segment path should produce no auto-scope, got: {pattern:?}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_trailing_slash_handled() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    // Path ending with '/' — the directory IS the path itself.
+    // /api/v1/ has two meaningful segments, so it should scope.
+    let pattern = derive_auto_whitelist_pattern("https://example.com/api/v1/");
+    let pat = pattern.expect("expected Some pattern for two-segment directory path");
+    assert!(
+        pat.contains("/api/v1"),
+        "pattern should include /api/v1, got: {pat}"
+    );
+    assert!(
+        pat.ends_with("(/|$)"),
+        "pattern should end with (/|$), got: {pat}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_two_segment_path_scoped() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    // /api/v1/users — directory is /api/v1/, two segments → scoped.
+    let pattern = derive_auto_whitelist_pattern("https://api.example.com/api/v1/users");
+    let pat = pattern.expect("expected Some pattern for multi-segment path");
+    assert!(
+        pat.contains("/api/v1"),
+        "pattern should scope to /api/v1, got: {pat}"
+    );
+}
+
+#[test]
+fn test_auto_whitelist_dots_in_host_escaped() {
+    use super::url_utils::derive_auto_whitelist_pattern;
+    let pattern =
+        derive_auto_whitelist_pattern("https://docs.python.org/3/library/collections/OrderedDict");
+    let pat = pattern.expect("expected Some pattern");
+    assert!(
+        pat.contains("docs\\.python\\.org"),
+        "dots in host must be escaped, got: {pat}"
+    );
 }
 
 // --- CDP hostname detection tests (Issue 1: explicit allowlist vs fragile heuristic) ---

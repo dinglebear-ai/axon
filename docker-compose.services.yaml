@@ -93,7 +93,7 @@ services:
       resources:
         limits:
           cpus: '4.0'
-          memory: 4G
+          memory: 12G
         reservations:
           cpus: '0.5'
           memory: 1G
@@ -165,7 +165,7 @@ services:
 
   axon-chrome:
     # headless_browser manager + chrome-headless-shell
-    # Port 6000: management API (/json/version, /fork, /shutdown)
+    # Port 6000: management API (GET / → "healthy", /fork, /shutdown)
     # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
     container_name: axon-chrome
     build:
@@ -191,7 +191,7 @@ services:
         max-file: "3"
         compress: "true"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL --max-time 4 http://127.0.0.1:6000/json/version > /dev/null"]
+      test: ["CMD-SHELL", "curl -fsSL --max-time 4 http://127.0.0.1:9222/json/version > /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 6

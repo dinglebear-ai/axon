@@ -323,3 +323,69 @@ pub(super) async fn run_session_probe(
 
     Ok(())
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify AdapterGuard kills the subprocess when dropped.
+    /// RAII cleanup is the only mechanism ensuring no subprocess leaks on error
+    /// paths — if this test fails, every early return in `spawn_adapter_with_io`
+    /// or `establish_acp_session` would leave an orphan process.
+    #[tokio::test]
+    async fn adapter_guard_kills_process_on_drop() {
+        use std::time::Duration;
+
+        // Spawn a real long-running process.
+        let child = tokio::process::Command::new("sleep")
+            .arg("999")
+            .spawn()
+            .expect("failed to spawn sleep — is sleep on PATH?");
+        let pid = child.id().expect("child has no PID");
+
+        // Wrap in AdapterGuard and immediately drop.
+        let guard = AdapterGuard::new(child);
+        drop(guard);
+
+        // Give the OS a moment to reap.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Verify the process no longer exists.
+        let proc_path = format!("/proc/{pid}");
+        assert!(
+            !std::path::Path::new(&proc_path).exists(),
+            "AdapterGuard::drop must kill child process (PID {pid} still running)",
+        );
+    }
+
+    /// Verify that `take()` disarms the guard — dropped guard should NOT kill.
+    #[tokio::test]
+    async fn adapter_guard_take_disarms() {
+        use std::time::Duration;
+
+        let child = tokio::process::Command::new("sleep")
+            .arg("999")
+            .spawn()
+            .expect("failed to spawn sleep");
+        let pid = child.id().expect("child has no PID");
+
+        let mut guard = AdapterGuard::new(child);
+        let mut taken = guard.take().expect("take should return child");
+
+        // Drop the disarmed guard — must not kill.
+        drop(guard);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let proc_path = format!("/proc/{pid}");
+        assert!(
+            std::path::Path::new(&proc_path).exists(),
+            "disarmed AdapterGuard must NOT kill the child process",
+        );
+
+        // Clean up: kill the process ourselves.
+        let _ = taken.start_kill();
+        let _ = taken.wait().await;
+    }
+}

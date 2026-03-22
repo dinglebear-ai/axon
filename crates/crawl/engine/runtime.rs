@@ -1,4 +1,7 @@
-use super::url_utils::{build_exclude_blacklist_patterns, is_junk_discovered_url};
+use super::url_utils::{
+    build_exclude_blacklist_patterns, derive_auto_whitelist_pattern, extract_link_host,
+    is_junk_discovered_url,
+};
 use crate::crates::core::config::parse::is_docker_service_host;
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings};
@@ -8,6 +11,7 @@ use spider::features::chrome_common::{
     RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector,
 };
 use spider::url::Url;
+use spider::utils::hedge::HedgeConfig;
 use spider::website::Website;
 use std::error::Error;
 use std::path::Path;
@@ -170,13 +174,37 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     website.with_blacklist_url(Some(blacklist_patterns));
 }
 
-fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website) {
-    website.set_on_link_find(|url, html| {
-        if is_junk_discovered_url(url.as_ref()) {
-            (CaseInsensitiveString::default(), None)
-        } else {
-            (url, html)
+fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website, start_url: &str) {
+    // Pre-compute the allowed host for cross-domain link rejection.
+    // When include_subdomains is false, links to other domains are dropped here
+    // before spider even attempts to fetch them — preventing scope explosions
+    // where external links (e.g. GitHub repos linked from docs) pull the crawl
+    // across an entirely different domain and all of its outbound links.
+    let allowed_host: Option<String> = if !cfg.include_subdomains {
+        Url::parse(start_url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
+    } else {
+        None
+    };
+
+    website.set_on_link_find(move |url, html| {
+        let url_str = url.as_ref();
+
+        if is_junk_discovered_url(url_str) {
+            return (CaseInsensitiveString::default(), None);
         }
+
+        // Reject cross-domain absolute URLs when include_subdomains is false.
+        // Relative URLs have no host component and always pass through.
+        if let Some(ref host) = allowed_host
+            && let Some(link_host) = extract_link_host(url_str)
+            && !link_host.eq_ignore_ascii_case(host)
+        {
+            return (CaseInsensitiveString::default(), None);
+        }
+
+        (url, html)
     });
     if let Some(timeout_ms) = cfg.request_timeout_ms {
         website.with_request_timeout(Some(Duration::from_millis(timeout_ms)));
@@ -185,6 +213,10 @@ fn apply_request_and_identity_settings(cfg: &Config, website: &mut Website) {
         website.with_retry(cfg.fetch_retries.min(u8::MAX as usize) as u8);
     }
     website.with_normalize(cfg.normalize);
+    // Hedged requests: after 3 s a duplicate HTTP request races the original.
+    // Whichever returns first wins; the loser is dropped. Transparent resilience
+    // for slow or flaky HTTP endpoints with no extra configuration required.
+    website.with_hedge(HedgeConfig::default());
     if let Some(ref proxy) = cfg.chrome_proxy {
         website.with_proxies(Some(vec![proxy.clone()]));
     }
@@ -225,7 +257,7 @@ pub(super) async fn configure_website_with_crawl_id(
         website.with_crawl_id(id.to_string());
     }
     apply_limit_and_behavior_settings(cfg, &mut website, start_url);
-    apply_request_and_identity_settings(cfg, &mut website);
+    apply_request_and_identity_settings(cfg, &mut website, start_url);
     apply_custom_headers(cfg, &mut website);
 
     // Enable the spider control thread so in-process shutdown() can signal an
@@ -251,6 +283,15 @@ pub(super) async fn configure_website_with_crawl_id(
                 .map(|s| spider::compact_str::CompactString::from(s.as_str()))
                 .collect::<Vec<_>>(),
         ));
+    } else if let Some(pattern) = derive_auto_whitelist_pattern(start_url) {
+        // When no explicit whitelist is provided and the start URL has a deep
+        // path (≥2 segments), auto-scope the crawl to that directory subtree.
+        // This prevents inadvertently crawling the entire domain when the user's
+        // intent is clearly a specific subsection (e.g. /api/python/google/generativeai/).
+        crate::crates::core::logging::log_info(&format!(
+            "auto-scoped crawl to path prefix: {pattern}"
+        ));
+        website.with_whitelist_url(Some(vec![pattern]));
     }
     if cfg.block_assets {
         website.with_block_assets(true);

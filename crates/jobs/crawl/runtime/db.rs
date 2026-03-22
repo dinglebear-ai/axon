@@ -33,6 +33,30 @@ pub async fn doctor(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
     }))
 }
 
+/// Check whether the pending crawl job count is at or above the configured cap.
+///
+/// Reads `AXON_MAX_PENDING_CRAWL_JOBS` from the environment (default 100, 0 = unlimited).
+/// Returns `Err` with a human-readable message when the queue is full.
+async fn check_pending_cap(pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
+    let limit: u64 = std::env::var("AXON_MAX_PENDING_CRAWL_JOBS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    if limit == 0 {
+        return Ok(());
+    }
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await?;
+    if count as u64 >= limit {
+        return Err(format!(
+            "crawl queue full: {count} pending jobs (limit {limit}); wait for workers to drain or raise AXON_MAX_PENDING_CRAWL_JOBS"
+        ).into());
+    }
+    Ok(())
+}
+
 pub async fn start_crawl_job(cfg: &Config, start_url: &str) -> Result<Uuid, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
@@ -60,6 +84,7 @@ pub async fn start_crawl_job(cfg: &Config, start_url: &str) -> Result<Uuid, Box<
         ));
         return Ok(existing_id);
     }
+    check_pending_cap(&pool).await?;
     let id = Uuid::new_v4();
 
     sqlx::query(
@@ -135,6 +160,7 @@ pub async fn start_crawl_jobs_batch(
     //    status between step 1 and now (race guard).
     let mut new_map: std::collections::HashMap<String, Uuid> = std::collections::HashMap::new();
     if !new_urls.is_empty() {
+        check_pending_cap(&pool).await?;
         let inserted_rows = sqlx::query_as::<_, (Uuid, String)>(
             r#"
             WITH new_urls AS (

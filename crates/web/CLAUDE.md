@@ -14,17 +14,47 @@ For branding, theme, layout, and frontend UX decisions: `apps/web`.
 
 ## Directory Intent
 
-- `crates/web.rs`: Axum server wiring and routes
-- `crates/web/execute.rs`: subprocess launch + WS output pump entry point
-- `crates/web/execute/events.rs`: WS event type definitions
-- `crates/web/execute/files.rs`: output file serving for completed jobs
-- `crates/web/execute/tests/`: execute integration tests
-- `crates/web/docker_stats.rs`: container stats streaming
-- `crates/web/download.rs`: HTTP endpoints for crawl artifact downloads (individual files + zip archives)
-- `crates/web/pack.rs`: output packaging helpers — assembles crawl results into downloadable bundles
-- `crates/web/tailscale_auth.rs`: shared token auth + `check_auth()` entry point
-- `crates/web/logs/`: log streaming support
-- `crates/web/snapshots/`: insta snapshot files for integration tests (committed; update with `cargo insta review`)
+```
+crates/web.rs                          # Axum server wiring and routes
+crates/web/
+├── docker_stats.rs                    # Container stats broadcasting (bollard, 500ms poll)
+├── download.rs                        # HTTP endpoints for crawl artifact downloads (files + zip)
+├── pack.rs                            # Output packaging helpers
+├── tailscale_auth.rs                  # Shared token auth + check_auth() entry point
+├── logs/                              # Log streaming support
+├── snapshots/                         # insta snapshot files (committed; update with `cargo insta review`)
+├── execute.rs                         # Subprocess launch + WS output pump (entry point)
+├── execute/
+│   ├── args.rs                        # CLI arg allow-list parsing
+│   ├── constants.rs                   # ALLOWED_MODES, ALLOWED_FLAGS
+│   ├── context.rs                     # Execute request context builder
+│   ├── events.rs                      # WS event type definitions (ExecuteEvent)
+│   ├── exe.rs                         # Binary path resolution
+│   ├── files.rs                       # Output file serving for completed jobs
+│   ├── mcp_config.rs                  # MCP server config loader (hot-reloaded by ACP)
+│   ├── overrides.rs                   # Per-request config overrides
+│   ├── session_guard.rs               # Concurrent session semaphore guard
+│   ├── ws_send.rs                     # WS message send helpers
+│   ├── sync_mode.rs                   # Sync-mode execution entry point
+│   ├── sync_mode/
+│   │   └── pulse_chat/               # Pulse Chat sync-mode bridge
+│   │       ├── connection.rs          # ACP adapter connection management
+│   │       └── events.rs             # Pulse Chat WS event mapping
+│   ├── async_mode.rs                  # Async-mode execution entry point
+│   └── tests/                         # Execute integration tests
+└── ws_handler/
+    ├── acp_session.rs                 # WS connection → ACP session lifecycle
+    ├── dispatch.rs                    # WS message routing
+    ├── params.rs                      # WS connection parameters
+    ├── prewarm.rs                     # ACP adapter pre-warming on WS connect
+    ├── pulse_chat.rs                  # Pulse Chat WS handler entry point
+    ├── pulse_chat/                    # Pulse Chat submodules
+    ├── rate_limiter.rs                # Per-connection rate limiting
+    ├── service_calls.rs               # Service function dispatch from WS handlers
+    ├── subprocess.rs                  # Subprocess execution bridge
+    ├── types.rs                       # WsConnState and shared handler types
+    └── cancel.rs                      # WS cancel request handler
+```
 
 ## WebSocket Protocol
 

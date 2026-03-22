@@ -7,13 +7,13 @@
 //!
 //! Idle sessions are reaped after `SESSION_TTL` (default 30 minutes).
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+mod cache;
+mod entry;
 
-use dashmap::DashMap;
+pub use cache::AcpSessionCache;
+pub use entry::CachedSession;
 
-use super::PermissionResponderMap;
-use super::persistent_conn::AcpConnectionHandle;
+use std::time::Duration;
 
 /// Default idle TTL before a cached session is evicted.
 const SESSION_TTL: Duration = Duration::from_secs(30 * 60);
@@ -36,277 +36,19 @@ const MAX_REPLAY_BUFFER_BYTES: usize = 4 * 1024 * 1024;
 pub static SESSION_CACHE: std::sync::LazyLock<AcpSessionCache> =
     std::sync::LazyLock::new(AcpSessionCache::new);
 
-/// A cached ACP adapter session.
-pub struct CachedSession {
-    pub handle: Arc<AcpConnectionHandle>,
-    pub permission_responders: PermissionResponderMap,
-    last_active: std::sync::Mutex<Instant>,
-    /// Serialized WS JSON messages buffered while no client is connected.
-    replay_buffer: std::sync::Mutex<Vec<String>>,
-    /// Cumulative byte size of all messages in `replay_buffer`.
-    replay_buffer_bytes: std::sync::Mutex<usize>,
-    /// When the current in-flight turn started, if any. `None` means no turn
-    /// is currently running. Used by the reaper and `get_or_create_acp_connection`
-    /// to detect adapters that are stuck (turn in-flight longer than threshold).
-    turn_in_flight_since: std::sync::Mutex<Option<Instant>>,
-    /// When the last turn completed successfully. Used for diagnostics.
-    last_turn_completed_at: std::sync::Mutex<Option<Instant>>,
-}
-
-impl CachedSession {
-    fn new(
-        handle: Arc<AcpConnectionHandle>,
-        permission_responders: PermissionResponderMap,
-    ) -> Self {
-        Self {
-            handle,
-            permission_responders,
-            last_active: std::sync::Mutex::new(Instant::now()),
-            replay_buffer: std::sync::Mutex::new(Vec::new()),
-            replay_buffer_bytes: std::sync::Mutex::new(0),
-            turn_in_flight_since: std::sync::Mutex::new(None),
-            last_turn_completed_at: std::sync::Mutex::new(None),
-        }
-    }
-
-    /// Touch the session to reset its idle TTL.
-    pub fn touch(&self) {
-        *self.last_active.lock().expect("last_active mutex poisoned") = Instant::now();
-    }
-
-    /// Append a serialized WS message to the replay buffer.
-    ///
-    /// Enforces two limits: a byte-based cap (`MAX_REPLAY_BUFFER_BYTES`, 4 MiB)
-    /// and a secondary message-count cap (`MAX_REPLAY_BUFFER`, 4096). Messages
-    /// that would exceed either limit are silently dropped.
-    pub fn buffer_event(&self, json: String) {
-        let msg_bytes = json.len();
-        let mut bytes = self
-            .replay_buffer_bytes
-            .lock()
-            .expect("replay_buffer_bytes mutex poisoned");
-        let mut buf = self
-            .replay_buffer
-            .lock()
-            .expect("replay_buffer mutex poisoned");
-        if buf.len() < MAX_REPLAY_BUFFER && *bytes + msg_bytes <= MAX_REPLAY_BUFFER_BYTES {
-            *bytes += msg_bytes;
-            buf.push(json);
-        }
-    }
-
-    /// Drain and return all buffered events, clearing the buffer and resetting
-    /// the byte counter. Canonical implementation used by both reconnect replay
-    /// and explicit session termination paths.
-    pub fn drain_replay_buffer(&self) -> Vec<String> {
-        let mut bytes = self
-            .replay_buffer_bytes
-            .lock()
-            .expect("replay_buffer_bytes mutex poisoned");
-        let mut buf = self
-            .replay_buffer
-            .lock()
-            .expect("replay_buffer mutex poisoned");
-        *bytes = 0;
-        std::mem::take(&mut *buf)
-    }
-
-    /// Read and drain all buffered events for replay to a reconnecting client.
-    ///
-    /// Semantics: the first reconnect receives all buffered events (catch-up),
-    /// then the buffer is cleared. Subsequent reconnects see an empty buffer
-    /// unless new events were buffered in the interim. This prevents duplicate
-    /// replays that would otherwise exhaust the replay cap with stale events.
-    ///
-    /// Delegates to `drain_replay_buffer()` -- both operations have identical
-    /// drain-and-clear semantics.
-    pub fn read_replay_buffer(&self) -> Vec<String> {
-        self.drain_replay_buffer()
-    }
-
-    fn is_expired(&self) -> bool {
-        let last = *self.last_active.lock().expect("last_active mutex poisoned");
-        last.elapsed() > SESSION_TTL
-    }
-
-    /// Record that a turn has started on this session.
-    pub fn mark_turn_started(&self) {
-        *self
-            .turn_in_flight_since
-            .lock()
-            .expect("turn_in_flight_since mutex poisoned") = Some(Instant::now());
-    }
-
-    /// Record that the current turn has completed.
-    pub fn mark_turn_completed(&self) {
-        *self
-            .turn_in_flight_since
-            .lock()
-            .expect("turn_in_flight_since mutex poisoned") = None;
-        *self
-            .last_turn_completed_at
-            .lock()
-            .expect("last_turn_completed_at mutex poisoned") = Some(Instant::now());
-    }
-
-    /// Returns `true` if a turn has been in-flight longer than `threshold`,
-    /// indicating the adapter is likely hung.
-    pub fn is_turn_hung(&self, threshold: Duration) -> bool {
-        self.turn_in_flight_since
-            .lock()
-            .expect("turn_in_flight_since mutex poisoned")
-            .is_some_and(|started| started.elapsed() > threshold)
-    }
-}
-
-/// Global cache of live ACP adapter sessions.
-///
-/// Keyed by `agent_key` (e.g. `"Claude:mcp=12345"`), same key used by
-/// `get_or_create_acp_connection` in `pulse_chat.rs`.
-pub struct AcpSessionCache {
-    sessions: DashMap<String, Arc<CachedSession>>,
-    /// Maps ACP `session_id` → `agent_key` for reconnect lookups.
-    session_id_index: DashMap<String, String>,
-    reaper_started: std::sync::Once,
-}
-
-impl AcpSessionCache {
-    fn new() -> Self {
-        Self {
-            sessions: DashMap::new(),
-            session_id_index: DashMap::new(),
-            reaper_started: std::sync::Once::new(),
-        }
-    }
-
-    /// Ensure the background reaper task is running (idempotent).
-    pub fn ensure_reaper(&self) {
-        self.reaper_started.call_once(|| {
-            tokio::spawn(reaper_loop());
-        });
-    }
-
-    /// Get an existing cached session by agent key.
-    pub fn get(&self, agent_key: &str) -> Option<Arc<CachedSession>> {
-        let entry = self.sessions.get(agent_key)?;
-        let session = Arc::clone(entry.value());
-        session.touch();
-        Some(session)
-    }
-
-    /// Synchronous (non-touching) lookup by agent key.
-    ///
-    /// Used where we cannot `.await` (e.g. `send_or_buffer` fallback path).
-    pub fn get_sync(&self, agent_key: &str) -> Option<Arc<CachedSession>> {
-        let entry = self.sessions.get(agent_key)?;
-        Some(Arc::clone(entry.value()))
-    }
-
-    /// Get a cached session by ACP session_id (for reconnect lookups).
-    pub fn get_by_session_id(&self, session_id: &str) -> Option<Arc<CachedSession>> {
-        let agent_key = self.session_id_index.get(session_id)?.value().clone();
-        self.get(&agent_key)
-    }
-
-    /// Get a cached session by ACP session_id synchronously (for permission routing).
-    pub fn get_by_session_id_sync(&self, session_id: &str) -> Option<Arc<CachedSession>> {
-        let agent_key = self.session_id_index.get(session_id)?.value().clone();
-        self.sessions.get(&agent_key).map(|e| Arc::clone(e.value()))
-    }
-
-    /// Insert or replace a cached session.
-    pub fn insert(
-        &self,
-        agent_key: String,
-        handle: Arc<AcpConnectionHandle>,
-        permission_responders: PermissionResponderMap,
-    ) -> Arc<CachedSession> {
-        let session = Arc::new(CachedSession::new(handle, permission_responders));
-        self.sessions.insert(agent_key, Arc::clone(&session));
-        self.ensure_reaper();
-        session
-    }
-
-    /// Register a mapping from ACP session_id to agent_key.
-    ///
-    /// Called after the first turn establishes a session so that reconnecting
-    /// clients can look up the adapter by the session_id they remember.
-    pub fn register_session_id(&self, session_id: String, agent_key: String) {
-        self.session_id_index.insert(session_id, agent_key);
-    }
-
-    /// Remove a session by agent key (e.g. on agent change).
-    pub fn remove(&self, agent_key: &str) {
-        if let Some((_, _session)) = self.sessions.remove(agent_key) {
-            // Clean up session_id_index entries pointing to this agent_key.
-            self.session_id_index.retain(|_, v| v.as_str() != agent_key);
-        }
-    }
-
-    /// Evict expired and hung sessions.
-    async fn reap_expired(&self) {
-        // Pass 1: clone keys + Arc refs (sync — releases DashMap shard locks immediately)
-        let candidates: Vec<(String, Arc<CachedSession>)> = self
-            .sessions
-            .iter()
-            .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
-            .collect();
-        // Pass 2: check expiry and liveness — no DashMap locks held
-        let hung_threshold = SESSION_HUNG_TURN_THRESHOLD;
-        let mut to_remove = Vec::new();
-        for (key, session) in &candidates {
-            if session.is_expired() {
-                tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
-                to_remove.push(key.clone());
-            } else if session.is_turn_hung(hung_threshold) {
-                tracing::warn!(
-                    context = "acp_cache",
-                    key = %key,
-                    threshold_secs = hung_threshold.as_secs(),
-                    "evicting session with hung turn",
-                );
-                to_remove.push(key.clone());
-            }
-        }
-        for key in &to_remove {
-            self.remove(key);
-        }
-    }
-
-    /// Returns an iterator over all cached sessions.
-    pub fn sessions_iter(&self) -> dashmap::iter::Iter<'_, String, Arc<CachedSession>> {
-        self.sessions.iter()
-    }
-
-    /// Returns a list of all active agent keys in the cache.
-    pub fn agent_keys(&self) -> Vec<String> {
-        self.sessions.iter().map(|e| e.key().clone()).collect()
-    }
-
-    /// Number of cached sessions (for diagnostics).
-    pub fn len(&self) -> usize {
-        self.sessions.len()
-    }
-
-    /// Whether the cache is empty.
-    pub fn is_empty(&self) -> bool {
-        self.sessions.is_empty()
-    }
-}
-
-/// Background task that periodically reaps expired sessions.
-async fn reaper_loop() {
-    let mut interval = tokio::time::interval(Duration::from_secs(60));
-    loop {
-        interval.tick().await;
-        SESSION_CACHE.reap_expired().await;
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use dashmap::DashMap;
+
+    use super::super::PermissionResponderMap;
     use super::super::persistent_conn::AcpConnectionHandle;
-    use super::*;
+    use super::cache::AcpSessionCache;
+    use super::{
+        MAX_REPLAY_BUFFER, MAX_REPLAY_BUFFER_BYTES, SESSION_HUNG_TURN_THRESHOLD, SESSION_TTL,
+    };
 
     /// Create a test-only PermissionResponderMap.
     fn test_responder_map() -> PermissionResponderMap {
@@ -405,7 +147,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_replay_buffer_drains_after_first_read() {
+    async fn drain_replay_buffer_drains_after_first_call() {
         let cache = AcpSessionCache::new();
         let handle = test_handle();
         let responders = test_responder_map();
@@ -415,27 +157,23 @@ mod tests {
         session.buffer_event(r#"{"type":"alpha"}"#.into());
         session.buffer_event(r#"{"type":"beta"}"#.into());
 
-        // First read returns both buffered events.
-        let first = session.read_replay_buffer();
+        // First drain returns both buffered events.
+        let first = session.drain_replay_buffer();
         assert_eq!(first.len(), 2);
         assert_eq!(first[0], r#"{"type":"alpha"}"#);
         assert_eq!(first[1], r#"{"type":"beta"}"#);
 
-        // Second read returns empty — buffer was drained on first read.
-        let second = session.read_replay_buffer();
+        // Second drain returns empty — buffer was drained on first call.
+        let second = session.drain_replay_buffer();
         assert!(
             second.is_empty(),
-            "expected empty buffer after first read, got {}",
+            "expected empty buffer after first drain, got {}",
             second.len()
         );
 
-        // drain_replay_buffer on an already-empty buffer is a no-op.
-        let drained = session.drain_replay_buffer();
-        assert!(drained.is_empty());
-
-        // New events buffered after drain are returned on next read.
+        // New events buffered after drain are returned on next drain.
         session.buffer_event(r#"{"type":"gamma"}"#.into());
-        let third = session.read_replay_buffer();
+        let third = session.drain_replay_buffer();
         assert_eq!(third.len(), 1);
         assert_eq!(third[0], r#"{"type":"gamma"}"#);
     }
@@ -563,5 +301,25 @@ mod tests {
         let last = *session.last_active.lock().expect("poisoned");
         // Should still be near the backdated time, not refreshed.
         assert!(last.elapsed() > Duration::from_secs(SESSION_TTL.as_secs() - 10));
+    }
+
+    #[tokio::test]
+    async fn reap_evicts_hung_turns() {
+        let cache = AcpSessionCache::new();
+        let handle = test_handle();
+        let responders = test_responder_map();
+
+        let session = cache.insert("agent:hung".into(), handle, responders);
+        session.mark_turn_started();
+
+        // Backdate the turn start to beyond the hung threshold.
+        {
+            let mut started = session.turn_in_flight_since.lock().expect("poisoned");
+            *started = Some(Instant::now() - SESSION_HUNG_TURN_THRESHOLD - Duration::from_secs(10));
+        }
+
+        cache.reap_expired().await;
+
+        assert!(cache.get("agent:hung").is_none());
     }
 }

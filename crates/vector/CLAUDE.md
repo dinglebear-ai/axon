@@ -71,7 +71,7 @@ Any new command that needs URL counts/dedup **must** use `qdrant_url_facets`. A 
 New collections are created with **named vectors** (`dense` + `bm42` sparse). For these collections, query commands use hybrid search instead of dense-only search:
 
 1. **Dense embedding**: TEI encodes the query into a float32 vector
-2. **Sparse vector**: `compute_sparse_vector()` in `sparse.rs` computes BM42-style TF weights (FNV-1a hash, `SPARSE_DIM=30_522` buckets, stopword filtering, min-length 3 chars)
+2. **Sparse vector**: `compute_sparse_vector()` in `sparse.rs` computes BM42-style TF weights (FNV-1a hash, `SPARSE_DIM=65_536` buckets, stopword filtering, min-length 3 chars)
 3. **Fusion**: Qdrant `/query` endpoint receives two `prefetch` arms (dense + sparse) and fuses with **Reciprocal Rank Fusion (RRF)**
 
 ```rust
@@ -85,9 +85,9 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 
 **Fallback:** When a collection is `VectorMode::Unnamed` (legacy dense-only), the query falls back to standard cosine search via the regular `/points/search` endpoint — no sparse vector is computed.
 
-**Hash collisions:** With 30,522 buckets, ~15% collision rate for 100 unique terms, ~48% for 200. Qdrant's IDF weighting mitigates impact — high-IDF terms are unlikely to collide. This is a deliberate trade-off vs. requiring the BERT tokenizer vocabulary.
+**Hash collisions:** With 65,536 buckets, ~7% collision rate for 100 unique terms, ~26% for 200 — roughly half the collision rate of the old 30,522-bucket scheme. Qdrant's IDF weighting mitigates remaining impact — high-IDF terms are unlikely to collide. This is a deliberate trade-off vs. requiring the BERT tokenizer vocabulary.
 
-**Config:** `cfg.hybrid_search_candidates` controls the prefetch window size for each arm before RRF fusion (default: at least `limit`).
+**Config:** `AXON_ASK_HYBRID_CANDIDATES` env var (default: `150`) controls the prefetch window size per arm before RRF fusion. The `cfg.hybrid_search_candidates` field carries this value at runtime.
 
 ### Ranking Pipeline
 `ranking.rs` applies BM25-style scoring on top of Qdrant cosine/hybrid results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
@@ -118,7 +118,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |
 | `AXON_SUGGEST_INDEX_LIMIT` | 50,000 | Max URLs fetched for dedup in `suggest` command |
-| `hybrid_search_candidates` (Config field) | `≥ limit` | Prefetch window per arm before RRF fusion (set via CLI `--hybrid-search-candidates`) |
+| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Prefetch window per arm before RRF fusion for `ask`; maps to `cfg.hybrid_search_candidates` |
 
 ## TEI Service (External — steamy-wsl)
 

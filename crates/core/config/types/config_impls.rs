@@ -136,7 +136,7 @@ impl Default for Config {
             reclaimed_status_only: false,
             active_status_only: false,
             recent_status_only: false,
-            normalize: false,
+            normalize: true,
             chrome_network_idle_timeout_secs: 15,
             auto_switch_thin_ratio: 0.60,
             auto_switch_min_pages: 10,

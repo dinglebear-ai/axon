@@ -13,7 +13,10 @@ pub(crate) mod editor;
 mod session_options;
 mod turn;
 
-use agent_client_protocol::InitializeRequest;
+use std::path::Path;
+use std::sync::Arc;
+
+use agent_client_protocol::{ClientSideConnection, InitializeRequest, SessionId};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::crates::services::events::ServiceEvent;
@@ -171,14 +174,8 @@ impl AcpConnectionHandle {
     }
 }
 
-/// Long-lived adapter loop running on a dedicated `spawn_blocking` thread.
-///
-/// Waits for the first `RunTurn` message, uses its `service_tx` to forward
-/// setup progress events, establishes the ACP session once, then processes
-/// all subsequent turns on the same `ClientSideConnection`.
-///
-/// Exits when the `rx` channel closes (WS connection dropped) or when the
-/// adapter process exits unexpectedly.
+/// Lazy adapter setup: waits for the first turn, uses its `service_tx` for
+/// progress events, then hands off to the shared main loop.
 async fn adapter_loop(
     adapter: AcpAdapterCommand,
     initialize: InitializeRequest,
@@ -234,6 +231,7 @@ async fn adapter_loop(
     *runtime_state.current_session_id.borrow_mut() = Some(session_id.0.to_string());
     *runtime_state.established_model.borrow_mut() = model.map(str::to_owned);
 
+    // Run the first turn immediately, then enter the shared main loop.
     turn::run_turn_on_conn(
         &mut conn,
         &session_id,
@@ -243,38 +241,20 @@ async fn adapter_loop(
     )
     .await;
 
-    loop {
-        tokio::select! {
-            msg = rx.recv() => {
-                match msg {
-                    Some(AdapterMessage::RunTurn(turn)) => {
-                        turn::run_turn_on_conn(&mut conn, &session_id, &session_cwd, &runtime_state, turn).await;
-                    }
-                    None => {
-                        tracing::info!(context = "acp_conn", "channel closed (WS connection ended)");
-                        break;
-                    }
-                }
-            }
-            exit_result = &mut exit_rx => {
-                match exit_result {
-                    Ok(msg) => tracing::error!(context = "acp_conn", message = %msg, "adapter exited unexpectedly"),
-                    Err(_) => tracing::info!(context = "acp_conn", "adapter exited cleanly"),
-                }
-                break;
-            }
-        }
-    }
-
+    run_adapter_main_loop(
+        &mut conn,
+        &session_id,
+        &session_cwd,
+        &runtime_state,
+        &mut exit_rx,
+        &mut rx,
+    )
+    .await;
     tracing::info!(context = "acp_conn", "adapter loop ended");
 }
 
-/// Adapter loop that establishes the ACP session eagerly — before the first turn arrives.
-///
-/// After setup, waits for [`AdapterMessage::RunTurn`] messages on `rx` and runs each
-/// turn on the shared `ClientSideConnection`, identical to the main loop in
-/// [`adapter_loop`].  If setup fails, any queued turns are failed immediately and the
-/// loop exits; subsequent [`run_turn`] calls will see a closed-channel error.
+/// Eager adapter setup: establishes the ACP session immediately (before any
+/// turn arrives), then enters the shared main loop.
 async fn adapter_loop_eager(
     adapter: AcpAdapterCommand,
     initialize: InitializeRequest,
@@ -323,20 +303,44 @@ async fn adapter_loop_eager(
     *runtime_state.current_session_id.borrow_mut() = Some(session_id.0.to_string());
     *runtime_state.established_model.borrow_mut() = model;
 
+    run_adapter_main_loop(
+        &mut conn,
+        &session_id,
+        &session_cwd,
+        &runtime_state,
+        &mut exit_rx,
+        &mut rx,
+    )
+    .await;
+    tracing::info!(context = "acp_conn", "adapter loop ended (eager)");
+}
+
+/// Shared main loop for both lazy and eager adapter paths.
+///
+/// Processes [`AdapterMessage::RunTurn`] messages until the channel closes
+/// (WS connection dropped) or the adapter process exits unexpectedly.
+async fn run_adapter_main_loop(
+    conn: &mut ClientSideConnection,
+    session_id: &SessionId,
+    session_cwd: &Path,
+    runtime_state: &Arc<super::bridge::AcpRuntimeState>,
+    exit_rx: &mut oneshot::Receiver<String>,
+    rx: &mut mpsc::Receiver<AdapterMessage>,
+) {
     loop {
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
                     Some(AdapterMessage::RunTurn(turn)) => {
-                        turn::run_turn_on_conn(&mut conn, &session_id, &session_cwd, &runtime_state, turn).await;
+                        turn::run_turn_on_conn(conn, session_id, session_cwd, runtime_state, turn).await;
                     }
                     None => {
-                        tracing::info!(context = "acp_conn", "channel closed (eager connection ended)");
+                        tracing::info!(context = "acp_conn", "channel closed (connection ended)");
                         break;
                     }
                 }
             }
-            exit_result = &mut exit_rx => {
+            exit_result = &mut *exit_rx => {
                 match exit_result {
                     Ok(msg) => tracing::error!(context = "acp_conn", message = %msg, "adapter exited unexpectedly"),
                     Err(_) => tracing::info!(context = "acp_conn", "adapter exited cleanly"),
@@ -345,6 +349,38 @@ async fn adapter_loop_eager(
             }
         }
     }
+}
 
-    tracing::info!(context = "acp_conn", "adapter loop ended (eager)");
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn handle_run_turn_returns_error_on_closed_channel() {
+        let handle = AcpConnectionHandle::dummy();
+        let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
+
+        // The dummy handle's receiver is immediately dropped, so the
+        // channel is already closed — run_turn should return an error.
+        let send_result = handle
+            .run_turn(TurnRequest {
+                req: AcpPromptTurnRequest {
+                    session_id: None,
+                    prompt: vec!["test".into()],
+                    model: None,
+                    session_mode: None,
+                    blocked_mcp_tools: vec![],
+                    mcp_servers: vec![],
+                },
+                service_tx: None,
+                result_tx,
+            })
+            .await;
+
+        assert!(send_result.is_err());
+        assert!(send_result.unwrap_err().contains("channel closed"),);
+
+        // The result channel should also be closed (no one to receive the turn).
+        assert!(result_rx.await.is_err());
+    }
 }

@@ -171,3 +171,92 @@ pub(super) async fn run_acp_event_loop(
     }
     Ok(None)
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::super::events::CommandContext;
+    use super::*;
+    use crate::crates::services::events::LogLevel;
+
+    fn make_ctx() -> CommandContext {
+        CommandContext {
+            exec_id: "test".to_string(),
+            mode: "pulse_chat".to_string(),
+            input: "hello".to_string(),
+        }
+    }
+
+    /// After a result is received via `result_rx`, `drive_turn_events` must
+    /// drain any events that were already buffered in `event_rx` before
+    /// returning.  Without this drain, streaming responses are truncated —
+    /// the last few tokens or tool-use events silently vanish.
+    #[tokio::test]
+    async fn drive_turn_events_drains_events_buffered_after_result_received() {
+        let (event_tx, event_rx) = mpsc::channel::<ServiceEvent>(16);
+        let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
+        let (ws_tx, mut ws_rx) = mpsc::channel::<String>(64);
+
+        // Send pre-result events.
+        event_tx
+            .send(ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: "event-1".to_string(),
+            })
+            .await
+            .unwrap();
+        event_tx
+            .send(ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: "event-2".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Send the result.
+        result_tx.send(Ok(())).unwrap();
+
+        // Send a post-result event — this MUST be delivered via the drain loop.
+        event_tx
+            .send(ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: "event-3-post-result".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Close the event channel so drive_turn_events can terminate.
+        drop(event_tx);
+
+        let result = drive_turn_events(result_rx, event_rx, ws_tx, make_ctx(), "test-key").await;
+        assert!(result.is_ok(), "drive_turn_events should return Ok");
+
+        // Count all WS messages received.
+        let mut count = 0;
+        while ws_rx.try_recv().is_ok() {
+            count += 1;
+        }
+        assert!(
+            count >= 3,
+            "all 3 events must reach WS output (including post-result one), got {count}",
+        );
+    }
+
+    /// When the result is an error, `drive_turn_events` must propagate it.
+    #[tokio::test]
+    async fn drive_turn_events_propagates_error_result() {
+        let (_event_tx, event_rx) = mpsc::channel::<ServiceEvent>(16);
+        let (result_tx, result_rx) = oneshot::channel::<Result<(), String>>();
+        let (ws_tx, _ws_rx) = mpsc::channel::<String>(64);
+
+        result_tx.send(Err("adapter crashed".to_string())).unwrap();
+
+        let result = drive_turn_events(result_rx, event_rx, ws_tx, make_ctx(), "test-key").await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("adapter crashed"),
+            "error message must be propagated",
+        );
+    }
+}

@@ -449,7 +449,7 @@ async fn apply_model_config(
             .set_session_config_option(SetSessionConfigOptionRequest::new(
                 session_id.clone(),
                 model_config.id.clone(),
-                requested_model,
+                requested_model.as_str(),
             ))
             .await
             .map_err(|err| format!("failed to set ACP model config: {err}"))?;
