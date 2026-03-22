@@ -121,7 +121,9 @@ async fn ingest_subreddit(
 
     // Close the channel so the drain task finishes.
     drop(doc_tx);
-    let total_count = drain_handle.await.unwrap_or(0);
+    let total_count = drain_handle
+        .await
+        .map_err(|e| format!("reddit drain task failed: {e}"))?;
     Ok(total_count)
 }
 

@@ -59,11 +59,18 @@ pub async fn update_latest_reflink(
                 file_pairs.push((path, dst));
             }
         }
-        // Parallelize reflink copies via spawn_blocking + JoinSet.
-        // The filesystem handles concurrent reflinks efficiently.
+        // Parallelize reflink copies via spawn_blocking + JoinSet, capped at 32
+        // concurrent tasks to avoid overwhelming the runtime and file-descriptor
+        // resources on large markdown directories.
+        const MAX_COPY_CONCURRENCY: usize = 32;
+        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_COPY_CONCURRENCY));
         let mut join_set = tokio::task::JoinSet::new();
         for (src, dst) in file_pairs {
-            join_set.spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst));
+            let permit = semaphore.clone().acquire_owned().await?;
+            join_set.spawn_blocking(move || {
+                let _permit = permit;
+                reflink_copy::reflink_or_copy(&src, dst)
+            });
         }
         while let Some(result) = join_set.join_next().await {
             result??;
