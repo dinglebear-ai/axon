@@ -175,18 +175,24 @@ async fn gather_doctor_probes(
 ) -> Result<DoctorProbes, Box<dyn Error>> {
     // Single short-timeout client shared across all health probes — avoids
     // constructing multiple reqwest Clients (TLS backend init + pool setup each).
-    let probe_client = build_client(5, None)?;
+    // If client init fails, surface the error as per-probe failures for TEI and
+    // OpenAI rather than aborting the entire doctor report.
+    let probe_client_result = build_client(5, None);
+    let client_err_detail = probe_client_result
+        .as_ref()
+        .err()
+        .map(|e| format!("http client init failed: {e}"));
 
+    // Run all probes that don't require the HTTP client in parallel unconditionally.
+    // Probes that need the client are skipped (with failure detail) if init failed.
     let (
         (crawl_report, crawl_report_ms),
         (extract_report, extract_report_ms),
         (embed_report, embed_report_ms),
         (ingest_report, ingest_report_ms),
         (tei_probe, tei_probe_ms),
-        (tei_info_probe, tei_info_probe_ms),
         (qdrant_probe, qdrant_probe_ms),
         (chrome_probe, chrome_probe_ms),
-        (openai_probe, openai_probe_ms),
         (stale_jobs, stale_jobs_ms),
     ) = spider::tokio::join!(
         timed_probe(crawl_doctor(cfg)),
@@ -194,12 +200,32 @@ async fn gather_doctor_probes(
         timed_probe(embed_doctor(cfg)),
         timed_probe(ingest_doctor(cfg)),
         timed_probe(probe_http(&cfg.tei_url, &["/health", "/"])),
-        timed_probe(probe_tei_info(&cfg.tei_url, &probe_client)),
         timed_probe(probe_http(&cfg.qdrant_url, &["/healthz", "/"])),
         timed_probe(probe_chrome(cfg.chrome_remote_url.as_deref())),
-        timed_probe(probe_openai(cfg, openai_model, &probe_client)),
         timed_probe(count_stale_and_pending_jobs(cfg, 15)),
     );
+
+    // Probes requiring the HTTP client: run only when client init succeeded, otherwise
+    // synthesize a failure result so the rest of the report is unaffected.
+    let (tei_info_probe, tei_info_probe_ms, openai_probe, openai_probe_ms) =
+        match probe_client_result {
+            Ok(ref client) => {
+                let ((tei_info, tei_info_ms), (openai, openai_ms)) = spider::tokio::join!(
+                    timed_probe(probe_tei_info(&cfg.tei_url, client)),
+                    timed_probe(probe_openai(cfg, openai_model, client)),
+                );
+                (tei_info, tei_info_ms, openai, openai_ms)
+            }
+            Err(_) => {
+                let detail = client_err_detail.clone();
+                let tei_fail: (Option<Value>, Option<String>) = (None, detail.clone());
+                let openai_fail: (bool, String) = (
+                    false,
+                    detail.unwrap_or_else(|| "http client init failed".to_string()),
+                );
+                (tei_fail, 0u64, openai_fail, 0u64)
+            }
+        };
 
     Ok(DoctorProbes {
         crawl_report: crawl_report?,

@@ -89,7 +89,8 @@ impl Taxonomy {
 
     /// Resolve a taxonomy for the given config — cached builtin or custom from path.
     pub fn resolve(taxonomy_path: &str) -> Result<Arc<Taxonomy>, Box<dyn std::error::Error>> {
-        if taxonomy_path.trim().is_empty() {
+        let taxonomy_path = taxonomy_path.trim();
+        if taxonomy_path.is_empty() {
             Ok(Self::builtin())
         } else {
             Ok(Arc::new(Self::from_path(taxonomy_path)?))
