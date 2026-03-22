@@ -111,7 +111,7 @@ services:
       AXON_WORKSPACE: /workspace
       AXON_DATA_DIR: /data
       AXON_OUTPUT_DIR: /data/axon/output
-      AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS: "false"  # opt-in: set to "true" + add group_add: ["docker"] if host socket is accessible
+      AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS: "false"  # opt-in: set to "true" to enable docker log streaming
       AXON_WEB_DOCKER_SOCKET_PATH: /var/run/docker.sock
       AXON_BIN: ${AXON_BIN:-}        # override binary path for /api/cortex/* routes (see .env.example)
       # Set WATCHPACK_POLLING=true in .env if file-watch events don't propagate
@@ -134,6 +134,8 @@ services:
       # - ${HOST_HOME:-${HOME}}/.ssh:/home/node/.ssh:ro
       - ${AXON_WORKSPACE:-${HOME}/workspace}:/workspace
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "981"  # host docker group GID — grants node user access to /var/run/docker.sock
     depends_on:
       axon-workers:
         condition: service_healthy

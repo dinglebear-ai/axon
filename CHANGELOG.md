@@ -20,7 +20,6 @@ Last Modified: 2026-03-22 (session: v0.32.0 — pulse shell WebSocket, performan
 | SHA | Type | Description |
 |-----|------|-------------|
 | *(this commit)* | feat(web) | pulse shell WebSocket, performance sweep, code consolidation |
-| 5752e125 | feat(acp) | persistent ACP session cache, acp_llm module split, pulse_chat events |
 
 ## [0.31.0] — feat/pulse-shell-and-hybrid-search
 

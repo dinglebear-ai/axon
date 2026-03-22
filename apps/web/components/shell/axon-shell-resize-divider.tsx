@@ -4,14 +4,22 @@ export function AxonShellResizeDivider({
   onDragStart,
   onReset,
   onNudge,
+  position = 50,
 }: {
   onDragStart: (startX: number) => void
   onReset?: () => void
   onNudge?: (delta: number) => void
+  /** Current divider position as a percentage (0–100). Used for aria-valuenow. */
+  position?: number
 }) {
   return (
     <button
       type="button"
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuenow={Math.round(position)}
+      aria-valuemin={0}
+      aria-valuemax={100}
       aria-label="Resize panel divider"
       title="Drag to resize · Double-click to reset · Arrow keys to nudge"
       className="group relative z-10 flex w-1.5 shrink-0 cursor-col-resize items-stretch focus-visible:outline-none"

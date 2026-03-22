@@ -147,6 +147,8 @@ export function MessageBranchContent({ children, ...props }: HTMLAttributes<HTML
   const { currentBranch, setBranches } = useMessageBranch()
   const childrenArray = useMemo(() => (Array.isArray(children) ? children : [children]), [children])
 
+  // Depend on childrenArray (the full array identity, not just .length) so the
+  // branch list stays in sync when children change but keep the same count.
   useEffect(() => {
     setBranches(childrenArray as ReactElement[])
   }, [childrenArray, setBranches])
