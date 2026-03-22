@@ -2,6 +2,7 @@ use super::types::{QdrantPayload, QdrantPoint, RETRIEVE_MAX_POINTS_CEILING};
 use crate::crates::core::config::Config;
 use spider::url::Url;
 use std::env;
+use std::sync::LazyLock;
 
 pub fn qdrant_base(cfg: &Config) -> &str {
     cfg.qdrant_url.trim_end_matches('/')
@@ -15,6 +16,16 @@ pub(crate) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usiz
         .unwrap_or(default)
         .clamp(min, max)
 }
+
+// ── Cached env vars for hot-path search operations ──────────────────────────
+// These are read once at process startup via LazyLock instead of calling
+// std::env::var() (which acquires a global lock) on every search request.
+
+pub(crate) static HNSW_EF_SEARCH: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512));
+
+pub(crate) static HNSW_EF_SEARCH_LEGACY: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("AXON_HNSW_EF_SEARCH_LEGACY", 64, 32, 512));
 
 pub fn payload_text_typed(payload: &QdrantPayload) -> &str {
     if !payload.chunk_text.is_empty() {
@@ -71,17 +82,25 @@ pub fn render_full_doc_from_points(mut points: Vec<QdrantPoint>) -> String {
         text.push_str(chunk);
         text.push('\n');
     }
-    text.trim().to_string()
+    // Trim in place instead of allocating a new String via .trim().to_string().
+    let trimmed_start = text.len() - text.trim_start().len();
+    if trimmed_start > 0 {
+        text.drain(..trimmed_start);
+    }
+    text.truncate(text.trim_end().len());
+    text
 }
 
 pub fn query_snippet(payload: &QdrantPayload) -> String {
-    let text = payload_text_typed(payload).replace('\n', " ");
+    let text = payload_text_typed(payload);
+    // Truncate first, then replace newlines — avoids allocating the full 2KB string
+    // just to discard everything past char 140.
     let end = text
         .char_indices()
         .nth(140)
         .map(|(idx, _)| idx)
         .unwrap_or(text.len());
-    text[..end].to_string()
+    text[..end].replace('\n', " ")
 }
 
 pub(crate) fn retrieve_max_points(max_points: Option<usize>) -> usize {

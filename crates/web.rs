@@ -219,16 +219,6 @@ async fn shutdown_signal() {
     }
 }
 
-// ── Auth helper ───────────────────────────────────────────────────────────────
-
-fn http_auth(
-    req_headers: &HeaderMap,
-    query_token: Option<&str>,
-    api_token: Option<&str>,
-) -> AuthOutcome {
-    check_auth(req_headers, query_token, api_token)
-}
-
 // ── Output file serving ───────────────────────────────────────────────────────
 
 async fn serve_output_file(
@@ -239,7 +229,7 @@ async fn serve_output_file(
 ) -> Response {
     use axum::http::header;
 
-    let auth = http_auth(
+    let auth = check_auth(
         &req_headers,
         params.token.as_deref(),
         state.api_token.as_deref(),
@@ -273,8 +263,11 @@ async fn serve_output_file(
         return (StatusCode::FORBIDDEN, "path outside output directory").into_response();
     }
 
-    let bytes = match tokio::fs::read(&canonical_file).await {
-        Ok(b) => b,
+    // H3: stream the file instead of reading it all into memory.
+    // Bounds memory to the chunk size regardless of file size and delivers
+    // the first byte immediately.
+    let file = match tokio::fs::File::open(&canonical_file).await {
+        Ok(f) => f,
         Err(_) => return (StatusCode::NOT_FOUND, "file not found").into_response(),
     };
 
@@ -289,6 +282,9 @@ async fn serve_output_file(
         _ => "application/octet-stream",
     };
 
+    let stream = tokio_util::io::ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         header::CONTENT_TYPE,
@@ -299,7 +295,7 @@ async fn serve_output_file(
         header::HeaderValue::from_static("public, max-age=300"),
     );
 
-    (resp_headers, bytes).into_response()
+    (resp_headers, body).into_response()
 }
 
 // ── WebSocket upgrade handlers ────────────────────────────────────────────────
@@ -334,7 +330,7 @@ async fn ws_upgrade(
         counter: &WS_CONNECTION_COUNT,
     };
 
-    let outcome = http_auth(
+    let outcome = check_auth(
         &headers,
         params.token.as_deref(),
         state.api_token.as_deref(),
@@ -404,7 +400,7 @@ async fn shell_ws_upgrade(
         counter: &SHELL_CONNECTION_COUNT,
     };
 
-    let outcome = http_auth(
+    let outcome = check_auth(
         &headers,
         params.token.as_deref(),
         state.api_token.as_deref(),

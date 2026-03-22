@@ -13,7 +13,7 @@ use crate::crates::services::types::{
 };
 use crate::crates::vector::ops::qdrant::{
     dedupe_payload, domains_payload, env_usize_clamped, payload_domain, payload_url,
-    qdrant_scroll_pages_while, sources_payload,
+    qdrant_scroll_pages_selective, sources_payload,
 };
 use crate::crates::vector::ops::stats::stats_payload;
 use std::collections::{HashMap, HashSet};
@@ -189,24 +189,31 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     // spiking memory on large collections.
     let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut count = 0usize;
-    qdrant_scroll_pages_while(cfg, |points: &[serde_json::Value]| {
-        for point in points {
-            if count >= limit {
-                return false;
-            }
-            if let Some(payload) = point.get("payload") {
-                let domain = payload_domain(payload);
-                let url = payload_url(payload);
-                let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
-                entry.0 += 1;
-                if !url.is_empty() {
-                    entry.1.insert(url);
+    // Selective payload: only fetch domain + url fields. Avoids transferring
+    // multi-KB chunk_text per point — the detailed domains scan only aggregates
+    // domain membership and URL sets.
+    qdrant_scroll_pages_selective(
+        cfg,
+        serde_json::json!({"include": ["domain", "url"]}),
+        |points: &[serde_json::Value]| {
+            for point in points {
+                if count >= limit {
+                    return false;
                 }
-                count += 1;
+                if let Some(payload) = point.get("payload") {
+                    let domain = payload_domain(payload);
+                    let url = payload_url(payload);
+                    let entry = by_domain.entry(domain).or_insert((0, HashSet::new()));
+                    entry.0 += 1;
+                    if !url.is_empty() {
+                        entry.1.insert(url);
+                    }
+                    count += 1;
+                }
             }
-        }
-        count < limit
-    })
+            count < limit
+        },
+    )
     .await
     .map_err(|e| -> Box<dyn Error> { format!("detailed domains scroll failed: {e}").into() })?;
 
@@ -270,116 +277,74 @@ pub(crate) struct StatusJobs {
     pub graph: Vec<GraphJob>,
 }
 
-fn filter_status_jobs<T, FStatus, FError>(
+/// Filter + view-mode in one pass: drop reclaimed/non-reclaimed jobs, then
+/// apply the active-only / recent-only view mode.
+fn filter_and_view<T>(
+    cfg: &Config,
     jobs: Vec<T>,
-    reclaimed_only: bool,
-    status_of: FStatus,
-    error_of: FError,
-) -> Vec<T>
-where
-    FStatus: Fn(&T) -> &str,
-    FError: Fn(&T) -> Option<&str>,
-{
+    status_of: impl Fn(&T) -> &str,
+    error_of: impl Fn(&T) -> Option<&str>,
+) -> Vec<T> {
+    let reclaimed_only = cfg.reclaimed_status_only;
+    let active_only = cfg.active_status_only;
+    let recent_only = cfg.recent_status_only;
     jobs.into_iter()
         .filter(|job| include_status_job(status_of(job), error_of(job), reclaimed_only))
+        .filter(|job| include_status_view(status_of(job), active_only, recent_only))
         .collect()
-}
-
-async fn list_crawl_status(cfg: &Config) -> Result<Vec<CrawlJob>, String> {
-    list_jobs(cfg, 20, 0)
-        .await
-        .map_err(|e| format!("crawl status lookup failed: {e}"))
-}
-
-async fn list_extract_status(cfg: &Config) -> Result<Vec<ExtractJob>, String> {
-    list_extract_jobs(cfg, 20, 0)
-        .await
-        .map_err(|e| format!("extract status lookup failed: {e}"))
-}
-
-async fn list_embed_status(cfg: &Config) -> Result<Vec<EmbedJob>, String> {
-    list_embed_jobs(cfg, 20, 0)
-        .await
-        .map_err(|e| format!("embed status lookup failed: {e}"))
-}
-
-async fn list_ingest_status(cfg: &Config) -> Result<Vec<IngestJob>, String> {
-    list_ingest_jobs(cfg, None, 20, 0)
-        .await
-        .map_err(|e| format!("ingest status lookup failed: {e}"))
-}
-
-async fn list_refresh_status(cfg: &Config) -> Result<Vec<RefreshJob>, String> {
-    list_refresh_jobs(cfg, 20, 0)
-        .await
-        .map_err(|e| format!("refresh status lookup failed: {e}"))
-}
-
-async fn list_graph_status(cfg: &Config) -> Result<Vec<GraphJob>, String> {
-    list_graph_jobs(cfg, 20, 0)
-        .await
-        .map_err(|e| format!("graph status lookup failed: {e}"))
 }
 
 pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn Error>> {
     let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
-        list_crawl_status(cfg),
-        list_extract_status(cfg),
-        list_embed_status(cfg),
-        list_ingest_status(cfg),
-        list_refresh_status(cfg),
-        list_graph_status(cfg),
+        async {
+            list_jobs(cfg, 20, 0)
+                .await
+                .map_err(|e| format!("crawl: {e}"))
+        },
+        async {
+            list_extract_jobs(cfg, 20, 0)
+                .await
+                .map_err(|e| format!("extract: {e}"))
+        },
+        async {
+            list_embed_jobs(cfg, 20, 0)
+                .await
+                .map_err(|e| format!("embed: {e}"))
+        },
+        async {
+            list_ingest_jobs(cfg, None, 20, 0)
+                .await
+                .map_err(|e| format!("ingest: {e}"))
+        },
+        async {
+            list_refresh_jobs(cfg, 20, 0)
+                .await
+                .map_err(|e| format!("refresh: {e}"))
+        },
+        async {
+            list_graph_jobs(cfg, 20, 0)
+                .await
+                .map_err(|e| format!("graph: {e}"))
+        },
     );
-    let reclaimed_only = cfg.reclaimed_status_only;
-    let crawl = filter_status_jobs(
-        crawl_raw?,
-        reclaimed_only,
-        |job| &job.status,
-        |job| job.error_text.as_deref(),
-    );
-    let extract = filter_status_jobs(
-        extract_raw?,
-        reclaimed_only,
-        |job| &job.status,
-        |job| job.error_text.as_deref(),
-    );
-    let embed = filter_status_jobs(
-        embed_raw?,
-        reclaimed_only,
-        |job| &job.status,
-        |job| job.error_text.as_deref(),
-    );
-    let ingest = filter_status_jobs(
-        ingest_raw?,
-        reclaimed_only,
-        |job| &job.status,
-        |job| job.error_text.as_deref(),
-    );
-    let refresh = filter_status_jobs(
-        refresh_raw?,
-        reclaimed_only,
-        |job| &job.status,
-        |job| job.error_text.as_deref(),
-    );
-    let graph = graph_raw?
-        .into_iter()
-        .filter(|job| include_status_job(&job.status, job.error_text.as_deref(), reclaimed_only))
-        .collect();
-
-    let crawl = apply_status_view_mode(cfg, crawl, |job| &job.status);
-    let extract = apply_status_view_mode(cfg, extract, |job| &job.status);
-    let embed = apply_status_view_mode(cfg, embed, |job| &job.status);
-    let ingest = apply_status_view_mode(cfg, ingest, |job| &job.status);
-    let refresh = apply_status_view_mode(cfg, refresh, |job| &job.status);
-    let graph = apply_status_view_mode(cfg, graph, |job| &job.status);
 
     Ok(StatusJobs {
-        crawl,
-        extract,
-        embed,
-        ingest,
-        refresh,
-        graph,
+        crawl: filter_and_view(cfg, crawl_raw?, |j| &j.status, |j| j.error_text.as_deref()),
+        extract: filter_and_view(
+            cfg,
+            extract_raw?,
+            |j| &j.status,
+            |j| j.error_text.as_deref(),
+        ),
+        embed: filter_and_view(cfg, embed_raw?, |j| &j.status, |j| j.error_text.as_deref()),
+        ingest: filter_and_view(cfg, ingest_raw?, |j| &j.status, |j| j.error_text.as_deref()),
+        refresh: filter_and_view(
+            cfg,
+            refresh_raw?,
+            |j| &j.status,
+            |j| j.error_text.as_deref(),
+        ),
+        graph: filter_and_view(cfg, graph_raw?, |j| &j.status, |j| j.error_text.as_deref()),
     })
 }
 
@@ -412,21 +377,6 @@ fn include_status_view(status: &str, active_only: bool, recent_only: bool) -> bo
         );
     }
     true
-}
-
-fn apply_status_view_mode<T, FStatus>(cfg: &Config, jobs: Vec<T>, status_of: FStatus) -> Vec<T>
-where
-    FStatus: Fn(&T) -> &str,
-{
-    jobs.into_iter()
-        .filter(|job| {
-            include_status_view(
-                status_of(job),
-                cfg.active_status_only,
-                cfg.recent_status_only,
-            )
-        })
-        .collect()
 }
 
 fn include_status_job(status: &str, error_text: Option<&str>, reclaimed_only: bool) -> bool {

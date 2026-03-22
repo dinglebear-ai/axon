@@ -171,65 +171,37 @@ fn non_empty_map(map: &HashMap<String, String>, name: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+fn resolve_test_service_url(env_var: &str) -> Option<String> {
+    if let Some(url) = non_empty_env(env_var) {
+        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
+    }
+    let dotenv = read_dotenv_map();
+    if let Some(url) = non_empty_map(&dotenv, env_var) {
+        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
+    }
+    None
+}
+
+#[cfg(test)]
 pub(crate) fn resolve_test_pg_url() -> Option<String> {
-    static RESOLVED_TEST_PG_URL: LazyLock<Option<String>> = LazyLock::new(|| {
-        let explicit = non_empty_env("AXON_TEST_PG_URL");
-        if let Some(url) = explicit {
-            return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-        }
-
-        let dotenv = read_dotenv_map();
-        let axon_test_pg_url = non_empty_map(&dotenv, "AXON_TEST_PG_URL");
-        if let Some(url) = axon_test_pg_url {
-            return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-        }
-
-        // Do not fall through to AXON_PG_URL — that is the production database.
-        // If AXON_TEST_PG_URL is not set, tests that require Postgres are skipped.
-        None
-    });
-
-    RESOLVED_TEST_PG_URL.clone()
+    static RESOLVED: LazyLock<Option<String>> =
+        LazyLock::new(|| resolve_test_service_url("AXON_TEST_PG_URL"));
+    RESOLVED.clone()
 }
 
 #[cfg(test)]
 pub(crate) fn resolve_test_amqp_url() -> Option<String> {
-    let explicit = non_empty_env("AXON_TEST_AMQP_URL");
-    if let Some(url) = explicit {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    let dotenv = read_dotenv_map();
-    if let Some(url) = non_empty_map(&dotenv, "AXON_TEST_AMQP_URL") {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    // Do not fall through to AXON_AMQP_URL — that is the production broker.
-    None
+    resolve_test_service_url("AXON_TEST_AMQP_URL")
 }
 
 #[cfg(test)]
 pub(crate) fn resolve_test_redis_url() -> Option<String> {
-    let explicit = non_empty_env("AXON_TEST_REDIS_URL");
-    if let Some(url) = explicit {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    let dotenv = read_dotenv_map();
-    if let Some(url) = non_empty_map(&dotenv, "AXON_TEST_REDIS_URL") {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    None
+    resolve_test_service_url("AXON_TEST_REDIS_URL")
 }
 
 #[cfg(test)]
 pub(crate) fn resolve_test_qdrant_url() -> Option<String> {
-    let explicit = non_empty_env("AXON_TEST_QDRANT_URL");
-    if let Some(url) = explicit {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    let dotenv = read_dotenv_map();
-    if let Some(url) = non_empty_map(&dotenv, "AXON_TEST_QDRANT_URL") {
-        return Some(crate::crates::core::config::parse::normalize_local_service_url(url));
-    }
-    None
+    resolve_test_service_url("AXON_TEST_QDRANT_URL")
 }
 
 #[cfg(test)]

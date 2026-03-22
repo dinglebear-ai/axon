@@ -112,21 +112,29 @@ pub async fn compute_similarity(
         edge.source_url = url.to_string();
     }
 
-    for edge in &edges {
-        neo4j
-            .execute(
-                "MERGE (d1:Document {url: $source_url}) \
-                 MERGE (d2:Document {url: $target_url}) \
-                 MERGE (d1)-[r:SIMILAR_TO]->(d2) \
-                 SET r.score = $score, \
-                     r.target_source_type = $target_source_type, \
-                     r.updated_at = datetime()",
+    if !edges.is_empty() {
+        let items: Vec<Value> = edges
+            .iter()
+            .map(|edge| {
                 serde_json::json!({
                     "source_url": edge.source_url,
                     "target_url": edge.target_url,
                     "score": edge.score,
                     "target_source_type": edge.target_source_type,
-                }),
+                })
+            })
+            .collect();
+
+        neo4j
+            .execute(
+                "UNWIND $items AS item \
+                 MERGE (d1:Document {url: item.source_url}) \
+                 MERGE (d2:Document {url: item.target_url}) \
+                 MERGE (d1)-[r:SIMILAR_TO]->(d2) \
+                 SET r.score = item.score, \
+                     r.target_source_type = item.target_source_type, \
+                     r.updated_at = datetime()",
+                serde_json::json!({ "items": items }),
             )
             .await?;
     }

@@ -25,6 +25,41 @@ mod rate_limit;
 /// unbounded memory growth.
 const MAX_OAUTH_STATE_ENTRIES: usize = 10_000;
 
+async fn guarded_insert<V: Clone + Send + 'static>(
+    map: &Mutex<HashMap<String, V>>,
+    key: String,
+    value: V,
+    map_name: &str,
+    state: &GoogleOAuthState,
+) -> Result<(), Response> {
+    {
+        let mut m = map.lock().await;
+        if m.len() < MAX_OAUTH_STATE_ENTRIES {
+            m.insert(key, value);
+            return Ok(());
+        }
+    }
+    // Over capacity — evict expired entries and retry once.
+    state.cleanup_expired_in_memory().await;
+    let mut m = map.lock().await;
+    if m.len() >= MAX_OAUTH_STATE_ENTRIES {
+        warn!(
+            target: "axon.mcp.oauth",
+            "{map_name} at capacity; rejecting insertion"
+        );
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "server_error",
+                "error_description": "oauth state store at capacity"
+            })),
+        )
+            .into_response());
+    }
+    m.insert(key, value);
+    Ok(())
+}
+
 impl GoogleOAuthState {
     pub(crate) fn from_env(mcp_host: &str, mcp_port: u16) -> Self {
         let config = GoogleOAuthConfig::from_env(mcp_host, mcp_port);
@@ -201,36 +236,18 @@ impl GoogleOAuthState {
         state: &str,
         return_to: &str,
     ) -> Result<(), Response> {
-        {
-            let mut map = self.inner.pending_state.lock().await;
-            if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                drop(map);
-                self.cleanup_expired_in_memory().await;
-                let mut map = self.inner.pending_state.lock().await;
-                if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                    warn!(target: "axon.mcp.oauth", "pending_state at capacity; rejecting authorize request");
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": "server_error",
-                            "error_description": "oauth state store at capacity"
-                        })),
-                    )
-                        .into_response());
-                }
-                let record = PendingStateRecord {
-                    return_to: return_to.to_string(),
-                    expires_at_unix: unix_now_secs() + 900,
-                };
-                map.insert(state.to_string(), record);
-            } else {
-                let record = PendingStateRecord {
-                    return_to: return_to.to_string(),
-                    expires_at_unix: unix_now_secs() + 900,
-                };
-                map.insert(state.to_string(), record);
-            }
-        }
+        let record = PendingStateRecord {
+            return_to: return_to.to_string(),
+            expires_at_unix: unix_now_secs() + 900,
+        };
+        guarded_insert(
+            &self.inner.pending_state,
+            state.to_string(),
+            record,
+            "pending_state",
+            self,
+        )
+        .await?;
         self.redis_set_string(
             &self.key(&format!("pending_state:{state}")),
             return_to,
@@ -258,28 +275,14 @@ impl GoogleOAuthState {
         client_id: &str,
         client: &RegisteredClient,
     ) -> Result<(), Response> {
-        {
-            let mut map = self.inner.oauth_clients.lock().await;
-            if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                drop(map);
-                self.cleanup_expired_in_memory().await;
-                let mut map = self.inner.oauth_clients.lock().await;
-                if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                    warn!(target: "axon.mcp.oauth", "oauth_clients at capacity; rejecting registration");
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": "server_error",
-                            "error_description": "oauth state store at capacity"
-                        })),
-                    )
-                        .into_response());
-                }
-                map.insert(client_id.to_string(), client.clone());
-            } else {
-                map.insert(client_id.to_string(), client.clone());
-            }
-        }
+        guarded_insert(
+            &self.inner.oauth_clients,
+            client_id.to_string(),
+            client.clone(),
+            "oauth_clients",
+            self,
+        )
+        .await?;
         self.redis_set_json(&self.key(&format!("client:{client_id}")), client, None)
             .await;
         Ok(())
@@ -305,28 +308,14 @@ impl GoogleOAuthState {
         code: &str,
         record: &AuthCodeRecord,
     ) -> Result<(), Response> {
-        {
-            let mut map = self.inner.auth_codes.lock().await;
-            if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                drop(map);
-                self.cleanup_expired_in_memory().await;
-                let mut map = self.inner.auth_codes.lock().await;
-                if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                    warn!(target: "axon.mcp.oauth", "auth_codes at capacity; rejecting authorization request");
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": "server_error",
-                            "error_description": "oauth state store at capacity"
-                        })),
-                    )
-                        .into_response());
-                }
-                map.insert(code.to_string(), record.clone());
-            } else {
-                map.insert(code.to_string(), record.clone());
-            }
-        }
+        guarded_insert(
+            &self.inner.auth_codes,
+            code.to_string(),
+            record.clone(),
+            "auth_codes",
+            self,
+        )
+        .await?;
         self.redis_set_json(&self.key(&format!("auth_code:{code}")), record, Some(600))
             .await;
         Ok(())
@@ -350,28 +339,14 @@ impl GoogleOAuthState {
         record: &AccessTokenRecord,
         ttl_secs: u64,
     ) -> Result<(), Response> {
-        {
-            let mut map = self.inner.access_tokens.lock().await;
-            if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                drop(map);
-                self.cleanup_expired_in_memory().await;
-                let mut map = self.inner.access_tokens.lock().await;
-                if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                    warn!(target: "axon.mcp.oauth", "access_tokens at capacity; rejecting token issuance");
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": "server_error",
-                            "error_description": "oauth state store at capacity"
-                        })),
-                    )
-                        .into_response());
-                }
-                map.insert(token.to_string(), record.clone());
-            } else {
-                map.insert(token.to_string(), record.clone());
-            }
-        }
+        guarded_insert(
+            &self.inner.access_tokens,
+            token.to_string(),
+            record.clone(),
+            "access_tokens",
+            self,
+        )
+        .await?;
         self.redis_set_json(
             &self.key(&format!("access_token:{token}")),
             record,
@@ -397,28 +372,14 @@ impl GoogleOAuthState {
         record: &RefreshTokenRecord,
         ttl_secs: u64,
     ) -> Result<(), Response> {
-        {
-            let mut map = self.inner.refresh_tokens.lock().await;
-            if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                drop(map);
-                self.cleanup_expired_in_memory().await;
-                let mut map = self.inner.refresh_tokens.lock().await;
-                if map.len() >= MAX_OAUTH_STATE_ENTRIES {
-                    warn!(target: "axon.mcp.oauth", "refresh_tokens at capacity; rejecting token issuance");
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        Json(serde_json::json!({
-                            "error": "server_error",
-                            "error_description": "oauth state store at capacity"
-                        })),
-                    )
-                        .into_response());
-                }
-                map.insert(token.to_string(), record.clone());
-            } else {
-                map.insert(token.to_string(), record.clone());
-            }
-        }
+        guarded_insert(
+            &self.inner.refresh_tokens,
+            token.to_string(),
+            record.clone(),
+            "refresh_tokens",
+            self,
+        )
+        .await?;
         self.redis_set_json(
             &self.key(&format!("refresh_token:{token}")),
             record,

@@ -24,6 +24,8 @@ fn parse_http_url(value: &str) -> Option<String> {
     }
 }
 
+const DEFAULT_REASON: &str = "Suggested by model";
+
 fn parse_suggestions_from_llm(content: &str) -> Vec<Suggestion> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -47,11 +49,11 @@ fn parse_suggestions_from_llm(content: &str) -> Vec<Suggestion> {
                 let reason = item
                     .get("reason")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("Suggested by model")
+                    .unwrap_or(DEFAULT_REASON)
                     .to_string();
                 push(&mut out, &mut seen, url, reason);
             } else if let Some(url) = item.as_str().and_then(parse_http_url) {
-                push(&mut out, &mut seen, url, "Suggested by model".to_string());
+                push(&mut out, &mut seen, url, DEFAULT_REASON.to_string());
             }
         }
         return out;
@@ -67,7 +69,7 @@ fn parse_suggestions_from_llm(content: &str) -> Vec<Suggestion> {
             })
             .trim_end_matches('.');
         if let Some(url) = parse_http_url(cleaned) {
-            push(&mut out, &mut seen, url, "Suggested by model".to_string());
+            push(&mut out, &mut seen, url, DEFAULT_REASON.to_string());
         }
     }
 
@@ -75,12 +77,9 @@ fn parse_suggestions_from_llm(content: &str) -> Vec<Suggestion> {
 }
 
 fn already_indexed(url: &str, indexed_lookup: &HashSet<String>) -> bool {
-    for variant in input::url_lookup_candidates(url) {
-        if indexed_lookup.contains(&variant) {
-            return true;
-        }
-    }
-    false
+    input::url_lookup_candidates(url)
+        .iter()
+        .any(|v| indexed_lookup.contains(v))
 }
 
 fn suggestion_score(url: &str) -> i32 {
@@ -305,11 +304,16 @@ fn filter_new_suggestions(
         }
     }
 
-    accepted.sort_by(|a, b| {
-        suggestion_score(&b.url)
-            .cmp(&suggestion_score(&a.url))
-            .then_with(|| a.url.cmp(&b.url))
-    });
+    // Pre-compute scores to avoid O(n log n) URL parses in the sort comparator.
+    let mut scored: Vec<(i32, Suggestion)> = accepted
+        .into_iter()
+        .map(|s| {
+            let score = suggestion_score(&s.url);
+            (score, s)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.url.cmp(&b.1.url)));
+    let accepted: Vec<Suggestion> = scored.into_iter().map(|(_, s)| s).collect();
     let mut diversified = Vec::new();
     let mut used_hosts = HashSet::new();
     for suggestion in &accepted {

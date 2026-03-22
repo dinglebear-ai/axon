@@ -8,6 +8,7 @@ use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 
@@ -33,6 +34,7 @@ pub(super) async fn ingest_codex_sessions(
     // Track (dir, depth): depth 1 = direct children of root (project dirs) — apply filter.
     let mut dir_entries: Vec<(PathBuf, usize)> = vec![(root, 0)];
     let mut futures = FuturesUnordered::new();
+    let cfg_arc = Arc::new(cfg.clone());
 
     while let Some((current_dir, depth)) = dir_entries.pop() {
         if depth == 1 {
@@ -73,10 +75,10 @@ pub(super) async fn ingest_codex_sessions(
             }
 
             let collection = resolve_collection(cfg, "codex");
-            let cfg_clone = cfg.clone();
+            let cfg_shared = Arc::clone(&cfg_arc);
             let size = meta.len();
             futures.push(tokio::spawn(async move {
-                let res = process_codex_file(&cfg_clone, path.clone(), collection).await;
+                let res = process_codex_file(&cfg_shared, path.clone(), collection).await;
                 (path, mtime, size, res)
             }));
 

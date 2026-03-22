@@ -45,8 +45,13 @@ const AMQP_RECONNECT_MAX_SECS: u64 = 60;
 
 /// A boxed async function that processes a single claimed job.
 /// It must handle its own error logging/marking internally (returns `()`).
+///
+/// Accepts `Arc<Config>` instead of owned `Config` to avoid cloning ~30 heap-
+/// allocated fields on every job dispatch. The config is read-only after worker
+/// startup — wrapping it in `Arc` reduces per-job cost from O(n_fields) heap
+/// copies to a single atomic increment.
 pub(crate) type ProcessFn =
-    Arc<dyn Fn(Config, PgPool, uuid::Uuid) -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync>;
+    Arc<dyn Fn(Arc<Config>, PgPool, uuid::Uuid) -> Pin<Box<dyn Future<Output = ()>>> + Send + Sync>;
 
 /// Configuration for a generic worker.
 pub(crate) struct WorkerConfig {
@@ -123,6 +128,10 @@ pub(crate) fn validate_worker_env_vars() -> Result<(), String> {
 }
 
 /// Run the stale-job sweep and log results.
+///
+/// Only lane 1 (or lane 0 for startup) runs the actual sweep query. Other lanes
+/// skip silently — the sweep result is the same regardless of which lane executes
+/// it, so running on N lanes wastes N-1 identical DB queries per interval.
 pub(crate) async fn sweep_stale_jobs(
     cfg: &Config,
     pool: &PgPool,
@@ -130,6 +139,11 @@ pub(crate) async fn sweep_stale_jobs(
     source: &str,
     lane: usize,
 ) {
+    // Lane 0 = startup sweep (always runs), lane 1 = designated sweep lane.
+    // All other lanes skip to avoid redundant DB queries.
+    if lane > 1 {
+        return;
+    }
     match reclaim_stale_running_jobs(
         pool,
         wc.table,

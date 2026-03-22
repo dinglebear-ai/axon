@@ -76,16 +76,7 @@ pub fn merge_candidates(candidates: Vec<EntityCandidate>) -> Vec<EntityCandidate
 pub fn partition_by_ambiguity(
     candidates: Vec<EntityCandidate>,
 ) -> (Vec<EntityCandidate>, Vec<EntityCandidate>) {
-    let mut clear = Vec::new();
-    let mut ambiguous = Vec::new();
-    for candidate in candidates {
-        if candidate.ambiguous {
-            ambiguous.push(candidate);
-        } else {
-            clear.push(candidate);
-        }
-    }
-    (clear, ambiguous)
+    candidates.into_iter().partition(|c| !c.ambiguous)
 }
 
 async fn load_graph_job(
@@ -182,29 +173,38 @@ async fn write_document_and_chunks(
     source_type: &str,
     chunks: &[GraphChunk],
 ) -> Result<(), Box<dyn Error>> {
-    for chunk in chunks {
-        neo4j
-            .execute(
-                "MERGE (d:Document {url: $url}) \
-                 SET d.source_type = $source_type, \
-                     d.collection = $collection, \
-                     d.updated_at = datetime() \
-                 MERGE (c:Chunk {point_id: $point_id}) \
-                 SET c.url = $url, \
-                     c.collection = $collection, \
-                     c.chunk_index = $chunk_index, \
-                     c.updated_at = datetime() \
-                 MERGE (c)-[:BELONGS_TO]->(d)",
-                serde_json::json!({
-                    "url": url,
-                    "source_type": source_type,
-                    "collection": cfg.collection,
-                    "point_id": chunk.point_id,
-                    "chunk_index": chunk.chunk_index,
-                }),
-            )
-            .await?;
-    }
+    let items: Vec<serde_json::Value> = chunks
+        .iter()
+        .map(|chunk| {
+            serde_json::json!({
+                "point_id": chunk.point_id,
+                "chunk_index": chunk.chunk_index,
+            })
+        })
+        .collect();
+
+    neo4j
+        .execute(
+            "MERGE (d:Document {url: $url}) \
+             SET d.source_type = $source_type, \
+                 d.collection = $collection, \
+                 d.updated_at = datetime() \
+             WITH d \
+             UNWIND $items AS item \
+             MERGE (c:Chunk {point_id: item.point_id}) \
+             SET c.url = $url, \
+                 c.collection = $collection, \
+                 c.chunk_index = item.chunk_index, \
+                 c.updated_at = datetime() \
+             MERGE (c)-[:BELONGS_TO]->(d)",
+            serde_json::json!({
+                "url": url,
+                "source_type": source_type,
+                "collection": cfg.collection,
+                "items": items,
+            }),
+        )
+        .await?;
     Ok(())
 }
 
@@ -212,21 +212,30 @@ async fn write_entities(
     neo4j: &Neo4jClient,
     entities: &HashMap<String, MergedEntity>,
 ) -> Result<(), Box<dyn Error>> {
-    for entity in entities.values() {
-        neo4j
-            .execute(
-                "MERGE (e:Entity {name: $name}) \
-                 SET e.entity_type = $entity_type, \
-                     e.confidence = $confidence, \
-                     e.updated_at = datetime()",
-                serde_json::json!({
-                    "name": entity.name,
-                    "entity_type": entity.entity_type,
-                    "confidence": entity.confidence,
-                }),
-            )
-            .await?;
+    if entities.is_empty() {
+        return Ok(());
     }
+    let items: Vec<serde_json::Value> = entities
+        .values()
+        .map(|entity| {
+            serde_json::json!({
+                "name": entity.name,
+                "entity_type": entity.entity_type,
+                "confidence": entity.confidence,
+            })
+        })
+        .collect();
+
+    neo4j
+        .execute(
+            "UNWIND $items AS item \
+             MERGE (e:Entity {name: item.name}) \
+             SET e.entity_type = item.entity_type, \
+                 e.confidence = item.confidence, \
+                 e.updated_at = datetime()",
+            serde_json::json!({ "items": items }),
+        )
+        .await?;
     Ok(())
 }
 
@@ -237,23 +246,27 @@ async fn write_chunk_mentions(
     chunks: &[GraphChunk],
     entities: &HashMap<String, MergedEntity>,
 ) -> Result<usize, Box<dyn Error>> {
-    let mut mention_count = 0usize;
+    let mut items: Vec<serde_json::Value> = Vec::new();
     for chunk in chunks {
         let names = candidate_names_for_chunk(taxonomy, &chunk.chunk_text, source_type, entities);
         for name in names {
-            neo4j
-                .execute(
-                    "MATCH (e:Entity {name: $name}) \
-                     MATCH (c:Chunk {point_id: $point_id}) \
-                     MERGE (e)-[:MENTIONED_IN]->(c)",
-                    serde_json::json!({
-                        "name": name,
-                        "point_id": chunk.point_id,
-                    }),
-                )
-                .await?;
-            mention_count += 1;
+            items.push(serde_json::json!({
+                "name": name,
+                "point_id": chunk.point_id,
+            }));
         }
+    }
+    let mention_count = items.len();
+    if !items.is_empty() {
+        neo4j
+            .execute(
+                "UNWIND $items AS item \
+                 MATCH (e:Entity {name: item.name}) \
+                 MATCH (c:Chunk {point_id: item.point_id}) \
+                 MERGE (e)-[:MENTIONED_IN]->(c)",
+                serde_json::json!({ "items": items }),
+            )
+            .await?;
     }
     Ok(mention_count)
 }
@@ -262,28 +275,38 @@ async fn write_entity_relationships(
     neo4j: &Neo4jClient,
     relationships: &[GraphRelationRecord],
 ) -> Result<(), Box<dyn Error>> {
-    for relationship in relationships {
-        neo4j
-            .execute(
-                "MATCH (s:Entity {name: $source}) \
-                 MATCH (t:Entity {name: $target}) \
-                 MERGE (s)-[r:RELATES_TO]->(t) \
-                 SET r.relation = $relation, \
-                     r.updated_at = datetime()",
-                serde_json::json!({
-                    "source": relationship.source,
-                    "target": relationship.target,
-                    "relation": relationship.relation,
-                }),
-            )
-            .await?;
+    if relationships.is_empty() {
+        return Ok(());
     }
+    let items: Vec<serde_json::Value> = relationships
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "source": r.source,
+                "target": r.target,
+                "relation": r.relation,
+            })
+        })
+        .collect();
+
+    neo4j
+        .execute(
+            "UNWIND $items AS item \
+             MATCH (s:Entity {name: item.source}) \
+             MATCH (t:Entity {name: item.target}) \
+             MERGE (s)-[r:RELATES_TO]->(t) \
+             SET r.relation = item.relation, \
+                 r.updated_at = datetime()",
+            serde_json::json!({ "items": items }),
+        )
+        .await?;
     Ok(())
 }
 
 async fn process_graph_job(
     cfg: &Config,
     neo4j: &Neo4jClient,
+    taxonomy: &Taxonomy,
     pool: &PgPool,
     id: Uuid,
 ) -> Result<(), Box<dyn Error>> {
@@ -292,11 +315,6 @@ async fn process_graph_job(
         return Ok(());
     };
     let source_type = job_cfg.source_type.unwrap_or_else(|| "crawl".to_string());
-    let taxonomy = if cfg.graph_taxonomy_path.trim().is_empty() {
-        Taxonomy::builtin()
-    } else {
-        Taxonomy::from_path(&cfg.graph_taxonomy_path)?
-    };
 
     let points = qdrant_retrieve_by_url(cfg, &url, None).await?;
     if points.is_empty() {
@@ -323,12 +341,13 @@ async fn process_graph_job(
             other => other.to_string(),
         };
         let chunk_index = point.payload.chunk_index.unwrap_or_default();
+        // Extract entities before moving chunk_text into GraphChunk — avoids clone.
+        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk_text, &source_type));
         chunks.push(GraphChunk {
             point_id,
             chunk_index,
-            chunk_text: chunk_text.clone(),
+            chunk_text,
         });
-        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk_text, &source_type));
     }
 
     let merged_candidates = merge_candidates(taxonomy_candidates);
@@ -358,39 +377,27 @@ async fn process_graph_job(
         Some(extract_entities_llm(cfg, &prompt_text).await?)
     };
 
-    if let Some(result) = llm_result {
-        merge_llm_entities(&mut entities, result.entities);
-        let relationships = build_relationships(&entities, result.relationships);
-        write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks).await?;
-        write_entities(neo4j, &entities).await?;
-        let mention_count =
-            write_chunk_mentions(neo4j, &taxonomy, &source_type, &chunks, &entities).await?;
+    let mut relationship_count = 0usize;
+    if let Some(llm) = llm_result {
+        merge_llm_entities(&mut entities, llm.entities);
+        let relationships = build_relationships(&entities, llm.relationships);
+        relationship_count = relationships.len();
         write_entity_relationships(neo4j, &relationships).await?;
-        let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
-        let result = serde_json::json!({
-            "url": url,
-            "chunk_count": chunks.len(),
-            "entity_count": entities.len(),
-            "relation_count": relationships.len() + mention_count + similarity_edges.len(),
-            "similarity_edges": similarity_edges.len(),
-            "llm_entities": entities.len(),
-        });
-        let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
-    } else {
-        write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks).await?;
-        write_entities(neo4j, &entities).await?;
-        let mention_count =
-            write_chunk_mentions(neo4j, &taxonomy, &source_type, &chunks, &entities).await?;
-        let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
-        let result = serde_json::json!({
-            "url": url,
-            "chunk_count": chunks.len(),
-            "entity_count": entities.len(),
-            "relation_count": mention_count + similarity_edges.len(),
-            "similarity_edges": similarity_edges.len(),
-        });
-        let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
     }
+
+    write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks).await?;
+    write_entities(neo4j, &entities).await?;
+    let mention_count =
+        write_chunk_mentions(neo4j, taxonomy, &source_type, &chunks, &entities).await?;
+    let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
+    let result = serde_json::json!({
+        "url": url,
+        "chunk_count": chunks.len(),
+        "entity_count": entities.len(),
+        "relation_count": relationship_count + mention_count + similarity_edges.len(),
+        "similarity_edges": similarity_edges.len(),
+    });
+    let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
 
     log_done(&format!(
         "graph worker completed job {id} url={url} duration_ms={}",
@@ -399,26 +406,14 @@ async fn process_graph_job(
     Ok(())
 }
 
-async fn process_claimed_graph_job(cfg: Config, pool: PgPool, id: Uuid) {
-    let neo4j = match Neo4jClient::from_config(&cfg) {
-        Ok(Some(client)) => client,
-        Ok(None) => {
-            let error_text = "AXON_NEO4J_URL is required for graph worker".to_string();
-            if let Err(err) = mark_job_failed(&pool, TABLE, id, &error_text).await {
-                log_warn(&format!("mark_job_failed failed job_id={id} error={err}"));
-            }
-            return;
-        }
-        Err(e) => {
-            let error_text = format!("Failed to initialize Neo4j client: {}", e);
-            if let Err(err) = mark_job_failed(&pool, TABLE, id, &error_text).await {
-                log_warn(&format!("mark_job_failed failed job_id={id} error={err}"));
-            }
-            return;
-        }
-    };
-
-    if let Err(error) = process_graph_job(&cfg, &neo4j, &pool, id).await {
+async fn process_claimed_graph_job(
+    cfg: std::sync::Arc<Config>,
+    pool: PgPool,
+    id: Uuid,
+    neo4j: std::sync::Arc<Neo4jClient>,
+    taxonomy: std::sync::Arc<Taxonomy>,
+) {
+    if let Err(error) = process_graph_job(&cfg, &neo4j, &taxonomy, &pool, id).await {
         let error_text = error.to_string();
         if let Err(err) = mark_job_failed(&pool, TABLE, id, &error_text).await {
             log_warn(&format!("mark_job_failed failed job_id={id} error={err}"));
@@ -445,6 +440,10 @@ pub async fn run_graph_worker(cfg: &Config) -> anyhow::Result<()> {
     let neo4j = Neo4jClient::from_config(cfg)
         .map_err(|e| anyhow::anyhow!("Neo4j client init failed: {}", e))?
         .ok_or_else(|| anyhow::anyhow!("graph worker requires Neo4j configuration"))?;
+    let neo4j = std::sync::Arc::new(neo4j);
+    let taxonomy = Taxonomy::resolve(&cfg.graph_taxonomy_path)
+        .map_err(|e| anyhow::anyhow!("taxonomy init failed: {e}"))?;
+
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool)
         .await
@@ -462,8 +461,15 @@ pub async fn run_graph_worker(cfg: &Config) -> anyhow::Result<()> {
         heartbeat_interval_secs: GRAPH_HEARTBEAT_INTERVAL_SECS,
     };
 
-    let process_fn: ProcessFn =
-        std::sync::Arc::new(|cfg, pool, id| Box::pin(process_claimed_graph_job(cfg, pool, id)));
+    let process_fn: ProcessFn = {
+        let neo4j = std::sync::Arc::clone(&neo4j);
+        let taxonomy = std::sync::Arc::clone(&taxonomy);
+        std::sync::Arc::new(move |cfg, pool, id| {
+            let neo4j = std::sync::Arc::clone(&neo4j);
+            let taxonomy = std::sync::Arc::clone(&taxonomy);
+            Box::pin(process_claimed_graph_job(cfg, pool, id, neo4j, taxonomy))
+        })
+    };
 
     run_job_worker(cfg, pool, &wc, process_fn)
         .await

@@ -11,7 +11,7 @@ use anyhow::Result;
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
-use super::utils::{env_usize_clamped, qdrant_base};
+use super::utils::{HNSW_EF_SEARCH, qdrant_base};
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.
 ///
@@ -34,7 +34,7 @@ pub(crate) async fn qdrant_hybrid_search(
     );
 
     let candidates = cfg.hybrid_search_candidates.max(limit);
-    let hnsw_ef = env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512);
+    let hnsw_ef = *HNSW_EF_SEARCH;
 
     let mut body = serde_json::json!({
         "prefetch": [
@@ -120,7 +120,7 @@ pub(crate) async fn qdrant_named_dense_search(
         cfg.collection
     );
 
-    let hnsw_ef = env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512);
+    let hnsw_ef = *HNSW_EF_SEARCH;
     let mut body = serde_json::json!({
         "query": dense_vector,
         "using": "dense",

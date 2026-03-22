@@ -46,7 +46,7 @@ pub async fn run_refresh_once(
         return Err(format!("failed to claim newly created refresh job {id}").into());
     }
 
-    process_refresh_job(cfg.clone(), pool.clone(), id).await;
+    process_refresh_job(Arc::new(cfg.clone()), pool.clone(), id).await;
 
     let result_json = sqlx::query_scalar::<_, Option<serde_json::Value>>(
         "SELECT result_json FROM axon_refresh_jobs WHERE id=$1",

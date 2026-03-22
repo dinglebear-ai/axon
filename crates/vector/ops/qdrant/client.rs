@@ -143,6 +143,7 @@ async fn scroll_pages_raw(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) async fn qdrant_scroll_pages(
     cfg: &Config,
     mut process_page: impl FnMut(&[serde_json::Value]),
@@ -154,8 +155,21 @@ pub(crate) async fn qdrant_scroll_pages(
     .await
 }
 
+#[cfg(test)]
 pub(crate) async fn qdrant_scroll_pages_while(
     cfg: &Config,
+    process_page: impl FnMut(&[serde_json::Value]) -> bool,
+) -> Result<()> {
+    qdrant_scroll_pages_selective(cfg, serde_json::json!(true), process_page).await
+}
+
+/// Scroll with selective payload inclusion. `with_payload` controls which fields
+/// are fetched — use `json!(true)` for full payload or
+/// `json!({"include": ["url", "chunk_index"]})` for selective fields.
+/// This avoids transferring multi-KB `chunk_text` fields when only metadata is needed.
+pub(crate) async fn qdrant_scroll_pages_selective(
+    cfg: &Config,
+    with_payload: serde_json::Value,
     process_page: impl FnMut(&[serde_json::Value]) -> bool,
 ) -> Result<()> {
     let client = http_client()?;
@@ -166,7 +180,7 @@ pub(crate) async fn qdrant_scroll_pages_while(
     );
     let body = serde_json::json!({
         "limit": 256,
-        "with_payload": true,
+        "with_payload": with_payload,
         "with_vector": false
     });
     scroll_pages_raw(client, &endpoint, body, process_page).await
@@ -315,8 +329,11 @@ pub async fn qdrant_delete_stale_domain_urls(
         .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
         .collect();
     let client = http_client()?;
+    // Use wait=false for maintenance deletes — matches qdrant_delete_stale_tail pattern.
+    // The preceding scroll already verified which URLs are stale; no immediate
+    // consistency is needed, and wait=true blocks on HNSW index rebuild per batch.
     let delete_url = format!(
-        "{}/collections/{}/points/delete?wait=true",
+        "{}/collections/{}/points/delete?wait=false",
         qdrant_base(cfg),
         cfg.collection
     );
@@ -388,7 +405,7 @@ pub(crate) async fn qdrant_facet_filtered(
         "key": key,
         "limit": limit,
     });
-    if filter != serde_json::json!({}) {
+    if filter.as_object().is_some_and(|o| !o.is_empty()) {
         body["filter"] = filter;
     }
     let value = client

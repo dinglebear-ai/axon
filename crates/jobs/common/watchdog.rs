@@ -234,67 +234,112 @@ pub async fn reclaim_stale_running_jobs(
         }
     }
 
-    // Reset retryable jobs to `pending` so the worker lane re-picks them up.
-    // Caller is responsible for re-publishing IDs to AMQP via batch_enqueue_jobs.
-    for (id, new_json) in retry_batch {
-        let retry_query = format!(
-            "UPDATE {table_name} SET status='{pending}', updated_at=NOW(), \
-             started_at=NULL, finished_at=NULL, error_text=NULL, result_json=$2 \
-             WHERE id=$1 AND status='{running}' \
-             RETURNING id",
-            pending = JobStatus::Pending.as_str(),
-            running = JobStatus::Running.as_str(),
-        );
-        let maybe_row = sqlx::query(&retry_query)
-            .bind(id)
-            .bind(new_json)
-            .fetch_optional(pool)
-            .await
-            .with_context(|| format!("watchdog: reclaim job {id} in {table_name}"))?;
-        if maybe_row.is_some() {
-            stats.reclaimed_jobs += 1;
-            stats.reclaimed_ids.push(id);
-        }
+    if !retry_batch.is_empty() {
+        let (reclaimed, ids) = batch_retry_jobs(pool, table_name, retry_batch).await?;
+        stats.reclaimed_jobs = reclaimed;
+        stats.reclaimed_ids = ids;
     }
-
-    // Permanently fail jobs that have exhausted reclaim attempts.
     if !exhausted_ids.is_empty() {
-        let msg = format!(
-            "watchdog: max reclaim attempts ({MAX_WATCHDOG_RECLAIM_ATTEMPTS}) exceeded \
-             for {} job (marker={})",
-            job_kind, marker
-        );
-        let fail_query = format!(
-            "UPDATE {table_name} SET status='{failed}', updated_at=NOW(), finished_at=NOW(), error_text=$2 \
-             WHERE id = ANY($1) AND status='{running}' \
-             RETURNING id",
-            failed = JobStatus::Failed.as_str(),
-            running = JobStatus::Running.as_str(),
-        );
-        let exhausted: Vec<(Uuid,)> = sqlx::query_as(&fail_query)
-            .bind(&exhausted_ids)
-            .bind(&msg)
-            .fetch_all(pool)
-            .await
-            .with_context(|| format!("watchdog: fail exhausted jobs in {table_name}"))?;
-        stats.exhausted_jobs = exhausted.len() as u64;
-        stats.exhausted_ids = exhausted.into_iter().map(|(id,)| id).collect();
+        let (exhausted, ids) =
+            batch_fail_exhausted_jobs(pool, table_name, job_kind, marker, exhausted_ids).await?;
+        stats.exhausted_jobs = exhausted;
+        stats.exhausted_ids = ids;
     }
-
-    // Mark candidates individually (each gets a unique payload with timestamps).
-    for (id, marked) in mark_batch {
-        let mark_query = format!(
-            "UPDATE {table_name} SET result_json=$2 WHERE id=$1 AND status='{running}'",
-            running = JobStatus::Running.as_str()
-        );
-        let _ = sqlx::query(&mark_query)
-            .bind(id)
-            .bind(marked)
-            .execute(pool)
-            .await
-            .with_context(|| format!("watchdog: mark stale candidate {id} in {table_name}"))?;
-        stats.marked_candidates += 1;
+    if !mark_batch.is_empty() {
+        stats.marked_candidates = batch_mark_candidates(pool, table_name, mark_batch).await?;
     }
 
     Ok(stats)
+}
+
+/// Reset retryable jobs to `pending` via a single batched unnest() UPDATE.
+/// Returns (count, ids) of actually reclaimed rows.
+async fn batch_retry_jobs(
+    pool: &PgPool,
+    table_name: &str,
+    retry_batch: Vec<(Uuid, Value)>,
+) -> Result<(u64, Vec<Uuid>)> {
+    let (retry_ids, retry_payloads): (Vec<Uuid>, Vec<Value>) = retry_batch.into_iter().unzip();
+    let q = format!(
+        "UPDATE {table_name} SET status='{pending}', updated_at=NOW(), \
+         started_at=NULL, finished_at=NULL, error_text=NULL, \
+         result_json=batch.payload \
+         FROM unnest($1::uuid[], $2::jsonb[]) AS batch(id, payload) \
+         WHERE {table_name}.id=batch.id AND {table_name}.status='{running}' \
+         RETURNING {table_name}.id",
+        pending = JobStatus::Pending.as_str(),
+        running = JobStatus::Running.as_str(),
+    );
+    let rows: Vec<(Uuid,)> = sqlx::query_as(&q)
+        .bind(&retry_ids)
+        .bind(&retry_payloads)
+        .fetch_all(pool)
+        .await
+        .with_context(|| {
+            format!(
+                "watchdog: batch reclaim {} jobs in {table_name}",
+                retry_ids.len()
+            )
+        })?;
+    let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    Ok((ids.len() as u64, ids))
+}
+
+/// Permanently fail jobs that have exhausted reclaim attempts via ANY($1) UPDATE.
+/// Returns (count, ids) of actually failed rows.
+async fn batch_fail_exhausted_jobs(
+    pool: &PgPool,
+    table_name: &str,
+    job_kind: &str,
+    marker: &str,
+    exhausted_ids: Vec<Uuid>,
+) -> Result<(u64, Vec<Uuid>)> {
+    let msg = format!(
+        "watchdog: max reclaim attempts ({MAX_WATCHDOG_RECLAIM_ATTEMPTS}) exceeded \
+         for {} job (marker={})",
+        job_kind, marker
+    );
+    let q = format!(
+        "UPDATE {table_name} SET status='{failed}', updated_at=NOW(), finished_at=NOW(), error_text=$2 \
+         WHERE id = ANY($1) AND status='{running}' \
+         RETURNING id",
+        failed = JobStatus::Failed.as_str(),
+        running = JobStatus::Running.as_str(),
+    );
+    let rows: Vec<(Uuid,)> = sqlx::query_as(&q)
+        .bind(&exhausted_ids)
+        .bind(&msg)
+        .fetch_all(pool)
+        .await
+        .with_context(|| format!("watchdog: fail exhausted jobs in {table_name}"))?;
+    let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    Ok((ids.len() as u64, ids))
+}
+
+/// Mark stale candidates via a single batched unnest() UPDATE. Returns the count marked.
+async fn batch_mark_candidates(
+    pool: &PgPool,
+    table_name: &str,
+    mark_batch: Vec<(Uuid, Value)>,
+) -> Result<u64> {
+    let batch_len = mark_batch.len() as u64;
+    let (mark_ids, mark_payloads): (Vec<Uuid>, Vec<Value>) = mark_batch.into_iter().unzip();
+    let q = format!(
+        "UPDATE {table_name} SET result_json=batch.payload \
+         FROM unnest($1::uuid[], $2::jsonb[]) AS batch(id, payload) \
+         WHERE {table_name}.id=batch.id AND {table_name}.status='{running}'",
+        running = JobStatus::Running.as_str(),
+    );
+    sqlx::query(&q)
+        .bind(&mark_ids)
+        .bind(&mark_payloads)
+        .execute(pool)
+        .await
+        .with_context(|| {
+            format!(
+                "watchdog: batch mark {} stale candidates in {table_name}",
+                mark_ids.len()
+            )
+        })?;
+    Ok(batch_len)
 }

@@ -31,22 +31,35 @@ pub(super) async fn query_crawl_jobs(
     pool: &PgPool,
     statuses: &[String],
 ) -> Result<Vec<CrawlExport>> {
-    let rows = sqlx::query(
-        r#"SELECT id, url, status, created_at, finished_at, config_json,
-                  result_json->'pages_crawled' AS pages_crawled,
-                  result_json->'pages_discovered' AS pages_discovered
-           FROM axon_crawl_jobs
-           ORDER BY created_at DESC"#,
-    )
-    .fetch_all(pool)
-    .await?;
+    // Push status filtering into SQL when statuses are specified — avoids
+    // fetching and discarding rows for large historical job tables.
+    let rows = if statuses.is_empty() {
+        sqlx::query(
+            r#"SELECT id, url, status, created_at, finished_at, config_json,
+                      result_json->'pages_crawled' AS pages_crawled,
+                      result_json->'pages_discovered' AS pages_discovered
+               FROM axon_crawl_jobs
+               ORDER BY created_at DESC"#,
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT id, url, status, created_at, finished_at, config_json,
+                      result_json->'pages_crawled' AS pages_crawled,
+                      result_json->'pages_discovered' AS pages_discovered
+               FROM axon_crawl_jobs
+               WHERE status = ANY($1)
+               ORDER BY created_at DESC"#,
+        )
+        .bind(statuses)
+        .fetch_all(pool)
+        .await?
+    };
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let status: String = row.try_get("status")?;
-        if !status_matches(&status, statuses) {
-            continue;
-        }
         out.push(CrawlExport {
             job_id: row.try_get::<uuid::Uuid, _>("id")?.to_string(),
             seed_url: row.try_get("url")?,
@@ -65,22 +78,33 @@ pub(super) async fn query_extract_jobs(
     pool: &PgPool,
     statuses: &[String],
 ) -> Result<Vec<ExtractionExport>> {
-    let rows = sqlx::query(
-        r#"SELECT id, status, created_at, finished_at, urls_json, config_json,
-                  config_json->'prompt' AS prompt,
-                  result_json->'total_items' AS total_items
-           FROM axon_extract_jobs
-           ORDER BY created_at DESC"#,
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows = if statuses.is_empty() {
+        sqlx::query(
+            r#"SELECT id, status, created_at, finished_at, urls_json, config_json,
+                      config_json->'prompt' AS prompt,
+                      result_json->'total_items' AS total_items
+               FROM axon_extract_jobs
+               ORDER BY created_at DESC"#,
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT id, status, created_at, finished_at, urls_json, config_json,
+                      config_json->'prompt' AS prompt,
+                      result_json->'total_items' AS total_items
+               FROM axon_extract_jobs
+               WHERE status = ANY($1)
+               ORDER BY created_at DESC"#,
+        )
+        .bind(statuses)
+        .fetch_all(pool)
+        .await?
+    };
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let status: String = row.try_get("status")?;
-        if !status_matches(&status, statuses) {
-            continue;
-        }
         out.push(ExtractionExport {
             job_id: row.try_get::<uuid::Uuid, _>("id")?.to_string(),
             urls: json_array_to_strings(row.try_get("urls_json")?),
@@ -99,21 +123,31 @@ pub(super) async fn query_embed_jobs(
     pool: &PgPool,
     statuses: &[String],
 ) -> Result<Vec<EmbedExport>> {
-    let rows = sqlx::query(
-        r#"SELECT id, input_text, status, created_at, finished_at, config_json,
-                  result_json->'chunks_embedded' AS chunks_embedded
-           FROM axon_embed_jobs
-           ORDER BY created_at DESC"#,
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows = if statuses.is_empty() {
+        sqlx::query(
+            r#"SELECT id, input_text, status, created_at, finished_at, config_json,
+                      result_json->'chunks_embedded' AS chunks_embedded
+               FROM axon_embed_jobs
+               ORDER BY created_at DESC"#,
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT id, input_text, status, created_at, finished_at, config_json,
+                      result_json->'chunks_embedded' AS chunks_embedded
+               FROM axon_embed_jobs
+               WHERE status = ANY($1)
+               ORDER BY created_at DESC"#,
+        )
+        .bind(statuses)
+        .fetch_all(pool)
+        .await?
+    };
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let status: String = row.try_get("status")?;
-        if !status_matches(&status, statuses) {
-            continue;
-        }
         let config: serde_json::Value = row.try_get("config_json")?;
         out.push(EmbedExport {
             job_id: row.try_get::<uuid::Uuid, _>("id")?.to_string(),
@@ -137,14 +171,27 @@ pub(super) async fn query_embed_jobs(
 }
 
 pub(super) async fn query_ingest_jobs(pool: &PgPool, statuses: &[String]) -> Result<IngestExports> {
-    let rows = sqlx::query(
-        r#"SELECT id, source_type, target, status, created_at, finished_at,
-                  config_json, result_json->'chunks_embedded' AS chunks_embedded
-           FROM axon_ingest_jobs
-           ORDER BY created_at DESC"#,
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows = if statuses.is_empty() {
+        sqlx::query(
+            r#"SELECT id, source_type, target, status, created_at, finished_at,
+                      config_json, result_json->'chunks_embedded' AS chunks_embedded
+               FROM axon_ingest_jobs
+               ORDER BY created_at DESC"#,
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT id, source_type, target, status, created_at, finished_at,
+                      config_json, result_json->'chunks_embedded' AS chunks_embedded
+               FROM axon_ingest_jobs
+               WHERE status = ANY($1)
+               ORDER BY created_at DESC"#,
+        )
+        .bind(statuses)
+        .fetch_all(pool)
+        .await?
+    };
 
     let mut github = Vec::new();
     let mut reddit = Vec::new();
@@ -153,9 +200,6 @@ pub(super) async fn query_ingest_jobs(pool: &PgPool, statuses: &[String]) -> Res
 
     for row in rows {
         let status: String = row.try_get("status")?;
-        if !status_matches(&status, statuses) {
-            continue;
-        }
         let entry = IngestSourceExport {
             job_id: row.try_get::<uuid::Uuid, _>("id")?.to_string(),
             target: row.try_get("target")?,

@@ -10,6 +10,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 
@@ -31,12 +32,22 @@ pub(super) async fn ingest_gemini_sessions(
 
     let mut total = 0;
     let mut futures = FuturesUnordered::new();
+    let cfg_arc = Arc::new(cfg.clone());
 
     for root in [gemini_root.join("history"), gemini_root.join("tmp")] {
         if !fs::try_exists(&root).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_dir(cfg, state, &projects_map, root, &mut futures, &mut total).await?;
+        enqueue_gemini_dir(
+            cfg,
+            &cfg_arc,
+            state,
+            &projects_map,
+            root,
+            &mut futures,
+            &mut total,
+        )
+        .await?;
     }
 
     while let Some(res) = futures.next().await {
@@ -53,6 +64,7 @@ type GeminiFutures = FuturesUnordered<
 
 async fn enqueue_gemini_dir(
     cfg: &Config,
+    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     projects_map: &HashMap<String, String>,
     root: PathBuf,
@@ -89,7 +101,7 @@ async fn enqueue_gemini_dir(
         if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_chat_files(cfg, state, chats_dir, collection, futures, total).await?;
+        enqueue_gemini_chat_files(cfg_arc, state, chats_dir, collection, futures, total).await?;
     }
     Ok(())
 }
@@ -112,7 +124,7 @@ async fn resolve_project_name(
 }
 
 async fn enqueue_gemini_chat_files(
-    cfg: &Config,
+    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     chats_dir: PathBuf,
     collection: String,
@@ -140,11 +152,11 @@ async fn enqueue_gemini_chat_files(
             continue;
         }
 
-        let cfg_clone = cfg.clone();
+        let cfg_shared = Arc::clone(cfg_arc);
         let coll_clone = collection.clone();
         let size = meta.len();
         futures.push(tokio::spawn(async move {
-            let res = process_gemini_file(&cfg_clone, chat_path.clone(), coll_clone).await;
+            let res = process_gemini_file(&cfg_shared, chat_path.clone(), coll_clone).await;
             (chat_path, mtime, size, res)
         }));
 

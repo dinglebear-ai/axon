@@ -354,7 +354,7 @@ async fn wrap_with_heartbeat_calls_inner_fn() {
     // swallowed by the heartbeat task (let _ = touch_running_job(...).await)
     let pool = PgPool::connect_lazy("postgresql://dummy@127.0.0.1:1/dummy")
         .expect("connect_lazy should not fail");
-    let cfg = Config::default();
+    let cfg = Arc::new(Config::default());
     let wrapped = wrap_with_heartbeat(inner, JobTable::Embed, 60);
     wrapped(cfg, pool, uuid::Uuid::new_v4()).await;
     assert!(

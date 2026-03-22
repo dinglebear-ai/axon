@@ -24,16 +24,10 @@ fn elapsed_ms(start: Instant) -> u64 {
     }
 }
 
-async fn probe_tei_info(url: &str) -> (Option<Value>, Option<String>) {
+async fn probe_tei_info(url: &str, client: &reqwest::Client) -> (Option<Value>, Option<String>) {
     if url.trim().is_empty() {
         return (None, Some("not configured".to_string()));
     }
-
-    // Short 4s timeout for health probes — intentionally not the global 30s client.
-    let client = match build_client(4, None) {
-        Ok(c) => c,
-        Err(err) => return (None, Some(err.to_string())),
-    };
 
     let mut last_error = None;
     for path in ["/info", "/v1/info"] {
@@ -55,24 +49,17 @@ async fn probe_tei_info(url: &str) -> (Option<Value>, Option<String>) {
 }
 
 fn tei_model_from_info(info: &Value) -> Option<String> {
-    if let Some(model_id) = info.get("model_id").and_then(Value::as_str) {
-        return Some(model_id.to_string());
-    }
-    if let Some(model_name) = info.get("model_name").and_then(Value::as_str) {
-        return Some(model_name.to_string());
-    }
-    if let Some(model) = info.get("model") {
-        if let Some(name) = model.as_str() {
-            return Some(name.to_string());
-        }
-        if let Some(name) = model.get("id").and_then(Value::as_str) {
-            return Some(name.to_string());
-        }
-        if let Some(name) = model.get("name").and_then(Value::as_str) {
-            return Some(name.to_string());
-        }
-    }
-    None
+    let str_field = |key: &str| info.get(key).and_then(Value::as_str).map(str::to_string);
+    str_field("model_id")
+        .or_else(|| str_field("model_name"))
+        .or_else(|| {
+            let model = info.get("model")?;
+            model
+                .as_str()
+                .or_else(|| model.get("id").and_then(Value::as_str))
+                .or_else(|| model.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+        })
 }
 
 fn tei_info_summary(info: &Value) -> Option<String> {
@@ -111,7 +98,11 @@ fn resolve_openai_model(cfg: &Config) -> String {
 /// (e.g. `http://host:8080/v1`). If it's missing, the probe will hit
 /// `http://host:8080/models` instead of `http://host:8080/v1/models`
 /// and likely return a 404.
-async fn probe_openai(cfg: &Config, openai_model: &str) -> (bool, String) {
+async fn probe_openai(
+    cfg: &Config,
+    openai_model: &str,
+    client: &reqwest::Client,
+) -> (bool, String) {
     let base = cfg.openai_base_url.trim().trim_end_matches('/');
     if base.is_empty() {
         return (false, "not configured".to_string());
@@ -119,11 +110,6 @@ async fn probe_openai(cfg: &Config, openai_model: &str) -> (bool, String) {
     if openai_model.trim().is_empty() {
         return (false, "OPENAI_MODEL not set".to_string());
     }
-
-    let client = match build_client(3, None) {
-        Ok(c) => c,
-        Err(e) => return (false, e.to_string()),
-    };
 
     let url = format!("{base}/models");
     let mut req = client.get(&url);
@@ -187,6 +173,10 @@ async fn gather_doctor_probes(
     cfg: &Config,
     openai_model: &str,
 ) -> Result<DoctorProbes, Box<dyn Error>> {
+    // Single short-timeout client shared across all health probes — avoids
+    // constructing multiple reqwest Clients (TLS backend init + pool setup each).
+    let probe_client = build_client(5, None)?;
+
     let (
         (crawl_report, crawl_report_ms),
         (extract_report, extract_report_ms),
@@ -204,10 +194,10 @@ async fn gather_doctor_probes(
         timed_probe(embed_doctor(cfg)),
         timed_probe(ingest_doctor(cfg)),
         timed_probe(probe_http(&cfg.tei_url, &["/health", "/"])),
-        timed_probe(probe_tei_info(&cfg.tei_url)),
+        timed_probe(probe_tei_info(&cfg.tei_url, &probe_client)),
         timed_probe(probe_http(&cfg.qdrant_url, &["/healthz", "/"])),
         timed_probe(probe_chrome(cfg.chrome_remote_url.as_deref())),
-        timed_probe(probe_openai(cfg, openai_model)),
+        timed_probe(probe_openai(cfg, openai_model, &probe_client)),
         timed_probe(count_stale_and_pending_jobs(cfg, 15)),
     );
 

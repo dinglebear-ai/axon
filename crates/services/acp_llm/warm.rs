@@ -38,24 +38,20 @@ pub fn warm_session(
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     // Minimal placeholder — build_session_setup only reads session_id + mcp_servers;
     // a non-empty prompt is required by validate_prompt_turn_request.
-    let dummy_req = AcpPromptTurnRequest {
-        session_id: None,
-        prompt: vec!["__warm__".to_string()],
-        model: if cfg.openai_model.trim().is_empty() {
-            None
-        } else {
-            Some(cfg.openai_model.clone())
-        },
-        session_mode: None,
-        blocked_mcp_tools: vec![],
-        mcp_servers: vec![],
-    };
-    let session_setup = scaffold.prepare_session_setup(&dummy_req, &cwd)?;
     let model = if cfg.openai_model.trim().is_empty() {
         None
     } else {
         Some(cfg.openai_model.clone())
     };
+    let dummy_req = AcpPromptTurnRequest {
+        session_id: None,
+        prompt: vec!["__warm__".to_string()],
+        model: model.clone(),
+        session_mode: None,
+        blocked_mcp_tools: vec![],
+        mcp_servers: vec![],
+    };
+    let session_setup = scaffold.prepare_session_setup(&dummy_req, &cwd)?;
     let permission_responders: PermissionResponderMap = Arc::new(dashmap::DashMap::new());
     let handle = AcpConnectionHandle::spawn_eager(
         adapter,

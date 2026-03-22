@@ -89,12 +89,11 @@ pub enum RenderMode {
 
 impl fmt::Display for RenderMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
+        f.write_str(match self {
             Self::Http => "http",
             Self::Chrome => "chrome",
             Self::AutoSwitch => "auto-switch",
-        };
-        f.write_str(value)
+        })
     }
 }
 
@@ -120,13 +119,12 @@ pub enum RedditSort {
 
 impl fmt::Display for RedditSort {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
+        f.write_str(match self {
             Self::Hot => "hot",
             Self::Top => "top",
             Self::New => "new",
             Self::Rising => "rising",
-        };
-        f.write_str(value)
+        })
     }
 }
 
@@ -143,15 +141,14 @@ pub enum RedditTime {
 
 impl fmt::Display for RedditTime {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
+        f.write_str(match self {
             Self::Hour => "hour",
             Self::Day => "day",
             Self::Week => "week",
             Self::Month => "month",
             Self::Year => "year",
             Self::All => "all",
-        };
-        f.write_str(value)
+        })
     }
 }
 
@@ -178,12 +175,11 @@ pub enum McpTransport {
 
 impl fmt::Display for McpTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
+        f.write_str(match self {
             Self::Stdio => "stdio",
             Self::Http => "http",
             Self::Both => "both",
-        };
-        f.write_str(value)
+        })
     }
 }
 
@@ -198,11 +194,10 @@ pub enum EvaluateResponsesMode {
 
 impl fmt::Display for EvaluateResponsesMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
+        f.write_str(match self {
             Self::Inline => "inline",
             Self::SideBySide => "side-by-side",
             Self::Events => "events",
-        };
-        f.write_str(value)
+        })
     }
 }

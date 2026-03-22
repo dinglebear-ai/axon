@@ -213,6 +213,10 @@ pub(crate) async fn run_amqp_lane(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (conn, ch, mut consumer) = setup_amqp_consumer(cfg, wc, lane).await?;
 
+    // Wrap config once per lane — all job dispatches within this lane use
+    // Arc::clone instead of cloning the full Config struct (~30 heap fields).
+    let cfg_arc = Arc::new(cfg.clone());
+
     // ProcessFn returns !Send futures; the lane runs on a single task so Send
     // is not required.
     let mut inflight: FuturesUnordered<Pin<Box<dyn Future<Output = ()>>>> = FuturesUnordered::new();
@@ -240,7 +244,9 @@ pub(crate) async fn run_amqp_lane(
         // and we have a queued job ready to start immediately.
         while semaphore.available_permits() > 0 && !preacked_ids.is_empty() {
             let job_id = preacked_ids.pop_front().expect("just checked is_empty");
-            match claim_preacked_job(job_id, cfg, &pool, wc, lane, process_fn, &semaphore).await {
+            match claim_preacked_job(job_id, &cfg_arc, &pool, wc, lane, process_fn, &semaphore)
+                .await
+            {
                 Ok(Some(job_fut)) => inflight.push(job_fut),
                 Ok(None) => {} // already claimed by another lane
                 Err(e) => {
@@ -312,7 +318,7 @@ pub(crate) async fn run_amqp_lane(
 
         if let Some(job_fut) = claim_delivery(
             delivery,
-            cfg,
+            &cfg_arc,
             &pool,
             wc,
             lane,

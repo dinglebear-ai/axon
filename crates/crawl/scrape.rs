@@ -149,10 +149,14 @@ pub(crate) fn pick_best_page_for_url(
     candidates.into_iter().next()
 }
 
-pub(crate) async fn direct_fetch_requested_page(
-    cfg: &Config,
-    requested_url: &str,
-) -> Result<ScrapedPage, Box<dyn Error>> {
+/// Build a `reqwest::Client` with SSRF-safe redirect policy and optional
+/// config-driven settings (timeout, TLS bypass, proxy, UA, headers).
+///
+/// When no config-specific overrides are active, callers should prefer the
+/// shared `http_client()` singleton. This constructor exists for the cases
+/// where `accept_invalid_certs`, proxy, or custom headers require a
+/// purpose-built client.
+fn build_scrape_fallback_client(cfg: &Config) -> Result<reqwest::Client, Box<dyn Error>> {
     let mut builder = reqwest::Client::builder();
     if let Some(timeout_ms) = cfg.request_timeout_ms {
         builder = builder.timeout(Duration::from_millis(timeout_ms));
@@ -173,9 +177,6 @@ pub(crate) async fn direct_fetch_requested_page(
             builder = builder.default_headers(map);
         }
     }
-    // Validate each redirect target through the SSRF blacklist so a public URL
-    // cannot redirect to a private/internal address and bypass the guard.
-    // Preserve reqwest's default redirect cap (10) to prevent infinite loops.
     builder = builder.redirect(reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() >= 10 {
             return attempt.error("too many redirects");
@@ -187,7 +188,25 @@ pub(crate) async fn direct_fetch_requested_page(
             attempt.follow()
         }
     }));
-    let client = builder.build()?;
+    Ok(builder.build()?)
+}
+
+/// Cache the scrape fallback client per-process. The config-driven settings
+/// (proxy, UA, certs, headers) are set from env vars and do not change
+/// between invocations, so a single client is safe to reuse.
+static SCRAPE_FALLBACK_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+pub(crate) async fn direct_fetch_requested_page(
+    cfg: &Config,
+    requested_url: &str,
+) -> Result<ScrapedPage, Box<dyn Error>> {
+    let client = if let Some(c) = SCRAPE_FALLBACK_CLIENT.get() {
+        c
+    } else {
+        let built = build_scrape_fallback_client(cfg)?;
+        let _ = SCRAPE_FALLBACK_CLIENT.set(built);
+        SCRAPE_FALLBACK_CLIENT.get().expect("just initialized")
+    };
     let attempts = cfg.fetch_retries.saturating_add(1).max(1);
     let mut last_err: Option<String> = None;
     for attempt in 1..=attempts {

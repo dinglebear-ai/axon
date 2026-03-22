@@ -100,19 +100,25 @@ fn queue_fallback_extraction(
     let acp_adapter_args_c = cfg.acp_adapter_args.clone();
     let prompt_c = cfg.prompt_text.clone();
     fallback_tasks.spawn(async move {
+        // Run CPU-bound HTML→markdown conversion via spawn_blocking BEFORE
+        // acquiring the semaphore permit. This prevents blocking the Tokio
+        // executor thread and avoids inflating permit hold-time (only the
+        // downstream LLM call needs the permit).
+        let markdown = match tokio::task::spawn_blocking(move || to_markdown(&html, None)).await {
+            Ok(md) => md,
+            Err(e) => {
+                return (
+                    page_url,
+                    Err(format!("markdown conversion join error: {e}")),
+                );
+            }
+        };
         let _permit = match fallback_limiter.acquire_owned().await {
             Ok(p) => p,
             Err(_) => {
                 return (page_url, Err("fallback limiter closed".to_string()));
             }
         };
-        // TODO(perf): `to_markdown` is CPU-bound HTML-to-markdown conversion that
-        // runs while holding the async semaphore permit. This blocks the executor
-        // thread and inflates permit hold-time, reducing effective concurrency.
-        // Fix: either (a) move `to_markdown` into `tokio::task::spawn_blocking`
-        // and `.await` the result here, or (b) run it BEFORE acquiring the permit
-        // since it does not need the permit — only the downstream LLM call does.
-        let markdown = to_markdown(&html, None);
         let res = extract_items_fallback(
             &client,
             acp_adapter_cmd_c.as_deref(),
@@ -210,13 +216,11 @@ fn drain_fallback_result(
             metrics.completion_tokens += fallback.completion_tokens;
             metrics.total_tokens += fallback.total_tokens;
             metrics.estimated_cost_usd += fallback.estimated_cost_usd;
-            let has_items = !fallback.items.is_empty();
-            if has_items {
+            if fallback.items.is_empty() {
+                log_warn(&format!("fallback extraction produced no items for {url}"));
+            } else {
                 *pages_with_data += 1;
                 all_results.extend(fallback.items);
-            }
-            if !has_items {
-                log_warn(&format!("fallback extraction produced no items for {url}"));
             }
         }
         Ok((url, Err(err))) => {
@@ -314,9 +318,7 @@ pub async fn run_extract_with_engine(
     let has_fallback = wcfg
         .acp_adapter_cmd
         .as_deref()
-        .map(str::trim)
-        .map(|s| !s.is_empty())
-        .unwrap_or(false)
+        .is_some_and(|s| !s.trim().is_empty())
         && !wcfg.openai_model.is_empty()
         && !wcfg.prompt.trim().is_empty();
 

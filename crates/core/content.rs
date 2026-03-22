@@ -15,6 +15,7 @@ use spider::url::Url;
 use spider_transformations::transformation::content::{
     ReturnFormat, SelectorConfiguration, TransformConfig, TransformInput, transform_content_input,
 };
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 pub const BOILERPLATE_SELECTORS: &[&str] = &[
@@ -179,7 +180,7 @@ pub fn find_between<'a>(haystack: &'a str, start: &str, end: &str) -> Option<&'a
 }
 
 pub fn extract_meta_description(html: &str) -> Option<String> {
-    // Limit search to <head> (≤8 KB) to avoid cloning the full document.
+    // Limit search to <head> (≤8 KB) to avoid scanning the full document.
     let head_end = html
         .find("</head>")
         .or_else(|| html.find("</HEAD>"))
@@ -187,17 +188,27 @@ pub fn extract_meta_description(html: &str) -> Option<String> {
     // Use .get() instead of direct index to avoid a panic when head_end falls
     // on a UTF-8 multi-byte boundary (possible when the 8192-byte default is used).
     let head = html.get(..head_end).unwrap_or(html);
-    let lower = head.to_ascii_lowercase();
-    let marker = "name=\"description\"";
-    let idx = lower.find(marker)?;
-    let content_idx = lower[idx..].find("content=\"")? + idx + "content=\"".len();
-    let rest = head.get(content_idx..)?;
+
+    // Case-insensitive search without allocating a lowercase copy of the head.
+    let head_bytes = head.as_bytes();
+    let marker = b"name=\"description\"";
+    let idx = head_bytes
+        .windows(marker.len())
+        .position(|w| w.eq_ignore_ascii_case(marker))?;
+    let after_marker = &head_bytes[idx..];
+    let content_marker = b"content=\"";
+    let content_rel = after_marker
+        .windows(content_marker.len())
+        .position(|w| w.eq_ignore_ascii_case(content_marker))?;
+    let content_start = idx + content_rel + content_marker.len();
+    let rest = head.get(content_start..)?;
     let end = rest.find('"')?;
     Some(rest.get(..end)?.to_string())
 }
 
 pub fn extract_links(html: &str, limit: usize) -> Vec<String> {
     let mut out = Vec::new();
+    let mut seen = HashSet::new();
     let mut pos = 0usize;
     let bytes = html.as_bytes();
 
@@ -238,7 +249,7 @@ pub fn extract_links(html: &str, limit: usize) -> Vec<String> {
             };
             let link = remain[..end_rel].trim();
             if (link.starts_with("http://") || link.starts_with("https://"))
-                && !out.iter().any(|x| x == link)
+                && seen.insert(link.to_string())
             {
                 out.push(link.to_string());
                 if out.len() >= limit {
@@ -259,6 +270,7 @@ pub fn extract_anchor_hrefs(base_url: &str, html: &str, limit: usize) -> Vec<Str
     };
 
     let mut out = Vec::new();
+    let mut seen = HashSet::new();
     let mut pos = 0usize;
 
     while let Some(rel) = html[pos..].find("href=") {
@@ -296,7 +308,7 @@ pub fn extract_anchor_hrefs(base_url: &str, html: &str, limit: usize) -> Vec<Str
         match resolved.scheme() {
             "http" | "https" => {
                 let link = resolved.to_string();
-                if !out.iter().any(|existing| existing == &link) {
+                if seen.insert(link.clone()) {
                     out.push(link);
                     if out.len() >= limit {
                         break;
@@ -450,11 +462,11 @@ pub fn canonicalize_url(url: &str) -> Option<String> {
     parsed.set_fragment(None);
     // Strip default ports to prevent duplicate entries
     // (http://x:80/p and http://x/p must deduplicate)
-    match (parsed.scheme(), parsed.port()) {
-        ("http", Some(80)) | ("https", Some(443)) => {
-            let _ = parsed.set_port(None);
-        }
-        _ => {}
+    if matches!(
+        (parsed.scheme(), parsed.port()),
+        ("http", Some(80)) | ("https", Some(443))
+    ) {
+        let _ = parsed.set_port(None);
     }
     // Strip trailing slashes from all paths (not just root)
     let path = parsed.path().to_string();

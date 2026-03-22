@@ -27,10 +27,6 @@ pub(super) async fn process_job(
     pool: &PgPool,
     id: Uuid,
 ) -> Result<(), Box<dyn Error>> {
-    process_job_impl(cfg, pool, id).await
-}
-
-async fn process_job_impl(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), Box<dyn Error>> {
     let Some(ctx) = load_job_execution_context(cfg, pool, id).await? else {
         return Ok(());
     };

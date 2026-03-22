@@ -1,13 +1,11 @@
+use crate::crates::cli::commands::resolve_input_text;
 use crate::crates::core::config::Config;
 use crate::crates::services::query as query_service;
 use std::error::Error;
 
 /// CLI shim for the suggest command.
 pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let focus = cfg
-        .query
-        .clone()
-        .or_else(|| (!cfg.positional.is_empty()).then(|| cfg.positional.join(" ")));
+    let focus = resolve_input_text(cfg);
     let result = query_service::suggest(cfg, focus.as_deref()).await?;
     if cfg.json_output {
         println!(
@@ -17,7 +15,7 @@ pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
             }))?
         );
     } else {
-        for url in result.urls {
+        for url in &result.urls {
             println!("{url}");
         }
     }

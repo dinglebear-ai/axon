@@ -18,14 +18,12 @@ pub async fn run_domains(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 fn domains_detailed_mode() -> bool {
-    env::var("AXON_DOMAINS_DETAILED")
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes"
-            )
-        })
-        .unwrap_or(false)
+    env::var("AXON_DOMAINS_DETAILED").ok().is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes"
+        )
+    })
 }
 
 async fn try_fast_domains(cfg: &Config) -> Result<bool, Box<dyn Error>> {
@@ -64,10 +62,7 @@ fn render_fast_domain_results(
     domains: Vec<(String, usize)>,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        let mut out: BTreeMap<String, usize> = BTreeMap::new();
-        for (domain, vectors) in domains {
-            out.insert(domain, vectors);
-        }
+        let out: BTreeMap<String, usize> = domains.into_iter().collect();
         println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(());
     }
@@ -91,10 +86,11 @@ fn render_detailed_domains(
     result: DetailedDomainsResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        let mut out: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        for row in result.domains {
-            out.insert(row.domain, (row.vectors, row.urls));
-        }
+        let out: BTreeMap<String, (usize, usize)> = result
+            .domains
+            .into_iter()
+            .map(|row| (row.domain, (row.vectors, row.urls)))
+            .collect();
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("{}", primary("Domains"));

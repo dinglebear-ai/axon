@@ -70,11 +70,11 @@ pub(crate) async fn fetch_text_with_retry(
 }
 
 fn sitemap_seed_queue(scheme: &str, host: &str) -> VecDeque<String> {
-    let mut queue = VecDeque::new();
-    queue.push_back(format!("{scheme}://{host}/sitemap.xml"));
-    queue.push_back(format!("{scheme}://{host}/sitemap_index.xml"));
-    queue.push_back(format!("{scheme}://{host}/sitemap-index.xml"));
-    queue
+    VecDeque::from([
+        format!("{scheme}://{host}/sitemap.xml"),
+        format!("{scheme}://{host}/sitemap_index.xml"),
+        format!("{scheme}://{host}/sitemap-index.xml"),
+    ])
 }
 
 /// Returns `true` if `lastmod` (ISO 8601 date or datetime string) falls within the last
@@ -112,7 +112,8 @@ fn sitemap_loc_in_scope(
     if !scoped_to_root {
         let p = u.path();
         let exact = p == start_path;
-        let nested = p.starts_with(&(start_path.to_string() + "/"));
+        // Avoid allocating a temporary String for the nested check.
+        let nested = p.starts_with(start_path) && p.as_bytes().get(start_path.len()) == Some(&b'/');
         if !exact && !nested {
             return None;
         }
@@ -154,8 +155,10 @@ async fn process_sitemap_batch(
             continue;
         };
         parsed += 1;
-        let is_index = xml
-            .as_bytes()
+        // The <sitemapindex> root element always appears in the XML prolog
+        // (first ~200 bytes). Scanning the full multi-MB body is wasteful.
+        let head = xml.as_bytes().get(..512).unwrap_or(xml.as_bytes());
+        let is_index = head
             .windows(b"<sitemapindex".len())
             .any(|w| w.eq_ignore_ascii_case(b"<sitemapindex"));
         let since_days = cfg.sitemap_since_days;
@@ -215,18 +218,15 @@ async fn enqueue_robots_sitemaps(
     queue: &mut VecDeque<String>,
 ) -> usize {
     let robots_url = format!("{scheme}://{host}/robots.txt");
-    if let Some(robots_txt) =
+    let Some(robots_txt) =
         fetch_text_with_retry(client, &robots_url, cfg.fetch_retries, cfg.retry_backoff_ms).await
-    {
-        let declared = extract_robots_sitemaps(&robots_txt);
-        let count = declared.len();
-        for sitemap in declared {
-            queue.push_back(sitemap);
-        }
-        count
-    } else {
-        0
-    }
+    else {
+        return 0;
+    };
+    let declared = extract_robots_sitemaps(&robots_txt);
+    let count = declared.len();
+    queue.extend(declared);
+    count
 }
 
 pub async fn discover_sitemap_urls(
@@ -482,6 +482,8 @@ pub(crate) async fn append_candidate_backfill(
         .unwrap_or(cfg.batch_concurrency)
         .clamp(1, 512);
 
+    // Compute the selector config once — it does not change between URLs.
+    let shared_selector_config = build_selector_config(cfg);
     for chunk in candidates.chunks(backfill_concurrency) {
         let mut joins = tokio::task::JoinSet::new();
         for url in chunk.iter().cloned() {
@@ -490,7 +492,7 @@ pub(crate) async fn append_candidate_backfill(
             let backoff = cfg.retry_backoff_ms;
             let min_chars = cfg.min_markdown_chars;
             let drop_thin = cfg.drop_thin_markdown;
-            let selector_config = build_selector_config(cfg);
+            let selector_config = shared_selector_config.clone();
             joins.spawn(fetch_and_convert_backfill_url(
                 http,
                 url,

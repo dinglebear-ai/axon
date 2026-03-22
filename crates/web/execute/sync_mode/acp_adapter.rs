@@ -96,42 +96,39 @@ fn candidate_local_executable_paths(program: &str) -> Vec<PathBuf> {
     candidates
 }
 
+/// Search candidate paths for the first existing executable and return its path.
+fn find_executable(program: &str) -> Option<String> {
+    candidate_local_executable_paths(program)
+        .into_iter()
+        .find(|candidate| candidate.exists())
+        .map(|candidate| candidate.to_string_lossy().into_owned())
+}
+
+/// Check if the program name or args hint at a specific adapter binary.
+fn looks_like_adapter(program: &str, args_value: Option<&str>, name: &str) -> bool {
+    program.contains(name)
+        || args_value
+            .map(|args| args.to_ascii_lowercase().contains(name))
+            .unwrap_or(false)
+}
+
 fn resolve_local_executable_path(program: &str, args_value: Option<&str>) -> Option<String> {
     let path = Path::new(program);
     if path.is_absolute() && path.exists() {
         return Some(program.to_string());
     }
 
-    if let Some(found) = candidate_local_executable_paths(program)
-        .into_iter()
-        .find(|candidate| candidate.exists())
-        .map(|candidate| candidate.to_string_lossy().into_owned())
-    {
+    if let Some(found) = find_executable(program) {
         return Some(found);
     }
 
-    let looks_like_codex = program.contains("codex")
-        || args_value
-            .map(|args| args.to_ascii_lowercase().contains("codex"))
-            .unwrap_or(false);
-
-    if looks_like_codex {
-        return candidate_local_executable_paths("codex")
-            .into_iter()
-            .find(|candidate| candidate.exists())
-            .map(|candidate| candidate.to_string_lossy().into_owned());
-    }
-
-    let looks_like_gemini = program.contains("gemini")
-        || args_value
-            .map(|args| args.to_ascii_lowercase().contains("gemini"))
-            .unwrap_or(false);
-
-    if looks_like_gemini {
-        return candidate_local_executable_paths("gemini")
-            .into_iter()
-            .find(|candidate| candidate.exists())
-            .map(|candidate| candidate.to_string_lossy().into_owned());
+    // Fallback: if the program name hints at a known adapter, try that binary name directly.
+    for adapter_name in ["codex", "gemini"] {
+        if looks_like_adapter(program, args_value, adapter_name)
+            && let Some(found) = find_executable(adapter_name)
+        {
+            return Some(found);
+        }
     }
 
     None

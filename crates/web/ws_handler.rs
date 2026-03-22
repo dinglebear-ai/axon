@@ -59,6 +59,7 @@ struct WsClientMsg {
 }
 
 /// Lightweight probe for the `"type"` field — avoids substring scanning (P1-8).
+#[cfg(test)]
 #[derive(Deserialize)]
 struct MsgType<'a> {
     #[serde(rename = "type")]
@@ -205,23 +206,26 @@ async fn run_forward_task(
     }
 }
 
-/// Detect `crawl_files` messages by their `"type"` field (L-2, P1-8) and track
+/// Detect `crawl_files` messages by their `"type"` field and track
 /// `output_dir` / `job_id` for the crawl base dir and job dirs registries.
+///
+/// H5: parse once into `serde_json::Value`, then check `["type"]` and extract
+/// fields from the same parsed tree — eliminates the double JSON parse.
 async fn track_crawl_files(
     msg: &str,
     base_dir: &Mutex<Option<PathBuf>>,
     job_dirs: &DashMap<String, PathBuf>,
 ) {
-    // L-2: typed deserialization via MsgType — no string scan.
-    let is_crawl_files = serde_json::from_str::<MsgType>(msg)
-        .map(|m| m.msg_type == "crawl_files")
-        .unwrap_or(false);
-    if !is_crawl_files {
-        return;
-    }
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(msg) else {
         return;
     };
+    let is_crawl_files = parsed
+        .get("type")
+        .and_then(|v| v.as_str())
+        .is_some_and(|t| t == "crawl_files");
+    if !is_crawl_files {
+        return;
+    }
     if let Some(dir) = parsed.get("output_dir").and_then(|v| v.as_str()) {
         *base_dir.lock().await = Some(PathBuf::from(dir));
     }

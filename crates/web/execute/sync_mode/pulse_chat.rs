@@ -18,13 +18,18 @@ use events::run_acp_event_loop;
 /// Default per-turn timeout (5 minutes). Overridable via `AXON_ACP_TURN_TIMEOUT_MS`.
 const DEFAULT_TURN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
-/// Read the per-turn timeout from the environment, falling back to the default.
-fn turn_timeout() -> Duration {
+/// M1: Cached turn timeout — read from env once, reused for the process lifetime.
+static TURN_TIMEOUT: std::sync::LazyLock<Duration> = std::sync::LazyLock::new(|| {
     env::var("AXON_ACP_TURN_TIMEOUT_MS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .map(Duration::from_millis)
         .unwrap_or(DEFAULT_TURN_TIMEOUT)
+});
+
+/// Read the per-turn timeout (cached after first access).
+fn turn_timeout() -> Duration {
+    *TURN_TIMEOUT
 }
 
 /// System prompt preamble injected into the first turn of an editor-integrated

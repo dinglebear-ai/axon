@@ -1,3 +1,4 @@
+use crate::crates::cli::commands::resolve_input_text;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{accent, muted, primary, status_text};
@@ -6,23 +7,8 @@ use crate::crates::services::query as query_svc;
 use crate::crates::services::types::Pagination;
 use std::error::Error;
 
-fn resolve_query_text(cfg: &Config) -> Option<String> {
-    cfg.query
-        .clone()
-        .filter(|q| !q.trim().is_empty())
-        .or_else(|| {
-            if cfg.positional.is_empty() {
-                None
-            } else {
-                Some(cfg.positional.join(" "))
-            }
-        })
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
 pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let query = resolve_query_text(cfg).ok_or("query requires text")?;
+    let query = resolve_input_text(cfg).ok_or("query requires text")?;
     log_info(&format!(
         "command=query query_len={} limit={}",
         query.len(),
@@ -59,27 +45,28 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     for result in &results {
-        let rank = result["rank"].as_u64().unwrap_or(0);
-        let score = result["score"].as_f64().unwrap_or(0.0);
-        let rerank_score = result["rerank_score"].as_f64().unwrap_or(0.0);
-        let url = result["url"].as_str().unwrap_or("");
-        let source = result["source"].as_str().unwrap_or("");
-        let snippet = result["snippet"].as_str().unwrap_or("");
-
         if cfg.json_output {
-            println!("{}", result);
+            println!("{result}");
         } else {
             println!(
-                "  • {}. {} [{:.3}] {}",
-                rank,
+                "  \u{2022} {}. {} [{:.3}] {}",
+                result["rank"].as_u64().unwrap_or(0),
                 status_text("completed"),
-                rerank_score,
-                accent(source)
+                result["rerank_score"].as_f64().unwrap_or(0.0),
+                accent(result["source"].as_str().unwrap_or(""))
             );
-            println!("    {}", snippet);
+            println!("    {}", result["snippet"].as_str().unwrap_or(""));
             if cfg.ask_diagnostics {
-                println!("    {} vector_score={:.3}", muted("diag"), score);
-                println!("    {} {}", muted("url"), url);
+                println!(
+                    "    {} vector_score={:.3}",
+                    muted("diag"),
+                    result["score"].as_f64().unwrap_or(0.0)
+                );
+                println!(
+                    "    {} {}",
+                    muted("url"),
+                    result["url"].as_str().unwrap_or("")
+                );
             }
         }
     }

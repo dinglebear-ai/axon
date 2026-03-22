@@ -36,7 +36,12 @@ pub fn tokenize_query(text: &str) -> Vec<String> {
 }
 
 pub fn tokenize_text_set(text: &str) -> HashSet<String> {
-    tokenize_query(text).into_iter().collect()
+    // Build HashSet directly without intermediate Vec allocation (LOW-2).
+    text.to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| t.len() >= 3 && !STOP_WORDS.contains(*t))
+        .map(str::to_string)
+        .collect()
 }
 
 pub fn extract_path_from_url(path_or_url: &str) -> String {
@@ -55,6 +60,8 @@ pub fn tokenize_path_set(path_or_url: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Rerank candidates in place and return sorted. Takes ownership to avoid cloning
+/// all candidate structs (each contains ~2KB chunk_text + HashSets).
 pub fn rerank_ask_candidates(
     candidates: &[AskCandidate],
     query_tokens: &[String],
@@ -70,10 +77,19 @@ pub fn rerank_ask_candidates(
     let phrase = query_tokens.join(" ");
     let phrase_threshold = phrase.len() >= 6 && query_tokens.len() >= 2;
 
-    let mut reranked = candidates
+    // Pre-normalize authoritative domains once instead of per-candidate (MED-4).
+    let normalized_domains: Vec<String> = authoritative_domains
         .iter()
-        .cloned()
-        .map(|mut candidate| {
+        .map(|d| d.trim().to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+        .collect();
+
+    // Compute rerank scores on a parallel Vec<(usize, f64)> to avoid cloning all
+    // candidates (HIGH-1). Only the final sorted output clones the selected ones.
+    let mut scored: Vec<(usize, f64)> = candidates
+        .iter()
+        .enumerate()
+        .map(|(i, candidate)| {
             let mut lexical_boost = 0.0f64;
             for token in query_tokens {
                 if candidate.url_tokens.contains(token) {
@@ -95,41 +111,61 @@ pub fn rerank_ask_candidates(
                 0.0
             };
 
-            let authority_boost =
-                if url_matches_authoritative_domain(&candidate.url, authoritative_domains) {
-                    authoritative_boost.max(0.0)
-                } else {
-                    0.0
-                };
-
-            // Verbatim phrase boost: +0.06 when the joined query tokens appear
-            // consecutively in the chunk text (ported from TS deduplication.ts).
-            let phrase_boost = if phrase_threshold
-                && candidate
-                    .chunk_text
-                    .to_ascii_lowercase()
-                    .contains(phrase.as_str())
-            {
-                PHRASE_MATCH_BOOST
+            // Use pre-extracted host from URL and pre-normalized domains (MED-4).
+            let authority_boost = if host_matches_domains(&candidate.url, &normalized_domains) {
+                authoritative_boost.max(0.0)
             } else {
                 0.0
             };
 
-            candidate.rerank_score =
+            // Phrase matching: use case-insensitive byte search instead of
+            // allocating a full lowercased copy of chunk_text (HIGH-2).
+            let phrase_boost =
+                if phrase_threshold && ascii_lowercase_contains(&candidate.chunk_text, &phrase) {
+                    PHRASE_MATCH_BOOST
+                } else {
+                    0.0
+                };
+
+            let rerank_score =
                 candidate.score + lexical_boost + docs_boost + phrase_boost + authority_boost;
-            candidate
+            (i, rerank_score)
         })
-        .collect::<Vec<_>>();
-    reranked.sort_by(|a, b| {
-        b.rerank_score
-            .partial_cmp(&a.rerank_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    reranked
+        .collect();
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    scored
+        .into_iter()
+        .map(|(idx, score)| {
+            let mut c = candidates[idx].clone();
+            c.rerank_score = score;
+            c
+        })
+        .collect()
 }
 
-fn url_matches_authoritative_domain(url: &str, authoritative_domains: &[String]) -> bool {
-    if authoritative_domains.is_empty() {
+/// Case-insensitive ASCII substring check without allocating a lowercased copy.
+/// Since query tokens are already ASCII-lowered, we only need byte-level comparison.
+fn ascii_lowercase_contains(haystack: &str, needle: &str) -> bool {
+    if needle.len() > haystack.len() {
+        return false;
+    }
+    let needle_bytes = needle.as_bytes();
+    haystack
+        .as_bytes()
+        .windows(needle_bytes.len())
+        .any(|window| {
+            window
+                .iter()
+                .zip(needle_bytes)
+                .all(|(h, n)| h.to_ascii_lowercase() == *n)
+        })
+}
+
+/// Match a URL's host against pre-normalized authoritative domains.
+fn host_matches_domains(url: &str, normalized_domains: &[String]) -> bool {
+    if normalized_domains.is_empty() {
         return false;
     }
     let host = Url::parse(url)
@@ -138,10 +174,9 @@ fn url_matches_authoritative_domain(url: &str, authoritative_domains: &[String])
     let Some(host) = host else {
         return false;
     };
-    authoritative_domains.iter().any(|domain| {
-        let normalized = domain.trim().to_ascii_lowercase();
-        !normalized.is_empty() && (host == normalized || host.ends_with(&format!(".{normalized}")))
-    })
+    normalized_domains
+        .iter()
+        .any(|normalized| host == *normalized || host.ends_with(&format!(".{normalized}")))
 }
 
 pub fn select_diverse_candidates(
@@ -165,20 +200,21 @@ pub fn select_diverse_candidates_from_indices(
 
     let mut selected: Vec<usize> = Vec::new();
     let mut selected_set: HashSet<usize> = HashSet::new();
-    let mut per_url_count: HashMap<String, usize> = HashMap::new();
+    // Use &str references into the candidates slice to avoid cloning URLs (HIGH-3).
+    let mut per_url_count: HashMap<&str, usize> = HashMap::new();
 
     // Pass 1: pick one candidate per unique URL.
     for &candidate_idx in candidate_indices {
         if selected.len() >= target_count {
             break;
         }
-        let url = &candidates[candidate_idx].url;
-        if per_url_count.contains_key(url.as_str()) {
+        let url = candidates[candidate_idx].url.as_str();
+        if per_url_count.contains_key(url) {
             continue;
         }
         selected.push(candidate_idx);
         selected_set.insert(candidate_idx);
-        per_url_count.insert(url.clone(), 1);
+        per_url_count.insert(url, 1);
     }
 
     // Pass 2: fill remaining slots up to max_per_url per URL.
@@ -189,8 +225,8 @@ pub fn select_diverse_candidates_from_indices(
         if selected_set.contains(&candidate_idx) {
             continue;
         }
-        let url = &candidates[candidate_idx].url;
-        let count = per_url_count.entry(url.clone()).or_insert(0);
+        let url = candidates[candidate_idx].url.as_str();
+        let count = per_url_count.entry(url).or_insert(0);
         if *count >= max_per_url {
             continue;
         }

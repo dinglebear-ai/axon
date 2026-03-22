@@ -4,8 +4,8 @@ use crate::crates::core::http::normalize_url;
 use crate::crates::core::logging::log_warn;
 use crate::crates::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
 use crate::crates::services::types::ScrapeResult;
-use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
+use std::sync::OnceLock;
 
 /// Map a raw JSON payload into a [`ScrapeResult`].
 ///
@@ -21,11 +21,12 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         .and_then(serde_json::Value::as_str)
         .ok_or("scrape payload missing markdown")?
         .to_string();
+    let output = markdown.clone();
     Ok(ScrapeResult {
         payload,
         url,
-        markdown: markdown.clone(),
-        output: markdown,
+        markdown,
+        output,
     })
 }
 
@@ -65,17 +66,9 @@ pub async fn scrape(cfg: &Config, url: &str) -> Result<ScrapeResult, Box<dyn Err
     )?;
     let mut result = map_scrape_payload(payload)?;
     result.output = output;
-    let cfg_clone = cfg.clone();
-    let url_owned = result.url.clone();
-    tokio::spawn(record_scrape_seed(cfg_clone, url_owned));
-    Ok(result)
-}
-
-async fn record_scrape_seed(cfg: Config, url: String) {
-    if cfg.pg_url.trim().is_empty() {
-        return;
-    }
-
+    // Extract only the fields needed for telemetry — avoids cloning the entire
+    // Config struct (~100 fields, 2-5KB heap) for a lightweight background INSERT.
+    let pg_url = cfg.pg_url.clone();
     let options = serde_json::json!({
         "format": format!("{:?}", cfg.format).to_lowercase(),
         "render_mode": cfg.render_mode.to_string(),
@@ -88,12 +81,23 @@ async fn record_scrape_seed(cfg: Config, url: String) {
         "chrome_stealth": cfg.chrome_stealth,
         "chrome_intercept": cfg.chrome_intercept,
     });
+    let url_owned = result.url.clone();
+    tokio::spawn(record_scrape_seed(pg_url, url_owned, options));
+    Ok(result)
+}
 
-    let pool = match PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&cfg.pg_url)
-        .await
-    {
+/// Guard: DDL for `axon_scrape_seeds` runs at most once per process.
+static SCRAPE_SCHEMA_INIT: OnceLock<()> = OnceLock::new();
+
+/// Record a scrape seed for telemetry. Reuses the shared telemetry pool from
+/// `lib.rs` instead of creating a new PgPool per call (saves 5-50ms of TCP +
+/// TLS handshake per invocation).
+async fn record_scrape_seed(pg_url: String, url: String, options: serde_json::Value) {
+    if pg_url.trim().is_empty() {
+        return;
+    }
+
+    let pool = match crate::get_or_init_telemetry_pool(&pg_url).await {
         Ok(p) => p,
         Err(e) => {
             log_warn(&format!("scrape seed db connect failed: {e}"));
@@ -101,22 +105,26 @@ async fn record_scrape_seed(cfg: Config, url: String) {
         }
     };
 
-    // Run DDL once — outside the retry loop to avoid repeated schema lock round-trips.
-    for stmt in [
-        r#"
-        CREATE TABLE IF NOT EXISTS axon_scrape_seeds (
-            id BIGSERIAL PRIMARY KEY,
-            url TEXT NOT NULL,
-            options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS idx_axon_scrape_seeds_created_desc ON axon_scrape_seeds(created_at DESC)",
-    ] {
-        if let Err(e) = sqlx::query(stmt).execute(&pool).await {
-            log_warn(&format!("scrape seed schema setup failed: {e}"));
-            return;
+    // DDL guarded by OnceLock — only the first call per process issues the
+    // CREATE TABLE / CREATE INDEX round-trips.
+    if SCRAPE_SCHEMA_INIT.get().is_none() {
+        for stmt in [
+            r#"
+            CREATE TABLE IF NOT EXISTS axon_scrape_seeds (
+                id BIGSERIAL PRIMARY KEY,
+                url TEXT NOT NULL,
+                options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            "#,
+            "CREATE INDEX IF NOT EXISTS idx_axon_scrape_seeds_created_desc ON axon_scrape_seeds(created_at DESC)",
+        ] {
+            if let Err(e) = sqlx::query(stmt).execute(pool).await {
+                log_warn(&format!("scrape seed schema setup failed: {e}"));
+                return;
+            }
         }
+        let _ = SCRAPE_SCHEMA_INIT.set(());
     }
 
     for attempt in 1..=3 {
@@ -124,7 +132,7 @@ async fn record_scrape_seed(cfg: Config, url: String) {
             sqlx::query(r#"INSERT INTO axon_scrape_seeds (url, options_json) VALUES ($1, $2)"#)
                 .bind(url.as_str())
                 .bind(options.clone())
-                .execute(&pool)
+                .execute(pool)
                 .await?;
             Ok::<(), sqlx::Error>(())
         };

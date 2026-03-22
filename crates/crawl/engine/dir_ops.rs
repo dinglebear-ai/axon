@@ -47,7 +47,8 @@ pub async fn update_latest_reflink(
     let target_md = latest_dir.join(markdown);
     if path_exists(&source_md).await {
         tokio::fs::create_dir_all(&target_md).await?;
-        let mut entries = tokio::fs::read_dir(source_md).await?;
+        let mut entries = tokio::fs::read_dir(&source_md).await?;
+        let mut file_pairs: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.is_file() {
@@ -55,10 +56,17 @@ pub async fn update_latest_reflink(
                     continue;
                 };
                 let dst = target_md.join(filename);
-                let src = path.clone();
-                tokio::task::spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst))
-                    .await??;
+                file_pairs.push((path, dst));
             }
+        }
+        // Parallelize reflink copies via spawn_blocking + JoinSet.
+        // The filesystem handles concurrent reflinks efficiently.
+        let mut join_set = tokio::task::JoinSet::new();
+        for (src, dst) in file_pairs {
+            join_set.spawn_blocking(move || reflink_copy::reflink_or_copy(&src, dst));
+        }
+        while let Some(result) = join_set.join_next().await {
+            result??;
         }
     }
 

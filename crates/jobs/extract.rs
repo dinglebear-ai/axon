@@ -24,6 +24,19 @@ use uuid::Uuid;
 
 const TABLE: JobTable = JobTable::Extract;
 
+static SCHEMA_INIT: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+/// Guard `ensure_schema` with an in-process `OnceLock` so DDL queries
+/// (advisory lock + CREATE TABLE/INDEX IF NOT EXISTS) only run once per
+/// process lifetime, matching the embed module's pattern.
+async fn ensure_schema_once(pool: &PgPool) -> Result<(), sqlx::Error> {
+    if SCHEMA_INIT.get().is_none() {
+        ensure_schema(pool).await?;
+        let _ = SCHEMA_INIT.set(());
+    }
+    Ok(())
+}
+
 fn default_render_mode() -> crate::crates::core::config::RenderMode {
     crate::crates::core::config::RenderMode::Http
 }
@@ -130,7 +143,7 @@ pub(crate) async fn start_extract_job_with_pool(
     urls: &[String],
     prompt: Option<String>,
 ) -> Result<Uuid, Box<dyn Error>> {
-    ensure_schema(pool).await?;
+    ensure_schema_once(pool).await?;
 
     let urls_json = serde_json::to_value(urls)?;
     let cfg_json = serde_json::to_value(ExtractJobConfig {
@@ -188,7 +201,7 @@ pub(crate) async fn start_extract_job_with_pool(
 
 pub async fn get_extract_job(cfg: &Config, id: Uuid) -> Result<Option<ExtractJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     Ok(sqlx::query_as::<_, ExtractJob>(
         r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json FROM axon_extract_jobs WHERE id=$1"#,
     )
@@ -202,7 +215,7 @@ pub async fn list_extract_jobs(
     offset: i64,
 ) -> Result<Vec<ExtractJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     let mut rows = sqlx::query_as::<_, ExtractJob>(
         r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,urls_json,result_json
            FROM axon_extract_jobs
@@ -234,7 +247,7 @@ pub async fn list_extract_jobs(
 
 pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     let rows = sqlx::query(
         "UPDATE axon_extract_jobs SET status=$2,updated_at=NOW(),finished_at=NOW() WHERE id=$1 AND status = ANY($3)",
     )
@@ -291,13 +304,13 @@ pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn 
 
 pub async fn cleanup_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     Ok(batched_cleanup_terminal_jobs(&pool, TABLE).await?)
 }
 
 pub async fn clear_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     let rows = sqlx::query("DELETE FROM axon_extract_jobs")
         .execute(&pool)
         .await?
@@ -319,7 +332,7 @@ pub async fn run_extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 pub async fn recover_stale_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
     let stats = reclaim_stale_running_jobs(
         &pool,
         TABLE,

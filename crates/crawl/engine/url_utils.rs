@@ -1,7 +1,7 @@
 use spider::url::Url;
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) struct MapScope {
     pub(crate) host: String,
     pub(crate) path_prefix: Option<String>,
@@ -27,7 +27,6 @@ pub(crate) fn canonicalize_url_for_dedupe(url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
-#[allow(dead_code)]
 pub(crate) fn normalize_map_candidate_url(
     raw: &str,
     scope: &MapScope,
@@ -77,10 +76,10 @@ pub(crate) fn is_excluded_url_path(url: &str, excludes: &[String]) -> bool {
 }
 
 fn is_path_prefix_excluded(path: &str, prefix: &str) -> bool {
-    let normalized = if prefix.starts_with('/') {
-        prefix.to_owned()
+    let normalized: Cow<'_, str> = if prefix.starts_with('/') {
+        Cow::Borrowed(prefix)
     } else {
-        format!("/{prefix}")
+        Cow::Owned(format!("/{prefix}"))
     };
     let boundary = normalized.trim_end_matches('/');
     if boundary.is_empty() {
@@ -162,10 +161,10 @@ pub(super) fn build_exclude_blacklist_patterns(
     excludes
         .iter()
         .map(|prefix| {
-            let normalized = if prefix.starts_with('/') {
-                prefix.clone()
+            let normalized: Cow<'_, str> = if prefix.starts_with('/') {
+                Cow::Borrowed(prefix)
             } else {
-                format!("/{prefix}")
+                Cow::Owned(format!("/{prefix}"))
             };
             format!(
                 "^https?://{}{}(?:/|-|$|\\?|#)",

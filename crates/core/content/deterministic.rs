@@ -307,17 +307,9 @@ pub(crate) async fn extract_items_fallback(
     if !openai_model.trim().is_empty() {
         request = request.model(openai_model.to_string());
     }
-    // TODO(perf): Nested runtime anti-pattern — `spawn_blocking` runs on a
-    // blocking thread pool, but we create a *new* Tokio runtime inside it just
-    // to call an async function (`acp_llm::complete_text`). This wastes an OS
-    // thread and risks panics if the outer runtime is single-threaded.
-    //
-    // Proper fix: call `acp_llm::complete_text` directly (it is already async)
-    // and remove the `spawn_blocking` wrapper entirely. The only reason this
-    // exists is because the function was originally sync and was later migrated
-    // to async without updating this call-site. The `Config` and
-    // `AcpCompletionRequest` are already `Send`, so no `spawn_blocking` is
-    // needed — just `.await` the future on the current task.
+    // acp_llm::complete_text returns a !Send future (subprocess + channel internals),
+    // so it cannot be directly awaited inside a JoinSet::spawn task. The spawn_blocking
+    // wrapper runs it on a dedicated thread with its own single-threaded runtime.
     let response = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

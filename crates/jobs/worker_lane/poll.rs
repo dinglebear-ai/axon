@@ -43,6 +43,11 @@ pub(crate) async fn run_polling_lane(
         "{} worker polling lane={lane} active queue={}",
         wc.job_kind, wc.queue_name
     ));
+
+    // Wrap config once per lane — all job dispatches within this lane use
+    // Arc::clone instead of cloning the full Config struct.
+    let cfg_arc = Arc::new(cfg.clone());
+
     let mut last_sweep = Instant::now();
     let mut backoff_ms = POLL_BACKOFF_INIT_MS;
     let mut inflight = FuturesUnordered::new();
@@ -80,7 +85,7 @@ pub(crate) async fn run_polling_lane(
         match claim_next_pending(&pool, wc.table).await {
             Ok(Some(id)) => {
                 backoff_ms = POLL_BACKOFF_INIT_MS;
-                let fut = process_fn(cfg.clone(), pool.clone(), id);
+                let fut = process_fn(Arc::clone(&cfg_arc), pool.clone(), id);
                 inflight.push(async move {
                     fut.await;
                     drop(permit);

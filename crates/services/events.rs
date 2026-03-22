@@ -43,10 +43,12 @@ impl std::fmt::Display for LogLevel {
 
 impl From<&str> for LogLevel {
     fn from(s: &str) -> Self {
-        match s.to_ascii_lowercase().as_str() {
-            "warn" | "warning" => Self::Warn,
-            "error" => Self::Error,
-            _ => Self::Info,
+        if s.eq_ignore_ascii_case("warn") || s.eq_ignore_ascii_case("warning") {
+            Self::Warn
+        } else if s.eq_ignore_ascii_case("error") {
+            Self::Error
+        } else {
+            Self::Info
         }
     }
 }

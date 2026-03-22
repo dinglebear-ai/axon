@@ -19,7 +19,7 @@ use crate::crates::core::config::Config;
 /// claim failed (job stays `pending` and is reclaimed by watchdog/startup sweep).
 pub(crate) async fn claim_preacked_job(
     job_id: Uuid,
-    cfg: &Config,
+    cfg: &Arc<Config>,
     pool: &PgPool,
     wc: &WorkerConfig,
     lane: usize,
@@ -29,7 +29,7 @@ pub(crate) async fn claim_preacked_job(
     let permit = semaphore.clone().acquire_owned().await?;
     match claim_pending_by_id(pool, wc.table, job_id).await {
         Ok(true) => {
-            let fut = process_fn(cfg.clone(), pool.clone(), job_id);
+            let fut = process_fn(Arc::clone(cfg), pool.clone(), job_id);
             Ok(Some(Box::pin(async move {
                 fut.await;
                 drop(permit);
@@ -76,7 +76,7 @@ pub(crate) async fn claim_preacked_job(
 )]
 pub(crate) async fn claim_delivery(
     delivery: lapin::message::Delivery,
-    cfg: &Config,
+    cfg: &Arc<Config>,
     pool: &PgPool,
     wc: &WorkerConfig,
     lane: usize,
@@ -132,7 +132,7 @@ pub(crate) async fn claim_delivery(
     match claim_pending_by_id(pool, wc.table, job_id).await {
         Ok(true) => {
             delivery.ack(BasicAckOptions::default()).await?;
-            let fut = process_fn(cfg.clone(), pool.clone(), job_id);
+            let fut = process_fn(Arc::clone(cfg), pool.clone(), job_id);
             Ok(Some(Box::pin(async move {
                 fut.await;
                 drop(permit);

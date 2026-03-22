@@ -1,3 +1,6 @@
+mod util;
+use util::{emit_progress, track_waf_block};
+
 use super::thin_refetch::{
     RefetchResult, THIN_REFETCH_CONCURRENCY, render_html_with_chrome, write_refetch_results,
 };
@@ -113,18 +116,19 @@ pub(super) fn process_page(
     if let Some(prev) = col.previous_manifest.get(url)
         && prev.content_hash.as_deref() == Some(&content_hash)
     {
-        let prev_path = std::path::Path::new(&prev.relative_path);
-        if prev_path.exists() {
-            let filename = url_to_filename(url, next_file_count);
-            let entry = ManifestEntry {
-                url: url.to_string(),
-                relative_path: format!("markdown/{filename}"),
-                markdown_chars: chars,
-                content_hash: Some(content_hash),
-                changed: false,
-            };
-            return PageOutcome::Reused { filename, entry };
-        }
+        // Optimistically return Reused — the async write_page_to_manifest
+        // verifies the previous file actually exists via tokio::fs before
+        // linking. If the file is missing, the write function returns
+        // Ok(false) and the caller skips the page.
+        let filename = url_to_filename(url, next_file_count);
+        let entry = ManifestEntry {
+            url: url.to_string(),
+            relative_path: format!("markdown/{filename}"),
+            markdown_chars: chars,
+            content_hash: Some(content_hash),
+            changed: false,
+        };
+        return PageOutcome::Reused { filename, entry };
     }
 
     let filename = url_to_filename(url, next_file_count);
@@ -159,6 +163,14 @@ pub(super) async fn write_page_to_manifest(
                 .get(url)
                 .map(|m| std::path::PathBuf::from(&m.relative_path));
             let path = markdown_dir.join(filename);
+            // Verify previous file exists asynchronously before attempting link.
+            let prev_exists = match prev_path {
+                Some(ref p) => tokio::fs::try_exists(p).await.unwrap_or(false),
+                None => false,
+            };
+            if !prev_exists {
+                return Ok(false);
+            }
             let link_res = if let Some(ref prev) = prev_path {
                 if reflink_copy::reflink_or_copy(prev, &path).is_ok() {
                     Ok(())
@@ -255,10 +267,13 @@ async fn drain_chrome_tasks(
 /// Apply the outcome of `process_page()`: update summary counters, spawn Chrome
 /// renders for thin pages, write good pages to the manifest. Returns `true` when
 /// the caller should `continue` (skip further per-page work).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "page outcome handling requires many mutable state refs"
+)]
 async fn apply_page_outcome(
     outcome: PageOutcome,
-    html_bytes: &[u8],
+    html_bytes: Vec<u8>,
     url: &str,
     col: &CollectorConfig,
     summary: &mut CrawlSummary,
@@ -297,7 +312,7 @@ async fn apply_page_outcome(
     reason = "all params are pass-through from dispatch_page_outcome"
 )]
 async fn apply_thin_page_outcome(
-    html_bytes: &[u8],
+    html_bytes: Vec<u8>,
     url: &str,
     col: &CollectorConfig,
     summary: &mut CrawlSummary,
@@ -317,7 +332,7 @@ async fn apply_thin_page_outcome(
             chrome_tasks,
             chrome_semaphore,
             ws_url.clone(),
-            html_bytes.to_vec(),
+            html_bytes,
             url.to_string(),
             col.min_chars,
             col.chrome_timeout_secs,
@@ -417,6 +432,7 @@ pub(super) async fn collect_crawl_pages(
     let mut chrome_tasks: JoinSet<RefetchResult> = JoinSet::new();
     let mut chrome_results: Vec<RefetchResult> = Vec::new();
     let chrome_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(THIN_REFETCH_CONCURRENCY));
+    let mut last_progress = std::time::Instant::now();
 
     loop {
         while let Some(r) = chrome_tasks.try_join_next() {
@@ -445,6 +461,7 @@ pub(super) async fn collect_crawl_pages(
             &mut manifest,
             &mut chrome_tasks,
             chrome_semaphore.clone(),
+            &mut last_progress,
         )
         .await?;
     }
@@ -476,6 +493,7 @@ async fn process_received_page(
     manifest: &mut tokio::io::BufWriter<tokio::fs::File>,
     chrome_tasks: &mut JoinSet<RefetchResult>,
     chrome_semaphore: Arc<Semaphore>,
+    last_progress: &mut std::time::Instant,
 ) -> Result<(), String> {
     let Some(url) = canonicalize_and_track_page(page.get_url(), col, summary, urls, seen_canonical)
     else {
@@ -496,7 +514,7 @@ async fn process_received_page(
             page.status_code.as_u16()
         ));
         summary.error_pages += 1;
-        emit_progress(col, summary).await;
+        emit_progress(col, summary, last_progress).await;
         return Ok(());
     }
     track_waf_block(
@@ -511,7 +529,7 @@ async fn process_received_page(
     let outcome = process_page(&html_bytes, &url, col, summary.markdown_files + 1);
     let _skip = apply_page_outcome(
         outcome,
-        &html_bytes,
+        html_bytes,
         &url,
         col,
         summary,
@@ -520,7 +538,7 @@ async fn process_received_page(
         chrome_semaphore,
     )
     .await?;
-    emit_progress(col, summary).await;
+    emit_progress(col, summary, last_progress).await;
     Ok(())
 }
 
@@ -531,13 +549,12 @@ fn canonicalize_and_track_page(
     urls: &mut HashSet<String>,
     seen_canonical: &mut HashSet<String>,
 ) -> Option<String> {
-    let raw_url = raw_url.to_string();
-    if is_excluded_url_path(&raw_url, &col.exclude_path_prefix) {
+    if is_excluded_url_path(raw_url, &col.exclude_path_prefix) {
         return None;
     }
     let url = match col.scope.as_ref() {
-        Some(scope) => normalize_map_candidate_url(&raw_url, scope, false)?,
-        None => canonicalize_url_for_dedupe(&raw_url)?,
+        Some(scope) => normalize_map_candidate_url(raw_url, scope, false)?,
+        None => canonicalize_url_for_dedupe(raw_url)?,
     };
     if !seen_canonical.insert(url.clone()) {
         return None;
@@ -545,27 +562,6 @@ fn canonicalize_and_track_page(
     summary.pages_seen += 1;
     urls.insert(url.clone());
     Some(url)
-}
-
-fn track_waf_block(
-    waf_check: bool,
-    blocked_crawl: bool,
-    url: &str,
-    anti_bot_tech: &impl std::fmt::Debug,
-    summary: &mut CrawlSummary,
-) {
-    if !(waf_check || blocked_crawl) {
-        return;
-    }
-    log_warn(&format!("waf: {} blocked by {:?}", url, anti_bot_tech));
-    summary.waf_blocked_pages += 1;
-    summary.waf_blocked_urls.insert(url.to_string());
-}
-
-async fn emit_progress(col: &CollectorConfig, summary: &CrawlSummary) {
-    if let Some(tx) = col.progress_tx.as_ref() {
-        tx.send(summary.clone()).await.ok();
-    }
 }
 
 #[cfg(test)]

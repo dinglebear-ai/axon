@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use super::client::{
-    qdrant_delete_points, qdrant_domain_facets, qdrant_retrieve_by_url, qdrant_scroll_pages,
-    qdrant_url_facets,
+    qdrant_delete_points, qdrant_domain_facets, qdrant_retrieve_by_url,
+    qdrant_scroll_pages_selective, qdrant_url_facets,
 };
 use super::hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 use super::types::QdrantSearchHit;
@@ -180,38 +180,46 @@ struct DedupeRecord {
 /// cannot be replaced with a facet query.
 pub async fn dedupe_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
     let mut by_key: HashMap<(String, i64), Vec<DedupeRecord>> = HashMap::new();
-    qdrant_scroll_pages(cfg, |points| {
-        for p in points {
-            let id = p
-                .get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            if id.is_empty() {
-                continue;
+    // Selective payload: only fetch the fields needed for dedup (url, chunk_index,
+    // scraped_at). Avoids transferring multi-KB chunk_text per point — ~28x less
+    // data on a 7M-point collection.
+    qdrant_scroll_pages_selective(
+        cfg,
+        serde_json::json!({"include": ["url", "chunk_index", "scraped_at"]}),
+        |points| {
+            for p in points {
+                let id = p
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if id.is_empty() {
+                    continue;
+                }
+                let Some(payload) = p.get("payload") else {
+                    continue;
+                };
+                let url = payload_url(payload);
+                if url.is_empty() {
+                    continue;
+                }
+                let chunk_index = payload
+                    .get("chunk_index")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let scraped_at = payload
+                    .get("scraped_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                by_key
+                    .entry((url, chunk_index))
+                    .or_default()
+                    .push(DedupeRecord { id, scraped_at });
             }
-            let Some(payload) = p.get("payload") else {
-                continue;
-            };
-            let url = payload_url(payload);
-            if url.is_empty() {
-                continue;
-            }
-            let chunk_index = payload
-                .get("chunk_index")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            let scraped_at = payload
-                .get("scraped_at")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            by_key
-                .entry((url, chunk_index))
-                .or_default()
-                .push(DedupeRecord { id, scraped_at });
-        }
-    })
+            true
+        },
+    )
     .await?;
 
     let mut to_delete: Vec<String> = Vec::new();

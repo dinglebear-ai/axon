@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 static RUST_USE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)\b(?:pub\s+)?use\s+([A-Za-z_][A-Za-z0-9_-]*)::").unwrap());
@@ -68,17 +68,32 @@ pub struct Taxonomy {
     lookup: HashMap<String, usize>,
 }
 
+/// Cached builtin taxonomy — parsed once, reused across all graph jobs and queries.
+static BUILTIN_TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| {
+    let doc: TaxonomyDocument =
+        serde_json::from_str(include_str!("taxonomy.json")).expect("builtin taxonomy");
+    Arc::new(Taxonomy::from_entries(doc.entries))
+});
+
 impl Taxonomy {
-    pub fn builtin() -> Self {
-        let doc: TaxonomyDocument =
-            serde_json::from_str(include_str!("taxonomy.json")).expect("builtin taxonomy");
-        Self::from_entries(doc.entries)
+    /// Returns the cached builtin taxonomy. Parsed once at first access.
+    pub fn builtin() -> Arc<Taxonomy> {
+        Arc::clone(&BUILTIN_TAXONOMY)
     }
 
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
         let raw = fs::read_to_string(path)?;
         let doc: TaxonomyDocument = serde_json::from_str(&raw)?;
         Ok(Self::from_entries(doc.entries))
+    }
+
+    /// Resolve a taxonomy for the given config — cached builtin or custom from path.
+    pub fn resolve(taxonomy_path: &str) -> Result<Arc<Taxonomy>, Box<dyn std::error::Error>> {
+        if taxonomy_path.trim().is_empty() {
+            Ok(Self::builtin())
+        } else {
+            Ok(Arc::new(Self::from_path(taxonomy_path)?))
+        }
     }
 
     fn from_entries(entries: Vec<TaxonomyEntry>) -> Self {

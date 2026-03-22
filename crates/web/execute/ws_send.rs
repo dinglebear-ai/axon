@@ -14,7 +14,9 @@ use tokio::sync::mpsc;
 /// under backpressure is acceptable. Terminal events (done, error) must use
 /// [`send_reliable`] to guarantee delivery.
 fn send_or_sentinel(tx: &mpsc::Sender<String>, msg: String) {
-    match tx.try_send(msg.clone()) {
+    // H6: attempt try_send with the original — only build the sentinel on
+    // backpressure. The failed message is consumed by TrySendError::Full.
+    match tx.try_send(msg) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(_)) => {
             // Always emit the sentinel as type "log" so the client can display

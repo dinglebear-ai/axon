@@ -240,6 +240,50 @@ impl Visit for EventVisitor {
     }
 }
 
+/// Write the log level to `writer`, with ANSI colour when `ansi` is true.
+fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fmt::Result {
+    if ansi {
+        match level {
+            tracing::Level::ERROR => {
+                write!(writer, "{}  ", Style::new().red().bold().apply_to("ERROR"))
+            }
+            tracing::Level::WARN => write!(
+                writer,
+                "{}  ",
+                Style::new().yellow().bold().apply_to(" WARN")
+            ),
+            tracing::Level::INFO => write!(writer, "{}  ", Style::new().green().apply_to(" INFO")),
+            tracing::Level::DEBUG => write!(writer, "{}  ", Style::new().dim().apply_to("DEBUG")),
+            tracing::Level::TRACE => write!(writer, "{}  ", Style::new().dim().apply_to("TRACE")),
+        }
+    } else {
+        write!(writer, "{level:5}  ")
+    }
+}
+
+/// Collect formatted span fields from leaf → root, then reverse to root → leaf order.
+///
+/// clone() on fields.fields is required — extensions() returns a temporary guard that
+/// drops at the end of each loop iteration, so we cannot borrow &str across iterations.
+fn collect_span_fields<S, N>(ctx: &FmtContext<'_, S, N>) -> Vec<String>
+where
+    S: tracing::Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    let mut fields: Vec<String> = Vec::new();
+    let mut current = ctx.lookup_current();
+    while let Some(span) = current {
+        if let Some(f) = span.extensions().get::<FormattedFields<N>>()
+            && !f.fields.is_empty()
+        {
+            fields.push(f.fields.clone());
+        }
+        current = span.parent();
+    }
+    fields.reverse();
+    fields
+}
+
 struct CliFormat;
 
 impl<S, N> FormatEvent<S, N> for CliFormat
@@ -255,7 +299,7 @@ where
     ) -> fmt::Result {
         let ansi = writer.has_ansi_escapes();
 
-        // HH:MM:SS (local time) ───────────────────────────────────────────────
+        // HH:MM:SS (local time)
         let ts = Local::now().format("%H:%M:%S").to_string();
         if ansi {
             write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
@@ -263,37 +307,10 @@ where
             write!(writer, "{ts}  ")?;
         }
 
-        // LEVEL ───────────────────────────────────────────────────────────────
-        // Write styled level directly to the writer instead of allocating an
-        // intermediate String via .to_string().
-        let level = *event.metadata().level();
-        if ansi {
-            match level {
-                tracing::Level::ERROR => {
-                    write!(writer, "{}  ", Style::new().red().bold().apply_to("ERROR"))?;
-                }
-                tracing::Level::WARN => {
-                    write!(
-                        writer,
-                        "{}  ",
-                        Style::new().yellow().bold().apply_to(" WARN")
-                    )?;
-                }
-                tracing::Level::INFO => {
-                    write!(writer, "{}  ", Style::new().green().apply_to(" INFO"))?;
-                }
-                tracing::Level::DEBUG => {
-                    write!(writer, "{}  ", Style::new().dim().apply_to("DEBUG"))?;
-                }
-                tracing::Level::TRACE => {
-                    write!(writer, "{}  ", Style::new().dim().apply_to("TRACE"))?;
-                }
-            }
-        } else {
-            write!(writer, "{level:5}  ")?;
-        }
+        // LEVEL
+        write_level(&mut writer, *event.metadata().level(), ansi)?;
 
-        // MESSAGE ─────────────────────────────────────────────────────────────
+        // MESSAGE
         let mut v = EventVisitor::default();
         event.record(&mut v);
 
@@ -304,7 +321,6 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    // event name — bold
                     write!(writer, "{}", Style::new().bold().apply_to(token))?;
                 } else if let Some(eq) = token.find('=') {
                     // key=value — dim key, normal value
@@ -323,7 +339,7 @@ where
             write!(writer, "{}", v.message)?;
         }
 
-        // extra structured fields (e.g. status="done" from log_done) ─────────
+        // Extra structured fields (e.g. status="done" from log_done)
         for (key, val) in &v.extra {
             if ansi {
                 write!(
@@ -338,27 +354,10 @@ where
             }
         }
 
-        // Span context fields (job_id, source, target, etc.) ─────────────────
-        // Performance note: this span walk runs on every console-emitted event. At the
-        // default WARN filter this is negligible. If the console filter is ever lowered
-        // to INFO (e.g. via RUST_LOG=info), high-throughput paths (embed batches, crawl
-        // pages) will walk spans on every emit. Consider gating on Level if observed.
-        //
-        // NOTE: clone() on fields.fields is required — extensions() returns a temporary
-        // guard that drops at the end of each loop iteration, so we cannot borrow &str
-        // across iterations. The reverse() below also requires owned data.
-        let mut span_fields: Vec<String> = Vec::new();
-        let mut current = ctx.lookup_current();
-        while let Some(span) = current {
-            if let Some(fields) = span.extensions().get::<FormattedFields<N>>()
-                && !fields.fields.is_empty()
-            {
-                span_fields.push(fields.fields.clone());
-            }
-            current = span.parent();
-        }
-        span_fields.reverse(); // root -> leaf order
-        for fields_str in &span_fields {
+        // Span context fields (job_id, source, target, etc.)
+        // Performance note: span walk runs on every console-emitted event. At the default
+        // WARN filter this is negligible; consider gating on Level if ever lowered to INFO.
+        for fields_str in &collect_span_fields(ctx) {
             if ansi {
                 write!(
                     writer,

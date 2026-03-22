@@ -7,6 +7,7 @@ use crate::crates::jobs::worker_lane::{
 };
 use crate::crates::vector::ops::{EmbedProgress, embed_path_native_with_progress};
 use futures_util::future::LocalBoxFuture;
+use std::sync::Arc;
 use tokio::time::Duration;
 
 /// Open a Redis connection for embed cancel checks. Returns None (with warning)
@@ -248,7 +249,7 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
     .await
 }
 
-async fn process_claimed_embed_job(cfg: Config, pool: PgPool, id: Uuid) {
+async fn process_claimed_embed_job(cfg: Arc<Config>, pool: PgPool, id: Uuid) {
     let _job_span = tracing::info_span!("embed_job", job_id = %id).entered();
     let fail_msg = match process_embed_job(&cfg, &pool, id).await {
         Ok(()) => None,
@@ -274,10 +275,7 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
     ));
 
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
 
     let wc = WorkerConfig {
         table: TABLE,
@@ -289,7 +287,7 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
     };
 
     let process_fn: ProcessFn =
-        std::sync::Arc::new(|cfg, pool, id| Box::pin(process_claimed_embed_job(cfg, pool, id)));
+        Arc::new(|cfg, pool, id| Box::pin(process_claimed_embed_job(cfg, pool, id)));
 
     run_job_worker(cfg, pool, &wc, process_fn)
         .await

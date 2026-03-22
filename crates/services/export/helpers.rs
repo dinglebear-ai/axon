@@ -148,49 +148,36 @@ pub(super) fn dedup_sorted<'a>(values: impl Iterator<Item = &'a str>) -> Vec<Str
     out
 }
 
-pub(super) fn dedup_query_requests(requests: Vec<QuerySeedExport>) -> Vec<QuerySeedExport> {
-    let mut out = Vec::new();
+/// Deduplicate a list by a caller-supplied key extraction function.
+fn dedup_by_key<T>(requests: Vec<T>, key_fn: impl Fn(&T) -> (String, String)) -> Vec<T> {
+    let mut out = Vec::with_capacity(requests.len());
     let mut seen = HashSet::new();
     for req in requests {
-        let key = (
-            req.query.clone(),
-            serde_json::to_string(&req.options).unwrap_or_else(|_| "{}".to_string()),
-        );
-        if seen.insert(key) {
+        if seen.insert(key_fn(&req)) {
             out.push(req);
         }
     }
     out
+}
+
+fn serialize_options(options: &serde_json::Value) -> String {
+    serde_json::to_string(options).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub(super) fn dedup_query_requests(requests: Vec<QuerySeedExport>) -> Vec<QuerySeedExport> {
+    dedup_by_key(requests, |r| {
+        (r.query.clone(), serialize_options(&r.options))
+    })
 }
 
 pub(super) fn dedup_scrape_requests(requests: Vec<ScrapeSeedExport>) -> Vec<ScrapeSeedExport> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for req in requests {
-        let key = (
-            req.url.clone(),
-            serde_json::to_string(&req.options).unwrap_or_else(|_| "{}".to_string()),
-        );
-        if seen.insert(key) {
-            out.push(req);
-        }
-    }
-    out
+    dedup_by_key(requests, |r| (r.url.clone(), serialize_options(&r.options)))
 }
 
 pub(super) fn dedup_github_seed_requests(requests: Vec<GithubSeedExport>) -> Vec<GithubSeedExport> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for req in requests {
-        let key = (
-            req.target.clone(),
-            serde_json::to_string(&req.options).unwrap_or_else(|_| "{}".to_string()),
-        );
-        if seen.insert(key) {
-            out.push(req);
-        }
-    }
-    out
+    dedup_by_key(requests, |r| {
+        (r.target.clone(), serialize_options(&r.options))
+    })
 }
 
 pub(super) fn status_matches(status: &str, statuses: &[String]) -> bool {

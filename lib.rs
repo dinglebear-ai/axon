@@ -22,7 +22,11 @@ use std::time::Duration;
 /// lightweight INSERT telemetry fires.
 static TELEMETRY_POOL: OnceLock<PgPool> = OnceLock::new();
 
-async fn get_or_init_telemetry_pool(pg_url: &str) -> Result<&'static PgPool, sqlx::Error> {
+/// Guard: DDL for `axon_command_runs` runs at most once per process.
+/// Skips the CREATE TABLE round-trip on every subsequent invocation.
+static COMMAND_RUNS_SCHEMA: OnceLock<()> = OnceLock::new();
+
+pub async fn get_or_init_telemetry_pool(pg_url: &str) -> Result<&'static PgPool, sqlx::Error> {
     if let Some(pool) = TELEMETRY_POOL.get() {
         return Ok(pool);
     }
@@ -34,25 +38,34 @@ async fn get_or_init_telemetry_pool(pg_url: &str) -> Result<&'static PgPool, sql
     Ok(TELEMETRY_POOL.get_or_init(|| pool))
 }
 
-async fn record_command_run(cfg: &Config) {
-    if cfg.pg_url.is_empty() {
+/// Record a CLI command invocation for telemetry. Accepts only the two fields
+/// needed to avoid cloning the entire Config struct (~100 fields, 2-5KB heap).
+async fn record_command_run(pg_url: String, command: String) {
+    if pg_url.is_empty() {
         return;
     }
     let attempt = async {
-        let pool = get_or_init_telemetry_pool(&cfg.pg_url).await?;
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS axon_command_runs (
-                id BIGSERIAL PRIMARY KEY,
-                command TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        let pool = get_or_init_telemetry_pool(&pg_url).await?;
+
+        // DDL guarded by OnceLock — only the first call per process issues the
+        // CREATE TABLE round-trip. Subsequent calls skip straight to INSERT.
+        if COMMAND_RUNS_SCHEMA.get().is_none() {
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS axon_command_runs (
+                    id BIGSERIAL PRIMARY KEY,
+                    command TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                "#,
             )
-            "#,
-        )
-        .execute(pool)
-        .await?;
+            .execute(pool)
+            .await?;
+            let _ = COMMAND_RUNS_SCHEMA.set(());
+        }
+
         sqlx::query("INSERT INTO axon_command_runs (command) VALUES ($1)")
-            .bind(cfg.command.as_str())
+            .bind(&command)
             .execute(pool)
             .await?;
         Ok::<(), sqlx::Error>(())
@@ -153,9 +166,12 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         cfg.performance_profile
     ));
     {
-        let cfg_clone = cfg.clone();
+        // Extract only the two fields needed — avoids cloning the entire
+        // Config struct (~100 fields, 2-5KB heap) for a lightweight telemetry INSERT.
+        let pg_url = cfg.pg_url.clone();
+        let command = cfg.command.as_str().to_string();
         tokio::spawn(async move {
-            record_command_run(&cfg_clone).await;
+            record_command_run(pg_url, command).await;
         });
     }
 

@@ -95,20 +95,19 @@ impl AcpSessionCache {
     }
 
     /// Evict expired and hung sessions.
+    ///
+    /// M8: Uses `retain()` for single-pass eviction without intermediate
+    /// Vec allocation. Expired/hung keys are collected for session_id_index
+    /// cleanup in a second pass (index cleanup requires `self.remove()`
+    /// which calls `session_id_index.retain()` internally).
     pub(super) async fn reap_expired(&self) {
-        // Pass 1: clone keys + Arc refs (sync — releases DashMap shard locks immediately)
-        let candidates: Vec<(String, Arc<CachedSession>)> = self
-            .sessions
-            .iter()
-            .map(|entry| (entry.key().clone(), Arc::clone(entry.value())))
-            .collect();
-        // Pass 2: check expiry and liveness — no DashMap locks held
         let hung_threshold = SESSION_HUNG_TURN_THRESHOLD;
         let mut to_remove = Vec::new();
-        for (key, session) in &candidates {
+        self.sessions.retain(|key, session| {
             if session.is_expired() {
                 tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
                 to_remove.push(key.clone());
+                false
             } else if session.is_turn_hung(hung_threshold) {
                 tracing::warn!(
                     context = "acp_cache",
@@ -117,10 +116,15 @@ impl AcpSessionCache {
                     "evicting session with hung turn",
                 );
                 to_remove.push(key.clone());
+                false
+            } else {
+                true
             }
-        }
-        for key in &to_remove {
-            self.remove(key);
+        });
+        // Clean up session_id_index entries for evicted agent keys.
+        if !to_remove.is_empty() {
+            self.session_id_index
+                .retain(|_, agent_key| !to_remove.iter().any(|k| k == agent_key));
         }
     }
 

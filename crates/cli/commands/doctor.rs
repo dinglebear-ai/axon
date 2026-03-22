@@ -1,4 +1,4 @@
-mod render;
+pub(crate) mod render;
 
 use crate::crates::core::config::Config;
 use render::render_doctor_report_human;

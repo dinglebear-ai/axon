@@ -12,22 +12,16 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let opts = RetrieveOptions { max_points: None };
     let result = query_svc::retrieve(cfg, target, opts).await?;
 
-    let chunk_count = result
-        .chunks
-        .first()
-        .and_then(|c| c.get("chunk_count"))
-        .and_then(|v| v.as_u64())
+    let first_chunk = result.chunks.first();
+    let chunk_count = first_chunk
+        .and_then(|c| c["chunk_count"].as_u64())
         .unwrap_or(0) as usize;
-    let content = result
-        .chunks
-        .first()
-        .and_then(|c| c.get("content"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let content = first_chunk
+        .and_then(|c| c["content"].as_str())
+        .unwrap_or("");
 
     if chunk_count == 0 {
-        println!("No content found for URL: {}", target);
+        println!("No content found for URL: {target}");
         return Ok(());
     }
 

@@ -93,6 +93,15 @@ fn should_retry_map_with_html_fallback(url_count: usize) -> bool {
     url_count <= 2
 }
 
+/// Fallback page limit when `max_pages` is uncapped (0).
+fn effective_fallback_limit(cfg: &Config) -> usize {
+    if cfg.max_pages == 0 {
+        500
+    } else {
+        cfg.max_pages as usize
+    }
+}
+
 fn merge_map_candidate_urls(
     existing: Vec<String>,
     candidates: Vec<String>,
@@ -135,11 +144,7 @@ pub(crate) async fn append_html_anchor_backfill(
         .unwrap_or_else(|_| normalize_url(start_url).into_owned());
     let scope =
         derive_map_scope(start_url, &crawl_start_url).ok_or("failed to derive map scope")?;
-    let fallback_limit = if cfg.max_pages == 0 {
-        500
-    } else {
-        cfg.max_pages as usize
-    };
+    let fallback_limit = effective_fallback_limit(cfg);
 
     let client = http_client()
         .map_err(|e| format!("http client init failed for backfill of {start_url}: {e}"))?;
@@ -148,13 +153,14 @@ pub(crate) async fn append_html_anchor_backfill(
         .map_err(|e| format!("fetch failed for backfill of {crawl_start_url}: {e}"))?;
     let fallback_urls = extract_anchor_hrefs(&crawl_start_url, &html, fallback_limit);
 
-    let existing_urls: Vec<String> = seen_urls.iter().cloned().collect();
-    let merged_urls = merge_map_candidate_urls(existing_urls.clone(), fallback_urls, &scope, true);
-    let existing: HashSet<String> = existing_urls.into_iter().collect();
+    // Skip the intermediate Vec<String> clone of seen_urls. Instead, pass an
+    // empty existing list and rely on the filter below to deduplicate against
+    // seen_urls. merge_map_candidate_urls handles internal dedup of fallback_urls.
+    let merged_urls = merge_map_candidate_urls(Vec::new(), fallback_urls, &scope, true);
     let candidates: Vec<String> = merged_urls
         .into_iter()
         .filter(|url| {
-            !existing.contains(url) && !is_excluded_url_path(url, &cfg.exclude_path_prefix)
+            !seen_urls.contains(url) && !is_excluded_url_path(url, &cfg.exclude_path_prefix)
         })
         .collect();
 
@@ -320,11 +326,7 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     }
 
     if should_retry_map_with_html_fallback(urls.len()) {
-        let fallback_limit = if cfg.max_pages == 0 {
-            500
-        } else {
-            cfg.max_pages as usize
-        };
+        let fallback_limit = effective_fallback_limit(cfg);
         if let Ok(client) = http_client()
             && let Ok(html) = fetch_html(client, &crawl_start_url).await
         {
@@ -351,7 +353,10 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "crawl orchestration requires many config/state params"
+)]
 pub async fn run_crawl_once(
     cfg: &Config,
     start_url: &str,

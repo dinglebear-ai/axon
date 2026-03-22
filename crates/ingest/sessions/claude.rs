@@ -8,6 +8,7 @@ use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
 
@@ -34,6 +35,7 @@ pub(super) async fn ingest_claude_sessions(
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let mut futures = FuturesUnordered::new();
+    let cfg_arc = Arc::new(cfg.clone());
 
     while let Some(entry) = read_dir
         .next_entry()
@@ -76,11 +78,11 @@ pub(super) async fn ingest_claude_sessions(
                 continue;
             }
 
-            let cfg_clone = cfg.clone();
+            let cfg_shared = Arc::clone(&cfg_arc);
             let coll_clone = collection.clone();
             let size = meta.len();
             futures.push(tokio::spawn(async move {
-                let res = process_claude_file(&cfg_clone, sub_path.clone(), coll_clone).await;
+                let res = process_claude_file(&cfg_shared, sub_path.clone(), coll_clone).await;
                 (sub_path, mtime, size, res)
             }));
 

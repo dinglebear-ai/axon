@@ -1,24 +1,8 @@
+use crate::crates::cli::commands::doctor::render::{report_bool, report_text};
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{muted, primary};
 use crate::crates::services::debug as debug_service;
-use serde_json::Value;
 use std::error::Error;
-
-fn bool_field(value: &Value, path: &[&str]) -> bool {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key).unwrap_or(&Value::Null);
-    }
-    current.as_bool().unwrap_or(false)
-}
-
-fn string_field<'a>(value: &'a Value, path: &[&str]) -> &'a str {
-    let mut current = value;
-    for key in path {
-        current = current.get(*key).unwrap_or(&Value::Null);
-    }
-    current.as_str().unwrap_or("")
-}
 
 pub async fn run_debug(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let user_context = if cfg.positional.is_empty() {
@@ -42,7 +26,7 @@ pub async fn run_debug(cfg: &Config) -> Result<(), Box<dyn Error>> {
     println!(
         "  {} {}",
         muted("overall:"),
-        if bool_field(doctor_report, &["all_ok"]) {
+        if report_bool(doctor_report, &["all_ok"]) {
             "healthy"
         } else {
             "degraded"
@@ -51,12 +35,12 @@ pub async fn run_debug(cfg: &Config) -> Result<(), Box<dyn Error>> {
     println!(
         "  {} {}",
         muted("tei:"),
-        string_field(doctor_report, &["services", "tei", "model"])
+        report_text(doctor_report, &["services", "tei", "model"], "")
     );
     println!(
         "  {} {}",
         muted("openai model:"),
-        string_field(doctor_report, &["services", "openai", "model"])
+        report_text(doctor_report, &["services", "openai", "model"], "")
     );
     println!();
     println!("{}", primary("LLM Debug"));

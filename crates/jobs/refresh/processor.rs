@@ -285,7 +285,7 @@ async fn maybe_flush_progress(
     *last_flush = Instant::now();
 }
 
-pub(crate) async fn process_refresh_job(cfg: Config, pool: PgPool, id: Uuid) {
+pub(crate) async fn process_refresh_job(cfg: std::sync::Arc<Config>, pool: PgPool, id: Uuid) {
     let Some((job_cfg, run_dir, mut manifest)) = setup_refresh_job_context(&pool, &cfg, id).await
     else {
         return;

@@ -104,11 +104,7 @@ pub async fn build_graph_context(
         });
     }
 
-    let taxonomy = if cfg.graph_taxonomy_path.trim().is_empty() {
-        Taxonomy::builtin()
-    } else {
-        Taxonomy::from_path(&cfg.graph_taxonomy_path)?
-    };
+    let taxonomy = Taxonomy::resolve(&cfg.graph_taxonomy_path)?;
 
     let mut entity_names = BTreeSet::new();
     for text in chunk_texts {

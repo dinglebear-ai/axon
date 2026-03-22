@@ -3,11 +3,19 @@ use super::common::{
     invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
     respond_with_mode,
 };
+use crate::crates::core::config::Config;
 use crate::crates::mcp::schema::{
     AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSourceType,
-    IngestSubaction, SessionsIngestOptions,
+    IngestSubaction, ResponseMode, SessionsIngestOptions,
 };
-use crate::crates::services::ingest::IngestSource;
+use crate::crates::services::embed::{
+    embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_input,
+    embed_status,
+};
+use crate::crates::services::ingest::{
+    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
+    ingest_start, ingest_status,
+};
 use rmcp::ErrorData;
 
 fn parse_ingest_source(
@@ -15,7 +23,7 @@ fn parse_ingest_source(
     target: Option<String>,
     sessions: Option<SessionsIngestOptions>,
     include_source: Option<bool>,
-    cfg: &crate::crates::core::config::Config,
+    cfg: &Config,
 ) -> Result<IngestSource, ErrorData> {
     let source_type =
         source_type.ok_or_else(|| invalid_params("source_type is required for ingest.start"))?;
@@ -61,14 +69,9 @@ impl AxonMcpServer {
         input: Option<String>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
-        let result = crate::crates::services::embed::embed_start_with_input(
-            self.cfg.as_ref(),
-            &input,
-            None,
-            None,
-        )
-        .await
-        .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
+        let result = embed_start_with_input(self.cfg.as_ref(), &input, None, None)
+            .await
+            .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "embed",
             "start",
@@ -80,11 +83,11 @@ impl AxonMcpServer {
         &self,
         limit: Option<i64>,
         offset: Option<usize>,
-        response_mode: Option<crate::crates::mcp::schema::ResponseMode>,
+        response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = crate::crates::services::embed::embed_list(
+        let jobs = embed_list(
             self.cfg.as_ref(),
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
@@ -110,7 +113,7 @@ impl AxonMcpServer {
             EmbedSubaction::Start => self.handle_embed_start(req.input).await,
             EmbedSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let job = crate::crates::services::embed::embed_status(self.cfg.as_ref(), id)
+                let job = embed_status(self.cfg.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("embed.status", e.as_ref()))?;
                 respond_with_mode(
@@ -124,7 +127,7 @@ impl AxonMcpServer {
             }
             EmbedSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled = crate::crates::services::embed::embed_cancel(self.cfg.as_ref(), id)
+                let canceled = embed_cancel(self.cfg.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("embed.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -138,7 +141,7 @@ impl AxonMcpServer {
                     .await
             }
             EmbedSubaction::Cleanup => {
-                let deleted = crate::crates::services::embed::embed_cleanup(self.cfg.as_ref())
+                let deleted = embed_cleanup(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -148,7 +151,7 @@ impl AxonMcpServer {
                 ))
             }
             EmbedSubaction::Clear => {
-                let deleted = crate::crates::services::embed::embed_clear(self.cfg.as_ref())
+                let deleted = embed_clear(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -158,7 +161,7 @@ impl AxonMcpServer {
                 ))
             }
             EmbedSubaction::Recover => {
-                let recovered = crate::crates::services::embed::embed_recover(self.cfg.as_ref())
+                let recovered = embed_recover(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -181,7 +184,7 @@ impl AxonMcpServer {
             req.include_source,
             self.cfg.as_ref(),
         )?;
-        let result = crate::crates::services::ingest::ingest_start(self.cfg.as_ref(), source)
+        let result = ingest_start(self.cfg.as_ref(), source)
             .await
             .map_err(|e| logged_internal_error("ingest.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
@@ -195,11 +198,11 @@ impl AxonMcpServer {
         &self,
         limit: Option<i64>,
         offset: Option<usize>,
-        response_mode: Option<crate::crates::mcp::schema::ResponseMode>,
+        response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = crate::crates::services::ingest::ingest_list(
+        let jobs = ingest_list(
             self.cfg.as_ref(),
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
@@ -225,7 +228,7 @@ impl AxonMcpServer {
             IngestSubaction::Start => self.handle_ingest_start(req).await,
             IngestSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let job = crate::crates::services::ingest::ingest_status(self.cfg.as_ref(), id)
+                let job = ingest_status(self.cfg.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("ingest.status", e.as_ref()))?;
                 respond_with_mode(
@@ -239,10 +242,9 @@ impl AxonMcpServer {
             }
             IngestSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled =
-                    crate::crates::services::ingest::ingest_cancel(self.cfg.as_ref(), id)
-                        .await
-                        .map_err(|e| logged_internal_error("ingest.cancel", e.as_ref()))?;
+                let canceled = ingest_cancel(self.cfg.as_ref(), id)
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
                     "ingest",
                     "cancel",
@@ -254,7 +256,7 @@ impl AxonMcpServer {
                     .await
             }
             IngestSubaction::Cleanup => {
-                let deleted = crate::crates::services::ingest::ingest_cleanup(self.cfg.as_ref())
+                let deleted = ingest_cleanup(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -264,7 +266,7 @@ impl AxonMcpServer {
                 ))
             }
             IngestSubaction::Clear => {
-                let deleted = crate::crates::services::ingest::ingest_clear(self.cfg.as_ref())
+                let deleted = ingest_clear(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -274,7 +276,7 @@ impl AxonMcpServer {
                 ))
             }
             IngestSubaction::Recover => {
-                let recovered = crate::crates::services::ingest::ingest_recover(self.cfg.as_ref())
+                let recovered = ingest_recover(self.cfg.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(

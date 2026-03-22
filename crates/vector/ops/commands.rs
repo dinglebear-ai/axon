@@ -14,15 +14,11 @@ use crate::crates::core::config::Config;
 /// Returns `None` if both are empty/whitespace-only.
 fn resolve_query_text(cfg: &Config) -> Option<String> {
     cfg.query
-        .clone()
-        .filter(|q| !q.trim().is_empty())
-        .or_else(|| {
-            if cfg.positional.is_empty() {
-                None
-            } else {
-                Some(cfg.positional.join(" "))
-            }
-        })
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| (!cfg.positional.is_empty()).then(|| cfg.positional.join(" ")))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }

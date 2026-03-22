@@ -263,7 +263,7 @@ async fn ingest_youtube_playlist_with_pool(
 // SEC-M-6: `cfg` is captured by value but never serialized into error_text.
 // All error paths pass only `e.to_string()` or static messages to `mark_job_failed`,
 // so `openai_api_key` and other secrets in `cfg` cannot leak into the database.
-pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
+pub(crate) async fn process_ingest_job(cfg: std::sync::Arc<Config>, pool: PgPool, id: Uuid) {
     let cfg_row = sqlx::query_scalar::<_, serde_json::Value>(
         "SELECT config_json FROM axon_ingest_jobs WHERE id=$1",
     )
@@ -365,7 +365,7 @@ pub(crate) async fn process_ingest_job(cfg: Config, pool: PgPool, id: Uuid) {
             sessions_gemini,
             sessions_project,
         } => {
-            let mut sessions_cfg = cfg.clone();
+            let mut sessions_cfg: Config = (*cfg).clone();
             sessions_cfg.sessions_claude = *sessions_claude;
             sessions_cfg.sessions_codex = *sessions_codex;
             sessions_cfg.sessions_gemini = *sessions_gemini;

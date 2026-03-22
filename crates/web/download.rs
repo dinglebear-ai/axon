@@ -48,6 +48,31 @@ fn auth_download(headers: &HeaderMap, state: &DownloadAuthState) -> AuthOutcome 
     check_auth(headers, None, state.api_token.as_deref())
 }
 
+/// Shared auth + validation + file loading for pack/zip download routes.
+async fn auth_validate_load(
+    headers: &HeaderMap,
+    state: &DownloadAuthState,
+    job_id: &str,
+) -> Result<(String, Vec<(String, String, String)>), Response> {
+    if matches!(auth_download(headers, state), AuthOutcome::Denied(_)) {
+        return Err((StatusCode::UNAUTHORIZED, "unauthorized").into_response());
+    }
+    let job_dir = validate_job_dir(&state.job_dirs, job_id)
+        .await
+        .map_err(|(status, msg)| (status, msg).into_response())?;
+    load_all_files(&job_dir)
+        .await
+        .map_err(|(status, msg)| (status, msg).into_response())
+}
+
+/// Build a Content-Disposition header for an attachment download.
+fn attachment_disposition(filename: &str) -> header::HeaderValue {
+    let safe = sanitize_filename(filename);
+    format!("attachment; filename=\"{safe}\"")
+        .parse::<header::HeaderValue>()
+        .unwrap_or_else(|_| header::HeaderValue::from_static("attachment; filename=\"download\""))
+}
+
 /// `GET /download/{job_id}/pack.md`
 pub async fn serve_pack_md(
     AxumPath(job_id): AxumPath<String>,
@@ -55,23 +80,11 @@ pub async fn serve_pack_md(
     Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
-    }
-
-    let job_dir = match validate_job_dir(&state.job_dirs, &job_id).await {
-        Ok(d) => d,
-        Err((status, msg)) => return (status, msg).into_response(),
-    };
-
-    let (domain, entries) = match load_all_files(&job_dir).await {
+    let (domain, entries) = match auth_validate_load(&headers, &state, &job_id).await {
         Ok(v) => v,
-        Err((status, msg)) => return (status, msg).into_response(),
+        Err(resp) => return resp,
     };
-
     let body = pack::build_pack_md(&domain, &entries);
-    let safe_filename = sanitize_filename(&format!("{domain}-pack.md"));
-
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         header::CONTENT_TYPE,
@@ -79,13 +92,8 @@ pub async fn serve_pack_md(
     );
     resp_headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{safe_filename}\"")
-            .parse::<header::HeaderValue>()
-            .unwrap_or_else(|_| {
-                header::HeaderValue::from_static("attachment; filename=\"download\"")
-            }),
+        attachment_disposition(&format!("{domain}-pack.md")),
     );
-
     (resp_headers, body).into_response()
 }
 
@@ -96,23 +104,11 @@ pub async fn serve_pack_xml(
     Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
-    }
-
-    let job_dir = match validate_job_dir(&state.job_dirs, &job_id).await {
-        Ok(d) => d,
-        Err((status, msg)) => return (status, msg).into_response(),
-    };
-
-    let (domain, entries) = match load_all_files(&job_dir).await {
+    let (domain, entries) = match auth_validate_load(&headers, &state, &job_id).await {
         Ok(v) => v,
-        Err((status, msg)) => return (status, msg).into_response(),
+        Err(resp) => return resp,
     };
-
     let body = pack::build_pack_xml(&domain, &entries);
-    let safe_filename = sanitize_filename(&format!("{domain}-pack.xml"));
-
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(
         header::CONTENT_TYPE,
@@ -120,13 +116,8 @@ pub async fn serve_pack_xml(
     );
     resp_headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{safe_filename}\"")
-            .parse::<header::HeaderValue>()
-            .unwrap_or_else(|_| {
-                header::HeaderValue::from_static("attachment; filename=\"download\"")
-            }),
+        attachment_disposition(&format!("{domain}-pack.xml")),
     );
-
     (resp_headers, body).into_response()
 }
 
@@ -137,21 +128,10 @@ pub async fn serve_zip(
     Query(_params): Query<DownloadQuery>,
     State(state): State<Arc<DownloadAuthState>>,
 ) -> Response {
-    if matches!(auth_download(&headers, &state), AuthOutcome::Denied(_)) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
-    }
-
-    let job_dir = match validate_job_dir(&state.job_dirs, &job_id).await {
-        Ok(d) => d,
-        Err((status, msg)) => return (status, msg).into_response(),
-    };
-
-    let (domain, entries) = match load_all_files(&job_dir).await {
+    let (domain, entries) = match auth_validate_load(&headers, &state, &job_id).await {
         Ok(v) => v,
-        Err((status, msg)) => return (status, msg).into_response(),
+        Err(resp) => return resp,
     };
-
-    // Capture filename before moving domain into the blocking closure
     let filename = format!("{domain}-crawl.zip");
     let zip_result = tokio::task::spawn_blocking(move || build_zip(&domain, &entries)).await;
 
@@ -162,14 +142,9 @@ pub async fn serve_zip(
                 header::CONTENT_TYPE,
                 header::HeaderValue::from_static("application/zip"),
             );
-            let safe_filename = sanitize_filename(&filename);
             resp_headers.insert(
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{safe_filename}\"")
-                    .parse::<header::HeaderValue>()
-                    .unwrap_or_else(|_| {
-                        header::HeaderValue::from_static("attachment; filename=\"download\"")
-                    }),
+                attachment_disposition(&filename),
             );
             (resp_headers, bytes).into_response()
         }
@@ -242,14 +217,9 @@ pub async fn serve_file(
         header::CONTENT_TYPE,
         header::HeaderValue::from_static("text/markdown; charset=utf-8"),
     );
-    let safe_filename = sanitize_filename(&filename);
     resp_headers.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{safe_filename}\"")
-            .parse::<header::HeaderValue>()
-            .unwrap_or_else(|_| {
-                header::HeaderValue::from_static("attachment; filename=\"download\"")
-            }),
+        attachment_disposition(&filename),
     );
 
     (resp_headers, content).into_response()

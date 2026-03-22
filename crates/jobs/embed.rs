@@ -134,6 +134,14 @@ async fn ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+async fn ensure_schema_once(pool: &PgPool) -> Result<(), sqlx::Error> {
+    if SCHEMA_INIT.get().is_none() {
+        ensure_schema(pool).await?;
+        let _ = SCHEMA_INIT.set(());
+    }
+    Ok(())
+}
+
 /// Start an embed job, creating a new pool for this call (CLI / one-shot use).
 pub async fn start_embed_job(
     cfg: &Config,
@@ -152,10 +160,7 @@ pub(crate) async fn start_embed_job_with_pool(
     input: &str,
     source_type: Option<&str>,
 ) -> Result<Uuid, Box<dyn Error>> {
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(pool).await?;
 
     let cfg_json = serde_json::to_value(EmbedJobConfig {
         collection: cfg.collection.clone(),
@@ -214,10 +219,7 @@ pub(crate) async fn start_embed_job_with_pool(
 
 pub async fn get_embed_job(cfg: &Config, id: Uuid) -> Result<Option<EmbedJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     Ok(sqlx::query_as::<_, EmbedJob>(
         r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,input_text,result_json,config_json FROM axon_embed_jobs WHERE id=$1"#,
     )
@@ -231,10 +233,7 @@ pub async fn list_embed_jobs(
     offset: i64,
 ) -> Result<Vec<EmbedJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     let mut rows = sqlx::query_as::<_, EmbedJob>(
         r#"SELECT id,status,created_at,updated_at,started_at,finished_at,error_text,input_text,result_json,config_json
            FROM axon_embed_jobs
@@ -266,10 +265,7 @@ pub async fn list_embed_jobs(
 
 pub async fn cancel_embed_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     let rows = sqlx::query(
         "UPDATE axon_embed_jobs \
          SET status=$2,updated_at=NOW(),finished_at=NOW() \
@@ -326,10 +322,7 @@ pub async fn cancel_embed_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Er
 
 pub async fn cleanup_embed_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     let deleted = sqlx::query("DELETE FROM axon_embed_jobs WHERE status IN ($1,$2)")
         .bind(JobStatus::Failed.as_str())
         .bind(JobStatus::Canceled.as_str())
@@ -341,10 +334,7 @@ pub async fn cleanup_embed_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
 
 pub async fn clear_embed_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     let rows = sqlx::query("DELETE FROM axon_embed_jobs")
         .execute(&pool)
         .await?
@@ -360,10 +350,7 @@ pub async fn clear_embed_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
 
 pub async fn recover_stale_embed_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
-    if SCHEMA_INIT.get().is_none() {
-        ensure_schema(&pool).await?;
-        let _ = SCHEMA_INIT.set(());
-    }
+    ensure_schema_once(&pool).await?;
     let stats = reclaim_stale_running_jobs(
         &pool,
         TABLE,

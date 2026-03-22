@@ -145,6 +145,36 @@ fn is_boilerplate_line(raw_line: &str, cleaned_line: &str) -> bool {
     looks_like_page_title(cleaned_line)
 }
 
+/// Check if a line is a markdown horizontal rule (---, ***, ___) without
+/// allocating a filtered String. Counts non-whitespace chars inline.
+fn is_horizontal_rule(line: &str) -> bool {
+    let mut count = 0usize;
+    let mut rule_char: Option<char> = None;
+    for c in line.chars() {
+        if c.is_whitespace() {
+            continue;
+        }
+        match rule_char {
+            None => {
+                if c == '-' || c == '*' || c == '_' {
+                    rule_char = Some(c);
+                    count += 1;
+                } else {
+                    return false;
+                }
+            }
+            Some(rc) => {
+                if c == rc {
+                    count += 1;
+                } else {
+                    return false;
+                }
+            }
+        }
+    }
+    count >= 3
+}
+
 /// Clean chunk text for snippet display: strip markdown structure, navigation
 /// boilerplate, and bare URLs so sentence extraction sees prose only.
 fn clean_snippet_source(text: &str) -> String {
@@ -154,13 +184,8 @@ fn clean_snippet_source(text: &str) -> String {
         if raw_line.is_empty() || raw_line.starts_with('#') {
             continue;
         }
-        // Horizontal rules
-        let no_spaces: String = raw_line.chars().filter(|c| !c.is_whitespace()).collect();
-        if no_spaces.len() >= 3
-            && (no_spaces.chars().all(|c| c == '-')
-                || no_spaces.chars().all(|c| c == '*')
-                || no_spaces.chars().all(|c| c == '_'))
-        {
+        // Horizontal rules — check inline without allocating a filtered String (MED-2).
+        if is_horizontal_rule(raw_line) {
             continue;
         }
         // Strip leading list markers

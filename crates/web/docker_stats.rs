@@ -103,7 +103,9 @@ pub(super) async fn run_stats_loop(tx: broadcast::Sender<String>) {
 
                 latest_metrics.retain(|name, _| current_names.contains(name));
 
-                if !latest_metrics.is_empty() {
+                // H4: skip JSON serialization + broadcast when no clients are listening.
+                // receiver_count() is a lock-free atomic load — zero overhead.
+                if !latest_metrics.is_empty() && tx.receiver_count() > 0 {
                     let message = build_stats_message(&latest_metrics);
                     let _ = tx.send(message);
                 }
@@ -273,12 +275,14 @@ fn block_io_totals_from_stats(stats: &bollard::models::ContainerStatsResponse) -
         .and_then(|b| b.io_service_bytes_recursive.as_ref())
         .map(|entries| {
             entries.iter().fold((0u64, 0u64), |(r, w), e| {
-                let op = e.op.as_deref().unwrap_or("").to_lowercase();
+                let op = e.op.as_deref().unwrap_or("");
                 let val = e.value.unwrap_or(0);
-                match op.as_str() {
-                    "read" => (r + val, w),
-                    "write" => (r, w + val),
-                    _ => (r, w),
+                if op.eq_ignore_ascii_case("read") {
+                    (r + val, w)
+                } else if op.eq_ignore_ascii_case("write") {
+                    (r, w + val)
+                } else {
+                    (r, w)
                 }
             })
         })

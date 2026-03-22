@@ -319,7 +319,7 @@ async fn process_extract_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<()
     Ok(())
 }
 
-async fn process_claimed_extract_job(cfg: Config, pool: PgPool, id: Uuid) {
+async fn process_claimed_extract_job(cfg: Arc<Config>, pool: PgPool, id: Uuid) {
     let _job_span = tracing::info_span!("extract_job", job_id = %id).entered();
     let fail_msg = match process_extract_job(&cfg, &pool, id).await {
         Ok(()) => None,
@@ -343,7 +343,7 @@ pub async fn run_extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
     ));
 
     let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
+    ensure_schema_once(&pool).await?;
 
     let wc = WorkerConfig {
         table: TABLE,

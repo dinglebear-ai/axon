@@ -4,21 +4,16 @@ use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use crate::crates::services::types::DebugResult;
 use std::error::Error;
 
-fn resolve_openai_model(cfg: &Config) -> String {
-    cfg.openai_model.clone()
-}
-
 pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
     let acp_adapter_cmd = cfg
         .acp_adapter_cmd
         .as_deref()
         .map(str::trim)
         .unwrap_or_default();
-    let openai_model = resolve_openai_model(cfg);
     if acp_adapter_cmd.is_empty() {
         return Err("AXON_ACP_ADAPTER_CMD is required for debug".into());
     }
-    if openai_model.is_empty() {
+    if cfg.openai_model.is_empty() {
         return Err("OPENAI_MODEL is required for debug".into());
     }
     let doctor_report = build_doctor_report(cfg).await?;
@@ -46,7 +41,7 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         .system_prompt(
             "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
         )
-        .model(openai_model.clone());
+        .model(cfg.openai_model.clone());
     let cfg_for_completion = cfg.clone();
     let completion = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -69,7 +64,7 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         payload: serde_json::json!({
             "doctor_report": doctor_report,
             "llm_debug": {
-                "model": resolve_openai_model(cfg),
+                "model": &cfg.openai_model,
                 "adapter_cmd": cfg.acp_adapter_cmd,
                 "analysis": analysis,
             }

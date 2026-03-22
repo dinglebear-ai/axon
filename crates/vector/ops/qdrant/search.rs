@@ -11,7 +11,7 @@ use anyhow::Result;
 use std::time::Instant;
 
 use super::types::{QdrantSearchHit, QdrantSearchResponse};
-use super::utils::{env_usize_clamped, qdrant_base};
+use super::utils::{HNSW_EF_SEARCH_LEGACY, qdrant_base};
 
 /// Dense-only vector search for Unnamed (legacy) collections.
 ///
@@ -34,7 +34,7 @@ pub(crate) async fn qdrant_search(
         qdrant_base(cfg),
         cfg.collection
     );
-    let hnsw_ef = env_usize_clamped("AXON_HNSW_EF_SEARCH_LEGACY", 64, 32, 512);
+    let hnsw_ef = *HNSW_EF_SEARCH_LEGACY;
     let search_start = Instant::now();
     let mut body = serde_json::json!({
         "vector": vector,

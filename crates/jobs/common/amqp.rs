@@ -81,26 +81,16 @@ pub async fn enqueue_job(cfg: &Config, queue_name: &str, job_id: Uuid) -> Result
     batch_enqueue_jobs(cfg, queue_name, &[job_id]).await
 }
 
-/// Publish multiple job IDs to an AMQP queue over a single connection.
-///
-/// More efficient than calling [`enqueue_job`] in a loop — one TCP handshake,
-/// N publishes, one CLOSE. Uses publisher confirms so the broker acks every
-/// message before we close — follows the official lapin `publisher_confirms` example.
-pub async fn batch_enqueue_jobs(cfg: &Config, queue_name: &str, job_ids: &[Uuid]) -> Result<()> {
+/// Core publish implementation used by both the fresh-connection and
+/// channel-reuse paths. Sends N messages on the given channel and waits
+/// for publisher confirms.
+async fn publish_to_channel(ch: &Channel, queue_name: &str, job_ids: &[Uuid]) -> Result<()> {
     use lapin::BasicProperties;
     use lapin::options::{BasicPublishOptions, ConfirmSelectOptions};
 
-    if job_ids.is_empty() {
-        return Ok(());
-    }
-
-    let (conn, ch) = open_amqp_connection_and_channel(cfg, queue_name).await?;
-
-    // Enable publisher confirms so wait_for_confirms actually tracks acks.
     ch.confirm_select(ConfirmSelectOptions::default())
         .await
         .context("confirm_select failed")?;
-
     for id in job_ids {
         ch.basic_publish(
             "".into(),
@@ -111,13 +101,54 @@ pub async fn batch_enqueue_jobs(cfg: &Config, queue_name: &str, job_ids: &[Uuid]
         )
         .await
         .with_context(|| format!("basic_publish job {id} to queue={queue_name}"))?;
-        // Don't await the confirm here — collect them all at once below.
     }
-
-    // Wait for all broker acks in one pass instead of awaiting each publish individually.
     ch.wait_for_confirms()
         .await
         .context("wait_for_confirms failed")?;
+    Ok(())
+}
+
+/// Publish multiple job IDs to an AMQP queue over a single connection.
+///
+/// More efficient than calling [`enqueue_job`] in a loop — one TCP handshake,
+/// N publishes, one CLOSE. Uses publisher confirms so the broker acks every
+/// message before we close — follows the official lapin `publisher_confirms` example.
+pub async fn batch_enqueue_jobs(cfg: &Config, queue_name: &str, job_ids: &[Uuid]) -> Result<()> {
+    batch_enqueue_jobs_with_channel(cfg, queue_name, job_ids, None).await
+}
+
+/// Publish multiple job IDs, optionally reusing an existing AMQP channel.
+///
+/// When `existing_ch` is `Some` and the channel is still connected, publishes
+/// reuse the existing TCP connection — zero connection overhead. Falls back to
+/// a fresh connection if the channel is broken or `None`.
+pub async fn batch_enqueue_jobs_with_channel(
+    cfg: &Config,
+    queue_name: &str,
+    job_ids: &[Uuid],
+    existing_ch: Option<&Channel>,
+) -> Result<()> {
+    if job_ids.is_empty() {
+        return Ok(());
+    }
+
+    // Try the existing channel first — avoids a TCP connection + TLS handshake.
+    if let Some(ch) = existing_ch
+        && ch.status().connected()
+    {
+        match publish_to_channel(ch, queue_name, job_ids).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                log_debug(&format!(
+                    "amqp reuse channel publish failed queue={queue_name}: {e}; opening fresh connection"
+                ));
+            }
+        }
+    }
+
+    // Fallback: open a fresh connection.
+    let (conn, ch) = open_amqp_connection_and_channel(cfg, queue_name).await?;
+    publish_to_channel(&ch, queue_name, job_ids).await?;
     if let Err(e) = ch.close(0, "".into()).await {
         log_debug(&format!(
             "amqp ch_close failed queue={queue_name} error={e}"

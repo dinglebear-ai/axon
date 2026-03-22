@@ -67,3 +67,20 @@ pub use stats::run_stats;
 pub use status::run_status;
 pub use suggest::run_suggest;
 pub use watch::run_watch;
+
+use crate::crates::core::config::Config;
+
+/// Resolve free-text input from `--query` flag or positional args, trimming whitespace.
+/// Returns `None` if both sources are empty or whitespace-only.
+///
+/// Shared by ask, query, evaluate, suggest, search, and research commands.
+pub(crate) fn resolve_input_text(cfg: &Config) -> Option<String> {
+    cfg.query
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| (!cfg.positional.is_empty()).then(|| cfg.positional.join(" ")))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}

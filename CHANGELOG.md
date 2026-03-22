@@ -1,5 +1,44 @@
 # Changelog
-Last Modified: 2026-03-21 (session: v0.30.1 — HNSW/quantization search tuning, PR review resolution)
+Last Modified: 2026-03-22 (session: v0.32.0 — pulse shell WebSocket, performance sweep, code consolidation)
+
+## [0.32.0] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **Pulse shell WebSocket** — `crates/web/shell.rs` implements a persistent terminal WebSocket handler for interactive shell sessions from the Pulse UI.
+- **Pulse chat connection management** — `crates/web/execute/sync_mode/pulse_chat/connection.rs` extracted as a dedicated module managing ACP-backed chat session lifecycle.
+- **Performance sweep** — Batched watchdog DB updates (N individual queries → single `unnest()` UPDATE); concurrent reflink copies via `JoinSet`; O(n²)→O(n) link deduplication with `HashSet`; sitemap index detection from first 512 bytes instead of full document scan; selector config computed once before per-URL backfill loop.
+- **Shared `resolve_input_text()` helper** — Consolidates 3+ duplicate query-text resolution functions across ask, query, evaluate, suggest, research, and search commands.
+- **Code consolidation** — Removed duplicate `parse_search_time_range` + 2 orphan tests from research test module (identical copy of search.rs helpers testing a non-production code path); `debug.rs` now uses shared `report_bool`/`report_text` from `doctor/render.rs`.
+- **`Arc<Config>` in session ingest tasks** — Replaces per-task `Config::clone()` with a single Arc shared across all spawned session ingest tasks.
+- **Shared reqwest::Client for doctor probes** — Single 5s-timeout client passed to TEI and OpenAI probes instead of one per probe.
+- **MCP schema cleanup** — `crates/mcp/schema.rs` reduced by ~500 lines; OAuth Google state consolidation in `oauth_google/state.rs`.
+- **Logging restructure** — `crates/core/logging.rs` refactored for cleaner span-field collection.
+
+### Commits since v0.31.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat(web) | pulse shell WebSocket, performance sweep, code consolidation |
+| 5752e125 | feat(acp) | persistent ACP session cache, acp_llm module split, pulse_chat events |
+
+## [0.31.0] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **Persistent ACP session cache** — `crates/services/acp/session_cache/cache.rs` added; warm sessions are reused across calls, reducing cold-start latency.
+- **`acp_llm` module split** — Warm-up logic extracted to `crates/services/acp_llm/warm.rs` for cleaner separation from the ACP session bridge.
+- **Pulse chat events** — `crates/web/execute/sync_mode/pulse_chat.rs` emits structured `ServiceEvent` payloads for phase markers and synthesis deltas over the WebSocket connection.
+
+### Commits since v0.30.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 5752e125 | feat(acp) | persistent ACP session cache, acp_llm module split, pulse_chat events |
+| a7567da8 | docs(env) | document AXON_ASK_HYBRID_CANDIDATES in .env.example |
+| 7ebe1716 | obs(ask) | log candidate funnel after reranking (retrieved/score-filtered/selected) |
+| aea6fae9 | obs(search) | add structured latency logging to all qdrant search paths |
+| 50003e59 | feat(sparse) | bump SPARSE_DIM from 30_522 to 65_536, halving collision rate |
 
 ## [0.30.1] — feat/pulse-shell-and-hybrid-search
 

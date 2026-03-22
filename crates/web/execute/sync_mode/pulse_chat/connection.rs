@@ -72,9 +72,16 @@ impl AcpTurnError {
 /// `agent_key`. The outer `std::sync::Mutex` protects the map itself (held
 /// only briefly to insert/get); the inner `tokio::sync::Mutex` serializes
 /// the async spawn logic per key.
-static SPAWN_LOCKS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+///
+/// Entries include an `Instant` timestamp and are evicted inline on each
+/// access to prevent unbounded growth.
+type SpawnLockEntry = (Arc<tokio::sync::Mutex<()>>, std::time::Instant);
+type SpawnLockMap = std::sync::Mutex<std::collections::HashMap<String, SpawnLockEntry>>;
+static SPAWN_LOCKS: std::sync::LazyLock<SpawnLockMap> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Maximum age for a spawn lock entry before it is eligible for eviction.
+const SPAWN_LOCK_TTL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 /// Get or create the persistent ACP adapter connection from the global cache.
 ///
@@ -105,13 +112,21 @@ pub(in crate::crates::web) async fn get_or_create_acp_connection(
     }
 
     // Acquire per-key mutex to serialize spawn attempts for this agent_key.
+    // H2: evict stale entries on each access to bound map growth.
     let key_lock = {
         let mut locks = SPAWN_LOCKS.lock().expect("spawn_locks poisoned");
-        Arc::clone(
-            locks
-                .entry(agent_key.clone())
-                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
-        )
+        // Inline eviction: cheap scan since the map is small (bounded by
+        // the number of distinct agent configs, typically < 20).
+        locks.retain(|_, (arc, created)| {
+            created.elapsed() < SPAWN_LOCK_TTL || Arc::strong_count(arc) > 1
+        });
+        let (arc, _) = locks.entry(agent_key.clone()).or_insert_with(|| {
+            (
+                Arc::new(tokio::sync::Mutex::new(())),
+                std::time::Instant::now(),
+            )
+        });
+        Arc::clone(arc)
     };
     let _guard = key_lock.lock().await;
 

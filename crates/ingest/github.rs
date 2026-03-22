@@ -36,29 +36,32 @@ pub(crate) struct GitHubCommonFields {
 /// Returns true if a file path should be indexed when --include-source is set.
 /// Excludes lock files, generated files, binaries, and non-code files.
 pub fn is_indexable_source_path(path: &str) -> bool {
-    // Reject build artifact and tool cache directories
-    let excluded_dirs = [
-        "target/",
-        "node_modules/",
-        "dist/",
-        "build/",
-        "out/",
-        "coverage/",
-        "vendor/",
-        ".gradle/",
-        ".terraform/",
-        ".next/",
-        ".nuxt/",
-        "venv/",
-        ".venv/",
-        "env/",
-        "__pycache__/",
-        ".pytest_cache/",
-        ".mypy_cache/",
+    // Reject build artifact and tool cache directories.
+    // Each entry includes both the bare prefix ("target/") and the
+    // slash-prefixed form ("/target/") so we can check with starts_with
+    // and contains without any per-call format! allocations.
+    static EXCLUDED_PREFIXES: &[(&str, &str)] = &[
+        ("target/", "/target/"),
+        ("node_modules/", "/node_modules/"),
+        ("dist/", "/dist/"),
+        ("build/", "/build/"),
+        ("out/", "/out/"),
+        ("coverage/", "/coverage/"),
+        ("vendor/", "/vendor/"),
+        (".gradle/", "/.gradle/"),
+        (".terraform/", "/.terraform/"),
+        (".next/", "/.next/"),
+        (".nuxt/", "/.nuxt/"),
+        ("venv/", "/venv/"),
+        (".venv/", "/.venv/"),
+        ("env/", "/env/"),
+        ("__pycache__/", "/__pycache__/"),
+        (".pytest_cache/", "/.pytest_cache/"),
+        (".mypy_cache/", "/.mypy_cache/"),
     ];
-    if excluded_dirs
+    if EXCLUDED_PREFIXES
         .iter()
-        .any(|dir| path.starts_with(dir) || path.contains(&format!("/{dir}")))
+        .any(|(prefix, inner)| path.starts_with(prefix) || path.contains(inner))
     {
         return false;
     }
@@ -400,152 +403,5 @@ pub async fn ingest_github(
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // --- is_indexable_source_path ---
-
-    #[test]
-    fn source_path_accepts_rust_files() {
-        assert!(is_indexable_source_path("src/main.rs"));
-        assert!(is_indexable_source_path("lib/foo.rs"));
-    }
-
-    #[test]
-    fn source_path_accepts_python_files() {
-        assert!(is_indexable_source_path("src/app.py"));
-    }
-
-    #[test]
-    fn source_path_accepts_typescript_and_js() {
-        assert!(is_indexable_source_path("src/index.ts"));
-        assert!(is_indexable_source_path("utils/helper.js"));
-    }
-
-    #[test]
-    fn source_path_accepts_go_files() {
-        assert!(is_indexable_source_path("main.go"));
-    }
-
-    #[test]
-    fn source_path_rejects_lock_files() {
-        assert!(!is_indexable_source_path("Cargo.lock"));
-        assert!(!is_indexable_source_path("package-lock.json"));
-        assert!(!is_indexable_source_path("yarn.lock"));
-        assert!(!is_indexable_source_path("Gemfile.lock"));
-    }
-
-    #[test]
-    fn source_path_rejects_binary_and_image_files() {
-        assert!(!is_indexable_source_path("assets/logo.png"));
-        assert!(!is_indexable_source_path("icon.svg"));
-        assert!(!is_indexable_source_path("font.woff2"));
-    }
-
-    #[test]
-    fn source_path_rejects_build_artifacts() {
-        assert!(!is_indexable_source_path("target/release/axon"));
-        assert!(!is_indexable_source_path("dist/bundle.js.map"));
-        assert!(!is_indexable_source_path("node_modules/lodash/index.js"));
-    }
-
-    // --- is_indexable_doc_path ---
-
-    #[test]
-    fn doc_path_accepts_markdown() {
-        assert!(is_indexable_doc_path("README.md"));
-        assert!(is_indexable_doc_path("docs/guide.md"));
-        assert!(is_indexable_doc_path("CONTRIBUTING.md"));
-    }
-
-    #[test]
-    fn doc_path_rejects_source_code() {
-        assert!(!is_indexable_doc_path("src/main.rs"));
-    }
-
-    #[test]
-    fn doc_path_rejects_lock_files() {
-        assert!(!is_indexable_doc_path("Cargo.lock"));
-    }
-
-    // --- parse_github_repo ---
-
-    #[test]
-    fn parse_repo_from_owner_slash_repo() {
-        let result = parse_github_repo("rust-lang/rust");
-        assert_eq!(result, Some(("rust-lang".to_string(), "rust".to_string())));
-    }
-
-    #[test]
-    fn parse_repo_from_github_url() {
-        let result = parse_github_repo("https://github.com/rust-lang/rust");
-        assert_eq!(result, Some(("rust-lang".to_string(), "rust".to_string())));
-    }
-
-    #[test]
-    fn parse_repo_from_github_url_with_trailing_slash() {
-        let result = parse_github_repo("https://github.com/rust-lang/rust/");
-        assert_eq!(result, Some(("rust-lang".to_string(), "rust".to_string())));
-    }
-
-    #[test]
-    fn parse_repo_rejects_invalid_input() {
-        assert_eq!(parse_github_repo("not-a-repo"), None);
-        assert_eq!(parse_github_repo(""), None);
-    }
-
-    #[test]
-    fn parse_repo_rejects_single_component() {
-        assert_eq!(parse_github_repo("rust-lang"), None);
-    }
-
-    #[test]
-    fn parse_repo_strips_git_suffix() {
-        let result = parse_github_repo("https://github.com/rust-lang/rust.git");
-        assert_eq!(result, Some(("rust-lang".to_string(), "rust".to_string())));
-    }
-
-    #[test]
-    fn parse_repo_strips_git_suffix_bare() {
-        let result = parse_github_repo("rust-lang/rust.git");
-        assert_eq!(result, Some(("rust-lang".to_string(), "rust".to_string())));
-    }
-
-    #[test]
-    fn parse_repo_rejects_empty_after_git_strip() {
-        // ".git" is the entire repo component — stripping it yields an empty repo
-        assert_eq!(parse_github_repo("owner/.git"), None);
-        assert_eq!(parse_github_repo("https://github.com/owner/.git"), None);
-    }
-
-    // --- expanded extensions ---
-
-    #[test]
-    fn source_path_accepts_c_cpp_files() {
-        assert!(is_indexable_source_path("src/main.c"));
-        assert!(is_indexable_source_path("src/main.cpp"));
-        assert!(is_indexable_source_path("include/header.h"));
-        assert!(is_indexable_source_path("include/header.hpp"));
-    }
-
-    #[test]
-    fn source_path_accepts_java_kotlin_files() {
-        assert!(is_indexable_source_path("src/App.java"));
-        assert!(is_indexable_source_path("src/App.kt"));
-    }
-
-    #[test]
-    fn source_path_accepts_ruby_php_shell() {
-        assert!(is_indexable_source_path("lib/helper.rb"));
-        assert!(is_indexable_source_path("src/index.php"));
-        assert!(is_indexable_source_path("scripts/deploy.sh"));
-    }
-
-    #[test]
-    fn source_path_accepts_yaml_json_md() {
-        assert!(is_indexable_source_path("config/settings.yaml"));
-        assert!(is_indexable_source_path("config/settings.yml"));
-        assert!(is_indexable_source_path("package.json"));
-        assert!(is_indexable_source_path("README.md"));
-    }
-}
+#[path = "github/tests.rs"]
+mod tests;

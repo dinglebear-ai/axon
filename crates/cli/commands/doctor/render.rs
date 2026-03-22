@@ -7,18 +7,18 @@ fn report_value<'a>(report: &'a serde_json::Value, path: &[&str]) -> &'a serde_j
     })
 }
 
-pub(super) fn report_bool(report: &serde_json::Value, path: &[&str]) -> bool {
+pub(crate) fn report_bool(report: &serde_json::Value, path: &[&str]) -> bool {
     report_value(report, path).as_bool().unwrap_or(false)
 }
 
-pub(super) fn report_text(report: &serde_json::Value, path: &[&str], default: &str) -> String {
+pub(crate) fn report_text(report: &serde_json::Value, path: &[&str], default: &str) -> String {
     report_value(report, path)
         .as_str()
         .unwrap_or(default)
         .to_string()
 }
 
-pub(super) fn report_i64(report: &serde_json::Value, path: &[&str]) -> i64 {
+pub(crate) fn report_i64(report: &serde_json::Value, path: &[&str]) -> i64 {
     report_value(report, path).as_i64().unwrap_or(0)
 }
 
@@ -217,7 +217,7 @@ fn render_browser_runtime_section(report: &serde_json::Value) {
     );
 }
 
-pub(super) fn render_doctor_report_human(report: &serde_json::Value) {
+pub(crate) fn render_doctor_report_human(report: &serde_json::Value) {
     let all_ok = report_bool(report, &["all_ok"]);
 
     println!("{}", primary("Doctor Report"));

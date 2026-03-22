@@ -3,8 +3,9 @@ use super::common::{
     apply_crawl_overrides, invalid_params, logged_internal_error, parse_job_id, parse_limit,
     parse_offset, respond_with_mode, validate_mcp_urls,
 };
+use crate::crates::core::config::Config;
 use crate::crates::mcp::schema::{
-    AxonToolResponse, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction,
+    AxonToolResponse, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
 };
 use crate::crates::services::crawl as crawl_svc;
 use crate::crates::services::extract as extract_svc;
@@ -13,7 +14,7 @@ use rmcp::ErrorData;
 impl AxonMcpServer {
     async fn handle_crawl_start(
         &self,
-        cfg: &crate::crates::core::config::Config,
+        cfg: &Config,
         urls: Option<Vec<String>>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let urls = urls.ok_or_else(|| invalid_params("urls is required for crawl.start"))?;
@@ -53,10 +54,10 @@ impl AxonMcpServer {
 
     async fn handle_crawl_list(
         &self,
-        cfg: &crate::crates::core::config::Config,
+        cfg: &Config,
         limit: Option<i64>,
         offset: Option<usize>,
-        response_mode: Option<crate::crates::mcp::schema::ResponseMode>,
+        response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
@@ -103,7 +104,7 @@ impl AxonMcpServer {
         &self,
         limit: Option<i64>,
         offset: Option<usize>,
-        response_mode: Option<crate::crates::mcp::schema::ResponseMode>,
+        response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);

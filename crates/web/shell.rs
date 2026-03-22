@@ -1,9 +1,11 @@
+use std::io::{Read, Write};
+use std::sync::Arc;
+
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use serde::Deserialize;
-use std::io::{Read, Write};
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -78,8 +80,6 @@ async fn run_shell(
     });
 
     // Async task: drains pty_out channel → sends to WS client
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
     let ws_tx = Arc::new(Mutex::new(ws_tx));
     let ws_tx_clone = ws_tx.clone();
     let sender_task = tokio::spawn(async move {
