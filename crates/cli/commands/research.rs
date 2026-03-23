@@ -1,7 +1,7 @@
 use crate::crates::cli::commands::common::parse_service_time_range;
 use crate::crates::cli::commands::resolve_input_text;
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::{log_done, log_info};
+use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::core::ui::{muted, primary, print_phase};
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::search as search_service;
@@ -15,8 +15,9 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("research requires a query (positional or --query)"))?;
 
-    log_info(&format!("command=research query_len={}", query.len()));
+    // TODO: cfg.quiet — suppress progress logs when quiet mode lands
     if !cfg.json_output {
+        log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
         println!("  {} {}", muted("provider=tavily model="), cfg.openai_model);
         println!();
@@ -70,12 +71,16 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .await
         .map(|r| r.payload);
 
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), consumer).await;
+    match tokio::time::timeout(std::time::Duration::from_secs(5), consumer).await {
+        Ok(_) => {}
+        Err(_) => {
+            log_warn("research synthesis consumer timed out after 5s");
+        }
+    }
     let payload = payload?;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&payload)?);
-        log_done("command=research complete");
         return Ok(());
     }
     print_human_research_output(&payload, started.elapsed().as_millis())?;
@@ -86,16 +91,20 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.tavily_api_key.is_empty() {
-        return Err(anyhow::anyhow!("research requires TAVILY_API_KEY — set it in .env").into());
+        return Err(anyhow::anyhow!(
+            "research requires TAVILY_API_KEY — set it in .env (run 'axon doctor' to check service connectivity)"
+        )
+        .into());
     }
     if cfg
         .acp_adapter_cmd
         .as_deref()
         .is_none_or(|s| s.trim().is_empty())
     {
-        return Err(
-            anyhow::anyhow!("research requires AXON_ACP_ADAPTER_CMD — set it in .env").into(),
-        );
+        return Err(anyhow::anyhow!(
+            "research requires AXON_ACP_ADAPTER_CMD — set it in .env (run 'axon doctor' to check service connectivity)"
+        )
+        .into());
     }
     Ok(())
 }

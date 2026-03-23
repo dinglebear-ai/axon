@@ -9,14 +9,18 @@ use std::error::Error;
 
 pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.tavily_api_key.is_empty() {
-        return Err(anyhow::anyhow!("search requires TAVILY_API_KEY — set it in .env").into());
+        return Err(anyhow::anyhow!(
+            "search requires TAVILY_API_KEY — set it in .env (run 'axon doctor' to check service connectivity)"
+        )
+        .into());
     }
 
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("search requires a query (positional or --query)"))?;
 
-    log_info(&format!("command=search query_len={}", query.len()));
+    // TODO: cfg.quiet — suppress progress logs when quiet mode lands
     if !cfg.json_output {
+        log_info(&format!("command=search query_len={}", query.len()));
         print_phase("\u{25d0}", "Searching", &query);
     }
 
@@ -43,11 +47,6 @@ pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 "results": results,
             }))?
         );
-        log_done(&format!(
-            "command=search complete query_len={} results={} duration_ms={duration_ms}",
-            query.len(),
-            results.len()
-        ));
         return Ok(());
     }
 
@@ -66,11 +65,13 @@ pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
         println!();
     }
 
-    log_done(&format!(
-        "command=search complete query_len={} results={} duration_ms={duration_ms}",
-        query.len(),
-        results.len()
-    ));
+    if !cfg.json_output {
+        log_done(&format!(
+            "command=search complete query_len={} results={} duration_ms={duration_ms}",
+            query.len(),
+            results.len()
+        ));
+    }
     Ok(())
 }
 
