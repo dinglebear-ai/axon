@@ -9,11 +9,17 @@ pub async fn run_ingest(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let target = cfg
-        .positional
-        .first()
-        .cloned()
-        .ok_or("ingest requires a target: GitHub slug (owner/repo), YouTube URL or @handle, or Reddit subreddit (r/name) or URL")?;
+    let target = cfg.positional.first().cloned().ok_or(
+        "ingest requires a target. Examples:\n\
+         \n\
+         GitHub:   axon ingest owner/repo\n\
+         Reddit:   axon ingest r/rust\n\
+                   axon ingest https://reddit.com/r/rust/comments/...\n\
+         YouTube:  axon ingest https://youtube.com/watch?v=...\n\
+                   axon ingest @channelname\n\
+         \n\
+         Run 'axon ingest --help' for full usage.",
+    )?;
 
     log_info(&format!("command=ingest target={target}"));
     let source = ingest_service::classify_target(&target, cfg.github_include_source)?;
