@@ -28,7 +28,7 @@ _Requirements: FR-030_ / _Design: Section 2_
 **Commit**: `refactor(acp): split bridge.rs into bridge/ module with state.rs`
 _Requirements: FR-007_ / _Design: Section 3_
 
-## Task 1.3 — Create bridge/terminal.rs skeleton
+## Task 1.3 — Create bridge/terminal.rs skeleton <!-- DONE -->
 
 **Do**: Create `crates/services/acp/bridge/terminal.rs` with the skeleton structures: `TerminalId` (newtype around `String`), `TerminalState` (fields: `child: Option<tokio::process::Child>`, `output_buf: std::collections::VecDeque<u8>`, `exit_status: Option<std::process::ExitStatus>`), `TerminalManager` (field: `terminals: Rc<RefCell<HashMap<TerminalId, TerminalState>>>`). Add `mod terminal;` to `bridge.rs`. Impl `TerminalManager::new()`.
 **Files**: `crates/services/acp/bridge/terminal.rs` (create), `crates/services/acp/bridge.rs` (add mod declaration)

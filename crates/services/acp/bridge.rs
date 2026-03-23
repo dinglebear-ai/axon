@@ -3,6 +3,7 @@
 //! service event channel.
 
 mod state;
+pub mod terminal;
 pub use state::*;
 
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
