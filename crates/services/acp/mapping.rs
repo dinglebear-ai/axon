@@ -407,8 +407,11 @@ pub(super) fn convert_mcp_servers(configs: &[AcpMcpServerConfig]) -> Vec<McpServ
 /// `mcp_capabilities.http = true`. Sse requires `mcp_capabilities.sse = true`.
 /// Unsupported servers are logged at WARN and dropped so session setup
 /// doesn't fail with an opaque adapter error.
-// Called by Task 3 (AcpRuntimeState capability filter) and Task 5 (persistent-conn path).
-#[allow(dead_code)]
+///
+/// Note: This function operates on `AcpMcpServerConfig` (before conversion).
+/// Task 5 uses `filter_sdk_mcp_servers` instead (post-conversion SDK types).
+/// Kept for testing and potential future use.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn filter_compatible_mcp_servers(
     configs: &[AcpMcpServerConfig],
     http_supported: bool,
