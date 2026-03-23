@@ -316,6 +316,7 @@ pub(super) async fn setup_session(
             .await;
             let requested_id = load_session.session_id.clone();
             let fallback_cwd = load_session.cwd.clone();
+            let fallback_mcp_servers = load_session.mcp_servers.clone();
             match conn.load_session(load_session).await {
                 Ok(r) => Ok((requested_id, r.config_options)),
                 Err(err) => {
@@ -329,8 +330,13 @@ pub(super) async fn setup_session(
                         },
                     )
                     .await;
+                    let mut fallback_req = NewSessionRequest::new(fallback_cwd);
+                    if !fallback_mcp_servers.is_empty() {
+                        fallback_req = fallback_req.mcp_servers(fallback_mcp_servers);
+                    }
+                    // INVARIANT: fallback session has same MCP servers as the failed load request
                     let r = conn
-                        .new_session(NewSessionRequest::new(fallback_cwd))
+                        .new_session(fallback_req)
                         .await
                         .map_err(|e| e.to_string())?;
                     emit(
@@ -493,4 +499,32 @@ async fn apply_model_config(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    // Full session integration requires a live adapter process.
+    // This test validates that build_session_setup preserves MCP servers
+    // in the Load case (which is what the fallback path clones from).
+    use super::super::mapping::build_session_setup;
+    use crate::crates::services::types::AcpMcpServerConfig;
+
+    #[test]
+    fn build_session_setup_load_preserves_mcp_servers() {
+        let cwd = std::env::temp_dir();
+        let servers = vec![AcpMcpServerConfig::Stdio {
+            name: "test-srv".into(),
+            command: "/bin/echo".into(),
+            args: vec![],
+            env: vec![],
+        }];
+        let setup = build_session_setup(Some("existing-session"), &cwd, &servers)
+            .expect("build_session_setup failed");
+        match setup {
+            super::super::AcpSessionSetupRequest::Load(req) => {
+                assert_eq!(req.mcp_servers.len(), 1);
+            }
+            _ => panic!("expected Load variant"),
+        }
+    }
 }
