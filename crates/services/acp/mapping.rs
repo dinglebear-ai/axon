@@ -8,10 +8,10 @@ use crate::crates::services::types::{
     AcpSessionUpdateEvent, AcpSessionUpdateKind, AcpUsageUpdate,
 };
 use agent_client_protocol::{
-    ContentBlock, EnvVariable, LoadSessionRequest, McpServer, McpServerHttp, McpServerStdio,
-    NewSessionRequest, SessionConfigKind, SessionConfigOption as SdkConfigOption,
-    SessionConfigOptionCategory, SessionConfigSelectOptions, SessionId, SessionNotification,
-    SessionUpdate, ToolCallContent,
+    ContentBlock, EnvVariable, HttpHeader, LoadSessionRequest, McpServer, McpServerHttp,
+    McpServerSse, McpServerStdio, NewSessionRequest, SessionConfigKind,
+    SessionConfigOption as SdkConfigOption, SessionConfigOptionCategory,
+    SessionConfigSelectOptions, SessionId, SessionNotification, SessionUpdate, ToolCallContent,
 };
 use std::error::Error;
 use std::path::Path;
@@ -374,26 +374,110 @@ pub(super) fn convert_mcp_servers(configs: &[AcpMcpServerConfig]) -> Vec<McpServ
                 McpServer::Stdio(server)
             }
             AcpMcpServerConfig::Http { name, url, headers } => {
+                let mut server = McpServerHttp::new(name.clone(), url.clone());
                 if !headers.is_empty() {
-                    tracing::warn!(
-                        server = %name,
-                        header_count = headers.len(),
-                        "ACP: HTTP MCP server headers configured but not yet forwarded; \
-                         headers will be ignored until Task 2 is implemented"
+                    server = server.headers(
+                        headers
+                            .iter()
+                            .map(|(n, v)| HttpHeader::new(n.clone(), v.clone()))
+                            .collect(),
                     );
                 }
-                McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
+                McpServer::Http(server)
             }
-            AcpMcpServerConfig::Sse { name, url, .. } => {
-                // TODO Task 2: replace stub with McpServer::Sse once full SSE support lands
-                tracing::warn!(
-                    server = %name,
-                    "ACP: SSE MCP server configured but SSE→HTTP stub is active; \
-                     passing as HTTP transport until Task 2 is implemented"
-                );
-                McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
+            AcpMcpServerConfig::Sse { name, url, headers } => {
+                let mut server = McpServerSse::new(name.clone(), url.clone());
+                if !headers.is_empty() {
+                    server = server.headers(
+                        headers
+                            .iter()
+                            .map(|(n, v)| HttpHeader::new(n.clone(), v.clone()))
+                            .collect(),
+                    );
+                }
+                McpServer::Sse(server)
             }
         })
+        .collect()
+}
+
+/// Filter MCP servers to only those whose transport the adapter supports.
+///
+/// Stdio is always supported (no capability flag needed). Http requires
+/// `mcp_capabilities.http = true`. Sse requires `mcp_capabilities.sse = true`.
+/// Unsupported servers are logged at WARN and dropped so session setup
+/// doesn't fail with an opaque adapter error.
+// Called by Task 3 (AcpRuntimeState capability filter) and Task 5 (persistent-conn path).
+#[allow(dead_code)]
+pub(super) fn filter_compatible_mcp_servers(
+    configs: &[AcpMcpServerConfig],
+    http_supported: bool,
+    sse_supported: bool,
+) -> Vec<AcpMcpServerConfig> {
+    configs
+        .iter()
+        .filter(|cfg| match cfg {
+            AcpMcpServerConfig::Stdio { .. } => true,
+            AcpMcpServerConfig::Http { name, .. } => {
+                if !http_supported {
+                    tracing::warn!(
+                        server = %name,
+                        "ACP: dropping HTTP MCP server — adapter does not advertise http transport support"
+                    );
+                }
+                http_supported
+            }
+            AcpMcpServerConfig::Sse { name, .. } => {
+                if !sse_supported {
+                    tracing::warn!(
+                        server = %name,
+                        "ACP: dropping SSE MCP server — adapter does not advertise sse transport support"
+                    );
+                }
+                sse_supported
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+/// Filter already-converted SDK `McpServer` objects to transports the adapter supports.
+///
+/// Used post-initialize when capabilities are known but the session setup request
+/// already holds SDK types. Stdio is always kept; Http/Sse require the respective
+/// capability flag.
+// Called by Task 3 (AcpRuntimeState capability filter) and Task 5 (persistent-conn path).
+#[allow(dead_code)]
+pub(super) fn filter_sdk_mcp_servers(
+    servers: &[McpServer],
+    http_supported: bool,
+    sse_supported: bool,
+) -> Vec<McpServer> {
+    servers
+        .iter()
+        .filter(|s| match s {
+            McpServer::Stdio(_) => true,
+            McpServer::Http(h) => {
+                if !http_supported {
+                    tracing::warn!(
+                        server = %h.name,
+                        "ACP: dropping HTTP MCP server — adapter lacks http capability"
+                    );
+                }
+                http_supported
+            }
+            McpServer::Sse(s) => {
+                if !sse_supported {
+                    tracing::warn!(
+                        server = %s.name,
+                        "ACP: dropping SSE MCP server — adapter lacks sse capability"
+                    );
+                }
+                sse_supported
+            }
+            _ => true,
+        })
+        .cloned()
         .collect()
 }
 
@@ -419,5 +503,114 @@ pub(super) fn build_session_setup(
             }
             Ok(AcpSessionSetupRequest::New(req))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::services::types::AcpMcpServerConfig;
+
+    #[test]
+    fn filter_keeps_stdio_always() {
+        let servers = vec![AcpMcpServerConfig::Stdio {
+            name: "s".into(),
+            command: "/bin/srv".into(),
+            args: vec![],
+            env: vec![],
+        }];
+        let filtered = filter_compatible_mcp_servers(&servers, false, false);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn filter_drops_http_when_not_supported() {
+        let servers = vec![AcpMcpServerConfig::Http {
+            name: "h".into(),
+            url: "http://localhost/mcp".into(),
+            headers: vec![],
+        }];
+        let filtered = filter_compatible_mcp_servers(&servers, false, false);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_keeps_http_when_supported() {
+        let servers = vec![AcpMcpServerConfig::Http {
+            name: "h".into(),
+            url: "http://localhost/mcp".into(),
+            headers: vec![],
+        }];
+        let filtered = filter_compatible_mcp_servers(&servers, true, false);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn filter_drops_sse_when_not_supported() {
+        let servers = vec![AcpMcpServerConfig::Sse {
+            name: "s".into(),
+            url: "http://localhost/sse".into(),
+            headers: vec![],
+        }];
+        let filtered = filter_compatible_mcp_servers(&servers, false, false);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_keeps_sse_when_supported() {
+        let servers = vec![AcpMcpServerConfig::Sse {
+            name: "s".into(),
+            url: "http://localhost/sse".into(),
+            headers: vec![],
+        }];
+        let filtered = filter_compatible_mcp_servers(&servers, false, true);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn convert_http_with_headers() {
+        let servers = vec![AcpMcpServerConfig::Http {
+            name: "h".into(),
+            url: "http://localhost/mcp".into(),
+            headers: vec![("Authorization".to_string(), "Bearer tok".to_string())],
+        }];
+        let sdk = convert_mcp_servers(&servers);
+        assert_eq!(sdk.len(), 1);
+        match &sdk[0] {
+            McpServer::Http(h) => {
+                assert_eq!(h.headers.len(), 1);
+                assert_eq!(h.headers[0].name, "Authorization");
+            }
+            _ => panic!("expected Http"),
+        }
+    }
+
+    #[test]
+    fn convert_sse_maps_correctly() {
+        let servers = vec![AcpMcpServerConfig::Sse {
+            name: "s".into(),
+            url: "http://localhost/sse".into(),
+            headers: vec![],
+        }];
+        let sdk = convert_mcp_servers(&servers);
+        assert_eq!(sdk.len(), 1);
+        assert!(matches!(sdk[0], McpServer::Sse(_)));
+    }
+
+    #[test]
+    fn filter_sdk_drops_http_when_not_supported() {
+        let servers = vec![McpServer::Http(McpServerHttp::new(
+            "h",
+            "http://localhost/mcp",
+        ))];
+        let filtered = filter_sdk_mcp_servers(&servers, false, false);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_sdk_keeps_stdio_always() {
+        let servers = vec![McpServer::Stdio(McpServerStdio::new("s", "/bin/srv"))];
+        let filtered = filter_sdk_mcp_servers(&servers, false, false);
+        assert_eq!(filtered.len(), 1);
     }
 }
