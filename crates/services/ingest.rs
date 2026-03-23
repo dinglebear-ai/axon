@@ -100,6 +100,7 @@ pub async fn ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
 /// Calls `ingest::github::ingest_github` which performs the fetch and embed
 /// synchronously. For async/fire-and-forget behaviour use the job queue via
 /// the ingest CLI command.
+#[must_use = "ingest_github returns a Result that should be handled"]
 pub async fn ingest_github(
     cfg: &Config,
     owner: &str,
@@ -148,6 +149,7 @@ pub async fn ingest_github(
 /// Ingest a Reddit subreddit or thread into the vector store.
 ///
 /// `target` may be a subreddit name (e.g. `"rust"`) or a full thread URL.
+#[must_use = "ingest_reddit returns a Result that should be handled"]
 pub async fn ingest_reddit(
     cfg: &Config,
     target: &str,
@@ -190,6 +192,7 @@ pub async fn ingest_reddit(
 ///
 /// `url` may be a single video URL, a bare video ID, a playlist URL
 /// (`youtube.com/playlist?list=...`), or a channel URL (`/@handle`, `/c/`, `/channel/`).
+#[must_use = "ingest_youtube returns a Result that should be handled"]
 pub async fn ingest_youtube(
     cfg: &Config,
     url: &str,
@@ -232,6 +235,7 @@ pub async fn ingest_youtube(
 ///
 /// Session sources and paths are read from cfg (sessions_claude, sessions_codex,
 /// sessions_gemini, sessions_project).
+#[must_use = "ingest_sessions returns a Result that should be handled"]
 pub async fn ingest_sessions(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,

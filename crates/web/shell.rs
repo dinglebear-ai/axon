@@ -15,10 +15,21 @@ enum ShellClientMsg {
 }
 
 pub async fn handle_shell_ws(socket: WebSocket) {
+    let session_id = uuid::Uuid::new_v4();
+    let session_start = std::time::Instant::now();
+    tracing::info!(
+        session_id = %session_id,
+        "[shell audit] session_start"
+    );
     let (ws_tx, ws_rx) = socket.split();
     if let Err(e) = run_shell(ws_tx, ws_rx).await {
         tracing::warn!("shell session error: {e}");
     }
+    tracing::info!(
+        session_id = %session_id,
+        duration_ms = session_start.elapsed().as_millis(),
+        "[shell audit] session_end"
+    );
 }
 
 async fn run_shell(

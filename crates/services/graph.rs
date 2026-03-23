@@ -39,6 +39,7 @@ fn url_matches_domain(url: &str, domain: &str, domain_suffix: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[must_use = "graph_build returns a Result that should be handled"]
 pub async fn graph_build(
     cfg: &Config,
     url: Option<&str>,
@@ -88,6 +89,7 @@ pub async fn graph_build(
     })
 }
 
+#[must_use = "graph_status returns a Result that should be handled"]
 pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool).await?;
@@ -133,6 +135,7 @@ pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Err
     })
 }
 
+#[must_use = "graph_explore returns a Result that should be handled"]
 pub async fn graph_explore(
     cfg: &Config,
     entity: &str,
@@ -164,6 +167,7 @@ pub async fn graph_explore(
     })
 }
 
+#[must_use = "graph_stats returns a Result that should be handled"]
 pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error>> {
     let neo4j = require_neo4j(cfg)?;
     let rows = neo4j

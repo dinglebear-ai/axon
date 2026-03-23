@@ -1,5 +1,22 @@
 # Changelog
-Last Modified: 2026-03-23 (session: v0.32.2 — graph similarity fix: named-vector support + error resilience)
+Last Modified: 2026-03-23 (session: v0.32.3 — comprehensive review: security, performance, CI/CD, and quality fixes)
+
+## [0.32.3] — chore/cleanup
+
+### Highlights
+
+- **Security** — Debug auth bypass now requires explicit `AXON_WEB_ALLOW_INSECURE_DEV=true` (no longer implicit on missing token); startup warning emitted; shell PTY sessions emit structured audit log (session_id, duration_ms); `clear_collection_mode_cache()` called in migrate handler so workers pick up correct VectorMode without restart.
+- **Performance** — Graph worker Stage 1 writes parallelized with `tokio::join!()` (latent entity-before-relationship bug fixed); embed worker shares Redis connection at startup via `Arc<Mutex>` (no more per-job TCP handshakes); progress Postgres UPDATEs debounced to 500ms; TEI env-var reads cached in `LazyLock` (eliminates per-batch global process lock); Qdrant retry jitter added to all 4 retry sites (prevents thundering herd).
+- **CI/CD** — All CI jobs standardized to `rust-toolchain.toml` pin (`1.94.0`); weekly scheduled run for `#[ignore]` AMQP infra tests; `cargo-audit`/`cargo-deny` switched to `taiki-e/install-action` prebuilt binaries; Renovate `regexManagers` for 4 Dockerfile ARG binary versions; `services.env` protected by pre-commit env guard.
+- **Code quality** — `open_amqp_channel()` deprecated + `pub(crate)`; `#[must_use]` on 26 public service entry-points; `thiserror` derive on `PayloadParseError`; named exports standardized in 2 TSX components; `criterion` dev-dep removed; `f64::EPSILON as f32` → `f32::EPSILON` in similarity test.
+- **Testing** — 5 SQL safety tests (`JobTable`/`JobStatus` value validation); 2 collection mode cache tests; 2 auth bypass tests; CI schedule for infra tests.
+- **Docs** — `docs/spider-feature-flags.md` corrected (`glob` removed, `hedge` documented, version updated); `.env.example` `AXON_COLLECTION` unified to `cortex`; `docs/SECURITY.md` and `docs/auth/API-TOKEN.md` updated; ACP session cache constants labeled in `docs/ACP.md`.
+
+### Commits since v0.32.2
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| (pending) | chore | comprehensive review fixes: security, performance, CI/CD, quality (v0.32.3) |
 
 ## [0.32.2] — main
 

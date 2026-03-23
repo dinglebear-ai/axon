@@ -406,6 +406,7 @@ pub fn map_research_payload(payload: serde_json::Value) -> ResearchResult {
 ///
 /// Delegates to [`search_results`] from the CLI commands layer. Emits log events
 /// when a `tx` sender is provided.
+#[must_use = "search returns a Result that should be handled"]
 pub async fn search(
     cfg: &Config,
     query: &str,
@@ -458,6 +459,7 @@ pub async fn search_batch(
 ///
 /// Delegates to [`research_payload`] from the CLI commands layer. Emits log events
 /// when a `tx` sender is provided.
+#[must_use = "research returns a Result that should be handled"]
 pub async fn research(
     cfg: &Config,
     query: &str,

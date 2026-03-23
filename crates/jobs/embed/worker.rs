@@ -8,7 +8,12 @@ use crate::crates::jobs::worker_lane::{
 use crate::crates::vector::ops::{EmbedProgress, embed_path_native_with_progress};
 use futures_util::future::LocalBoxFuture;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::time::Duration;
+
+/// Debounce interval for embed progress updates to Postgres.
+/// Matches the crawl worker's 500ms debounce to avoid excessive writes.
+const PROGRESS_DEBOUNCE_MS: u64 = 500;
 
 /// Open a Redis connection for embed cancel checks. Returns None (with warning)
 /// on failure — cancel checks will be skipped (fail-safe: never false-cancel).
@@ -100,12 +105,37 @@ async fn run_embed_core(
     let (progress_tx, mut progress_rx) = tokio::sync::mpsc::channel::<EmbedProgress>(256);
     let progress_pool = pool.clone();
     let progress_task = tokio::spawn(async move {
+        let mut last_update = Instant::now() - Duration::from_secs(10); // ensure first fires
+        let mut last_progress: Option<EmbedProgress> = None;
         while let Some(progress) = progress_rx.recv().await {
+            last_progress = Some(progress);
+            if last_update.elapsed() >= Duration::from_millis(PROGRESS_DEBOUNCE_MS)
+                && let Some(ref p) = last_progress
+            {
+                let progress_json = serde_json::json!({
+                    "phase": "embedding",
+                    "docs_total": p.docs_total,
+                    "docs_completed": p.docs_completed,
+                    "chunks_embedded": p.chunks_embedded,
+                });
+                let _ = sqlx::query(
+                    "UPDATE axon_embed_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
+                )
+                .bind(id)
+                .bind(progress_json)
+                .bind(JobStatus::Running.as_str())
+                .execute(&progress_pool)
+                .await;
+                last_update = Instant::now();
+            }
+        }
+        // Always flush the final progress on channel close (job completion).
+        if let Some(ref p) = last_progress {
             let progress_json = serde_json::json!({
                 "phase": "embedding",
-                "docs_total": progress.docs_total,
-                "docs_completed": progress.docs_completed,
-                "chunks_embedded": progress.chunks_embedded,
+                "docs_total": p.docs_total,
+                "docs_completed": p.docs_completed,
+                "chunks_embedded": p.chunks_embedded,
             });
             let _ = sqlx::query(
                 "UPDATE axon_embed_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
@@ -137,6 +167,7 @@ async fn run_embed_core(
     }))
 }
 
+#[cfg(test)]
 pub(crate) async fn process_embed_job_with_runner<F>(
     cfg: &Config,
     pool: &PgPool,
@@ -153,9 +184,32 @@ where
         Option<&'a str>,
     ) -> LocalBoxFuture<'a, Result<serde_json::Value, Box<dyn Error>>>,
 {
-    // Open a single Redis connection for cancel checks (reused across the job lifecycle).
+    // Fallback: open per-job when called without a shared connection (e.g., tests).
     let mut redis_conn = open_embed_redis(cfg).await;
-    let job_start = std::time::Instant::now();
+    process_embed_job_with_runner_and_redis(cfg, pool, id, &mut redis_conn, runner).await
+}
+
+/// Inner implementation that accepts a pre-opened Redis connection.
+/// The worker passes a shared connection opened once at startup; the public
+/// `process_embed_job_with_runner` opens a fresh one for CLI/test callers.
+async fn process_embed_job_with_runner_and_redis<F>(
+    cfg: &Config,
+    pool: &PgPool,
+    id: Uuid,
+    redis_conn: &mut Option<redis::aio::MultiplexedConnection>,
+    runner: F,
+) -> Result<(), Box<dyn Error>>
+where
+    F: for<'a> FnOnce(
+        &'a Config,
+        &'a PgPool,
+        Uuid,
+        String,
+        String,
+        Option<&'a str>,
+    ) -> LocalBoxFuture<'a, Result<serde_json::Value, Box<dyn Error>>>,
+{
+    let job_start = Instant::now();
 
     let run_result = async {
         let row = sqlx::query_as::<_, (String, serde_json::Value)>(
@@ -171,7 +225,7 @@ where
         log_info(&format!(
             "embed worker started job {id} input={input_preview}"
         ));
-        if check_embed_canceled(&mut redis_conn, pool, id).await? {
+        if check_embed_canceled(redis_conn, pool, id).await? {
             return Ok(None);
         }
         let job_cfg: EmbedJobConfig = serde_json::from_value(cfg_json)?;
@@ -230,11 +284,17 @@ where
     Ok(())
 }
 
-async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), Box<dyn Error>> {
-    process_embed_job_with_runner(
+async fn process_embed_job(
+    cfg: &Config,
+    pool: &PgPool,
+    id: Uuid,
+    redis_conn: &mut Option<redis::aio::MultiplexedConnection>,
+) -> Result<(), Box<dyn Error>> {
+    process_embed_job_with_runner_and_redis(
         cfg,
         pool,
         id,
+        redis_conn,
         |cfg, pool, id, input_text, collection, source_type| {
             Box::pin(run_embed_core(
                 cfg,
@@ -249,9 +309,18 @@ async fn process_embed_job(cfg: &Config, pool: &PgPool, id: Uuid) -> Result<(), 
     .await
 }
 
-async fn process_claimed_embed_job(cfg: Arc<Config>, pool: PgPool, id: Uuid) {
+async fn process_claimed_embed_job(
+    cfg: Arc<Config>,
+    pool: PgPool,
+    id: Uuid,
+    shared_redis: Arc<tokio::sync::Mutex<Option<redis::aio::MultiplexedConnection>>>,
+) {
     let _job_span = tracing::info_span!("embed_job", job_id = %id).entered();
-    let fail_msg = match process_embed_job(&cfg, &pool, id).await {
+    // Clone the shared connection for this job. MultiplexedConnection is Clone
+    // (internally Arc-wrapped), so this is a cheap reference count bump — not
+    // a new TCP connection.
+    let mut redis_conn = shared_redis.lock().await.clone();
+    let fail_msg = match process_embed_job(&cfg, &pool, id, &mut redis_conn).await {
         Ok(()) => None,
         Err(err) => Some(err.to_string()),
     };
@@ -277,6 +346,11 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
     let pool = make_pool(cfg).await?;
     ensure_schema_once(&pool).await?;
 
+    // Open a single Redis connection at worker startup. All job lanes clone this
+    // connection (cheap Arc bump) instead of opening a new TCP connection per job.
+    // Wrapped in Arc<Mutex> so lanes can safely share the Option (reconnect on None).
+    let shared_redis = Arc::new(tokio::sync::Mutex::new(open_embed_redis(cfg).await));
+
     let wc = WorkerConfig {
         table: TABLE,
         queue_name: cfg.embed_queue.clone(),
@@ -286,8 +360,10 @@ pub async fn run_embed_worker(cfg: &Config) -> anyhow::Result<()> {
         heartbeat_interval_secs: EMBED_HEARTBEAT_INTERVAL_SECS,
     };
 
-    let process_fn: ProcessFn =
-        Arc::new(|cfg, pool, id| Box::pin(process_claimed_embed_job(cfg, pool, id)));
+    let process_fn: ProcessFn = Arc::new(move |cfg, pool, id| {
+        let redis = Arc::clone(&shared_redis);
+        Box::pin(process_claimed_embed_job(cfg, pool, id, redis))
+    });
 
     run_job_worker(cfg, pool, &wc, process_fn)
         .await

@@ -18,20 +18,14 @@ use crate::crates::vector::ops::qdrant::{
 use crate::crates::vector::ops::stats::stats_payload;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt;
 use tokio::sync::mpsc;
 
 const WATCHDOG_RECLAIM_PREFIX: &str = "watchdog reclaimed stale running ";
 const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000_000;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("payload parse error: {0}")]
 pub struct PayloadParseError(String);
-impl fmt::Display for PayloadParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "payload parse error: {}", self.0)
-    }
-}
-impl Error for PayloadParseError {}
 
 pub fn map_sources_payload(
     payload: &serde_json::Value,
@@ -126,6 +120,7 @@ pub fn map_doctor_payload(payload: serde_json::Value) -> DoctorResult {
     DoctorResult { payload }
 }
 
+#[must_use = "sources returns a Result that should be handled"]
 pub async fn sources(
     cfg: &Config,
     pagination: Pagination,
@@ -136,6 +131,7 @@ pub async fn sources(
     Ok(map_sources_payload(&payload)?)
 }
 
+#[must_use = "domains returns a Result that should be handled"]
 pub async fn domains(
     cfg: &Config,
     pagination: Pagination,
@@ -177,6 +173,7 @@ pub fn summarize_detailed_domains_limited(
     DetailedDomainsResult { domains }
 }
 
+#[must_use = "detailed_domains returns a Result that should be handled"]
 pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box<dyn Error>> {
     let limit = env_usize_clamped(
         "AXON_DOMAINS_DETAILED_LIMIT",
@@ -229,6 +226,7 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     Ok(DetailedDomainsResult { domains })
 }
 
+#[must_use = "stats returns a Result that should be handled"]
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
     let payload = stats_payload(cfg)
         .await
@@ -236,6 +234,7 @@ pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
     Ok(map_stats_payload(payload))
 }
 
+#[must_use = "doctor returns a Result that should be handled"]
 pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
     let payload = build_doctor_report(cfg)
         .await
@@ -243,6 +242,7 @@ pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
     Ok(map_doctor_payload(payload))
 }
 
+#[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
     let jobs = load_status_jobs(cfg).await?;
     let payload = build_status_payload(
@@ -397,6 +397,7 @@ fn is_watchdog_reclaimed_failure(status: &str, error_text: Option<&str>) -> bool
         .is_some_and(|text| text.starts_with(WATCHDOG_RECLAIM_PREFIX))
 }
 
+#[must_use = "dedupe returns a Result that should be handled"]
 pub async fn dedupe(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,

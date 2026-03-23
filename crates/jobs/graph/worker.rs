@@ -378,17 +378,35 @@ async fn process_graph_job(
     };
 
     let mut relationship_count = 0usize;
-    if let Some(llm) = llm_result {
+    let relationships = if let Some(llm) = llm_result {
         merge_llm_entities(&mut entities, llm.entities);
-        let relationships = build_relationships(&entities, llm.relationships);
-        relationship_count = relationships.len();
-        write_entity_relationships(neo4j, &relationships).await?;
-    }
+        let rels = build_relationships(&entities, llm.relationships);
+        relationship_count = rels.len();
+        rels
+    } else {
+        Vec::new()
+    };
 
-    write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks).await?;
-    write_entities(neo4j, &entities).await?;
-    let mention_count =
-        write_chunk_mentions(neo4j, taxonomy, &source_type, &chunks, &entities).await?;
+    // Stage 1: write Document+Chunk nodes and Entity nodes in parallel.
+    // These are independent — different node types, no cross-references.
+    let (doc_result, ent_result) = tokio::join!(
+        write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks),
+        write_entities(neo4j, &entities),
+    );
+    doc_result?;
+    ent_result?;
+
+    // Stage 2: write edges that reference Stage 1 nodes in parallel.
+    // write_entity_relationships MATCHes Entity nodes (from Stage 1).
+    // write_chunk_mentions MATCHes both Entity and Chunk nodes (from Stage 1).
+    let (rel_result, mention_result) = tokio::join!(
+        write_entity_relationships(neo4j, &relationships),
+        write_chunk_mentions(neo4j, taxonomy, &source_type, &chunks, &entities),
+    );
+    rel_result?;
+    let mention_count = mention_result?;
+
+    // Stage 3: similarity depends on Document nodes from Stage 1.
     let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
     let result = serde_json::json!({
         "url": url,

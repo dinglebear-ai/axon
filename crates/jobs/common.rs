@@ -37,7 +37,9 @@ use std::sync::LazyLock;
 use lapin::options::QueueDeclareOptions;
 
 // Re-export all public items so existing `use crate::crates::jobs::common::*` continues to work.
-pub use amqp::{batch_enqueue_jobs, enqueue_job, open_amqp_channel};
+#[allow(deprecated)]
+pub(crate) use amqp::open_amqp_channel;
+pub use amqp::{batch_enqueue_jobs, enqueue_job};
 pub(crate) use amqp::{open_amqp_connection_and_channel, purge_queue_safe};
 pub use heartbeat::{spawn_content_aware_heartbeat, spawn_heartbeat_task};
 pub use job_ops::{

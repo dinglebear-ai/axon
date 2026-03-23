@@ -9,6 +9,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::vector::ops::sparse::compute_sparse_vector;
+use crate::crates::vector::ops::tei::qdrant_store::clear_collection_mode_cache;
 use reqwest::StatusCode;
 use std::error::Error;
 
@@ -107,6 +108,15 @@ pub async fn run_migrate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     log_info(&format!(
         "migrate complete from={from} to={to} points={total_points} pages={pages}"
     ));
+
+    // Invalidate the process-wide VectorMode cache for both collections so that
+    // long-running workers re-detect the new schema on their next embed/query.
+    // Without this, workers that cached VectorMode::Unnamed for `from` (or an
+    // earlier run targeting `to`) continue using dense-only search paths even
+    // after migration completes.
+    clear_collection_mode_cache(&from);
+    clear_collection_mode_cache(&to);
+    log_info(&format!("migrate cache_cleared from={from} to={to}"));
 
     if cfg.json_output {
         println!(

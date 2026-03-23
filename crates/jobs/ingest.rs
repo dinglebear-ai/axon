@@ -31,6 +31,7 @@ use self::schema::ensure_schema;
 const TABLE: JobTable = JobTable::Ingest;
 const INGEST_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
+#[allow(deprecated)] // open_amqp_channel used for short-lived health check only
 pub async fn ingest_doctor(cfg: &Config) -> Result<serde_json::Value, String> {
     use crate::crates::core::health::redis_healthy;
     use crate::crates::jobs::common::open_amqp_channel;

@@ -57,7 +57,6 @@ fn cache_vector_mode(name: &str, mode: VectorMode) {
 ///
 /// Useful for long-running workers that need to re-detect collection schema
 /// after a migration (e.g., Unnamed -> Named via `axon migrate`).
-#[expect(dead_code, reason = "reserved for long-running workers post-migration")]
 pub(crate) fn clear_collection_mode_cache(name: &str) {
     if let Some(map) = COLLECTION_MODES.get()
         && let Ok(mut m) = map.write()

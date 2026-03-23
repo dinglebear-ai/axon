@@ -34,6 +34,7 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
 ///
 /// Delegates to [`scrape_payload`] from the crawl layer; wraps the raw
 /// JSON value into the typed service result.
+#[must_use = "scrape returns a Result that should be handled"]
 pub async fn scrape(cfg: &Config, url: &str) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
     crate::crates::core::http::validate_url(&normalized).map_err(|e| -> Box<dyn Error> {

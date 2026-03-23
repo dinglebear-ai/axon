@@ -16,7 +16,8 @@ The browser copy of the same token is also used by the web UI client helpers.
 
 | Variable | Used by | Purpose |
 |----------|---------|---------|
-| `AXON_WEB_API_TOKEN` | Rust web server + Next middleware | Server-side token check |
+| `AXON_WEB_API_TOKEN` | Rust web server + Next middleware | Primary server-side token — gates both `/api/*` and `/ws` |
+| `AXON_WEB_BROWSER_API_TOKEN` | Next middleware | Optional second-tier token for `/api/*` routes only (does NOT gate `/ws`). When set, `NEXT_PUBLIC_AXON_API_TOKEN` must equal this value, not `AXON_WEB_API_TOKEN`. |
 | `NEXT_PUBLIC_AXON_API_TOKEN` | Browser client | Appended as `?token=` on `/ws` and sent as `x-api-key` on `/api/*` |
 | `AXON_WEB_ALLOW_INSECURE_DEV` | Next middleware + shell server | Localhost-only development bypass |
 | `AXON_SHELL_WS_TOKEN` | Shell websocket server | Optional dedicated token for `/ws/shell` |
@@ -77,7 +78,9 @@ Priority:
 
 ## Security Notes
 
-- Keep `AXON_WEB_API_TOKEN` and `NEXT_PUBLIC_AXON_API_TOKEN` identical.
+- **Token matching rules:**
+  - When `AXON_WEB_BROWSER_API_TOKEN` is NOT set: `NEXT_PUBLIC_AXON_API_TOKEN` must equal `AXON_WEB_API_TOKEN`.
+  - When `AXON_WEB_BROWSER_API_TOKEN` IS set: `NEXT_PUBLIC_AXON_API_TOKEN` must equal `AXON_WEB_BROWSER_API_TOKEN` (not `AXON_WEB_API_TOKEN`). This keeps the browser-exposed token separate from the primary WS gate token.
 - If the token changes, restart or rebuild the web app so the browser bundle picks up the new value.
 - Query-string delivery for `/ws` and browser downloads is convenient but visible in URL logs. Rotate the token if those logs are exposed.
 

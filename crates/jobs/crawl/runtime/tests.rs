@@ -1,8 +1,9 @@
 use super::*;
 use crate::crates::core::config::RenderMode;
+#[allow(deprecated)] // open_amqp_channel used only for connectivity checks in tests
+use crate::crates::jobs::common::open_amqp_channel;
 use crate::crates::jobs::common::{
-    make_pool, open_amqp_channel, resolve_test_pg_url, stale_watchdog_confirmed,
-    stale_watchdog_payload, test_config,
+    make_pool, resolve_test_pg_url, stale_watchdog_confirmed, stale_watchdog_payload, test_config,
 };
 use chrono::Duration;
 use serial_test::serial;
@@ -265,6 +266,7 @@ async fn crawl_ensure_schema_is_concurrency_safe() -> Result<(), Box<dyn Error>>
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires AMQP infra"]
+#[allow(deprecated)] // open_amqp_channel: used here only as a connectivity probe, not a consumer
 async fn crawl_worker_e2e_processes_pending_job_to_terminal_status() -> Result<(), Box<dyn Error>> {
     let local = tokio::task::LocalSet::new();
     local

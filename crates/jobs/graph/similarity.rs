@@ -218,6 +218,6 @@ mod tests {
             .iter()
             .find(|edge| edge.target_url == "https://b.com")
             .unwrap();
-        assert!((b.score - 0.91).abs() < f64::EPSILON as f32);
+        assert!((b.score - 0.91).abs() < f32::EPSILON);
     }
 }

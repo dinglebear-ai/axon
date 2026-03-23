@@ -204,7 +204,7 @@ High-level subsystem map:
   - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `crates/vector/CLAUDE.md`.
 - Services layer (services-first contract) — see `crates/services/CLAUDE.md`:
   - `crates/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
-  - CLI commands call `crates/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those are removed)
+  - CLI commands call `crates/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
   - Each service function returns a typed result struct (defined in `crates/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
   - ACP orchestration lives in `crates/services/acp/` (session lifecycle, permission bridge, adapter subprocess)
@@ -450,6 +450,8 @@ Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin.
 - Progress is logged every 100 pages (~25,600 points). At 256 points/page over 2.57M points, expect 1–2 hours.
 - The scroll loop uses the raw Qdrant `/points/scroll` API directly (not the shared `qdrant_scroll_pages_while` helper) to enable async upserts after each page.
 
+**After migration, restart all worker processes.** The process-wide VectorMode cache is not invalidated on migration — workers that embedded to the source collection before migration will retain stale `Unnamed` mode in memory and fall back to dense-only search even for the new named-mode destination collection.
+
 ### Sitemap backfill
 After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that the crawler missed and fetches them individually. Respects `--max-sitemaps` (default: 512) and `--include-subdomains`. Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` falls within the last N days; URLs without `<lastmod>` are always included.
 
@@ -500,7 +502,7 @@ When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, t
 ### AMQP reconnect backoff
 When a worker's AMQP channel dies (broker restart, consumer_timeout, network blip), the lane reconnects automatically with exponential backoff: starts at 2s, doubles each attempt, capped at 60s. On successful reconnect, the backoff resets to 2s **only if the connection was alive for >=60 seconds** (`ran_for_secs >= AMQP_RECONNECT_MAX_SECS` in `worker_lane.rs`). Short-lived connections that reconnect quickly retain their current backoff value. This prevents rapid reconnect loops from hammering the broker after a transient failure. The current job is not lost — it holds no AMQP reference and completes normally before the reconnect loop fires.
 
-**Note:** The crawl worker's reconnect loop in `crawl/runtime/worker/loops.rs` has different semantics: it resets backoff to `RECONNECT_BACKOFF_INITIAL_SECS` (2s) on **every** successful reconnect (i.e., when `run_amqp_worker_lane` returns `Ok(())`), regardless of how long the connection was alive.
+**Note:** The crawl worker's reconnect loop in `crates/jobs/crawl/runtime/worker/loops.rs` has different semantics: it resets backoff to `RECONNECT_BACKOFF_INITIAL_SECS` (2s) on **every** successful reconnect (i.e., when `run_amqp_worker_lane` returns `Ok(())`), regardless of how long the connection was alive.
 
 ### Adding fields to `Config` struct
 When adding a new non-`Option` field to `Config` in `crates/core/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:

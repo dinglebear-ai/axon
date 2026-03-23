@@ -44,6 +44,29 @@ fn cache_and_retrieve_unnamed_mode() {
     );
 }
 
+// -- clear_collection_mode_cache --
+
+#[test]
+fn clear_cache_allows_mode_re_detection() {
+    let name = "test_clear_cache_redetect";
+    cache_vector_mode(name, VectorMode::Unnamed);
+    assert_eq!(cached_vector_mode(name), Some(VectorMode::Unnamed));
+
+    clear_collection_mode_cache(name);
+
+    assert!(
+        cached_vector_mode(name).is_none(),
+        "cache entry must be removed after clear_collection_mode_cache"
+    );
+}
+
+#[test]
+fn clear_cache_noop_for_absent_entry() {
+    // Clearing a non-existent entry must not panic or corrupt other entries.
+    clear_collection_mode_cache("test_clear_cache_never_inserted");
+    assert!(cached_vector_mode("test_clear_cache_never_inserted").is_none());
+}
+
 // -- validate_existing_dim --
 
 #[test]

@@ -94,6 +94,7 @@ pub fn map_crawl_job_result(payload: serde_json::Value) -> CrawlJobResult {
 /// Enqueue one or more crawl jobs and return their job IDs immediately.
 /// Fire-and-forget: jobs are inserted into the queue and this function returns
 /// without waiting for the crawl to complete.
+#[must_use = "crawl_start returns a Result that should be handled"]
 pub async fn crawl_start(
     cfg: &Config,
     urls: &[String],

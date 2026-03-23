@@ -71,6 +71,7 @@ pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult,
 // ── Service functions (call-through wrappers) ────────────────────────────────
 
 /// Semantic vector search.
+#[must_use = "query returns a Result that should be handled"]
 pub async fn query(
     cfg: &Config,
     text: &str,
@@ -89,6 +90,7 @@ pub async fn query(
 }
 
 /// Retrieve stored document chunks for a URL.
+#[must_use = "retrieve returns a Result that should be handled"]
 pub async fn retrieve(
     cfg: &Config,
     url: &str,
@@ -101,6 +103,7 @@ pub async fn retrieve(
 }
 
 /// RAG ask: retrieve relevant context, then answer with LLM.
+#[must_use = "ask returns a Result that should be handled"]
 pub async fn ask(
     cfg: &Config,
     question: &str,
@@ -140,6 +143,7 @@ pub async fn ask(
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
 ///
 /// Returns the full structured evaluate payload without printing to stdout.
+#[must_use = "evaluate returns a Result that should be handled"]
 pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Box<dyn Error>> {
     let mut derived = cfg.clone();
     derived.query = Some(question.to_string());
@@ -159,6 +163,7 @@ pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Bo
 /// Suggest new URLs to crawl based on the current Qdrant index and an optional focus.
 ///
 /// Returns the accepted suggestion URLs directly (no stdout side effects).
+#[must_use = "suggest returns a Result that should be handled"]
 pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult, Box<dyn Error>> {
     let mut derived = cfg.clone();
     derived.query = focus.map(ToString::to_string);

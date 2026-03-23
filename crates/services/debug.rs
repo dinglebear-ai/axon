@@ -4,6 +4,7 @@ use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use crate::crates::services::types::DebugResult;
 use std::error::Error;
 
+#[must_use = "debug_report returns a Result that should be handled"]
 pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
     let acp_adapter_cmd = cfg
         .acp_adapter_cmd

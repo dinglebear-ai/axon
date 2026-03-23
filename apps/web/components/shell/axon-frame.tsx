@@ -2,7 +2,7 @@
 
 import type { ReactNode, RefObject } from 'react'
 import type { NeuralCanvasHandle } from '@/components/neural-canvas'
-import NeuralCanvas from '@/components/neural-canvas'
+import { NeuralCanvas } from '@/components/neural-canvas'
 import type { NeuralCanvasProfile } from '@/lib/pulse/neural-canvas-presets'
 
 export function AxonFrame({
