@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
+use crate::crates::core::logging::log_warn;
 use crate::crates::core::neo4j::Neo4jClient;
 use crate::crates::vector::ops::qdrant::qdrant_base;
 use serde_json::Value;
@@ -33,6 +34,7 @@ pub fn build_recommend_request(
                 "positive": [chunk_point_id(url, 0).to_string()]
             }
         },
+        "using": "dense",
         "limit": limit,
         "with_payload": true,
         "score_threshold": threshold,
@@ -78,8 +80,8 @@ pub async fn compute_similarity(
         qdrant_base(cfg),
         cfg.collection
     );
-    let response = client
-        .post(endpoint)
+    let http_response = client
+        .post(&endpoint)
         .json(&build_recommend_request(
             &cfg.collection,
             url,
@@ -87,10 +89,18 @@ pub async fn compute_similarity(
             cfg.graph_similarity_limit,
         ))
         .send()
-        .await?
-        .error_for_status()?
-        .json::<Value>()
         .await?;
+
+    if !http_response.status().is_success() {
+        let status = http_response.status();
+        let body = http_response.text().await.unwrap_or_default();
+        log_warn(&format!(
+            "compute_similarity: Qdrant returned {status} for url={url}: {body}"
+        ));
+        return Ok(vec![]);
+    }
+
+    let response = http_response.json::<Value>().await?;
 
     let raw_results = response["result"]
         .as_array()
@@ -178,6 +188,10 @@ mod tests {
             1
         );
         assert_eq!(req["filter"]["must_not"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            req["using"], "dense",
+            "named-vector collections require 'using' field"
+        );
     }
 
     #[test]

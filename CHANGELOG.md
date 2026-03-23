@@ -1,5 +1,17 @@
 # Changelog
-Last Modified: 2026-03-22 (session: v0.32.1 — PR review fixes: jobs, ingest, crawl, services, frontend)
+Last Modified: 2026-03-23 (session: v0.32.2 — graph similarity fix: named-vector support + error resilience)
+
+## [0.32.2] — feat/pulse-shell-and-hybrid-search
+
+### Highlights
+
+- **Graph similarity fix** — `similarity.rs`: adds `"using": "dense"` to Qdrant recommend requests (required for named-vector collections); replaces `.error_for_status()?` with explicit status check that logs a warning and returns empty results instead of propagating errors.
+
+### Commits since v0.32.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| c90022bf | chore | bump version 0.32.0 → 0.32.1, add config files, update changelog |
 
 ## [0.32.1] — feat/pulse-shell-and-hybrid-search
 
