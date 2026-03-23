@@ -107,6 +107,11 @@ async fn ensure_turn_session(
     turn_ctx: &mut TurnContext,
 ) -> Result<(), String> {
     let sdk_servers = super::super::mapping::convert_mcp_servers(&turn_ctx.req.mcp_servers);
+    let sdk_servers = super::super::mapping::filter_sdk_mcp_servers(
+        &sdk_servers,
+        runtime_state.mcp_http_supported.get(),
+        runtime_state.mcp_sse_supported.get(),
+    );
     let requested = turn_ctx
         .req
         .session_id
