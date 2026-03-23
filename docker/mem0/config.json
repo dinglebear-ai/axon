@@ -3,7 +3,7 @@
     "provider": "ollama",
     "config": {
       "model": "qwen3.5:4b",
-      "ollama_base_url": "http://host.docker.internal:11434",
+      "ollama_base_url": "http://axon-ollama:11434",
       "temperature": 0,
       "max_tokens": 2000
     }
@@ -12,7 +12,7 @@
     "provider": "openai",
     "config": {
       "model": "Qwen/Qwen3-Embedding-0.6B",
-      "openai_base_url": "http://host.docker.internal:52000/v1",
+      "openai_base_url": "http://axon-tei:80/v1",
       "api_key": "none",
       "embedding_dims": 1024
     }
@@ -20,7 +20,7 @@
   "vector_store": {
     "provider": "qdrant",
     "config": {
-      "url": "http://host.docker.internal:53333",
+      "url": "http://axon-qdrant:6333",
       "collection_name": "mem0"
     }
   },
