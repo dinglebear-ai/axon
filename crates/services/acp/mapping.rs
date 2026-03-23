@@ -475,7 +475,10 @@ pub(super) fn filter_sdk_mcp_servers(
                 }
                 sse_supported
             }
-            _ => true,
+            _ => {
+                tracing::warn!("ACP: dropping unknown MCP server transport — not supported by capability filter");
+                false
+            }
         })
         .cloned()
         .collect()
@@ -580,6 +583,7 @@ mod tests {
             McpServer::Http(h) => {
                 assert_eq!(h.headers.len(), 1);
                 assert_eq!(h.headers[0].name, "Authorization");
+                assert_eq!(h.headers[0].value, "Bearer tok");
             }
             _ => panic!("expected Http"),
         }
@@ -611,6 +615,26 @@ mod tests {
     fn filter_sdk_keeps_stdio_always() {
         let servers = vec![McpServer::Stdio(McpServerStdio::new("s", "/bin/srv"))];
         let filtered = filter_sdk_mcp_servers(&servers, false, false);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn filter_sdk_drops_sse_when_not_supported() {
+        let servers = vec![McpServer::Sse(McpServerSse::new(
+            "s",
+            "http://localhost/sse",
+        ))];
+        let filtered = filter_sdk_mcp_servers(&servers, false, false);
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn filter_sdk_keeps_sse_when_supported() {
+        let servers = vec![McpServer::Sse(McpServerSse::new(
+            "s",
+            "http://localhost/sse",
+        ))];
+        let filtered = filter_sdk_mcp_servers(&servers, false, true);
         assert_eq!(filtered.len(), 1);
     }
 }
