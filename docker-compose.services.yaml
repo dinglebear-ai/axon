@@ -223,33 +223,6 @@ services:
       retries: 12
       start_period: 40s
 
-  axon-mem0:
-    <<: *common-service
-    build:
-      context: ./docker/mem0
-      dockerfile: Dockerfile
-    image: axon-mem0:latest
-    container_name: axon-mem0
-    ports:
-      - "127.0.0.1:58000:8000"
-    volumes:
-      - ./docker/mem0/config.json:/app/config.json:ro
-    environment:
-      MEM0_CONFIG_PATH: /app/config.json
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    depends_on:
-      axon-qdrant:
-        condition: service_healthy
-      axon-tei:
-        condition: service_healthy
-      axon-ollama:
-        condition: service_healthy
-
 networks:
   axon:
     driver: bridge

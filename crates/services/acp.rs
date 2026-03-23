@@ -258,7 +258,9 @@ impl AcpClientScaffold {
     ///
     /// Used by env-isolation integration tests that need to spawn a real shell
     /// (e.g. `sh`) without being blocked by the shell-name validator.
-    #[cfg(any(test, feature = "test-helpers"))]
+    ///
+    /// Not gated behind `#[cfg(test)]` because integration tests in `tests/` are
+    /// compiled as separate binaries that don't automatically get the `test` cfg.
     #[doc(hidden)]
     pub fn spawn_adapter_skip_validation(
         &self,
