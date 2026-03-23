@@ -316,6 +316,8 @@ pub(super) async fn setup_session(
             .await;
             let requested_id = load_session.session_id.clone();
             let fallback_cwd = load_session.cwd.clone();
+            // Clone before load_session is consumed: fallback NewSession gets the same
+            // (already capability-filtered) MCP servers as the failed Load request.
             let fallback_mcp_servers = load_session.mcp_servers.clone();
             match conn.load_session(load_session).await {
                 Ok(r) => Ok((requested_id, r.config_options)),
@@ -334,7 +336,6 @@ pub(super) async fn setup_session(
                     if !fallback_mcp_servers.is_empty() {
                         fallback_req = fallback_req.mcp_servers(fallback_mcp_servers);
                     }
-                    // INVARIANT: fallback session has same MCP servers as the failed load request
                     let r = conn
                         .new_session(fallback_req)
                         .await
@@ -510,7 +511,7 @@ mod tests {
     use crate::crates::services::types::AcpMcpServerConfig;
 
     #[test]
-    fn build_session_setup_load_preserves_mcp_servers() {
+    fn build_session_setup_returns_load_variant_with_mcp_servers() {
         let cwd = std::env::temp_dir();
         let servers = vec![AcpMcpServerConfig::Stdio {
             name: "test-srv".into(),
