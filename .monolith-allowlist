@@ -26,3 +26,4 @@ crates/core/logging.rs  # expires: 2026-04-30  -- 612L; needs split into logging
 crates/jobs/refresh.rs  # expires: 2026-04-30  -- 591L; needs split into refresh/{schedule,processor,state}.rs
 crates/core/config/types/config.rs  # expires: 2026-04-30  -- 527L; needs split into config/types/{crawl,embed,job}.rs
 
+crates/services/types/acp.rs  # expires: 2026-04-30  -- 547L+; Sse variant + headers pending split

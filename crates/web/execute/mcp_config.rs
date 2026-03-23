@@ -108,7 +108,11 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
                 return None;
             }
             if let Some(url) = url {
-                Some(AcpMcpServerConfig::Http { name, url })
+                Some(AcpMcpServerConfig::Http {
+                    name,
+                    url,
+                    headers: vec![],
+                })
             } else {
                 let cmd = command.unwrap_or_default();
                 // SEC-2: validate command before spawning a child process.

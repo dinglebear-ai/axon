@@ -373,7 +373,11 @@ pub(super) fn convert_mcp_servers(configs: &[AcpMcpServerConfig]) -> Vec<McpServ
                 }
                 McpServer::Stdio(server)
             }
-            AcpMcpServerConfig::Http { name, url } => {
+            AcpMcpServerConfig::Http { name, url, .. } => {
+                McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
+            }
+            AcpMcpServerConfig::Sse { name, url, .. } => {
+                // TODO Task 2: full SSE support with headers
                 McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
             }
         })
