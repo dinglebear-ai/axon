@@ -164,6 +164,7 @@ impl Default for Config {
             mcp_http_host: "127.0.0.1".to_string(),
             mcp_http_port: 8001,
             custom_headers: vec![],
+            quiet: false,
         }
     }
 }
@@ -371,6 +372,7 @@ impl fmt::Debug for Config {
                     })
                     .collect::<Vec<_>>(),
             )
+            .field("quiet", &self.quiet)
             .finish()
     }
 }
