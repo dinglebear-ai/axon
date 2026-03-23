@@ -2,7 +2,7 @@
   "llm": {
     "provider": "ollama",
     "config": {
-      "model": "qwen3.5:4b",
+      "model": "qwen2.5:7b",
       "ollama_base_url": "http://axon-ollama:11434",
       "temperature": 0,
       "max_tokens": 2000
@@ -23,14 +23,6 @@
       "url": "http://axon-qdrant:6333",
       "collection_name": "mem0",
       "embedding_model_dims": 1024
-    }
-  },
-  "graph_store": {
-    "provider": "neo4j",
-    "config": {
-      "url": "bolt://YOUR_NEO4J_HOST:7687",
-      "username": "neo4j",
-      "password": "CHANGE_ME"
     }
   }
 }
