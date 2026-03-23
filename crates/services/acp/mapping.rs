@@ -446,8 +446,7 @@ pub(super) fn filter_compatible_mcp_servers(
 /// Used post-initialize when capabilities are known but the session setup request
 /// already holds SDK types. Stdio is always kept; Http/Sse require the respective
 /// capability flag.
-// Called by Task 3 (AcpRuntimeState capability filter) and Task 5 (persistent-conn path).
-#[allow(dead_code)]
+// Called by `apply_mcp_capability_filter` in `runtime.rs` (Task 3) and Task 5 (persistent-conn path).
 pub(super) fn filter_sdk_mcp_servers(
     servers: &[McpServer],
     http_supported: bool,

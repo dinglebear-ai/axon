@@ -9,8 +9,9 @@ use crate::crates::services::types::AcpConfigOption;
 use crate::crates::services::types::AcpSessionUpdateKind;
 use crate::crates::services::types::{AcpBridgeEvent, AcpTurnResultEvent};
 use agent_client_protocol::{
-    Client, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SessionNotification, SessionUpdate, StopReason,
+    Client, ReadTextFileRequest, ReadTextFileResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, SessionUpdate,
+    StopReason, WriteTextFileRequest, WriteTextFileResponse,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -54,6 +55,15 @@ pub struct AcpRuntimeState {
     pub(super) permission_timeout_secs: std::cell::Cell<Option<u64>>,
     /// Guard flag: emit the 1 MiB assistant text warning at most once per session.
     pub(super) limit_warning_emitted: std::cell::Cell<bool>,
+    /// Current session mode (ask / code / architect). Used to avoid redundant
+    /// `set_session_mode` calls when the requested mode matches the active mode.
+    pub(super) current_mode: std::cell::RefCell<Option<String>>,
+    /// Whether the adapter advertises HTTP MCP transport support.
+    /// Set from `InitializeResponse.agent_capabilities.mcp_capabilities.http`.
+    pub(super) mcp_http_supported: std::cell::Cell<bool>,
+    /// Whether the adapter advertises SSE MCP transport support.
+    /// Set from `InitializeResponse.agent_capabilities.mcp_capabilities.sse`.
+    pub(super) mcp_sse_supported: std::cell::Cell<bool>,
 }
 
 // ── Stop reason → &'static str ──────────────────────────────────────────────
@@ -162,6 +172,52 @@ pub struct AcpBridgeClient {
     pub(super) auto_approve: bool,
     /// Pending permission response channels keyed by tool_call_id.
     pub(super) permission_responders: PermissionResponderMap,
+    /// Working directory for this session — used to validate fs paths from the adapter.
+    pub(super) session_cwd: std::path::PathBuf,
+}
+
+// ── Path validation ──────────────────────────────────────────────────────────
+
+/// Resolve `path` relative to `cwd` and ensure it stays within `cwd`.
+///
+/// Normalises `.` and `..` without calling `canonicalize` (so the path need
+/// not exist yet, which matters for write requests).  Returns
+/// `Err(internal_error)` if the resolved path would escape the working
+/// directory.
+fn validate_fs_path(
+    cwd: &std::path::Path,
+    path: &std::path::Path,
+) -> agent_client_protocol::Result<std::path::PathBuf> {
+    use std::path::Component;
+
+    let base = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+
+    // Normalise both paths by collapsing . and .. without hitting the fs.
+    let normalise = |p: &std::path::Path| -> std::path::PathBuf {
+        let mut out = std::path::PathBuf::new();
+        for c in p.components() {
+            match c {
+                Component::ParentDir => {
+                    out.pop();
+                }
+                Component::CurDir => {}
+                other => out.push(other),
+            }
+        }
+        out
+    };
+
+    let resolved = normalise(&base);
+    let norm_cwd = normalise(cwd);
+
+    if !resolved.starts_with(&norm_cwd) {
+        return Err(agent_client_protocol::Error::internal_error());
+    }
+    Ok(resolved)
 }
 
 #[async_trait::async_trait(?Send)]
@@ -244,6 +300,38 @@ impl Client for AcpBridgeClient {
         .await;
 
         Ok(RequestPermissionResponse::new(outcome))
+    }
+
+    async fn read_text_file(
+        &self,
+        args: ReadTextFileRequest,
+    ) -> agent_client_protocol::Result<ReadTextFileResponse> {
+        let path = validate_fs_path(&self.session_cwd, &args.path)?;
+        let content = tokio::fs::read_to_string(&path).await.map_err(|_| {
+            agent_client_protocol::Error::resource_not_found(Some(
+                path.to_string_lossy().into_owned(),
+            ))
+        })?;
+        Ok(ReadTextFileResponse::new(content))
+    }
+
+    async fn write_text_file(
+        &self,
+        args: WriteTextFileRequest,
+    ) -> agent_client_protocol::Result<WriteTextFileResponse> {
+        let path = validate_fs_path(&self.session_cwd, &args.path)?;
+        let service_tx = self.runtime_state.service_tx.borrow().clone();
+        emit_nonblocking(
+            &service_tx,
+            ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: format!("ACP adapter wrote file: {}", path.display()),
+            },
+        );
+        tokio::fs::write(&path, &args.content)
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        Ok(WriteTextFileResponse::default())
     }
 
     async fn session_notification(
@@ -336,6 +424,22 @@ impl Client for AcpBridgeClient {
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_state_default_mcp_capabilities_are_false() {
+        let state = AcpRuntimeState::default();
+        assert!(!state.mcp_http_supported.get());
+        assert!(!state.mcp_sse_supported.get());
+    }
+
+    #[test]
+    fn runtime_state_mcp_capabilities_can_be_set() {
+        let state = AcpRuntimeState::default();
+        state.mcp_http_supported.set(true);
+        state.mcp_sse_supported.set(true);
+        assert!(state.mcp_http_supported.get());
+        assert!(state.mcp_sse_supported.get());
+    }
     use agent_client_protocol::{
         PermissionOption, PermissionOptionKind, SessionId, ToolCall, ToolCallId, ToolCallUpdate,
     };
@@ -355,6 +459,7 @@ mod tests {
             runtime_state: runtime_state.clone(),
             auto_approve: true,
             permission_responders,
+            session_cwd: std::path::PathBuf::new(),
         };
 
         // Create a permission request for "shell" tool with a different ID.

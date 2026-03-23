@@ -143,6 +143,7 @@ pub(super) async fn initialize_connection(
     spawned: SpawnedAdapter,
     adapter_cmd: &AcpAdapterCommand,
     initialize: InitializeRequest,
+    cwd: std::path::PathBuf,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
     permission_responders: &PermissionResponderMap,
 ) -> Result<
@@ -165,6 +166,7 @@ pub(super) async fn initialize_connection(
         runtime_state: runtime_state.clone(),
         auto_approve,
         permission_responders: permission_responders.clone(),
+        session_cwd: cwd,
     };
 
     let msg =
@@ -233,6 +235,14 @@ pub(super) async fn initialize_connection(
         },
     )
     .await;
+
+    // Store adapter's MCP transport capabilities for session-setup filtering.
+    runtime_state
+        .mcp_http_supported
+        .set(resp.agent_capabilities.mcp_capabilities.http);
+    runtime_state
+        .mcp_sse_supported
+        .set(resp.agent_capabilities.mcp_capabilities.sse);
 
     Ok((conn, runtime_state, spawned.exit_rx))
 }
