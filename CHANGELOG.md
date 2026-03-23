@@ -1,7 +1,7 @@
 # Changelog
 Last Modified: 2026-03-23 (session: v0.32.2 — graph similarity fix: named-vector support + error resilience)
 
-## [0.32.2] — feat/pulse-shell-and-hybrid-search
+## [0.32.2] — main
 
 ### Highlights
 
@@ -11,6 +11,7 @@ Last Modified: 2026-03-23 (session: v0.32.2 — graph similarity fix: named-vect
 
 | SHA | Type | Description |
 |-----|------|-------------|
+| b118e0c1 | fix | graph: named-vector support and error resilience in compute_similarity |
 | c90022bf | chore | bump version 0.32.0 → 0.32.1, add config files, update changelog |
 
 ## [0.32.1] — feat/pulse-shell-and-hybrid-search
