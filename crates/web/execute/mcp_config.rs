@@ -126,7 +126,15 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
                     .collect();
                 match entry.transport.as_deref() {
                     Some("sse") => Some(AcpMcpServerConfig::Sse { name, url, headers }),
-                    _ => Some(AcpMcpServerConfig::Http { name, url, headers }),
+                    None | Some("http") => Some(AcpMcpServerConfig::Http { name, url, headers }),
+                    Some(unknown) => {
+                        tracing::warn!(
+                            server = %name,
+                            transport = %unknown,
+                            "mcp.json: unknown transport value; treating as http"
+                        );
+                        Some(AcpMcpServerConfig::Http { name, url, headers })
+                    }
                 }
             } else {
                 let cmd = command.unwrap_or_default();
@@ -245,6 +253,17 @@ mod tests {
     #[tokio::test]
     async fn http_url_without_transport_defaults_to_http() {
         let json = r#"{"mcpServers": {"my-http": {"url": "http://localhost/mcp"}}}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        tokio::fs::write(&path, json).await.unwrap();
+        let servers = fetch_axon_mcp_servers_from_disk(&path).await;
+        assert_eq!(servers.len(), 1);
+        assert!(matches!(servers[0], AcpMcpServerConfig::Http { .. }));
+    }
+
+    #[tokio::test]
+    async fn unknown_transport_falls_back_to_http() {
+        let json = r#"{"mcpServers": {"s": {"url": "http://localhost/x", "transport": "ws"}}}"#;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp.json");
         tokio::fs::write(&path, json).await.unwrap();
