@@ -80,7 +80,7 @@ reflink-copy = "0.1"
 dotenvy = "0.15"
 rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server", "schemars", "elicitation"] }
 html5gum = "0.8"
-agent-client-protocol = { version = "0.10.0", features = ["unstable"] }
+agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
 
 [features]
 # Exposes test-only helpers (e.g. spawn_adapter_skip_validation) to integration
