@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info};
+use crate::crates::core::ui::Spinner;
 use crate::crates::jobs::common::make_pool;
 use crate::crates::services::export::{ExportOptions, export_manifest, verify_manifest_json};
 use std::error::Error;
@@ -48,8 +49,11 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         statuses: vec![],
     };
 
-    log_info("Collecting export data from Postgres and Qdrant");
+    log_info("export | collecting data from Postgres and Qdrant");
+    let spinner =
+        Spinner::new("Collecting export data (this may take a moment for large collections)...");
     let manifest = export_manifest(cfg, &pool, &options).await?;
+    spinner.finish("export data collected");
     let json = serde_json::to_string_pretty(&manifest)?;
 
     if cfg.json_output {
