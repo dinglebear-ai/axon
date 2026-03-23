@@ -373,11 +373,24 @@ pub(super) fn convert_mcp_servers(configs: &[AcpMcpServerConfig]) -> Vec<McpServ
                 }
                 McpServer::Stdio(server)
             }
-            AcpMcpServerConfig::Http { name, url, .. } => {
+            AcpMcpServerConfig::Http { name, url, headers } => {
+                if !headers.is_empty() {
+                    tracing::warn!(
+                        server = %name,
+                        header_count = headers.len(),
+                        "ACP: HTTP MCP server headers configured but not yet forwarded; \
+                         headers will be ignored until Task 2 is implemented"
+                    );
+                }
                 McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
             }
             AcpMcpServerConfig::Sse { name, url, .. } => {
-                // TODO Task 2: full SSE support with headers
+                // TODO Task 2: replace stub with McpServer::Sse once full SSE support lands
+                tracing::warn!(
+                    server = %name,
+                    "ACP: SSE MCP server configured but SSE→HTTP stub is active; \
+                     passing as HTTP transport until Task 2 is implemented"
+                );
                 McpServer::Http(McpServerHttp::new(name.clone(), url.clone()))
             }
         })
