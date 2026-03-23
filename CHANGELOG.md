@@ -1,5 +1,34 @@
 # Changelog
-Last Modified: 2026-03-23 (session: v0.32.3 — comprehensive review: security, performance, CI/CD, and quality fixes)
+Last Modified: 2026-03-23 (session: v0.33.0 — ACP full MCP SDK support: SSE transport, HTTP headers, McpCapabilities gating, fallback preservation)
+
+## [0.33.0] — chore/cleanup
+
+### Highlights
+
+- **ACP MCP: SSE transport** — `AcpMcpServerConfig` gains `Sse { name, url, headers }` variant; `convert_mcp_servers` correctly maps to `McpServer::Sse` via `McpServerSse::new`. Previously SSE configs were silently dropped.
+- **ACP MCP: HTTP headers** — `Http` variant gains `headers: Vec<(String,String)>`; headers forwarded via `HttpHeader::new` on session setup. Auth headers no longer silently lost.
+- **ACP MCP: Capability gating** — `McpCapabilities` read from `InitializeResponse` after adapter init; `filter_sdk_mcp_servers` drops Http/Sse servers when adapter doesn't advertise support. Prevents adapter rejection of unknown transports.
+- **ACP MCP: Fallback preservation** — Load-session fallback in both one-shot (`runtime.rs`) and persistent-conn (`turn.rs`) paths now correctly clones and threads MCP servers through to the fallback `NewSessionRequest`. Previously servers were lost on fallback.
+- **mcp.json disk format** — `transport: "sse"` and `headers: [{name, value}]` fields now parsed from disk; unknown transport strings warn + fall back to Http.
+
+### Commits since v0.32.4
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 1549a85a | fix(acp) | expose spawn_adapter_skip_validation to integration tests |
+| 0e299364 | docs(acp) | update gap analysis with full MCP support status |
+| c8c5252e | fix(mcp) | warn on unknown transport in mcp.json disk loader |
+| 0baee292 | feat(mcp) | support SSE transport and HTTP headers in mcp.json disk loader |
+| d5d92c0e | fix(acp) | apply capability filter to per-turn MCP servers in persistent-conn path |
+| 0b508e91 | fix(acp) | pass MCP servers through load_session and create_new_session in persistent mode |
+| da582688 | chore(acp) | move INVARIANT comment; rename misleading test in session.rs |
+| cece1794 | fix(acp) | preserve MCP servers on load-session fallback in one-shot path |
+| dd5945f2 | chore(acp) | clarify dead_code annotation on filter_compatible_mcp_servers |
+| 48b17f72 | feat(acp) | read McpCapabilities from InitializeResponse; filter unsupported MCP transports |
+| bb4cc39c | fix(acp) | drop unknown MCP transports; add SDK SSE filter tests; assert header value |
+| 67592aaf | feat(acp) | implement Sse + headers in convert_mcp_servers; add filter_compatible/sdk_mcp_servers |
+| 8e9fe833 | fix(acp) | warn on SSE stub and dropped headers in mapping.rs |
+| f8f3382a | feat(acp) | add Sse variant and headers to AcpMcpServerConfig |
 
 ## [0.32.3] — chore/cleanup
 
