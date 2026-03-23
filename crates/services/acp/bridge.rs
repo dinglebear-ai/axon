@@ -2,19 +2,17 @@
 //! forwarding session notifications and permission requests through the
 //! service event channel.
 
-use crate::crates::services::events::{
-    EditorOperation, LogLevel, ServiceEvent, emit, emit_nonblocking,
-};
-use crate::crates::services::types::AcpConfigOption;
+mod state;
+pub use state::*;
+
+use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
 use crate::crates::services::types::AcpSessionUpdateKind;
-use crate::crates::services::types::{AcpBridgeEvent, AcpTurnResultEvent};
 use agent_client_protocol::{
     Client, ReadTextFileRequest, ReadTextFileResponse, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, SessionUpdate,
-    StopReason, WriteTextFileRequest, WriteTextFileResponse,
+    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, WriteTextFileRequest,
+    WriteTextFileResponse,
 };
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 use super::PermissionResponderMap;
 use super::mapping::{
@@ -22,140 +20,6 @@ use super::mapping::{
     map_session_update_kind,
 };
 use super::permission::{auto_approve_outcome, handle_interactive_permission};
-use super::persistent_conn::editor::parse_editor_blocks;
-
-// ── Runtime state ───────────────────────────────────────────────────────────
-
-/// Use RefCell for single-threaded hot path — avoids Mutex lock on every
-/// streaming token delta. Safe because the ACP runtime runs on a
-/// `current_thread` tokio runtime inside `LocalSet` (all tasks on one thread).
-#[derive(Debug, Default)]
-pub struct AcpRuntimeState {
-    pub(super) current_session_id: std::cell::RefCell<Option<String>>,
-    pub(super) assistant_text: std::cell::RefCell<String>,
-    /// Current turn's service event sender — updated per-turn by `run_turn_on_conn`
-    /// so bridge callbacks (session_notification, request_permission) always route
-    /// to the active turn's channel, not the stale first-turn channel.
-    pub(super) service_tx: std::cell::RefCell<Option<mpsc::Sender<ServiceEvent>>>,
-    /// Monotonically-increasing turn counter.  Incremented at the start of each
-    /// turn by `run_turn_on_conn`.  `session_notification` compares the active
-    /// turn ID against this value and drops deltas that arrive after the turn has
-    /// ended (e.g. late results from a previous timed-out turn).
-    pub(super) current_turn_id: std::cell::Cell<u64>,
-    /// The model string applied when the ACP session was established.
-    /// Updated by `run_turn_on_conn` when a model switch succeeds.
-    pub(super) established_model: std::cell::RefCell<Option<String>>,
-    /// Latest config options known for this session (from setup and runtime updates).
-    /// Used by the persistent runtime to resolve config option IDs for mid-session
-    /// config changes (for example model changes).
-    pub(super) config_options: std::cell::RefCell<Vec<AcpConfigOption>>,
-    /// Disabled MCP tool command names for the active session/runtime.
-    pub(super) blocked_mcp_tools: std::cell::RefCell<std::collections::HashSet<String>>,
-    /// Overridden timeout for permission requests.
-    pub(super) permission_timeout_secs: std::cell::Cell<Option<u64>>,
-    /// Guard flag: emit the 1 MiB assistant text warning at most once per session.
-    pub(super) limit_warning_emitted: std::cell::Cell<bool>,
-    /// Current session mode (ask / code / architect). Used to avoid redundant
-    /// `set_session_mode` calls when the requested mode matches the active mode.
-    pub(super) current_mode: std::cell::RefCell<Option<String>>,
-    /// Whether the adapter advertises HTTP MCP transport support.
-    /// Set from `InitializeResponse.agent_capabilities.mcp_capabilities.http`.
-    pub(super) mcp_http_supported: std::cell::Cell<bool>,
-    /// Whether the adapter advertises SSE MCP transport support.
-    /// Set from `InitializeResponse.agent_capabilities.mcp_capabilities.sse`.
-    pub(super) mcp_sse_supported: std::cell::Cell<bool>,
-}
-
-// ── Stop reason → &'static str ──────────────────────────────────────────────
-
-pub(super) fn stop_reason_to_str(reason: StopReason) -> &'static str {
-    match reason {
-        StopReason::EndTurn => "end_turn",
-        StopReason::MaxTokens => "max_tokens",
-        StopReason::MaxTurnRequests => "max_turn_requests",
-        StopReason::Refusal => "refusal",
-        StopReason::Cancelled => "cancelled",
-        _ => "unknown",
-    }
-}
-
-// ── Turn finalization (shared by one-shot and persistent paths) ─────────────
-
-/// Finalize a successful prompt turn: log the stop reason, emit `EditorWrite`
-/// events for any `<axon:editor>` blocks in the assistant text, and emit the
-/// `TurnResult` event.
-///
-/// Called from both `runtime.rs` (one-shot path) and `persistent_conn/turn.rs`
-/// (persistent-connection path) to ensure consistent behavior — especially
-/// `EditorWrite` emission, which was previously missing in the one-shot path.
-pub(super) async fn finalize_successful_turn(
-    stop_reason: StopReason,
-    runtime_state: &Arc<AcpRuntimeState>,
-    service_tx: &Option<mpsc::Sender<ServiceEvent>>,
-    session_id_str: &str,
-) -> Result<(), String> {
-    let stop_reason_str = stop_reason_to_str(stop_reason);
-    let log_level = match stop_reason {
-        StopReason::EndTurn => LogLevel::Info,
-        StopReason::MaxTokens | StopReason::Refusal | StopReason::Cancelled => LogLevel::Warn,
-        _ => LogLevel::Info,
-    };
-    let msg = format!(
-        "ACP runtime: prompt turn completed (stop_reason={stop_reason_str}, session_id={session_id_str})"
-    );
-    if log_level == LogLevel::Info {
-        crate::crates::core::logging::log_info(&msg);
-    } else {
-        crate::crates::core::logging::log_warn(&msg);
-    }
-    // Log events are fire-and-forget: silently drop if channel is full.
-    // EditorWrite and TurnResult below use blocking emit() to guarantee delivery.
-    emit_nonblocking(
-        service_tx,
-        ServiceEvent::Log {
-            level: log_level,
-            message: msg,
-        },
-    );
-
-    let session = session_id_str.to_string();
-    let text = runtime_state.assistant_text.borrow().clone();
-
-    for (content, op_str) in parse_editor_blocks(&text) {
-        let operation = if op_str == "append" {
-            EditorOperation::Append
-        } else {
-            EditorOperation::Replace
-        };
-        // Block until the receiver drains enough space. `emit` returns Err
-        // immediately if the receiver is dropped (WS disconnected), so there
-        // is no risk of an infinite hang. We must not drop EditorWrite events
-        // or TurnResult — they are required for the UI to display the response.
-        emit(service_tx, ServiceEvent::EditorWrite { content, operation }).await;
-    }
-
-    emit(
-        service_tx,
-        ServiceEvent::AcpBridge {
-            event: AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
-                session_id: session.clone(),
-                stop_reason: stop_reason_str.to_string(),
-                result: text,
-            }),
-        },
-    )
-    .await;
-    let msg = format!("ACP runtime: TurnResult dispatch attempted (session_id={session})");
-    crate::crates::core::logging::log_info(&msg);
-    emit_nonblocking(
-        service_tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: msg,
-        },
-    );
-    Ok(())
-}
 
 // ── Bridge client ───────────────────────────────────────────────────────────
 
@@ -371,11 +235,7 @@ impl Client for AcpBridgeClient {
                 }
             }
             *state.current_session_id.borrow_mut() = Some(args.session_id.0.to_string());
-
-            if let SessionUpdate::ConfigOptionUpdate(update) = &args.update {
-                let mapped = super::mapping::map_config_options(&update.config_options);
-                *state.config_options.borrow_mut() = mapped;
-            }
+            state.apply_config_option_update(&args.update);
         }
 
         // Use the current turn's service_tx (updated per-turn by run_turn_on_conn).
@@ -424,6 +284,9 @@ impl Client for AcpBridgeClient {
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::*;
+    use crate::crates::services::events::EditorOperation;
+    use agent_client_protocol::StopReason;
+    use tokio::sync::mpsc;
 
     #[test]
     fn runtime_state_default_mcp_capabilities_are_false() {
@@ -440,6 +303,7 @@ mod tests {
         assert!(state.mcp_http_supported.get());
         assert!(state.mcp_sse_supported.get());
     }
+
     use agent_client_protocol::{
         PermissionOption, PermissionOptionKind, SessionId, ToolCall, ToolCallId, ToolCallUpdate,
     };

@@ -1,26 +1,33 @@
 use super::{
-    IngestResult, SessionStateTracker, embed_with_retry, handle_spawn_result,
+    IngestResult, SessionDoc, SessionMeta, SessionStateTracker, flatten_session_result,
     matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
+use crate::crates::vector::ops::{PreparedDoc, chunk_text};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::fs;
 
-pub(super) async fn ingest_gemini_sessions(
+pub(crate) struct ParsedGeminiSession {
+    pub(crate) text: String,
+    pub(crate) turn_count: u32,
+    pub(crate) has_tool_use: bool,
+    pub(crate) tools_used: Vec<String>,
+}
+
+pub(super) async fn collect_gemini_docs(
     cfg: &Config,
     state: &SessionStateTracker,
     multi: &MultiProgress,
-) -> IngestResult<usize> {
+) -> IngestResult<Vec<SessionDoc>> {
     let gemini_root = super::expand_home("~/.gemini");
-    let projects_map = load_gemini_projects(&gemini_root).await;
+    let (projects_map, project_paths_map) = load_gemini_projects(&gemini_root).await;
 
     let pb = multi.add(ProgressBar::new_spinner());
     pb.set_style(
@@ -30,9 +37,8 @@ pub(super) async fn ingest_gemini_sessions(
     );
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let mut total = 0;
+    let mut docs: Vec<SessionDoc> = Vec::new();
     let mut futures = FuturesUnordered::new();
-    let cfg_arc = Arc::new(cfg.clone());
 
     for root in [gemini_root.join("history"), gemini_root.join("tmp")] {
         if !fs::try_exists(&root).await.unwrap_or(false) {
@@ -40,36 +46,37 @@ pub(super) async fn ingest_gemini_sessions(
         }
         enqueue_gemini_dir(
             cfg,
-            &cfg_arc,
             state,
             &projects_map,
+            &project_paths_map,
             root,
             &mut futures,
-            &mut total,
+            &mut docs,
         )
         .await?;
     }
 
     while let Some(res) = futures.next().await {
-        total += handle_spawn_result(res, state, "Gemini").await;
+        if let Some(doc) = flatten_session_result(res, "Gemini") {
+            docs.push(doc);
+        }
     }
 
-    pb.finish_with_message(format!("indexed {} chunks", total));
-    Ok(total)
+    pb.finish_with_message(format!("scanned {} files", docs.len()));
+    Ok(docs)
 }
 
-type GeminiFutures = FuturesUnordered<
-    tokio::task::JoinHandle<(PathBuf, std::time::SystemTime, u64, IngestResult<usize>)>,
->;
+type GeminiFutures = FuturesUnordered<tokio::task::JoinHandle<IngestResult<Option<SessionDoc>>>>;
 
+#[allow(clippy::too_many_arguments)]
 async fn enqueue_gemini_dir(
     cfg: &Config,
-    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     projects_map: &HashMap<String, String>,
+    project_paths_map: &HashMap<String, PathBuf>,
     root: PathBuf,
     futures: &mut GeminiFutures,
-    total: &mut usize,
+    docs: &mut Vec<SessionDoc>,
 ) -> IngestResult<()> {
     let mut read_dir = fs::read_dir(root).await?;
     while let Some(entry) = read_dir.next_entry().await? {
@@ -101,7 +108,21 @@ async fn enqueue_gemini_dir(
         if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_chat_files(cfg_arc, state, chats_dir, collection, futures, total).await?;
+        let project_path = project_paths_map
+            .get(dir_name)
+            .map(|p| p.to_string_lossy().into_owned());
+        let gh_repo = match project_paths_map.get(dir_name) {
+            Some(pp) => super::read_git_remote_origin(pp).await,
+            None => None,
+        };
+        let session_meta = SessionMeta {
+            agent: "gemini",
+            project_name,
+            project_path,
+            gh_repo,
+        };
+        enqueue_gemini_chat_files(state, chats_dir, collection, session_meta, futures, docs)
+            .await?;
     }
     Ok(())
 }
@@ -124,12 +145,12 @@ async fn resolve_project_name(
 }
 
 async fn enqueue_gemini_chat_files(
-    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     chats_dir: PathBuf,
     collection: String,
+    session_meta: SessionMeta,
     futures: &mut GeminiFutures,
-    total: &mut usize,
+    docs: &mut Vec<SessionDoc>,
 ) -> IngestResult<()> {
     let mut chats_read = fs::read_dir(chats_dir).await?;
     while let Some(chat_entry) = chats_read.next_entry().await? {
@@ -152,68 +173,123 @@ async fn enqueue_gemini_chat_files(
             continue;
         }
 
-        let cfg_shared = Arc::clone(cfg_arc);
         let coll_clone = collection.clone();
         let size = meta.len();
+        let file_meta = session_meta.clone();
         futures.push(tokio::spawn(async move {
-            let res = process_gemini_file(&cfg_shared, chat_path.clone(), coll_clone).await;
-            (chat_path, mtime, size, res)
+            parse_gemini_file(chat_path, coll_clone, mtime, size, file_meta).await
         }));
 
-        if futures.len() >= 32
+        if futures.len() >= 64
             && let Some(res) = futures.next().await
+            && let Some(doc) = flatten_session_result(res, "Gemini")
         {
-            *total += handle_spawn_result(res, state, "Gemini").await;
+            docs.push(doc);
         }
     }
     Ok(())
 }
 
-async fn load_gemini_projects(root: &Path) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+/// Returns `(name_map, path_map)` where:
+/// - `name_map`: dir_name or full_path → project_name (for display/collection routing)
+/// - `path_map`: dir_name → actual filesystem PathBuf (for git remote lookup)
+async fn load_gemini_projects(root: &Path) -> (HashMap<String, String>, HashMap<String, PathBuf>) {
+    let mut names: HashMap<String, String> = HashMap::new();
+    let mut paths: HashMap<String, PathBuf> = HashMap::new();
     let projects_file = root.join("projects.json");
     if let Ok(content) = fs::read_to_string(projects_file).await
         && let Ok(val) = serde_json::from_str::<Value>(&content)
         && let Some(projects) = val["projects"].as_object()
     {
-        for (path, name) in projects {
-            if let Some(n) = name.as_str() {
-                map.insert(path.clone(), n.to_string());
-                if let Some(last) = path.split('/').next_back() {
-                    map.insert(last.to_string(), n.to_string());
+        for (path_key, name_val) in projects {
+            if let Some(n) = name_val.as_str() {
+                names.insert(path_key.clone(), n.to_string());
+                if let Some(last) = path_key.split('/').next_back() {
+                    names.insert(last.to_string(), n.to_string());
+                    paths.insert(last.to_string(), PathBuf::from(path_key));
                 }
             }
         }
     }
-    map
+    (names, paths)
 }
 
-async fn process_gemini_file(
-    cfg: &Config,
+async fn parse_gemini_file(
     path: PathBuf,
     collection: String,
-) -> IngestResult<usize> {
+    mtime: SystemTime,
+    size: u64,
+    session_meta: SessionMeta,
+) -> IngestResult<Option<SessionDoc>> {
     let content = fs::read_to_string(&path).await?;
-    let session_text = parse_gemini_json(&content)?;
-
-    let mut session_cfg = cfg.clone();
-    session_cfg.collection = collection;
-
+    let parsed = parse_gemini_json(&content)?;
+    if parsed.text.trim().is_empty() {
+        return Ok(None);
+    }
+    let chunks = chunk_text(&parsed.text);
+    if chunks.is_empty() {
+        return Ok(None);
+    }
     let url = format!("file://{}", path.display());
-    let title = path.file_name().and_then(|n| n.to_str());
-    embed_with_retry(&session_cfg, &session_text, &url, "gemini_session", title).await
+    let title = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_string);
+    let session_id = path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .map(str::to_string);
+    let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
+    let extra = serde_json::json!({
+        "agent": session_meta.agent,
+        "project_name": session_meta.project_name,
+        "project_path": session_meta.project_path,
+        "gh_repo": session_meta.gh_repo,
+        "session_id": session_id,
+        "session_date": mtime_chrono.to_rfc3339(),
+        "turn_count": parsed.turn_count,
+        "has_tool_use": parsed.has_tool_use,
+        "tools_used": parsed.tools_used,
+    });
+    let doc = PreparedDoc {
+        url,
+        domain: "local".to_string(),
+        chunks,
+        source_type: "gemini_session".to_string(),
+        content_type: "text",
+        title,
+        extra: Some(extra),
+    };
+    Ok(Some(SessionDoc {
+        doc,
+        collection,
+        path,
+        mtime,
+        size,
+    }))
 }
 
-/// Parse Gemini chat JSON into session text (pure, no I/O).
-pub(crate) fn parse_gemini_json(content: &str) -> IngestResult<String> {
+/// Parse Gemini chat JSON into session text and metadata (pure, no I/O).
+pub(crate) fn parse_gemini_json(content: &str) -> IngestResult<ParsedGeminiSession> {
     let val: Value = serde_json::from_str(content)?;
     let mut session_text = String::new();
+    let mut turn_count: u32 = 0;
+    let mut has_tool_use = false;
+    let mut tools_used: HashSet<String> = HashSet::new();
+
     if let Some(messages) = val["messages"].as_array() {
         for msg in messages {
             let role = msg["type"].as_str().unwrap_or("unknown");
             if let Some(content_arr) = msg["content"].as_array() {
                 let mut combined = String::new();
                 for item in content_arr {
+                    let item_type = item["type"].as_str().unwrap_or("");
+                    if matches!(item_type, "tool_use" | "function_call" | "tool_call") {
+                        has_tool_use = true;
+                        if let Some(name) = item["name"].as_str() {
+                            tools_used.insert(name.to_string());
+                        }
+                    }
                     if let Some(t) = item["text"].as_str() {
                         combined.push_str(t);
                         combined.push('\n');
@@ -225,11 +301,23 @@ pub(crate) fn parse_gemini_json(content: &str) -> IngestResult<String> {
                         role.to_uppercase(),
                         combined
                     ));
+                    if role == "human" {
+                        turn_count += 1;
+                    }
                 }
             }
         }
     }
-    Ok(session_text)
+
+    let mut tools_list: Vec<String> = tools_used.into_iter().collect();
+    tools_list.sort();
+
+    Ok(ParsedGeminiSession {
+        text: session_text,
+        turn_count,
+        has_tool_use,
+        tools_used: tools_list,
+    })
 }
 
 #[cfg(test)]
@@ -244,10 +332,10 @@ mod tests {
     fn parse_valid_gemini_json_happy_path() {
         let json = r#"{"messages":[{"type":"human","content":[{"text":"What is the capital of France?"}]},{"type":"model","content":[{"text":"Paris."}]}]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(result.contains("### HUMAN:"));
-        assert!(result.contains("What is the capital of France?"));
-        assert!(result.contains("### MODEL:"));
-        assert!(result.contains("Paris."));
+        assert!(result.text.contains("### HUMAN:"));
+        assert!(result.text.contains("What is the capital of France?"));
+        assert!(result.text.contains("### MODEL:"));
+        assert!(result.text.contains("Paris."));
     }
 
     #[test]
@@ -255,8 +343,8 @@ mod tests {
         let json =
             r#"{"messages":[{"type":"model","content":[{"text":"First. "},{"text":"Second."}]}]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(result.contains("First."));
-        assert!(result.contains("Second."));
+        assert!(result.text.contains("First."));
+        assert!(result.text.contains("Second."));
     }
 
     #[test]
@@ -271,30 +359,53 @@ mod tests {
     fn parse_gemini_json_empty_messages_array() {
         let json = r#"{"messages":[]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(result.trim().is_empty());
+        assert!(result.text.trim().is_empty());
     }
 
     #[test]
     fn parse_gemini_json_no_messages_key() {
         let json = r#"{"conversations":[]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(result.trim().is_empty());
+        assert!(result.text.trim().is_empty());
     }
 
     #[test]
     fn parse_gemini_json_whitespace_only_content_skipped() {
         let json = r#"{"messages":[{"type":"human","content":[{"text":"   "}]},{"type":"model","content":[{"text":"Real response"}]}]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(!result.contains("### HUMAN:"));
-        assert!(result.contains("Real response"));
+        assert!(!result.text.contains("### HUMAN:"));
+        assert!(result.text.contains("Real response"));
     }
 
     #[test]
     fn parse_gemini_json_missing_type_falls_back_to_unknown() {
         let json = r#"{"messages":[{"content":[{"text":"Mystery"}]}]}"#;
         let result = parse_gemini_json(json).expect("should parse");
-        assert!(result.contains("### UNKNOWN:"));
-        assert!(result.contains("Mystery"));
+        assert!(result.text.contains("### UNKNOWN:"));
+        assert!(result.text.contains("Mystery"));
+    }
+
+    #[test]
+    fn parse_gemini_json_turn_count_counts_human_messages() {
+        let json = r#"{"messages":[
+            {"type":"human","content":[{"text":"Q1"}]},
+            {"type":"model","content":[{"text":"A1"}]},
+            {"type":"human","content":[{"text":"Q2"}]},
+            {"type":"model","content":[{"text":"A2"}]}
+        ]}"#;
+        let result = parse_gemini_json(json).expect("should parse");
+        assert_eq!(result.turn_count, 2);
+    }
+
+    #[test]
+    fn parse_gemini_json_tool_use_detected() {
+        let json = r#"{"messages":[{"type":"model","content":[
+            {"type":"tool_use","name":"search"},
+            {"text":"Here is the result."}
+        ]}]}"#;
+        let result = parse_gemini_json(json).expect("should parse");
+        assert!(result.has_tool_use);
+        assert!(result.tools_used.contains(&"search".to_string()));
     }
 
     // --- load_gemini_projects ---
@@ -308,21 +419,31 @@ mod tests {
         f.write_all(json.as_bytes()).unwrap();
         drop(f);
 
-        let map = load_gemini_projects(dir.path()).await;
+        let (names, paths) = load_gemini_projects(dir.path()).await;
         assert_eq!(
-            map.get("/home/user/workspace/my-project"),
+            names.get("/home/user/workspace/my-project"),
             Some(&"my-project".to_string())
         );
         // Last path segment is also inserted as a key
-        assert_eq!(map.get("my-project"), Some(&"my-project".to_string()));
-        assert_eq!(map.get("axon-rust"), Some(&"axon-rust".to_string()));
+        assert_eq!(names.get("my-project"), Some(&"my-project".to_string()));
+        assert_eq!(names.get("axon-rust"), Some(&"axon-rust".to_string()));
+        // paths map contains dir-name → actual PathBuf
+        assert!(paths.contains_key("my-project"));
+        assert!(paths.contains_key("axon-rust"));
     }
 
     #[tokio::test]
     async fn load_gemini_projects_missing_file_returns_empty_map() {
         let dir = TempDir::new().expect("temp dir");
-        let map = load_gemini_projects(dir.path()).await;
-        assert!(map.is_empty(), "missing projects.json yields empty map");
+        let (names, paths) = load_gemini_projects(dir.path()).await;
+        assert!(
+            names.is_empty(),
+            "missing projects.json yields empty name map"
+        );
+        assert!(
+            paths.is_empty(),
+            "missing projects.json yields empty path map"
+        );
     }
 
     #[tokio::test]
@@ -333,8 +454,8 @@ mod tests {
         f.write_all(b"not json").unwrap();
         drop(f);
 
-        let map = load_gemini_projects(dir.path()).await;
-        assert!(map.is_empty(), "malformed JSON yields empty map");
+        let (names, _) = load_gemini_projects(dir.path()).await;
+        assert!(names.is_empty(), "malformed JSON yields empty map");
     }
 
     #[tokio::test]
@@ -346,8 +467,8 @@ mod tests {
         f.write_all(json.as_bytes()).unwrap();
         drop(f);
 
-        let map = load_gemini_projects(dir.path()).await;
-        assert!(map.contains_key("good"), "valid string entry present");
-        assert!(!map.contains_key("bad"), "non-string entry skipped");
+        let (names, _) = load_gemini_projects(dir.path()).await;
+        assert!(names.contains_key("good"), "valid string entry present");
+        assert!(!names.contains_key("bad"), "non-string entry skipped");
     }
 }
