@@ -510,6 +510,9 @@ pub struct Config {
 
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
     pub custom_headers: Vec<String>,
+
+    /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
+    pub quiet: bool,
 }
 
 #[cfg(test)]

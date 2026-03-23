@@ -6,7 +6,11 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 pub(super) use global_args::GlobalArgs;
 
 #[derive(Debug, Parser)]
-#[command(name = "axon", about = "Axon CLI (Rust + Spider.rs)")]
+#[command(
+    name = "axon",
+    about = "Web crawl, scrape, extract, embed, and query — self-hosted RAG in one binary",
+    version = env!("CARGO_PKG_VERSION")
+)]
 pub(super) struct Cli {
     #[command(subcommand)]
     pub(super) command: CliCommand,
@@ -17,35 +21,62 @@ pub(super) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum CliCommand {
+    /// Scrape one or more URLs to markdown
     Scrape(ScrapeArgs),
+    /// Full site crawl for one or more start URLs
     Crawl(CrawlArgs),
+    /// Periodic URL re-indexing (schedule, status, cancel, list)
     Refresh(RefreshArgs),
+    /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
+    /// Discover all URLs on a site without scraping
     Map(UrlArg),
+    /// LLM-powered structured data extraction from URLs
     Extract(ExtractArgs),
+    /// Web search via Tavily, auto-queues crawl jobs for results
     Search(TextArg),
+    /// Web research via Tavily AI search with LLM synthesis
     Research(TextArg),
+    /// Embed file, directory, or URL into Qdrant
     Embed(EmbedArgs),
+    /// Run doctor diagnostics plus LLM-assisted troubleshooting
     Debug(TextArg),
+    /// Check connectivity to all required services
     Doctor,
+    /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
+    /// Fetch stored document chunks from Qdrant by URL
     Retrieve(UrlArg),
+    /// RAG: retrieve relevant context, then answer with LLM
     Ask(AskArgs),
+    /// RAG vs baseline with independent LLM judge scoring
     Evaluate(EvaluateArgs),
+    /// Suggest new documentation URLs to crawl
     Suggest(TextArg),
+    /// List all indexed source URLs with chunk counts
     Sources,
+    /// List indexed domains with document statistics
     Domains,
+    /// Show Qdrant collection and Postgres job statistics
     Stats,
+    /// Show async job queue status and recent activity
     Status,
+    /// Remove duplicate points from the Qdrant collection
     Dedupe,
+    /// Ingest external sources (GitHub repo, Reddit, YouTube)
     Ingest(IngestArgs),
+    /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
     Sessions(SessionsArgs),
+    /// Capture a full-page screenshot of one or more URLs
     Screenshot(ScrapeArgs),
     /// Knowledge graph operations
     Graph(GraphArgs),
     #[command(alias = "completion")]
+    /// Generate shell completions (bash, zsh, fish)
     Completions(CompletionArgs),
+    /// Start MCP server (stdio, HTTP, or both)
     Mcp(McpArgs),
+    /// Start web UI server (axum + WebSocket + Docker stats)
     Serve(ServeArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
