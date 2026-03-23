@@ -1,3 +1,4 @@
+use super::failure_summary::print_failure_summary;
 use super::metrics::{
     collection_from_config, display_embed_input, embed_metrics_suffix, extract_metrics_suffix,
     format_error, ingest_metrics_suffix, job_runtime_text, section_symbol, summarize_urls,
@@ -22,6 +23,14 @@ pub(super) fn emit_status_human(
     graph_jobs: &[GraphJob],
 ) {
     print_totals(
+        crawl_jobs,
+        extract_jobs,
+        embed_jobs,
+        ingest_jobs,
+        refresh_jobs,
+        graph_jobs,
+    );
+    print_failure_summary(
         crawl_jobs,
         extract_jobs,
         embed_jobs,

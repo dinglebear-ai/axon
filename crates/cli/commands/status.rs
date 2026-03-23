@@ -1,3 +1,4 @@
+mod failure_summary;
 pub(crate) mod metrics;
 mod presentation;
 

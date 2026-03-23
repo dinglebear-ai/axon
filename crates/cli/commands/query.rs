@@ -9,11 +9,14 @@ use std::error::Error;
 
 pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("query requires text")?;
-    log_info(&format!(
-        "command=query query_len={} limit={}",
-        query.len(),
-        cfg.search_limit
-    ));
+    // TODO: cfg.quiet — suppress progress log when quiet mode lands
+    if !cfg.json_output {
+        log_info(&format!(
+            "command=query query_len={} limit={}",
+            query.len(),
+            cfg.search_limit
+        ));
+    }
 
     let opts = Pagination {
         limit: cfg.search_limit.max(1),
@@ -34,7 +37,13 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if results.is_empty() {
         if !cfg.json_output {
             println!("{}", primary(&format!("Query Results for \"{query}\"")));
-            println!("  {}", muted("No results found."));
+            println!("  {}", muted("No results found. Try:"));
+            println!("    {}", muted("axon sources       # list indexed URLs"));
+            println!(
+                "    {}",
+                muted("axon stats         # check collection size")
+            );
+            println!("    {}", muted("axon embed <url>   # add content first"));
         }
         return Ok(());
     }
