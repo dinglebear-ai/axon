@@ -327,3 +327,37 @@ def reset_memory(_api_key: Optional[str] = Depends(verify_api_key)):
 def home():
     """Redirect to the OpenAPI documentation."""
     return RedirectResponse(url="/docs")
+
+
+# ---------------------------------------------------------------------------
+# v1 API aliases — matches ngent memory client expectations
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/v1/memories/search", summary="Search memories (v1)", include_in_schema=False
+)
+def search_memories_v1(
+    search_req: SearchRequest, _api_key: Optional[str] = Depends(verify_api_key)
+):
+    """v1 alias for POST /search — used by the ngent memory client."""
+    return search_memories(search_req, _api_key)
+
+
+@app.post("/v1/memories/", summary="Create memories (v1)", include_in_schema=False)
+def add_memory_v1(
+    memory_create: MemoryCreate, _api_key: Optional[str] = Depends(verify_api_key)
+):
+    """v1 alias for POST /memories — used by the ngent memory client."""
+    return add_memory(memory_create, _api_key)
+
+
+@app.get("/v1/memories/", summary="Get memories (v1)", include_in_schema=False)
+def get_all_memories_v1(
+    user_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    _api_key: Optional[str] = Depends(verify_api_key),
+):
+    """v1 alias for GET /memories — used by the ngent memory client."""
+    return get_all_memories(user_id, run_id, agent_id, _api_key)
