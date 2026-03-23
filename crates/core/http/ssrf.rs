@@ -46,17 +46,18 @@ pub(crate) fn get_allow_loopback() -> bool {
 /// Returns `Err` if the URL is malformed, uses a non-HTTP(S) scheme, or resolves
 /// to a blocked address range.
 ///
-/// # DNS Rebinding (TOCTOU residual risk)
+/// # DNS Rebinding (TOCTOU — MITIGATED)
 ///
-/// This validation is TOCTOU — it checks the resolved IP at parse time, but
-/// `reqwest` resolves DNS independently at connect time. An attacker with a
-/// TTL-0 DNS record can pass validation (first resolution → public IP) then
-/// rebind before the connection is established (second resolution → 127.0.0.1).
+/// This function performs hostname-level checks only (blocked names, TLDs, literal IPs).
+/// The DNS rebinding TOCTOU window is closed by [`SsrfBlockingResolver`], which is wired
+/// into the reqwest HTTP client via `ClientBuilder::dns_resolver()`. The resolver re-runs
+/// `check_ip()` on every IP that the OS returns, at the moment the TCP connection is
+/// established — the same instant reqwest would connect. This means even a TTL-0 DNS
+/// record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
 ///
-/// Full mitigation requires DNS pre-resolution and connection pinning, which
-/// `reqwest` does not support natively. Consider adding a reverse-DNS check or
-/// using `hickory-resolver` for pre-resolution if the threat model includes
-/// attacker-controlled domains with short-TTL records.
+/// Test builds skip the custom resolver (see [`SsrfBlockingResolver`]) so that httpmock
+/// servers on `127.0.0.1` remain reachable. `validate_url()` still blocks loopback
+/// in tests unless `set_allow_loopback(true)` is called.
 ///
 /// As defence-in-depth, `ssrf_blacklist_patterns()` is also applied to
 /// discovered URLs during crawl via spider's `with_blacklist_url()`.
@@ -155,6 +156,48 @@ pub(crate) fn ssrf_blacklist_patterns() -> &'static [&'static str] {
         r"^https?://\[fc[0-9a-f]{2}:",
         r"^https?://\[fd[0-9a-f]{2}:",
     ]
+}
+
+/// A DNS resolver that validates each resolved IP against the SSRF blocklist.
+///
+/// Plugged into the reqwest HTTP client via `ClientBuilder::dns_resolver()` to
+/// close the DNS rebinding TOCTOU window: [`check_ip`] runs at actual TCP connection
+/// time, on the same IPs that reqwest will dial. This eliminates the gap between
+/// [`validate_url`]'s parse-time check and reqwest's connect-time DNS resolution.
+///
+/// Only compiled for non-test builds. Tests use reqwest's default resolver so
+/// httpmock servers on `127.0.0.1` remain reachable.
+#[cfg(not(test))]
+pub(crate) struct SsrfBlockingResolver;
+
+#[cfg(not(test))]
+impl reqwest::dns::Resolve for SsrfBlockingResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_owned();
+        Box::pin(async move {
+            type DnsError = Box<dyn std::error::Error + Send + Sync>;
+
+            let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host(format!("{host}:0"))
+                .await
+                .map_err(|e| Box::new(e) as DnsError)?
+                .collect();
+
+            let allowed: Vec<std::net::SocketAddr> = addrs
+                .into_iter()
+                .filter(|addr| check_ip(addr.ip()).is_ok())
+                .collect();
+
+            if allowed.is_empty() {
+                let err: DnsError = Box::new(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("SSRF: all resolved IPs for '{host}' are in blocked ranges"),
+                ));
+                return Err(err);
+            }
+
+            Ok(Box::new(allowed.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
 }
 
 /// SSRF blacklist patterns pre-converted to `CompactString` for spider's

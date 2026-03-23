@@ -191,9 +191,9 @@ Worker startup:
 
 ## Residual Risks
 
-1. DNS rebinding TOCTOU window:
-- URL is validated before request, but resolver behavior at connect time can still change.
-- Mitigation options: resolver pinning or additional network egress controls.
+1. DNS rebinding TOCTOU window — **MITIGATED** (v0.32.4):
+- `SsrfBlockingResolver` (in `crates/core/http/ssrf.rs`) is wired into the reqwest client via `ClientBuilder::dns_resolver()`. It re-runs `check_ip()` on every IP returned by the OS resolver at the moment TCP connects — the same instant reqwest would dial. A TTL-0 DNS record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
+- Two-layer defence: `validate_url()` blocks literal IPs, hostile TLDs, and `localhost` at parse time; `SsrfBlockingResolver` blocks any hostname whose DNS resolution produces a blocked IP at connect time.
 
 2. WebSocket auth requires explicit env config:
 - Gate is disabled if `AXON_WEB_API_TOKEN` is not set — any client can connect to `/ws`.
