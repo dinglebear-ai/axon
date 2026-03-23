@@ -11,9 +11,9 @@ RUN pip install --no-cache-dir \
     uvicorn==0.34.0 \
     pydantic==2.10.4 \
     "mem0ai[llms]>=1.0.7" \
-    langchain-neo4j \
-    neo4j \
-    rank-bm25 \
+    langchain-neo4j==0.8.0 \
+    neo4j==6.1.0 \
+    rank-bm25==0.2.2 \
     python-dotenv==1.0.1
 
 EXPOSE 8000

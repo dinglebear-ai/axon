@@ -59,6 +59,9 @@ specs/
 container/*.local.yml
 container/*.local.yaml
 
+# mem0 config contains credentials — use config.json.example as template
+docker/mem0/config.json
+
 # Claude Code — track agents/skills/settings but not local overrides or worktrees
 .claude/worktrees/
 .claude/settings.local.json

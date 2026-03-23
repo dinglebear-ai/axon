@@ -27,9 +27,9 @@
   "graph_store": {
     "provider": "neo4j",
     "config": {
-      "url": "bolt://100.120.242.29:50211",
+      "url": "bolt://YOUR_NEO4J_HOST:7687",
       "username": "neo4j",
-      "password": "firecrawl_graph_2025"
+      "password": "CHANGE_ME"
     }
   }
 }
