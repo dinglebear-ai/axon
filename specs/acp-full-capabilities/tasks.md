@@ -39,7 +39,7 @@ _Requirements: FR-007_ / _Design: Section 3_
 
 ---
 
-- [ ] V1 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V1 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -49,7 +49,7 @@ _Requirements: FR-007_ / _Design: Section 3_
 
 ### Group B: Terminal API Implementation (FR-001 through FR-006)
 
-## Task 1.3b — [RED] Write failing test: create_terminal lifecycle (NFR-007 test 1)
+## Task 1.3b — [RED] Write failing test: create_terminal lifecycle (NFR-007 test 1) <!-- DONE -->
 
 **Do**: In `crates/services/acp/bridge/terminal.rs` tests module, write a failing test `test_create_terminal_output_wait` that:
   - Calls `TerminalManager::create("echo", &["hello"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)`

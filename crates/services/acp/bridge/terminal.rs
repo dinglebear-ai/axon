@@ -75,9 +75,35 @@ impl Default for TerminalManager {
     }
 }
 
+/// Default output byte limit for terminal buffers.
+pub const DEFAULT_OUTPUT_BYTE_LIMIT: usize = 256 * 1024;
+
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
+
+    #[tokio::test]
+    async fn test_create_terminal_output_wait() {
+        let cwd = PathBuf::from("/tmp");
+        let id = TerminalManager::create("echo", &["hello"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+            .await
+            .expect("create should succeed");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let output = TerminalManager::output(&id)
+            .await
+            .expect("output should succeed");
+        let exit_code = TerminalManager::wait_for_exit(&id)
+            .await
+            .expect("wait_for_exit should succeed");
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(
+            output_str.contains("hello"),
+            "output did not contain 'hello': {output_str}"
+        );
+        assert_eq!(exit_code, 0, "expected exit code 0");
+    }
 
     #[test]
     fn terminal_id_from_string() {
