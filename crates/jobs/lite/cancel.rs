@@ -74,12 +74,11 @@ pub async fn poll_sqlite_for_cancels(
                     .await
                     .unwrap_or(None);
 
-            if let Some((status,)) = row {
-                if status == "canceled" {
-                    if let Some(entry) = store.tokens.get(&id) {
-                        entry.value().cancel();
-                    }
-                }
+            if let Some((status,)) = row
+                && status == "canceled"
+                && let Some(entry) = store.tokens.get(&id)
+            {
+                entry.value().cancel();
             }
         }
     }

@@ -2,6 +2,7 @@ pub mod cancel;
 pub mod ops;
 pub mod query;
 pub mod store;
+pub mod workers;
 
 #[cfg(test)]
 mod tests {
