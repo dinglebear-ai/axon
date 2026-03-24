@@ -381,11 +381,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .or_else(|| env::var("TEI_URL").ok())
             .map(normalize_local_service_url)
             .unwrap_or_default(),
-        qdrant_url: global
-            .qdrant_url
-            .or_else(|| env::var("QDRANT_URL").ok())
-            .map(normalize_local_service_url)
-            .unwrap_or_else(|| "http://127.0.0.1:53333".to_string()),
+        qdrant_url: normalize_local_service_url(
+            global
+                .qdrant_url
+                .or_else(|| env::var("QDRANT_URL").ok())
+                .ok_or_else(|| {
+                    "QDRANT_URL environment variable is required (or pass --qdrant-url). \
+                     Copy .env.example to .env and fill in credentials."
+                        .to_string()
+                })?,
+        ),
         openai_base_url: global
             .openai_base_url
             .or_else(|| env::var("OPENAI_BASE_URL").ok())
@@ -683,6 +688,8 @@ mod tests {
             "redis://127.0.0.1:53379",
             "--amqp-url",
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
             "status",
         ]);
         let cfg = into_config(cli).expect("status config should parse");
@@ -716,6 +723,8 @@ mod tests {
             "redis://127.0.0.1:53379",
             "--amqp-url",
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
             "--tei-url",
             "http://axon-tei:80",
             "status",
@@ -724,6 +733,33 @@ mod tests {
         assert_eq!(
             cfg.tei_url,
             normalize_local_service_url("http://axon-tei:80".to_string())
+        );
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_errors_when_qdrant_url_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // Unset QDRANT_URL so the default branch is exercised.
+        // Safety: test-only, guarded by ENV_LOCK.
+        unsafe {
+            env::remove_var("QDRANT_URL");
+        }
+
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "status",
+        ]);
+        let err = into_config(cli).unwrap_err();
+        assert!(
+            err.contains("QDRANT_URL"),
+            "expected QDRANT_URL error, got: {err}"
         );
     }
 
@@ -745,6 +781,8 @@ mod tests {
             "redis://127.0.0.1:53379",
             "--amqp-url",
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
             "status",
         ]);
         let cfg = into_config(cli).expect("status config should parse");

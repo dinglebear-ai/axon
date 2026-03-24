@@ -47,12 +47,14 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         // SAFETY: guarded by ENV_LOCK; no concurrent env mutation in this module.
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -85,6 +87,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -95,11 +98,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
             env::set_var(REDIS, "redis://*********:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -130,6 +135,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -140,11 +146,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
             env::set_var(REDIS, "redis://*********:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -167,6 +175,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -177,11 +186,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@*********:53432/axon");
             env::set_var(REDIS, "redis://*********:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@*********:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -208,6 +219,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -218,11 +230,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -253,6 +267,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -263,11 +278,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from(["axon", "graph", "explore", "rust"]);
@@ -282,6 +299,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -292,6 +310,7 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
         const GRAPH_MODEL: &str = "AXON_GRAPH_LLM_MODEL";
 
         let prev_graph_model = env::var(GRAPH_MODEL).ok();
@@ -299,6 +318,7 @@ mod tests {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
             env::remove_var(GRAPH_MODEL);
         }
 
@@ -310,6 +330,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
             match prev_graph_model {
                 Some(val) => env::set_var(GRAPH_MODEL, val),
                 None => env::remove_var(GRAPH_MODEL),
@@ -324,11 +345,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -349,6 +372,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -359,11 +383,13 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from([
@@ -398,6 +424,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
         }
     }
 
@@ -408,14 +435,17 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
         let prev_pg = env::var(PG).ok();
         let prev_redis = env::var(REDIS).ok();
         let prev_amqp = env::var(AMQP).ok();
+        let prev_qdrant = env::var(QDRANT).ok();
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
         }
 
         let cli = super::Cli::parse_from(["axon", "refresh", "schedule", "run-due"]);
@@ -443,6 +473,10 @@ mod tests {
         match prev_amqp {
             Some(v) => unsafe { env::set_var(AMQP, v) },
             None => unsafe { env::remove_var(AMQP) },
+        }
+        match prev_qdrant {
+            Some(v) => unsafe { env::set_var(QDRANT, v) },
+            None => unsafe { env::remove_var(QDRANT) },
         }
     }
 
@@ -744,12 +778,14 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
         const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
             env::set_var(TRANSPORT, "stdio");
         }
 
@@ -762,6 +798,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
             env::remove_var(TRANSPORT);
         }
     }
@@ -773,12 +810,14 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
+        const QDRANT: &str = "QDRANT_URL";
         const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
+            env::set_var(QDRANT, "http://127.0.0.1:53333");
             env::set_var(TRANSPORT, "http");
         }
 
@@ -790,6 +829,7 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
+            env::remove_var(QDRANT);
             env::remove_var(TRANSPORT);
         }
     }
