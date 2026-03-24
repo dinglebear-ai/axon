@@ -202,7 +202,7 @@ Worker startup:
 3. Upstream model endpoints:
 - security posture depends on TEI/LLM deployment hardening outside this repo.
 
-4. **`AXON_WEB_ALLOW_INSECURE_DEV` loopback bypass:** When set to `true`, requests from `127.0.0.1`/`::1` bypass the `AXON_WEB_API_TOKEN` check on `/api/*` and `/ws/shell` — even when the token IS configured. This flag must never be set to `true` in any deployment accessible from untrusted networks. Default is `false`. See `docs/auth/API-TOKEN.md` and `.env.example`.
+4. **`AXON_WEB_ALLOW_INSECURE_DEV` loopback bypass:** When set to `true`, requests from `127.0.0.1`/`::1` bypass the `AXON_WEB_API_TOKEN` check on `/api/*` and `/ws/shell` — even when the token IS configured. This flag must never be set to `true` in any deployment accessible from untrusted networks. Default is `false`. See `.env.example`.
 
 ## Operational Security Checklist
 
