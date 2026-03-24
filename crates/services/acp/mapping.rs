@@ -316,15 +316,24 @@ fn extract_content_text(content: &ContentBlock) -> Option<String> {
     }
 }
 
+fn extract_diff_text(diff: &agent_client_protocol::Diff) -> Option<String> {
+    let old = diff.old_text.as_deref().unwrap_or("");
+    let new_text = &diff.new_text;
+    let path = diff.path.display().to_string();
+    Some(format!("--- {path}\n{old}\n+++ {path}\n{new_text}"))
+}
+
 fn extract_tool_content(update: &SessionUpdate) -> Option<String> {
     match update {
         SessionUpdate::ToolCall(tc) => tc.content.iter().find_map(|c| match c {
             ToolCallContent::Content(content) => extract_content_text(&content.content),
+            ToolCallContent::Diff(diff) => extract_diff_text(diff),
             _ => None,
         }),
         SessionUpdate::ToolCallUpdate(tcu) => tcu.fields.content.as_ref().and_then(|contents| {
             contents.iter().find_map(|c| match c {
                 ToolCallContent::Content(content) => extract_content_text(&content.content),
+                ToolCallContent::Diff(diff) => extract_diff_text(diff),
                 _ => None,
             })
         }),
