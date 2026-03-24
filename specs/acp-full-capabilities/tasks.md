@@ -63,7 +63,7 @@ This test MUST FAIL to compile or panic before Task 1.4's implementation exists.
 **Commit**: `test(acp): RED - add failing create_terminal lifecycle test`
 _Requirements: FR-001, FR-002, FR-003_ / _Design: Section 4.1_
 
-## Task 1.4 — Implement TerminalManager::create (FR-001)
+## Task 1.4 — Implement TerminalManager::create (FR-001) <!-- DONE -->
 
 **Do**: Implement `TerminalManager::create(cmd: &str, args: &[String], cwd: &Path, byte_limit: usize) -> Result<TerminalId, String>`. Spawn `tokio::process::Command` with stdout/stderr piped, stdin null. Validate CWD is within session CWD boundary (reuse `validate_fs_path` logic). Generate a UUID `TerminalId`. Store `TerminalState` in the map. Spawn a `tokio::task::spawn_local` output reader task that reads stdout+stderr into the ring buffer (`VecDeque<u8>`, capped at `byte_limit` — default 256 KiB, drain front when over limit).
 **Files**: `crates/services/acp/bridge/terminal.rs`
