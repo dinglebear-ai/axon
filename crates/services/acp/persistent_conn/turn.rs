@@ -316,6 +316,10 @@ async fn run_prompt(
             // wait up to 15 s for it to return PromptResponse{Cancelled}.
             // Drop the service_tx so no more streaming events are queued.
             *runtime_state.service_tx.borrow_mut() = None;
+            // FR-024: `conn.cancel()` sends `session/cancel` (a JSON-RPC
+            // notification) which IS the cancellation mechanism defined by
+            // the ACP spec.  The SDK 0.10.x does not expose a separate
+            // `unstable_cancel_request` method — `cancel()` covers FR-024.
             let _ = conn.cancel(CancelNotification::new(turn_ctx.turn_session_id.clone())).await;
             match tokio::time::timeout(
                 std::time::Duration::from_secs(15),

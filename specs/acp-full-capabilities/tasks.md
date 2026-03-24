@@ -754,7 +754,7 @@ _Requirements: FR-023, FR-029_ / _Design: Section 4.5_
 
 ---
 
-## Task 4.4 — Send cancel_request on turn cancellation (FR-024)
+## Task 4.4 — Send cancel_request on turn cancellation (FR-024) <!-- DONE -->
 
 **Do**: In the persistent connection cancel path (where `conn.cancel()` is already called), also send `unstable_cancel_request` if the SDK provides it as a separate method. If `cancel()` already covers this, document why and mark FR-024 as satisfied by existing code.
 **Files**: `crates/services/acp/persistent_conn.rs`
