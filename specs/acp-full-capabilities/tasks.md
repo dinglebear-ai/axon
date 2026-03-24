@@ -526,7 +526,7 @@ _Requirements: FR-020_ / _Design: Section 4.5_
 
 ## Phase 2 — Refactoring + Error Handling
 
-## Task 2.1 — Add proper error types for terminal operations
+## [x] Task 2.1 — Add proper error types for terminal operations
 
 **Do**: Replace `String` error returns in `TerminalManager` methods with a `TerminalError` enum: `NotFound`, `AlreadyExited`, `SpawnFailed(String)`, `KillFailed(String)`, `CwdEscaped`. Map to `agent_client_protocol::Error` variants in the Client impl.
 **Files**: `crates/services/acp/bridge/terminal.rs`, `crates/services/acp/bridge.rs`

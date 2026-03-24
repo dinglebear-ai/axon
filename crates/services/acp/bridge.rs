@@ -221,7 +221,7 @@ impl Client for AcpBridgeClient {
         let local_id = mgr
             .create(&args.command, &arg_strs, &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
             .await
-            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            .map_err(agent_client_protocol::Error::from)?;
         Ok(CreateTerminalResponse::new(
             agent_client_protocol::TerminalId::new(local_id.0),
         ))
@@ -236,7 +236,7 @@ impl Client for AcpBridgeClient {
             .terminal_manager
             .borrow()
             .output(&local_id)
-            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            .map_err(agent_client_protocol::Error::from)?;
         let mut resp = TerminalOutputResponse::new(text, truncated);
         if let Some(code) = exit_code {
             resp.exit_status = Some(TerminalExitStatus::new().exit_code(code as u32));
@@ -253,7 +253,7 @@ impl Client for AcpBridgeClient {
         let code = mgr
             .wait_for_exit(&local_id)
             .await
-            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            .map_err(agent_client_protocol::Error::from)?;
         let exit_status = TerminalExitStatus::new().exit_code(code as u32);
         Ok(WaitForTerminalExitResponse::new(exit_status))
     }
@@ -266,7 +266,7 @@ impl Client for AcpBridgeClient {
         let mgr = self.terminal_manager.borrow().clone();
         mgr.release(&local_id)
             .await
-            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            .map_err(agent_client_protocol::Error::from)?;
         Ok(ReleaseTerminalResponse::new())
     }
 
@@ -278,7 +278,7 @@ impl Client for AcpBridgeClient {
         let mgr = self.terminal_manager.borrow().clone();
         mgr.kill(&local_id)
             .await
-            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            .map_err(agent_client_protocol::Error::from)?;
         Ok(KillTerminalResponse::new())
     }
 

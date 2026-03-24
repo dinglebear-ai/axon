@@ -9,8 +9,54 @@ use std::path::Path;
 use std::process::ExitStatus;
 use std::rc::Rc;
 
+use agent_client_protocol;
 use tokio::io::AsyncReadExt;
 use tokio::process::Child;
+
+// ── TerminalError ─────────────────────────────────────────────────────────────
+
+/// Typed error variants for `TerminalManager` operations.
+#[derive(Debug)]
+pub enum TerminalError {
+    /// No terminal with the given ID exists in this manager.
+    NotFound,
+    /// The terminal process has already exited.
+    AlreadyExited,
+    /// Failed to spawn the requested subprocess.
+    SpawnFailed(String),
+    /// Failed to send a kill signal to the subprocess.
+    KillFailed(String),
+    /// The requested `cwd` path would escape the session working directory.
+    CwdEscaped,
+}
+
+impl std::fmt::Display for TerminalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "terminal not found"),
+            Self::AlreadyExited => write!(f, "terminal has already exited"),
+            Self::SpawnFailed(msg) => write!(f, "spawn failed: {msg}"),
+            Self::KillFailed(msg) => write!(f, "kill failed: {msg}"),
+            Self::CwdEscaped => write!(f, "cwd escaped session working directory"),
+        }
+    }
+}
+
+impl std::error::Error for TerminalError {}
+
+impl From<TerminalError> for agent_client_protocol::Error {
+    fn from(e: TerminalError) -> Self {
+        match e {
+            TerminalError::NotFound => {
+                agent_client_protocol::Error::resource_not_found(Some(e.to_string()))
+            }
+            TerminalError::AlreadyExited
+            | TerminalError::SpawnFailed(_)
+            | TerminalError::KillFailed(_)
+            | TerminalError::CwdEscaped => agent_client_protocol::Error::internal_error(),
+        }
+    }
+}
 
 // ── TerminalId ────────────────────────────────────────────────────────────────
 
@@ -91,13 +137,10 @@ impl TerminalManager {
         args: &[&str],
         cwd: &Path,
         byte_limit: usize,
-    ) -> Result<TerminalId, String> {
+    ) -> Result<TerminalId, TerminalError> {
         // Validate cwd is an existing directory.
         if !cwd.is_dir() {
-            return Err(format!(
-                "cwd is not an existing directory: {}",
-                cwd.display()
-            ));
+            return Err(TerminalError::CwdEscaped);
         }
 
         // Generate unique terminal ID.
@@ -111,7 +154,7 @@ impl TerminalManager {
             .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| format!("failed to spawn '{cmd}': {e}"))?;
+            .map_err(|e| TerminalError::SpawnFailed(format!("failed to spawn '{cmd}': {e}")))?;
 
         // Take stdout/stderr handles before storing child.
         let mut stdout = child.stdout.take().expect("stdout was piped");
@@ -187,11 +230,9 @@ impl TerminalManager {
     /// - `truncated` is `true` if the ring buffer hit the byte limit at any point
     /// - `exit_code` is `Some(code)` if the process has exited, `None` if still running
     #[allow(dead_code)]
-    pub fn output(&self, id: &TerminalId) -> Result<(String, bool, Option<i32>), String> {
+    pub fn output(&self, id: &TerminalId) -> Result<(String, bool, Option<i32>), TerminalError> {
         let mut map = self.terminals.borrow_mut();
-        let state = map
-            .get_mut(id)
-            .ok_or_else(|| format!("terminal not found: {id}"))?;
+        let state = map.get_mut(id).ok_or(TerminalError::NotFound)?;
 
         // Drain the ring buffer into a Vec<u8>.
         let bytes: Vec<u8> = state.output_buf.borrow_mut().drain(..).collect();
@@ -213,7 +254,7 @@ impl TerminalManager {
     /// Otherwise, calls `start_kill()` on the child process (sends SIGKILL on Unix).
     /// The child handle is kept so `wait_for_exit` can still collect the exit status.
     #[allow(dead_code)]
-    pub async fn kill(&self, id: &TerminalId) -> Result<(), String> {
+    pub async fn kill(&self, id: &TerminalId) -> Result<(), TerminalError> {
         // If already exited or not found, nothing to do.
         let already_done = {
             let map = self.terminals.borrow();
@@ -255,7 +296,7 @@ impl TerminalManager {
     /// Idempotent: if the terminal ID is not in the map (already released or
     /// never created), returns `Ok(())` without error (NFR-007).
     #[allow(dead_code)]
-    pub async fn release(&self, id: &TerminalId) -> Result<(), String> {
+    pub async fn release(&self, id: &TerminalId) -> Result<(), TerminalError> {
         // If not in map, nothing to do (idempotent).
         let exists = self.terminals.borrow().contains_key(id);
         if !exists {
@@ -286,7 +327,7 @@ impl TerminalManager {
     /// Otherwise takes the `Child` handle, awaits `child.wait()`, stores the
     /// `ExitStatus`, and returns the code.
     #[allow(dead_code)]
-    pub async fn wait_for_exit(&self, id: &TerminalId) -> Result<i32, String> {
+    pub async fn wait_for_exit(&self, id: &TerminalId) -> Result<i32, TerminalError> {
         // Check if already exited.
         let already_exited = self
             .terminals
@@ -306,13 +347,13 @@ impl TerminalManager {
             .and_then(|s| s.child.take());
 
         let Some(mut child) = child else {
-            return Err(format!("terminal has no child handle: {id}"));
+            return Err(TerminalError::AlreadyExited);
         };
 
         let status = child
             .wait()
             .await
-            .map_err(|e| format!("wait() failed: {e}"))?;
+            .map_err(|e| TerminalError::KillFailed(format!("wait() failed: {e}")))?;
 
         // Store exit status back.
         if let Some(state) = self.terminals.borrow_mut().get_mut(id) {
