@@ -656,4 +656,34 @@ mod tests {
         assert!(values.contains(&"true"), "expected 'true' option");
         assert!(values.contains(&"false"), "expected 'false' option");
     }
+
+    #[test]
+    fn test_session_info_update_carries_title_and_updated_at() {
+        use agent_client_protocol::{
+            SessionId, SessionInfoUpdate, SessionNotification, SessionUpdate,
+        };
+        let info = SessionInfoUpdate::new()
+            .title("My Session Title".to_string())
+            .updated_at("2026-01-01T00:00:00Z".to_string());
+        let notification = SessionNotification::new(
+            SessionId::new("info-session-1"),
+            SessionUpdate::SessionInfoUpdate(info),
+        );
+        let event = map_session_notification_event(&notification);
+        match event {
+            ServiceEvent::AcpBridge {
+                event:
+                    AcpBridgeEvent::SessionInfoUpdate {
+                        session_id,
+                        title,
+                        updated_at,
+                    },
+            } => {
+                assert_eq!(session_id, "info-session-1");
+                assert_eq!(title.as_deref(), Some("My Session Title"));
+                assert_eq!(updated_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+            }
+            other => panic!("expected SessionInfoUpdate event, got: {other:?}"),
+        }
+    }
 }

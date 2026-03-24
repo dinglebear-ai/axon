@@ -646,7 +646,7 @@ _Requirements: FR-008_ / _Design: Section 4.3_
 **Commit**: `test(acp): Boolean SessionConfigKind mapping test`
 _Requirements: FR-012_ / _Design: Section 4.3_
 
-## Task 3.6 — Test: SessionInfoUpdate carries title and updated_at
+## Task 3.6 — Test: SessionInfoUpdate carries title and updated_at <!-- DONE -->
 
 **Do**: Write a unit test: construct a `SessionNotification` with `SessionUpdate::SessionInfoUpdate` that has title and updated_at, call `map_session_notification_event`, verify the event carries both fields.
 **Files**: `crates/services/acp/mapping.rs`
