@@ -161,7 +161,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 **Commit**: `feat(acp): implement TerminalManager::kill with SIGTERM→SIGKILL escalation`
 _Requirements: FR-004_ / _Design: Section 4.1_
 
-## Task 1.8 — Implement TerminalManager::release (FR-005)
+## Task 1.8 — Implement TerminalManager::release (FR-005) <!-- DONE -->
 
 **Do**: Implement `TerminalManager::release(id: &TerminalId) -> Result<(), String>`. Call `kill(id)` if still running, then remove the entry from the HashMap. If the terminal doesn't exist (already released or never created), return Ok (idempotent — double-release is a no-op per NFR-007).
 **Files**: `crates/services/acp/bridge/terminal.rs`
