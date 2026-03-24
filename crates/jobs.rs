@@ -4,6 +4,7 @@ pub mod crawl;
 pub mod embed;
 pub mod error;
 pub mod extract;
+pub mod full;
 pub mod graph;
 pub mod ingest;
 pub mod lite;
