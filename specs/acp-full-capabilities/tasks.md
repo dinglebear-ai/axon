@@ -115,7 +115,7 @@ _Requirements: FR-001, FR-002, FR-003_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V2 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V2 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -123,7 +123,7 @@ _Requirements: FR-001, FR-002, FR-003_ / _Design: Section 4.1_
 
 ---
 
-## Task 1.6c — [RED] Write failing test: kill + release terminal (NFR-007 test 2)
+## Task 1.6c — [RED] Write failing test: kill + release terminal (NFR-007 test 2) <!-- DONE -->
 
 **Do**: Write `test_create_kill_release` in terminal.rs tests: create terminal running `sleep 60`, call kill, call release, assert terminal no longer exists in map.
 **Files**: `crates/services/acp/bridge/terminal.rs`
@@ -132,7 +132,7 @@ _Requirements: FR-001, FR-002, FR-003_ / _Design: Section 4.1_
 **Commit**: `test(acp): RED - add failing kill+release terminal test`
 _Requirements: FR-004, FR-005_ / _Design: Section 4.1_
 
-## Task 1.6d — [RED] Write failing test: double-release is no-op (NFR-007 test 3)
+## Task 1.6d — [RED] Write failing test: double-release is no-op (NFR-007 test 3) <!-- DONE -->
 
 **Do**: Write `test_double_release_noop` in terminal.rs tests: create terminal, release twice, assert both calls return Ok.
 **Files**: `crates/services/acp/bridge/terminal.rs`

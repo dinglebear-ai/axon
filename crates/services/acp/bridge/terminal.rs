@@ -333,4 +333,52 @@ mod tests {
         let mgr = TerminalManager::default();
         assert!(mgr.terminals.borrow().is_empty());
     }
+
+    /// RED: kill + release — not yet implemented.
+    /// `manager.kill(&id)` and `manager.release(&id)` do not exist yet.
+    /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
+    #[tokio::test]
+    async fn test_create_kill_release() {
+        let cwd = std::path::PathBuf::from("/tmp");
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let mgr = TerminalManager::new();
+                let id = mgr
+                    .create("sleep", &["60"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+                    .await
+                    .expect("create should succeed");
+                mgr.kill(&id).await.expect("kill should succeed");
+                mgr.release(&id).await.expect("release should succeed");
+                assert!(
+                    !mgr.terminals.borrow().contains_key(&id),
+                    "terminal should be removed from map after release"
+                );
+            })
+            .await;
+    }
+
+    /// RED: double-release is a no-op — not yet implemented.
+    /// `manager.release(&id)` does not exist yet.
+    /// This test must fail to compile until task 1.8 adds the method.
+    #[tokio::test]
+    async fn test_double_release_noop() {
+        let cwd = std::path::PathBuf::from("/tmp");
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let mgr = TerminalManager::new();
+                let id = mgr
+                    .create("sleep", &["60"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+                    .await
+                    .expect("create should succeed");
+                mgr.release(&id)
+                    .await
+                    .expect("first release should succeed");
+                mgr.release(&id)
+                    .await
+                    .expect("second release should be a no-op");
+            })
+            .await;
+    }
 }
