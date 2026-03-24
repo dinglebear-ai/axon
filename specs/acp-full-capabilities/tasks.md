@@ -763,7 +763,7 @@ _Requirements: FR-023, FR-029_ / _Design: Section 4.5_
 **Commit**: `feat(acp): send unstable_cancel_request on turn cancellation`
 _Requirements: FR-024_ / _Design: Section 4.5_
 
-## Task 4.5 — Implement inbound ext_method dispatch (FR-025)
+## Task 4.5 — Implement inbound ext_method dispatch (FR-025) <!-- DONE -->
 
 **Do**: In the `impl Client for AcpBridgeClient` block, implement `ext_method` to dispatch to a registered handler. Store handlers as `Rc<RefCell<HashMap<String, Box<dyn Fn(...)>>>>` on `AcpRuntimeState` or `AcpBridgeClient`. For now, log and return `method_not_found` if no handler registered.
 **Files**: `crates/services/acp/bridge.rs`

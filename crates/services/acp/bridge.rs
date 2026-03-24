@@ -9,12 +9,13 @@ pub use state::*;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
 use crate::crates::services::types::AcpSessionUpdateKind;
 use agent_client_protocol::{
-    Client, CreateTerminalRequest, CreateTerminalResponse, KillTerminalRequest,
-    KillTerminalResponse, ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest,
-    ReleaseTerminalResponse, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SessionNotification, TerminalExitStatus, TerminalOutputRequest,
-    TerminalOutputResponse, WaitForTerminalExitRequest, WaitForTerminalExitResponse,
-    WriteTextFileRequest, WriteTextFileResponse,
+    Client, CreateTerminalRequest, CreateTerminalResponse, ExtNotification, ExtRequest,
+    ExtResponse, KillTerminalRequest, KillTerminalResponse, ReadTextFileRequest,
+    ReadTextFileResponse, ReleaseTerminalRequest, ReleaseTerminalResponse,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SessionNotification, TerminalExitStatus, TerminalOutputRequest, TerminalOutputResponse,
+    WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
+    WriteTextFileResponse,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -28,6 +29,22 @@ use super::mapping::{
 use super::permission::{auto_approve_outcome, handle_interactive_permission};
 
 // ── Bridge client ───────────────────────────────────────────────────────────
+
+/// Handler map for inbound extension method requests (FR-025).
+/// Keyed by method name; value is a sync fn returning an ACP result.
+type ExtMethodHandlerMap = Rc<
+    RefCell<
+        std::collections::HashMap<
+            String,
+            Box<dyn Fn(ExtRequest) -> agent_client_protocol::Result<ExtResponse>>,
+        >,
+    >,
+>;
+
+/// Handler map for inbound extension notifications (FR-026).
+/// Keyed by method name; value is a fire-and-forget fn.
+type ExtNotificationHandlerMap =
+    Rc<RefCell<std::collections::HashMap<String, Box<dyn Fn(ExtNotification)>>>>;
 
 /// `Arc<AcpRuntimeState>` — no Mutex wrapper needed because
 /// `AcpRuntimeState` uses `RefCell` internally (not thread-safe).  Cloning
@@ -46,6 +63,14 @@ pub struct AcpBridgeClient {
     pub(super) session_cwd: std::path::PathBuf,
     /// Terminal subprocess manager for this session.
     pub(super) terminal_manager: Rc<RefCell<terminal::TerminalManager>>,
+    /// Registered handlers for inbound extension method requests (FR-025).
+    /// Keyed by method name (without `_` prefix). Returns `method_not_found`
+    /// when no entry matches. Callers populate this map before starting a turn.
+    pub(super) ext_method_handlers: ExtMethodHandlerMap,
+    /// Registered handlers for inbound extension notifications (FR-026).
+    /// Keyed by method name (without `_` prefix). WARN-logs when no handler
+    /// matches — notifications are fire-and-forget so no error is returned.
+    pub(super) ext_notification_handlers: ExtNotificationHandlerMap,
 }
 
 // ── Path validation ──────────────────────────────────────────────────────────
@@ -282,6 +307,49 @@ impl Client for AcpBridgeClient {
         Ok(KillTerminalResponse::new())
     }
 
+    /// Dispatch an inbound extension method from the adapter.
+    ///
+    /// No handlers are registered by default. If no handler matches
+    /// `args.method`, logs a warning and returns `method_not_found`.
+    /// Register handlers at the call site by inserting into
+    /// `AcpBridgeClient::ext_method_handlers` before starting the turn.
+    async fn ext_method(&self, args: ExtRequest) -> agent_client_protocol::Result<ExtResponse> {
+        let method_name = args.method.to_string();
+        let handlers = self.ext_method_handlers.borrow();
+        if let Some(f) = handlers.get(&method_name) {
+            f(args)
+        } else {
+            drop(handlers);
+            tracing::warn!(
+                context = "acp_bridge",
+                method = %method_name,
+                "inbound ext_method has no registered handler; returning method_not_found"
+            );
+            Err(agent_client_protocol::Error::method_not_found())
+        }
+    }
+
+    /// Dispatch an inbound extension notification from the adapter (FR-026).
+    ///
+    /// Fire-and-forget: no response is expected. Logs a warning if no handler
+    /// is registered for `args.method` — this is informational only and does
+    /// not affect the turn outcome.
+    async fn ext_notification(&self, args: ExtNotification) -> agent_client_protocol::Result<()> {
+        let method_name = args.method.to_string();
+        let handlers = self.ext_notification_handlers.borrow();
+        if let Some(f) = handlers.get(&method_name) {
+            f(args);
+        } else {
+            drop(handlers);
+            tracing::warn!(
+                context = "acp_bridge",
+                method = %method_name,
+                "inbound ext_notification has no registered handler; ignoring"
+            );
+        }
+        Ok(())
+    }
+
     async fn session_notification(
         &self,
         args: SessionNotification,
@@ -409,6 +477,8 @@ mod tests {
             permission_responders,
             session_cwd: std::path::PathBuf::new(),
             terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
         };
 
         // Create a permission request for "shell" tool with a different ID.

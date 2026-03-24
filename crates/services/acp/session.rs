@@ -187,6 +187,12 @@ pub(super) async fn initialize_connection(
         terminal_manager: std::rc::Rc::new(std::cell::RefCell::new(
             super::bridge::terminal::TerminalManager::new(),
         )),
+        ext_method_handlers: std::rc::Rc::new(std::cell::RefCell::new(
+            std::collections::HashMap::new(),
+        )),
+        ext_notification_handlers: std::rc::Rc::new(std::cell::RefCell::new(
+            std::collections::HashMap::new(),
+        )),
     };
 
     let msg =
