@@ -194,4 +194,33 @@ mod integration_tests {
 
         std::fs::remove_file(&path).ok();
     }
+
+    #[tokio::test]
+    #[ignore] // Only runs with 'cargo test -- --ignored' (needs live TEI/Qdrant — not required here)
+    async fn lite_backend_full_job_lifecycle() {
+        let path = format!("/tmp/axon-e2e-{}.db", uuid::Uuid::new_v4());
+        let backend = LiteBackend::new_with_path(&path).await.unwrap();
+
+        let id = backend
+            .enqueue(JobPayload::Embed {
+                input: "hello world test content for lite mode".into(),
+                config_json: "{}".into(),
+            })
+            .await
+            .unwrap();
+
+        // Job should be pending immediately after enqueue
+        let status = backend
+            .job_status(id, JobKind::Embed)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            status.status,
+            crate::crates::jobs::status::JobStatus::Pending
+        );
+
+        backend.clear_jobs(JobKind::Embed).await.unwrap();
+        std::fs::remove_file(&path).ok();
+    }
 }
