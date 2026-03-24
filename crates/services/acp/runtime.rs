@@ -113,7 +113,13 @@ pub(super) async fn establish_acp_session(
         runtime_state.mcp_http_supported.get(),
         runtime_state.mcp_sse_supported.get(),
     );
-    let (session_id, initial_config_options) = setup_session(&conn, session_setup, tx).await?;
+    let (session_id, initial_config_options) = setup_session(
+        &conn,
+        session_setup,
+        tx,
+        runtime_state.load_session_supported.get(),
+    )
+    .await?;
     let latest_config_options = apply_config_and_model(
         &conn,
         &session_id,

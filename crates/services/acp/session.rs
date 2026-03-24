@@ -324,11 +324,15 @@ fn validate_cwd_usable(cwd: &std::path::Path) -> Result<(), String> {
 /// Dispatch the session setup request (new or load-with-fallback).
 ///
 /// Validates that the CWD embedded in the setup request exists and is a
-/// directory before forwarding to the adapter.
+/// directory before forwarding to the adapter.  When `load_session_supported`
+/// is `false` the `Load` variant is treated as a `New` session (falls back
+/// immediately rather than attempting a `load_session` call the adapter would
+/// reject).
 pub(super) async fn setup_session(
     conn: &ClientSideConnection,
     session_setup: AcpSessionSetupRequest,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
+    load_session_supported: bool,
 ) -> Result<
     (
         SessionId,
@@ -371,6 +375,28 @@ pub(super) async fn setup_session(
         }
         AcpSessionSetupRequest::Load(load_session) => {
             validate_cwd_usable(&load_session.cwd)?;
+            // If the adapter does not support load_session, skip directly to new_session.
+            if !load_session_supported {
+                let msg = "ACP runtime: adapter does not support load_session, falling back to new_session".to_string();
+                crate::crates::core::logging::log_warn(&msg);
+                emit(
+                    tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Warn,
+                        message: msg,
+                    },
+                )
+                .await;
+                let mut fallback_req = NewSessionRequest::new(load_session.cwd);
+                if !load_session.mcp_servers.is_empty() {
+                    fallback_req = fallback_req.mcp_servers(load_session.mcp_servers);
+                }
+                let r = conn
+                    .new_session(fallback_req)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok((r.session_id, r.config_options));
+            }
             let msg = "ACP runtime: loading existing session".to_string();
             crate::crates::core::logging::log_info(&msg);
             emit(

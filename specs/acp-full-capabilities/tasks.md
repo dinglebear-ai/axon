@@ -416,7 +416,7 @@ _Requirements: FR-013_ / _Design: Section 4.4_
 **Commit**: `feat(acp): store load_session_supported and prompt_capabilities from InitializeResponse`
 _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 
-## Task 1.22 — Guard load_session with capability flag (FR-015)
+## Task 1.22 — Guard load_session with capability flag (FR-015) <!-- DONE -->
 
 **Do**: In `session.rs:setup_session`, before calling `conn.load_session(...)`, check `runtime_state.load_session_supported.get()`. If false, skip the load attempt and fall through to `new_session` directly, logging a warning. This requires passing `runtime_state` (or just the flag) into `setup_session`.
 **Files**: `crates/services/acp/session.rs`
