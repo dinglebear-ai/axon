@@ -677,10 +677,9 @@ mod tests {
     #[test]
     fn into_config_reads_axon_lite_env_var() {
         let _guard = ENV_LOCK.lock().unwrap();
+        // AXON_LITE=1 makes PG/Redis/AMQP optional — do not remove those vars;
+        // other parallel tests may hold them set and rely on them.
         unsafe {
-            env::remove_var("AXON_PG_URL");
-            env::remove_var("AXON_REDIS_URL");
-            env::remove_var("AXON_AMQP_URL");
             env::set_var("AXON_LITE", "1");
             env::set_var("QDRANT_URL", "http://localhost:53333");
             env::set_var("TEI_URL", "http://localhost:52000");

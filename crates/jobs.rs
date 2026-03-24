@@ -6,6 +6,7 @@ pub mod error;
 pub mod extract;
 pub mod graph;
 pub mod ingest;
+pub mod lite;
 pub mod refresh;
 pub mod status;
 pub mod watch;
