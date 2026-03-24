@@ -276,10 +276,27 @@ pub fn include_job_for_status_view(cfg: &Config, status: &str) -> bool {
     true
 }
 
-pub fn filter_jobs_for_status_view<T: JobStatus>(cfg: &Config, jobs: Vec<T>) -> Vec<T> {
-    jobs.into_iter()
+pub fn filter_jobs_for_status_view<T: JobStatus + Clone>(cfg: &Config, jobs: &[T]) -> Vec<T> {
+    jobs.iter()
         .filter(|job| include_job_for_status_view(cfg, job.status()))
+        .cloned()
         .collect()
+}
+
+pub fn print_list_footer(shown: usize, total: i64, limit: i64, offset: i64) {
+    if offset + limit < total {
+        println!(
+            "  {}",
+            muted(&format!(
+                "Showing {} of {} total — use --offset {} for next page",
+                shown,
+                total,
+                offset + limit,
+            ))
+        );
+    } else {
+        println!("  {}", muted(&format!("{total} total")));
+    }
 }
 
 macro_rules! impl_job_status {
@@ -475,7 +492,7 @@ pub fn handle_job_list<T: JobStatus + serde::Serialize + Clone>(
     result: &JobListResult<T>,
     command_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
+    let jobs = filter_jobs_for_status_view(cfg, &result.jobs);
     if cfg.json_output {
         let entries: Vec<serde_json::Value> =
             jobs.iter().map(|j| j.to_summary_entry_json()).collect();
@@ -504,19 +521,7 @@ pub fn handle_job_list<T: JobStatus + serde::Serialize + Clone>(
         }
     }
 
-    if result.is_truncated() {
-        println!(
-            "  {}",
-            muted(&format!(
-                "Showing {} of {} total — use --offset {} for next page",
-                jobs.len(),
-                result.total,
-                result.offset + result.limit,
-            ))
-        );
-    } else {
-        println!("  {}", muted(&format!("{} total", result.total)));
-    }
+    print_list_footer(jobs.len(), result.total, result.limit, result.offset);
     Ok(())
 }
 

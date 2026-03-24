@@ -1,5 +1,23 @@
 # Changelog
-Last Modified: 2026-03-24 (session: v0.33.1 — sessions ingestion refactor; ACP warm session path for ask/evaluate/suggest/debug)
+Last Modified: 2026-03-24 (session: v0.33.2 — job list footer extracted; warm session pool PR review fixes)
+
+## [0.33.2] — refactor/cleanup
+
+### Highlights
+
+- **`print_list_footer` helper** — Extracted duplicated "Showing X of Y total" pagination footer into a shared `print_list_footer(shown, total, limit, offset)` function in `common.rs`. Removes ~60 lines of repeated code from crawl, embed, and ingest list handlers.
+- **`filter_jobs_for_status_view` takes `&[T]`** — Signature changed from `Vec<T>` to `&[T]` + returns cloned slice, eliminating unnecessary `.clone()` calls at every call site.
+- **PR #59 review fixes** — Two-pass cleanup addressing all 39+35 review threads: heartbeat kill threshold, test isolation for env-var races, stuck/dead job liveness docs.
+
+### Commits since v0.33.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 4e2e39d4 | fix(review) | address remaining 35 PR #59 review threads (second pass) |
+| 86672db6 | fix(review) | address PR #59 review comments — all 39 threads |
+| 7e67aa91 | docs | document two-tier liveness enforcement for stuck/dead job detection |
+| dac0f14d | feat(jobs) | heartbeat kill threshold — cancel stuck jobs after 10min no progress via CancellationToken |
+| 3d3d6ed0 | fix(tests) | isolate parse/build_config env var races — use CLI flags for QDRANT+TEI in parse tests |
 
 ## [0.33.1] — chore/cleanup
 

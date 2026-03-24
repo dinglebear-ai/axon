@@ -1,7 +1,7 @@
 use super::audit;
 use crate::crates::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_recover, handle_job_status, truncate_chars,
+    handle_job_errors, handle_job_recover, handle_job_status, print_list_footer, truncate_chars,
 };
 use crate::crates::cli::commands::job_contracts::JobSummaryEntry;
 use crate::crates::core::config::Config;
@@ -218,7 +218,7 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = crawl_service::crawl_list_raw(cfg, 50, 0).await?;
-    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
+    let jobs = filter_jobs_for_status_view(cfg, &result.jobs);
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
         let out = serde_json::json!({
@@ -257,19 +257,7 @@ async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        if result.is_truncated() {
-            println!(
-                "  {}",
-                muted(&format!(
-                    "Showing {} of {} total — use --offset {} for next page",
-                    jobs.len(),
-                    result.total,
-                    result.offset + result.limit,
-                ))
-            );
-        } else {
-            println!("  {}", muted(&format!("{} total", result.total)));
-        }
+        print_list_footer(jobs.len(), result.total, result.limit, result.offset);
     }
     Ok(())
 }

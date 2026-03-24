@@ -1,6 +1,7 @@
 use crate::crates::cli::commands::common::{
     JobStatus, filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup,
     handle_job_clear, handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
+    print_list_footer,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_done;
@@ -206,7 +207,7 @@ async fn handle_ingest_list(
     cfg: &Config,
     result: JobListResult<IngestJob>,
 ) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
+    let jobs = filter_jobs_for_status_view(cfg, &result.jobs);
     if cfg.json_output {
         handle_job_list(cfg, &result, "Ingest")?;
     } else {
@@ -231,19 +232,7 @@ async fn handle_ingest_list(
             }
         }
 
-        if result.is_truncated() {
-            println!(
-                "  {}",
-                muted(&format!(
-                    "Showing {} of {} total — use --offset {} for next page",
-                    jobs.len(),
-                    result.total,
-                    result.offset + result.limit,
-                ))
-            );
-        } else {
-            println!("  {}", muted(&format!("{} total", result.total)));
-        }
+        print_list_footer(jobs.len(), result.total, result.limit, result.offset);
     }
     Ok(())
 }
