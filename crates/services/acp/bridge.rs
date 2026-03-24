@@ -12,7 +12,8 @@ use agent_client_protocol::{
     Client, CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest,
     ReadTextFileResponse, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SessionNotification, TerminalExitStatus, TerminalOutputRequest,
-    TerminalOutputResponse, WriteTextFileRequest, WriteTextFileResponse,
+    TerminalOutputResponse, WaitForTerminalExitRequest, WaitForTerminalExitResponse,
+    WriteTextFileRequest, WriteTextFileResponse,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -240,6 +241,20 @@ impl Client for AcpBridgeClient {
             resp.exit_status = Some(TerminalExitStatus::new().exit_code(code as u32));
         }
         Ok(resp)
+    }
+
+    async fn wait_for_terminal_exit(
+        &self,
+        args: WaitForTerminalExitRequest,
+    ) -> agent_client_protocol::Result<WaitForTerminalExitResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let mgr = self.terminal_manager.borrow().clone();
+        let code = mgr
+            .wait_for_exit(&local_id)
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        let exit_status = TerminalExitStatus::new().exit_code(code as u32);
+        Ok(WaitForTerminalExitResponse::new(exit_status))
     }
 
     async fn session_notification(
