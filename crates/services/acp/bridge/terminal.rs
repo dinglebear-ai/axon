@@ -54,13 +54,6 @@ pub struct TerminalState {
     pub byte_limit: usize,
 }
 
-// ── Thread-local terminal registry ────────────────────────────────────────────
-
-thread_local! {
-    static TERMINALS: RefCell<HashMap<TerminalId, TerminalState>> =
-        RefCell::new(HashMap::new());
-}
-
 // ── TerminalManager ───────────────────────────────────────────────────────────
 
 /// Manages a set of terminal subprocesses for an ACP session.
@@ -81,13 +74,14 @@ impl TerminalManager {
         }
     }
 
-    /// Spawn a new terminal subprocess and register it in the thread-local registry.
+    /// Spawn a new terminal subprocess and register it in this manager's registry.
     ///
     /// Validates that `cwd` is an existing directory, generates a UUID terminal ID,
     /// spawns the process with stdout/stderr piped and stdin null, and starts a
     /// `spawn_local` task that reads all output into a bounded ring buffer.
     #[allow(dead_code)]
     pub async fn create(
+        &self,
         cmd: &str,
         args: &[&str],
         cwd: &Path,
@@ -170,10 +164,7 @@ impl TerminalManager {
             byte_limit,
         };
 
-        let id_clone = id.clone();
-        TERMINALS.with(|t| {
-            t.borrow_mut().insert(id_clone, state);
-        });
+        self.terminals.borrow_mut().insert(id.clone(), state);
 
         Ok(id)
     }
@@ -183,15 +174,13 @@ impl TerminalManager {
     /// Returns `(output_bytes, truncated)` where `truncated` indicates whether
     /// the ring buffer hit the byte limit at any point.
     #[allow(dead_code)]
-    pub async fn output(id: &TerminalId) -> Result<Vec<u8>, String> {
-        TERMINALS.with(|t| {
-            let map = t.borrow();
-            let state = map
-                .get(id)
-                .ok_or_else(|| format!("terminal not found: {id}"))?;
-            let bytes: Vec<u8> = state.output_buf.borrow().iter().copied().collect();
-            Ok(bytes)
-        })
+    pub async fn output(&self, id: &TerminalId) -> Result<Vec<u8>, String> {
+        let map = self.terminals.borrow();
+        let state = map
+            .get(id)
+            .ok_or_else(|| format!("terminal not found: {id}"))?;
+        let bytes: Vec<u8> = state.output_buf.borrow().iter().copied().collect();
+        Ok(bytes)
     }
 
     /// Wait for the terminal subprocess to exit and return its exit code.
@@ -200,20 +189,24 @@ impl TerminalManager {
     /// Otherwise takes the `Child` handle, awaits `child.wait()`, stores the
     /// `ExitStatus`, and returns the code.
     #[allow(dead_code)]
-    pub async fn wait_for_exit(id: &TerminalId) -> Result<i32, String> {
+    pub async fn wait_for_exit(&self, id: &TerminalId) -> Result<i32, String> {
         // Check if already exited.
-        let already_exited = TERMINALS.with(|t| {
-            t.borrow()
-                .get(id)
-                .and_then(|s| s.exit_status)
-                .map(|s| s.code().unwrap_or(-1))
-        });
+        let already_exited = self
+            .terminals
+            .borrow()
+            .get(id)
+            .and_then(|s| s.exit_status)
+            .map(|s| s.code().unwrap_or(-1));
         if let Some(code) = already_exited {
             return Ok(code);
         }
 
         // Take child out to await without holding borrow.
-        let child = TERMINALS.with(|t| t.borrow_mut().get_mut(id).and_then(|s| s.child.take()));
+        let child = self
+            .terminals
+            .borrow_mut()
+            .get_mut(id)
+            .and_then(|s| s.child.take());
 
         let Some(mut child) = child else {
             return Err(format!("terminal has no child handle: {id}"));
@@ -225,11 +218,9 @@ impl TerminalManager {
             .map_err(|e| format!("wait() failed: {e}"))?;
 
         // Store exit status back.
-        TERMINALS.with(|t| {
-            if let Some(state) = t.borrow_mut().get_mut(id) {
-                state.exit_status = Some(status);
-            }
-        });
+        if let Some(state) = self.terminals.borrow_mut().get_mut(id) {
+            state.exit_status = Some(status);
+        }
 
         Ok(status.code().unwrap_or(-1))
     }
@@ -257,15 +248,15 @@ mod tests {
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
-                let id =
-                    TerminalManager::create("echo", &["hello"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
-                        .await
-                        .expect("create should succeed");
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                let output = TerminalManager::output(&id)
+                let mgr = TerminalManager::new();
+                let id = mgr
+                    .create("echo", &["hello"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
                     .await
-                    .expect("output should succeed");
-                let exit_code = TerminalManager::wait_for_exit(&id)
+                    .expect("create should succeed");
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                let output = mgr.output(&id).await.expect("output should succeed");
+                let exit_code = mgr
+                    .wait_for_exit(&id)
                     .await
                     .expect("wait_for_exit should succeed");
                 let output_str = String::from_utf8_lossy(&output);

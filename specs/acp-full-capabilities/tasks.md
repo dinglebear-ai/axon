@@ -72,6 +72,20 @@ _Requirements: FR-001, FR-002, FR-003_ / _Design: Section 4.1_
 **Commit**: `feat(acp): implement TerminalManager::create with subprocess spawn and ring buffer`
 _Requirements: FR-001_ / _Design: Section 4.1_
 
+## Task 1.4.1 [FIX 1.4] Fix: Remove thread_local global, use instance Rc<RefCell> in TerminalManager <!-- DONE -->
+
+**Do**: The current `terminal.rs` uses a `thread_local! { static TERMINALS: RefCell<HashMap<TerminalId, TerminalState>> }` global instead of an instance field. This violates session isolation (AC-1.7). Fix:
+1. Remove the `thread_local! { static TERMINALS: ... }` block from `terminal.rs`
+2. Ensure `TerminalManager` struct has `pub(crate) terminals: Rc<RefCell<HashMap<TerminalId, TerminalState>>>` field
+3. Update `TerminalManager::new()` to initialize the instance field (not the thread-local)
+4. Update `TerminalManager::create()` to use `self.terminals.borrow_mut()` instead of `TERMINALS.with(...)`
+5. Ensure the `spawn_local` buffer task still works with the instance's Rc (clone the Rc for the task)
+6. Run `cargo check` to verify
+**Files**: `crates/services/acp/bridge/terminal.rs`
+**Done when**: No thread_local in terminal.rs, `cargo check` passes, `TerminalManager` uses instance field
+**Verify**: `cargo check && ! grep -q 'thread_local' crates/services/acp/bridge/terminal.rs`
+**Commit**: `fix(acp): remove thread_local global, use instance Rc<RefCell> in TerminalManager`
+
 ## Task 1.5 — Implement TerminalManager::output (FR-002)
 
 **Do**: Implement `TerminalManager::output(id: &TerminalId) -> Result<(String, bool, Option<i32>), String>`. Drain the ring buffer into a UTF-8 string (lossy), return `(output_text, truncated_flag, exit_code_if_exited)`. The `truncated` flag is true if the buffer hit the byte limit and older data was dropped.
