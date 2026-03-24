@@ -880,7 +880,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 
 ---
 
-- [ ] V18 [VERIFY] Quality checkpoint: `just verify`
+- [x] V18 [VERIFY] Quality checkpoint: `just verify`
   - **Do**: Full verify pass including all new tests
   - **Verify**: `just verify` exits 0
   - **Done when**: All checks pass
@@ -890,7 +890,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 
 ## Phase 5 — Quality Gate + PR
 
-## Task 5.1 — Monolith compliance check
+## Task 5.1 — Monolith compliance check <!-- DONE -->
 
 **Do**: Run `python3 scripts/enforce_monoliths.py` on all modified/created files. Verify no file exceeds 500 lines. If any do, split further.
 **Files**: All modified ACP files
@@ -899,7 +899,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 **Commit**: `chore(acp): fix monolith violations` (if needed)
 _Requirements: FR-007_ / _Design: Section 3_
 
-## Task 5.2 — Verify no backward-incompatible changes (NFR-008)
+## Task 5.2 — Verify no backward-incompatible changes (NFR-008) <!-- DONE -->
 
 **Do**: Review all struct modifications in `types/acp.rs` — every new field must be `Option<T>`. Review `AcpBridgeEvent` — all new variants must serialize with unique `"type"` values. Verify existing wire tests still pass.
 **Files**: `crates/services/types/acp.rs`
@@ -910,7 +910,7 @@ _Requirements: NFR-008_ / _Design: Section 3_
 
 ---
 
-- [ ] V19 [VERIFY] Full local CI: `cargo fmt --check && cargo clippy && cargo test --lib && just verify`
+- [x] V19 [VERIFY] Full local CI: `cargo fmt --check && cargo clippy && cargo test --lib && just verify`
   - **Do**: Run complete local CI suite
   - **Verify**: All commands pass
   - **Done when**: Build succeeds, all tests pass
@@ -922,7 +922,7 @@ _Requirements: NFR-008_ / _Design: Section 3_
   - **Done when**: CI pipeline passes
   - **Commit**: None
 
-- [ ] V21 [VERIFY] AC checklist
+- [x] V21 [VERIFY] AC checklist
   - **Do**: Verify each FR (FR-001 through FR-032) is satisfied by checking code and tests. Verify NFRs: NFR-001 (500L limit), NFR-003 (no mod.rs), NFR-004 (?Send safety), NFR-005 (just verify), NFR-006 (TDD tests exist), NFR-007 (>=3 terminal tests), NFR-008 (backward compat), NFR-010 (no mod.rs for bridge).
   - **Verify**: Grep codebase for each FR implementation
   - **Done when**: All FRs and NFRs confirmed met
