@@ -1,3 +1,5 @@
+pub(crate) mod lite;
+
 use crate::crates::cli::commands::probe::{probe_http, with_path};
 use crate::crates::core::config::Config;
 use crate::crates::core::content::redact_url;
@@ -355,6 +357,9 @@ fn report_overall_ok(pipelines: &Value, tei_ok: bool, qdrant_ok: bool) -> bool {
 // NOTE: run_doctor delegates to build_doctor_report and only renders output.
 // Keep probe logic centralized in build_doctor_report to avoid drift.
 pub async fn build_doctor_report(cfg: &Config) -> Result<Value, Box<dyn Error>> {
+    if cfg.lite_mode {
+        return lite::build(cfg).await;
+    }
     let diagnostics = browser_diagnostics_pattern();
     let openai_model = resolve_openai_model(cfg);
     let probes = gather_doctor_probes(cfg, &openai_model).await?;

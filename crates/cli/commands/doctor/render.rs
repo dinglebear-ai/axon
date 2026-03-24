@@ -73,36 +73,53 @@ fn chrome_status_label(report: &serde_json::Value) -> String {
     }
 }
 
+fn render_sqlite_service_line(report: &serde_json::Value) {
+    let path = report_text(report, &["services", "sqlite", "path"], "unknown");
+    let exists = report_bool(report, &["services", "sqlite", "exists"]);
+    let detail = if exists {
+        format!("path={path}")
+    } else {
+        format!("path={path} (will be created on first use)")
+    };
+    render_status_line("sqlite", true, &detail);
+}
+
 fn render_services_section(report: &serde_json::Value) {
     println!("{}", primary("Services"));
 
-    let postgres_ok = report_bool(report, &["services", "postgres", "ok"]);
-    let redis_ok = report_bool(report, &["services", "redis", "ok"]);
-    let amqp_ok = report_bool(report, &["services", "amqp", "ok"]);
+    let lite = report_bool(report, &["lite_mode"]);
+    if lite {
+        render_sqlite_service_line(report);
+    } else {
+        let postgres_ok = report_bool(report, &["services", "postgres", "ok"]);
+        let redis_ok = report_bool(report, &["services", "redis", "ok"]);
+        let amqp_ok = report_bool(report, &["services", "amqp", "ok"]);
+        render_status_line(
+            "postgres",
+            postgres_ok,
+            &redact_url(&report_text(
+                report,
+                &["services", "postgres", "url"],
+                "n/a",
+            )),
+        );
+        render_status_line(
+            "redis",
+            redis_ok,
+            &redact_url(&report_text(report, &["services", "redis", "url"], "n/a")),
+        );
+        render_status_line(
+            "amqp",
+            amqp_ok,
+            &redact_url(&report_text(report, &["services", "amqp", "url"], "n/a")),
+        );
+    }
+
     let tei_ok = report_bool(report, &["services", "tei", "ok"]);
     let qdrant_ok = report_bool(report, &["services", "qdrant", "ok"]);
     let chrome_ok = report_bool(report, &["services", "chrome", "ok"]);
     let openai_ok = report_bool(report, &["services", "openai", "ok"]);
 
-    render_status_line(
-        "postgres",
-        postgres_ok,
-        &redact_url(&report_text(
-            report,
-            &["services", "postgres", "url"],
-            "n/a",
-        )),
-    );
-    render_status_line(
-        "redis",
-        redis_ok,
-        &redact_url(&report_text(report, &["services", "redis", "url"], "n/a")),
-    );
-    render_status_line(
-        "amqp",
-        amqp_ok,
-        &redact_url(&report_text(report, &["services", "amqp", "url"], "n/a")),
-    );
     render_status_line(
         "tei",
         tei_ok,
