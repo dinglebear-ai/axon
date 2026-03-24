@@ -276,12 +276,32 @@ pub(super) async fn initialize_connection(
     let _ = &resp.agent_capabilities.session_capabilities.close; // read field to avoid dead_code lint
     runtime_state.close_session_supported.set(true);
 
-    // Best-effort authentication: if the adapter advertised auth methods and
-    // AXON_ACP_AUTH_TOKEN is set, authenticate using the first advertised method.
-    if let Some(method) = resp.auth_methods.first()
-        && let Ok(token) = std::env::var("AXON_ACP_AUTH_TOKEN")
-        && !token.is_empty()
-    {
+    // Authentication: if the adapter advertised auth methods, authenticate using
+    // the first advertised method.  AXON_ACP_AUTH_TOKEN is required — when it is
+    // missing or empty, emit an error event and return an explicit error rather
+    // than proceeding without credentials (which would result in a confusing
+    // downstream failure).
+    if let Some(method) = resp.auth_methods.first() {
+        let token_result = std::env::var("AXON_ACP_AUTH_TOKEN");
+        let token = match token_result {
+            Ok(t) if !t.is_empty() => t,
+            _ => {
+                let msg =
+                    "ACP: adapter requires authentication but AXON_ACP_AUTH_TOKEN is not set; \
+                           set this environment variable to a valid auth token and retry"
+                        .to_string();
+                emit(
+                    tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Error,
+                        message: msg.clone(),
+                    },
+                )
+                .await;
+                return Err(msg);
+            }
+        };
+        let _ = token; // token validated above; AuthenticateRequest carries the method, not the token
         use agent_client_protocol::AuthenticateRequest;
         match conn
             .authenticate(AuthenticateRequest::new(method.id().clone()))
