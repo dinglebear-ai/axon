@@ -259,3 +259,34 @@ pub struct RefreshRunResult {
 pub struct ScreenshotResult {
     pub payload: serde_json::Value,
 }
+
+// ── Job list pagination ──────────────────────────────────────────────────
+
+/// Paginated job list result — always includes true DB total count.
+#[derive(Debug)]
+pub struct JobListResult<T> {
+    /// The fetched slice of jobs (up to `limit` items).
+    pub jobs: Vec<T>,
+    /// True total number of jobs in the DB (may exceed `jobs.len()`).
+    pub total: i64,
+    /// The limit that was applied.
+    pub limit: i64,
+    /// The offset that was applied.
+    pub offset: i64,
+}
+
+impl<T> JobListResult<T> {
+    pub fn new(jobs: Vec<T>, total: i64, limit: i64, offset: i64) -> Self {
+        Self {
+            jobs,
+            total,
+            limit,
+            offset,
+        }
+    }
+
+    /// True if the displayed slice is a subset of all available jobs.
+    pub fn is_truncated(&self) -> bool {
+        self.total > self.jobs.len() as i64
+    }
+}
