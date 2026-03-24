@@ -495,7 +495,7 @@ _Requirements: FR-019_ / _Design: Section 4.3_
 
 ---
 
-- [ ] V9 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V9 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -505,7 +505,7 @@ _Requirements: FR-019_ / _Design: Section 4.3_
 
 ### Group M: MCP Handler Stubs for New Subactions
 
-## Task 1.27 — Create handlers_acp.rs with list_sessions stub (FR-020)
+<!-- DONE --> Task 1.27 — Create handlers_acp.rs with list_sessions stub (FR-020)
 
 **Do**: Create `crates/mcp/server/handlers_acp.rs` with the routing structure for ACP subactions. Start with `handle_acp_list_sessions` that calls `conn.list_sessions()` and returns the result as JSON. Register this handler in the MCP server's action/subaction router. If the main router is in `crates/mcp/server.rs` or similar, add the `acp` action with `list_sessions` subaction.
 **Files**: `crates/mcp/server/handlers_acp.rs` (create), `crates/mcp/server.rs` (modify router)

@@ -2,6 +2,8 @@
 pub(super) mod artifacts;
 #[path = "server/common.rs"]
 pub mod common;
+#[path = "server/handlers_acp.rs"]
+mod handlers_acp;
 #[path = "server/handlers_crawl_extract.rs"]
 mod handlers_crawl_extract;
 #[path = "server/handlers_elicit.rs"]
@@ -132,6 +134,7 @@ impl AxonMcpServer {
             AxonRequest::Refresh(req) => self.handle_refresh(req).await?,
             AxonRequest::Graph(req) => self.handle_graph(req).await?,
             AxonRequest::Export(req) => self.handle_export(req).await?,
+            AxonRequest::Acp(req) => self.handle_acp(req).await?,
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))

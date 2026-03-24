@@ -28,6 +28,7 @@ pub enum AxonRequest {
     Graph(GraphRequest),
     Export(ExportRequest),
     ElicitDemo(ElicitDemoRequest),
+    Acp(AcpRequest),
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
@@ -417,6 +418,21 @@ pub struct GraphRequest {
 #[serde(deny_unknown_fields)]
 pub struct ExportRequest {
     pub include_history: Option<bool>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+/// Subactions for the `acp` action.
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpSubaction {
+    ListSessions,
+}
+
+/// Request parameters for the `acp` action.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcpRequest {
+    pub subaction: AcpSubaction,
     pub response_mode: Option<ResponseMode>,
 }
 
