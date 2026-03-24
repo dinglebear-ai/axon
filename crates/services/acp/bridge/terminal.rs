@@ -146,6 +146,14 @@ impl TerminalManager {
         // Generate unique terminal ID.
         let id = TerminalId(uuid::Uuid::new_v4().to_string());
 
+        tracing::info!(
+            terminal_id = %id.0,
+            cmd = %cmd,
+            args = ?args,
+            cwd = %cwd.display(),
+            "terminal: creating subprocess"
+        );
+
         // Spawn the subprocess with piped stdout/stderr and null stdin.
         let mut child = tokio::process::Command::new(cmd)
             .args(args)
@@ -220,6 +228,8 @@ impl TerminalManager {
 
         self.terminals.borrow_mut().insert(id.clone(), state);
 
+        tracing::info!(terminal_id = %id.0, "terminal: subprocess registered");
+
         Ok(id)
     }
 
@@ -243,6 +253,13 @@ impl TerminalManager {
 
         let text = String::from_utf8_lossy(&bytes).into_owned();
         let exit_code = state.exit_status.and_then(|s| s.code());
+
+        tracing::info!(
+            terminal_id = %id.0,
+            drained_bytes = bytes.len(),
+            truncated = was_truncated,
+            "terminal: output drained"
+        );
 
         Ok((text, was_truncated, exit_code))
     }
@@ -281,6 +298,7 @@ impl TerminalManager {
 
         // Send kill signal (SIGKILL on Unix via tokio).
         // Ignore errors: process may have exited between the check and now.
+        tracing::info!(terminal_id = %id.0, "terminal: sending kill signal");
         let _ = child.start_kill();
 
         // Put the child back so wait_for_exit can collect the exit status.
@@ -317,6 +335,8 @@ impl TerminalManager {
 
         // Remove from map.
         self.terminals.borrow_mut().remove(id);
+
+        tracing::info!(terminal_id = %id.0, "terminal: released and removed from registry");
 
         Ok(())
     }
