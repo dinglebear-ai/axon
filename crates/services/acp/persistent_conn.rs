@@ -16,7 +16,9 @@ mod turn;
 use std::path::Path;
 use std::sync::Arc;
 
-use agent_client_protocol::{ClientSideConnection, InitializeRequest, SessionId};
+use agent_client_protocol::{
+    Agent, ClientSideConnection, CloseSessionRequest, InitializeRequest, SessionId,
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -380,6 +382,17 @@ async fn run_adapter_main_loop(
                     }
                     None => {
                         tracing::info!(context = "acp_conn", "channel closed (connection ended)");
+                        // Best-effort session close before adapter teardown.
+                        if let Err(e) = conn
+                            .close_session(CloseSessionRequest::new(session_id.clone()))
+                            .await
+                        {
+                            tracing::warn!(
+                                context = "acp_conn",
+                                error = %e,
+                                "close_session failed (non-fatal)"
+                            );
+                        }
                         break;
                     }
                 }
