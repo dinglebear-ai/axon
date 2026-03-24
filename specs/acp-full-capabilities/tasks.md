@@ -267,7 +267,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 
 ### Group D: Diff Rendering (FR-008)
 
-## Task 1.14b — [RED] Write failing test: Diff content extraction (AC-2.4)
+## Task 1.14b — [x] [RED] Write failing test: Diff content extraction (AC-2.4)
 
 **Do**: In `mapping.rs` tests, write `test_diff_content_extraction`: create a `ToolCallContent::Diff { old_text: "foo".into(), new_text: "bar".into() }`, call `extract_content_text`, assert result contains both old and new text. Test fails until Task 1.15 adds the Diff arm.
 **Files**: `crates/services/acp/mapping.rs`

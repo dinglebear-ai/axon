@@ -576,6 +576,26 @@ mod tests {
     }
 
     #[test]
+    fn test_diff_content_extraction() {
+        use agent_client_protocol::{Diff, SessionUpdate, ToolCall, ToolCallContent, ToolCallId};
+        let diff = Diff::new("/path/to/file.rs", "new content").old_text("old content".to_string());
+        let tool_call = ToolCall::new(ToolCallId::new("call_1"), "str_replace_based_edit_tool")
+            .content(vec![ToolCallContent::Diff(diff)]);
+        let update = SessionUpdate::ToolCall(tool_call);
+        let result = extract_tool_content(&update);
+        assert!(result.is_some(), "expected Some but got None");
+        let text = result.unwrap();
+        assert!(
+            text.contains("old content"),
+            "expected old_text in result: {text}"
+        );
+        assert!(
+            text.contains("new content"),
+            "expected new_text in result: {text}"
+        );
+    }
+
+    #[test]
     fn convert_http_with_headers() {
         let servers = vec![AcpMcpServerConfig::Http {
             name: "h".into(),
