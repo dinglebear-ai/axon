@@ -505,6 +505,37 @@ mod tests {
         );
     }
 
+    /// `ext_method` with no registered handlers must return `method_not_found`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn ext_method_returns_method_not_found_with_no_handler() {
+        use agent_client_protocol::{ErrorCode, ExtRequest};
+        use serde_json::value::RawValue;
+        use std::sync::Arc;
+
+        let client = AcpBridgeClient {
+            runtime_state: Arc::new(AcpRuntimeState::default()),
+            auto_approve: false,
+            permission_responders: Arc::new(dashmap::DashMap::new()),
+            session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        };
+
+        let raw = RawValue::from_string("{}".to_string()).unwrap();
+        let req = ExtRequest::new("_axon.unknown_method", Arc::from(raw));
+        let result = client.ext_method(req).await;
+
+        assert!(result.is_err(), "expected method_not_found error");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.code,
+            ErrorCode::MethodNotFound,
+            "expected MethodNotFound (-32601), got {:?}",
+            err.code
+        );
+    }
+
     #[tokio::test]
     async fn finalize_emits_editor_write_events() {
         let runtime_state = Arc::new(AcpRuntimeState::default());

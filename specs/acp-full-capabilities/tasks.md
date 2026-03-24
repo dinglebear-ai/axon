@@ -811,7 +811,7 @@ _Requirements: FR-028_ / _Design: Section 4.5_
 
 ---
 
-- [ ] V16 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V16 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality checks
   - **Verify**: All exit 0
   - **Done when**: Clean
@@ -841,7 +841,7 @@ _Requirements: FR-032_ / _Design: Section 4.5_
 
 ---
 
-- [ ] V17 [VERIFY] Quality checkpoint: `just verify`
+- [x] V17 [VERIFY] Quality checkpoint: `just verify`
   - **Do**: Full verify pass
   - **Verify**: `just verify` exits 0
   - **Done when**: All checks pass
@@ -851,7 +851,7 @@ _Requirements: FR-032_ / _Design: Section 4.5_
 
 ### Group C: Tests for Phase 4 Features
 
-## Task 4.11 — Test: list_sessions subaction routing
+## Task 4.11 — Test: list_sessions subaction routing <!-- DONE -->
 
 **Do**: Write a unit test (or compile-time verification) that the `acp/list_sessions` subaction is registered in the MCP router.
 **Files**: `crates/mcp/server/handlers_acp.rs`
@@ -860,7 +860,7 @@ _Requirements: FR-032_ / _Design: Section 4.5_
 **Commit**: `test(acp): list_sessions subaction routing test`
 _Requirements: FR-020_ / _Design: Section 4.5_
 
-## Task 4.12 — Test: ext_method returns method_not_found when no handler
+## Task 4.12 — Test: ext_method returns method_not_found when no handler <!-- DONE -->
 
 **Do**: Write a test: call `ext_method` with no handlers registered, verify it returns `method_not_found` error.
 **Files**: `crates/services/acp/bridge.rs`
