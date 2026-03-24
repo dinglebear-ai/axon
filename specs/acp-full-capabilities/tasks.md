@@ -694,7 +694,7 @@ _Requirements: FR-017, FR-018_ / _Design: Section 4.4_
 **Commit**: `test(acp): message_id forwarding in session update events`
 _Requirements: FR-019_ / _Design: Section 4.3_
 
-## Task 3.10 — Test: TerminalError variants map to protocol errors
+## Task 3.10 — Test: TerminalError variants map to protocol errors <!-- DONE -->
 
 **Do**: Write unit tests verifying each `TerminalError` variant maps to the correct `agent_client_protocol::Error` (e.g., NotFound → resource_not_found, CwdEscaped → internal_error).
 **Files**: `crates/services/acp/bridge/terminal.rs`

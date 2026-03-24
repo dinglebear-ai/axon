@@ -622,6 +622,43 @@ mod tests {
             .await;
     }
 
+    /// Task 3.10: TerminalError variants map to the correct protocol errors.
+    #[test]
+    fn terminal_error_not_found_maps_to_resource_not_found() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error = TerminalError::NotFound.into();
+        assert_eq!(err.code, ErrorCode::ResourceNotFound);
+    }
+
+    #[test]
+    fn terminal_error_already_exited_maps_to_internal_error() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error = TerminalError::AlreadyExited.into();
+        assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn terminal_error_spawn_failed_maps_to_internal_error() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error =
+            TerminalError::SpawnFailed("msg".to_string()).into();
+        assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn terminal_error_kill_failed_maps_to_internal_error() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error = TerminalError::KillFailed("msg".to_string()).into();
+        assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn terminal_error_cwd_escaped_maps_to_internal_error() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error = TerminalError::CwdEscaped.into();
+        assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
     /// RED: double-release is a no-op — not yet implemented.
     /// `manager.kill(&id)` and `manager.release(&id)` do not exist yet.
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
