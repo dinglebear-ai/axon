@@ -1,7 +1,7 @@
 use crate::crates::mcp::schema::{AxonToolResponse, ScreenshotRequest};
 use crate::crates::mcp::server::AxonMcpServer;
 use crate::crates::mcp::server::artifacts::{
-    ensure_artifact_root, resolve_artifact_output_path, respond_with_mode,
+    InlineHint, ensure_artifact_root, resolve_artifact_output_path, respond_with_mode,
 };
 use crate::crates::mcp::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
 use rmcp::ErrorData;
@@ -113,6 +113,7 @@ impl AxonMcpServer {
             response_mode,
             "screenshot",
             payload,
+            InlineHint::Default,
         )
         .await
     }

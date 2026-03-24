@@ -14,5 +14,6 @@ pub(super) use path::{
     artifact_root, client_context_name, ensure_artifact_root, resolve_artifact_output_path,
     validate_artifact_path,
 };
+pub(super) use respond::InlineHint;
 pub(super) use respond::respond_with_mode;
 pub(super) use shape::line_count;

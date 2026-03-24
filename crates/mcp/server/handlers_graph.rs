@@ -1,5 +1,7 @@
 use super::AxonMcpServer;
-use super::common::{invalid_params, logged_internal_error, respond_with_mode, slugify};
+use super::common::{
+    InlineHint, invalid_params, logged_internal_error, respond_with_mode, slugify,
+};
 use crate::crates::mcp::schema::{AxonToolResponse, GraphRequest, GraphSubaction};
 use crate::crates::services::graph as graph_svc;
 use rmcp::ErrorData;
@@ -27,7 +29,15 @@ impl AxonMcpServer {
                     .map(|value| format!("graph-build-{}", slugify(value, 56)))
                     .or_else(|| domain.map(|value| format!("graph-build-{}", slugify(value, 56))))
                     .unwrap_or_else(|| "graph-build-all".to_string());
-                respond_with_mode("graph", "build", response_mode, &stem, result.payload).await
+                respond_with_mode(
+                    "graph",
+                    "build",
+                    response_mode,
+                    &stem,
+                    result.payload,
+                    InlineHint::Default,
+                )
+                .await
             }
             GraphSubaction::Status => {
                 let result = graph_svc::graph_status(self.cfg.as_ref())
@@ -39,6 +49,7 @@ impl AxonMcpServer {
                     response_mode,
                     "graph-status",
                     result.payload,
+                    InlineHint::Default,
                 )
                 .await
             }
@@ -57,6 +68,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("graph-explore-{}", slugify(&entity, 56)),
                     result.payload,
+                    InlineHint::Default,
                 )
                 .await
             }
@@ -70,6 +82,7 @@ impl AxonMcpServer {
                     response_mode,
                     "graph-stats",
                     result.payload,
+                    InlineHint::Default,
                 )
                 .await
             }

@@ -1,6 +1,6 @@
 use super::AxonMcpServer;
 use super::common::{
-    invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
+    InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
     respond_with_mode,
 };
 use crate::crates::core::config::Config;
@@ -100,6 +100,7 @@ impl AxonMcpServer {
             response_mode,
             "embed-list",
             serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
         )
         .await
     }
@@ -122,6 +123,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("embed-status-{id}"),
                     serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
                 )
                 .await
             }
@@ -215,6 +217,7 @@ impl AxonMcpServer {
             response_mode,
             "ingest-list",
             serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
         )
         .await
     }
@@ -237,6 +240,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("ingest-status-{id}"),
                     serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
                 )
                 .await
             }

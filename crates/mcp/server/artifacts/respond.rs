@@ -5,6 +5,21 @@ use crate::crates::mcp::schema::{AxonToolResponse, ResponseMode};
 use rmcp::ErrorData;
 use uuid::Uuid;
 
+/// Controls which fields are always surfaced inline in the MCP response,
+/// regardless of response_mode or payload size.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields + AlwaysPath wired in Task 5
+pub enum InlineHint {
+    /// Normal auto-inline behavior based on payload size.
+    Default,
+    /// Extract these top-level fields into `key_fields` in the response.
+    /// The full payload is still written to the artifact.
+    Fields(&'static [&'static str]),
+    /// Never inline. Force path mode regardless of the caller's explicit mode.
+    /// Use for large document content (scrape, retrieve).
+    AlwaysPath,
+}
+
 pub async fn write_json_artifact(
     stem: &str,
     payload: &serde_json::Value,
@@ -18,13 +33,11 @@ pub async fn write_json_artifact(
     }
 
     // Write to a sibling temp file first, then rename atomically.
-    // This ensures that if the write fails, the original file (if any) is preserved.
     let tmp_path = path.with_extension(format!("json.{}.tmp", Uuid::new_v4().simple()));
     tokio::fs::write(&tmp_path, text.as_bytes())
         .await
         .map_err(|e| internal_error(format!("failed to write artifact temp file: {e}")))?;
     tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
-        // Best-effort cleanup of the temp file on rename failure.
         let tmp = tmp_path.clone();
         tokio::spawn(async move {
             let _ = tokio::fs::remove_file(tmp).await;
@@ -32,9 +45,6 @@ pub async fn write_json_artifact(
         internal_error(format!("failed to finalize artifact file: {e}"))
     })?;
 
-    // Compute the root-relative path. Remote clients should use this stable identifier
-    // (not the absolute server path) when calling artifacts.* subactions.
-    // ensure_artifact_root() is idempotent — the dir already exists from build_artifact_path.
     let relative_path = ensure_artifact_root()
         .await
         .ok()
@@ -64,15 +74,43 @@ pub async fn respond_with_mode(
     mode: Option<ResponseMode>,
     artifact_stem: &str,
     payload: serde_json::Value,
+    hint: InlineHint,
 ) -> Result<AxonToolResponse, ErrorData> {
-    // Resolve the effective mode. Auto-inline only applies when the caller
-    // hasn't explicitly requested a specific response mode.
+    // AlwaysPath overrides everything.
+    if matches!(hint, InlineHint::AlwaysPath) {
+        let artifact = write_json_artifact(artifact_stem, &payload).await?;
+        let shape = json_shape_preview(&payload);
+        return Ok(AxonToolResponse::ok(
+            action,
+            subaction,
+            serde_json::json!({
+                "response_mode": "path",
+                "shape": shape,
+                "artifact": artifact,
+            }),
+        ));
+    }
+
+    // Fields hint: always write artifact, always extract named fields.
+    if let InlineHint::Fields(fields) = &hint {
+        let artifact = write_json_artifact(artifact_stem, &payload).await?;
+        let key_fields = extract_key_fields(&payload, fields);
+        let shape = json_shape_preview(&payload);
+        return Ok(AxonToolResponse::ok(
+            action,
+            subaction,
+            serde_json::json!({
+                "response_mode": "path",
+                "key_fields": key_fields,
+                "shape": shape,
+                "artifact": artifact,
+            }),
+        ));
+    }
+
     let effective_mode = match mode {
         Some(explicit) => explicit,
         None => {
-            // Auto-inline: if payload serializes small, skip the artifact disk write.
-            // Threshold configurable via AXON_INLINE_BYTES_THRESHOLD (default: 8192).
-            // Set to 0 to disable auto-inline and force path mode for all payloads.
             let payload_bytes = serde_json::to_string(&payload)
                 .map(|s| s.len())
                 .unwrap_or(usize::MAX);
@@ -87,16 +125,12 @@ pub async fn respond_with_mode(
                     }),
                 ));
             }
-            // Large payload with no explicit mode — use server-configured default.
-            // Set AXON_MCP_DEFAULT_RESPONSE_MODE=both (or inline) for remote deployments
-            // where clients cannot access server-side filesystem paths directly.
-            server_default_response_mode()
+            // Large payload with no explicit mode — default to path.
+            ResponseMode::Path
         }
     };
 
-    // Write artifact to disk and respond according to the effective mode.
     let artifact = write_json_artifact(artifact_stem, &payload).await?;
-
     let shape = json_shape_preview(&payload);
     match effective_mode {
         ResponseMode::Path => Ok(AxonToolResponse::ok(
@@ -145,26 +179,27 @@ fn inline_bytes_threshold() -> usize {
         .unwrap_or(8_192)
 }
 
-/// Server-level default response mode for large payloads when the caller does
-/// not specify an explicit `response_mode`.
-///
-/// Configure via `AXON_MCP_DEFAULT_RESPONSE_MODE` env var:
-/// - `path`   — default; returns server-side path + shape (works for local/stdio clients)
-/// - `both`   — returns inline content (up to 12 000 chars) AND server-side path;
-///   recommended for remote HTTP deployments where clients cannot open
-///   server filesystem paths directly
-/// - `inline` — returns only inline content; suitable for remote clients that
-///   never need the artifact path
-fn server_default_response_mode() -> ResponseMode {
-    std::env::var("AXON_MCP_DEFAULT_RESPONSE_MODE")
-        .ok()
-        .and_then(|v| match v.to_ascii_lowercase().trim() {
-            "inline" => Some(ResponseMode::Inline),
-            "both" => Some(ResponseMode::Both),
-            "path" => Some(ResponseMode::Path),
-            _ => None,
-        })
-        .unwrap_or(ResponseMode::Path)
+/// Extract named top-level fields from `payload` into a new object.
+/// String values are capped at 32 000 chars to prevent abuse.
+/// Missing keys are silently omitted.
+fn extract_key_fields(payload: &serde_json::Value, fields: &[&'static str]) -> serde_json::Value {
+    const STRING_CAP: usize = 32_000;
+    let mut out = serde_json::Map::new();
+    if let serde_json::Value::Object(map) = payload {
+        for &field in fields {
+            if let Some(v) = map.get(field) {
+                let capped = match v {
+                    serde_json::Value::String(s) if s.chars().count() > STRING_CAP => {
+                        let head: String = s.chars().take(STRING_CAP).collect();
+                        serde_json::Value::String(head)
+                    }
+                    other => other.clone(),
+                };
+                out.insert(field.to_string(), capped);
+            }
+        }
+    }
+    serde_json::Value::Object(out)
 }
 
 #[cfg(test)]
@@ -194,34 +229,38 @@ mod tests {
         }
     }
 
-    /// Small payload with no explicit mode should auto-inline.
     #[tokio::test]
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn auto_inline_when_mode_is_none_and_payload_small() {
         let _guard = ARTIFACT_ENV_TEST_LOCK
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|p| p.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
-        let resp = respond_with_mode("test", "sub", None, "test-artifact", payload.clone())
-            .await
-            .unwrap();
+        let resp = respond_with_mode(
+            "test",
+            "sub",
+            None,
+            "test-artifact",
+            payload.clone(),
+            InlineHint::Default,
+        )
+        .await
+        .unwrap();
         assert!(resp.ok);
         assert_eq!(resp.data["response_mode"], "auto-inline");
         assert_eq!(resp.data["data"], payload);
         restore_artifact_env(prev);
     }
 
-    /// Explicit Path mode on a small payload should NOT auto-inline — it should
-    /// write to disk and return a path response.
     #[tokio::test]
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn explicit_path_mode_respected_even_for_small_payload() {
         let _guard = ARTIFACT_ENV_TEST_LOCK
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|p| p.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"key": "value"});
         let resp = respond_with_mode(
@@ -230,6 +269,7 @@ mod tests {
             Some(ResponseMode::Path),
             "test-path-mode",
             payload,
+            InlineHint::Default,
         )
         .await
         .unwrap();
@@ -240,14 +280,13 @@ mod tests {
         restore_artifact_env(prev);
     }
 
-    /// Explicit Inline mode should return inline data with the artifact on disk.
     #[tokio::test]
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn explicit_inline_mode_returns_inline_data() {
         let _guard = ARTIFACT_ENV_TEST_LOCK
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|p| p.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"items": [1, 2, 3]});
         let resp = respond_with_mode(
@@ -256,6 +295,7 @@ mod tests {
             Some(ResponseMode::Inline),
             "test-inline-mode",
             payload,
+            InlineHint::Default,
         )
         .await
         .unwrap();
@@ -267,14 +307,13 @@ mod tests {
         restore_artifact_env(prev);
     }
 
-    /// Both mode should return inline data, shape preview, and the artifact.
     #[tokio::test]
     #[allow(unsafe_code)]
     #[allow(clippy::await_holding_lock)]
     async fn both_mode_returns_inline_and_shape_and_artifact() {
         let _guard = ARTIFACT_ENV_TEST_LOCK
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|p| p.into_inner());
         let (_tmp, prev) = scoped_artifact_root();
         let payload = serde_json::json!({"name": "axon", "count": 42});
         let resp = respond_with_mode(
@@ -283,6 +322,7 @@ mod tests {
             Some(ResponseMode::Both),
             "test-both-mode",
             payload,
+            InlineHint::Default,
         )
         .await
         .unwrap();
@@ -292,6 +332,67 @@ mod tests {
         assert!(resp.data.get("truncated").is_some());
         assert!(resp.data["shape"].is_object());
         assert!(resp.data["artifact"].is_object());
+        restore_artifact_env(prev);
+    }
+
+    #[tokio::test]
+    #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
+    async fn inline_hint_fields_included_in_path_mode_response() {
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let (_tmp, prev) = scoped_artifact_root();
+        let payload = serde_json::json!({
+            "query": "test question",
+            "answer": "This is a detailed answer that explains everything.",
+            "timing_ms": {"total": 1234},
+        });
+        let resp = respond_with_mode(
+            "ask",
+            "ask",
+            None,
+            "ask-test",
+            payload,
+            InlineHint::Fields(&["answer"]),
+        )
+        .await
+        .unwrap();
+        assert!(resp.ok);
+        assert!(resp.data.get("key_fields").is_some(), "key_fields missing");
+        assert!(
+            resp.data["key_fields"].get("answer").is_some(),
+            "answer not extracted"
+        );
+        assert!(resp.data.get("artifact").is_some());
+        restore_artifact_env(prev);
+    }
+
+    #[tokio::test]
+    #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
+    async fn inline_hint_always_path_overrides_explicit_inline_mode() {
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let (_tmp, prev) = scoped_artifact_root();
+        let payload = serde_json::json!({"content": "scraped page content here"});
+        let resp = respond_with_mode(
+            "scrape",
+            "scrape",
+            Some(ResponseMode::Inline),
+            "scrape-test",
+            payload,
+            InlineHint::AlwaysPath,
+        )
+        .await
+        .unwrap();
+        assert!(resp.ok);
+        assert_eq!(resp.data["response_mode"], "path");
+        assert!(
+            resp.data.get("inline").is_none(),
+            "inline must not be present"
+        );
         restore_artifact_env(prev);
     }
 }
