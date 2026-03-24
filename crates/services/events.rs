@@ -60,6 +60,7 @@ impl From<String> for LogLevel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum ServiceEvent {
     Log {
         level: LogLevel,

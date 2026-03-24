@@ -214,6 +214,7 @@ fn unknown_session_update_produces_unknown_wire_type_not_status() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
     });
 
     let json = serde_json::to_value(&event).unwrap();
@@ -241,6 +242,7 @@ fn plan_session_update_falls_through_as_status_wire_type() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
     });
 
     let json = serde_json::to_value(&event).unwrap();

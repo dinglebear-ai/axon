@@ -23,6 +23,7 @@ fn acpbridgeevent_assistant_delta_wire_shape() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "assistant_delta");
@@ -49,6 +50,7 @@ fn acpbridgeevent_thinking_content_wire_shape() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "thinking_content");

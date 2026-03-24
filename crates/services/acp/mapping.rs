@@ -44,6 +44,7 @@ pub fn map_session_notification(notification: &SessionNotification) -> AcpSessio
     let tool_content = extract_tool_content(&notification.update);
     let tool_input = extract_tool_input(&notification.update);
     let tool_locations = extract_tool_locations(&notification.update);
+    let kind_detail = extract_tool_kind_detail(&notification.update);
     AcpSessionUpdateEvent {
         session_id: notification.session_id.0.to_string(),
         kind,
@@ -54,6 +55,7 @@ pub fn map_session_notification(notification: &SessionNotification) -> AcpSessio
         tool_content,
         tool_input,
         tool_locations,
+        kind_detail,
     }
 }
 
@@ -349,6 +351,19 @@ fn extract_tool_input(update: &SessionUpdate) -> Option<serde_json::Value> {
     match update {
         SessionUpdate::ToolCall(tc) => tc.raw_input.clone(),
         SessionUpdate::ToolCallUpdate(tcu) => tcu.fields.raw_input.clone(),
+        _ => None,
+    }
+}
+
+fn tool_kind_to_str(kind: &agent_client_protocol::ToolKind) -> Option<String> {
+    let s = format!("{kind:?}").to_lowercase();
+    if s == "other" { None } else { Some(s) }
+}
+
+fn extract_tool_kind_detail(update: &SessionUpdate) -> Option<String> {
+    match update {
+        SessionUpdate::ToolCall(tc) => tool_kind_to_str(&tc.kind),
+        SessionUpdate::ToolCallUpdate(tcu) => tcu.fields.kind.as_ref().and_then(tool_kind_to_str),
         _ => None,
     }
 }

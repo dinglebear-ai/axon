@@ -27,6 +27,7 @@ fn acp_session_update_maps_to_stream_friendly_output_json_payload() {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         },
     ));
 
@@ -148,6 +149,7 @@ fn acp_unknown_session_update_serializes_as_unknown_wire_type_in_ws_event() {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         },
     ));
 
@@ -188,6 +190,7 @@ fn acp_bridge_event_payload_does_not_silently_fail() {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         }),
         AcpBridgeEvent::SessionUpdate(AcpSessionUpdateEvent {
             session_id: "s".to_string(),
@@ -199,6 +202,7 @@ fn acp_bridge_event_payload_does_not_silently_fail() {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         }),
         AcpBridgeEvent::TurnResult(AcpTurnResultEvent {
             session_id: "s".to_string(),

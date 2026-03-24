@@ -234,6 +234,9 @@ pub struct AcpSessionUpdateEvent {
     /// File paths or URIs associated with the tool call (e.g. read/write targets).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_locations: Option<Vec<String>>,
+    /// Tool kind forwarded from the ACP ToolCall (e.g. "read", "edit", "execute").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind_detail: Option<String>,
 }
 
 // ── Permission request ───────────────────────────────────────────────────────
@@ -388,6 +391,9 @@ fn serialize_session_update<S: serde::Serializer>(
     }
     if let Some(ref locations) = update.tool_locations {
         map.serialize_entry("tool_locations", locations)?;
+    }
+    if let Some(ref kind) = update.kind_detail {
+        map.serialize_entry("kind", kind)?;
     }
     map.end()
 }

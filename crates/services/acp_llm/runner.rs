@@ -315,6 +315,7 @@ mod tests {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         };
         let thinking_update = AcpSessionUpdateEvent {
             session_id: "session-1".to_string(),
@@ -326,6 +327,7 @@ mod tests {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         };
         let assistant_update = AcpSessionUpdateEvent {
             session_id: "session-1".to_string(),
@@ -337,6 +339,7 @@ mod tests {
             tool_content: None,
             tool_input: None,
             tool_locations: None,
+            kind_detail: None,
         };
 
         handle_completion_bridge_event(
