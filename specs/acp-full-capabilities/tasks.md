@@ -685,7 +685,7 @@ _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 **Commit**: `test(acp): close_session_supported defaults to false`
 _Requirements: FR-017, FR-018_ / _Design: Section 4.4_
 
-## Task 3.9 — Test: message_id forwarded in session update
+## Task 3.9 — Test: message_id forwarded in session update <!-- DONE -->
 
 **Do**: Write a unit test: construct a notification with `message_id` set, map it, verify the output event has `message_id`.
 **Files**: `crates/services/acp/mapping.rs`
