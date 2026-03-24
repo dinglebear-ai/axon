@@ -246,11 +246,6 @@ pub struct RefreshJobResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RefreshJobListResult {
-    pub jobs: Vec<crate::crates::jobs::refresh::RefreshJob>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct RefreshRunResult {
     pub payload: serde_json::Value,
 }

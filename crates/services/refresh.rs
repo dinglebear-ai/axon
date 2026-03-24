@@ -136,7 +136,7 @@ pub fn refresh_should_reingest_github(pushed_at: &str, last_run_at: Option<DateT
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::services::types::{RefreshJobListResult, RefreshJobResult};
+    use crate::crates::services::types::RefreshJobResult;
     use chrono::{TimeZone, Utc};
 
     fn test_refresh_job() -> RefreshJob {
@@ -166,12 +166,11 @@ mod tests {
         let status = RefreshJobResult {
             job: Some(job.clone()),
         };
-        let list = RefreshJobListResult {
-            jobs: vec![job.clone()],
-        };
+        let list = JobListResult::new(vec![job.clone()], 1, 50, 0);
 
         assert_eq!(status.job.expect("job").id, job.id);
         assert_eq!(list.jobs.len(), 1);
         assert_eq!(list.jobs[0].id, job.id);
+        assert!(!list.is_truncated());
     }
 }

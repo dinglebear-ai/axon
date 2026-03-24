@@ -100,7 +100,7 @@ fn status_histogram(arr: &[serde_json::Value]) -> Option<serde_json::Value> {
 /// Recursive shape summary for path-mode responses.
 /// Objects: key -> shape of value.
 /// Arrays with a status-like field: `{"total": N, "by_status": {...}}`.
-/// Arrays without: `"<array[N]>"`.
+/// Arrays without: `{"total": N, "sample": [first 2 items shape-previewed]}`.
 /// Strings <= 100 chars: verbatim. Longer strings: `"<string N>"`.
 /// Primitives: verbatim.
 pub fn json_shape_preview(value: &serde_json::Value) -> serde_json::Value {
@@ -112,7 +112,10 @@ pub fn json_shape_preview(value: &serde_json::Value) -> serde_json::Value {
             .into(),
         serde_json::Value::Array(arr) => match status_histogram(arr) {
             Some(hist) => serde_json::json!({ "total": arr.len(), "by_status": hist }),
-            None => format!("<array[{}]>", arr.len()).into(),
+            None => {
+                let sample: Vec<_> = arr.iter().take(2).map(json_shape_preview).collect();
+                serde_json::json!({ "total": arr.len(), "sample": sample })
+            }
         },
         serde_json::Value::String(s) if s.chars().count() <= 100 => {
             serde_json::Value::String(s.clone())
@@ -137,7 +140,8 @@ mod tests {
         let preview = json_shape_preview(&val);
         assert_eq!(preview["name"], "axon");
         assert_eq!(preview["count"], 42);
-        assert_eq!(preview["items"], "<array[3]>");
+        assert_eq!(preview["items"]["total"], 3);
+        assert!(preview["items"]["sample"].is_array());
         assert!(preview["nested"].is_object());
         assert_eq!(preview["nested"]["key"], "value");
     }
@@ -242,5 +246,36 @@ mod tests {
         let (clipped, truncated) = clip_inline_json(&val, 10_000);
         assert!(!truncated);
         assert_eq!(clipped, val);
+    }
+
+    #[test]
+    fn json_shape_preview_non_status_array_shows_sample_items() {
+        let val = serde_json::json!({
+            "results": [
+                {"url": "https://a.com", "score": 0.95, "title": "A"},
+                {"url": "https://b.com", "score": 0.91, "title": "B"},
+                {"url": "https://c.com", "score": 0.88, "title": "C"},
+            ]
+        });
+        let preview = json_shape_preview(&val);
+        let results = &preview["results"];
+        assert_eq!(results["total"], 3);
+        let sample = results["sample"].as_array().expect("sample must be array");
+        assert_eq!(sample.len(), 2, "sample shows first 2 items");
+        assert!(sample[0].get("url").is_some());
+    }
+
+    #[test]
+    fn json_shape_preview_status_array_unchanged() {
+        let val = serde_json::json!([
+            {"status": "completed"}, {"status": "running"}, {"status": "completed"}
+        ]);
+        let preview = json_shape_preview(&val);
+        assert_eq!(preview["total"], 3);
+        assert!(preview.get("by_status").is_some());
+        assert!(
+            preview.get("sample").is_none(),
+            "status arrays don't show sample"
+        );
     }
 }
