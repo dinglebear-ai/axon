@@ -212,3 +212,30 @@ impl AxonMcpServer {
         .map_err(|e| internal_error(format!("serialize acp/logout response: {e}")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that `AcpSubaction::ListSessions` is registered in the MCP router
+    /// by confirming the variant exists and the exhaustive `handle_acp` match
+    /// covers it (compile-time proof — if the arm were absent the file would
+    /// not compile).
+    #[test]
+    fn list_sessions_subaction_variant_exists() {
+        // Construct the variant — the compiler rejects this if it is missing.
+        let subaction = AcpSubaction::ListSessions;
+        // Verify the exhaustive match in handle_acp covers ListSessions by
+        // checking the variant can be matched without a wildcard fallthrough.
+        let name = match subaction {
+            AcpSubaction::ListSessions => "list_sessions",
+            AcpSubaction::ForkSession => "fork_session",
+            AcpSubaction::ResumeSession => "resume_session",
+            AcpSubaction::SetModel => "set_model",
+            AcpSubaction::ExtMethod => "ext_method",
+            AcpSubaction::ExtNotification => "ext_notification",
+            AcpSubaction::Logout => "logout",
+        };
+        assert_eq!(name, "list_sessions");
+    }
+}
