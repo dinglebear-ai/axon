@@ -40,6 +40,7 @@ pub fn map_session_notification(notification: &SessionNotification) -> AcpSessio
     let tool_input = extract_tool_input(&notification.update);
     let tool_locations = extract_tool_locations(&notification.update);
     let kind_detail = extract_tool_kind_detail(&notification.update);
+    let message_id = extract_message_id(&notification.update);
     AcpSessionUpdateEvent {
         session_id: notification.session_id.0.to_string(),
         kind,
@@ -51,6 +52,7 @@ pub fn map_session_notification(notification: &SessionNotification) -> AcpSessio
         tool_input,
         tool_locations,
         kind_detail,
+        message_id,
     }
 }
 
@@ -387,6 +389,15 @@ fn extract_tool_kind_detail(update: &SessionUpdate) -> Option<String> {
     match update {
         SessionUpdate::ToolCall(tc) => tool_kind_to_str(&tc.kind),
         SessionUpdate::ToolCallUpdate(tcu) => tcu.fields.kind.as_ref().and_then(tool_kind_to_str),
+        _ => None,
+    }
+}
+
+fn extract_message_id(update: &SessionUpdate) -> Option<String> {
+    match update {
+        SessionUpdate::UserMessageChunk(chunk)
+        | SessionUpdate::AgentMessageChunk(chunk)
+        | SessionUpdate::AgentThoughtChunk(chunk) => chunk.message_id.clone(),
         _ => None,
     }
 }

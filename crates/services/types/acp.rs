@@ -237,6 +237,10 @@ pub struct AcpSessionUpdateEvent {
     /// Tool kind forwarded from the ACP ToolCall (e.g. "read", "edit", "execute").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind_detail: Option<String>,
+    /// Message identifier forwarded from `ContentChunk.message_id`.
+    /// Groups multiple chunks belonging to the same logical message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
 }
 
 // ── Permission request ───────────────────────────────────────────────────────
@@ -394,6 +398,9 @@ fn serialize_session_update<S: serde::Serializer>(
     }
     if let Some(ref kind) = update.kind_detail {
         map.serialize_entry("kind", kind)?;
+    }
+    if let Some(ref mid) = update.message_id {
+        map.serialize_entry("message_id", mid)?;
     }
     map.end()
 }
