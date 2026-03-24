@@ -170,7 +170,7 @@ _Requirements: FR-004_ / _Design: Section 4.1_
 **Commit**: `feat(acp): implement TerminalManager::release (idempotent)`
 _Requirements: FR-005_ / _Design: Section 4.1_
 
-## Task 1.8b — [GREEN] Verify kill+release and double-release tests pass
+## Task 1.8b — [GREEN] Verify kill+release and double-release tests pass <!-- DONE -->
 
 **Do**: Run `cargo test test_create_kill_release test_double_release_noop`. Fix any implementation issues.
 **Files**: (fix terminal.rs if tests fail)
