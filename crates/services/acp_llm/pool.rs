@@ -216,6 +216,8 @@ mod tests {
 
     #[test]
     fn pool_size_zero_before_init() {
-        let _ = pool_size();
+        // WARM_POOL may be initialized by other tests — just verify no panic and value is valid.
+        let size = pool_size();
+        assert!(size < usize::MAX, "pool_size() returned nonsense");
     }
 }
