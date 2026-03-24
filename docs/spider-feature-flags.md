@@ -57,7 +57,7 @@ Used in two files for HTML→Markdown content transformation:
 
 ---
 
-## Full Flag Inventory (all 79)
+## Full Flag Inventory (all 80, includes `basic` meta-feature)
 
 `✅` = enabled in axon_rust · `—` = not used
 
@@ -207,6 +207,6 @@ Used in two files for HTML→Markdown content transformation:
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **79** | **20 spider + 2 spider_agent = 22** |
+| **Total** | **80** | **20 spider + 2 spider_agent = 22** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.

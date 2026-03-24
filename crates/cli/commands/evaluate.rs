@@ -9,8 +9,9 @@ use std::error::Error;
 /// CLI shim for the evaluate command.
 pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let question = resolve_input_text(cfg).ok_or("evaluate requires a question")?;
-    // TODO: cfg.quiet — suppress progress log when quiet mode lands
-    log_info(&format!("command=evaluate query_len={}", question.len()));
+    if !cfg.quiet && !cfg.json_output {
+        log_info(&format!("command=evaluate query_len={}", question.len()));
+    }
 
     let result = query_service::evaluate(cfg, &question).await?;
 

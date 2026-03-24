@@ -10,6 +10,7 @@ use sqlx::PgPool;
 
 pub(crate) mod context;
 pub(crate) mod extract;
+pub(crate) mod persist;
 mod schema;
 pub(crate) mod similarity;
 pub(crate) mod taxonomy;

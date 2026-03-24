@@ -563,14 +563,15 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         quiet: global.quiet,
     };
 
-    // Validate collection name — Qdrant only allows [a-zA-Z0-9_-]
-    if !cfg
-        .collection
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    // Validate collection name — Qdrant only allows [a-zA-Z0-9_-] (ASCII only, non-empty)
+    if cfg.collection.is_empty()
+        || !cfg
+            .collection
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
     {
         return Err(format!(
-            "invalid collection name '{}': only letters, digits, underscores and hyphens are allowed",
+            "invalid collection name '{}': must be non-empty and contain only ASCII letters, digits, underscores and hyphens",
             cfg.collection
         ));
     }

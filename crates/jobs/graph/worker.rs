@@ -2,6 +2,10 @@ use super::extract::{
     ExtractedEntity, ExtractedRelationship, extract_entities_llm, normalize_entity_name,
     resolve_type_conflict,
 };
+use super::persist::{
+    GraphChunk, GraphRelationRecord, MergedEntity, write_chunk_mentions, write_document_and_chunks,
+    write_entities, write_entity_relationships,
+};
 use super::schema::{ensure_graph_schema, ensure_neo4j_schema};
 use super::similarity::compute_similarity;
 use super::taxonomy::{CandidateSource, EntityCandidate, Taxonomy};
@@ -26,27 +30,6 @@ const GRAPH_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 struct GraphJobConfig {
     #[serde(default)]
     source_type: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct GraphChunk {
-    point_id: String,
-    chunk_index: i64,
-    chunk_text: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct MergedEntity {
-    name: String,
-    entity_type: String,
-    confidence: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct GraphRelationRecord {
-    source: String,
-    target: String,
-    relation: String,
 }
 
 pub fn merge_candidates(candidates: Vec<EntityCandidate>) -> Vec<EntityCandidate> {
@@ -94,22 +77,6 @@ async fn load_graph_job(
     };
     let job_cfg = serde_json::from_value(cfg_json).unwrap_or_default();
     Ok(Some((url, job_cfg)))
-}
-
-fn candidate_names_for_chunk(
-    taxonomy: &Taxonomy,
-    chunk_text: &str,
-    source_type: &str,
-    entities: &HashMap<String, MergedEntity>,
-) -> Vec<String> {
-    let mut names = BTreeSet::new();
-    for candidate in taxonomy.extract_entities(chunk_text, source_type) {
-        let key = normalize_entity_name(&candidate.name);
-        if let Some(entity) = entities.get(&key) {
-            names.insert(entity.name.clone());
-        }
-    }
-    names.into_iter().collect()
 }
 
 fn merge_llm_entities(
@@ -164,143 +131,6 @@ fn build_relationships(
         });
     }
     deduped.into_iter().collect()
-}
-
-async fn write_document_and_chunks(
-    neo4j: &Neo4jClient,
-    cfg: &Config,
-    url: &str,
-    source_type: &str,
-    chunks: &[GraphChunk],
-) -> Result<(), Box<dyn Error>> {
-    let items: Vec<serde_json::Value> = chunks
-        .iter()
-        .map(|chunk| {
-            serde_json::json!({
-                "point_id": chunk.point_id,
-                "chunk_index": chunk.chunk_index,
-            })
-        })
-        .collect();
-
-    neo4j
-        .execute(
-            "MERGE (d:Document {url: $url}) \
-             SET d.source_type = $source_type, \
-                 d.collection = $collection, \
-                 d.updated_at = datetime() \
-             WITH d \
-             UNWIND $items AS item \
-             MERGE (c:Chunk {point_id: item.point_id}) \
-             SET c.url = $url, \
-                 c.collection = $collection, \
-                 c.chunk_index = item.chunk_index, \
-                 c.updated_at = datetime() \
-             MERGE (c)-[:BELONGS_TO]->(d)",
-            serde_json::json!({
-                "url": url,
-                "source_type": source_type,
-                "collection": cfg.collection,
-                "items": items,
-            }),
-        )
-        .await?;
-    Ok(())
-}
-
-async fn write_entities(
-    neo4j: &Neo4jClient,
-    entities: &HashMap<String, MergedEntity>,
-) -> Result<(), Box<dyn Error>> {
-    if entities.is_empty() {
-        return Ok(());
-    }
-    let items: Vec<serde_json::Value> = entities
-        .values()
-        .map(|entity| {
-            serde_json::json!({
-                "name": entity.name,
-                "entity_type": entity.entity_type,
-                "confidence": entity.confidence,
-            })
-        })
-        .collect();
-
-    neo4j
-        .execute(
-            "UNWIND $items AS item \
-             MERGE (e:Entity {name: item.name}) \
-             SET e.entity_type = item.entity_type, \
-                 e.confidence = item.confidence, \
-                 e.updated_at = datetime()",
-            serde_json::json!({ "items": items }),
-        )
-        .await?;
-    Ok(())
-}
-
-async fn write_chunk_mentions(
-    neo4j: &Neo4jClient,
-    taxonomy: &Taxonomy,
-    source_type: &str,
-    chunks: &[GraphChunk],
-    entities: &HashMap<String, MergedEntity>,
-) -> Result<usize, Box<dyn Error>> {
-    let mut items: Vec<serde_json::Value> = Vec::new();
-    for chunk in chunks {
-        let names = candidate_names_for_chunk(taxonomy, &chunk.chunk_text, source_type, entities);
-        for name in names {
-            items.push(serde_json::json!({
-                "name": name,
-                "point_id": chunk.point_id,
-            }));
-        }
-    }
-    let mention_count = items.len();
-    if !items.is_empty() {
-        neo4j
-            .execute(
-                "UNWIND $items AS item \
-                 MATCH (e:Entity {name: item.name}) \
-                 MATCH (c:Chunk {point_id: item.point_id}) \
-                 MERGE (e)-[:MENTIONED_IN]->(c)",
-                serde_json::json!({ "items": items }),
-            )
-            .await?;
-    }
-    Ok(mention_count)
-}
-
-async fn write_entity_relationships(
-    neo4j: &Neo4jClient,
-    relationships: &[GraphRelationRecord],
-) -> Result<(), Box<dyn Error>> {
-    if relationships.is_empty() {
-        return Ok(());
-    }
-    let items: Vec<serde_json::Value> = relationships
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "source": r.source,
-                "target": r.target,
-                "relation": r.relation,
-            })
-        })
-        .collect();
-
-    neo4j
-        .execute(
-            "UNWIND $items AS item \
-             MATCH (s:Entity {name: item.source}) \
-             MATCH (t:Entity {name: item.target}) \
-             MERGE (s)-[r:RELATES_TO]->(t) \
-             SET r.relation = item.relation, \
-                 r.updated_at = datetime()",
-            serde_json::json!({ "items": items }),
-        )
-        .await?;
-    Ok(())
 }
 
 async fn process_graph_job(
@@ -381,7 +211,15 @@ async fn process_graph_job(
     let relationships = if let Some(llm) = llm_result {
         merge_llm_entities(&mut entities, llm.entities);
         let rels = build_relationships(&entities, llm.relationships);
-        relationship_count = rels.len();
+        // Neo4j MERGEs on (source, target) only — two records with different
+        // relation labels for the same pair produce one persisted edge (the
+        // last write wins). Count unique (source, target) pairs to match what
+        // Neo4j actually stores rather than the raw relationship vec length.
+        relationship_count = rels
+            .iter()
+            .map(|r| (r.source.as_str(), r.target.as_str()))
+            .collect::<std::collections::HashSet<_>>()
+            .len();
         rels
     } else {
         Vec::new()

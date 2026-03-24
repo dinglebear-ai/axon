@@ -18,8 +18,7 @@ pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("search requires a query (positional or --query)"))?;
 
-    // TODO: cfg.quiet — suppress progress logs when quiet mode lands
-    if !cfg.json_output {
+    if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=search query_len={}", query.len()));
         print_phase("\u{25d0}", "Searching", &query);
     }

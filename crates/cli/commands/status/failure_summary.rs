@@ -1,3 +1,4 @@
+use crate::crates::core::logging::log_warn;
 use crate::crates::core::ui::{error, muted};
 use crate::crates::jobs::crawl::CrawlJob;
 use crate::crates::jobs::embed::EmbedJob;
@@ -101,13 +102,12 @@ pub fn print_failure_summary(
     }
 
     if parts.is_empty() {
-        println!(
+        log_warn(&format!(
             "  {} {}",
             error(&format!("{} failures", error_texts.len())),
             muted("(see individual jobs below)")
-        );
+        ));
     } else {
-        println!("  {} {}", error("Failures:"), parts.join(", "));
+        log_warn(&format!("  {} {}", error("Failures:"), parts.join(", ")));
     }
-    println!();
 }

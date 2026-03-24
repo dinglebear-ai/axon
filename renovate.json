@@ -126,7 +126,8 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "just-containers/s6-overlay",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioning": "loose"
     },
     {
       "description": "claude-agent-acp binary version in Dockerfile",

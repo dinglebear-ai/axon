@@ -49,11 +49,20 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         statuses: vec![],
     };
 
-    log_info("export | collecting data from Postgres and Qdrant");
-    let spinner =
-        Spinner::new("Collecting export data (this may take a moment for large collections)...");
+    if !cfg.quiet && !cfg.json_output {
+        log_info("export | collecting data from Postgres and Qdrant");
+    }
+    let spinner = if !cfg.quiet && !cfg.json_output {
+        Some(Spinner::new(
+            "Collecting export data (this may take a moment for large collections)...",
+        ))
+    } else {
+        None
+    };
     let manifest = export_manifest(cfg, &pool, &options).await?;
-    spinner.finish("export data collected");
+    if let Some(sp) = spinner {
+        sp.finish("export data collected");
+    }
     let json = serde_json::to_string_pretty(&manifest)?;
 
     if cfg.json_output {

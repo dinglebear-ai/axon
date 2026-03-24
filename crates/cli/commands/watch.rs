@@ -117,7 +117,9 @@ pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
         WatchRuntimeSubcommand::Delete { .. } => {
             return Err(
-                "'axon watch delete' is not yet implemented — use Postgres directly to remove watch definitions".into()
+                "'axon watch delete' is not yet implemented — to remove a watch definition, \
+                 connect to Postgres and run: DELETE FROM axon_watch_definitions WHERE id='<uuid>'; \
+                 ensure no running jobs reference the definition before deleting".into()
             );
         }
         WatchRuntimeSubcommand::Artifacts { .. } => {

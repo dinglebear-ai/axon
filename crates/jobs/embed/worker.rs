@@ -318,8 +318,16 @@ async fn process_claimed_embed_job(
     let _job_span = tracing::info_span!("embed_job", job_id = %id).entered();
     // Clone the shared connection for this job. MultiplexedConnection is Clone
     // (internally Arc-wrapped), so this is a cheap reference count bump — not
-    // a new TCP connection.
-    let mut redis_conn = shared_redis.lock().await.clone();
+    // a new TCP connection. If the shared slot is None (Redis was down at
+    // startup or a prior failure), attempt to re-establish it now so cancel
+    // checks become available without requiring a worker restart.
+    let mut redis_conn = {
+        let mut guard = shared_redis.lock().await;
+        if guard.is_none() {
+            *guard = open_embed_redis(&cfg).await;
+        }
+        guard.clone()
+    };
     let fail_msg = match process_embed_job(&cfg, &pool, id, &mut redis_conn).await {
         Ok(()) => None,
         Err(err) => Some(err.to_string()),

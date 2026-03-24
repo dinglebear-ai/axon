@@ -116,7 +116,9 @@ pub async fn run_migrate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // after migration completes.
     clear_collection_mode_cache(&from);
     clear_collection_mode_cache(&to);
-    log_info(&format!("migrate cache_cleared from={from} to={to}"));
+    log_info(&format!(
+        "migrate cache_cleared from={from} to={to} — workers in separate processes retain their own cache and require a restart"
+    ));
 
     if cfg.json_output {
         println!(

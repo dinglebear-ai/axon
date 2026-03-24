@@ -71,11 +71,41 @@ fn job_table_names_start_with_axon_prefix() {
     }
 }
 
+/// Compile-time exhaustive match over every `JobTable` variant.
+/// Adding a new `JobTable` variant without updating this match causes a
+/// compile error ("non-exhaustive patterns"), forcing the developer to also
+/// add it to `ALL_JOB_TABLES`.
+#[allow(dead_code)]
+fn assert_all_job_table_variants_matched(t: JobTable) {
+    match t {
+        JobTable::Crawl => (),
+        JobTable::Refresh => (),
+        JobTable::Extract => (),
+        JobTable::Embed => (),
+        JobTable::Ingest => (),
+        JobTable::Graph => (),
+    };
+}
+
+/// Compile-time exhaustive match over every `JobStatus` variant.
+/// Adding a new `JobStatus` variant without updating this match causes a
+/// compile error ("non-exhaustive patterns"), forcing the developer to also
+/// add it to `ALL_JOB_STATUSES`.
+#[allow(dead_code)]
+fn assert_all_job_status_variants_matched(s: JobStatus) {
+    match s {
+        JobStatus::Pending => (),
+        JobStatus::Running => (),
+        JobStatus::Completed => (),
+        JobStatus::Failed => (),
+        JobStatus::Canceled => (),
+    };
+}
+
 #[test]
 fn all_job_table_variants_covered() {
-    // If a new variant is added to JobTable, the ALL_JOB_TABLES const array
-    // above will fail to compile (non-exhaustive) OR this count check will
-    // fail, forcing the developer to add the new variant to the safety tests.
+    // The exhaustive match above catches new variants at compile time.
+    // This runtime test catches accidental duplicates in ALL_JOB_TABLES.
     let unique: std::collections::HashSet<&str> =
         ALL_JOB_TABLES.iter().map(|t| t.as_str()).collect();
     assert_eq!(
@@ -87,6 +117,8 @@ fn all_job_table_variants_covered() {
 
 #[test]
 fn all_job_status_variants_covered() {
+    // The exhaustive match above catches new variants at compile time.
+    // This runtime test catches accidental duplicates in ALL_JOB_STATUSES.
     let unique: std::collections::HashSet<&str> =
         ALL_JOB_STATUSES.iter().map(|s| s.as_str()).collect();
     assert_eq!(

@@ -15,8 +15,7 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("research requires a query (positional or --query)"))?;
 
-    // TODO: cfg.quiet — suppress progress logs when quiet mode lands
-    if !cfg.json_output {
+    if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
         println!("  {} {}", muted("provider=tavily model="), cfg.openai_model);
@@ -29,7 +28,7 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // and streaming synthesis output (ServiceEvent::SynthesisDelta per token chunk).
     let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
     let show_progress = !cfg.json_output;
-    let consumer = tokio::spawn(async move {
+    let mut consumer = tokio::spawn(async move {
         let mut in_synthesis = false;
         while let Some(event) = event_rx.recv().await {
             if !show_progress {
@@ -71,9 +70,13 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .await
         .map(|r| r.payload);
 
-    match tokio::time::timeout(std::time::Duration::from_secs(5), consumer).await {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), &mut consumer).await {
         Ok(_) => {}
         Err(_) => {
+            // Abort the spawned task so it does not linger on event_rx after
+            // run_research returns. Without abort(), the task continues running
+            // detached and can write to stderr after the command exits.
+            consumer.abort();
             log_warn("research synthesis consumer timed out after 5s");
         }
     }
