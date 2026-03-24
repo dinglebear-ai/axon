@@ -343,6 +343,8 @@ pub enum AcpBridgeEvent {
     /// ID of the session that received the update.
     SessionInfoUpdate {
         session_id: String,
+        title: Option<String>,
+        updated_at: Option<String>,
     },
 }
 
@@ -506,12 +508,20 @@ fn serialize_usage_update<S: serde::Serializer>(
 
 fn serialize_session_info_update<S: serde::Serializer>(
     session_id: &str,
+    title: Option<&str>,
+    updated_at: Option<&str>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeMap;
     let mut map = serializer.serialize_map(None)?;
     map.serialize_entry("type", "session_info_update")?;
     map.serialize_entry("session_id", session_id)?;
+    if let Some(t) = title {
+        map.serialize_entry("title", t)?;
+    }
+    if let Some(u) = updated_at {
+        map.serialize_entry("updated_at", u)?;
+    }
     map.end()
 }
 
@@ -546,9 +556,16 @@ impl serde::Serialize for AcpBridgeEvent {
                 old_session_id,
                 new_session_id,
             } => serialize_session_fallback(old_session_id, new_session_id, serializer),
-            Self::SessionInfoUpdate { session_id } => {
-                serialize_session_info_update(session_id, serializer)
-            }
+            Self::SessionInfoUpdate {
+                session_id,
+                title,
+                updated_at,
+            } => serialize_session_info_update(
+                session_id,
+                title.as_deref(),
+                updated_at.as_deref(),
+                serializer,
+            ),
         }
     }
 }

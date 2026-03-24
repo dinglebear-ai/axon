@@ -288,7 +288,7 @@ fn session_info_update_maps_to_session_info_update_bridge_event() {
     let event = map_session_notification_event(&notification);
     match event {
         ServiceEvent::AcpBridge {
-            event: AcpBridgeEvent::SessionInfoUpdate { session_id },
+            event: AcpBridgeEvent::SessionInfoUpdate { session_id, .. },
         } => {
             assert_eq!(session_id, "test-session-id");
         }

@@ -208,8 +208,12 @@ pub fn map_session_notification_event(notification: &SessionNotification) -> Ser
                 cost_currency: usage.cost.as_ref().map(|c| c.currency.clone()),
             }),
         },
-        SessionUpdate::SessionInfoUpdate(_) => ServiceEvent::AcpBridge {
-            event: AcpBridgeEvent::SessionInfoUpdate { session_id: sid },
+        SessionUpdate::SessionInfoUpdate(info) => ServiceEvent::AcpBridge {
+            event: AcpBridgeEvent::SessionInfoUpdate {
+                session_id: sid,
+                title: info.title.value().cloned(),
+                updated_at: info.updated_at.value().cloned(),
+            },
         },
         _ => ServiceEvent::AcpBridge {
             event: AcpBridgeEvent::SessionUpdate(map_session_notification(notification)),
