@@ -11,7 +11,8 @@ use crate::crates::services::types::AcpSessionUpdateKind;
 use agent_client_protocol::{
     Client, CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest,
     ReadTextFileResponse, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SessionNotification, WriteTextFileRequest, WriteTextFileResponse,
+    RequestPermissionResponse, SessionNotification, TerminalExitStatus, TerminalOutputRequest,
+    TerminalOutputResponse, WriteTextFileRequest, WriteTextFileResponse,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -222,6 +223,23 @@ impl Client for AcpBridgeClient {
         Ok(CreateTerminalResponse::new(
             agent_client_protocol::TerminalId::new(local_id.0),
         ))
+    }
+
+    async fn terminal_output(
+        &self,
+        args: TerminalOutputRequest,
+    ) -> agent_client_protocol::Result<TerminalOutputResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let (text, truncated, exit_code) = self
+            .terminal_manager
+            .borrow()
+            .output(&local_id)
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        let mut resp = TerminalOutputResponse::new(text, truncated);
+        if let Some(code) = exit_code {
+            resp.exit_status = Some(TerminalExitStatus::new().exit_code(code as u32));
+        }
+        Ok(resp)
     }
 
     async fn session_notification(
