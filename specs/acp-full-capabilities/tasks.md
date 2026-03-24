@@ -514,7 +514,7 @@ _Requirements: FR-019_ / _Design: Section 4.3_
 **Commit**: `feat(acp): add handlers_acp.rs with list_sessions subaction stub`
 _Requirements: FR-020_ / _Design: Section 4.5_
 
-## Task 1.28 — POC Checkpoint
+<!-- DONE --> Task 1.28 — POC Checkpoint
 
 **Do**: Verify the POC is functional: terminal module compiles, bridge client has all 5 terminal trait methods implemented, Diff arm handles content, SessionInfoUpdate carries title/updated_at, Boolean config mapped, auth flow wired, capabilities stored, close_session on teardown, message_id forwarded, MCP handler file exists. Run full `just verify`.
 **Files**: (none — verification only)
