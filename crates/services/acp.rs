@@ -282,6 +282,12 @@ impl AcpClientScaffold {
                 .write_text_file(true);
         }
         caps.terminal = self.adapter.enable_terminal;
+        // TODO(FR-031): Enable `unstable_elicitation` capability once
+        // `agent_client_protocol::ClientCapabilities` exposes it (SDK v0.10.2 does not).
+        // When available: caps.unstable_elicitation = true;
+        //
+        // TODO(FR-032): Enable `unstable_logout` capability once the SDK exposes it.
+        // When available: caps.unstable_logout = true;
         req.client_capabilities = caps;
 
         Ok(req)

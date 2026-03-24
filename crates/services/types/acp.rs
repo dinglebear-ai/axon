@@ -324,6 +324,27 @@ pub struct AcpUsageUpdate {
     pub cost_currency: Option<String>,
 }
 
+// ── Elicitation request (FR-031) ─────────────────────────────────────────────
+
+/// Elicitation request forwarded from the ACP agent to the frontend.
+///
+/// The ACP agent may request additional information from the user via
+/// `unstable_elicitation`. This event carries the prompt and optional
+/// schema so the frontend can render a form or free-text input.
+///
+/// TODO(FR-031): Populate from the real SDK `ElicitRequest` type once
+/// `agent_client_protocol` exposes `unstable_elicitation` (SDK v0.10.2 does not).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpElicitRequest {
+    pub session_id: String,
+    /// Human-readable prompt shown above the elicitation form.
+    pub message: String,
+    /// Optional JSON schema describing the expected response shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<serde_json::Value>,
+}
+
 // ── Bridge event (top-level enum) ────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -353,6 +374,12 @@ pub enum AcpBridgeEvent {
         title: Option<String>,
         updated_at: Option<String>,
     },
+    /// Elicitation request from the ACP agent (FR-031).
+    ///
+    /// Forwarded to the frontend so the user can provide additional input.
+    /// TODO(FR-031): Wire this to the real SDK callback once `unstable_elicitation`
+    /// is available in `agent_client_protocol`.
+    ElicitRequest(AcpElicitRequest),
 }
 
 // ── Per-variant serialization helpers ────────────────────────────────────────
@@ -538,6 +565,21 @@ fn serialize_session_info_update<S: serde::Serializer>(
     map.end()
 }
 
+fn serialize_elicit_request<S: serde::Serializer>(
+    req: &AcpElicitRequest,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(None)?;
+    map.serialize_entry("type", "elicit_request")?;
+    map.serialize_entry("session_id", &req.session_id)?;
+    map.serialize_entry("message", &req.message)?;
+    if let Some(ref schema) = req.schema {
+        map.serialize_entry("schema", schema)?;
+    }
+    map.end()
+}
+
 fn serialize_session_fallback<S: serde::Serializer>(
     old_session_id: &str,
     new_session_id: &str,
@@ -579,6 +621,7 @@ impl serde::Serialize for AcpBridgeEvent {
                 updated_at.as_deref(),
                 serializer,
             ),
+            Self::ElicitRequest(req) => serialize_elicit_request(req, serializer),
         }
     }
 }

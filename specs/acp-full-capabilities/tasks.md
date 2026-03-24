@@ -821,7 +821,7 @@ _Requirements: FR-028_ / _Design: Section 4.5_
 
 ### Group B: Elicitation + Logout (FR-030, FR-031, FR-032)
 
-## Task 4.9 — Enable unstable_elicitation; handle ElicitRequest (FR-031)
+## Task 4.9 — Enable unstable_elicitation; handle ElicitRequest (FR-031) <!-- DONE -->
 
 **Do**: In the `InitializeRequest` builder (wherever `ClientCapabilities` is constructed), enable `unstable_elicitation`. Implement the `elicit` method on the `Client` impl (if the SDK adds it as a callback) or handle `ElicitRequest` in the session notification path. Forward the elicitation prompt to the frontend via `ServiceEvent`.
 **Files**: `crates/services/acp/session.rs` (or `bridge.rs`), `crates/services/types/acp.rs`
