@@ -120,7 +120,7 @@ pub fn init_warm_pool(cfg: &Config) {
     let current = pool.len();
     for _ in current..MIN_SIZE {
         let t = Instant::now();
-        match super::warm::warm_session(cfg, None) {
+        match super::warm::spawn_warm_session(cfg, None) {
             Ok(session) => {
                 log_info(&format!(
                     "warm pool: pre-warmed session spawn={}ms",
@@ -157,7 +157,7 @@ pub fn try_checkout(cfg: &Config) -> Option<WarmAcpSession> {
     let cfg_clone = cfg.clone();
     tokio::task::spawn_blocking(move || {
         let t = Instant::now();
-        match super::warm::warm_session(&cfg_clone, None) {
+        match super::warm::spawn_warm_session(&cfg_clone, None) {
             Ok(new_session) => {
                 log_info(&format!(
                     "warm pool: refill spawn={}ms",
