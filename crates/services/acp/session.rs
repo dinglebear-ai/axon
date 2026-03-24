@@ -280,9 +280,17 @@ pub(super) async fn initialize_connection(
     if let Ok(json) = serde_json::to_string(&resp.agent_capabilities.prompt_capabilities) {
         *runtime_state.prompt_capabilities_json.borrow_mut() = Some(json);
     }
-    // Default true: assume close_session is supported unless the adapter explicitly
-    // advertises session_capabilities WITHOUT the close field (i.e., None). For the
-    // POC we use true unconditionally — the call is best-effort and non-blocking.
+    // `close_session_supported` is set unconditionally to `true` here because the
+    // current ACP SDK does not expose a capability flag that reliably indicates
+    // whether the adapter supports `session/close`. The call in
+    // `persistent_conn::run_adapter_main_loop` is best-effort and non-fatal: if the
+    // adapter does not recognise the method it responds with an error that is logged
+    // at WARN level and ignored. The trade-off is a harmless warning on every WS
+    // disconnect for adapters that lack the method.
+    //
+    // TODO: when the ACP SDK exposes a `session_capabilities.close` capability
+    // field that is reliably populated by all adapters, gate this on that field
+    // instead of setting it unconditionally.
     let _ = &resp.agent_capabilities.session_capabilities.close; // read field to avoid dead_code lint
     runtime_state.close_session_supported.set(true);
 
@@ -327,7 +335,16 @@ pub(super) async fn initialize_connection(
                 );
             }
             Err(err) => {
-                tracing::warn!(context = "acp_session", "ACP authenticate failed: {err}");
+                let msg = format!("ACP: authentication failed: {err}");
+                emit(
+                    tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Error,
+                        message: msg.clone(),
+                    },
+                )
+                .await;
+                return Err(msg);
             }
         }
     }
@@ -430,6 +447,20 @@ pub(super) async fn setup_session(
                     .new_session(fallback_req)
                     .await
                     .map_err(|e| e.to_string())?;
+                // Emit initial mode state so the frontend has it at session start,
+                // matching the behaviour of the AcpSessionSetupRequest::New path.
+                if let Some(ref mode_state) = r.modes {
+                    emit(
+                        tx,
+                        ServiceEvent::AcpBridge {
+                            event: AcpBridgeEvent::ModeUpdate(AcpModeUpdate {
+                                session_id: r.session_id.0.to_string(),
+                                current_mode_id: mode_state.current_mode_id.0.to_string(),
+                            }),
+                        },
+                    )
+                    .await;
+                }
                 return Ok((r.session_id, r.config_options));
             }
             let msg = "ACP runtime: loading existing session".to_string();

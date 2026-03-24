@@ -56,7 +56,7 @@ pub fn build_client(
     // on 127.0.0.1 remain reachable; validate_url() still guards in tests.
     #[cfg(not(test))]
     {
-        builder = builder.dns_resolver(std::sync::Arc::new(super::ssrf::SsrfBlockingResolver));
+        builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
     }
     if let Some(ua) = user_agent {
         builder = builder.user_agent(ua);

@@ -207,9 +207,9 @@ async fn process_gemini_file(
     });
     let doc = PreparedDoc {
         url,
-        domain: "local".to_string(),
+        domain: "localhost".to_string(),
         chunks,
-        source_type: "gemini_session".to_string(),
+        source_type: "sessions".to_string(),
         content_type: "text",
         title,
         extra: Some(extra),

@@ -26,8 +26,10 @@ pub enum TerminalError {
     SpawnFailed(String),
     /// Failed to send a kill signal to the subprocess.
     KillFailed(String),
-    /// The requested `cwd` path would escape the session working directory.
-    CwdEscaped,
+    /// Failed to wait for the subprocess to exit.
+    WaitFailed(String),
+    /// The requested `cwd` path is not a valid existing directory.
+    InvalidCwd,
 }
 
 impl std::fmt::Display for TerminalError {
@@ -37,7 +39,8 @@ impl std::fmt::Display for TerminalError {
             Self::AlreadyExited => write!(f, "terminal has already exited"),
             Self::SpawnFailed(msg) => write!(f, "spawn failed: {msg}"),
             Self::KillFailed(msg) => write!(f, "kill failed: {msg}"),
-            Self::CwdEscaped => write!(f, "cwd escaped session working directory"),
+            Self::WaitFailed(msg) => write!(f, "wait failed: {msg}"),
+            Self::InvalidCwd => write!(f, "cwd is not a valid existing directory"),
         }
     }
 }
@@ -53,7 +56,8 @@ impl From<TerminalError> for agent_client_protocol::Error {
             TerminalError::AlreadyExited
             | TerminalError::SpawnFailed(_)
             | TerminalError::KillFailed(_)
-            | TerminalError::CwdEscaped => agent_client_protocol::Error::internal_error(),
+            | TerminalError::WaitFailed(_)
+            | TerminalError::InvalidCwd => agent_client_protocol::Error::internal_error(),
         }
     }
 }
@@ -105,6 +109,41 @@ pub struct TerminalState {
     pub byte_limit: usize,
 }
 
+/// Spawn a `spawn_local` task that reads all bytes from `stream` into a shared
+/// bounded ring buffer.
+///
+/// `buf` — shared ring buffer; bytes are appended from the back.
+/// `truncated_flag` — set to `true` when bytes are dropped from the front.
+/// `byte_limit` — maximum bytes retained in the ring buffer.
+fn spawn_stream_reader<S>(
+    mut stream: S,
+    buf: Rc<RefCell<VecDeque<u8>>>,
+    truncated_flag: Rc<RefCell<bool>>,
+    byte_limit: usize,
+) where
+    S: tokio::io::AsyncRead + Unpin + 'static,
+{
+    tokio::task::spawn_local(async move {
+        let mut tmp = [0u8; 4096];
+        loop {
+            match stream.read(&mut tmp).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let mut b = buf.borrow_mut();
+                    for &byte in &tmp[..n] {
+                        b.push_back(byte);
+                    }
+                    // Trim front to enforce byte limit.
+                    while b.len() > byte_limit {
+                        b.pop_front();
+                        *truncated_flag.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+    });
+}
+
 // ── TerminalManager ───────────────────────────────────────────────────────────
 
 /// Manages a set of terminal subprocesses for an ACP session.
@@ -140,7 +179,7 @@ impl TerminalManager {
     ) -> Result<TerminalId, TerminalError> {
         // Validate cwd is an existing directory.
         if !cwd.is_dir() {
-            return Err(TerminalError::CwdEscaped);
+            return Err(TerminalError::InvalidCwd);
         }
 
         // Generate unique terminal ID.
@@ -165,57 +204,25 @@ impl TerminalManager {
             .map_err(|e| TerminalError::SpawnFailed(format!("failed to spawn '{cmd}': {e}")))?;
 
         // Take stdout/stderr handles before storing child.
-        let mut stdout = child.stdout.take().expect("stdout was piped");
-        let mut stderr = child.stderr.take().expect("stderr was piped");
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
 
         // Shared ring buffer and truncation flag.
         let buf: Rc<RefCell<VecDeque<u8>>> = Rc::new(RefCell::new(VecDeque::new()));
         let truncated_flag: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
-        let buf_stdout = Rc::clone(&buf);
-        let buf_stderr = Rc::clone(&buf);
-        let trunc_stdout = Rc::clone(&truncated_flag);
-        let trunc_stderr = Rc::clone(&truncated_flag);
-
-        // Spawn stdout reader task.
-        tokio::task::spawn_local(async move {
-            let mut tmp = [0u8; 4096];
-            loop {
-                match stdout.read(&mut tmp).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        let mut b = buf_stdout.borrow_mut();
-                        for &byte in &tmp[..n] {
-                            b.push_back(byte);
-                        }
-                        // Trim front to enforce byte limit.
-                        while b.len() > byte_limit {
-                            b.pop_front();
-                            *trunc_stdout.borrow_mut() = true;
-                        }
-                    }
-                }
-            }
-        });
-
-        // Spawn stderr reader task.
-        tokio::task::spawn_local(async move {
-            let mut tmp = [0u8; 4096];
-            loop {
-                match stderr.read(&mut tmp).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        let mut b = buf_stderr.borrow_mut();
-                        for &byte in &tmp[..n] {
-                            b.push_back(byte);
-                        }
-                        while b.len() > byte_limit {
-                            b.pop_front();
-                            *trunc_stderr.borrow_mut() = true;
-                        }
-                    }
-                }
-            }
-        });
+        // Spawn stdout/stderr reader tasks via shared helper.
+        spawn_stream_reader(
+            stdout,
+            Rc::clone(&buf),
+            Rc::clone(&truncated_flag),
+            byte_limit,
+        );
+        spawn_stream_reader(
+            stderr,
+            Rc::clone(&buf),
+            Rc::clone(&truncated_flag),
+            byte_limit,
+        );
 
         let state = TerminalState {
             child: Some(child),
@@ -252,7 +259,19 @@ impl TerminalManager {
         state.truncated = was_truncated;
 
         let text = String::from_utf8_lossy(&bytes).into_owned();
-        let exit_code = state.exit_status.and_then(|s| s.code());
+        let exit_code = if let Some(status) = state.exit_status {
+            status.code()
+        } else if let Some(child) = state.child.as_mut() {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    state.exit_status = Some(status);
+                    status.code()
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
 
         tracing::info!(
             terminal_id = %id.0,
@@ -367,13 +386,15 @@ impl TerminalManager {
             .and_then(|s| s.child.take());
 
         let Some(mut child) = child else {
-            return Err(TerminalError::AlreadyExited);
+            // Child handle was already consumed by a previous wait_for_exit call
+            // without caching exit_status — treat as resource no longer available.
+            return Err(TerminalError::NotFound);
         };
 
         let status = child
             .wait()
             .await
-            .map_err(|e| TerminalError::KillFailed(format!("wait() failed: {e}")))?;
+            .map_err(|e| TerminalError::WaitFailed(format!("wait() failed: {e}")))?;
 
         // Store exit status back.
         if let Some(state) = self.terminals.borrow_mut().get_mut(id) {
@@ -396,13 +417,11 @@ pub const DEFAULT_OUTPUT_BYTE_LIMIT: usize = 256 * 1024;
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[tokio::test]
     async fn test_create_terminal_output_wait() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -474,7 +493,7 @@ mod tests {
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
     #[tokio::test]
     async fn test_create_kill_release() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -502,7 +521,7 @@ mod tests {
     /// RECENT bytes (tail of the stream), not the oldest.
     #[tokio::test]
     async fn test_output_truncation_returns_recent_bytes() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -558,7 +577,7 @@ mod tests {
     /// Task 3.2: `wait_for_exit` on an already-exited terminal returns immediately.
     #[tokio::test]
     async fn test_wait_for_exit_already_exited() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -593,7 +612,7 @@ mod tests {
     /// Task 3.3: `kill` on an already-exited terminal is a no-op (returns Ok).
     #[tokio::test]
     async fn test_kill_already_exited_is_noop() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -653,9 +672,16 @@ mod tests {
     }
 
     #[test]
-    fn terminal_error_cwd_escaped_maps_to_internal_error() {
+    fn terminal_error_wait_failed_maps_to_internal_error() {
         use agent_client_protocol::ErrorCode;
-        let err: agent_client_protocol::Error = TerminalError::CwdEscaped.into();
+        let err: agent_client_protocol::Error = TerminalError::WaitFailed("msg".to_string()).into();
+        assert_eq!(err.code, ErrorCode::InternalError);
+    }
+
+    #[test]
+    fn terminal_error_invalid_cwd_maps_to_internal_error() {
+        use agent_client_protocol::ErrorCode;
+        let err: agent_client_protocol::Error = TerminalError::InvalidCwd.into();
         assert_eq!(err.code, ErrorCode::InternalError);
     }
 
@@ -664,7 +690,7 @@ mod tests {
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
     #[tokio::test]
     async fn test_double_release_noop() {
-        let cwd = PathBuf::from("/tmp");
+        let cwd = std::env::temp_dir();
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {

@@ -259,8 +259,10 @@ impl AcpClientScaffold {
     /// Used by env-isolation integration tests that need to spawn a real shell
     /// (e.g. `sh`) without being blocked by the shell-name validator.
     ///
-    /// Not gated behind `#[cfg(test)]` because integration tests in `tests/` are
-    /// compiled as separate binaries that don't automatically get the `test` cfg.
+    /// Gated behind `#[cfg(feature = "test-helpers")]` so it is excluded from
+    /// release builds.  Enable with `--features test-helpers` when running
+    /// integration tests; see the `test-helpers` feature in `Cargo.toml`.
+    #[cfg(feature = "test-helpers")]
     #[doc(hidden)]
     pub fn spawn_adapter_skip_validation(
         &self,
@@ -300,7 +302,11 @@ impl AcpClientScaffold {
     ) -> Result<AcpSessionSetupRequest, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         validate_prompt_turn_request(req)?;
-        build_session_setup(req.session_id.as_deref(), cwd, &req.mcp_servers)
+        Ok(build_session_setup(
+            req.session_id.as_deref(),
+            cwd,
+            &req.mcp_servers,
+        )?)
     }
 
     pub fn prepare_session_probe_setup(
@@ -310,7 +316,7 @@ impl AcpClientScaffold {
     ) -> Result<AcpSessionSetupRequest, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         validate_probe_request(req)?;
-        build_session_setup(req.session_id.as_deref(), cwd, &[])
+        Ok(build_session_setup(req.session_id.as_deref(), cwd, &[])?)
     }
 
     pub async fn start_prompt_turn(

@@ -373,7 +373,31 @@ fn spawn_subscribe_drain(conn: &ClientSideConnection) -> tokio::task::JoinHandle
     use agent_client_protocol::{StreamMessageContent, StreamMessageDirection};
     let mut receiver = conn.subscribe();
     tokio::task::spawn_local(async move {
-        while let Ok(msg) = receiver.recv().await {
+        loop {
+            let msg = match receiver.recv().await {
+                Ok(msg) => msg,
+                Err(ref e) => {
+                    // `StreamReceiver::recv()` converts `async_broadcast::RecvError`
+                    // to an ACP Error via `.data(e.to_string())`.
+                    // Overflowed (lagged) produces "receiving skipped N messages";
+                    // Closed produces "receiving from an empty and closed channel".
+                    let is_lagged = e
+                        .data
+                        .as_ref()
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.starts_with("receiving skipped"))
+                        .unwrap_or(false);
+                    if is_lagged {
+                        tracing::warn!(
+                            context = "acp_stream",
+                            "subscribe drain lagged; some messages dropped — continuing",
+                        );
+                        continue;
+                    }
+                    // Channel closed — exit cleanly.
+                    break;
+                }
+            };
             let dir = match msg.direction {
                 StreamMessageDirection::Incoming => "←",
                 StreamMessageDirection::Outgoing => "→",
@@ -404,7 +428,6 @@ fn spawn_subscribe_drain(conn: &ClientSideConnection) -> tokio::task::JoinHandle
                 }
             }
         }
-        // Sender dropped (connection closed) or lagged receiver — exit cleanly.
     })
 }
 

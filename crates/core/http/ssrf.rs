@@ -165,6 +165,10 @@ pub(crate) fn ssrf_blacklist_patterns() -> &'static [&'static str] {
 /// time, on the same IPs that reqwest will dial. This eliminates the gap between
 /// [`validate_url`]'s parse-time check and reqwest's connect-time DNS resolution.
 ///
+/// Passed directly (without `Arc::new`) — reqwest 0.13's `dns_resolver()` accepts
+/// any `R: Resolve + 'static` via the `IntoResolve` blanket impl, so wrapping in
+/// `Arc` is no longer required.
+///
 /// Only compiled for non-test builds. Tests use reqwest's default resolver so
 /// httpmock servers on `127.0.0.1` remain reachable.
 #[cfg(not(test))]

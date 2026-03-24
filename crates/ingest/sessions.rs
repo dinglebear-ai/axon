@@ -203,10 +203,23 @@ async fn embed_all_session_docs(
             .unzip();
         // Consume the Result fully before any subsequent .await so Box<dyn Error>
         // (which is !Send) does not live across an await point.
-        let embed_ok = match embed_prepared_docs(&session_cfg, prepared, None).await {
+        //
+        // A partial failure (docs_failed > 0) means some docs were not embedded. We
+        // cannot identify which specific files failed, so we skip mark_indexed entirely
+        // when any docs failed — those files will be retried on the next run. Only mark
+        // all docs as indexed when every doc succeeded (docs_failed == 0).
+        let all_embedded = match embed_prepared_docs(&session_cfg, prepared, None).await {
             Ok(summary) => {
                 total += summary.chunks_embedded;
-                true
+                if summary.docs_failed > 0 {
+                    log_warn(&format!(
+                        "sessions embed partial failure collection={} docs_failed={} docs_embedded={}",
+                        session_cfg.collection, summary.docs_failed, summary.docs_embedded
+                    ));
+                    false
+                } else {
+                    true
+                }
             }
             Err(e) => {
                 log_warn(&format!(
@@ -216,7 +229,7 @@ async fn embed_all_session_docs(
                 false
             }
         };
-        if embed_ok {
+        if all_embedded {
             for (path, mtime, size) in &state_meta {
                 state.mark_indexed(path, *mtime, *size).await;
             }
@@ -329,6 +342,11 @@ fn decode_path_walk(current: &Path, parts: &[String], start: usize) -> Option<Pa
 }
 
 /// Read `remote.origin.url` from `.git/config` at the given project directory.
+///
+/// Returns the normalized `"owner/repo"` slug extracted from the remote URL.
+/// Handles both HTTPS (`https://[token@]github.com/owner/repo[.git]`) and
+/// SSH (`git@github.com:owner/repo[.git]`) formats, stripping credentials and
+/// the `.git` suffix so the result is always `"owner/repo"`.
 pub(crate) async fn read_git_remote_origin(project_path: &Path) -> Option<String> {
     let content = fs::read_to_string(project_path.join(".git/config"))
         .await
@@ -344,15 +362,49 @@ pub(crate) async fn read_git_remote_origin(project_path: &Path) -> Option<String
             && let Some(rest) = t.strip_prefix("url")
             && let Some(url) = rest.trim().strip_prefix('=')
         {
-            return Some(url.trim().to_string());
+            return normalize_git_remote_to_owner_repo(url.trim());
         }
     }
     None
 }
 
+/// Extract `"owner/repo"` from a git remote URL, stripping credentials and `.git` suffix.
+///
+/// Supported formats:
+/// - `https://github.com/owner/repo.git`
+/// - `https://token@github.com/owner/repo`
+/// - `git@github.com:owner/repo.git`
+/// - `ssh://git@github.com/owner/repo`
+pub(crate) fn normalize_git_remote_to_owner_repo(url: &str) -> Option<String> {
+    let raw = if let Some(ssh_path) = url.strip_prefix("git@") {
+        // git@github.com:owner/repo.git → take everything after the first `:`
+        ssh_path.split_once(':')?.1.to_string()
+    } else {
+        // HTTPS: strip scheme, strip credentials (user:pass@host or token@host)
+        let without_scheme = url.find("://").map(|i| &url[i + 3..]).unwrap_or(url);
+        // Strip optional `user[:pass]@` prefix
+        let without_creds = without_scheme
+            .find('@')
+            .map(|i| &without_scheme[i + 1..])
+            .unwrap_or(without_scheme);
+        // Strip hostname (everything up to the first `/`)
+        without_creds
+            .split_once('/')
+            .map(|x| x.1)
+            .map(str::to_string)?
+    };
+    // Strip trailing `.git`
+    let slug = raw.strip_suffix(".git").unwrap_or(&raw);
+    // Keep only `owner/repo` (first two path segments)
+    let mut parts = slug.splitn(3, '/');
+    let owner = parts.next().filter(|s| !s.is_empty())?;
+    let repo = parts.next().filter(|s| !s.is_empty())?;
+    Some(format!("{owner}/{repo}"))
+}
+
 #[cfg(test)]
 mod decode_tests {
-    use super::{decode_claude_project_path, decode_path_walk};
+    use super::{decode_claude_project_path, decode_path_walk, normalize_git_remote_to_owner_repo};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -436,5 +488,60 @@ mod decode_tests {
             .map(str::to_string)
             .collect();
         assert!(decode_path_walk(tmp.path(), &parts, 0).is_none());
+    }
+
+    // --- normalize_git_remote_to_owner_repo ---
+
+    #[test]
+    fn normalize_https_plain() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("https://github.com/owner/repo"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_https_with_git_suffix() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("https://github.com/owner/repo.git"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_https_with_token_credential() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("https://ghp_token123@github.com/owner/repo.git"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_https_with_user_password_credential() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("https://user:password@github.com/owner/repo.git"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_ssh_git_at_format() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("git@github.com:owner/repo.git"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_ssh_git_at_no_git_suffix() {
+        assert_eq!(
+            normalize_git_remote_to_owner_repo("git@github.com:owner/repo"),
+            Some("owner/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_returns_none_for_empty() {
+        assert_eq!(normalize_git_remote_to_owner_repo(""), None);
     }
 }

@@ -288,6 +288,12 @@ async fn run_prompt(
     turn_ctx: &TurnContext,
     cancel_token: &CancellationToken,
 ) -> Result<(), String> {
+    // Early exit if already cancelled — prevents wiring up the prompt future
+    // only to have the biased select! immediately pick the cancel branch.
+    if cancel_token.is_cancelled() {
+        return Err("ACP turn cancelled before prompt started".to_string());
+    }
+
     // Route callbacks for this turn's stream channel.
     *runtime_state.service_tx.borrow_mut() = turn_ctx.service_tx.clone();
 

@@ -226,8 +226,15 @@ The stack is split into two compose files sharing a named `axon` bridge network:
 |------|----------|----------|
 | `docker-compose.services.yaml` | Infrastructure (postgres, redis, rabbitmq, qdrant, chrome, TEI) | `services.env` |
 | `docker-compose.yaml` | App containers (workers, web) | `.env` |
+| `docker-compose.gpu.yaml` | GPU override — NVIDIA reservations for `axon-tei` and `axon-ollama` | *(none)* |
 
 Start infra first, then app containers. Both compose files read `.env` for YAML `${VAR}` interpolation (Docker Compose default). Container environment is injected via `env_file:`.
+
+**GPU acceleration:** On NVIDIA hosts, layer the GPU override on top of the services file:
+```bash
+docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+```
+CPU-only hosts use `docker-compose.services.yaml` alone — no GPU block, no startup failure.
 
 ### Infrastructure Services (`docker-compose.services.yaml`)
 

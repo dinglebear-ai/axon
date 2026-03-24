@@ -77,44 +77,65 @@ pub struct AcpBridgeClient {
 
 /// Resolve `path` relative to `cwd` and ensure it stays within `cwd`.
 ///
-/// Normalises `.` and `..` without calling `canonicalize` (so the path need
-/// not exist yet, which matters for write requests).  Returns
-/// `Err(internal_error)` if the resolved path would escape the working
-/// directory.
+/// Uses two strategies depending on whether the target must already exist:
+///
+/// - **Read paths** (`for_write = false`): calls `canonicalize()` on both the
+///   resolved path and `cwd` to expand symlinks before the `starts_with` check.
+///   Symlinks that point outside `cwd` (e.g. `<cwd>/escape -> /etc`) are caught
+///   because `canonicalize` resolves the link target.  Returns
+///   `Err(resource_not_found)` when the path does not exist on disk.
+///
+/// - **Write paths** (`for_write = true`): `canonicalize()` would fail for
+///   files that do not exist yet.  The parent directory is canonicalized instead
+///   (it must exist) and the final component is appended verbatim.  Symlinks to
+///   directories inside `cwd` that themselves point outside `cwd` are caught
+///   because the parent is resolved.
+///
+/// Returns `Err(internal_error)` if the resolved path would escape the working
+/// directory, or if the parent directory does not exist (write path).
 fn validate_fs_path(
     cwd: &std::path::Path,
     path: &std::path::Path,
+    for_write: bool,
 ) -> agent_client_protocol::Result<std::path::PathBuf> {
-    use std::path::Component;
-
     let base = if path.is_absolute() {
         path.to_path_buf()
     } else {
         cwd.join(path)
     };
 
-    // Normalise both paths by collapsing . and .. without hitting the fs.
-    let normalise = |p: &std::path::Path| -> std::path::PathBuf {
-        let mut out = std::path::PathBuf::new();
-        for c in p.components() {
-            match c {
-                Component::ParentDir => {
-                    out.pop();
-                }
-                Component::CurDir => {}
-                other => out.push(other),
-            }
+    if for_write {
+        // For writes the target file may not exist yet — canonicalize the
+        // parent directory and then reattach the file name.
+        let parent = base.parent().unwrap_or(std::path::Path::new("."));
+        let canonical_parent = parent
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        let canonical_root = cwd
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        if !canonical_parent.starts_with(&canonical_root) {
+            return Err(agent_client_protocol::Error::internal_error());
         }
-        out
-    };
-
-    let resolved = normalise(&base);
-    let norm_cwd = normalise(cwd);
-
-    if !resolved.starts_with(&norm_cwd) {
-        return Err(agent_client_protocol::Error::internal_error());
+        let file_name = base
+            .file_name()
+            .ok_or_else(agent_client_protocol::Error::internal_error)?;
+        Ok(canonical_parent.join(file_name))
+    } else {
+        // For reads the path must exist — canonicalize resolves all symlinks.
+        let canonical = base.canonicalize().map_err(|_| {
+            agent_client_protocol::Error::resource_not_found(Some(
+                base.to_string_lossy().into_owned(),
+            ))
+        })?;
+        let canonical_root = cwd
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(agent_client_protocol::Error::internal_error());
+        }
+        Ok(canonical)
     }
-    Ok(resolved)
 }
 
 #[async_trait::async_trait(?Send)]
@@ -203,7 +224,7 @@ impl Client for AcpBridgeClient {
         &self,
         args: ReadTextFileRequest,
     ) -> agent_client_protocol::Result<ReadTextFileResponse> {
-        let path = validate_fs_path(&self.session_cwd, &args.path)?;
+        let path = validate_fs_path(&self.session_cwd, &args.path, false)?;
         let content = tokio::fs::read_to_string(&path).await.map_err(|_| {
             agent_client_protocol::Error::resource_not_found(Some(
                 path.to_string_lossy().into_owned(),
@@ -216,7 +237,7 @@ impl Client for AcpBridgeClient {
         &self,
         args: WriteTextFileRequest,
     ) -> agent_client_protocol::Result<WriteTextFileResponse> {
-        let path = validate_fs_path(&self.session_cwd, &args.path)?;
+        let path = validate_fs_path(&self.session_cwd, &args.path, true)?;
         let service_tx = self.runtime_state.service_tx.borrow().clone();
         emit_nonblocking(
             &service_tx,
@@ -237,7 +258,7 @@ impl Client for AcpBridgeClient {
     ) -> agent_client_protocol::Result<CreateTerminalResponse> {
         use terminal::DEFAULT_OUTPUT_BYTE_LIMIT;
         let cwd = if let Some(req_cwd) = &args.cwd {
-            validate_fs_path(&self.session_cwd, req_cwd)?
+            validate_fs_path(&self.session_cwd, req_cwd, false)?
         } else {
             self.session_cwd.clone()
         };
@@ -264,6 +285,9 @@ impl Client for AcpBridgeClient {
             .map_err(agent_client_protocol::Error::from)?;
         let mut resp = TerminalOutputResponse::new(text, truncated);
         if let Some(code) = exit_code {
+            if code < 0 {
+                return Err(agent_client_protocol::Error::internal_error());
+            }
             resp.exit_status = Some(TerminalExitStatus::new().exit_code(code as u32));
         }
         Ok(resp)
@@ -279,6 +303,9 @@ impl Client for AcpBridgeClient {
             .wait_for_exit(&local_id)
             .await
             .map_err(agent_client_protocol::Error::from)?;
+        if code < 0 {
+            return Err(agent_client_protocol::Error::internal_error());
+        }
         let exit_status = TerminalExitStatus::new().exit_code(code as u32);
         Ok(WaitForTerminalExitResponse::new(exit_status))
     }
