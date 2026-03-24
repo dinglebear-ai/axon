@@ -690,4 +690,19 @@ mod tests {
         let filtered = filter_sdk_mcp_servers(&servers, false, true);
         assert_eq!(filtered.len(), 1);
     }
+
+    #[test]
+    fn test_boolean_config_option_mapping() {
+        use agent_client_protocol::{SessionConfigBoolean, SessionConfigKind, SessionConfigOption};
+        let opt = SessionConfigOption::new(
+            "auto_compact",
+            "Auto Compact",
+            SessionConfigKind::Boolean(SessionConfigBoolean::new(true)),
+        );
+        let result = map_config_options(&[opt]);
+        assert!(
+            !result.is_empty(),
+            "expected Boolean config to produce options"
+        );
+    }
 }

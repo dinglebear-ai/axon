@@ -267,7 +267,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 
 ### Group D: Diff Rendering (FR-008)
 
-## Task 1.14b — [x] [RED] Write failing test: Diff content extraction (AC-2.4)
+## Task 1.14b — <!-- DONE --> [x] [RED] Write failing test: Diff content extraction (AC-2.4)
 
 **Do**: In `mapping.rs` tests, write `test_diff_content_extraction`: create a `ToolCallContent::Diff { old_text: "foo".into(), new_text: "bar".into() }`, call `extract_content_text`, assert result contains both old and new text. Test fails until Task 1.15 adds the Diff arm.
 **Files**: `crates/services/acp/mapping.rs`
@@ -276,7 +276,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 **Commit**: `test(acp): RED - add failing Diff content extraction test`
 _Requirements: FR-008_ / _Design: Section 4.3_
 
-## Task 1.15 — Add Diff arm to extract_content_text (FR-008)
+## Task 1.15 — <!-- DONE --> [x] Add Diff arm to extract_content_text (FR-008)
 
 **Do**: In `crates/services/acp/mapping.rs`, update `extract_content_text` to handle `ToolCallContent::Diff` variant. Extract the diff content as a string (concatenate old_text/new_text or use the SDK's diff representation). Also update `extract_tool_content` which calls into `extract_content_text` via the `ToolCallContent` match arms.
 **Files**: `crates/services/acp/mapping.rs`
@@ -285,7 +285,7 @@ _Requirements: FR-008_ / _Design: Section 4.3_
 **Commit**: `feat(acp): handle ToolCallContent::Diff in extract_content_text`
 _Requirements: FR-008_ / _Design: Section 4.3_
 
-## Task 1.15b — [GREEN] Verify Diff content extraction test passes
+## Task 1.15b — <!-- DONE --> [x] [GREEN] Verify Diff content extraction test passes
 
 **Do**: Run `cargo test test_diff_content_extraction`. Fix if needed.
 **Files**: (fix mapping.rs if test fails)
@@ -296,7 +296,7 @@ _Requirements: FR-008_ / _Design: Section 4.3_
 
 ### Group E: SessionInfoUpdate Fields (FR-009)
 
-## Task 1.16 — Add title and updated_at to SessionInfoUpdate (FR-009)
+## Task 1.16 — Add title and updated_at to SessionInfoUpdate (FR-009) <!-- DONE -->
 
 **Do**: In `crates/services/types/acp.rs`, change `AcpBridgeEvent::SessionInfoUpdate` from `{ session_id: String }` to `{ session_id: String, title: Option<String>, updated_at: Option<String> }`. Update `serialize_session_info_update` to include the new fields. In `mapping.rs`, update `map_session_notification_event`'s `SessionUpdate::SessionInfoUpdate` arm to extract `title` and `updated_at` from the SDK's `SessionInfoUpdate` struct.
 **Files**: `crates/services/types/acp.rs`, `crates/services/acp/mapping.rs`
@@ -307,7 +307,7 @@ _Requirements: FR-009_ / _Design: Section 4.3_
 
 ### Group F: ToolKind Forwarding (FR-010)
 
-## Task 1.17 — Add kind field to AcpSessionUpdateEvent (FR-010)
+## Task 1.17 — Add kind field to AcpSessionUpdateEvent (FR-010) <!-- DONE -->
 
 **Do**: Add `pub kind_detail: Option<String>` to `AcpSessionUpdateEvent` in `types/acp.rs` (use `kind_detail` to avoid collision with existing `kind: AcpSessionUpdateKind`). In `mapping.rs`, extract `tool_call.kind` (if the SDK exposes it on ToolCall/ToolCallUpdate) and populate the field. Update `serialize_session_update` to include `"kind"` in the wire output when present.
 **Files**: `crates/services/types/acp.rs`, `crates/services/acp/mapping.rs`
