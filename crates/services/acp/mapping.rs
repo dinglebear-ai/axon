@@ -634,4 +634,26 @@ mod tests {
             "result should not contain stale old content: {text}"
         );
     }
+
+    #[test]
+    fn test_map_config_boolean_two_options() {
+        use agent_client_protocol::{SessionConfigBoolean, SessionConfigKind, SessionConfigOption};
+        let opt = SessionConfigOption::new(
+            "verbose_mode",
+            "Verbose Mode",
+            SessionConfigKind::Boolean(SessionConfigBoolean::new(false)),
+        );
+        let result = map_config_options(&[opt]);
+        assert_eq!(result.len(), 1, "expected exactly one config option");
+        let config = &result[0];
+        assert_eq!(config.id, "verbose_mode");
+        assert_eq!(
+            config.options.len(),
+            2,
+            "Boolean must produce exactly two options"
+        );
+        let values: Vec<&str> = config.options.iter().map(|o| o.value.as_str()).collect();
+        assert!(values.contains(&"true"), "expected 'true' option");
+        assert!(values.contains(&"false"), "expected 'false' option");
+    }
 }

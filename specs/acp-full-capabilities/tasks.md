@@ -637,7 +637,7 @@ _Requirements: FR-004_ / _Design: Section 4.1_
 **Commit**: `test(acp): Diff with None old_text edge case test`
 _Requirements: FR-008_ / _Design: Section 4.3_
 
-## Task 3.5 — Test: Boolean config maps to two options
+## Task 3.5 — Test: Boolean config maps to two options <!-- DONE -->
 
 **Do**: Write a unit test: create a `SessionConfigKind::Boolean` config option, call `map_config_options`, verify it produces an `AcpConfigOption` with two options ("true"/"false").
 **Files**: `crates/services/acp/mapping.rs`
