@@ -357,7 +357,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 
 ### Group H: Modes/Models at Session Start (FR-011)
 
-## Task 1.18c — [RED] Write failing test: modes and models extracted at session start (AC-5.5) <!-- DONE -->
+## Task 1.18c — <!-- DONE --> [RED] Write failing test: modes and models extracted at session start (AC-5.5) <!-- DONE -->
 
 **Do**: In `crates/services/acp/session.rs` tests, write `test_modes_models_at_session_start`: create a mock `NewSessionResponse` with populated `modes` and `models`, call the extraction logic, assert `available_modes` and `available_models` fields are non-empty in the emitted event. Test fails until Task 1.19 extracts these fields.
 **Files**: `crates/services/acp/session.rs`
@@ -366,7 +366,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 **Commit**: `test(acp): RED - add failing modes/models session start test`
 _Requirements: FR-011_ / _Design: Section 4.4_
 
-## Task 1.19 — Extract modes and models from NewSessionResponse (FR-011) <!-- DONE -->
+## Task 1.19 — <!-- DONE --> Extract modes and models from NewSessionResponse (FR-011) <!-- DONE -->
 
 **Do**: In `session.rs:setup_session`, after `new_session` or `load_session` returns, check if the response includes `modes` and `models` (or equivalent fields in the SDK's `NewSessionResponse`/`LoadSessionResponse`). If present, emit them as a new `ServiceEvent::AcpBridge` event so the frontend has them at session start. Add a new `AcpBridgeEvent` variant if needed (e.g., `SessionStartInfo { session_id, modes, models }`), or emit them via existing `ConfigOptionsUpdate` / `ModeUpdate`.
 **Files**: `crates/services/acp/session.rs`, `crates/services/types/acp.rs` (if new variant needed)
@@ -375,7 +375,7 @@ _Requirements: FR-011_ / _Design: Section 4.4_
 **Commit**: `feat(acp): emit modes and models from session setup response`
 _Requirements: FR-011_ / _Design: Section 4.4_
 
-## Task 1.19b — [GREEN] Verify modes/models session start test passes <!-- DONE -->
+## Task 1.19b — <!-- DONE --> [GREEN] Verify modes/models session start test passes <!-- DONE -->
 
 **Do**: Run `cargo test test_modes_models_at_session_start`. Fix session.rs if needed.
 **Files**: `crates/services/acp/session.rs` (fix if needed)
@@ -386,7 +386,7 @@ _Requirements: FR-011_ / _Design: Section 4.4_
 
 ---
 
-- [ ] V7 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V7 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -396,7 +396,7 @@ _Requirements: FR-011_ / _Design: Section 4.4_
 
 ### Group I: Authentication (FR-013)
 
-## Task 1.20 — Implement authenticate flow after initialize (FR-013)
+## Task 1.20 — Implement authenticate flow after initialize (FR-013) <!-- DONE -->
 
 **Do**: In `session.rs:initialize_connection`, after `conn.initialize(initialize)` returns, check if the `InitializeResponse` indicates authentication is required (check `resp.auth_required` or equivalent SDK field). If so, read `AXON_ACP_AUTH_TOKEN` env var and call `conn.authenticate(token)`. On auth failure, return `Err("ACP authentication failed: ...")`. Add `AcpError::AuthFailed` variant if a custom error type exists, or use the existing `String` error path.
 **Files**: `crates/services/acp/session.rs`

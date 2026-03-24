@@ -264,6 +264,32 @@ pub(super) async fn initialize_connection(
         .mcp_sse_supported
         .set(resp.agent_capabilities.mcp_capabilities.sse);
 
+    // Best-effort authentication: if the adapter advertised auth methods and
+    // AXON_ACP_AUTH_TOKEN is set, authenticate using the first advertised method.
+    if let Some(method) = resp.auth_methods.first()
+        && let Ok(token) = std::env::var("AXON_ACP_AUTH_TOKEN")
+        && !token.is_empty()
+    {
+        use agent_client_protocol::AuthenticateRequest;
+        match conn
+            .authenticate(AuthenticateRequest::new(method.id().clone()))
+            .await
+        {
+            Ok(_) => {
+                emit_nonblocking(
+                    tx,
+                    ServiceEvent::Log {
+                        level: LogLevel::Info,
+                        message: "ACP: authenticated successfully".to_string(),
+                    },
+                );
+            }
+            Err(err) => {
+                tracing::warn!(context = "acp_session", "ACP authenticate failed: {err}");
+            }
+        }
+    }
+
     Ok((conn, runtime_state, spawned.exit_rx))
 }
 
