@@ -156,6 +156,10 @@ pub(super) fn spawn_adapter_with_io(
 
 /// Wire up the ACP bridge client, create the `ClientSideConnection`, and send
 /// the initialize request.
+///
+/// The `InitializeRequest` is built by `AcpClientScaffold::prepare_initialize` in
+/// `crates/services/acp.rs`.  Capability flags such as `unstable_elicitation` (FR-031)
+/// and `unstable_logout` (FR-032) must be set there once the SDK exposes them.
 pub(super) async fn initialize_connection(
     spawned: SpawnedAdapter,
     adapter_cmd: &AcpAdapterCommand,

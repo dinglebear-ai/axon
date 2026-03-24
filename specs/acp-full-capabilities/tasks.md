@@ -830,7 +830,7 @@ _Requirements: FR-028_ / _Design: Section 4.5_
 **Commit**: `feat(acp): enable unstable_elicitation and handle ElicitRequest pass-through`
 _Requirements: FR-031_ / _Design: Section 4.5_
 
-## Task 4.10 — Enable unstable_logout; expose acp/logout subaction (FR-032)
+## Task 4.10 — Enable unstable_logout; expose acp/logout subaction (FR-032) <!-- DONE -->
 
 **Do**: In the `InitializeRequest`, enable `unstable_logout`. Add `acp/logout` subaction in `handlers_acp.rs` that calls `conn.logout()` (or the equivalent SDK method). This is a clean session termination signal.
 **Files**: `crates/mcp/server/handlers_acp.rs`, `crates/services/acp/session.rs`
