@@ -95,7 +95,7 @@ _Requirements: FR-001_ / _Design: Section 4.1_
 **Commit**: `feat(acp): implement TerminalManager::output with buffer drain`
 _Requirements: FR-002_ / _Design: Section 4.1_
 
-## Task 1.6 — Implement TerminalManager::wait_for_exit (FR-003)
+## Task 1.6 — Implement TerminalManager::wait_for_exit (FR-003) <!-- DONE -->
 
 **Do**: Implement `TerminalManager::wait_for_exit(id: &TerminalId) -> Result<i32, String>`. If already exited, return cached exit code. Otherwise, take the `Child` handle, await `child.wait()`, store the `ExitStatus`, return the code. Use `Rc<RefCell>` carefully — take child out of the state, await, then write back the exit status.
 **Files**: `crates/services/acp/bridge/terminal.rs`
