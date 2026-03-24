@@ -514,6 +514,25 @@ mod tests {
     use crate::crates::services::types::AcpMcpServerConfig;
 
     #[test]
+    fn test_modes_models_at_session_start() {
+        // RED: extract_session_modes does not exist yet — this will fail to compile
+        // until Task 1.19 implements the extraction helper.
+        use agent_client_protocol::{SessionMode, SessionModeId, SessionModeState};
+        let mode_state = SessionModeState::new(
+            SessionModeId::new("default"),
+            vec![SessionMode::new(
+                SessionModeId::new("default"),
+                "Default".to_string(),
+            )],
+        );
+        let modes = extract_session_modes(Some(&mode_state));
+        assert!(
+            !modes.is_empty(),
+            "should extract at least one mode from NewSessionResponse"
+        );
+    }
+
+    #[test]
     fn build_session_setup_returns_load_variant_with_mcp_servers() {
         let cwd = std::env::temp_dir();
         let servers = vec![AcpMcpServerConfig::Stdio {
