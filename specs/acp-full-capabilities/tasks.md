@@ -425,7 +425,7 @@ _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 **Commit**: `feat(acp): guard load_session call with load_session_supported capability flag`
 _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 
-## Task 1.23 — Expose prompt_capabilities via service layer (FR-016)
+## Task 1.23 — Expose prompt_capabilities via service layer (FR-016) <!-- DONE -->
 
 **Do**: Add a function to retrieve the stored prompt_capabilities from `AcpRuntimeState`. This could be exposed via a service function or through the existing event system. At minimum, store it and make it accessible for callers that need to inspect what the adapter supports.
 **Files**: `crates/services/acp/bridge/state.rs` (or `bridge.rs`)

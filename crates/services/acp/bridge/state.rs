@@ -66,6 +66,14 @@ pub struct AcpRuntimeState {
 }
 
 impl AcpRuntimeState {
+    /// Returns the serialized prompt capabilities JSON from the adapter's
+    /// `InitializeResponse`, if available.  Callers can inspect this to
+    /// determine what content types (image, audio, embedded_context) the
+    /// adapter supports before including them in prompt requests.
+    pub fn prompt_capabilities(&self) -> Option<String> {
+        self.prompt_capabilities_json.borrow().clone()
+    }
+
     /// Apply a `ConfigOptionUpdate` to the runtime state.
     pub(crate) fn apply_config_option_update(&self, update: &SessionUpdate) {
         if let SessionUpdate::ConfigOptionUpdate(u) = update {
