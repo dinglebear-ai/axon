@@ -86,7 +86,7 @@ _Requirements: FR-001_ / _Design: Section 4.1_
 **Verify**: `cargo check && ! grep -q 'thread_local' crates/services/acp/bridge/terminal.rs`
 **Commit**: `fix(acp): remove thread_local global, use instance Rc<RefCell> in TerminalManager`
 
-## Task 1.5 — Implement TerminalManager::output (FR-002)
+## Task 1.5 — Implement TerminalManager::output (FR-002) <!-- DONE -->
 
 **Do**: Implement `TerminalManager::output(id: &TerminalId) -> Result<(String, bool, Option<i32>), String>`. Drain the ring buffer into a UTF-8 string (lossy), return `(output_text, truncated_flag, exit_code_if_exited)`. The `truncated` flag is true if the buffer hit the byte limit and older data was dropped.
 **Files**: `crates/services/acp/bridge/terminal.rs`

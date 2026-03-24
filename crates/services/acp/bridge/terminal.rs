@@ -46,7 +46,12 @@ pub struct TerminalState {
     pub child: Option<Child>,
     /// Ring buffer of unread output bytes — shared with the reader task.
     pub output_buf: Rc<RefCell<VecDeque<u8>>>,
+    /// Shared truncation flag — set to `true` by the reader task when bytes
+    /// are dropped from the front of the ring buffer.
+    pub truncated_flag: Rc<RefCell<bool>>,
     /// Whether the ring buffer has ever been trimmed (byte limit hit).
+    /// Mirrors `truncated_flag` after the first `output()` drain; kept for
+    /// backward-compatibility with tests that check the field directly.
     pub truncated: bool,
     /// Exit status, set once the process has exited.
     pub exit_status: Option<ExitStatus>,
@@ -112,10 +117,13 @@ impl TerminalManager {
         let mut stdout = child.stdout.take().expect("stdout was piped");
         let mut stderr = child.stderr.take().expect("stderr was piped");
 
-        // Shared ring buffer.
+        // Shared ring buffer and truncation flag.
         let buf: Rc<RefCell<VecDeque<u8>>> = Rc::new(RefCell::new(VecDeque::new()));
+        let truncated_flag: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
         let buf_stdout = Rc::clone(&buf);
         let buf_stderr = Rc::clone(&buf);
+        let trunc_stdout = Rc::clone(&truncated_flag);
+        let trunc_stderr = Rc::clone(&truncated_flag);
 
         // Spawn stdout reader task.
         tokio::task::spawn_local(async move {
@@ -131,6 +139,7 @@ impl TerminalManager {
                         // Trim front to enforce byte limit.
                         while b.len() > byte_limit {
                             b.pop_front();
+                            *trunc_stdout.borrow_mut() = true;
                         }
                     }
                 }
@@ -150,6 +159,7 @@ impl TerminalManager {
                         }
                         while b.len() > byte_limit {
                             b.pop_front();
+                            *trunc_stderr.borrow_mut() = true;
                         }
                     }
                 }
@@ -160,6 +170,7 @@ impl TerminalManager {
             child: Some(child),
             output_buf: buf,
             truncated: false,
+            truncated_flag,
             exit_status: None,
             byte_limit,
         };
@@ -171,16 +182,28 @@ impl TerminalManager {
 
     /// Drain the output buffer for a terminal.
     ///
-    /// Returns `(output_bytes, truncated)` where `truncated` indicates whether
-    /// the ring buffer hit the byte limit at any point.
+    /// Returns `(output_text, truncated, exit_code)` where:
+    /// - `output_text` is the UTF-8 (lossy) string from all buffered bytes
+    /// - `truncated` is `true` if the ring buffer hit the byte limit at any point
+    /// - `exit_code` is `Some(code)` if the process has exited, `None` if still running
     #[allow(dead_code)]
-    pub async fn output(&self, id: &TerminalId) -> Result<Vec<u8>, String> {
-        let map = self.terminals.borrow();
+    pub fn output(&self, id: &TerminalId) -> Result<(String, bool, Option<i32>), String> {
+        let mut map = self.terminals.borrow_mut();
         let state = map
-            .get(id)
+            .get_mut(id)
             .ok_or_else(|| format!("terminal not found: {id}"))?;
-        let bytes: Vec<u8> = state.output_buf.borrow().iter().copied().collect();
-        Ok(bytes)
+
+        // Drain the ring buffer into a Vec<u8>.
+        let bytes: Vec<u8> = state.output_buf.borrow_mut().drain(..).collect();
+
+        // Read + reset the shared truncation flag.
+        let was_truncated = *state.truncated_flag.borrow();
+        state.truncated = was_truncated;
+
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let exit_code = state.exit_status.and_then(|s| s.code());
+
+        Ok((text, was_truncated, exit_code))
     }
 
     /// Wait for the terminal subprocess to exit and return its exit code.
@@ -254,15 +277,21 @@ mod tests {
                     .await
                     .expect("create should succeed");
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                let output = mgr.output(&id).await.expect("output should succeed");
                 let exit_code = mgr
                     .wait_for_exit(&id)
                     .await
                     .expect("wait_for_exit should succeed");
-                let output_str = String::from_utf8_lossy(&output);
+                let (output_str, truncated, exit_code_from_output) =
+                    mgr.output(&id).expect("output should succeed");
                 assert!(
                     output_str.contains("hello"),
                     "output did not contain 'hello': {output_str}"
+                );
+                assert!(!truncated, "small output should not be truncated");
+                assert_eq!(
+                    exit_code_from_output,
+                    Some(0),
+                    "expected exit code Some(0) from output()"
                 );
                 assert_eq!(exit_code, 0, "expected exit code 0");
             })
