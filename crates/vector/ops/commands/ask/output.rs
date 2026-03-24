@@ -1,7 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
+use crate::crates::services::acp_llm::WarmAcpSession;
 use std::error::Error;
+use std::io::IsTerminal as _;
 
 use super::super::streaming::{ask_llm_non_streaming, ask_llm_streaming};
 
@@ -9,17 +11,17 @@ pub(crate) async fn ask_llm_answer(
     cfg: &Config,
     query: &str,
     context: &str,
+    warm: Option<WarmAcpSession>,
 ) -> Result<(String, u128, bool), Box<dyn Error>> {
     let client = http_client()?;
     let llm_started = std::time::Instant::now();
-    // Streaming to stdout is disabled: the ask command always collects the full
-    // answer before returning it to the caller (CLI JSON output, MCP response,
-    // or web UI). The stream_to_stdout=false flag tells the streaming path to
-    // buffer internally rather than printing chunks.
-    let stream_to_stdout = false;
+    // Stream tokens to stdout only when writing to an interactive terminal and
+    // not in JSON output mode. MCP (stdout = JSON-RPC pipe) and web callers
+    // (no terminal) correctly get false here — no protocol corruption.
+    let stream_to_stdout = !cfg.json_output && std::io::stdout().is_terminal();
 
     let (answer_opt, streamed_ok) = {
-        let streamed = ask_llm_streaming(cfg, client, query, context, stream_to_stdout).await;
+        let streamed = ask_llm_streaming(cfg, client, query, context, stream_to_stdout, warm).await;
         match streamed {
             Ok(ans) => (Some(ans), true),
             Err(e) => {

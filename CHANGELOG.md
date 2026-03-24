@@ -1,5 +1,20 @@
 # Changelog
-Last Modified: 2026-03-23 (session: v0.33.0 — ACP full MCP SDK support: SSE transport, HTTP headers, McpCapabilities gating, fallback preservation)
+Last Modified: 2026-03-24 (session: v0.33.1 — sessions ingestion refactor; ACP warm session path for ask/evaluate/suggest/debug)
+
+## [0.33.1] — chore/cleanup
+
+### Highlights
+
+- **Sessions ingestion refactor** — `crates/ingest/sessions.rs` extracts shared `SessionDoc`, `SessionStateTracker`, `flatten_session_result`, `matches_project_filter`, `resolve_collection` abstractions; `claude.rs`, `codex.rs`, `gemini.rs` updated to use them. Reduces duplication across all three session ingestion paths.
+- **ACP warm session in ask/evaluate/suggest/debug** — `run_streaming_completion` (renamed from `run_acp_streaming_completion`) now accepts a `WarmAcpSession` pre-warmed path. Cold-start overlap with upstream I/O reduces first-token latency. `WarmAcpSession::complete_text` added as non-streaming convenience.
+- **Streaming refactor** — `StreamProcessorState` struct + `process_one_delta` extracted from inline streaming loop; reduces function complexity and enables warm/cold path branching.
+- **gitignore** — `specs/.current-spec` and `**/.progress.md` added to suppress Ralph Specum transient files.
+
+### Commits since v0.33.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| (this commit) | refactor | sessions ingestion refactor; ACP warm session path for ask/evaluate/suggest/debug |
 
 ## [0.33.0] — chore/cleanup
 

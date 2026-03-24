@@ -89,13 +89,11 @@ where
 async fn run_acp_text_completion_with_runner<R>(
     runner: &R,
     req: AcpCompletionRequest,
-) -> AnyResult<String>
+) -> Result<String, Box<dyn Error>>
 where
     R: AcpCompletionRunner + ?Sized,
 {
-    let response = acp_llm::complete_text_with_runner(runner, req)
-        .await
-        .map_err(|err| anyhow!(err.to_string()))?;
+    let response = acp_llm::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
 }
 
@@ -143,7 +141,7 @@ pub(crate) async fn ask_llm_non_streaming_with_runner<R>(
     cfg: &Config,
     query: &str,
     context: &str,
-) -> AnyResult<String>
+) -> Result<String, Box<dyn Error>>
 where
     R: AcpCompletionRunner + ?Sized,
 {
@@ -174,7 +172,7 @@ pub(crate) async fn baseline_llm_non_streaming_with_runner<R>(
     runner: &R,
     cfg: &Config,
     query: &str,
-) -> AnyResult<String>
+) -> Result<String, Box<dyn Error>>
 where
     R: AcpCompletionRunner + ?Sized,
 {
@@ -186,7 +184,7 @@ pub(crate) async fn judge_llm_non_streaming_with_runner<R>(
     runner: &R,
     cfg: &Config,
     ctx: &JudgeContext<'_>,
-) -> AnyResult<String>
+) -> Result<String, Box<dyn Error>>
 where
     R: AcpCompletionRunner + ?Sized,
 {

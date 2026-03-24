@@ -1,5 +1,5 @@
 use super::super::common::internal_error;
-use super::path::build_artifact_path;
+use super::path::{build_artifact_path, ensure_artifact_root};
 use super::shape::{clip_inline_json, json_shape_preview, line_count, sha256_hex};
 use crate::crates::mcp::schema::{AxonToolResponse, ResponseMode};
 use rmcp::ErrorData;
@@ -32,8 +32,20 @@ pub async fn write_json_artifact(
         internal_error(format!("failed to finalize artifact file: {e}"))
     })?;
 
+    // Compute the root-relative path. Remote clients should use this stable identifier
+    // (not the absolute server path) when calling artifacts.* subactions.
+    // ensure_artifact_root() is idempotent — the dir already exists from build_artifact_path.
+    let relative_path = ensure_artifact_root()
+        .await
+        .ok()
+        .as_ref()
+        .and_then(|root| path.strip_prefix(root).ok())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+
     Ok(serde_json::json!({
         "path": path,
+        "relative_path": relative_path,
         "bytes": text.len(),
         "line_count": line_count(&text),
         "sha256": sha256_hex(text.as_bytes()),
@@ -75,8 +87,10 @@ pub async fn respond_with_mode(
                     }),
                 ));
             }
-            // Large payload with no explicit mode — fall back to path.
-            ResponseMode::Path
+            // Large payload with no explicit mode — use server-configured default.
+            // Set AXON_MCP_DEFAULT_RESPONSE_MODE=both (or inline) for remote deployments
+            // where clients cannot access server-side filesystem paths directly.
+            server_default_response_mode()
         }
     };
 
@@ -129,6 +143,28 @@ fn inline_bytes_threshold() -> usize {
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(8_192)
+}
+
+/// Server-level default response mode for large payloads when the caller does
+/// not specify an explicit `response_mode`.
+///
+/// Configure via `AXON_MCP_DEFAULT_RESPONSE_MODE` env var:
+/// - `path`   — default; returns server-side path + shape (works for local/stdio clients)
+/// - `both`   — returns inline content (up to 12 000 chars) AND server-side path;
+///   recommended for remote HTTP deployments where clients cannot open
+///   server filesystem paths directly
+/// - `inline` — returns only inline content; suitable for remote clients that
+///   never need the artifact path
+fn server_default_response_mode() -> ResponseMode {
+    std::env::var("AXON_MCP_DEFAULT_RESPONSE_MODE")
+        .ok()
+        .and_then(|v| match v.to_ascii_lowercase().trim() {
+            "inline" => Some(ResponseMode::Inline),
+            "both" => Some(ResponseMode::Both),
+            "path" => Some(ResponseMode::Path),
+            _ => None,
+        })
+        .unwrap_or(ResponseMode::Path)
 }
 
 #[cfg(test)]

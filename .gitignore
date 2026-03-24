@@ -85,3 +85,5 @@ __pycache__/
 
 # Git worktrees
 .worktrees/
+specs/.current-spec
+**/.progress.md

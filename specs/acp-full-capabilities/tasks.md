@@ -181,7 +181,7 @@ _Requirements: FR-004, FR-005_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V3 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V3 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -229,7 +229,7 @@ _Requirements: FR-003_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V4 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V4 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -257,7 +257,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V5 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V5 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -916,7 +916,7 @@ _Requirements: NFR-008_ / _Design: Section 3_
   - **Done when**: Build succeeds, all tests pass
   - **Commit**: `chore(acp): pass local CI` (if fixes needed)
 
-- [ ] V20 [VERIFY] CI pipeline passes
+- [x] V20 [VERIFY] CI pipeline passes
   - **Do**: Verify GitHub Actions/CI passes after push
   - **Verify**: `gh pr checks` shows all green
   - **Done when**: CI pipeline passes

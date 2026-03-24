@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::http::normalize_url;
+use crate::crates::core::logging::log_warn;
 use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use crate::crates::vector::ops::{input, qdrant};
 use spider::url::Url;
@@ -264,24 +265,12 @@ where
 async fn request_suggestions_from_llm(
     cfg: &Config,
     user_prompt: &str,
+    warm: Option<acp_llm::WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
     let req = build_suggest_completion_request(cfg, user_prompt);
-    let cfg = cfg.clone();
-    tokio::task::spawn_blocking(move || -> Result<String, std::io::Error> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| std::io::Error::other(err.to_string()))?;
-        runtime.block_on(async move {
-            let response = acp_llm::complete_text(&cfg, req)
-                .await
-                .map_err(|err| std::io::Error::other(err.to_string()))?;
-            Ok(response.text)
-        })
-    })
-    .await
-    .map_err(|err| -> Box<dyn Error> { Box::new(err) })?
-    .map_err(|err| -> Box<dyn Error> { Box::new(err) })
+    // Delegate to run_text_completion which handles warm/cold dispatch and ensures
+    // the cold path is confined to a spawn_blocking thread (keeping this future Send).
+    super::streaming::run_text_completion(cfg, req, warm).await
 }
 
 fn filter_new_suggestions(
@@ -350,9 +339,19 @@ async fn discover_suggestions_with_context(
     focus: &str,
     desired: usize,
 ) -> Result<(Vec<Suggestion>, Vec<String>, String, SuggestPromptContext), Box<dyn Error>> {
+    // Start warming before Qdrant calls so cold-start overlaps with retrieval.
+    let warm = match acp_llm::warm_session(cfg, None) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "suggest: warm session failed to start, using cold path: {e}"
+            ));
+            None
+        }
+    };
     let ctx = build_suggest_prompt_context(cfg, focus, desired).await?;
     let user_prompt = build_suggest_user_prompt(&ctx);
-    let content = request_suggestions_from_llm(cfg, &user_prompt).await?;
+    let content = request_suggestions_from_llm(cfg, &user_prompt, warm).await?;
     let (accepted, rejected_existing) =
         filter_new_suggestions(&content, &ctx.indexed_lookup, desired);
     Ok((accepted, rejected_existing, content, ctx))

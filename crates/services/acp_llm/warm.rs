@@ -171,4 +171,13 @@ impl WarmAcpSession {
             })
             .ok_or_else(|| "ACP warm session did not emit a turn result".into())
     }
+
+    /// Send a prompt to the pre-warmed adapter and collect the full text response
+    /// without streaming. Delegates to `complete_streaming` with a no-op callback.
+    pub async fn complete_text(
+        self,
+        req: AcpCompletionRequest,
+    ) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
+        self.complete_streaming(req, |_| Ok(())).await
+    }
 }

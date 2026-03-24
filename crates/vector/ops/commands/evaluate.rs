@@ -6,6 +6,7 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
 use crate::crates::jobs::crawl::start_crawl_job;
+use crate::crates::services::acp_llm;
 use std::error::Error;
 use std::time::Instant;
 
@@ -88,12 +89,27 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let query = evaluate_query(&derived)?;
     let client = http_client()?;
     let eval_started = Instant::now();
+    // Start warm sessions for all three LLM calls so their adapter cold-starts
+    // overlap with retrieval work. warm1 → rag answer, warm2 → baseline, warm3 → judge.
+    let make_warm = |label: &'static str| match acp_llm::warm_session(&derived, None) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "evaluate: {label} warm session failed to start: {e}"
+            ));
+            None
+        }
+    };
+    let warm1 = make_warm("rag");
+    let warm2 = make_warm("baseline");
+
     let ctx = build_ask_context(&derived, &query).await?;
-    let rag = run_rag_answer(&derived, client, &query, &ctx.context).await?;
-    let baseline = run_baseline_answer(&derived, client, &query).await?;
+    let rag = run_rag_answer(&derived, client, &query, &ctx.context, warm1).await?;
+    let baseline = run_baseline_answer(&derived, client, &query, warm2).await?;
     let (rag_answer, rag_elapsed_ms) = rag;
     let (baseline_answer, baseline_elapsed_ms) = baseline;
     let research_started = Instant::now();
+    let warm3 = make_warm("judge");
     let (judge_reference, ref_chunk_count) = build_judge_reference(&derived, &query)
         .await
         .unwrap_or_else(|e| {
@@ -123,7 +139,8 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         source_count,
         context_chars,
     };
-    let (analysis_answer, analysis_elapsed_ms) = run_analysis(&derived, client, &judge_ctx).await;
+    let (analysis_answer, analysis_elapsed_ms) =
+        run_analysis(&derived, client, &judge_ctx, warm3).await;
     let crawl_suggestions = if rag_underperformed(&analysis_answer) {
         let focus = build_suggestion_focus(&query, &analysis_answer);
         discover_crawl_suggestions(&derived, &focus, 5)
