@@ -7,7 +7,9 @@
 //! 1. Touches `updated_at` (keeps the watchdog happy — same as the old heartbeat)
 //! 2. Reads `result_json` and compares to the previous snapshot
 //! 3. Logs a warning when content is unchanged for `STALE_STREAK_WARN_THRESHOLD`
-//!    consecutive intervals (diagnostic only — does NOT cancel jobs)
+//!    consecutive intervals
+//! 4. Cancels the returned `CancellationToken` when content is unchanged for
+//!    `STALE_STREAK_KILL_THRESHOLD` consecutive intervals (forces job failure)
 //!
 //! ## Why
 //!
@@ -21,11 +23,17 @@ use sqlx::PgPool;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 /// Number of consecutive unchanged intervals before the first warning.
 /// At 30s cadence, 6 intervals = 3 minutes of no progress.
 const STALE_STREAK_WARN_THRESHOLD: u32 = 6;
+
+/// Number of consecutive unchanged intervals before the heartbeat cancels the job.
+/// At 30s cadence, 20 intervals = 10 minutes of no progress → forced failure.
+/// Must be greater than `STALE_STREAK_WARN_THRESHOLD`.
+pub(crate) const STALE_STREAK_KILL_THRESHOLD: u32 = 20;
 
 /// Compare two `result_json` snapshots. Returns `true` if content
 /// is identical (no progress between heartbeats).
@@ -44,19 +52,26 @@ pub fn is_content_stale(
     }
 }
 
-/// Spawn a heartbeat that:
+/// Spawn a content-aware heartbeat that:
 /// 1. Touches `updated_at` every interval (keeps watchdog happy)
 /// 2. Reads `result_json` and compares to previous snapshot
-/// 3. Logs warning when content unchanged for 6+ intervals (3 min at 30s)
+/// 3. Logs warning when content unchanged for `STALE_STREAK_WARN_THRESHOLD` intervals
+/// 4. Cancels `kill_token` when content unchanged for `STALE_STREAK_KILL_THRESHOLD` intervals
 ///
-/// Diagnostic only — does NOT cancel jobs.
+/// Returns `(stop_tx, kill_token, handle)`:
+/// - `stop_tx`: signal the heartbeat to stop gracefully (send `true` when job completes normally)
+/// - `kill_token`: cancelled by the heartbeat when no progress detected for kill threshold;
+///   callers should `select!` on `kill_token.cancelled()` to detect a forced kill
+/// - `handle`: `JoinHandle` for the background task; await after stopping
 ///
 /// # Usage
 ///
 /// ```ignore
-/// let (stop_tx, hb) = spawn_content_aware_heartbeat(pool.clone(), TABLE, id, 30);
-/// // ... do work ...
-/// let _ = stop_tx.send(true);
+/// let (stop_tx, kill_token, hb) = spawn_content_aware_heartbeat(pool.clone(), TABLE, id, 30);
+/// tokio::select! {
+///     _ = inner_future => { let _ = stop_tx.send(true); }
+///     _ = kill_token.cancelled() => { /* job killed — mark failed */ }
+/// }
 /// let _ = hb.await;
 /// ```
 pub fn spawn_content_aware_heartbeat(
@@ -64,8 +79,11 @@ pub fn spawn_content_aware_heartbeat(
     table: JobTable,
     id: Uuid,
     interval_secs: u64,
-) -> (watch::Sender<bool>, JoinHandle<()>) {
+) -> (watch::Sender<bool>, CancellationToken, JoinHandle<()>) {
     let (stop_tx, mut stop_rx) = watch::channel(false);
+    let kill_token = CancellationToken::new();
+    let kill_token_inner = kill_token.clone();
+
     let handle = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -108,6 +126,18 @@ pub fn spawn_content_aware_heartbeat(
                                 u64::from(stale_streak) * interval_secs,
                             ));
                         }
+
+                        if stale_streak >= STALE_STREAK_KILL_THRESHOLD {
+                            let no_progress_secs = u64::from(stale_streak) * interval_secs;
+                            log_warn(&format!(
+                                "heartbeat kill_threshold_reached job_id={id} table={} \
+                                 streak={stale_streak} no_progress_secs={no_progress_secs} \
+                                 action=cancelling",
+                                table.as_str(),
+                            ));
+                            kill_token_inner.cancel();
+                            break;
+                        }
                     } else {
                         if stale_streak >= STALE_STREAK_WARN_THRESHOLD {
                             log_debug(&format!(
@@ -128,7 +158,7 @@ pub fn spawn_content_aware_heartbeat(
             }
         }
     });
-    (stop_tx, handle)
+    (stop_tx, kill_token, handle)
 }
 
 /// Spawn a background heartbeat task that calls [`touch_running_job`] on `interval_secs`
@@ -223,6 +253,24 @@ mod tests {
     fn some_to_none_is_not_stale() {
         let prev = Some(serde_json::json!({"files_done": 5}));
         assert!(!is_content_stale(&prev, &None));
+    }
+
+    #[test]
+    fn stale_streak_reaches_kill_threshold() {
+        assert!(
+            STALE_STREAK_KILL_THRESHOLD > STALE_STREAK_WARN_THRESHOLD,
+            "kill threshold must be greater than warn threshold"
+        );
+    }
+
+    #[test]
+    fn kill_threshold_is_bounded() {
+        // Should kill after no more than 20 minutes at 30s cadence.
+        let max_stall_secs = u64::from(STALE_STREAK_KILL_THRESHOLD) * 30;
+        assert!(
+            max_stall_secs <= 20 * 60,
+            "kill threshold would allow stall of {max_stall_secs}s (>20min)",
+        );
     }
 
     #[test]

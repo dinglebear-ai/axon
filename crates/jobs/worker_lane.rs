@@ -5,8 +5,8 @@ mod poll;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::jobs::common::{
-    JobTable, batch_enqueue_jobs, open_amqp_connection_and_channel, reclaim_stale_running_jobs,
-    spawn_content_aware_heartbeat,
+    JobTable, batch_enqueue_jobs, mark_job_failed, open_amqp_connection_and_channel,
+    reclaim_stale_running_jobs, spawn_content_aware_heartbeat,
 };
 use crate::crates::jobs::status::JobStatus;
 use sqlx::PgPool;
@@ -68,14 +68,15 @@ pub(crate) struct WorkerConfig {
 }
 
 /// Wrap a [`ProcessFn`] so every job it processes automatically gets a
-/// content-aware heartbeat.
+/// content-aware heartbeat with a kill path.
 ///
-/// The heartbeat starts immediately before the inner future and is stopped
-/// (gracefully awaited) after the inner future resolves. No individual worker
-/// needs to manage heartbeat lifetimes — the runner handles it centrally.
+/// The heartbeat starts immediately before the inner future. When the inner
+/// future completes normally, the heartbeat is stopped gracefully. When the
+/// heartbeat detects no progress for `STALE_STREAK_KILL_THRESHOLD` consecutive
+/// intervals, it cancels the `kill_token` which this wrapper selects on —
+/// dropping the inner future and marking the job `failed` in the database.
 ///
-/// Unlike the old blind heartbeat, this also reads `result_json` each interval
-/// and warns when content is unchanged for extended periods (diagnostic only).
+/// No individual worker needs to manage heartbeat lifetimes.
 pub(crate) fn wrap_with_heartbeat(
     process_fn: ProcessFn,
     table: JobTable,
@@ -83,12 +84,35 @@ pub(crate) fn wrap_with_heartbeat(
 ) -> ProcessFn {
     Arc::new(move |cfg, pool, id| {
         let pool_hb = pool.clone();
+        let pool_kill = pool.clone();
         let inner = process_fn(cfg, pool, id);
         Box::pin(async move {
-            let (stop_tx, hb_task) =
+            let (stop_tx, kill_token, hb_task) =
                 spawn_content_aware_heartbeat(pool_hb, table, id, interval_secs);
-            inner.await;
-            let _ = stop_tx.send(true);
+
+            tokio::select! {
+                _ = inner => {
+                    // Normal completion — stop heartbeat gracefully.
+                    let _ = stop_tx.send(true);
+                }
+                _ = kill_token.cancelled() => {
+                    // Heartbeat determined job is stuck — mark it failed and
+                    // drop the inner future (Tokio cooperative cancellation).
+                    let reason =
+                        "heartbeat: no progress detected for kill threshold — job forcibly terminated";
+                    if let Err(e) = mark_job_failed(&pool_kill, table, id, reason).await {
+                        log_warn(&format!(
+                            "heartbeat_kill mark_job_failed error job_id={id} table={} err={e}",
+                            table.as_str()
+                        ));
+                    }
+                    log_warn(&format!(
+                        "heartbeat_killed_job job_id={id} table={}",
+                        table.as_str()
+                    ));
+                }
+            }
+
             let _ = hb_task.await;
         })
     })
