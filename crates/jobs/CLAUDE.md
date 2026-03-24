@@ -1,5 +1,5 @@
 # crates/jobs — AMQP Job Workers
-Last Modified: 2026-02-27
+Last Modified: 2026-03-24
 
 Async job workers backed by RabbitMQ (lapin) + PostgreSQL (sqlx).
 
@@ -50,6 +50,22 @@ PgPool is expensive. Each worker creates one pool at startup and passes `&PgPool
 ### Bounded Channels
 
 All internal async channels use `tokio::sync::mpsc::channel(256)` — **never** `unbounded_channel()`. Unbounded channels hide backpressure bugs and cause OOM under load.
+
+### Liveness Enforcement (Two Tiers)
+
+**Tier 1 — Dead-process detection (watchdog):**
+Reclaims jobs where `updated_at` goes stale (process died, heartbeat stopped).
+- Threshold: `AXON_JOB_STALE_TIMEOUT_SECS` (default 300s) + `AXON_JOB_STALE_CONFIRM_SECS` (60s)
+- Implemented in `watchdog.rs` (crawl_jobs) and `worker_lane.rs` stale sweep
+
+**Tier 2 — Stuck-process detection (content-aware heartbeat):**
+Detects jobs that are alive (heartbeat touching `updated_at`) but making no progress (`result_json` unchanged).
+- Warn at `STALE_STREAK_WARN_THRESHOLD` = 6 intervals × 30s = **3 min** no progress
+- Kill at `STALE_STREAK_KILL_THRESHOLD` = 20 intervals × 30s = **10 min** no progress
+  - Heartbeat calls `CancellationToken::cancel()` → `wrap_with_heartbeat` in `worker_lane.rs` aborts inner future
+  - `mark_job_failed` writes `failed` status with reason → semaphore permit released → lane slot freed
+
+The watchdog handles the **crash** case (process died). The heartbeat handles the **hang** case (process alive, job stuck).
 
 ### Stale Job Recovery
 
