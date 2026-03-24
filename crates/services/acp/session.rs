@@ -5,11 +5,10 @@
 //! setup dispatch, and config-option/model-config application.
 
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
-use crate::crates::services::types::AcpAdapterCommand;
-use crate::crates::services::types::AcpBridgeEvent;
+use crate::crates::services::types::{AcpAdapterCommand, AcpBridgeEvent, AcpModeUpdate};
 use agent_client_protocol::{
     Agent, ClientSideConnection, InitializeRequest, NewSessionRequest, SessionConfigKind,
-    SessionConfigOptionCategory, SessionId, SetSessionConfigOptionRequest,
+    SessionConfigOptionCategory, SessionId, SessionModeState, SetSessionConfigOptionRequest,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -23,6 +22,24 @@ use super::mapping::{map_config_options, select_options_contains_value};
 use super::permission::resolve_acp_auto_approve;
 use super::runtime::AdapterGuard;
 use super::{AcpClientScaffold, AcpSessionSetupRequest, PermissionResponderMap};
+
+// ── extract_session_modes ─────────────────────────────────────────────────────
+
+/// Extract available mode IDs from a `NewSessionResponse` modes field.
+///
+/// Returns an empty `Vec` when `modes` is `None` (adapter does not advertise
+/// mode support) so callers can skip the `ModeUpdate` emission cheaply.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn extract_session_modes(modes: Option<&SessionModeState>) -> Vec<String> {
+    let Some(state) = modes else {
+        return Vec::new();
+    };
+    state
+        .available_modes
+        .iter()
+        .map(|m| m.id.0.to_string())
+        .collect()
+}
 
 // ── SpawnedAdapter ───────────────────────────────────────────────────────────
 
@@ -303,6 +320,20 @@ pub(super) async fn setup_session(
                 .new_session(new_session)
                 .await
                 .map_err(|e| e.to_string())?;
+            // Emit initial mode state immediately so the frontend has it at session
+            // start rather than waiting for the first ConfigOptionUpdate stream event.
+            if let Some(ref mode_state) = r.modes {
+                emit(
+                    tx,
+                    ServiceEvent::AcpBridge {
+                        event: AcpBridgeEvent::ModeUpdate(AcpModeUpdate {
+                            session_id: r.session_id.0.to_string(),
+                            current_mode_id: mode_state.current_mode_id.0.to_string(),
+                        }),
+                    },
+                )
+                .await;
+            }
             Ok((r.session_id, r.config_options))
         }
         AcpSessionSetupRequest::Load(load_session) => {
@@ -353,6 +384,19 @@ pub(super) async fn setup_session(
                         },
                     )
                     .await;
+                    // Emit initial mode state for the fallback session too.
+                    if let Some(ref mode_state) = r.modes {
+                        emit(
+                            tx,
+                            ServiceEvent::AcpBridge {
+                                event: AcpBridgeEvent::ModeUpdate(AcpModeUpdate {
+                                    session_id: r.session_id.0.to_string(),
+                                    current_mode_id: mode_state.current_mode_id.0.to_string(),
+                                }),
+                            },
+                        )
+                        .await;
+                    }
                     Ok((r.session_id, r.config_options))
                 }
             }
@@ -515,8 +559,8 @@ mod tests {
 
     #[test]
     fn test_modes_models_at_session_start() {
-        // RED: extract_session_modes does not exist yet — this will fail to compile
-        // until Task 1.19 implements the extraction helper.
+        // GREEN: extract_session_modes extracts available mode IDs from a
+        // NewSessionResponse modes field so the frontend has them at session start.
         use agent_client_protocol::{SessionMode, SessionModeId, SessionModeState};
         let mode_state = SessionModeState::new(
             SessionModeId::new("default"),
@@ -525,11 +569,15 @@ mod tests {
                 "Default".to_string(),
             )],
         );
-        let modes = extract_session_modes(Some(&mode_state));
+        let modes = super::extract_session_modes(Some(&mode_state));
         assert!(
             !modes.is_empty(),
             "should extract at least one mode from NewSessionResponse"
         );
+        assert_eq!(modes[0], "default");
+        // Verify None input returns empty vec (adapter with no mode support).
+        let empty = super::extract_session_modes(None);
+        assert!(empty.is_empty(), "None modes should produce empty vec");
     }
 
     #[test]

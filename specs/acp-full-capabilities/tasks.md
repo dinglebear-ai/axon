@@ -328,7 +328,7 @@ _Requirements: FR-010_ / _Design: Section 4.3_
 
 ### Group G: Boolean Config (FR-012)
 
-## Task 1.17b — <!-- DONE --> [RED] Write failing test: Boolean config option mapping (AC-6.4)
+## Task 1.17b — <!-- DONE --> <!-- DONE --> [RED] Write failing test: Boolean config option mapping (AC-6.4)
 
 **Do**: In `crates/services/acp/mapping.rs` tests, write `test_boolean_config_option_mapping`: create a `ConfigOptionUpdate` with `SessionConfigKind::Boolean(...)`, call the config mapping function, assert result has `kind = "boolean"`. Test must fail until Task 1.18 adds the Boolean arm.
 **Files**: `crates/services/acp/mapping.rs`
@@ -337,7 +337,7 @@ _Requirements: FR-010_ / _Design: Section 4.3_
 **Commit**: `test(acp): RED - add failing Boolean config option mapping test`
 _Requirements: FR-012_ / _Design: Section 4.3_
 
-## Task 1.18 — <!-- DONE --> Handle SessionConfigKind::Boolean in map_config_options (FR-012)
+## Task 1.18 — <!-- DONE --> <!-- DONE --> Handle SessionConfigKind::Boolean in map_config_options (FR-012)
 
 **Do**: In `mapping.rs`, the `map_config_options` function currently returns `None` for non-`Select` config kinds. Add a branch for `SessionConfigKind::Boolean(bool_config)` that creates an `AcpConfigOption` with two synthetic options: `{ value: "true", name: "Enabled" }` and `{ value: "false", name: "Disabled" }`, with `current_value` set to the boolean's current value as a string.
 **Files**: `crates/services/acp/mapping.rs`
@@ -346,7 +346,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 **Commit**: `feat(acp): handle SessionConfigKind::Boolean in config option mapping`
 _Requirements: FR-012_ / _Design: Section 4.3_
 
-## Task 1.18b — <!-- DONE --> [GREEN] Verify Boolean config mapping test passes
+## Task 1.18b — <!-- DONE --> <!-- DONE --> [GREEN] Verify Boolean config mapping test passes
 
 **Do**: Run `cargo test test_boolean_config_option_mapping`. Fix mapping.rs if test fails.
 **Files**: `crates/services/acp/mapping.rs` (fix if needed)
@@ -357,7 +357,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 
 ### Group H: Modes/Models at Session Start (FR-011)
 
-## Task 1.18c — [RED] Write failing test: modes and models extracted at session start (AC-5.5)
+## Task 1.18c — [RED] Write failing test: modes and models extracted at session start (AC-5.5) <!-- DONE -->
 
 **Do**: In `crates/services/acp/session.rs` tests, write `test_modes_models_at_session_start`: create a mock `NewSessionResponse` with populated `modes` and `models`, call the extraction logic, assert `available_modes` and `available_models` fields are non-empty in the emitted event. Test fails until Task 1.19 extracts these fields.
 **Files**: `crates/services/acp/session.rs`
@@ -366,7 +366,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 **Commit**: `test(acp): RED - add failing modes/models session start test`
 _Requirements: FR-011_ / _Design: Section 4.4_
 
-## Task 1.19 — Extract modes and models from NewSessionResponse (FR-011)
+## Task 1.19 — Extract modes and models from NewSessionResponse (FR-011) <!-- DONE -->
 
 **Do**: In `session.rs:setup_session`, after `new_session` or `load_session` returns, check if the response includes `modes` and `models` (or equivalent fields in the SDK's `NewSessionResponse`/`LoadSessionResponse`). If present, emit them as a new `ServiceEvent::AcpBridge` event so the frontend has them at session start. Add a new `AcpBridgeEvent` variant if needed (e.g., `SessionStartInfo { session_id, modes, models }`), or emit them via existing `ConfigOptionsUpdate` / `ModeUpdate`.
 **Files**: `crates/services/acp/session.rs`, `crates/services/types/acp.rs` (if new variant needed)
@@ -375,7 +375,7 @@ _Requirements: FR-011_ / _Design: Section 4.4_
 **Commit**: `feat(acp): emit modes and models from session setup response`
 _Requirements: FR-011_ / _Design: Section 4.4_
 
-## Task 1.19b — [GREEN] Verify modes/models session start test passes
+## Task 1.19b — [GREEN] Verify modes/models session start test passes <!-- DONE -->
 
 **Do**: Run `cargo test test_modes_models_at_session_start`. Fix session.rs if needed.
 **Files**: `crates/services/acp/session.rs` (fix if needed)
