@@ -536,6 +536,35 @@ mod tests {
         );
     }
 
+    /// `ext_notification` with no registered handler must return `Ok(())` and
+    /// not panic — the warning is fire-and-forget, so no error is propagated.
+    #[tokio::test(flavor = "current_thread")]
+    async fn ext_notification_returns_ok_with_no_handler() {
+        use agent_client_protocol::ExtNotification;
+        use serde_json::value::RawValue;
+        use std::sync::Arc;
+
+        let client = AcpBridgeClient {
+            runtime_state: Arc::new(AcpRuntimeState::default()),
+            auto_approve: false,
+            permission_responders: Arc::new(dashmap::DashMap::new()),
+            session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        };
+
+        let raw = RawValue::from_string("{}".to_string()).unwrap();
+        let notif = ExtNotification::new("_axon.unknown_event", Arc::from(raw));
+        let result = client.ext_notification(notif).await;
+
+        assert!(
+            result.is_ok(),
+            "ext_notification with no handler must return Ok(()), got {:?}",
+            result
+        );
+    }
+
     #[tokio::test]
     async fn finalize_emits_editor_write_events() {
         let runtime_state = Arc::new(AcpRuntimeState::default());

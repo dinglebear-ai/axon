@@ -869,7 +869,7 @@ _Requirements: FR-020_ / _Design: Section 4.5_
 **Commit**: `test(acp): ext_method returns method_not_found with no registered handler`
 _Requirements: FR-025_ / _Design: Section 4.5_
 
-## Task 4.13 — Test: ext_notification logs warning with no handler
+## Task 4.13 — Test: ext_notification logs warning with no handler <!-- DONE -->
 
 **Do**: Write a test: call `ext_notification` with no handler, verify it logs a warning (or check tracing output).
 **Files**: `crates/services/acp/bridge.rs`
