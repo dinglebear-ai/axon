@@ -13,6 +13,8 @@ use agent_client_protocol::{
     RequestPermissionRequest, RequestPermissionResponse, SessionNotification, WriteTextFileRequest,
     WriteTextFileResponse,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use super::PermissionResponderMap;
@@ -39,6 +41,10 @@ pub struct AcpBridgeClient {
     pub(super) permission_responders: PermissionResponderMap,
     /// Working directory for this session — used to validate fs paths from the adapter.
     pub(super) session_cwd: std::path::PathBuf,
+    /// Terminal subprocess manager for this session.
+    // field used by Client impl methods added in subsequent tasks (1.10-1.12)
+    #[allow(dead_code)]
+    pub(super) terminal_manager: Rc<RefCell<terminal::TerminalManager>>,
 }
 
 // ── Path validation ──────────────────────────────────────────────────────────
@@ -325,6 +331,7 @@ mod tests {
             auto_approve: true,
             permission_responders,
             session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
         };
 
         // Create a permission request for "shell" tool with a different ID.

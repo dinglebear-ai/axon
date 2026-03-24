@@ -167,6 +167,9 @@ pub(super) async fn initialize_connection(
         auto_approve,
         permission_responders: permission_responders.clone(),
         session_cwd: cwd,
+        terminal_manager: std::rc::Rc::new(std::cell::RefCell::new(
+            super::bridge::terminal::TerminalManager::new(),
+        )),
     };
 
     let msg =
