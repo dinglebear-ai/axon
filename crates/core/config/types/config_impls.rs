@@ -48,6 +48,8 @@ impl Default for Config {
             embed: true,
             batch_concurrency: 16,
             wait: false,
+            lite_mode: false,
+            sqlite_path: PathBuf::from(".cache/axon-rust/jobs.db"),
             yes: false,
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,
@@ -227,6 +229,8 @@ impl fmt::Debug for Config {
             .field("embed", &self.embed)
             .field("batch_concurrency", &self.batch_concurrency)
             .field("wait", &self.wait)
+            .field("lite_mode", &self.lite_mode)
+            .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)
             .field("performance_profile", &self.performance_profile)
             .field("crawl_concurrency_limit", &self.crawl_concurrency_limit)

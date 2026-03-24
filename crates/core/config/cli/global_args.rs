@@ -118,6 +118,14 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::crates::core::config) wait: bool,
 
+    /// Run without Postgres/Redis/RabbitMQ. Uses SQLite + in-process workers.
+    #[arg(global = true, long, default_value_t = false)]
+    pub(in crate::crates::core::config) lite: bool,
+
+    /// Path to the SQLite jobs database (lite mode only).
+    #[arg(global = true, long)]
+    pub(in crate::crates::core::config) sqlite_path: Option<PathBuf>,
+
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::crates::core::config) yes: bool,
 

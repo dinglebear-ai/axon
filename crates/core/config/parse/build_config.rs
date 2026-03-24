@@ -31,6 +31,17 @@ fn parse_origin_allowlist(raw: &str) -> Vec<String> {
     parse_csv_env(raw, ToOwned::to_owned)
 }
 
+fn default_sqlite_path() -> std::path::PathBuf {
+    let base = env::var("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            env::var("HOME")
+                .map(|h| std::path::PathBuf::from(h).join(".local/share"))
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+    base.join("axon").join("jobs.db")
+}
+
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let global = cli.global;
     let fetch_retries_was_set = global.fetch_retries.is_some();
@@ -243,32 +254,55 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         });
     }
 
-    let pg_url = normalize_local_service_url(
-        global
-            .pg_url
-            .or_else(|| env::var("AXON_PG_URL").ok())
-            .ok_or_else(|| {
-                "AXON_PG_URL environment variable is required (or pass --pg-url). Copy .env.example to .env and fill in credentials.".to_string()
-            })?,
-    );
+    let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
-    let redis_url = normalize_local_service_url(
-        global
-            .redis_url
-            .or_else(|| env::var("AXON_REDIS_URL").ok())
-            .ok_or_else(|| {
-                "AXON_REDIS_URL environment variable is required (or pass --redis-url). Copy .env.example to .env and fill in credentials.".to_string()
-            })?,
-    );
+    let sqlite_path = global
+        .sqlite_path
+        .or_else(|| {
+            env::var("AXON_SQLITE_PATH")
+                .ok()
+                .map(std::path::PathBuf::from)
+        })
+        .unwrap_or_else(default_sqlite_path);
 
-    let amqp_url = normalize_local_service_url(
-        global
-            .amqp_url
-            .or_else(|| env::var("AXON_AMQP_URL").ok())
-            .ok_or_else(|| {
-                "AXON_AMQP_URL environment variable is required (or pass --amqp-url). Copy .env.example to .env and fill in credentials.".to_string()
-            })?,
-    );
+    let pg_url = if lite_mode {
+        String::new()
+    } else {
+        normalize_local_service_url(
+            global
+                .pg_url
+                .or_else(|| env::var("AXON_PG_URL").ok())
+                .ok_or_else(|| {
+                    "AXON_PG_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
+                })?,
+        )
+    };
+
+    let redis_url = if lite_mode {
+        String::new()
+    } else {
+        normalize_local_service_url(
+            global
+                .redis_url
+                .or_else(|| env::var("AXON_REDIS_URL").ok())
+                .ok_or_else(|| {
+                    "AXON_REDIS_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
+                })?,
+        )
+    };
+
+    let amqp_url = if lite_mode {
+        String::new()
+    } else {
+        normalize_local_service_url(
+            global
+                .amqp_url
+                .or_else(|| env::var("AXON_AMQP_URL").ok())
+                .ok_or_else(|| {
+                    "AXON_AMQP_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
+                })?,
+        )
+    };
 
     let mut crawl_concurrency_limit = global.crawl_concurrency_limit;
     let mut backfill_concurrency_limit = global.backfill_concurrency_limit;
@@ -327,6 +361,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         embed: global.embed,
         batch_concurrency: global.batch_concurrency.clamp(1, 512),
         wait: global.wait,
+        lite_mode,
+        sqlite_path,
         yes: global.yes,
         performance_profile: global.performance_profile,
         crawl_concurrency_limit,
@@ -636,6 +672,30 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_reads_axon_lite_env_var() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("AXON_PG_URL");
+            env::remove_var("AXON_REDIS_URL");
+            env::remove_var("AXON_AMQP_URL");
+            env::set_var("AXON_LITE", "1");
+            env::set_var("QDRANT_URL", "http://localhost:53333");
+            env::set_var("TEI_URL", "http://localhost:52000");
+        }
+
+        let cli = Cli::parse_from(["axon", "scrape", "https://example.com"]);
+        let cfg = into_config(cli).expect("lite mode should not require PG/Redis/AMQP");
+        assert!(cfg.lite_mode);
+
+        unsafe {
+            env::remove_var("AXON_LITE");
+            env::remove_var("QDRANT_URL");
+            env::remove_var("TEI_URL");
+        }
+    }
 
     #[allow(unsafe_code)]
     #[test]
