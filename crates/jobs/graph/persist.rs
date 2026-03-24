@@ -1,3 +1,4 @@
+use super::similarity::{SimilarityEdge, compute_similarity};
 use super::taxonomy::Taxonomy;
 use crate::crates::core::config::Config;
 use crate::crates::core::neo4j::Neo4jClient;
@@ -183,4 +184,55 @@ pub async fn write_entity_relationships(
         )
         .await?;
     Ok(())
+}
+
+// ─── stage orchestration helpers (called by worker) ──────────────────────────
+
+/// Stage 1: write Document+Chunk nodes and Entity nodes in parallel.
+///
+/// Uses `try_join!` so that if either write fails the other is not committed
+/// independently, preventing a partial Stage 1 state that would cause Stage 2
+/// edge MATCHes to fail in confusing ways.
+pub async fn persist_nodes(
+    neo4j: &Neo4jClient,
+    cfg: &Config,
+    url: &str,
+    source_type: &str,
+    chunks: &[GraphChunk],
+    entities: &HashMap<String, MergedEntity>,
+) -> Result<(), Box<dyn Error>> {
+    tokio::try_join!(
+        write_document_and_chunks(neo4j, cfg, url, source_type, chunks),
+        write_entities(neo4j, entities),
+    )?;
+    Ok(())
+}
+
+/// Stage 2: write edges that reference Stage 1 nodes in parallel.
+///
+/// Returns the number of chunk-mention edges written.
+pub async fn persist_edges(
+    neo4j: &Neo4jClient,
+    taxonomy: &Taxonomy,
+    source_type: &str,
+    chunks: &[GraphChunk],
+    entities: &HashMap<String, MergedEntity>,
+    relationships: &[GraphRelationRecord],
+) -> Result<usize, Box<dyn Error>> {
+    let ((), mention_count) = tokio::try_join!(
+        write_entity_relationships(neo4j, relationships),
+        write_chunk_mentions(neo4j, taxonomy, source_type, chunks, entities),
+    )?;
+    Ok(mention_count)
+}
+
+/// Stage 3: compute document-similarity edges.
+///
+/// Depends on Document nodes written in Stage 1.
+pub async fn finalize_similarity(
+    cfg: &Config,
+    neo4j: &Neo4jClient,
+    url: &str,
+) -> Result<Vec<SimilarityEdge>, Box<dyn Error>> {
+    compute_similarity(cfg, neo4j, url).await
 }

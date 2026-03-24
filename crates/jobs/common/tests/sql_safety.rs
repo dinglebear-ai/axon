@@ -71,59 +71,82 @@ fn job_table_names_start_with_axon_prefix() {
     }
 }
 
-/// Compile-time exhaustive match over every `JobTable` variant.
-/// Adding a new `JobTable` variant without updating this match causes a
-/// compile error ("non-exhaustive patterns"), forcing the developer to also
-/// add it to `ALL_JOB_TABLES`.
-#[allow(dead_code)]
-fn assert_all_job_table_variants_matched(t: JobTable) {
-    match t {
-        JobTable::Crawl => (),
-        JobTable::Refresh => (),
-        JobTable::Extract => (),
-        JobTable::Embed => (),
-        JobTable::Ingest => (),
-        JobTable::Graph => (),
-    };
-}
-
-/// Compile-time exhaustive match over every `JobStatus` variant.
-/// Adding a new `JobStatus` variant without updating this match causes a
-/// compile error ("non-exhaustive patterns"), forcing the developer to also
-/// add it to `ALL_JOB_STATUSES`.
-#[allow(dead_code)]
-fn assert_all_job_status_variants_matched(s: JobStatus) {
-    match s {
-        JobStatus::Pending => (),
-        JobStatus::Running => (),
-        JobStatus::Completed => (),
-        JobStatus::Failed => (),
-        JobStatus::Canceled => (),
-    };
-}
-
 #[test]
 fn all_job_table_variants_covered() {
-    // The exhaustive match above catches new variants at compile time.
-    // This runtime test catches accidental duplicates in ALL_JOB_TABLES.
-    let unique: std::collections::HashSet<&str> =
-        ALL_JOB_TABLES.iter().map(|t| t.as_str()).collect();
+    // Verify each JobTable variant is present in ALL_JOB_TABLES.  The
+    // exhaustive match closure below will fail to *compile* if a new variant
+    // is added to the enum without being listed here, and the assert_contains
+    // calls make the runtime test fail if the variant is in the match but was
+    // accidentally omitted from the slice.
+    let all: &[JobTable] = &ALL_JOB_TABLES;
+    let assert_contains = |v: JobTable| {
+        assert!(
+            all.contains(&v),
+            "ALL_JOB_TABLES is missing variant {v:?} — add it to the slice"
+        );
+    };
+    // This closure is never called at runtime, but it *must* compile — the
+    // exhaustive match forces a compile error when a new JobTable variant is
+    // introduced without updating both this match and the ALL_JOB_TABLES slice.
+    let _ = |t: JobTable| match t {
+        JobTable::Crawl => assert_contains(JobTable::Crawl),
+        JobTable::Refresh => assert_contains(JobTable::Refresh),
+        JobTable::Extract => assert_contains(JobTable::Extract),
+        JobTable::Embed => assert_contains(JobTable::Embed),
+        JobTable::Ingest => assert_contains(JobTable::Ingest),
+        JobTable::Graph => assert_contains(JobTable::Graph),
+    };
+    // Runtime: call assert_contains for every variant so omissions fail the test.
+    assert_contains(JobTable::Crawl);
+    assert_contains(JobTable::Refresh);
+    assert_contains(JobTable::Extract);
+    assert_contains(JobTable::Embed);
+    assert_contains(JobTable::Ingest);
+    assert_contains(JobTable::Graph);
+    // Also check for accidental duplicates.
+    let unique: std::collections::HashSet<&str> = all.iter().map(|t| t.as_str()).collect();
     assert_eq!(
         unique.len(),
-        ALL_JOB_TABLES.len(),
+        all.len(),
         "Duplicate table names detected in ALL_JOB_TABLES"
     );
 }
 
 #[test]
 fn all_job_status_variants_covered() {
-    // The exhaustive match above catches new variants at compile time.
-    // This runtime test catches accidental duplicates in ALL_JOB_STATUSES.
-    let unique: std::collections::HashSet<&str> =
-        ALL_JOB_STATUSES.iter().map(|s| s.as_str()).collect();
+    // Verify each JobStatus variant is present in ALL_JOB_STATUSES.  The
+    // exhaustive match closure below will fail to *compile* if a new variant
+    // is added to the enum without being listed here, and the assert_contains
+    // calls make the runtime test fail if the variant is in the match but was
+    // accidentally omitted from the slice.
+    let all: &[JobStatus] = &ALL_JOB_STATUSES;
+    let assert_contains = |v: JobStatus| {
+        assert!(
+            all.contains(&v),
+            "ALL_JOB_STATUSES is missing variant {v:?} — add it to the slice"
+        );
+    };
+    // This closure is never called at runtime, but it *must* compile — the
+    // exhaustive match forces a compile error when a new JobStatus variant is
+    // introduced without updating both this match and the ALL_JOB_STATUSES slice.
+    let _ = |s: JobStatus| match s {
+        JobStatus::Pending => assert_contains(JobStatus::Pending),
+        JobStatus::Running => assert_contains(JobStatus::Running),
+        JobStatus::Completed => assert_contains(JobStatus::Completed),
+        JobStatus::Failed => assert_contains(JobStatus::Failed),
+        JobStatus::Canceled => assert_contains(JobStatus::Canceled),
+    };
+    // Runtime: call assert_contains for every variant so omissions fail the test.
+    assert_contains(JobStatus::Pending);
+    assert_contains(JobStatus::Running);
+    assert_contains(JobStatus::Completed);
+    assert_contains(JobStatus::Failed);
+    assert_contains(JobStatus::Canceled);
+    // Also check for accidental duplicates.
+    let unique: std::collections::HashSet<&str> = all.iter().map(|s| s.as_str()).collect();
     assert_eq!(
         unique.len(),
-        ALL_JOB_STATUSES.len(),
+        all.len(),
         "Duplicate status values detected in ALL_JOB_STATUSES"
     );
 }

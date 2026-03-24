@@ -1,6 +1,6 @@
 # Spider.rs Feature Flags
 
-**Total feature entries tracked in this inventory: 80 (includes `basic` meta-feature)**
+**Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
 **Flags enabled in axon_rust: 20 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
@@ -17,7 +17,7 @@ spider = { version = "2", default-features = false, features = [
     "ua_generator", "headers", "time", "control",
     "firewall", "hedge",
 ] }
-spider_agent       = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
+spider_agent       = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"  # no feature flags — full crate used as-is
 ```
 
@@ -57,7 +57,7 @@ Used in two files for HTML→Markdown content transformation:
 
 ---
 
-## Full Flag Inventory (all 80, includes `basic` meta-feature)
+## Full Flag Inventory (all 79, includes `basic` meta-feature)
 
 `✅` = enabled in axon_rust · `—` = not used
 
@@ -197,7 +197,7 @@ Used in two files for HTML→Markdown content transformation:
 
 | Category | Total | Enabled |
 |----------|-------|---------|
-| Core | 26 | 10 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) |
+| Core | 25 | 10 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) |
 | Storage | 3 | 0 |
 | Caching | 6 | 1 (`cache_mem`) |
 | Chrome / Browser | 17 | 7 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`) |
@@ -207,6 +207,6 @@ Used in two files for HTML→Markdown content transformation:
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **80** | **20 spider + 2 spider_agent = 22** |
+| **Total** | **79** | **20 spider + 2 spider_agent = 22** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.

@@ -24,6 +24,8 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .unwrap_or("");
 
     if chunk_count == 0 {
+        // Note: returns Err when no content found (changed from Ok in v0.33.x for consistency
+        // with query/search behavior — callers should treat "not found" as an error, not silence).
         return Err(format!(
             "no content found for URL: {target} — run 'axon sources' to list indexed URLs"
         )

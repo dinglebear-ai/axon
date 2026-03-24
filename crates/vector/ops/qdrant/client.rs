@@ -24,7 +24,8 @@ use super::utils::{qdrant_base, retrieve_max_points};
 /// Prevents thundering-herd when multiple workers retry simultaneously
 /// after a Qdrant restart.
 fn qdrant_retry_delay(attempt: usize) -> Duration {
-    let base_ms = 250_u64.saturating_mul(1u64 << (attempt - 1));
+    debug_assert!(attempt >= 1, "attempt must be >= 1");
+    let base_ms = 250_u64.saturating_mul(1u64 << attempt.saturating_sub(1));
     let jitter_ms = rand::rng().random_range(0..100);
     Duration::from_millis(base_ms + jitter_ms)
 }

@@ -67,6 +67,9 @@ async fn check_embed_canceled(
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
             log_warn(&format!("embed cancel check failed for {id}: {e}"));
+            // Clear the shared slot so the next job can attempt to re-establish
+            // the connection rather than retrying a known-broken one.
+            *redis_conn = None;
             None
         }
         Err(_) => {
@@ -74,6 +77,9 @@ async fn check_embed_canceled(
                 "embed cancel check timeout for {id} after {}s",
                 EMBED_CANCEL_REDIS_TIMEOUT_SECS
             ));
+            // Treat a timeout as a broken connection — clear the slot so it
+            // will be re-opened on the next job attempt.
+            *redis_conn = None;
             None
         }
     };

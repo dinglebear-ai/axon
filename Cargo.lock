@@ -5930,9 +5930,9 @@ dependencies = [
 
 [[package]]
 name = "spider_agent"
-version = "2.47.80"
+version = "2.47.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "785eab1018babbff765543fe2ad5adcf4f8808b222c60af035720837c7d21d4e"
+checksum = "0fd37fac9140b4fd0fa18efebae5e7add5ad925c6b4fd7d980efe8c349a17e1e"
 dependencies = [
  "aho-corasick",
  "async-openai",
@@ -5955,9 +5955,9 @@ dependencies = [
 
 [[package]]
 name = "spider_agent_html"
-version = "2.47.80"
+version = "2.47.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1db2002b72c3599bf29d799c62b7798745ca9ead9639c3673f4c75a3b1cb5945"
+checksum = "a8f546af33d5ec742d5bcca6af88444e348c6f60650f22ceb5c0dc2257930fda"
 dependencies = [
  "aho-corasick",
  "lol_html",
@@ -5968,9 +5968,9 @@ dependencies = [
 
 [[package]]
 name = "spider_agent_types"
-version = "2.47.80"
+version = "2.47.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb86b248fb1653ad1b1d97655d48a9b71c2481be9bbd69ae88d2c3ab32aa26c"
+checksum = "07d0fd2d051752093bae858dc38cf072f5f99dd2a50fda918465c022ddb3936f"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",

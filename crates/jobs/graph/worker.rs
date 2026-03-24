@@ -3,11 +3,10 @@ use super::extract::{
     resolve_type_conflict,
 };
 use super::persist::{
-    GraphChunk, GraphRelationRecord, MergedEntity, write_chunk_mentions, write_document_and_chunks,
-    write_entities, write_entity_relationships,
+    GraphChunk, GraphRelationRecord, MergedEntity, finalize_similarity, persist_edges,
+    persist_nodes,
 };
 use super::schema::{ensure_graph_schema, ensure_neo4j_schema};
-use super::similarity::compute_similarity;
 use super::taxonomy::{CandidateSource, EntityCandidate, Taxonomy};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
@@ -133,6 +132,66 @@ fn build_relationships(
     deduped.into_iter().collect()
 }
 
+async fn build_entity_map(
+    cfg: &Config,
+    taxonomy: &Taxonomy,
+    chunks: &[GraphChunk],
+    source_type: &str,
+) -> Result<
+    (
+        HashMap<String, MergedEntity>,
+        Vec<GraphRelationRecord>,
+        usize,
+    ),
+    Box<dyn Error>,
+> {
+    let mut taxonomy_candidates = Vec::new();
+    for chunk in chunks {
+        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk.chunk_text, source_type));
+    }
+    let merged_candidates = merge_candidates(taxonomy_candidates);
+    let (clear_candidates, ambiguous_candidates) = partition_by_ambiguity(merged_candidates);
+    let mut entities = clear_candidates
+        .into_iter()
+        .map(|candidate| {
+            (
+                normalize_entity_name(&candidate.name),
+                MergedEntity {
+                    name: candidate.name,
+                    entity_type: candidate.entity_type,
+                    confidence: candidate.confidence,
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut relationship_count = 0usize;
+    let relationships = if ambiguous_candidates.is_empty() || cfg.graph_llm_url.trim().is_empty() {
+        Vec::new()
+    } else {
+        let prompt_text = chunks
+            .iter()
+            .map(|chunk| chunk.chunk_text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let llm = extract_entities_llm(cfg, &prompt_text).await?;
+        merge_llm_entities(&mut entities, llm.entities);
+        let rels = build_relationships(&entities, llm.relationships);
+        // Neo4j MERGEs on (source, target) only — two records with different
+        // relation labels for the same pair produce one persisted edge (the
+        // last write wins). Count unique (source, target) pairs to match what
+        // Neo4j actually stores rather than the raw relationship vec length.
+        relationship_count = rels
+            .iter()
+            .map(|r| (r.source.as_str(), r.target.as_str()))
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        rels
+    };
+
+    Ok((entities, relationships, relationship_count))
+}
+
 async fn process_graph_job(
     cfg: &Config,
     neo4j: &Neo4jClient,
@@ -160,7 +219,6 @@ async fn process_graph_job(
     }
 
     let mut chunks = Vec::new();
-    let mut taxonomy_candidates = Vec::new();
     for point in points {
         let chunk_text = payload_text_typed(&point.payload).to_string();
         if chunk_text.trim().is_empty() {
@@ -171,8 +229,6 @@ async fn process_graph_job(
             other => other.to_string(),
         };
         let chunk_index = point.payload.chunk_index.unwrap_or_default();
-        // Extract entities before moving chunk_text into GraphChunk — avoids clone.
-        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk_text, &source_type));
         chunks.push(GraphChunk {
             point_id,
             chunk_index,
@@ -180,72 +236,28 @@ async fn process_graph_job(
         });
     }
 
-    let merged_candidates = merge_candidates(taxonomy_candidates);
-    let (clear_candidates, ambiguous_candidates) = partition_by_ambiguity(merged_candidates);
-    let mut entities = clear_candidates
-        .into_iter()
-        .map(|candidate| {
-            (
-                normalize_entity_name(&candidate.name),
-                MergedEntity {
-                    name: candidate.name,
-                    entity_type: candidate.entity_type,
-                    confidence: candidate.confidence,
-                },
-            )
-        })
-        .collect::<HashMap<_, _>>();
+    let (entities, relationships, relationship_count) =
+        build_entity_map(cfg, taxonomy, &chunks, &source_type).await?;
 
-    let llm_result = if ambiguous_candidates.is_empty() || cfg.graph_llm_url.trim().is_empty() {
-        None
-    } else {
-        let prompt_text = chunks
-            .iter()
-            .map(|chunk| chunk.chunk_text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        Some(extract_entities_llm(cfg, &prompt_text).await?)
-    };
-
-    let mut relationship_count = 0usize;
-    let relationships = if let Some(llm) = llm_result {
-        merge_llm_entities(&mut entities, llm.entities);
-        let rels = build_relationships(&entities, llm.relationships);
-        // Neo4j MERGEs on (source, target) only — two records with different
-        // relation labels for the same pair produce one persisted edge (the
-        // last write wins). Count unique (source, target) pairs to match what
-        // Neo4j actually stores rather than the raw relationship vec length.
-        relationship_count = rels
-            .iter()
-            .map(|r| (r.source.as_str(), r.target.as_str()))
-            .collect::<std::collections::HashSet<_>>()
-            .len();
-        rels
-    } else {
-        Vec::new()
-    };
-
-    // Stage 1: write Document+Chunk nodes and Entity nodes in parallel.
-    // These are independent — different node types, no cross-references.
-    let (doc_result, ent_result) = tokio::join!(
-        write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks),
-        write_entities(neo4j, &entities),
-    );
-    doc_result?;
-    ent_result?;
+    // Stage 1: write Document+Chunk nodes and Entity nodes atomically via try_join!.
+    // If either write fails the other does not commit independently, preventing
+    // a partial state that would cause Stage 2 edge MATCHes to fail.
+    persist_nodes(neo4j, cfg, &url, &source_type, &chunks, &entities).await?;
 
     // Stage 2: write edges that reference Stage 1 nodes in parallel.
-    // write_entity_relationships MATCHes Entity nodes (from Stage 1).
-    // write_chunk_mentions MATCHes both Entity and Chunk nodes (from Stage 1).
-    let (rel_result, mention_result) = tokio::join!(
-        write_entity_relationships(neo4j, &relationships),
-        write_chunk_mentions(neo4j, taxonomy, &source_type, &chunks, &entities),
-    );
-    rel_result?;
-    let mention_count = mention_result?;
+    let mention_count = persist_edges(
+        neo4j,
+        taxonomy,
+        &source_type,
+        &chunks,
+        &entities,
+        &relationships,
+    )
+    .await?;
 
     // Stage 3: similarity depends on Document nodes from Stage 1.
-    let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
+    let similarity_edges = finalize_similarity(cfg, neo4j, &url).await?;
+
     let result = serde_json::json!({
         "url": url,
         "chunk_count": chunks.len(),

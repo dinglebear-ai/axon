@@ -116,7 +116,8 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "yt-dlp/yt-dlp",
-      "extractVersionTemplate": "^(?<version>.+)$"
+      "extractVersionTemplate": "^(?<version>.+)$",
+      "versioningTemplate": "loose"
     },
     {
       "description": "s6-overlay version in Dockerfile",
@@ -127,7 +128,7 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "just-containers/s6-overlay",
       "extractVersionTemplate": "^v?(?<version>.+)$",
-      "versioning": "loose"
+      "versioningTemplate": "loose"
     },
     {
       "description": "claude-agent-acp binary version in Dockerfile",
@@ -137,7 +138,8 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "zed-industries/claude-agent-acp",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "loose"
     },
     {
       "description": "codex-acp binary version in Dockerfile",
@@ -147,7 +149,8 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "zed-industries/codex-acp",
-      "extractVersionTemplate": "^v?(?<version>.+)$"
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "loose"
     }
   ]
 }

@@ -874,7 +874,7 @@ let response = warm.complete_streaming(req, on_delta).await?;  // uses pre-warme
 | Env Var | Purpose |
 |---------|---------|
 | `AXON_ACP_ADAPTER_CMD` | Adapter binary (required) |
-| `AXON_ACP_ADAPTER_ARGS` | Pipe-delimited (`\|`) list of args (optional). Spaces within each segment are preserved; pipe is the only separator. Example: `--stdio\|--model\|gemini-3-flash-preview`. Do NOT use spaces as delimiters. |
+| `AXON_ACP_ADAPTER_ARGS` | Pipe-delimited (`|`) list of args (optional). Spaces within each segment are preserved; pipe is the only separator. Example: `--stdio|--model|gemini-3-flash-preview`. Do NOT use spaces as delimiters. |
 | `OPENAI_MODEL` | Model override for ACP completion calls |
 
 ---

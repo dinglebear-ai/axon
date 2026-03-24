@@ -46,7 +46,7 @@ static TEI_CONCURRENCY: LazyLock<Semaphore> =
 // std::env::var() (which acquires a global lock) on every batch invocation.
 
 static TEI_BATCH_SIZE: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 128, 1, 128));
+    LazyLock::new(|| env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 64, 1, 128));
 
 static TEI_MAX_ATTEMPTS: LazyLock<usize> =
     LazyLock::new(|| env_usize_clamped("TEI_MAX_RETRIES", TEI_MAX_RETRIES_DEFAULT, 1, 20));

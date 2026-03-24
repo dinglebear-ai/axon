@@ -133,7 +133,7 @@ pub(super) fn call_scrape(
     url: String,
 ) -> Pin<Box<dyn Future<Output = Result<ScrapeResult, SvcError>> + Send + 'static>> {
     Box::pin(async move {
-        scrape_svc::scrape(&cfg, &url)
+        scrape_svc::scrape(&cfg, &url, None)
             .await
             .map_err(|e| sanitize_svc_error("scrape", e.as_ref()))
     })

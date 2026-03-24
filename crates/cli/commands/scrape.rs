@@ -110,7 +110,7 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>,
     // SSRF guard: validate before creating Website — must run before any
     // network activity so private-IP seeds are rejected immediately.
     validate_url(url)?;
-    let result = scrape_service::scrape(cfg, url).await?;
+    let result = scrape_service::scrape(cfg, url, None).await?;
     let normalized = result.url.clone();
     let markdown = result.markdown.clone();
     let output = result.output;

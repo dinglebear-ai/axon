@@ -212,7 +212,7 @@ impl AxonMcpServer {
             cfg.exclude_selector = Some(sel);
         }
 
-        let result = scrape_svc::scrape(&cfg, &url)
+        let result = scrape_svc::scrape(&cfg, &url, None)
             .await
             .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e.as_ref()))?;
         respond_with_mode(

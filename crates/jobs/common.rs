@@ -66,7 +66,7 @@ fn durable_queue_options() -> QueueDeclareOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JobTable {
     Crawl,
     Refresh,

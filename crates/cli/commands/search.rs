@@ -64,7 +64,7 @@ pub async fn run_search(cfg: &Config) -> Result<(), Box<dyn Error>> {
         println!();
     }
 
-    if !cfg.json_output {
+    if !cfg.quiet && !cfg.json_output {
         log_done(&format!(
             "command=search complete query_len={} results={} duration_ms={duration_ms}",
             query.len(),

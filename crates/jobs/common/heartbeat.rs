@@ -257,9 +257,11 @@ mod tests {
 
     #[test]
     fn stale_streak_reaches_kill_threshold() {
-        assert!(
+        // Verify ordering at compile time via a const assertion instead of
+        // a runtime assert!() on constant values, which clippy rejects.
+        const _: () = assert!(
             STALE_STREAK_KILL_THRESHOLD > STALE_STREAK_WARN_THRESHOLD,
-            "kill threshold must be greater than warn threshold"
+            "kill threshold must be greater than warn threshold",
         );
     }
 

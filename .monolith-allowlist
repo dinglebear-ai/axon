@@ -10,21 +10,23 @@
 #   crates/core/massive_module.rs  # expires: 2026-03-09
 
 # Pulse shell redesign -- split pending, needs extraction sprint (extended 2026-03-23)
-apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-04-30
-apps/web/components/shell/axon-shell-state.ts  # expires: 2026-04-30
-crates/cli/commands/common.rs  # expires: 2026-04-30
-crates/jobs/refresh/url_processor.rs  # expires: 2026-04-30
-apps/web/hooks/ws-messages/provider.ts  # expires: 2026-04-30
+# Extraction sprint deadline: 2026-04-30 (extended from 2026-03-30 due to scope)
+apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-04-30 | owner: jmagar | split: job-detail/{header,timeline,artifacts}.tsx
+apps/web/components/shell/axon-shell-state.ts  # expires: 2026-04-30 | owner: jmagar | split: shell-state/{pane,mobile,actions}.ts
+crates/cli/commands/common.rs  # expires: 2026-04-30 | owner: jmagar | split: common/{args,output,progress}.rs
+crates/jobs/refresh/url_processor.rs  # expires: 2026-04-30 | owner: jmagar | split: url_processor/{fetch,diff,schedule}.rs
+apps/web/hooks/ws-messages/provider.ts  # expires: 2026-04-30 | owner: jmagar | split: ws-messages/{provider,reducer,types}.ts
 
 # Oversized Rust files pending extraction sprint -- added 2026-03-23
-crates/crawl/scrape.rs  # expires: 2026-04-30  -- 879L; needs split into scrape/{fetch,transform,pipeline}.rs
-crates/core/config/parse.rs  # expires: 2026-04-30  -- 796L; needs split into parse/{args,env,merge}.rs
-crates/core/config/parse/build_config.rs  # expires: 2026-04-30  -- 737L; needs split into build_config/{crawl,embed,jobs}.rs
-crates/services/system.rs  # expires: 2026-04-30  -- 658L; needs split into system/{health,metrics,diagnostics}.rs
-crates/crawl/engine/sitemap.rs  # expires: 2026-04-30  -- 647L; needs split into sitemap/{discover,backfill,filter}.rs
-crates/core/logging.rs  # expires: 2026-04-30  -- 612L; needs split into logging/{format,output,init}.rs
-crates/jobs/refresh.rs  # expires: 2026-04-30  -- 602L; needs split into refresh/{schedule,processor,state}.rs
-crates/core/config/types/config.rs  # expires: 2026-04-30  -- 527L; needs split into config/types/{crawl,embed,job}.rs
+# Extraction sprint deadline: 2026-04-30 (extended from 2026-03-30 due to scope)
+crates/crawl/scrape.rs  # expires: 2026-04-30 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
+crates/core/config/parse.rs  # expires: 2026-04-30 | owner: jmagar | split: parse/{args,env,merge}.rs
+crates/core/config/parse/build_config.rs  # expires: 2026-04-30 | owner: jmagar | split: build_config/{crawl,embed,jobs}.rs
+crates/services/system.rs  # expires: 2026-04-30 | owner: jmagar | split: system/{health,metrics,diagnostics}.rs
+crates/crawl/engine/sitemap.rs  # expires: 2026-04-30 | owner: jmagar | split: sitemap/{discover,backfill,filter}.rs
+crates/core/logging.rs  # expires: 2026-04-30 | owner: jmagar | split: logging/{format,output,init}.rs
+crates/jobs/refresh.rs  # expires: 2026-04-30 | owner: jmagar | split: refresh/{schedule,processor,state}.rs
+crates/core/config/types/config.rs  # expires: 2026-04-30 | owner: jmagar | split: config/types/{crawl,embed,job}.rs
 
-crates/services/types/acp.rs  # expires: 2026-04-30  -- 547L+; Sse variant + headers pending split
-crates/services/acp/session.rs  # expires: 2026-04-30  -- 530L; mcp_servers fallback fix + tests
+crates/services/types/acp.rs  # expires: 2026-04-30 | owner: jmagar | split: types/acp/{sse,headers,auth}.rs
+crates/services/acp/session.rs  # expires: 2026-04-30 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs

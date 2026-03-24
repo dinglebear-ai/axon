@@ -3,9 +3,11 @@ use crate::crates::core::content::build_selector_config;
 use crate::crates::core::http::normalize_url;
 use crate::crates::core::logging::log_warn;
 use crate::crates::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
+use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::types::ScrapeResult;
 use std::error::Error;
 use std::sync::OnceLock;
+use tokio::sync::mpsc;
 
 /// Map a raw JSON payload into a [`ScrapeResult`].
 ///
@@ -34,8 +36,19 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
 ///
 /// Delegates to [`scrape_payload`] from the crawl layer; wraps the raw
 /// JSON value into the typed service result.
+///
+/// `tx` is an optional progress channel. Pass `None` when progress events are
+/// not needed (CLI) or `Some(sender)` when the caller wants to observe
+/// intermediate log events (web / MCP streaming paths). The `tx` parameter
+/// is accepted for API consistency with other multi-step service functions
+/// but is currently unused — scrape is a single network round-trip with no
+/// intermediate steps to report.
 #[must_use = "scrape returns a Result that should be handled"]
-pub async fn scrape(cfg: &Config, url: &str) -> Result<ScrapeResult, Box<dyn Error>> {
+pub async fn scrape(
+    cfg: &Config,
+    url: &str,
+    _tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
     crate::crates::core::http::validate_url(&normalized).map_err(|e| -> Box<dyn Error> {
         format!("invalid scrape url {normalized}: {e}").into()
