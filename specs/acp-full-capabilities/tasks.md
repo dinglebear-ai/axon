@@ -783,7 +783,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 
 ---
 
-- [ ] V15 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V15 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -791,7 +791,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 
 ---
 
-## Task 4.7 — Implement outbound ext_method MCP subaction (FR-027)
+## Task 4.7 — Implement outbound ext_method MCP subaction (FR-027) <!-- DONE -->
 
 **Do**: Add `acp/ext_method` subaction in `handlers_acp.rs`. Accepts method name and params, calls `conn.ext_method(method, params)`.
 **Files**: `crates/mcp/server/handlers_acp.rs`
@@ -800,7 +800,7 @@ _Requirements: FR-026_ / _Design: Section 4.5_
 **Commit**: `feat(acp): add outbound ext_method MCP subaction`
 _Requirements: FR-027_ / _Design: Section 4.5_
 
-## Task 4.8 — Implement outbound ext_notification MCP subaction (FR-028)
+## Task 4.8 — Implement outbound ext_notification MCP subaction (FR-028) <!-- DONE -->
 
 **Do**: Add `acp/ext_notification` subaction in `handlers_acp.rs`. Calls `conn.ext_notification(method, params)`.
 **Files**: `crates/mcp/server/handlers_acp.rs`

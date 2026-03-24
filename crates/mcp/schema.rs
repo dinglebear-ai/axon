@@ -432,6 +432,12 @@ pub enum AcpSubaction {
     ResumeSession,
     /// Set the active model for a session.
     SetModel,
+    /// Send an outbound extension method request to the ACP agent (FR-027).
+    ExtMethod,
+    /// Send an outbound extension notification to the ACP agent (FR-028).
+    ExtNotification,
+    /// Request a clean session logout from the ACP agent (FR-032).
+    Logout,
 }
 
 /// Request parameters for the `acp` action.
@@ -439,10 +445,15 @@ pub enum AcpSubaction {
 #[serde(deny_unknown_fields)]
 pub struct AcpRequest {
     pub subaction: AcpSubaction,
-    /// ACP session ID (required for fork_session, resume_session, and set_model).
+    /// ACP session ID (required for fork_session, resume_session, set_model, ext_method,
+    /// ext_notification, and logout).
     pub session_id: Option<String>,
     /// Model ID to set (required for set_model).
     pub model_id: Option<String>,
+    /// Extension method name (required for ext_method and ext_notification).
+    pub method: Option<String>,
+    /// Extension method params as a JSON value (optional for ext_method/ext_notification).
+    pub params: Option<Value>,
     pub response_mode: Option<ResponseMode>,
 }
 
