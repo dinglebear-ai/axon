@@ -263,7 +263,7 @@ pub struct ScreenshotResult {
 // ── Job list pagination ──────────────────────────────────────────────────
 
 /// Paginated job list result — always includes true DB total count.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct JobListResult<T> {
     /// The fetched slice of jobs (up to `limit` items).
     pub jobs: Vec<T>,
@@ -287,6 +287,6 @@ impl<T> JobListResult<T> {
 
     /// True if the displayed slice is a subset of all available jobs.
     pub fn is_truncated(&self) -> bool {
-        self.total > self.jobs.len() as i64
+        self.offset + self.limit < self.total
     }
 }
