@@ -426,6 +426,10 @@ pub struct ExportRequest {
 #[serde(rename_all = "snake_case")]
 pub enum AcpSubaction {
     ListSessions,
+    /// Fork an existing session into a new session with the same conversation history.
+    ForkSession,
+    /// Resume an existing session without replaying message history.
+    ResumeSession,
 }
 
 /// Request parameters for the `acp` action.
@@ -433,6 +437,8 @@ pub enum AcpSubaction {
 #[serde(deny_unknown_fields)]
 pub struct AcpRequest {
     pub subaction: AcpSubaction,
+    /// ACP session ID (required for fork_session and resume_session).
+    pub session_id: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

@@ -705,7 +705,7 @@ _Requirements: FR-001, FR-002, FR-003, FR-004, FR-005_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V13 [VERIFY] Quality checkpoint: `just verify`
+- [x] V13 [VERIFY] Quality checkpoint: `just verify`
   - **Do**: Run full verification suite
   - **Verify**: `just verify` exits 0
   - **Done when**: All checks pass
@@ -717,7 +717,7 @@ _Requirements: FR-001, FR-002, FR-003, FR-004, FR-005_ / _Design: Section 4.1_
 
 ### Group A: MCP Subaction Stubs
 
-## Task 4.1 — Implement fork_session and resume_session stubs (FR-021)
+## Task 4.1 — Implement fork_session and resume_session stubs (FR-021) <!-- DONE -->
 
 **Do**: In `handlers_acp.rs`, add `acp/fork_session` and `acp/resume_session` subaction handlers. These call `conn.fork_session()` and `conn.resume_session()` respectively. If the SDK methods are gated behind unstable, ensure the feature flag is enabled. Return the SDK response as JSON.
 **Files**: `crates/mcp/server/handlers_acp.rs`
