@@ -9,9 +9,9 @@ pub use state::*;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
 use crate::crates::services::types::AcpSessionUpdateKind;
 use agent_client_protocol::{
-    Client, ReadTextFileRequest, ReadTextFileResponse, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, WriteTextFileRequest,
-    WriteTextFileResponse,
+    Client, CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest,
+    ReadTextFileResponse, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SessionNotification, WriteTextFileRequest, WriteTextFileResponse,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -42,8 +42,6 @@ pub struct AcpBridgeClient {
     /// Working directory for this session — used to validate fs paths from the adapter.
     pub(super) session_cwd: std::path::PathBuf,
     /// Terminal subprocess manager for this session.
-    // field used by Client impl methods added in subsequent tasks (1.10-1.12)
-    #[allow(dead_code)]
     pub(super) terminal_manager: Rc<RefCell<terminal::TerminalManager>>,
 }
 
@@ -203,6 +201,27 @@ impl Client for AcpBridgeClient {
             .await
             .map_err(|_| agent_client_protocol::Error::internal_error())?;
         Ok(WriteTextFileResponse::default())
+    }
+
+    async fn create_terminal(
+        &self,
+        args: CreateTerminalRequest,
+    ) -> agent_client_protocol::Result<CreateTerminalResponse> {
+        use terminal::DEFAULT_OUTPUT_BYTE_LIMIT;
+        let cwd = if let Some(req_cwd) = &args.cwd {
+            validate_fs_path(&self.session_cwd, req_cwd)?
+        } else {
+            self.session_cwd.clone()
+        };
+        let arg_strs: Vec<&str> = args.args.iter().map(String::as_str).collect();
+        let mgr = self.terminal_manager.borrow().clone();
+        let local_id = mgr
+            .create(&args.command, &arg_strs, &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        Ok(CreateTerminalResponse::new(
+            agent_client_protocol::TerminalId::new(local_id.0),
+        ))
     }
 
     async fn session_notification(
