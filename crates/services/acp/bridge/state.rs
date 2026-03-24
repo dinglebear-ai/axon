@@ -178,3 +178,20 @@ pub async fn finalize_successful_turn(
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_session_supported_defaults_to_false() {
+        let state = AcpRuntimeState::default();
+        assert!(!state.load_session_supported.get());
+    }
+
+    #[test]
+    fn close_session_supported_defaults_to_false() {
+        let state = AcpRuntimeState::default();
+        assert!(!state.close_session_supported.get());
+    }
+}

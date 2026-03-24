@@ -657,7 +657,7 @@ _Requirements: FR-009_ / _Design: Section 4.3_
 
 ---
 
-- [ ] V12 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo test --lib`
+- [x] V12 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo test --lib`
   - **Do**: Run quality suite with tests
   - **Verify**: All commands exit 0
   - **Done when**: All tests pass
@@ -667,7 +667,7 @@ _Requirements: FR-009_ / _Design: Section 4.3_
 
 ### Group C: Capability and Auth Tests
 
-## Task 3.7 — Test: load_session_supported defaults to false
+## Task 3.7 — Test: load_session_supported defaults to false <!-- DONE -->
 
 **Do**: Write a unit test: create default `AcpRuntimeState`, verify `load_session_supported` is false.
 **Files**: `crates/services/acp/bridge/state.rs` (or `bridge.rs`)
