@@ -63,6 +63,11 @@ pub struct AcpRuntimeState {
     /// Serialized JSON of `PromptCapabilities` from the agent's `InitializeResponse`.
     /// Used by callers that need to inspect what prompt content types the adapter supports.
     pub(crate) prompt_capabilities_json: std::cell::RefCell<Option<String>>,
+    /// Whether the adapter advertises `session/close` support.
+    /// Set from `InitializeResponse.agent_capabilities.session_capabilities.close`.
+    /// Defaults to `true` (assume supported) when the adapter does not advertise
+    /// session capabilities (POC-safe assumption; gated at call site).
+    pub(crate) close_session_supported: std::cell::Cell<bool>,
 }
 
 impl AcpRuntimeState {

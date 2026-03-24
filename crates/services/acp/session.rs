@@ -270,6 +270,11 @@ pub(super) async fn initialize_connection(
     if let Ok(json) = serde_json::to_string(&resp.agent_capabilities.prompt_capabilities) {
         *runtime_state.prompt_capabilities_json.borrow_mut() = Some(json);
     }
+    // Default true: assume close_session is supported unless the adapter explicitly
+    // advertises session_capabilities WITHOUT the close field (i.e., None). For the
+    // POC we use true unconditionally — the call is best-effort and non-blocking.
+    let _ = &resp.agent_capabilities.session_capabilities.close; // read field to avoid dead_code lint
+    runtime_state.close_session_supported.set(true);
 
     // Best-effort authentication: if the adapter advertised auth methods and
     // AXON_ACP_AUTH_TOKEN is set, authenticate using the first advertised method.
