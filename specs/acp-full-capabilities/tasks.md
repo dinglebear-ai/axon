@@ -296,7 +296,7 @@ _Requirements: FR-008_ / _Design: Section 4.3_
 
 ### Group E: SessionInfoUpdate Fields (FR-009)
 
-## Task 1.16 — Add title and updated_at to SessionInfoUpdate (FR-009) <!-- DONE -->
+## Task 1.16 — <!-- DONE --> Add title and updated_at to SessionInfoUpdate (FR-009) <!-- DONE -->
 
 **Do**: In `crates/services/types/acp.rs`, change `AcpBridgeEvent::SessionInfoUpdate` from `{ session_id: String }` to `{ session_id: String, title: Option<String>, updated_at: Option<String> }`. Update `serialize_session_info_update` to include the new fields. In `mapping.rs`, update `map_session_notification_event`'s `SessionUpdate::SessionInfoUpdate` arm to extract `title` and `updated_at` from the SDK's `SessionInfoUpdate` struct.
 **Files**: `crates/services/types/acp.rs`, `crates/services/acp/mapping.rs`
@@ -307,7 +307,7 @@ _Requirements: FR-009_ / _Design: Section 4.3_
 
 ### Group F: ToolKind Forwarding (FR-010)
 
-## Task 1.17 — Add kind field to AcpSessionUpdateEvent (FR-010) <!-- DONE -->
+## Task 1.17 — <!-- DONE --> Add kind field to AcpSessionUpdateEvent (FR-010) <!-- DONE -->
 
 **Do**: Add `pub kind_detail: Option<String>` to `AcpSessionUpdateEvent` in `types/acp.rs` (use `kind_detail` to avoid collision with existing `kind: AcpSessionUpdateKind`). In `mapping.rs`, extract `tool_call.kind` (if the SDK exposes it on ToolCall/ToolCallUpdate) and populate the field. Update `serialize_session_update` to include `"kind"` in the wire output when present.
 **Files**: `crates/services/types/acp.rs`, `crates/services/acp/mapping.rs`
@@ -318,7 +318,7 @@ _Requirements: FR-010_ / _Design: Section 4.3_
 
 ---
 
-- [ ] V6 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V6 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -328,7 +328,7 @@ _Requirements: FR-010_ / _Design: Section 4.3_
 
 ### Group G: Boolean Config (FR-012)
 
-## Task 1.17b — [RED] Write failing test: Boolean config option mapping (AC-6.4)
+## Task 1.17b — <!-- DONE --> [RED] Write failing test: Boolean config option mapping (AC-6.4)
 
 **Do**: In `crates/services/acp/mapping.rs` tests, write `test_boolean_config_option_mapping`: create a `ConfigOptionUpdate` with `SessionConfigKind::Boolean(...)`, call the config mapping function, assert result has `kind = "boolean"`. Test must fail until Task 1.18 adds the Boolean arm.
 **Files**: `crates/services/acp/mapping.rs`
@@ -337,7 +337,7 @@ _Requirements: FR-010_ / _Design: Section 4.3_
 **Commit**: `test(acp): RED - add failing Boolean config option mapping test`
 _Requirements: FR-012_ / _Design: Section 4.3_
 
-## Task 1.18 — Handle SessionConfigKind::Boolean in map_config_options (FR-012)
+## Task 1.18 — <!-- DONE --> Handle SessionConfigKind::Boolean in map_config_options (FR-012)
 
 **Do**: In `mapping.rs`, the `map_config_options` function currently returns `None` for non-`Select` config kinds. Add a branch for `SessionConfigKind::Boolean(bool_config)` that creates an `AcpConfigOption` with two synthetic options: `{ value: "true", name: "Enabled" }` and `{ value: "false", name: "Disabled" }`, with `current_value` set to the boolean's current value as a string.
 **Files**: `crates/services/acp/mapping.rs`
@@ -346,7 +346,7 @@ _Requirements: FR-012_ / _Design: Section 4.3_
 **Commit**: `feat(acp): handle SessionConfigKind::Boolean in config option mapping`
 _Requirements: FR-012_ / _Design: Section 4.3_
 
-## Task 1.18b — [GREEN] Verify Boolean config mapping test passes
+## Task 1.18b — <!-- DONE --> [GREEN] Verify Boolean config mapping test passes
 
 **Do**: Run `cargo test test_boolean_config_option_mapping`. Fix mapping.rs if test fails.
 **Files**: `crates/services/acp/mapping.rs` (fix if needed)
