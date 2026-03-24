@@ -555,7 +555,7 @@ _Requirements: FR-007_ / _Design: Section 3_
 
 ---
 
-- [ ] V10 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check && cargo test --lib`
+- [x] V10 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check && cargo test --lib`
   - **Do**: Run full quality suite including tests
   - **Verify**: All commands exit 0
   - **Done when**: No errors, all tests pass
@@ -563,7 +563,7 @@ _Requirements: FR-007_ / _Design: Section 3_
 
 ---
 
-## Task 2.4 — Add error handling to authenticate flow
+## Task 2.4 — Add error handling to authenticate flow <!-- DONE -->
 
 **Do**: Handle the case where `AXON_ACP_AUTH_TOKEN` is not set but auth is required. Emit a clear error event via `ServiceEvent::Log` with `LogLevel::Error` and return a descriptive error message.
 **Files**: `crates/services/acp/session.rs`
@@ -572,7 +572,7 @@ _Requirements: FR-007_ / _Design: Section 3_
 **Commit**: `refactor(acp): improve auth error handling for missing AXON_ACP_AUTH_TOKEN`
 _Requirements: FR-013_ / _Design: Section 4.4_
 
-## Task 2.5 — Add logging to terminal operations
+## Task 2.5 — Add logging to terminal operations <!-- DONE -->
 
 **Do**: Add `tracing::info` / `tracing::warn` logging to each `TerminalManager` method: log terminal creation with command/args, log output drain sizes, log kill signals sent, log release cleanup. Use structured logging with `terminal_id` field.
 **Files**: `crates/services/acp/bridge/terminal.rs`
@@ -589,7 +589,7 @@ Phase 3 tests focus on REFACTOR-phase testing: edge cases, error paths, and capa
 
 ### Group A: Terminal Edge Case Tests
 
-## Task 3.1 — Test: terminal output with large buffer truncation
+## Task 3.1 — Test: terminal output with large buffer truncation <!-- DONE -->
 
 **Do**: Write a unit test in `bridge/terminal.rs`: create a terminal running a command that produces output exceeding the byte limit, verify output returns `truncated = true` and contains the most recent output (not the oldest).
 **Files**: `crates/services/acp/bridge/terminal.rs`
@@ -598,7 +598,7 @@ Phase 3 tests focus on REFACTOR-phase testing: edge cases, error paths, and capa
 **Commit**: `test(acp): terminal output truncation edge case test`
 _Requirements: FR-002_ / _Design: Section 4.1_
 
-## Task 3.2 — Test: wait_for_exit on already-exited terminal
+## Task 3.2 — Test: wait_for_exit on already-exited terminal <!-- DONE -->
 
 **Do**: Write a unit test: create a terminal running `true` (exits immediately), sleep briefly, call `wait_for_exit` — should return 0 immediately without blocking.
 **Files**: `crates/services/acp/bridge/terminal.rs`
@@ -607,7 +607,7 @@ _Requirements: FR-002_ / _Design: Section 4.1_
 **Commit**: `test(acp): wait_for_exit on already-exited terminal test`
 _Requirements: FR-003_ / _Design: Section 4.1_
 
-## Task 3.3 — Test: kill on already-exited terminal is no-op
+## Task 3.3 — Test: kill on already-exited terminal is no-op <!-- DONE -->
 
 **Do**: Write a unit test: create terminal running `true`, wait for exit, call kill — should return Ok without error.
 **Files**: `crates/services/acp/bridge/terminal.rs`

@@ -497,6 +497,131 @@ mod tests {
             .await;
     }
 
+    /// Task 3.1: output buffer truncation — large output, small byte limit.
+    /// Verifies `truncated = true` and that the returned bytes are the MOST
+    /// RECENT bytes (tail of the stream), not the oldest.
+    #[tokio::test]
+    async fn test_output_truncation_returns_recent_bytes() {
+        let cwd = PathBuf::from("/tmp");
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                // Use a 100-byte limit so a 1000-byte output definitely overflows.
+                let byte_limit: usize = 100;
+                // Produce exactly 1000 'x' characters followed by a newline.
+                // The tail (most recent) should be 100 x's.
+                let mgr = TerminalManager::new();
+                let id = mgr
+                    .create(
+                        "python3",
+                        &[
+                            "-c",
+                            "import sys; sys.stdout.write('x' * 1000); sys.stdout.flush()",
+                        ],
+                        &cwd,
+                        byte_limit,
+                    )
+                    .await
+                    .expect("create should succeed");
+
+                // Wait for the command to finish and reader task to drain.
+                let exit_code = mgr
+                    .wait_for_exit(&id)
+                    .await
+                    .expect("wait_for_exit should succeed");
+                assert_eq!(exit_code, 0, "python3 should exit 0");
+
+                // Give the reader task a moment to flush remaining bytes.
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                let (output_str, truncated, _) = mgr.output(&id).expect("output should succeed");
+
+                assert!(
+                    truncated,
+                    "output exceeding byte_limit must set truncated=true"
+                );
+                assert!(
+                    output_str.len() <= byte_limit,
+                    "returned bytes ({}) must not exceed byte_limit ({})",
+                    output_str.len(),
+                    byte_limit
+                );
+                // The ring buffer keeps the MOST RECENT bytes — all should be 'x'.
+                assert!(
+                    output_str.chars().all(|c| c == 'x'),
+                    "retained bytes should be the most recent 'x' chars, got: {output_str:?}"
+                );
+            })
+            .await;
+    }
+
+    /// Task 3.2: `wait_for_exit` on an already-exited terminal returns immediately.
+    #[tokio::test]
+    async fn test_wait_for_exit_already_exited() {
+        let cwd = PathBuf::from("/tmp");
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let mgr = TerminalManager::new();
+                // `true` exits immediately with code 0.
+                let id = mgr
+                    .create("true", &[], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+                    .await
+                    .expect("create should succeed");
+
+                // First wait — collects the real exit status.
+                let code1 = mgr
+                    .wait_for_exit(&id)
+                    .await
+                    .expect("first wait_for_exit should succeed");
+                assert_eq!(code1, 0, "true exits with code 0");
+
+                // Brief pause so the process is definitely gone.
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                // Second wait on an already-exited terminal — must return immediately
+                // using the cached exit_status without blocking.
+                let code2 = mgr
+                    .wait_for_exit(&id)
+                    .await
+                    .expect("second wait_for_exit on already-exited terminal should succeed");
+                assert_eq!(code2, 0, "cached exit code should still be 0");
+            })
+            .await;
+    }
+
+    /// Task 3.3: `kill` on an already-exited terminal is a no-op (returns Ok).
+    #[tokio::test]
+    async fn test_kill_already_exited_is_noop() {
+        let cwd = PathBuf::from("/tmp");
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let mgr = TerminalManager::new();
+                // `true` exits immediately with code 0.
+                let id = mgr
+                    .create("true", &[], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+                    .await
+                    .expect("create should succeed");
+
+                // Wait for process to exit and store exit_status.
+                let exit_code = mgr
+                    .wait_for_exit(&id)
+                    .await
+                    .expect("wait_for_exit should succeed");
+                assert_eq!(exit_code, 0, "true exits with code 0");
+
+                // Brief pause so the process is definitely gone.
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                // kill on an already-exited terminal must be Ok (no-op).
+                mgr.kill(&id)
+                    .await
+                    .expect("kill on already-exited terminal should be a no-op Ok(())");
+            })
+            .await;
+    }
+
     /// RED: double-release is a no-op — not yet implemented.
     /// `manager.kill(&id)` and `manager.release(&id)` do not exist yet.
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
