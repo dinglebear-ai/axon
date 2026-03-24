@@ -9,11 +9,11 @@ pub use state::*;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
 use crate::crates::services::types::AcpSessionUpdateKind;
 use agent_client_protocol::{
-    Client, CreateTerminalRequest, CreateTerminalResponse, ReadTextFileRequest,
-    ReadTextFileResponse, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SessionNotification, TerminalExitStatus, TerminalOutputRequest,
-    TerminalOutputResponse, WaitForTerminalExitRequest, WaitForTerminalExitResponse,
-    WriteTextFileRequest, WriteTextFileResponse,
+    Client, CreateTerminalRequest, CreateTerminalResponse, KillTerminalRequest,
+    KillTerminalResponse, ReadTextFileRequest, ReadTextFileResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SessionNotification, TerminalExitStatus,
+    TerminalOutputRequest, TerminalOutputResponse, WaitForTerminalExitRequest,
+    WaitForTerminalExitResponse, WriteTextFileRequest, WriteTextFileResponse,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -255,6 +255,18 @@ impl Client for AcpBridgeClient {
             .map_err(|_| agent_client_protocol::Error::internal_error())?;
         let exit_status = TerminalExitStatus::new().exit_code(code as u32);
         Ok(WaitForTerminalExitResponse::new(exit_status))
+    }
+
+    async fn kill_terminal(
+        &self,
+        args: KillTerminalRequest,
+    ) -> agent_client_protocol::Result<KillTerminalResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let mgr = self.terminal_manager.borrow().clone();
+        mgr.kill(&local_id)
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        Ok(KillTerminalResponse::new())
     }
 
     async fn session_notification(
