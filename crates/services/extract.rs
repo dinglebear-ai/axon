@@ -3,10 +3,11 @@
 use crate::crates::core::config::Config;
 use crate::crates::jobs::extract::{
     self as extract_jobs, cancel_extract_job, cleanup_extract_jobs, clear_extract_jobs,
-    get_extract_job, list_extract_jobs, recover_stale_extract_jobs, start_extract_job,
+    count_extract_jobs, get_extract_job, list_extract_jobs, recover_stale_extract_jobs,
+    start_extract_job,
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{ExtractJobResult, ExtractStartResult};
+use crate::crates::services::types::{ExtractJobResult, ExtractStartResult, JobListResult};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -71,8 +72,14 @@ pub async fn extract_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<ExtractJob>, Box<dyn Error>> {
-    list_extract_jobs(cfg, limit, offset).await
+) -> Result<JobListResult<ExtractJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(
+        list_extract_jobs(cfg, limit, offset),
+        count_extract_jobs(cfg),
+    );
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {

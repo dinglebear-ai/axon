@@ -2,7 +2,9 @@ use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_domain;
 use crate::crates::jobs::crawl;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{CrawlJobResult, CrawlStartJob, CrawlStartResult};
+use crate::crates::services::types::{
+    CrawlJobResult, CrawlStartJob, CrawlStartResult, JobListResult,
+};
 use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -176,8 +178,11 @@ pub async fn crawl_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<CrawlJob>, Box<dyn Error>> {
-    crawl::list_jobs(cfg, limit, offset).await
+) -> Result<JobListResult<CrawlJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(crawl::list_jobs(cfg, limit, offset), crawl::count_jobs(cfg),);
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn crawl_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {

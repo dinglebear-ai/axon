@@ -99,7 +99,8 @@ async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, embed_service::embed_list_raw(cfg, 50, 0).await?);
+    let jobs =
+        filter_jobs_for_status_view(cfg, embed_service::embed_list_raw(cfg, 50, 0).await?.jobs);
     if cfg.json_output {
         return handle_job_list(cfg, jobs, "Embed");
     }

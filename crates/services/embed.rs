@@ -2,11 +2,11 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::embed::{
-    self as embed_jobs, cancel_embed_job, cleanup_embed_jobs, clear_embed_jobs, get_embed_job,
-    list_embed_jobs, recover_stale_embed_jobs, start_embed_job,
+    self as embed_jobs, cancel_embed_job, cleanup_embed_jobs, clear_embed_jobs, count_embed_jobs,
+    get_embed_job, list_embed_jobs, recover_stale_embed_jobs, start_embed_job,
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{EmbedJobResult, EmbedStartResult};
+use crate::crates::services::types::{EmbedJobResult, EmbedStartResult, JobListResult};
 use crate::crates::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
 use tokio::sync::mpsc;
@@ -69,8 +69,11 @@ pub async fn embed_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<EmbedJob>, Box<dyn Error>> {
-    list_embed_jobs(cfg, limit, offset).await
+) -> Result<JobListResult<EmbedJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(list_embed_jobs(cfg, limit, offset), count_embed_jobs(cfg),);
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn embed_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {

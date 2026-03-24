@@ -3,11 +3,13 @@ use crate::crates::ingest;
 use crate::crates::ingest::progress::PhaseReporter;
 pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{
-    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
-    recover_stale_ingest_jobs, run_ingest_worker, start_ingest_job,
+    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, count_ingest_jobs, get_ingest_job,
+    list_ingest_jobs, recover_stale_ingest_jobs, run_ingest_worker, start_ingest_job,
 };
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{IngestJobResult, IngestResult, IngestStartResult};
+use crate::crates::services::types::{
+    IngestJobResult, IngestResult, IngestStartResult, JobListResult,
+};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -85,8 +87,14 @@ pub async fn ingest_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<IngestJob>, Box<dyn Error>> {
-    list_ingest_jobs(cfg, None, limit, offset).await
+) -> Result<JobListResult<IngestJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(
+        list_ingest_jobs(cfg, None, limit, offset),
+        count_ingest_jobs(cfg),
+    );
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {

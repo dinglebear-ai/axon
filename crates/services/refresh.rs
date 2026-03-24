@@ -1,8 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::jobs::refresh::{
-    cancel_refresh_job, cleanup_refresh_jobs, clear_refresh_jobs, get_refresh_job,
-    list_refresh_jobs, list_refresh_schedules, recover_stale_refresh_jobs, run_refresh_once,
-    run_refresh_worker, set_refresh_schedule_enabled, start_refresh_job,
+    cancel_refresh_job, cleanup_refresh_jobs, clear_refresh_jobs, count_refresh_jobs,
+    get_refresh_job, list_refresh_jobs, list_refresh_schedules, recover_stale_refresh_jobs,
+    run_refresh_once, run_refresh_worker, set_refresh_schedule_enabled, start_refresh_job,
 };
 use crate::crates::jobs::refresh::{
     claim_due_refresh_schedules_with_pool, ensure_schema_once, mark_refresh_schedule_ran_with_pool,
@@ -14,7 +14,7 @@ pub use crate::crates::jobs::refresh::{
     delete_refresh_schedule, list_refresh_jobs as schedule_list_jobs,
 };
 use crate::crates::services::types::{
-    RefreshJobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
+    JobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
 };
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -52,9 +52,12 @@ pub async fn refresh_list(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<RefreshJobListResult, Box<dyn Error>> {
+) -> Result<JobListResult<RefreshJob>, Box<dyn Error>> {
+    // Run sequentially to preserve Send-ness required by the MCP #[tool] macro.
+    // Box<dyn Error> is !Send, so tokio::join! would make the combined future !Send.
     let jobs = list_refresh_jobs(cfg, limit, offset).await?;
-    Ok(RefreshJobListResult { jobs })
+    let total = count_refresh_jobs(cfg).await.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn refresh_cancel(cfg: &Config, job_id: Uuid) -> Result<bool, Box<dyn Error>> {

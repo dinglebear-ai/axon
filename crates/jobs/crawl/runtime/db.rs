@@ -310,7 +310,6 @@ pub async fn list_jobs(
     Ok(rows)
 }
 
-#[allow(dead_code)]
 pub async fn count_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;

@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 // Re-export all public types and functions to preserve the existing API.
 pub use self::ops::{
-    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
-    start_ingest_job,
+    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, count_ingest_jobs, get_ingest_job,
+    list_ingest_jobs, start_ingest_job,
 };
 pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
 

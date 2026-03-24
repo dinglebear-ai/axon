@@ -217,7 +217,8 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 }
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, crawl_service::crawl_list_raw(cfg, 50, 0).await?);
+    let jobs =
+        filter_jobs_for_status_view(cfg, crawl_service::crawl_list_raw(cfg, 50, 0).await?.jobs);
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);
