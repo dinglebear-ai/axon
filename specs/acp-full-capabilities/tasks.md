@@ -772,7 +772,7 @@ _Requirements: FR-024_ / _Design: Section 4.5_
 **Commit**: `feat(acp): implement inbound ext_method dispatch on bridge client`
 _Requirements: FR-025_ / _Design: Section 4.5_
 
-## Task 4.6 — Implement inbound ext_notification dispatch (FR-026)
+## Task 4.6 — Implement inbound ext_notification dispatch (FR-026) <!-- DONE -->
 
 **Do**: Implement `ext_notification` in the Client impl. Dispatch to registered handler if present, WARN log if no handler registered.
 **Files**: `crates/services/acp/bridge.rs`
