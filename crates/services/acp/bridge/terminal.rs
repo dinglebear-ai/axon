@@ -349,6 +349,10 @@ mod tests {
                     .await
                     .expect("create should succeed");
                 mgr.kill(&id).await.expect("kill should succeed");
+                let _exit_code = mgr
+                    .wait_for_exit(&id)
+                    .await
+                    .expect("should have exit after kill");
                 mgr.release(&id).await.expect("release should succeed");
                 assert!(
                     !mgr.terminals.borrow().contains_key(&id),
@@ -359,8 +363,8 @@ mod tests {
     }
 
     /// RED: double-release is a no-op — not yet implemented.
-    /// `manager.release(&id)` does not exist yet.
-    /// This test must fail to compile until task 1.8 adds the method.
+    /// `manager.kill(&id)` and `manager.release(&id)` do not exist yet.
+    /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
     #[tokio::test]
     async fn test_double_release_noop() {
         let cwd = std::path::PathBuf::from("/tmp");
@@ -372,9 +376,14 @@ mod tests {
                     .create("sleep", &["60"], &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
                     .await
                     .expect("create should succeed");
+                mgr.kill(&id).await.expect("kill failed");
                 mgr.release(&id)
                     .await
                     .expect("first release should succeed");
+                assert!(
+                    !mgr.terminals.borrow().contains_key(&id),
+                    "terminal should be removed after release"
+                );
                 mgr.release(&id)
                     .await
                     .expect("second release should be a no-op");

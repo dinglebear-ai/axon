@@ -141,6 +141,17 @@ _Requirements: FR-004, FR-005_ / _Design: Section 4.1_
 **Commit**: `test(acp): RED - add failing double-release no-op test`
 _Requirements: FR-005_ / _Design: Section 4.1_
 
+## Task 1.6e [FIX 1.6c] Fix: Strengthen RED test assertions for kill+release <!-- DONE -->
+
+**Do**: Improve the RED tests added in 1.6c/1.6d:
+1. In `test_double_release_noop`: add `mgr.kill(&id).await.expect("kill")` before the first `release()` call
+2. In `test_create_kill_release`: after `kill()`, add assertion that calls `mgr.wait_for_exit(&id).await` and asserts it returns Ok
+3. In `test_double_release_noop`: add assertion that `mgr.terminals.borrow().contains_key(&id)` is false after first `release()`
+**Files**: `crates/services/acp/bridge/terminal.rs`
+**Done when**: Tests have improved assertions (still RED — kill/release don't exist yet)
+**Verify**: `cargo test test_double_release_noop 2>&1 | grep -E 'FAILED|error'`
+**Commit**: `test(acp): strengthen RED kill+release test assertions`
+
 ## Task 1.7 — Implement TerminalManager::kill (FR-004)
 
 **Do**: Implement `TerminalManager::kill(id: &TerminalId) -> Result<(), String>`. If process is running: send SIGTERM via `child.start_kill()`, then spawn a `spawn_local` task that waits 5 seconds and sends SIGKILL if still alive (`child.kill()`). If already exited, return Ok. On Unix, use `nix::sys::signal::kill(Pid, Signal::SIGTERM)` or `child.start_kill()` (tokio uses SIGKILL on Unix by default — need to send SIGTERM first via `unsafe { libc::kill(pid, libc::SIGTERM) }`).
