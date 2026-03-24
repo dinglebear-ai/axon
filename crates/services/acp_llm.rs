@@ -4,10 +4,12 @@
 //! - **One-shot** ([`complete_text`], [`complete_streaming`]): spawns a fresh adapter per request.
 //! - **Pre-warmed** ([`warm_session`]): starts the adapter eagerly so the first prompt has no cold-start.
 
+mod pool;
 mod runner;
 mod types;
 mod warm;
 
+pub use pool::{init_warm_pool, pool_size, try_checkout};
 pub use types::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, extract_completion_result, normalize_stream_flag,

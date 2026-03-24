@@ -113,14 +113,14 @@ static WARM_POOL: OnceLock<WarmSessionPool> = OnceLock::new();
 /// No-op when `acp_adapter_cmd` is unset or empty. Safe to call multiple
 /// times — only the first call has any effect (protected by [`OnceLock`]).
 pub fn init_warm_pool(cfg: &Config) {
-    if cfg.acp_adapter_cmd.as_deref().map_or(true, str::is_empty) {
+    if cfg.acp_adapter_cmd.as_deref().is_none_or(str::is_empty) {
         return;
     }
     let pool = WARM_POOL.get_or_init(|| WarmSessionPool::new(cfg));
     let current = pool.len();
     for _ in current..MIN_SIZE {
         let t = Instant::now();
-        match super::warm::spawn_warm_session(cfg, None) {
+        match super::warm::warm_session(cfg, None) {
             Ok(session) => {
                 log_info(&format!(
                     "warm pool: pre-warmed session spawn={}ms",
