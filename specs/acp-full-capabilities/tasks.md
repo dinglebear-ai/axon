@@ -544,7 +544,7 @@ _Requirements: FR-001, FR-002, FR-003, FR-004, FR-005_ / _Design: Section 4.1_
 **Commit**: `refactor(acp): extract MCP server filter functions to mapping/mcp_filters.rs`
 _Requirements: FR-007_ / _Design: Section 3_
 
-## Task 2.3 — Verify bridge.rs and terminal.rs are under monolith limit
+## [x] Task 2.3 — Verify bridge.rs and terminal.rs are under monolith limit
 
 **Do**: Run the monolith check script. If `bridge.rs` is over 500 lines after adding the terminal Client methods, extract the 5 terminal Client trait method implementations into `bridge/terminal_client.rs` (keeping the trait impl delegation in `bridge.rs` as one-liners). Check all modified files.
 **Files**: `crates/services/acp/bridge.rs`, `crates/services/acp/bridge/terminal_client.rs` (create if needed)
