@@ -1,4 +1,5 @@
 pub mod ops;
+pub mod query;
 pub mod store;
 
 #[cfg(test)]

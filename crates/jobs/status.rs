@@ -44,6 +44,22 @@ impl JobStatus {
             Self::Canceled => "canceled",
         }
     }
+
+    /// Parse a string into a JobStatus enum.
+    ///
+    /// Returns `JobStatus::Failed` for unknown values. Callers should validate
+    /// the input string against the database CHECK constraint separately if needed.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "pending" => Self::Pending,
+            "running" => Self::Running,
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            "canceled" => Self::Canceled,
+            _ => Self::Failed,
+        }
+    }
 }
 
 impl fmt::Display for JobStatus {
