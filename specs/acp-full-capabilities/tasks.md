@@ -104,7 +104,7 @@ _Requirements: FR-002_ / _Design: Section 4.1_
 **Commit**: `feat(acp): implement TerminalManager::wait_for_exit`
 _Requirements: FR-003_ / _Design: Section 4.1_
 
-## Task 1.6b — [GREEN] Verify create_terminal lifecycle test passes
+## Task 1.6b — [GREEN] Verify create_terminal lifecycle test passes <!-- DONE -->
 
 **Do**: Run `cargo test test_create_terminal_output_wait` and confirm it passes. If it fails, fix the implementation. This is the GREEN phase for the test written in Task 1.3b.
 **Files**: (none if test passes; fix implementation files if failing)
