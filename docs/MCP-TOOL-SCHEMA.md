@@ -48,9 +48,13 @@ For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canon
 ## Response Policy (Context-Safe Defaults)
 - Default is artifact-first (`response_mode=path`).
 - Heavy operations write result artifacts to `.cache/axon-mcp/`.
-- Tool response returns compact metadata only by default:
-  - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`
-- Inline modes are capped/truncated and always include artifact pointers.
+- Tool response returns compact metadata only by default: `shape`, `artifact` (with `path`, `relative_path`, `bytes`, `line_count`, `sha256`).
+- Inline modes (`inline|both`) clip at structural boundaries: arrays truncate at item boundaries with `{"__truncated__": N}` marker; objects replace long strings with `{"__head__": "...", "__total_chars__": N}`.
+- **Per-action overrides (InlineHint):**
+  - `ask`: always includes `key_fields.answer` in path-mode response (full answer text, up to 32 000 chars).
+  - `research`: always includes `key_fields.summary` in path-mode response.
+  - `scrape` / `retrieve`: always path mode regardless of requested `response_mode`. Use `artifacts.head` or `artifacts.grep` with `relative_path`.
+- **Unified artifact access:** use `relative_path` with `artifacts.*` subactions for all clients (local and remote). The absolute `path` field is for transparency only — do not open it directly.
 
 ## Direct Actions
 These actions do not require `subaction`:

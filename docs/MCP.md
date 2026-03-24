@@ -253,9 +253,25 @@ Artifact responses written in path mode are pretty-printed JSON. The preferred i
 
 ### `response_mode` on All Actions
 
-`doctor`, `stats`, and `status` now support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
+All actions support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
 
 Valid `response_mode` values: `path|inline|both|auto-inline`. Note that `auto-inline` is system-assigned — it cannot be requested by the caller. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
+
+**Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
+
+- **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable without an `artifacts.head` follow-up, regardless of its length.
+- **`scrape`** and **`retrieve`**: Always return path mode regardless of the requested `response_mode`. These payloads can be megabytes of content — use `artifacts.head` or `artifacts.grep` with `relative_path` to access the content.
+
+### Unified Artifact Access Model
+
+The artifact cache is server-centric. All clients — local stdio and remote HTTP — should use `artifacts.*` subactions with the `relative_path` field to access artifact content:
+
+```bash
+# Access content via relative_path (works for all clients)
+mcporter call axon.axon action:artifacts subaction:head path:"ask/what-is-hybrid-search.json"
+```
+
+The `path` field (absolute filesystem path) is present in artifact metadata for transparency and debugging only. Do not depend on it — remote clients cannot open server-side paths directly.
 
 ### Auto-inline for Small Payloads
 
@@ -267,5 +283,5 @@ Path-mode responses include a `shape` field summarizing the payload structure:
 - **Strings ≤ 100 chars**: returned verbatim so Claude reads real values without a follow-up read.
 - **Strings > 100 chars**: summarized as `"<string N>"`.
 - **Arrays of objects with a `status`, `phase`, or `state` field**: summarized as `{"total": N, "by_status": {"completed": N, "running": N, ...}}`. Claude can answer status questions from the shape alone — no follow-up read needed.
-- **Other arrays**: `"<array[N]>"`.
+- **Other arrays**: `{"total": N, "sample": [<first 2 items, shape-previewed>]}`. The sample items let you understand the data structure without reading the file.
 - **Primitives**: verbatim.
