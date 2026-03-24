@@ -376,11 +376,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         reddit_min_score,
         reddit_depth,
         reddit_scrape_links,
-        tei_url: global
-            .tei_url
-            .or_else(|| env::var("TEI_URL").ok())
-            .map(normalize_local_service_url)
-            .unwrap_or_default(),
+        tei_url: normalize_local_service_url(
+            global
+                .tei_url
+                .or_else(|| env::var("TEI_URL").ok())
+                .ok_or_else(|| {
+                    "TEI_URL environment variable is required (or pass --tei-url). \
+                     Copy .env.example to .env and fill in credentials."
+                        .to_string()
+                })?,
+        ),
         qdrant_url: normalize_local_service_url(
             global
                 .qdrant_url
@@ -413,6 +418,14 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
         acp_prewarm: env_bool("AXON_ACP_PREWARM", true),
+        acp_ws_url: env::var("AXON_ACP_WS_URL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v: &String| !v.is_empty()),
+        acp_ws_token: env::var("AXON_ACP_WS_TOKEN")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v: &String| !v.is_empty()),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
         neo4j_url: env::var("AXON_NEO4J_URL").ok().unwrap_or_default(),
         neo4j_user: env::var("AXON_NEO4J_USER")
@@ -690,6 +703,8 @@ mod tests {
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
+            "--tei-url",
+            "http://127.0.0.1:52000",
             "status",
         ]);
         let cfg = into_config(cli).expect("status config should parse");
@@ -754,6 +769,8 @@ mod tests {
             "redis://127.0.0.1:53379",
             "--amqp-url",
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--tei-url",
+            "http://127.0.0.1:52000",
             "status",
         ]);
         let err = into_config(cli).unwrap_err();
@@ -783,6 +800,8 @@ mod tests {
             "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
+            "--tei-url",
+            "http://127.0.0.1:52000",
             "status",
         ]);
         let cfg = into_config(cli).expect("status config should parse");
@@ -796,6 +815,106 @@ mod tests {
 
         unsafe {
             env::remove_var(GRAPH_LLM_URL);
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_errors_when_tei_url_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // Save and restore TEI_URL so parallel tests are not affected.
+        // Safety: test-only, guarded by ENV_LOCK.
+        let orig_tei_url = env::var("TEI_URL").ok();
+        unsafe {
+            env::remove_var("TEI_URL");
+        }
+
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "status",
+        ]);
+        let err = into_config(cli).unwrap_err();
+        assert!(
+            err.contains("TEI_URL"),
+            "expected TEI_URL error, got: {err}"
+        );
+
+        unsafe {
+            if let Some(val) = orig_tei_url {
+                env::set_var("TEI_URL", val);
+            }
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_reads_acp_ws_url_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::set_var("AXON_ACP_WS_URL", "https://axon.example.com:49000");
+        }
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "status",
+        ]);
+        let cfg = into_config(cli).expect("status config should parse");
+        assert_eq!(
+            cfg.acp_ws_url.as_deref(),
+            Some("https://axon.example.com:49000"),
+            "acp_ws_url should be populated from AXON_ACP_WS_URL"
+        );
+        unsafe {
+            env::remove_var("AXON_ACP_WS_URL");
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn into_config_reads_acp_ws_token_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::set_var("AXON_ACP_WS_TOKEN", "supersecret");
+        }
+        let cli = Cli::parse_from([
+            "axon",
+            "--pg-url",
+            "postgresql://axon:postgres@127.0.0.1:53432/axon",
+            "--redis-url",
+            "redis://127.0.0.1:53379",
+            "--amqp-url",
+            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "status",
+        ]);
+        let cfg = into_config(cli).expect("status config should parse");
+        assert_eq!(
+            cfg.acp_ws_token.as_deref(),
+            Some("supersecret"),
+            "acp_ws_token should be populated from AXON_ACP_WS_TOKEN"
+        );
+        unsafe {
+            env::remove_var("AXON_ACP_WS_TOKEN");
         }
     }
 }
