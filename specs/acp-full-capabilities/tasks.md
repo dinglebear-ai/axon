@@ -396,7 +396,7 @@ _Requirements: FR-011_ / _Design: Section 4.4_
 
 ### Group I: Authentication (FR-013)
 
-## Task 1.20 — Implement authenticate flow after initialize (FR-013) <!-- DONE -->
+## Task 1.20 — <!-- DONE --> Implement authenticate flow after initialize (FR-013) <!-- DONE -->
 
 **Do**: In `session.rs:initialize_connection`, after `conn.initialize(initialize)` returns, check if the `InitializeResponse` indicates authentication is required (check `resp.auth_required` or equivalent SDK field). If so, read `AXON_ACP_AUTH_TOKEN` env var and call `conn.authenticate(token)`. On auth failure, return `Err("ACP authentication failed: ...")`. Add `AcpError::AuthFailed` variant if a custom error type exists, or use the existing `String` error path.
 **Files**: `crates/services/acp/session.rs`
@@ -407,7 +407,7 @@ _Requirements: FR-013_ / _Design: Section 4.4_
 
 ### Group J: Capabilities Introspection (FR-014, FR-015, FR-016)
 
-## Task 1.21 — Store load_session_supported and prompt_capabilities (FR-014) <!-- DONE -->
+## Task 1.21 — <!-- DONE --> Store load_session_supported and prompt_capabilities (FR-014) <!-- DONE -->
 
 **Do**: Add `load_session_supported: std::cell::Cell<bool>` and `prompt_capabilities: std::cell::RefCell<Option<String>>` (or a more structured type if the SDK provides one) to `AcpRuntimeState`. In `session.rs:initialize_connection`, after the `InitializeResponse`, store these from `resp.agent_capabilities`.
 **Files**: `crates/services/acp/bridge/state.rs` (or `bridge.rs`), `crates/services/acp/session.rs`
@@ -416,7 +416,7 @@ _Requirements: FR-013_ / _Design: Section 4.4_
 **Commit**: `feat(acp): store load_session_supported and prompt_capabilities from InitializeResponse`
 _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 
-## Task 1.22 — Guard load_session with capability flag (FR-015) <!-- DONE -->
+## Task 1.22 — <!-- DONE --> Guard load_session with capability flag (FR-015) <!-- DONE -->
 
 **Do**: In `session.rs:setup_session`, before calling `conn.load_session(...)`, check `runtime_state.load_session_supported.get()`. If false, skip the load attempt and fall through to `new_session` directly, logging a warning. This requires passing `runtime_state` (or just the flag) into `setup_session`.
 **Files**: `crates/services/acp/session.rs`
@@ -425,7 +425,7 @@ _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 **Commit**: `feat(acp): guard load_session call with load_session_supported capability flag`
 _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 
-## Task 1.23 — Expose prompt_capabilities via service layer (FR-016) <!-- DONE -->
+## Task 1.23 — <!-- DONE --> Expose prompt_capabilities via service layer (FR-016) <!-- DONE -->
 
 **Do**: Add a function to retrieve the stored prompt_capabilities from `AcpRuntimeState`. This could be exposed via a service function or through the existing event system. At minimum, store it and make it accessible for callers that need to inspect what the adapter supports.
 **Files**: `crates/services/acp/bridge/state.rs` (or `bridge.rs`)
@@ -436,7 +436,7 @@ _Requirements: FR-016_ / _Design: Section 4.4_
 
 ---
 
-- [ ] V8 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V8 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality commands and verify all pass
   - **Verify**: All commands exit 0
   - **Done when**: No lint errors, no type errors
@@ -446,7 +446,7 @@ _Requirements: FR-016_ / _Design: Section 4.4_
 
 ### Group K: close_session (FR-017, FR-018)
 
-## Task 1.24 — Implement close_session on teardown (FR-017)
+## Task 1.24 — Implement close_session on teardown (FR-017) <!-- DONE -->
 
 **Do**: In the persistent connection teardown path (`persistent_conn/` — look for where the adapter process is cleaned up on WS disconnect), call `conn.close_session(session_id)` before killing the adapter process. Log warning on failure but do not block teardown.
 **Files**: `crates/services/acp/persistent_conn.rs` (or the relevant teardown file)
@@ -455,7 +455,7 @@ _Requirements: FR-016_ / _Design: Section 4.4_
 **Commit**: `feat(acp): call close_session on persistent connection teardown`
 _Requirements: FR-017, FR-018_ / _Design: Section 4.4_
 
-## Task 1.25 — Gate close_session on adapter capability (FR-018)
+## Task 1.25 — Gate close_session on adapter capability (FR-018) <!-- DONE -->
 
 **Do**: Check if the adapter advertises close_session support (from `InitializeResponse.agent_capabilities` or similar). Store a `close_session_supported: Cell<bool>` on `AcpRuntimeState`. Only call `close_session` when the flag is true.
 **Files**: `crates/services/acp/bridge/state.rs`, `crates/services/acp/persistent_conn.rs`
@@ -466,7 +466,7 @@ _Requirements: FR-017, FR-018_ / _Design: Section 4.4_
 
 ### Group L: message_id Forwarding (FR-019)
 
-## Task 1.25b — [RED] Write failing test: message_id forwarded in event (AC-10.1)
+## Task 1.25b — [RED] Write failing test: message_id forwarded in event (AC-10.1) <!-- DONE -->
 
 **Do**: In `crates/services/acp/mapping.rs` tests, write `test_message_id_forwarded`: create a `ContentChunk` with a non-empty `message_id`, map it through the event conversion, assert the resulting `AcpSessionUpdateEvent` has `message_id = Some("...")`. Test fails until Task 1.26 adds the field.
 **Files**: `crates/services/acp/mapping.rs`
@@ -475,7 +475,7 @@ _Requirements: FR-017, FR-018_ / _Design: Section 4.4_
 **Commit**: `test(acp): RED - add failing message_id forwarding test`
 _Requirements: FR-019_ / _Design: Section 4.3_
 
-## Task 1.26 — Forward ContentChunk.message_id (FR-019)
+## Task 1.26 — Forward ContentChunk.message_id (FR-019) <!-- DONE -->
 
 **Do**: Add `pub message_id: Option<String>` to `AcpSessionUpdateEvent` in `types/acp.rs`. In `mapping.rs`, extract `message_id` from `ContentChunk` (the `AgentMessageChunk`, `UserMessageChunk`, `AgentThoughtChunk` variants). Update `serialize_session_update` to include `message_id` when present.
 **Files**: `crates/services/types/acp.rs`, `crates/services/acp/mapping.rs`
@@ -484,7 +484,7 @@ _Requirements: FR-019_ / _Design: Section 4.3_
 **Commit**: `feat(acp): forward ContentChunk.message_id in session update events`
 _Requirements: FR-019_ / _Design: Section 4.3_
 
-## Task 1.26b — [GREEN] Verify message_id forwarding test passes
+## Task 1.26b — [GREEN] Verify message_id forwarding test passes <!-- DONE -->
 
 **Do**: Run `cargo test test_message_id_forwarded`. Fix mapping.rs if needed.
 **Files**: `crates/services/acp/mapping.rs` (fix if needed)
