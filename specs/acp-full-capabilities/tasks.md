@@ -152,7 +152,7 @@ _Requirements: FR-005_ / _Design: Section 4.1_
 **Verify**: `cargo test test_double_release_noop 2>&1 | grep -E 'FAILED|error'`
 **Commit**: `test(acp): strengthen RED kill+release test assertions`
 
-## Task 1.7 — Implement TerminalManager::kill (FR-004)
+## Task 1.7 — Implement TerminalManager::kill (FR-004) <!-- DONE -->
 
 **Do**: Implement `TerminalManager::kill(id: &TerminalId) -> Result<(), String>`. If process is running: send SIGTERM via `child.start_kill()`, then spawn a `spawn_local` task that waits 5 seconds and sends SIGKILL if still alive (`child.kill()`). If already exited, return Ok. On Unix, use `nix::sys::signal::kill(Pid, Signal::SIGTERM)` or `child.start_kill()` (tokio uses SIGKILL on Unix by default — need to send SIGTERM first via `unsafe { libc::kill(pid, libc::SIGTERM) }`).
 **Files**: `crates/services/acp/bridge/terminal.rs`

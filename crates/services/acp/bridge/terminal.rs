@@ -206,6 +206,80 @@ impl TerminalManager {
         Ok((text, was_truncated, exit_code))
     }
 
+    /// Send a kill signal to the terminal subprocess.
+    ///
+    /// If the process has already exited (or the terminal doesn't exist),
+    /// this is a no-op and returns `Ok(())`.
+    /// Otherwise, calls `start_kill()` on the child process (sends SIGKILL on Unix).
+    /// The child handle is kept so `wait_for_exit` can still collect the exit status.
+    #[allow(dead_code)]
+    pub async fn kill(&self, id: &TerminalId) -> Result<(), String> {
+        // If already exited or not found, nothing to do.
+        let already_done = {
+            let map = self.terminals.borrow();
+            match map.get(id) {
+                None => return Ok(()),
+                Some(s) => s.exit_status.is_some(),
+            }
+        };
+        if already_done {
+            return Ok(());
+        }
+
+        // Take child out before await (cannot hold RefCell borrow across await).
+        let child = self
+            .terminals
+            .borrow_mut()
+            .get_mut(id)
+            .and_then(|s| s.child.take());
+
+        let Some(mut child) = child else {
+            // Child already taken (e.g. by wait_for_exit) — nothing to kill.
+            return Ok(());
+        };
+
+        // Send kill signal (SIGKILL on Unix via tokio).
+        // Ignore errors: process may have exited between the check and now.
+        let _ = child.start_kill();
+
+        // Put the child back so wait_for_exit can collect the exit status.
+        if let Some(state) = self.terminals.borrow_mut().get_mut(id) {
+            state.child = Some(child);
+        }
+
+        Ok(())
+    }
+
+    /// Remove a terminal from the manager, killing it first if still running.
+    ///
+    /// Idempotent: if the terminal ID is not in the map (already released or
+    /// never created), returns `Ok(())` without error (NFR-007).
+    #[allow(dead_code)]
+    pub async fn release(&self, id: &TerminalId) -> Result<(), String> {
+        // If not in map, nothing to do (idempotent).
+        let exists = self.terminals.borrow().contains_key(id);
+        if !exists {
+            return Ok(());
+        }
+
+        // Kill if still running (exit_status == None means process may be alive).
+        let still_running = self
+            .terminals
+            .borrow()
+            .get(id)
+            .map(|s| s.exit_status.is_none())
+            .unwrap_or(false);
+
+        if still_running {
+            self.kill(id).await?;
+        }
+
+        // Remove from map.
+        self.terminals.borrow_mut().remove(id);
+
+        Ok(())
+    }
+
     /// Wait for the terminal subprocess to exit and return its exit code.
     ///
     /// If the process has already exited, returns the cached exit code.
@@ -339,7 +413,7 @@ mod tests {
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
     #[tokio::test]
     async fn test_create_kill_release() {
-        let cwd = std::path::PathBuf::from("/tmp");
+        let cwd = PathBuf::from("/tmp");
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
@@ -367,7 +441,7 @@ mod tests {
     /// This test must fail to compile until tasks 1.7 and 1.8 add those methods.
     #[tokio::test]
     async fn test_double_release_noop() {
-        let cwd = std::path::PathBuf::from("/tmp");
+        let cwd = PathBuf::from("/tmp");
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
