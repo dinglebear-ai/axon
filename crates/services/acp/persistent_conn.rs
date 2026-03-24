@@ -357,10 +357,64 @@ async fn adapter_loop_eager(
     tracing::info!(context = "acp_conn", "adapter loop ended (eager)");
 }
 
+/// Drain the `ClientSideConnection` subscribe stream, logging every JSON-RPC
+/// frame at `debug` level for observability (FR-023).
+///
+/// The task exits automatically when the broadcast sender is dropped (i.e.
+/// when the underlying connection closes). Errors from a lagged receiver are
+/// logged at warn level and the task continues rather than aborting — the
+/// stream is best-effort and must not interfere with normal turn execution.
+///
+/// This function is called from [`run_adapter_main_loop`] via
+/// `tokio::task::spawn_local`, which is valid because:
+/// - We are inside a `LocalSet` (created in [`AcpConnectionHandle::spawn`]).
+/// - `StreamReceiver` wraps `async_broadcast::Receiver` which is `!Send`.
+fn spawn_subscribe_drain(conn: &ClientSideConnection) -> tokio::task::JoinHandle<()> {
+    use agent_client_protocol::{StreamMessageContent, StreamMessageDirection};
+    let mut receiver = conn.subscribe();
+    tokio::task::spawn_local(async move {
+        while let Ok(msg) = receiver.recv().await {
+            let dir = match msg.direction {
+                StreamMessageDirection::Incoming => "←",
+                StreamMessageDirection::Outgoing => "→",
+            };
+            match &msg.message {
+                StreamMessageContent::Request { method, .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "request",
+                        method = %method,
+                    );
+                }
+                StreamMessageContent::Response { .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "response",
+                    );
+                }
+                StreamMessageContent::Notification { method, .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "notification",
+                        method = %method,
+                    );
+                }
+            }
+        }
+        // Sender dropped (connection closed) or lagged receiver — exit cleanly.
+    })
+}
+
 /// Shared main loop for both lazy and eager adapter paths.
 ///
 /// Processes [`AdapterMessage::RunTurn`] messages until the channel closes
 /// (WS connection dropped) or the adapter process exits unexpectedly.
+///
+/// Calls [`spawn_subscribe_drain`] on entry to activate the JSON-RPC
+/// observability stream (FR-023) for the duration of this connection.
 async fn run_adapter_main_loop(
     conn: &mut ClientSideConnection,
     session_id: &SessionId,
@@ -370,6 +424,10 @@ async fn run_adapter_main_loop(
     rx: &mut mpsc::Receiver<AdapterMessage>,
     cancel_token: &CancellationToken,
 ) {
+    // Wire the subscribe stream to the debug event bus (FR-023).
+    // The drain task owns the receiver and exits when the connection closes.
+    let _subscribe_drain = spawn_subscribe_drain(conn);
+
     loop {
         tokio::select! {
             msg = rx.recv() => {

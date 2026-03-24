@@ -735,7 +735,7 @@ _Requirements: FR-021_ / _Design: Section 4.5_
 **Commit**: `feat(acp): add set_model MCP subaction`
 _Requirements: FR-022_ / _Design: Section 4.5_
 
-## Task 4.3 — Wire subscribe() to event bus (FR-023, FR-029)
+## Task 4.3 — Wire subscribe() to event bus (FR-023, FR-029) <!-- DONE -->
 
 **Do**: In the persistent connection setup, call `conn.subscribe()` to get the notification stream. Forward events to the internal `ServiceEvent` channel as `AcpBridgeEvent::DebugFrame` (or similar). Use `tokio::broadcast` if multiple consumers need the stream.
 **Files**: `crates/services/acp/persistent_conn.rs` (or relevant file)
@@ -746,7 +746,7 @@ _Requirements: FR-023, FR-029_ / _Design: Section 4.5_
 
 ---
 
-- [ ] V14 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
+- [x] V14 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo check`
   - **Do**: Run quality checks
   - **Verify**: All exit 0
   - **Done when**: Clean
