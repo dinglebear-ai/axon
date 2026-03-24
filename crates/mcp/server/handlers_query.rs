@@ -95,7 +95,7 @@ impl AxonMcpServer {
                 "chunks": chunk_count,
                 "content": content,
             }),
-            InlineHint::Default,
+            InlineHint::AlwaysPath,
         )
         .await
     }
@@ -221,7 +221,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("scrape-{}", slugify(&url, 56)),
             result.payload,
-            InlineHint::Default,
+            InlineHint::AlwaysPath,
         )
         .await
     }
@@ -259,7 +259,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("research-{}", slugify(&query, 56)),
             result.payload,
-            InlineHint::Default,
+            InlineHint::Fields(&["summary"]),
         )
         .await
     }
@@ -297,7 +297,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("ask-{}", slugify(&query, 56)),
             result.payload,
-            InlineHint::Default,
+            InlineHint::Fields(&["answer"]),
         )
         .await
     }
