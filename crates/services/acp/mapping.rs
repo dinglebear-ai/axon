@@ -410,12 +410,17 @@ pub use validation::{
     validate_session_cwd,
 };
 
-// ── Session setup / MCP server helpers (extracted to mapping/session_setup.rs) ─
+// ── MCP server capability filters (extracted to mapping/mcp_filters.rs) ──────
+
+mod mcp_filters;
+#[cfg(test)]
+pub(super) use mcp_filters::filter_compatible_mcp_servers;
+pub(super) use mcp_filters::filter_sdk_mcp_servers;
+
+// ── Session setup helpers (extracted to mapping/session_setup.rs) ─────────────
 
 mod session_setup;
-#[cfg(test)]
-use session_setup::filter_compatible_mcp_servers;
-pub(super) use session_setup::{build_session_setup, convert_mcp_servers, filter_sdk_mcp_servers};
+pub(super) use session_setup::{build_session_setup, convert_mcp_servers};
 
 #[cfg(test)]
 mod tests {

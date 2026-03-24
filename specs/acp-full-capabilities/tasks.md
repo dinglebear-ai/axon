@@ -535,7 +535,7 @@ _Requirements: FR-020_ / _Design: Section 4.5_
 **Commit**: `refactor(acp): add typed TerminalError enum for terminal operations`
 _Requirements: FR-001, FR-002, FR-003, FR-004, FR-005_ / _Design: Section 4.1_
 
-## Task 2.2 — Extract MCP server filter functions from mapping.rs
+## [x] Task 2.2 — Extract MCP server filter functions from mapping.rs
 
 **Do**: The `filter_compatible_mcp_servers` and `filter_sdk_mcp_servers` functions in `mapping.rs` (lines 415-490) are MCP-specific, not mapping logic. Move them to a new `mapping/mcp_filters.rs` submodule (mapping.rs already has a `mapping/` directory with `validation.rs`). Re-export from `mapping.rs`.
 **Files**: `crates/services/acp/mapping/mcp_filters.rs` (create), `crates/services/acp/mapping.rs` (modify)
