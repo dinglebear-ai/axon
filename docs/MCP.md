@@ -37,32 +37,11 @@ MCP transport env vars:
 - `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 
-MCP HTTP auth env vars:
-- `AXON_MCP_API_KEY` (optional static bearer token for `/mcp`)
+## Authentication
 
-OAuth broker env vars (optional; enables OAuth bearer tokens for `/mcp`):
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-
-Optional OAuth overrides:
-- `GOOGLE_OAUTH_AUTH_URL`
-- `GOOGLE_OAUTH_TOKEN_URL`
-- `GOOGLE_OAUTH_REDIRECT_PATH`
-- `GOOGLE_OAUTH_REDIRECT_HOST`
-- `GOOGLE_OAUTH_REDIRECT_URI`
-- `GOOGLE_OAUTH_BROKER_ISSUER`
-- `GOOGLE_OAUTH_SCOPES`
-- `GOOGLE_OAUTH_DCR_TOKEN`
-- `GOOGLE_OAUTH_REDIRECT_POLICY`
-- `GOOGLE_OAUTH_REDIS_URL` (falls back to `AXON_REDIS_URL`)
-- `GOOGLE_OAUTH_REDIS_PREFIX`
-
-`GOOGLE_OAUTH_REDIRECT_POLICY` modes:
-- `loopback_or_https` (default): allow loopback HTTP callbacks (`localhost`, `127.0.0.1`, `::1`) and any HTTPS callback
-- `loopback_only`: allow only loopback HTTP callbacks
-- `any`: allow any HTTP/HTTPS callback URI
-
-`/mcp` accepts either `Authorization: Bearer <AXON_MCP_API_KEY>` or a valid OAuth bearer token (`atk_...`). If neither auth mode is configured, requests to `/mcp` return unauthorized.
+Authentication is handled externally by the OAuth gateway and SWAG reverse proxy.
+The `/mcp` endpoint is unauthenticated at the application level — all auth enforcement
+happens at the ingress layer.
 
 ## Transport Notes
 `axon mcp` supports three transport modes:
@@ -120,25 +99,7 @@ HTTP MCP server example:
 {
   "mcpServers": {
     "axon-http": {
-      "url": "https://axon.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer <AXON_MCP_API_KEY>"
-      }
-    }
-  }
-}
-```
-
-OAuth bearer token is also accepted on `/mcp`:
-
-```json
-{
-  "mcpServers": {
-    "axon-http": {
-      "url": "https://axon.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer atk_your_oauth_token_here"
-      }
+      "url": "https://axon.example.com/mcp"
     }
   }
 }
@@ -163,53 +124,6 @@ OAuth bearer token is also accepted on `/mcp`:
   }
 }
 ```
-
-## OAuth Endpoints and Flow
-Implemented endpoints:
-- `GET /oauth/google/status`
-- `GET /oauth/google/login`
-- `GET /oauth/google/callback`
-- `GET /oauth/google/token`
-- `GET|POST /oauth/google/logout`
-- `GET /.well-known/oauth-protected-resource`
-- `GET /.well-known/oauth-authorization-server`
-- `POST /oauth/register`
-- `GET /oauth/authorize`
-- `POST /oauth/token`
-
-High-level flow:
-1. Client discovers metadata from the `/.well-known/*` endpoints.
-2. Client registers (`/oauth/register`) if needed.
-3. User authenticates via Google (`/oauth/google/login` -> Google -> `/oauth/google/callback`).
-4. Authorization code flow completes via `/oauth/authorize` and `/oauth/token`.
-5. Client calls `/mcp` with bearer token.
-
-Static API key alternative:
-- Clients can call `/mcp` directly with `Authorization: Bearer <AXON_MCP_API_KEY>`.
-- API key auth is full `/mcp` access and does not apply OAuth scope checks.
-- OAuth discovery endpoints remain available unchanged.
-
-## Token Persistence
-OAuth state is persisted in Redis when available; otherwise in-memory fallback is used.
-
-Stored record types:
-- pending login state
-- browser session tokens
-- dynamic clients
-- auth codes
-- access tokens
-- refresh tokens
-- rate-limit buckets
-
-Cookie:
-- `__Host-axon_oauth_session`
-
-TTL semantics (current behavior):
-- OAuth session: 7 days
-- Refresh tokens: 30 days
-- Auth code: 10 minutes
-- Pending login state: 15 minutes
-- Access token: per-issued token expiry
 
 ## Request Pattern
 Primary pattern:
