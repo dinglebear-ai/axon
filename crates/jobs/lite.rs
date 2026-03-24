@@ -1,3 +1,4 @@
+pub mod cancel;
 pub mod ops;
 pub mod query;
 pub mod store;
