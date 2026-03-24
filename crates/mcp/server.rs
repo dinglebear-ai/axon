@@ -18,9 +18,6 @@ mod handlers_query;
 mod handlers_refresh_status;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
-#[path = "server/oauth_google.rs"]
-mod oauth_google;
-
 #[cfg(test)]
 #[path = "server/services_migration_tests.rs"]
 mod services_migration_tests;
@@ -29,22 +26,8 @@ use super::config::load_mcp_config;
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::crates::core::config::Config;
 use crate::crates::web::cors::cors_middleware;
-use axum::{
-    Router,
-    body::Body,
-    extract::State,
-    middleware,
-    middleware::Next,
-    response::Response,
-    routing::{get, post},
-};
+use axum::{Router, body::Body, extract::State, middleware, middleware::Next, response::Response};
 use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
-use oauth_google::{
-    GoogleOAuthState, oauth_authorization_server_metadata, oauth_authorization_server_metadata_mcp,
-    oauth_authorize, oauth_google_callback, oauth_google_login, oauth_google_logout,
-    oauth_google_status, oauth_google_token, oauth_protected_resource_metadata,
-    oauth_register_client, oauth_token, require_google_auth,
-};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::Parameters,
@@ -244,8 +227,6 @@ pub async fn run_stdio_server() -> Result<(), Box<dyn std::error::Error>> {
 
 pub async fn run_http_server(host: &str, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let cors_cfg = Arc::new(load_mcp_config());
-    let oauth_state = GoogleOAuthState::from_env(host, port);
-    let oauth_state_for_layer = oauth_state.clone();
 
     let mcp_service: StreamableHttpService<AxonMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
@@ -258,52 +239,13 @@ pub async fn run_http_server(host: &str, port: u16) -> Result<(), Box<dyn std::e
             },
         );
 
-    let app = Router::new()
-        .nest_service("/mcp", mcp_service)
-        .route("/oauth/google/status", get(oauth_google_status))
-        .route("/oauth/google/login", get(oauth_google_login))
-        .route("/oauth/google/callback", get(oauth_google_callback))
-        .route("/oauth/google/token", get(oauth_google_token))
-        .route(
-            "/oauth/google/logout",
-            get(oauth_google_logout).post(oauth_google_logout),
-        )
-        .route(
-            "/.well-known/oauth-protected-resource",
-            get(oauth_protected_resource_metadata),
-        )
-        .route(
-            "/.well-known/oauth-authorization-server",
-            get(oauth_authorization_server_metadata),
-        )
-        .route(
-            // Path-prefix discovery alias for the /mcp resource (RFC 8414 §3.1).
-            // Uses a dedicated handler that returns issuer = resource_server_url so the
-            // issuer matches the request path — the root handler would return the broker
-            // issuer which would fail RFC 8414 §3 validation for MCP clients.
-            "/.well-known/oauth-authorization-server/mcp",
-            get(oauth_authorization_server_metadata_mcp),
-        )
-        .route(
-            "/.well-known/openid-configuration",
-            get(oauth_authorization_server_metadata),
-        )
-        .route(
-            "/.well-known/openid-configuration/mcp",
-            get(oauth_authorization_server_metadata),
-        )
-        .route("/oauth/register", post(oauth_register_client))
-        .route("/oauth/authorize", get(oauth_authorize))
-        .route("/oauth/token", post(oauth_token))
-        .with_state(oauth_state)
-        .layer(middleware::from_fn_with_state(
-            oauth_state_for_layer,
-            require_google_auth,
-        ))
-        .layer(middleware::from_fn_with_state(
-            cors_cfg,
-            mcp_http_cors_middleware,
-        ));
+    let app =
+        Router::new()
+            .nest_service("/mcp", mcp_service)
+            .layer(middleware::from_fn_with_state(
+                cors_cfg,
+                mcp_http_cors_middleware,
+            ));
 
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     axum::serve(listener, app).await?;
