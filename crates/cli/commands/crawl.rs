@@ -15,13 +15,20 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::core::ui::{muted, primary, print_option, print_phase};
+use crate::crates::jobs::backend::JobBackend;
 use crate::crates::services::crawl as crawl_service;
 use spider::url::Url;
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 
-pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_crawl(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
+    let _ = backend; // backend reserved for future lite-mode dispatch
     if subcommands::maybe_handle_subcommand(cfg).await? {
+        return Ok(());
+    }
+    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
+        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
         return Ok(());
     }
     let urls = parse_urls(cfg);

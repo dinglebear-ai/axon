@@ -11,9 +11,13 @@ use self::crates::cli::commands::{
 };
 use self::crates::core::config::{CommandKind, Config, parse_args};
 use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
+use self::crates::jobs::backend::JobBackend;
+use self::crates::jobs::full::FullBackend;
+use self::crates::jobs::lite::LiteBackend;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -73,16 +77,20 @@ async fn record_command_run(pg_url: String, command: String) {
     let _ = tokio::time::timeout(Duration::from_secs(2), attempt).await;
 }
 
-async fn run_once(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
+async fn run_once(
+    cfg: &Config,
+    start_url: &str,
+    backend: &Arc<dyn JobBackend>,
+) -> Result<(), Box<dyn Error>> {
     match cfg.command {
         CommandKind::Scrape => run_scrape(cfg).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
-        CommandKind::Crawl => run_crawl(cfg).await?,
+        CommandKind::Crawl => run_crawl(cfg, backend).await?,
         CommandKind::Refresh => run_refresh(cfg).await?,
         CommandKind::Watch => run_watch(cfg).await?,
-        CommandKind::Extract => run_extract(cfg).await?,
+        CommandKind::Extract => run_extract(cfg, backend).await?,
         CommandKind::Search => run_search(cfg).await?,
-        CommandKind::Embed => run_embed(cfg).await?,
+        CommandKind::Embed => run_embed(cfg, backend).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Doctor => run_doctor(cfg).await?,
         CommandKind::Query => run_query(cfg).await?,
@@ -95,7 +103,7 @@ async fn run_once(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
         CommandKind::Stats => run_stats(cfg).await?,
         CommandKind::Status => run_status(cfg).await?,
         CommandKind::Dedupe => run_dedupe(cfg).await?,
-        CommandKind::Ingest => run_ingest(cfg).await?,
+        CommandKind::Ingest => run_ingest(cfg, backend).await?,
         CommandKind::Sessions => run_sessions(cfg).await?,
         CommandKind::Research => run_research(cfg).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
@@ -165,9 +173,27 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         cfg.collection,
         cfg.performance_profile
     ));
-    {
-        // Extract only the two fields needed — avoids cloning the entire
-        // Config struct (~100 fields, 2-5KB heap) for a lightweight telemetry INSERT.
+
+    // Build the job backend — lite mode uses SQLite + in-process workers;
+    // full mode uses Postgres + RabbitMQ (existing stack, unchanged).
+    let cfg_arc = Arc::new(cfg);
+    let backend: Arc<dyn JobBackend> = if cfg_arc.lite_mode {
+        Arc::new(
+            LiteBackend::new(Arc::clone(&cfg_arc))
+                .await
+                .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?,
+        )
+    } else {
+        Arc::new(
+            FullBackend::new(Arc::clone(&cfg_arc))
+                .await
+                .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?,
+        )
+    };
+    let cfg = cfg_arc.as_ref();
+
+    // Skip Postgres telemetry in lite mode (no Postgres connection required).
+    if !cfg.lite_mode {
         let pg_url = cfg.pg_url.clone();
         let command = cfg.command.as_str().to_string();
         tokio::spawn(async move {
@@ -176,7 +202,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(every_seconds) = cfg.cron_every_seconds {
-        if is_job_subcommand(&cfg) {
+        if is_job_subcommand(cfg) {
             return Err(
                 "--cron-every-seconds is not supported for job subcommands (status/cancel/list/etc)"
                     .into(),
@@ -192,7 +218,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 cfg.command.as_str(),
                 every_seconds
             ));
-            match run_once(&cfg, &start_url).await {
+            match run_once(cfg, &start_url, &backend).await {
                 Ok(_) => {}
                 Err(e) => {
                     log_warn(&format!("cron run_once failed: {e:#}"));
@@ -209,11 +235,11 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         ));
         return Ok(());
     }
-    run_once(&cfg, &start_url).await?;
+    run_once(cfg, &start_url, &backend).await?;
 
-    if is_async_enqueue_mode(&cfg) {
+    if is_async_enqueue_mode(cfg) {
         log_done(&format!("command={} enqueued", cfg.command.as_str()));
-    } else if let Some(sub) = job_subcommand_name(&cfg) {
+    } else if let Some(sub) = job_subcommand_name(cfg) {
         log_done(&format!("command={} {} done", cfg.command.as_str(), sub));
     } else {
         log_done(&format!("command={} complete", cfg.command.as_str()));

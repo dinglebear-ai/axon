@@ -11,13 +11,20 @@ use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{
     accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
 };
+use crate::crates::jobs::backend::JobBackend;
 use crate::crates::services::embed as embed_service;
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use uuid::Uuid;
 
-pub async fn run_embed(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_embed(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
+    let _ = backend; // backend reserved for future lite-mode dispatch
     if maybe_handle_embed_subcommand(cfg).await? {
+        return Ok(());
+    }
+    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
+        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
         return Ok(());
     }
 
