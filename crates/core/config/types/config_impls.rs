@@ -170,6 +170,16 @@ impl Default for Config {
     }
 }
 
+impl Config {
+    /// A minimal Config used by LiteBackend — lite mode enabled, no external services required.
+    pub fn default_lite() -> Self {
+        Self {
+            lite_mode: true,
+            ..Default::default()
+        }
+    }
+}
+
 #[cfg(test)]
 impl Config {
     /// Construct a minimal `Config` suitable for unit tests.
