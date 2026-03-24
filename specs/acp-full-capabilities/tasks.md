@@ -676,7 +676,7 @@ _Requirements: FR-009_ / _Design: Section 4.3_
 **Commit**: `test(acp): load_session_supported defaults to false`
 _Requirements: FR-014, FR-015_ / _Design: Section 4.4_
 
-## Task 3.8 — Test: close_session_supported defaults to false
+## Task 3.8 — Test: close_session_supported defaults to false <!-- DONE -->
 
 **Do**: Write a unit test: verify `close_session_supported` defaults to false.
 **Files**: `crates/services/acp/bridge/state.rs`
