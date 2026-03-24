@@ -9,7 +9,7 @@ mod runner;
 mod types;
 mod warm;
 
-pub use pool::{init_warm_pool, pool_size, try_checkout};
+pub use pool::{init_warm_pool, pool_size};
 pub use types::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, extract_completion_result, normalize_stream_flag,
