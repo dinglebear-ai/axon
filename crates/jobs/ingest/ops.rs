@@ -106,6 +106,16 @@ pub async fn list_ingest_jobs(
     Ok(rows)
 }
 
+#[allow(dead_code)] // used in Task 3: service layer
+pub async fn count_ingest_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_ingest_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
+}
+
 pub async fn cancel_ingest_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;

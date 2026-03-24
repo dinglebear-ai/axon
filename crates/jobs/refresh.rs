@@ -342,6 +342,17 @@ pub async fn list_refresh_jobs(
     Ok(rows)
 }
 
+pub async fn count_refresh_jobs(
+    cfg: &crate::crates::core::config::Config,
+) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_schema_once(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_refresh_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
+}
+
 pub async fn cancel_refresh_job(
     cfg: &crate::crates::core::config::Config,
     id: Uuid,

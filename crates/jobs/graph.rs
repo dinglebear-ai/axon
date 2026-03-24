@@ -136,6 +136,15 @@ pub async fn list_graph_jobs(
     Ok(rows)
 }
 
+pub async fn count_graph_jobs(cfg: &Config) -> Result<i64, Box<dyn std::error::Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_graph_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -233,6 +233,15 @@ pub async fn list_extract_jobs(
     Ok(rows)
 }
 
+pub async fn count_extract_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_extract_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
+}
+
 pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
