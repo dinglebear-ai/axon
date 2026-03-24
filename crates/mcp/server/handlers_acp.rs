@@ -20,6 +20,15 @@ impl AxonMcpServer {
                 })?;
                 self.handle_acp_resume_session(session_id).await
             }
+            AcpSubaction::SetModel => {
+                let session_id = req.session_id.ok_or_else(|| {
+                    super::common::invalid_params("session_id is required for set_model")
+                })?;
+                let model_id = req.model_id.ok_or_else(|| {
+                    super::common::invalid_params("model_id is required for set_model")
+                })?;
+                self.handle_acp_set_model(session_id, model_id).await
+            }
         }
     }
 
@@ -79,5 +88,28 @@ impl AxonMcpServer {
         }))
         .map(|data| AxonToolResponse::ok("acp", "resume_session", data))
         .map_err(|e| internal_error(format!("serialize acp/resume_session response: {e}")))
+    }
+
+    /// Set the active model for an ACP session via `session/set_model`.
+    ///
+    /// TODO: Full implementation requires a new `AdapterMessage::SetSessionModel` variant and
+    /// a corresponding response channel in `AcpConnectionHandle`, so that the request can
+    /// be dispatched through the background thread that owns `ClientSideConnection`.
+    /// For now this stub validates the session exists and returns a not-implemented response.
+    async fn handle_acp_set_model(
+        &self,
+        session_id: String,
+        model_id: String,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let exists = SESSION_CACHE.get_by_session_id(&session_id).is_some();
+        serde_json::to_value(serde_json::json!({
+            "session_id": session_id,
+            "model_id": model_id,
+            "session_found": exists,
+            "status": "not_implemented",
+            "message": "set_model stub: full dispatch via AdapterMessage not yet wired",
+        }))
+        .map(|data| AxonToolResponse::ok("acp", "set_model", data))
+        .map_err(|e| internal_error(format!("serialize acp/set_model response: {e}")))
     }
 }

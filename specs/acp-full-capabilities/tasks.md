@@ -726,7 +726,7 @@ _Requirements: FR-001, FR-002, FR-003, FR-004, FR-005_ / _Design: Section 4.1_
 **Commit**: `feat(acp): add fork_session and resume_session MCP subactions`
 _Requirements: FR-021_ / _Design: Section 4.5_
 
-## Task 4.2 — Implement set_session_model stub (FR-022)
+## Task 4.2 — Implement set_session_model stub (FR-022) <!-- DONE -->
 
 **Do**: Add `acp/set_model` subaction in `handlers_acp.rs`. Calls `conn.set_session_model(session_id, model)`.
 **Files**: `crates/mcp/server/handlers_acp.rs`

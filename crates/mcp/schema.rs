@@ -430,6 +430,8 @@ pub enum AcpSubaction {
     ForkSession,
     /// Resume an existing session without replaying message history.
     ResumeSession,
+    /// Set the active model for a session.
+    SetModel,
 }
 
 /// Request parameters for the `acp` action.
@@ -437,8 +439,10 @@ pub enum AcpSubaction {
 #[serde(deny_unknown_fields)]
 pub struct AcpRequest {
     pub subaction: AcpSubaction,
-    /// ACP session ID (required for fork_session and resume_session).
+    /// ACP session ID (required for fork_session, resume_session, and set_model).
     pub session_id: Option<String>,
+    /// Model ID to set (required for set_model).
+    pub model_id: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
