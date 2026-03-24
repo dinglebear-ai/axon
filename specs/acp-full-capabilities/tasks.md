@@ -407,7 +407,7 @@ _Requirements: FR-013_ / _Design: Section 4.4_
 
 ### Group J: Capabilities Introspection (FR-014, FR-015, FR-016)
 
-## Task 1.21 — Store load_session_supported and prompt_capabilities (FR-014)
+## Task 1.21 — Store load_session_supported and prompt_capabilities (FR-014) <!-- DONE -->
 
 **Do**: Add `load_session_supported: std::cell::Cell<bool>` and `prompt_capabilities: std::cell::RefCell<Option<String>>` (or a more structured type if the SDK provides one) to `AcpRuntimeState`. In `session.rs:initialize_connection`, after the `InitializeResponse`, store these from `resp.agent_capabilities`.
 **Files**: `crates/services/acp/bridge/state.rs` (or `bridge.rs`), `crates/services/acp/session.rs`

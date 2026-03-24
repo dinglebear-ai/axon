@@ -57,6 +57,12 @@ pub struct AcpRuntimeState {
     /// Whether the adapter advertises SSE MCP transport support.
     /// Set from `InitializeResponse.agent_capabilities.mcp_capabilities.sse`.
     pub(crate) mcp_sse_supported: std::cell::Cell<bool>,
+    /// Whether the adapter supports `session/load`.
+    /// Set from `InitializeResponse.agent_capabilities.load_session`.
+    pub(crate) load_session_supported: std::cell::Cell<bool>,
+    /// Serialized JSON of `PromptCapabilities` from the agent's `InitializeResponse`.
+    /// Used by callers that need to inspect what prompt content types the adapter supports.
+    pub(crate) prompt_capabilities_json: std::cell::RefCell<Option<String>>,
 }
 
 impl AcpRuntimeState {

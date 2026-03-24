@@ -263,6 +263,13 @@ pub(super) async fn initialize_connection(
     runtime_state
         .mcp_sse_supported
         .set(resp.agent_capabilities.mcp_capabilities.sse);
+    // Store load_session support and prompt capabilities from InitializeResponse.
+    runtime_state
+        .load_session_supported
+        .set(resp.agent_capabilities.load_session);
+    if let Ok(json) = serde_json::to_string(&resp.agent_capabilities.prompt_capabilities) {
+        *runtime_state.prompt_capabilities_json.borrow_mut() = Some(json);
+    }
 
     // Best-effort authentication: if the adapter advertised auth methods and
     // AXON_ACP_AUTH_TOKEN is set, authenticate using the first advertised method.
