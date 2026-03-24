@@ -413,6 +413,26 @@ mod tests {
     use agent_client_protocol::{McpServer, McpServerHttp, McpServerSse, McpServerStdio};
 
     #[test]
+    fn test_message_id_forwarded() {
+        // RED: AcpSessionUpdateEvent has no message_id field yet.
+        // This test fails to compile until Task 1.26 adds the field.
+        use agent_client_protocol::{
+            ContentBlock, ContentChunk, SessionId, SessionNotification, SessionUpdate,
+        };
+        let chunk = ContentChunk::new(ContentBlock::Text(agent_client_protocol::TextContent::new(
+            "hello",
+        )))
+        .message_id("msg-1".to_string());
+        let notification = SessionNotification::new(
+            SessionId::new("s1"),
+            SessionUpdate::AgentMessageChunk(chunk),
+        );
+        let event = map_session_notification(&notification);
+        // message_id field will not exist until Task 1.26 — compile error here
+        assert_eq!(event.message_id, Some("msg-1".to_string()));
+    }
+
+    #[test]
     fn filter_keeps_stdio_always() {
         let servers = vec![AcpMcpServerConfig::Stdio {
             name: "s".into(),
