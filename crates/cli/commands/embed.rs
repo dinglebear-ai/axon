@@ -99,11 +99,11 @@ async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs =
-        filter_jobs_for_status_view(cfg, embed_service::embed_list_raw(cfg, 50, 0).await?.jobs);
+    let result = embed_service::embed_list_raw(cfg, 50, 0).await?;
     if cfg.json_output {
-        return handle_job_list(cfg, jobs, "Embed");
+        return handle_job_list(cfg, &result, "Embed");
     }
+    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
 
     println!("{}", primary("Embed Jobs"));
     if jobs.is_empty() {
@@ -147,6 +147,20 @@ async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let err_line = error(&format!("↳ {err}"));
             println!("       {err_line}");
         }
+    }
+
+    if result.is_truncated() {
+        println!(
+            "  {}",
+            muted(&format!(
+                "Showing {} of {} total — use --offset {} for next page",
+                jobs.len(),
+                result.total,
+                result.offset + result.limit,
+            ))
+        );
+    } else {
+        println!("  {}", muted(&format!("{} total", result.total)));
     }
     Ok(())
 }

@@ -76,6 +76,10 @@ pub async fn ingest_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
     recover_stale_ingest_jobs(cfg).await
 }
 
+pub async fn ingest_count(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    count_ingest_jobs(cfg).await
+}
+
 pub async fn ingest_status_raw(
     cfg: &Config,
     id: Uuid,

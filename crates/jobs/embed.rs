@@ -33,7 +33,7 @@ struct EmbedJobConfig {
     source_type: Option<String>,
 }
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct EmbedJob {
     pub id: Uuid,
     pub status: String,

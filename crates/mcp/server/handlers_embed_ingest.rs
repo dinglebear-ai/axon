@@ -13,8 +13,8 @@ use crate::crates::services::embed::{
     embed_status,
 };
 use crate::crates::services::ingest::{
-    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
-    ingest_start, ingest_status,
+    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_count, ingest_list,
+    ingest_recover, ingest_start, ingest_status,
 };
 use rmcp::ErrorData;
 
@@ -204,19 +204,24 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = ingest_list(
-            self.cfg.as_ref(),
-            limit,
-            i64::try_from(offset).unwrap_or(i64::MAX),
-        )
-        .await
-        .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
+        let offset_i64 = i64::try_from(offset).unwrap_or(i64::MAX);
+        let result = ingest_list(self.cfg.as_ref(), limit, offset_i64)
+            .await
+            .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
+        let total = ingest_count(self.cfg.as_ref()).await.unwrap_or(0);
+        let truncated = total > offset_i64 + limit;
         respond_with_mode(
             "ingest",
             "list",
             response_mode,
             "ingest-list",
-            serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            serde_json::json!({
+                "jobs": result.payload,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "truncated": truncated,
+            }),
             InlineHint::Default,
         )
         .await

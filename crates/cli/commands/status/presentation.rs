@@ -12,6 +12,7 @@ use crate::crates::jobs::extract::ExtractJob;
 use crate::crates::jobs::graph::GraphJob;
 use crate::crates::jobs::ingest::IngestJob;
 use crate::crates::jobs::refresh::RefreshJob;
+use crate::crates::services::types::StatusTotals;
 use chrono::{DateTime, Utc};
 
 pub(super) fn emit_status_human(
@@ -21,6 +22,7 @@ pub(super) fn emit_status_human(
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
     graph_jobs: &[GraphJob],
+    totals: &StatusTotals,
 ) {
     print_totals(
         crawl_jobs,
@@ -29,6 +31,7 @@ pub(super) fn emit_status_human(
         ingest_jobs,
         refresh_jobs,
         graph_jobs,
+        totals,
     );
     print_failure_summary(
         crawl_jobs,
@@ -84,6 +87,7 @@ fn print_totals(
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
     graph_jobs: &[GraphJob],
+    totals: &StatusTotals,
 ) {
     let crawl_statuses: Vec<&str> = crawl_jobs.iter().map(|j| j.status.as_str()).collect();
     let extract_statuses: Vec<&str> = extract_jobs.iter().map(|j| j.status.as_str()).collect();
@@ -94,25 +98,31 @@ fn print_totals(
 
     println!("{}", primary("Job Status"));
     println!(
-        "  {}  {}    {}  {}    {}  {}    {}  {}",
+        "  {}  {}{}    {}  {}{}    {}  {}{}    {}  {}{}",
         muted("Crawl"),
         status_breakdown(&crawl_statuses),
+        muted(&format!(" ({} total)", totals.crawl)),
         muted("Embed"),
         status_breakdown(&embed_statuses),
+        muted(&format!(" ({} total)", totals.embed)),
         muted("Ingest"),
         status_breakdown(&ingest_statuses),
+        muted(&format!(" ({} total)", totals.ingest)),
         muted("Extract"),
         status_breakdown(&extract_statuses),
+        muted(&format!(" ({} total)", totals.extract)),
     );
     println!(
-        "  {}  {}",
+        "  {}  {}{}",
         muted("Refresh"),
         status_breakdown(&refresh_statuses),
+        muted(&format!(" ({} total)", totals.refresh)),
     );
     println!(
-        "  {}  {}",
+        "  {}  {}{}",
         muted("Graph"),
         status_breakdown(&graph_statuses),
+        muted(&format!(" ({} total)", totals.graph)),
     );
     println!();
 }

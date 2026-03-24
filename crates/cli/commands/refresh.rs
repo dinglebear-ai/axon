@@ -129,8 +129,8 @@ async fn handle_refresh_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn handle_refresh_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = refresh_service::refresh_list(cfg, 50, 0).await?.jobs;
-    handle_job_list(cfg, jobs, "Refresh")
+    let result = refresh_service::refresh_list(cfg, 50, 0).await?;
+    handle_job_list(cfg, &result, "Refresh")
 }
 
 async fn handle_refresh_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {

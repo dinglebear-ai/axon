@@ -9,6 +9,7 @@ use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_st
 use crate::crates::jobs::ingest as ingest_jobs;
 use crate::crates::jobs::ingest::IngestJob;
 use crate::crates::services::ingest::{self as ingest_service, IngestSource};
+use crate::crates::services::types::JobListResult;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -52,7 +53,11 @@ pub async fn maybe_handle_ingest_subcommand(
                 None
             };
             let jobs = ingest_jobs::list_ingest_jobs(cfg, source_filter, 50, 0).await?;
-            handle_ingest_list(cfg, jobs).await?;
+            let total = ingest_jobs::count_ingest_jobs(cfg)
+                .await
+                .unwrap_or(jobs.len() as i64);
+            let result = JobListResult::new(jobs, total, 50, 0);
+            handle_ingest_list(cfg, result).await?;
         }
         "cleanup" => {
             let removed = ingest_jobs::cleanup_ingest_jobs(cfg).await?;
@@ -197,16 +202,19 @@ async fn handle_ingest_status(
     Ok(())
 }
 
-async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, jobs);
+async fn handle_ingest_list(
+    cfg: &Config,
+    result: JobListResult<IngestJob>,
+) -> Result<(), Box<dyn Error>> {
+    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
     if cfg.json_output {
-        handle_job_list(cfg, jobs, "Ingest")?;
+        handle_job_list(cfg, &result, "Ingest")?;
     } else {
         println!("{}", primary("Ingest Jobs"));
         if jobs.is_empty() {
             println!("  {}", muted("No ingest jobs found."));
         } else {
-            for job in jobs {
+            for job in &jobs {
                 let progress = ingest_progress(&job.result_json)
                     .map(|p| format!(" [{p}]"))
                     .unwrap_or_default();
@@ -221,6 +229,20 @@ async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Bo
                     job.target
                 );
             }
+        }
+
+        if result.is_truncated() {
+            println!(
+                "  {}",
+                muted(&format!(
+                    "Showing {} of {} total — use --offset {} for next page",
+                    jobs.len(),
+                    result.total,
+                    result.offset + result.limit,
+                ))
+            );
+        } else {
+            println!("  {}", muted(&format!("{} total", result.total)));
         }
     }
     Ok(())

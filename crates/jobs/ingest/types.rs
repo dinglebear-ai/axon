@@ -32,7 +32,7 @@ pub struct IngestJobConfig {
     pub collection: String,
 }
 
-#[derive(Debug, FromRow, Serialize, Deserialize)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct IngestJob {
     pub id: Uuid,
     /// Raw status string from the database. Use [`IngestJob::status()`] for

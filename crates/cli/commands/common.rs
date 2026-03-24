@@ -5,6 +5,7 @@ use crate::crates::core::config::{CommandKind, Config};
 use crate::crates::core::http::normalize_url;
 use crate::crates::core::logging::log_warn;
 use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
+use crate::crates::services::types::JobListResult;
 use crate::crates::services::types::ServiceTimeRange;
 use std::collections::HashSet;
 
@@ -469,32 +470,52 @@ pub fn handle_job_errors<T: JobStatus + serde::Serialize>(
     Ok(())
 }
 
-pub fn handle_job_list<T: JobStatus + serde::Serialize>(
+pub fn handle_job_list<T: JobStatus + serde::Serialize + Clone>(
     cfg: &Config,
-    jobs: Vec<T>,
+    result: &JobListResult<T>,
     command_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, jobs);
+    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
     if cfg.json_output {
         let entries: Vec<serde_json::Value> =
             jobs.iter().map(|j| j.to_summary_entry_json()).collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
+        let out = serde_json::json!({
+            "jobs": entries,
+            "total": result.total,
+            "limit": result.limit,
+            "offset": result.offset,
+            "truncated": result.is_truncated(),
+        });
+        println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(());
     }
 
     println!("{}", primary(&format!("{command_name} Jobs")));
     if jobs.is_empty() {
         println!("  {}", muted(&format!("No {command_name} jobs found.")));
-        return Ok(());
+    } else {
+        for job in &jobs {
+            println!(
+                "  {} {} {}",
+                symbol_for_status(job.status()),
+                accent(&job.id().to_string()),
+                status_text(job.status())
+            );
+        }
     }
 
-    for job in jobs {
+    if result.is_truncated() {
         println!(
-            "  {} {} {}",
-            symbol_for_status(job.status()),
-            accent(&job.id().to_string()),
-            status_text(job.status())
+            "  {}",
+            muted(&format!(
+                "Showing {} of {} total — use --offset {} for next page",
+                jobs.len(),
+                result.total,
+                result.offset + result.limit,
+            ))
         );
+    } else {
+        println!("  {}", muted(&format!("{} total", result.total)));
     }
     Ok(())
 }

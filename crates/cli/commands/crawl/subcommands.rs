@@ -217,11 +217,18 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 }
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs =
-        filter_jobs_for_status_view(cfg, crawl_service::crawl_list_raw(cfg, 50, 0).await?.jobs);
+    let result = crawl_service::crawl_list_raw(cfg, 50, 0).await?;
+    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
+        let out = serde_json::json!({
+            "jobs": entries,
+            "total": result.total,
+            "limit": result.limit,
+            "offset": result.offset,
+            "truncated": result.is_truncated(),
+        });
+        println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("{}", primary("Crawl Jobs"));
         if jobs.is_empty() {
@@ -248,6 +255,20 @@ async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
                     );
                 }
             }
+        }
+
+        if result.is_truncated() {
+            println!(
+                "  {}",
+                muted(&format!(
+                    "Showing {} of {} total — use --offset {} for next page",
+                    jobs.len(),
+                    result.total,
+                    result.offset + result.limit,
+                ))
+            );
+        } else {
+            println!("  {}", muted(&format!("{} total", result.total)));
         }
     }
     Ok(())

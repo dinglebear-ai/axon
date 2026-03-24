@@ -1,15 +1,15 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
-use crate::crates::jobs::crawl::{CrawlJob, list_jobs};
-use crate::crates::jobs::embed::{EmbedJob, list_embed_jobs};
-use crate::crates::jobs::extract::{ExtractJob, list_extract_jobs};
-use crate::crates::jobs::graph::{GraphJob, list_graph_jobs};
-use crate::crates::jobs::ingest::{IngestJob, list_ingest_jobs};
-use crate::crates::jobs::refresh::{RefreshJob, list_refresh_jobs};
+use crate::crates::jobs::crawl::{CrawlJob, count_jobs, list_jobs};
+use crate::crates::jobs::embed::{EmbedJob, count_embed_jobs, list_embed_jobs};
+use crate::crates::jobs::extract::{ExtractJob, count_extract_jobs, list_extract_jobs};
+use crate::crates::jobs::graph::{GraphJob, count_graph_jobs, list_graph_jobs};
+use crate::crates::jobs::ingest::{IngestJob, count_ingest_jobs, list_ingest_jobs};
+use crate::crates::jobs::refresh::{RefreshJob, count_refresh_jobs, list_refresh_jobs};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{
     DedupeResult, DetailedDomainFacet, DetailedDomainsResult, DoctorResult, DomainFacet,
-    DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
+    DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult, StatusTotals,
 };
 use crate::crates::vector::ops::qdrant::{
     dedupe_payload, domains_payload, env_usize_clamped, payload_domain, payload_url,
@@ -244,7 +244,7 @@ pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
 
 #[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
+    let (jobs, totals) = load_status_jobs(cfg).await?;
     let payload = build_status_payload(
         &jobs.crawl,
         &jobs.extract,
@@ -252,18 +252,23 @@ pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
         &jobs.ingest,
         &jobs.refresh,
         &jobs.graph,
+        &totals,
     );
     let text = [
         "Axon Status".to_string(),
-        format!("crawl jobs:   {}", jobs.crawl.len()),
-        format!("extract jobs: {}", jobs.extract.len()),
-        format!("embed jobs:   {}", jobs.embed.len()),
-        format!("ingest jobs:  {}", jobs.ingest.len()),
-        format!("refresh jobs: {}", jobs.refresh.len()),
-        format!("graph jobs:   {}", jobs.graph.len()),
+        format!("crawl jobs:   {} total", totals.crawl),
+        format!("extract jobs: {} total", totals.extract),
+        format!("embed jobs:   {} total", totals.embed),
+        format!("ingest jobs:  {} total", totals.ingest),
+        format!("refresh jobs: {} total", totals.refresh),
+        format!("graph jobs:   {} total", totals.graph),
     ]
     .join("\n");
-    Ok(StatusResult { payload, text })
+    Ok(StatusResult {
+        payload,
+        text,
+        totals,
+    })
 }
 
 // ── Status business logic ───────────────────────────────────────────────────
@@ -294,8 +299,23 @@ fn filter_and_view<T>(
         .collect()
 }
 
-pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn Error>> {
-    let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
+pub(crate) async fn load_status_jobs(
+    cfg: &Config,
+) -> Result<(StatusJobs, StatusTotals), Box<dyn Error>> {
+    let (
+        crawl_raw,
+        extract_raw,
+        embed_raw,
+        ingest_raw,
+        refresh_raw,
+        graph_raw,
+        crawl_total,
+        extract_total,
+        embed_total,
+        ingest_total,
+        refresh_total,
+        graph_total,
+    ) = tokio::join!(
         async {
             list_jobs(cfg, 20, 0)
                 .await
@@ -326,9 +346,15 @@ pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn
                 .await
                 .map_err(|e| format!("graph: {e}"))
         },
+        async { count_jobs(cfg).await.unwrap_or(0) },
+        async { count_extract_jobs(cfg).await.unwrap_or(0) },
+        async { count_embed_jobs(cfg).await.unwrap_or(0) },
+        async { count_ingest_jobs(cfg).await.unwrap_or(0) },
+        async { count_refresh_jobs(cfg).await.unwrap_or(0) },
+        async { count_graph_jobs(cfg).await.unwrap_or(0) },
     );
 
-    Ok(StatusJobs {
+    let jobs = StatusJobs {
         crawl: filter_and_view(cfg, crawl_raw?, |j| &j.status, |j| j.error_text.as_deref()),
         extract: filter_and_view(
             cfg,
@@ -345,7 +371,16 @@ pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn
             |j| j.error_text.as_deref(),
         ),
         graph: filter_and_view(cfg, graph_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-    })
+    };
+    let totals = StatusTotals {
+        crawl: crawl_total,
+        extract: extract_total,
+        embed: embed_total,
+        ingest: ingest_total,
+        refresh: refresh_total,
+        graph: graph_total,
+    };
+    Ok((jobs, totals))
 }
 
 pub(crate) fn build_status_payload(
@@ -355,6 +390,7 @@ pub(crate) fn build_status_payload(
     ingest_jobs: &[IngestJob],
     refresh_jobs: &[RefreshJob],
     graph_jobs: &[GraphJob],
+    totals: &StatusTotals,
 ) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": crawl_jobs,
@@ -363,6 +399,14 @@ pub(crate) fn build_status_payload(
         "local_ingest_jobs": ingest_jobs,
         "local_refresh_jobs": refresh_jobs,
         "local_graph_jobs": graph_jobs,
+        "totals": {
+            "crawl": totals.crawl,
+            "extract": totals.extract,
+            "embed": totals.embed,
+            "ingest": totals.ingest,
+            "refresh": totals.refresh,
+            "graph": totals.graph,
+        },
     })
 }
 
@@ -644,9 +688,10 @@ mod tests {
 
     #[test]
     fn status_payload_includes_refresh_jobs_key() {
-        let payload = build_status_payload(&[], &[], &[], &[], &[], &[]);
+        let payload = build_status_payload(&[], &[], &[], &[], &[], &[], &StatusTotals::default());
         assert!(payload.get("local_refresh_jobs").is_some());
         assert!(payload.get("local_graph_jobs").is_some());
+        assert!(payload.get("totals").is_some());
     }
 
     #[test]

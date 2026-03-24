@@ -39,7 +39,7 @@ struct ExtractJobConfig {
     render_mode: crate::crates::core::config::RenderMode,
 }
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct ExtractJob {
     pub id: Uuid,
     pub status: String,

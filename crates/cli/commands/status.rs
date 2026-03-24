@@ -21,7 +21,7 @@ pub async fn run_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 pub async fn status_snapshot(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
+    let (jobs, totals) = load_status_jobs(cfg).await?;
     Ok(build_status_payload(
         &jobs.crawl,
         &jobs.extract,
@@ -29,24 +29,25 @@ pub async fn status_snapshot(cfg: &Config) -> Result<serde_json::Value, Box<dyn 
         &jobs.ingest,
         &jobs.refresh,
         &jobs.graph,
+        &totals,
     ))
 }
 
 pub async fn status_text(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
+    let (_jobs, totals) = load_status_jobs(cfg).await?;
     let mut lines = Vec::new();
     lines.push("Axon Status".to_string());
-    lines.push(format!("crawl jobs:   {}", jobs.crawl.len()));
-    lines.push(format!("extract jobs: {}", jobs.extract.len()));
-    lines.push(format!("embed jobs:   {}", jobs.embed.len()));
-    lines.push(format!("ingest jobs:  {}", jobs.ingest.len()));
-    lines.push(format!("refresh jobs: {}", jobs.refresh.len()));
-    lines.push(format!("graph jobs:   {}", jobs.graph.len()));
+    lines.push(format!("crawl jobs:   {} total", totals.crawl));
+    lines.push(format!("extract jobs: {} total", totals.extract));
+    lines.push(format!("embed jobs:   {} total", totals.embed));
+    lines.push(format!("ingest jobs:  {} total", totals.ingest));
+    lines.push(format!("refresh jobs: {} total", totals.refresh));
+    lines.push(format!("graph jobs:   {} total", totals.graph));
     Ok(lines.join("\n"))
 }
 
 async fn run_status_impl(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
+    let (jobs, totals) = load_status_jobs(cfg).await?;
     presentation::emit_status_human(
         &jobs.crawl,
         &jobs.extract,
@@ -54,6 +55,7 @@ async fn run_status_impl(cfg: &Config) -> Result<(), Box<dyn Error>> {
         &jobs.ingest,
         &jobs.refresh,
         &jobs.graph,
+        &totals,
     );
     Ok(())
 }

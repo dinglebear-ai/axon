@@ -71,7 +71,7 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
         }
         "list" => {
             let result = extract_service::extract_list_raw(cfg, 50, 0).await?;
-            handle_job_list(cfg, result.jobs, "Extract")?;
+            handle_job_list(cfg, &result, "Extract")?;
         }
         "cleanup" => {
             let removed = extract_service::extract_cleanup(cfg).await?;

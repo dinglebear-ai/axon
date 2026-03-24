@@ -86,10 +86,22 @@ pub struct DebugResult {
     pub payload: serde_json::Value,
 }
 
+/// True DB-level job counts across all job types.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct StatusTotals {
+    pub crawl: i64,
+    pub extract: i64,
+    pub embed: i64,
+    pub ingest: i64,
+    pub refresh: i64,
+    pub graph: i64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusResult {
     pub payload: serde_json::Value,
     pub text: String,
+    pub totals: StatusTotals,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -51,7 +51,7 @@ fn default_cache_enabled() -> bool {
     true
 }
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct CrawlJob {
     pub id: Uuid,
     pub url: String,
