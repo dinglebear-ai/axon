@@ -618,7 +618,7 @@ _Requirements: FR-004_ / _Design: Section 4.1_
 
 ---
 
-- [ ] V11 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo test --lib`
+- [x] V11 [VERIFY] Quality checkpoint: `cargo fmt --check && cargo clippy && cargo test --lib`
   - **Do**: Run quality suite with tests
   - **Verify**: All commands exit 0
   - **Done when**: All tests pass
@@ -628,7 +628,7 @@ _Requirements: FR-004_ / _Design: Section 4.1_
 
 ### Group B: Mapping Edge Case Tests
 
-## Task 3.4 — Test: ToolCallContent::Diff with None old_text (new file creation)
+## Task 3.4 — Test: ToolCallContent::Diff with None old_text (new file creation) <!-- DONE -->
 
 **Do**: Write a unit test in `mapping.rs` tests: construct a `ToolCallContent::Diff` with `old_text: None` and non-empty `new_text`, call `extract_content_text`, verify it handles the None case gracefully.
 **Files**: `crates/services/acp/mapping.rs`

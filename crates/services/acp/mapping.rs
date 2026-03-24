@@ -606,4 +606,32 @@ mod tests {
             "expected Boolean config to produce options"
         );
     }
+
+    #[test]
+    fn test_extract_content_diff_none_old_text() {
+        use agent_client_protocol::{Diff, SessionUpdate, ToolCall, ToolCallContent, ToolCallId};
+        // Simulate new file creation: old_text is None, only new_text present.
+        let diff = Diff::new("/path/to/new_file.rs", "fn main() {}");
+        let tool_call = ToolCall::new(
+            ToolCallId::new("call_new_file"),
+            "str_replace_based_edit_tool",
+        )
+        .content(vec![ToolCallContent::Diff(diff)]);
+        let update = SessionUpdate::ToolCall(tool_call);
+        let result = extract_tool_content(&update);
+        assert!(
+            result.is_some(),
+            "expected Some for Diff with None old_text"
+        );
+        let text = result.unwrap();
+        assert!(
+            text.contains("fn main() {}"),
+            "expected new_text in result: {text}"
+        );
+        // old_text is None → rendered as empty string between the markers
+        assert!(
+            !text.contains("old content"),
+            "result should not contain stale old content: {text}"
+        );
+    }
 }
