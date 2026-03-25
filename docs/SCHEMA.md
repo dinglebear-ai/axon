@@ -21,7 +21,11 @@ Tables are auto-created on first worker/command start via `CREATE TABLE IF NOT E
 | `result_json` | JSONB | NULL | — | Crawl results (pages found, stats) |
 | `config_json` | JSONB | NOT NULL | — | Serialized job configuration |
 
-**Index:** `idx_axon_crawl_jobs_status` on `status`.
+**Indexes:**
+- `idx_axon_crawl_jobs_status` on `status`
+- `idx_axon_crawl_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_axon_crawl_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'`
+- `idx_axon_crawl_jobs_running_updated` — partial index on `updated_at ASC WHERE status = 'running'`
 
 ## axon_extract_jobs
 
@@ -38,6 +42,11 @@ Tables are auto-created on first worker/command start via `CREATE TABLE IF NOT E
 | `result_json` | JSONB | NULL | — | Extracted structured data |
 | `config_json` | JSONB | NOT NULL | — | Serialized job configuration |
 
+**Indexes:**
+- `idx_axon_extract_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'`
+- `idx_axon_extract_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_axon_extract_jobs_running_updated` — partial index on `updated_at ASC WHERE status = 'running'`
+
 ## axon_embed_jobs
 
 | Column | Type | Nullable | Default | Description |
@@ -52,6 +61,11 @@ Tables are auto-created on first worker/command start via `CREATE TABLE IF NOT E
 | `input_text` | TEXT | NOT NULL | — | Input path, URL, or text to embed |
 | `result_json` | JSONB | NULL | — | Embedding results (chunk count, point IDs) |
 | `config_json` | JSONB | NOT NULL | — | Serialized job configuration |
+
+**Indexes:**
+- `idx_axon_embed_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_axon_embed_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'`
+- `idx_axon_embed_jobs_running_updated` — partial index on `updated_at ASC WHERE status = 'running'`
 
 ## axon_graph_jobs
 
@@ -96,7 +110,10 @@ This table differs structurally from the other four: it uses `source_type` and `
 | `result_json` | JSONB | NULL | — | Ingest results: `{"chunks_embedded": N}` |
 | `config_json` | JSONB | NOT NULL | — | Serialized `IngestJobConfig` (source variant + collection name) |
 
-**Index:** `idx_axon_ingest_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'` for efficient FIFO queue polling.
+**Indexes:**
+- `idx_axon_ingest_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'` for efficient FIFO queue polling
+- `idx_axon_ingest_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_axon_ingest_jobs_running_updated` — partial index on `updated_at ASC WHERE status = 'running'`
 
 ### source_type values
 
@@ -134,7 +151,10 @@ Tracks refresh jobs that re-fetch previously crawled URLs to detect content chan
 | `result_json` | JSONB | NULL | — | Progress/final result: `checked`, `changed`, `unchanged`, `not_modified`, `failed`, `embedded_chunks` |
 | `config_json` | JSONB | NOT NULL | — | Serialized `RefreshJobConfig` (urls, embed flag, output_dir) |
 
-**Index:** `idx_axon_refresh_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'` for efficient FIFO queue polling.
+**Indexes:**
+- `idx_axon_refresh_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'` for efficient FIFO queue polling
+- `idx_axon_refresh_jobs_status_created_desc` on `(status, created_at DESC)`
+- `idx_axon_refresh_jobs_running_updated` — partial index on `updated_at ASC WHERE status = 'running'`
 
 **Notes:**
 - `result_json` is updated periodically during processing (every URL) with a `"phase": "refreshing"` progress snapshot, then finalized with `"phase": "completed"` on success.

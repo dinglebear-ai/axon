@@ -1,5 +1,5 @@
 # axon refresh
-Last Modified: 2026-03-10
+Last Modified: 2026-03-25
 
 Revalidate already-known URLs and keep indexed content fresh without full rediscovery crawls.
 
@@ -52,7 +52,7 @@ axon refresh schedule enable <name>
 axon refresh schedule disable <name>
 axon refresh schedule delete <name>
 axon refresh schedule worker
-axon refresh schedule run-due [--batch N]
+axon refresh schedule run-due [--batch <n>]     # default: 25
 ```
 
 `refresh schedule` is a compatibility surface backed by top-level watch definitions (`task_type=refresh`). You can continue using the same commands/scripts; schedule rows are bridged to watch scheduler state.
@@ -109,7 +109,7 @@ axon refresh schedule add docs-explicit --urls "https://docs.rs/spider,https://q
 axon refresh schedule add github:rust-lang/rust --tier high
 
 # Run one due-schedule sweep now
-axon refresh schedule run-due --batch 50 --json
+axon refresh schedule run-due --batch 25 --json
 ```
 
 ## Notes

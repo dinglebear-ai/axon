@@ -80,8 +80,8 @@ The TypeScript `MODES` array in `apps/web/lib/ws-protocol.ts` must contain a mat
 | `crawl` | content | yes | yes |
 | `map` | content | yes | no |
 | `extract` | content | yes | yes |
-| `search` | rag | **no** (streaming text) | no |
-| `research` | rag | **no** (streaming text) | no |
+| `search` | rag | yes | no |
+| `research` | rag | yes | no |
 | `embed` | ops | yes | yes |
 | `debug` | service | yes | no |
 | `doctor` | service | yes | no |
@@ -100,9 +100,11 @@ The TypeScript `MODES` array in `apps/web/lib/ws-protocol.ts` must contain a mat
 | `youtube` | ingest | yes | yes |
 | `sessions` | ingest | yes | no |
 | `screenshot` | content | yes | no |
+| `pulse_chat` | acp | no | no |
+| `mcp_refresh` | internal | yes | no |
+| `pulse_chat_probe` | acp/internal | no | no |
 
-> **Rule:** `search` and `research` are in `NO_JSON_MODES` — they stream narrative text and must
-> not receive `--json`. All other modes receive `--json` by default.
+> **Rule:** `NO_JSON_MODES` is currently empty — all modes receive `--json` by default (including `search` and `research`, which were previously excluded but are now routed through structured JSON dispatch). The `evaluate` events path disables `--json` via a separate guard in `args.rs`.
 
 ---
 
@@ -133,7 +135,7 @@ Unknown flags are silently ignored — they are never forwarded to the subproces
 | `max_posts` | `--max-posts` |
 | `min_score` | `--min-score` |
 | `scrape_links` | `--scrape-links` |
-| `no_source` | `--no-source` |
+| `include_source` | `--include-source` |
 | `claude` | `--claude` |
 | `codex` | `--codex` |
 | `gemini` | `--gemini` |
@@ -145,6 +147,19 @@ Unknown flags are silently ignored — they are never forwarded to the subproces
 | `batch_concurrency` | `--batch-concurrency` |
 | `depth` | `--depth` |
 | `responses_mode` | `--responses-mode` |
+| `agent` | `--agent` |
+| `model` | `--model` |
+| `session_mode` | `--session-mode` |
+| `mcp_servers` | `--mcp-servers` |
+| `blocked_mcp_tools` | `--blocked-mcp-tools` |
+| `session_id` | `--session-id` |
+| `assistant_mode` | `--assistant-mode` |
+| `enable_fs` | `--enable-fs` |
+| `enable_terminal` | `--enable-terminal` |
+| `permission_timeout_secs` | `--permission-timeout-secs` |
+| `adapter_timeout_secs` | `--adapter-timeout-secs` |
+| `offset` | `--offset` |
+| `max_points` | `--max-points` |
 
 > **Security note:** `output_dir` values are validated for path traversal (`..` components)
 > before being forwarded to the subprocess. Values containing parent-directory components

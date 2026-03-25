@@ -1,5 +1,5 @@
 # axon ingest
-Last Modified: 2026-03-10
+Last Modified: 2026-03-25
 
 Ingest external sources (GitHub, Reddit, YouTube) into Qdrant. Source type is auto-detected from the target — no need to choose the right command.
 
@@ -66,6 +66,9 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--no-source` | `false` | Skip source-code file indexing. Source code is included by default with tree-sitter AST-aware chunking for supported languages (Rust, Python, JavaScript, TypeScript, Go, Bash). |
+| `--include-source` | `false` | Explicitly include source code files (redundant when source is already on by default; useful to make intent explicit). |
+| `--max-issues <n>` | `100` | Maximum issues to fetch per repository (0 = unlimited). |
+| `--max-prs <n>` | `100` | Maximum pull requests to fetch per repository (0 = unlimited). |
 
 ### Reddit-specific flags
 
@@ -76,7 +79,7 @@ All global flags apply. Key flags:
 | `--max-posts <n>` | `25` | Maximum posts to fetch (0 = unlimited). |
 | `--min-score <n>` | `0` | Minimum score threshold for posts and comments. |
 | `--depth <n>` | `2` | Comment traversal depth. |
-| `--scrape-links <bool>` | `false` | Scrape content of linked URLs in link posts. |
+| `--scrape-links` | off | Scrape content of linked URLs in link posts. Presence flag — include to enable. |
 
 ## Job Subcommands
 

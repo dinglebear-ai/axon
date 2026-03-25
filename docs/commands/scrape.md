@@ -69,4 +69,4 @@ axon scrape https://example.com --embed false
 - Non-2xx responses fail that URL with `scrape failed: HTTP <code>`.
 - `--output` with multiple URLs is rejected to prevent overwrite.
 - Scrape errors are reported per URL; other URLs continue.
-- When `--embed true`, markdown is written under `<output-dir>/scrape-markdown/` and embedded once at the end.
+- When `--embed true`, markdown is written under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embedded once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs.

@@ -73,6 +73,29 @@ async fn apply_browser_settings(
     mut website: Website,
     mode: RenderMode,
 ) -> Result<Website, Box<dyn Error>> {
+    // Always resolve and pin the Chrome connection URL when configured.
+    // Spider reads CHROME_URL from the environment as a fallback (CHROM_BASE), which
+    // may contain an unresolvable Docker hostname. By always calling with_chrome_connection
+    // here, we ensure spider uses axon's normalised localhost URL for all render modes —
+    // including AutoSwitch, which also spawns Chrome internally when needed.
+    if let Some(ref remote_url) = cfg.chrome_remote_url {
+        // If remote_url is already a ws:// URL (threaded from the bootstrap
+        // probe), resolve_cdp_ws_url returns it directly with no second fetch.
+        // Otherwise it discovers via /json/version and normalises any Docker
+        // hostname to 127.0.0.1. Inside Docker, resolve_cdp_ws_url returns None
+        // and we fall back to the discovery URL (spider.rs fetches it itself).
+        let chrome_url = match resolve_cdp_ws_url(remote_url).await {
+            Some(ws_url) => {
+                crate::crates::core::logging::log_info(&format!(
+                    "[Chrome] CDP WebSocket resolved: {ws_url}"
+                ));
+                ws_url
+            }
+            None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.to_string()),
+        };
+        website.with_chrome_connection(Some(chrome_url));
+    }
+
     if matches!(mode, RenderMode::Chrome) {
         // CDP path — primary browser mode. chromiumoxide connects directly via CDP,
         // giving access to stealth, fingerprint, intercept, and network-idle features.
@@ -87,23 +110,6 @@ async fn apply_browser_settings(
         website.configuration.disable_log = true;
         if cfg.bypass_csp {
             website.with_csp_bypass(true);
-        }
-        if let Some(ref remote_url) = cfg.chrome_remote_url {
-            // If remote_url is already a ws:// URL (threaded from the bootstrap
-            // probe), resolve_cdp_ws_url returns it directly with no second fetch.
-            // Otherwise it discovers via /json/version and normalises any Docker
-            // hostname to 127.0.0.1. Inside Docker, resolve_cdp_ws_url returns None
-            // and we fall back to the discovery URL (spider.rs fetches it itself).
-            let chrome_url = match resolve_cdp_ws_url(remote_url).await {
-                Some(ws_url) => {
-                    crate::crates::core::logging::log_info(&format!(
-                        "[Chrome] CDP WebSocket resolved: {ws_url}"
-                    ));
-                    ws_url
-                }
-                None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.to_string()),
-            };
-            website.with_chrome_connection(Some(chrome_url));
         }
         // `idle_network0` calls `wait_for_network_idle()` — waits until the network
         // has been fully quiet for 500 ms. This is essential for CSR frameworks

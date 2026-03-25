@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axon Status Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1b2a;
+    --surface: #1a2a3a;
+    --surface2: #243447;
+    --border: #2d4057;
+    --text: #e8eef4;
+    --text-muted: #8aa3b8;
+    --accent: #4da8da;
+    --pending: #f0a500;
+    --running: #4da8da;
+    --completed: #3ddc84;
+    --failed: #ff5555;
+    --canceled: #888;
+  }
+
+  body.light {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --surface2: #eef1f5;
+    --border: #d0d8e4;
+    --text: #1a2a3a;
+    --text-muted: #6b7c8d;
+    --accent: #1a6fa0;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  #app {
+    padding: 16px;
+  }
+
+  /* Loading state */
+  #loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    gap: 12px;
+    color: var(--text-muted);
+  }
+
+  .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Dashboard */
+  #dashboard {
+    display: none;
+  }
+
+  #dashboard.visible {
+    display: block;
+  }
+
+  .dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dashboard-title span.logo {
+    color: var(--accent);
+    font-size: 17px;
+  }
+
+  .last-updated {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* Grid */
+  .sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  /* Section */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .section-title .icon {
+    font-size: 14px;
+  }
+
+  .section-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 7px;
+  }
+
+  .section-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .section-body::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .section-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .section-body::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+  }
+
+  /* Empty state */
+  .empty-state {
+    padding: 20px 12px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* Job card */
+  .job-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .job-card-top {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.pending  { background: var(--pending); }
+  .status-dot.running  { background: var(--running); animation: pulse 1.2s ease-in-out infinite; }
+  .status-dot.completed { background: var(--completed); }
+  .status-dot.failed   { background: var(--failed); }
+  .status-dot.canceled { background: var(--canceled); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.35; }
+  }
+
+  .job-label {
+    flex: 1;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .status-pill.pending  { background: #3a2800; color: var(--pending); }
+  .status-pill.running  { background: #0d2a3a; color: var(--running); }
+  .status-pill.completed { background: #0d2a1a; color: var(--completed); }
+  .status-pill.failed   { background: #2a0d0d; color: var(--failed); }
+  .status-pill.canceled { background: #1a1a1a; color: var(--canceled); }
+
+  .job-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .job-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .job-error {
+    font-size: 11px;
+    color: var(--failed);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="loading">
+    <div class="spinner"></div>
+    <span>Waiting for status data&hellip;</span>
+  </div>
+
+  <div id="dashboard">
+    <div class="dashboard-header">
+      <div class="dashboard-title">
+        <span class="logo">&#9650;</span>
+        Axon Job Queue
+      </div>
+      <div class="last-updated" id="last-updated"></div>
+    </div>
+    <div class="sections-grid" id="sections-grid"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function escHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function relativeTime(isoStr) {
+    if (!isoStr) return '';
+    var now = Date.now();
+    var then = new Date(isoStr).getTime();
+    if (isNaN(then)) return '';
+    var diff = Math.floor((now - then) / 1000);
+    if (diff < 5)   return 'just now';
+    if (diff < 60)  return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  function jobLabel(job) {
+    if (job.url && job.url.length > 0) return job.url;
+    if (job.source_type && job.target) return job.source_type + ': ' + job.target;
+    if (job.target) return job.target;
+    if (job.input_text && job.input_text.length > 0) return job.input_text;
+    if (job.urls_json) {
+      try {
+        var arr = JSON.parse(job.urls_json);
+        if (Array.isArray(arr) && arr.length > 0) return arr[0];
+      } catch (_) {}
+    }
+    return String(job.id).slice(0, 8);
+  }
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.body.classList.add('light');
+    } else {
+      document.body.classList.remove('light');
+    }
+  }
+
+  // ── Sections config ──────────────────────────────────────────────────────
+
+  var SECTIONS = [
+    { key: 'local_crawl_jobs',   label: 'Crawl',   icon: '\uD83D\uDD77\uFE0F' },
+    { key: 'local_extract_jobs', label: 'Extract', icon: '\uD83D\uDD0D' },
+    { key: 'local_embed_jobs',   label: 'Embed',   icon: '\uD83D\uDCE6' },
+    { key: 'local_ingest_jobs',  label: 'Ingest',  icon: '\uD83D\uDCE5' },
+    { key: 'local_refresh_jobs', label: 'Refresh', icon: '\uD83D\uDD04' },
+    { key: 'local_graph_jobs',   label: 'Graph',   icon: '\uD83D\uDD17' },
+  ];
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  function renderJobCard(job) {
+    var status = escHtml(job.status || 'unknown');
+    var label  = escHtml(jobLabel(job));
+    var time   = escHtml(relativeTime(job.updated_at || job.created_at));
+    var err    = job.error_text ? escHtml(job.error_text.slice(0, 120)) : '';
+
+    var metaHtml = '';
+    if (time || err) {
+      var timeHtml = time ? '<span class="job-time">' + time + '</span>' : '';
+      var errHtml  = err  ? '<span class="job-error" title="' + escHtml(job.error_text) + '">' + err + '</span>' : '';
+      metaHtml = '<div class="job-card-meta">' + errHtml + timeHtml + '</div>';
+    }
+
+    return (
+      '<div class="job-card">' +
+        '<div class="job-card-top">' +
+          '<div class="status-dot ' + status + '"></div>' +
+          '<span class="job-label" title="' + label + '">' + label + '</span>' +
+          '<span class="status-pill ' + status + '">' + status + '</span>' +
+        '</div>' +
+        metaHtml +
+      '</div>'
+    );
+  }
+
+  function renderSection(section, jobs) {
+    var count = jobs ? jobs.length : 0;
+    var bodyHtml;
+
+    if (!jobs || jobs.length === 0) {
+      bodyHtml = '<div class="empty-state">No jobs</div>';
+    } else {
+      bodyHtml = jobs.map(renderJobCard).join('');
+    }
+
+    return (
+      '<div class="section">' +
+        '<div class="section-header">' +
+          '<div class="section-title">' +
+            '<span class="icon">' + section.icon + '</span>' +
+            escHtml(section.label) +
+          '</div>' +
+          '<span class="section-count">' + count + '</span>' +
+        '</div>' +
+        '<div class="section-body">' + bodyHtml + '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderDashboard(jobData) {
+    var grid = document.getElementById('sections-grid');
+    var html = SECTIONS.map(function (s) {
+      return renderSection(s, jobData[s.key] || []);
+    }).join('');
+    grid.innerHTML = html;
+
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+
+    document.getElementById('loading').style.display = 'none';
+    var dash = document.getElementById('dashboard');
+    dash.style.display = 'block';
+    dash.classList.add('visible');
+  }
+
+  // ── Data extraction ───────────────────────────────────────────────────────
+
+  function extractJobData(resp) {
+    if (!resp || !resp.data) return null;
+    var mode = resp.data.response_mode;
+
+    var payload;
+    if (mode === 'auto-inline') {
+      payload = resp.data.data;
+    } else if (mode === 'inline' || mode === 'both') {
+      payload = resp.data.inline;
+    } else {
+      payload = resp.data.json || resp.data.data;
+    }
+
+    if (!payload) return null;
+
+    // payload may be { text, json } or the json object directly
+    var json = payload.json || payload;
+    if (typeof json !== 'object' || json === null) return null;
+    return json;
+  }
+
+  // ── MCP Protocol ─────────────────────────────────────────────────────────
+
+  var initialized = false;
+
+  function sendMessage(msg) {
+    window.parent.postMessage(msg, '*');
+  }
+
+  function sendInitialize() {
+    sendMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'ui/initialize',
+      params: {
+        appInfo: {
+          name: 'Axon Status Dashboard',
+          version: '1.0.0',
+        },
+        appCapabilities: {},
+        protocolVersion: '2026-01-26',
+      },
+    });
+  }
+
+  function sendInitialized() {
+    sendMessage({
+      jsonrpc: '2.0',
+      method: 'ui/notifications/initialized',
+      params: {},
+    });
+  }
+
+  function handleToolResult(params) {
+    var content = params && params.content;
+    if (!Array.isArray(content) || content.length === 0) return;
+
+    var first = content[0];
+    var text = (first && first.text) ? first.text : null;
+    if (!text) return;
+
+    var resp;
+    try {
+      resp = JSON.parse(text);
+    } catch (_) {
+      return;
+    }
+
+    if (!resp || !resp.ok || resp.action !== 'status') return;
+
+    var jobData = extractJobData(resp);
+    if (!jobData) return;
+
+    renderDashboard(jobData);
+  }
+
+  function handleMessage(event) {
+    var msg = event.data;
+    if (!msg || typeof msg !== 'object') return;
+
+    // Response to our initialize request
+    if (msg.id === 1 && msg.result !== undefined && !initialized) {
+      initialized = true;
+      var theme = msg.result &&
+                  msg.result.hostContext &&
+                  msg.result.hostContext.theme;
+      if (theme) applyTheme(theme);
+      sendInitialized();
+      return;
+    }
+
+    var method = msg.method;
+    if (!method) return;
+
+    if (method === 'ui/notifications/tool-result') {
+      handleToolResult(msg.params);
+      return;
+    }
+
+    if (method === 'ui/notifications/host-context-changed') {
+      var theme = msg.params && msg.params.hostContext && msg.params.hostContext.theme;
+      if (theme) applyTheme(theme);
+      return;
+    }
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────────
+
+  window.addEventListener('message', handleMessage);
+  sendInitialize();
+}());
+</script>
+</body>
+</html>

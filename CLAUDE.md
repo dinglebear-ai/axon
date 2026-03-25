@@ -483,7 +483,7 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 - **`chrome_headless_new`**: Uses `--headless=new` instead of legacy headless. Better DOM fidelity but slightly different rendering behavior on some sites.
 - **`balance`**: NOT enabled — silently throttles concurrency with zero logging. We manage concurrency explicitly via performance profiles.
 - **`glob`**: NOT enabled — glob URL patterns (`{a,b}`, `[0-9]`) change `crawl_establish` to use `is_allowed()` (budget-aware) instead of `is_allowed_default()`. With `with_limit(1)`, the budget check immediately returns `BudgetExceeded` for the FIRST URL, producing 0 pages from Chrome crawls. axon doesn't use URL glob patterns in its CLI, so this feature is excluded. Do NOT add it back.
-- Full flag inventory: [`docs/spider-feature-flags.md`](docs/spider-feature-flags.md)
+- Full flag inventory: [`docs/SPIDER-FEATURE-FLAGS.md`](docs/SPIDER-FEATURE-FLAGS.md)
 
 ### Subprocess stdout vs stderr
 CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). The web UI streams both: stdout as `"type": "output"`, stderr as `"type": "log"`. ANSI codes stripped via `console::strip_ansi_codes()`.
@@ -598,7 +598,7 @@ Checks: Postgres, Redis, RabbitMQ, Qdrant, TEI, LLM endpoint reachability.
 
 ## Database Schema
 
-Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Full column detail: [`docs/schema.md`](docs/schema.md).
+Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Full column detail: [`docs/SCHEMA.md`](docs/SCHEMA.md).
 
 | Table | Key columns |
 |-------|-------------|

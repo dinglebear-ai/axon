@@ -28,8 +28,8 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
-| `OPENAI_BASE_URL` | OpenAI-compatible API base URL (e.g. `http://host/v1`). **Do not append `/chat/completions`**. |
-| `OPENAI_MODEL` | Model name for answer generation. |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for LLM answer generation — ask fails fast without it. |
+| `OPENAI_MODEL` | Model name passed to the ACP adapter for answer generation. |
 
 ## Flags
 
@@ -39,7 +39,8 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--query <text>` | — | Question text (alternative to positional argument). |
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
-| `--diagnostics` | `false` | Print retrieval diagnostics (candidate pools, scores, source list). |
+| `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, graph entities, authority ratio, dropped by allowlist, top domains). |
+| `--graph` | `false` | Enable graph-enhanced retrieval via Neo4j (requires `AXON_NEO4J_URL`). |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.
@@ -94,7 +95,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 
 ## Notes
 
-- `OPENAI_BASE_URL` must be the base URL only: `http://host/v1` — **not** `http://host/v1/chat/completions`.
+- LLM answer generation goes through the ACP adapter (`AXON_ACP_ADAPTER_CMD`), not directly to an OpenAI-compatible endpoint. `OPENAI_MODEL` is used as the model override passed to the adapter.
 - If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.

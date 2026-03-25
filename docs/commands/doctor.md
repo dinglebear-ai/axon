@@ -24,10 +24,21 @@ All global flags apply. Key flags for this command:
 - Job pipeline readiness for `crawl`, `extract`, `embed`, `ingest`
 - Service health for Postgres, Redis, AMQP, Qdrant, TEI, optional Chrome endpoint
 - OpenAI-compatible endpoint probe via `GET {OPENAI_BASE_URL}/models`
-- Queue names in active config
+- Queue names in active config (`crawl`, `extract`, `embed`, `ingest`)
 - Browser runtime diagnostics settings
 - Stale and pending job counts
 - Probe timing metrics
+
+### Lite Mode (`--lite`)
+
+When `--lite` is set, doctor skips all Postgres, Redis, and AMQP probes and checks the SQLite database file instead. The lite report includes:
+
+- SQLite file presence (`exists`) and path
+- TEI and Qdrant service probes
+- OpenAI endpoint probe
+- Chrome endpoint probe
+- Browser runtime diagnostics
+- `"lite_mode": true` in the report
 
 ## Examples
 

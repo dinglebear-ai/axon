@@ -348,7 +348,7 @@ Capabilities:
 
 ### sync_mode Submodule (`crates/web/execute/sync_mode/`)
 
-`sync_mode.rs` was split (v0.12.0) into six focused files:
+`sync_mode.rs` was split (v0.12.0) into focused files:
 
 | File | Responsibility |
 |---|---|
@@ -359,8 +359,9 @@ Capabilities:
 | `params.rs` | Parameter parsing and validation for incoming WS messages |
 | `types.rs` | Shared types: `SyncModeResult`, `DispatchMode`, output events |
 | `pulse_chat.rs` | Pulse chat streaming adapter |
+| `prewarm.rs` | Adapter prewarming on server startup |
 
-`session_guard.rs` was deleted — session lifecycle is now owned by the ACP service layer.
+`session_guard.rs` exists but is not yet wired into the production execution path — it contains infrastructure for confirming session file persistence before signalling the frontend (all items marked `allow(dead_code)`).
 
 ### ACP Service (`crates/services/acp/`)
 
@@ -368,18 +369,18 @@ Capabilities:
 
 | File | Responsibility |
 |---|---|
-| `bridge.rs` | WebSocket ↔ ACP protocol bridge; message routing |
-| `runtime.rs` | `AcpRuntimeState` lifecycle (init, shutdown, health); `OnceLock` singleton replacing `Arc<Mutex<AcpRuntimeState>>` |
-| `session.rs` | Per-session state, subprocess tracking, `AdapterGuard` RAII cleanup |
-| `adapters.rs` | Adapter registry and capability negotiation |
-| `config.rs` | ACP-specific configuration types and defaults |
-| `mapping.rs` | Protocol message mapping (ACP ↔ internal types) |
-| `persistent_conn.rs` | Persistent connection pool for ACP subprocess reuse |
+| `bridge.rs` | `AcpBridgeClient` — implements the ACP SDK `Client` trait; forwards session notifications and permission requests through the service event channel. Owns `AcpRuntimeState` (RefCell-based, single-threaded via `LocalSet`). |
+| `runtime.rs` | `run_prompt_turn`, `run_session_probe` — one-shot orchestration. Contains `AdapterGuard` RAII cleanup. |
+| `session.rs` | Subprocess spawn, connection init, session setup sub-functions called from `runtime.rs`. |
+| `adapters.rs` | Adapter detection (`is_codex_adapter`, `is_gemini_adapter`) and model override injection. |
+| `config.rs` | Config option discovery and model cache readers (Codex `models_cache.json`, Gemini `settings.json`). |
+| `mapping.rs` | SDK event → service type conversions. |
+| `persistent_conn.rs` | `AcpConnectionHandle` — single persistent adapter handle used by Pulse Chat sessions. |
 
-Key runtime patterns established in v0.11.2:
+Key runtime patterns:
 
-- `Arc<Mutex<AcpRuntimeState>>` → `OnceLock` singleton (eliminates lock contention on runtime reads).
-- Permission map `Arc<Mutex<HashMap>>` → `DashMap` (lock-free concurrent reads for session-scoped permission routing, SEC-7).
+- `AcpRuntimeState` uses `RefCell` (not `Mutex`) — single-threaded via `LocalSet` on a `current_thread` runtime inside `spawn_blocking`. Safe; compiler enforces via `?Send` bounds.
+- Permission map uses `DashMap` (lock-free concurrent reads for session-scoped permission routing, SEC-7).
 - `AdapterGuard` — RAII guard that cleans up the ACP subprocess on `Drop`, preventing zombie processes.
 - `select! { biased; }` — event-drain loop ordering ensures cancellation signals are checked before new input, preventing unbounded queuing on client disconnect.
 
@@ -562,7 +563,7 @@ Web + UI:
 - `crates/web.rs`
 - `crates/web/shell.rs`
 - `crates/web/execute.rs`
-- `crates/web/execute/sync_mode/` (dispatch, subprocess, service_calls, acp_adapter, params, types, pulse_chat)
+- `crates/web/execute/sync_mode/` (dispatch, subprocess, service_calls, acp_adapter, params, types, pulse_chat, prewarm)
 - `crates/web/docker_stats.rs`
 - `crates/web/download.rs`
 - `apps/web/app/page.tsx`

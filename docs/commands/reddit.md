@@ -32,7 +32,7 @@ Replace `axon reddit` with `axon ingest` — flags and behavior are identical.
 | `--max-posts <n>` | `25` | Maximum posts to fetch (0 = unlimited) |
 | `--min-score <n>` | `0` | Minimum score threshold for posts and comments |
 | `--depth <n>` | `2` | Comment traversal depth |
-| `--scrape-links <bool>` | `false` | Scrape content of linked URLs in link posts |
+| `--scrape-links` | off | Scrape content of linked URLs in link posts. Presence flag — include to enable. |
 | `--wait <bool>` | `false` | Block until ingestion completes |
 | `--collection <name>` | `cortex` | Target Qdrant collection |
 | `--json` | `false` | Machine-readable output |

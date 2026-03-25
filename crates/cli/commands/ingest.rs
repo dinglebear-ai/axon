@@ -1,13 +1,14 @@
 use crate::crates::cli::commands::ingest_common;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
-use crate::crates::jobs::backend::JobBackend;
+use crate::crates::core::ui::{accent, muted, primary};
+use crate::crates::jobs::backend::{JobBackend, JobPayload};
+use crate::crates::jobs::ingest::IngestSource;
 use crate::crates::services::ingest as ingest_service;
 use std::error::Error;
 use std::sync::Arc;
 
 pub async fn run_ingest(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
-    let _ = backend; // backend reserved for future lite-mode dispatch
     if ingest_common::maybe_handle_ingest_subcommand(cfg, "ingest").await? {
         return Ok(());
     }
@@ -26,6 +27,13 @@ pub async fn run_ingest(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(
     let source = ingest_service::classify_target(&target, cfg.github_include_source)?;
 
     if !cfg.wait {
+        if cfg.lite_mode {
+            let result = enqueue_ingest_lite(cfg, &source, backend).await;
+            if result.is_ok() {
+                log_info("job_enqueued command=ingest queue=lite");
+            }
+            return result;
+        }
         let result = ingest_common::enqueue_ingest_job(cfg, source).await;
         if result.is_ok() {
             log_info(&format!(
@@ -37,6 +45,47 @@ pub async fn run_ingest(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(
     }
 
     ingest_common::run_ingest_sync(cfg, source).await
+}
+
+async fn enqueue_ingest_lite(
+    cfg: &Config,
+    source: &IngestSource,
+    backend: &Arc<dyn JobBackend>,
+) -> Result<(), Box<dyn Error>> {
+    let (source_type, target) = match source {
+        IngestSource::Github { repo, .. } => ("github".to_string(), repo.clone()),
+        IngestSource::Reddit { target } => ("reddit".to_string(), target.clone()),
+        IngestSource::Youtube { target } => ("youtube".to_string(), target.clone()),
+        IngestSource::Sessions { .. } => {
+            return Err(anyhow::anyhow!(
+                "sessions ingest is handled by the sessions command, not ingest"
+            )
+            .into());
+        }
+    };
+    let job_id = backend
+        .enqueue(JobPayload::Ingest {
+            target: target.clone(),
+            source_type: source_type.clone(),
+            config_json: "{}".to_string(),
+        })
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?;
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
+        );
+    } else {
+        println!(
+            "  {} {}",
+            primary("Ingest Job"),
+            accent(&job_id.to_string())
+        );
+        println!("  {}", muted(&format!("Source: {source_type} / {target}")));
+        println!("Job ID: {job_id}");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 # Command Reference
-Last Modified: 2026-03-20
+Last Modified: 2026-03-25
 
 Index of Axon CLI command docs.
 
@@ -18,6 +18,7 @@ Index of Axon CLI command docs.
 - [ingest](./ingest.md)
 - [map](./map.md)
 - [mcp](./mcp.md)
+- [migrate](./migrate.md)
 - [query](./query.md)
 - [refresh](./refresh.md)
 - [research](./research.md)

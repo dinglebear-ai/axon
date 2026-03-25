@@ -1,5 +1,25 @@
 # Changelog
-Last Modified: 2026-03-23 (session: v0.32.2 — graph similarity fix: named-vector support + error resilience)
+Last Modified: 2026-03-25 (session: v0.33.0 — lite mode + retrieval quality improvements)
+
+## [0.33.0] — feat/lite-mode
+
+### Highlights
+
+- **Lite mode** — `AXON_LITE=1` activates SQLite backend + in-process workers; no Postgres/AMQP/Redis required. `JobBackend` trait abstracts `FullBackend` (Postgres/AMQP) and `LiteBackend` (SQLite/in-process). `axon doctor` reports SQLite status in lite mode.
+- **BM42 log-normalized TF** — `sparse.rs`: switch from raw term frequency to `ln(1 + count)`, preventing high-repetition documents from dominating sparse search regardless of term content. Mirrors BM25 TF saturation.
+- **Low-signal URL filtering** — `ranking.rs`: `is_low_signal_url()` extended to catch `file://` URLs and `.jsonl` session exports; applied to both `query` and `ask` command paths via shared function.
+- **Larger candidate pool** — `query.rs`: fetch_limit raised from 8x/500 to 16x/1000, giving reranker more candidates before selecting top results.
+- **Title/URL-prepended embeddings** — `tei/pipeline.rs`: each chunk embedded as `[title] url\n\nchunk`, anchoring dense vectors to document identity. Payload still stores raw chunk text.
+
+### Commits since v0.32.2
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 81283de0 | feat(lite) | end-to-end smoke test + monolith compliance check |
+| 5b7d0664 | feat(lite) | doctor checks SQLite in lite mode, update .env.example |
+| 10dc66a1 | feat | wire Arc<dyn JobBackend> through lib.rs and async command handlers |
+| cdf69b35 | feat(jobs/full) | FullBackend adapter wrapping existing Postgres/AMQP job functions |
+| 7768b5f3 | feat(jobs/lite) | LiteBackend struct implementing JobBackend trait |
 
 ## [0.32.2] — feat/pulse-shell-and-hybrid-search
 

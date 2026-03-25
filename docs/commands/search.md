@@ -33,7 +33,7 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--query <text>` | — | Query text (alternative to positional words). |
 | `--limit <n>` | `10` | Number of results to print. |
-| `--search-time-range <range>` | — | Optional Tavily time filter: `day`, `week`, `month`, `year`. Unknown values are ignored with a warning. |
+| `--search-time-range <range>` | — | Optional Tavily time filter: `day`, `week`, `month`, `year`. Invalid values are rejected by clap at parse time. |
 
 ## Examples
 

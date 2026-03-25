@@ -1,10 +1,7 @@
 # axon crawl
-Last Modified: 2026-03-03
+Last Modified: 2026-03-25
 
-Version: 1.0.0
-Last Updated: 20:29:46 | 03/03/2026 EST
-
-Site crawl command with async job mode (default) and synchronous inline mode (`--wait true`). Supports crawl job lifecycle subcommands (`status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `worker`, `recover`).
+Site crawl command with async job mode (default) and synchronous inline mode (`--wait true`). Supports crawl job lifecycle subcommands (`status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `worker`, `recover`, `audit`, `diff`).
 
 ## Synopsis
 
@@ -37,6 +34,8 @@ axon crawl cleanup
 axon crawl clear
 axon crawl worker
 axon crawl recover
+axon crawl audit <url>
+axon crawl diff
 ```
 
 ## Flags

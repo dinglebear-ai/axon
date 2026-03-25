@@ -31,8 +31,8 @@ axon evaluate --query "<question>" [FLAGS]
 | `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `TEI_URL` | TEI embeddings base URL (retrieval and judge reference). |
 | `QDRANT_URL` | Qdrant base URL. |
-| `OPENAI_BASE_URL` | OpenAI-compatible API base URL (for RAG/baseline/judge calls). |
-| `OPENAI_MODEL` | Model name for all evaluate LLM calls. |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for all LLM calls (RAG, baseline, judge). |
+| `OPENAI_MODEL` | Model name passed to the ACP adapter for all evaluate LLM calls. |
 
 ## Flags
 
@@ -42,51 +42,35 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--query <text>` | — | Question text (alternative to positional argument). |
 | `--collection <name>` | `cortex` | Qdrant collection to retrieve from. |
-| `--diagnostics` | `false` | Adds retrieval pool/context diagnostics in output. |
-| `--responses-mode <mode>` | `side-by-side` | Live response rendering mode: `inline`, `side-by-side`, or `events` (NDJSON stream events). |
-| `--json` | `false` | Emits one structured JSON object with answers + timing. |
 
-Note: `evaluate` runs synchronously and does not enqueue jobs.
+Note: `evaluate` runs synchronously and does not enqueue jobs. Output is always JSON.
 
 ## Examples
 
 ```bash
-# Basic evaluate run
+# Basic evaluate run (always outputs JSON)
 axon evaluate "How does auto-switch choose Chrome fallback?"
 
 # Using --query
 axon evaluate --query "What does AXON_DOMAINS_DETAILED change?"
 
-# Diagnostics + JSON
-axon evaluate "How does ask citation gating work?" --diagnostics --json
-
-# True side-by-side terminal rendering
-axon evaluate "How does auto-switch choose Chrome fallback?" --responses-mode side-by-side
-
-# Structured event stream (NDJSON)
-axon evaluate "How does auto-switch choose Chrome fallback?" --responses-mode events
+# Pipe to jq for readable output
+axon evaluate "How does ask citation gating work?" | jq .
 ```
 
 ## Output
 
-Human output streams three sections in order:
-- `RAG Answer (with context)`
-- `Baseline Answer (no context)`
-- `Analysis`
-- If judge scoring indicates RAG underperformed baseline, a follow-up section is appended:
-  `Suggested Sources To Crawl`.
-- Suggested sources are auto-enqueued as crawl jobs immediately after generation.
-
-JSON output includes:
+Output is always a pretty-printed JSON object containing:
 - `rag_answer`
 - `baseline_answer`
 - `analysis_answer`
-- `crawl_suggestions` (present when generated)
-- `crawl_enqueue_outcomes` (url + job_id or enqueue error)
+- `crawl_suggestions` (present when judge scoring indicates RAG underperformed baseline)
+- `crawl_enqueue_outcomes` (url + job_id or enqueue error, when suggestions are generated)
 - `timing_ms` (retrieval/context/rag_llm/baseline_llm/research/judge/total)
 
 ## Notes
 
+- Output is always JSON — there is no human-readable text mode for this command.
 - If streaming fails for any LLM phase, evaluate falls back to non-streaming for that phase.
 - Judge reference retrieval is best-effort; evaluate continues even if reference gathering fails.
-- In `--responses-mode events`, output is NDJSON events (`evaluate_start`, `token`, `stream_done`, `analysis_start`, `evaluate_complete`).
+- When judge scoring indicates RAG underperformed baseline, suggested crawl sources are auto-enqueued as crawl jobs immediately after generation.

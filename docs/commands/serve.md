@@ -24,7 +24,10 @@ Host binding is controlled by `AXON_SERVE_HOST` (default `127.0.0.1`).
 - `GET /ws` - command execution WebSocket bridge
 - `GET /ws/shell` - shell WebSocket (loopback-only)
 - `GET /output/{*path}` - serve generated output files
-- `GET /download/{job_id}/...` - artifact download routes
+- `GET /download/{job_id}/pack.md` - download job output as markdown pack
+- `GET /download/{job_id}/pack.xml` - download job output as XML pack
+- `GET /download/{job_id}/archive.zip` - download job output as zip archive
+- `GET /download/{job_id}/file/{*path}` - download individual job artifact file
 
 ## Examples
 

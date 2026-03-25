@@ -18,7 +18,7 @@ pub async fn query_results(
     }
     let vector = query_vectors.remove(0);
 
-    let fetch_limit = ((limit + offset).max(1) * 8).max(limit + offset).min(500);
+    let fetch_limit = ((limit + offset).max(1) * 16).max(limit + offset).min(1000);
     let hits = qdrant::dispatch_vector_search(cfg, &vector, query, fetch_limit)
         .await
         .map_err(|e| -> Box<dyn Error> {
@@ -39,12 +39,21 @@ pub async fn query_results(
             }
         })?;
     let query_tokens = ranking::tokenize_query(query);
+    // Allow low-signal sources (session logs, file:// exports) only when the
+    // query explicitly requests them. Otherwise they pollute results with
+    // high-BM42-scoring noise (e.g. JSONL session exports full of mcp__ tool names).
+    let allow_low_signal = query_tokens.iter().any(|t| {
+        matches!(
+            t.as_str(),
+            "session" | "sessions" | "log" | "logs" | "history" | "histories"
+        )
+    });
     let candidates: Vec<ranking::AskCandidate> = hits
         .into_iter()
         .filter_map(|h| {
             let url = qdrant::payload_url_typed(&h.payload).to_string();
             let chunk_text = qdrant::payload_text_typed(&h.payload).to_string();
-            if url.is_empty() {
+            if url.is_empty() || (!allow_low_signal && ranking::is_low_signal_url(&url)) {
                 return None;
             }
             let path = ranking::extract_path_from_url(&url);

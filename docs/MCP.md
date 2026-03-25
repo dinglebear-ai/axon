@@ -8,7 +8,7 @@ Last Modified: 2026-03-11
 - Tool count: 1
 - Tool name: `axon`
 - Routing fields: `action` + `subaction` for lifecycle families
-- Response behavior field: `response_mode` (`path|inline|both|auto-inline`, default `path`; `auto-inline` is system-assigned)
+- Response behavior field: `response_mode` (`path|inline|both`, default `path`; `auto-inline` is a server-emitted value indicating the auto-inline path was taken — it cannot be requested by the caller)
 
 Canonical schema and action contract:
 - `docs/MCP-TOOL-SCHEMA.md`
@@ -239,7 +239,7 @@ Use CLI-identical action names:
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
-- `scrape`, `research`, `ask`, `screenshot`, `export`, `help`, `status`
+- `scrape`, `research`, `ask`, `screenshot`, `export`, `help`, `status`, `elicit_demo`
 
 Examples:
 - `action: "ingest", subaction: "start"`
@@ -263,6 +263,7 @@ Direct actions:
 - `ask`
 - `screenshot`
 - `export`
+- `elicit_demo`
 
 Lifecycle families:
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover`

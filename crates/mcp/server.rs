@@ -47,7 +47,7 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::Parameters,
     model::{
-        AnnotateAble, ListResourcesResult, PaginatedRequestParams, RawResource,
+        AnnotateAble, ListResourcesResult, Meta, PaginatedRequestParams, RawResource,
         ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
         ServerCapabilities, ServerInfo,
     },
@@ -61,6 +61,10 @@ use rmcp::{
     },
 };
 use std::sync::{Arc, LazyLock};
+
+const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
+const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
+static STATUS_DASHBOARD_HTML: &str = include_str!("assets/status_dashboard.html");
 
 static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
     let schema = rmcp::schemars::schema_for!(AxonRequest);
@@ -86,7 +90,8 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, export, elicit_demo."
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, export, elicit_demo.",
+        meta = axon_tool_meta()
     )]
     async fn axon<'a>(
         &'a self,
@@ -142,6 +147,15 @@ fn mcp_tool_schema_markdown() -> &'static str {
     &MCP_TOOL_SCHEMA_MD
 }
 
+fn axon_tool_meta() -> Meta {
+    let mut m = Meta::new();
+    m.insert(
+        "ui".to_string(),
+        serde_json::json!({ "resourceUri": STATUS_DASHBOARD_URI }),
+    );
+    m
+}
+
 #[tool_handler(router = Self::tool_router())]
 impl ServerHandler for AxonMcpServer {
     fn get_info(&self) -> ServerInfo {
@@ -189,7 +203,7 @@ impl ServerHandler for AxonMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let resource: Resource = RawResource {
+        let schema_resource: Resource = RawResource {
             uri: MCP_TOOL_SCHEMA_URI.to_string(),
             name: "mcp-tool-schema".to_string(),
             title: Some("Axon MCP Tool Schema".to_string()),
@@ -203,9 +217,24 @@ impl ServerHandler for AxonMcpServer {
         }
         .no_annotation();
 
+        let dashboard_resource: Resource = RawResource {
+            uri: STATUS_DASHBOARD_URI.to_string(),
+            name: "status-dashboard".to_string(),
+            title: Some("Axon Status Dashboard".to_string()),
+            description: Some(
+                "Interactive MCP App widget showing live job queue status for all Axon workers"
+                    .to_string(),
+            ),
+            mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
+            size: None,
+            icons: None,
+            meta: None,
+        }
+        .no_annotation();
+
         Ok(ListResourcesResult {
             meta: None,
-            resources: vec![resource],
+            resources: vec![schema_resource, dashboard_resource],
             next_cursor: None,
         })
     }
@@ -215,6 +244,16 @@ impl ServerHandler for AxonMcpServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
+        if request.uri == STATUS_DASHBOARD_URI {
+            return Ok(ReadResourceResult::new(vec![
+                ResourceContents::TextResourceContents {
+                    uri: STATUS_DASHBOARD_URI.to_string(),
+                    mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
+                    text: STATUS_DASHBOARD_HTML.to_string(),
+                    meta: None,
+                },
+            ]));
+        }
         if request.uri != MCP_TOOL_SCHEMA_URI {
             return Err(ErrorData::invalid_params(
                 format!("resource not found: {}", request.uri),

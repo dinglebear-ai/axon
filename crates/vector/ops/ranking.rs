@@ -238,6 +238,30 @@ pub fn select_diverse_candidates_from_indices(
     selected
 }
 
+/// Returns `true` for URLs that are low-signal noise sources and should be
+/// excluded from general query results unless the user explicitly requests them.
+///
+/// Catches:
+/// - Session export JSONL files (Claude/Codex/Gemini session logs indexed by `sessions` ingest)
+/// - Local `file://` URLs in general (not useful as doc references)
+/// - Cached/temp paths
+/// - Log files
+///
+/// The caller is responsible for skipping this filter when the query
+/// explicitly requests sessions/logs (e.g. contains "session", "log", "history").
+pub fn is_low_signal_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    let is_web_url = lower.starts_with("http://") || lower.starts_with("https://");
+    lower.starts_with("file://")
+        || lower.ends_with(".jsonl")
+        || lower.contains("/docs/sessions/")
+        || lower.contains("docs/sessions/")
+        || lower.contains("/.cache/")
+        || lower.contains(".cache/")
+        || (!is_web_url && lower.contains("/logs/"))
+        || (!is_web_url && lower.ends_with(".log"))
+}
+
 #[cfg(test)]
 #[path = "ranking_test.rs"]
 mod tests; // tests live in ranking_test.rs (excluded from monolith line-count)

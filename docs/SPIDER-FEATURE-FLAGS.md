@@ -1,7 +1,7 @@
 # Spider.rs Feature Flags
 
 **Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
-**Flags enabled in axon_rust: 20 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
+**Flags enabled in axon_rust: 21 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 
 ---
 
@@ -14,10 +14,10 @@ spider = { version = "2", default-features = false, features = [
     "chrome_stealth", "chrome_screenshot", "chrome_store_page",
     "chrome_headless_new", "chrome_simd",
     "simd", "inline-more", "cache_mem",
-    "ua_generator", "headers", "glob", "time", "control",
-    "firewall",
+    "ua_generator", "headers", "time", "control",
+    "firewall", "hedge",
 ] }
-spider_agent       = { version = "2.45", default-features = false, features = ["search_tavily", "openai"] }
+spider_agent       = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"  # no feature flags — full crate used as-is
 ```
 
@@ -27,7 +27,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 ## Flags In Use
 
-### spider crate — 20 flags enabled
+### spider crate — 21 flags enabled
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
@@ -40,6 +40,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 | `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `crates/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
 | `adblock` | Chrome / Browser | Implicit ad/tracker request filtering during crawl. No local toggle — always active when chrome features are in use |
 | `cache_mem` | Caching | In-memory page/request deduplication during crawls. No local call site; spider uses it internally for request memoization |
+| `hedge` | Performance | Speculative parallel retry — issues a second request if the first doesn't respond within a threshold. Handled internally by spider; no direct call site in axon. |
 
 ### spider_agent crate — 2 flags enabled
 
@@ -66,7 +67,7 @@ Used in two files for HTML→Markdown content transformation:
 |------|--------|-------|
 | `ua_generator` | ✅ | Random realistic User-Agent generation per request |
 | `regex` | ✅ | URL blacklist/whitelist filtering |
-| `glob` | ✅ | Glob pattern matching for URL filtering |
+| `glob` | — | NOT enabled — glob URL patterns change `crawl_establish` to use a budget-aware `is_allowed()` check that immediately returns `BudgetExceeded` for the first URL with `with_limit(1)`, producing 0 pages from Chrome crawls. axon does not use URL glob patterns. Do NOT add this flag. |
 | `fs` | — | Project uses Qdrant + Postgres instead of disk FS |
 | `sitemap` | ✅ | Sitemap discovery + backfill |
 | `time` | ✅ | Timing/duration tracking for crawl operations |
@@ -89,6 +90,7 @@ Used in two files for HTML→Markdown content transformation:
 | `io_uring` | — | |
 | `simd` | ✅ | SIMD-accelerated text/JSON parsing |
 | `inline-more` | ✅ | Aggressive function inlining in spider internals for runtime perf |
+| `hedge` | ✅ | Speculative parallel retry — issues a second request if the first is slow. Handled internally by spider. |
 
 ### Storage (3)
 
@@ -195,7 +197,7 @@ Used in two files for HTML→Markdown content transformation:
 
 | Category | Total | Enabled |
 |----------|-------|---------|
-| Core | 25 | 10 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `glob`, `time`, `control`) |
+| Core | 25 | 11 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) — `glob` is NOT enabled |
 | Storage | 3 | 0 |
 | Caching | 6 | 1 (`cache_mem`) |
 | Chrome / Browser | 17 | 7 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`) |
@@ -205,6 +207,6 @@ Used in two files for HTML→Markdown content transformation:
 | Spider Cloud | 1 | 0 |
 | Agent | 12 | 1 via spider_agent (`search_tavily`) |
 | Search | 5 | 0 |
-| **Total** | **79** | **20 spider + 2 spider_agent = 22** |
+| **Total** | **79** | **21 spider + 2 spider_agent = 23** |
 
 > `basic` is a meta-feature enabled on the `spider` crate that bundles core crawl behavior. The project uses `default-features = false` on all spider crates, so only explicitly listed features are compiled in.

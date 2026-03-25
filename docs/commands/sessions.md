@@ -26,9 +26,9 @@ All global flags apply. Sessions-specific and key flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--claude` | `false` | Include Claude sessions. |
-| `--codex` | `false` | Include Codex sessions. |
-| `--gemini` | `false` | Include Gemini sessions. |
+| `--claude` | off | Include Claude sessions. Presence flag — include to enable. |
+| `--codex` | off | Include Codex sessions. Presence flag — include to enable. |
+| `--gemini` | off | Include Gemini sessions. Presence flag — include to enable. |
 | `--project <name>` | — | Case-insensitive substring filter on project name. |
 | `--wait <bool>` | `false` | Block until ingestion completes; otherwise enqueue async ingest job. |
 | `--collection <name>` | `cortex` | Target Qdrant collection. |
@@ -72,30 +72,3 @@ axon sessions status 550e8400-e29b-41d4-a716-446655440000
 
 - Session ingest uses an incremental state tracker table: `axon_session_ingest_state`.
 - Job records for queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
-
-### repo and branch metadata (v0.11.0+)
-
-Each ingested session now carries `repo` and `branch` metadata fields enriched from git at the project level. The scanner decodes the Claude CLI project folder name back to a filesystem path, walks up to the nearest git root, and runs `git rev-parse --abbrev-ref HEAD` (branch) and `git remote get-url origin` (repo, normalized to `owner/repo` form). Results are cached per project for the process lifetime.
-
-These fields appear in:
-- The `/api/sessions/list` JSON response as `repo?: string` and `branch?: string`
-- The `SessionSummary` TypeScript interface used by `useRecentSessions`
-- AxonSidebar's session filter (search matches against `repo`, `branch`, and `project`)
-
-If a project is not inside a git repository or has no `origin` remote, both fields are omitted. The enrichment never throws.
-
-### session_fallback event
-
-When Pulse chat resumes a session by ID and the ACP adapter cannot load it, the Rust bridge falls back to a new session and emits a `session_fallback` event on the WebSocket stream:
-
-```json
-{ "type": "session_fallback", "old_session_id": "...", "new_session_id": "..." }
-```
-
-The frontend Pulse pipeline (`/api/pulse/chat/route.ts`) propagates this downstream as:
-
-```json
-{ "type": "session_fallback", "newSessionId": "..." }
-```
-
-The fallback is silent — the user continues into a new session rather than seeing an error. `use-axon-acp.ts` exposes an `onSessionFallback(oldId, newId)` callback for callers that need to react to the swap.

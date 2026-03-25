@@ -11,7 +11,7 @@ use crate::crates::crawl::engine::{
 use crate::crates::crawl::manifest::{
     manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
 };
-use crate::crates::services::embed::embed_start_with_input;
+use crate::crates::services::embed::{embed_now, embed_start_with_input};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -303,15 +303,20 @@ async fn finalize_crawl(
 ) -> Result<(), Box<dyn Error>> {
     if cfg.embed {
         let markdown_dir = cfg.output_dir.join("markdown");
-        let embed_result =
-            embed_start_with_input(cfg, &markdown_dir.to_string_lossy(), None, Some("crawl"))
-                .await?;
-        let embed_job_id = embed_result.job_id;
-        println!(
-            "{} {}",
-            muted("Queued embed job:"),
-            accent(&embed_job_id.to_string())
-        );
+        let input = markdown_dir.to_string_lossy().to_string();
+        if cfg.lite_mode {
+            let spinner = Spinner::new("embedding crawl output");
+            embed_now(cfg, &input).await?;
+            spinner.finish("embedded into Qdrant");
+        } else {
+            let embed_result = embed_start_with_input(cfg, &input, None, Some("crawl")).await?;
+            let embed_job_id = embed_result.job_id;
+            println!(
+                "{} {}",
+                muted("Queued embed job:"),
+                accent(&embed_job_id.to_string())
+            );
+        }
     }
 
     let current_urls = read_manifest_urls(manifest_path).await?;

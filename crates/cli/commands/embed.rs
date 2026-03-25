@@ -11,7 +11,7 @@ use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{
     accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
 };
-use crate::crates::jobs::backend::JobBackend;
+use crate::crates::jobs::backend::{JobBackend, JobPayload};
 use crate::crates::services::embed as embed_service;
 use std::error::Error;
 use std::path::Path;
@@ -19,7 +19,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub async fn run_embed(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
-    let _ = backend; // backend reserved for future lite-mode dispatch
     if maybe_handle_embed_subcommand(cfg).await? {
         return Ok(());
     }
@@ -35,7 +34,7 @@ pub async fn run_embed(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<()
     let embed_start = std::time::Instant::now();
     let input = resolve_embed_input(cfg);
     if !cfg.wait {
-        let result = enqueue_embed_job(cfg, &input).await;
+        let result = enqueue_embed_job(cfg, &input, backend).await;
         if result.is_ok() {
             log_info(&format!(
                 "job_enqueued command=embed queue={}",
@@ -190,7 +189,45 @@ fn resolve_embed_input(cfg: &Config) -> String {
     })
 }
 
-async fn enqueue_embed_job(cfg: &Config, input: &str) -> Result<(), Box<dyn Error>> {
+async fn enqueue_embed_job(
+    cfg: &Config,
+    input: &str,
+    backend: &Arc<dyn JobBackend>,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.lite_mode {
+        let job_id = backend
+            .enqueue(JobPayload::Embed {
+                input: input.to_string(),
+                config_json: "{}".to_string(),
+            })
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
+            );
+        } else {
+            println!("  {} {}", primary("Embed Job"), accent(&job_id.to_string()));
+            println!("  {}", muted(&format!("Input: {input}")));
+        }
+        // Keep the process alive until the in-process worker finishes.
+        let final_status = backend
+            .wait_for_job(job_id, crate::crates::jobs::backend::JobKind::Embed)
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+        if final_status == "failed" {
+            if let Ok(Some(err)) = backend
+                .job_errors(job_id, crate::crates::jobs::backend::JobKind::Embed)
+                .await
+            {
+                return Err(format!("embed job {job_id} failed: {err}").into());
+            }
+            return Err(format!("embed job {job_id} failed").into());
+        }
+        return Ok(());
+    }
+
     let result = embed_service::embed_start_with_input(cfg, input, None, None).await?;
     let job_id = result.job_id;
     if cfg.json_output {

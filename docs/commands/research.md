@@ -4,7 +4,7 @@ Last Modified: 2026-03-03
 Version: 1.0.0
 Last Updated: 20:29:46 | 03/03/2026 EST
 
-Web research pipeline: Tavily search plus one synthesis LLM call over returned snippets. Runs synchronously and prints extracted source previews plus a synthesized summary.
+Web research pipeline: Tavily search plus one ACP-backed synthesis call over returned snippets. Runs synchronously and prints extracted source previews plus a synthesized summary.
 
 ## Synopsis
 
@@ -24,8 +24,9 @@ axon research --query "<query>" [FLAGS]
 | Variable | Description |
 |----------|-------------|
 | `TAVILY_API_KEY` | Tavily API key for source discovery. |
-| `OPENAI_BASE_URL` | OpenAI-compatible base URL (for example `http://host/v1`). Must not include `/chat/completions`. |
-| `OPENAI_MODEL` | Model name used for synthesis. |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`) used for synthesis. |
+| `OPENAI_BASE_URL` | OpenAI-compatible base URL passed to the ACP adapter (e.g. `http://host/v1`). |
+| `OPENAI_MODEL` | Model name passed to the ACP adapter for synthesis. |
 
 ## Flags
 
@@ -35,8 +36,10 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--query <text>` | — | Query text (alternative to positional words). |
 | `--limit <n>` | `10` | Maximum Tavily results processed. |
-| `--openai-base-url <url>` | env/default | Override LLM base URL. |
-| `--openai-model <name>` | env/default | Override LLM model. |
+| `--search-time-range <range>` | — | Filter Tavily results by time range: `day`, `week`, `month`, `year`. |
+| `--research-depth <n>` | — | Crawl depth limit for the research pass. |
+| `--openai-base-url <url>` | env/default | Override LLM base URL passed to ACP adapter. |
+| `--openai-model <name>` | env/default | Override LLM model name passed to ACP adapter. |
 
 ## Examples
 
@@ -59,7 +62,7 @@ axon research "Spider.rs rendering tradeoffs" --openai-base-url http://localhost
 
 ## Behavior Notes
 
-- `OPENAI_BASE_URL` is validated and must not end with `/chat/completions`.
+- Both `TAVILY_API_KEY` and `AXON_ACP_ADAPTER_CMD` are validated at startup; the command errors immediately if either is missing or empty.
 - `--search-time-range` is applied to the Tavily search step before synthesis.
 - With `--json`, output is strict JSON on stdout.
 - `research` does not enqueue jobs and does not auto-embed results into Qdrant.

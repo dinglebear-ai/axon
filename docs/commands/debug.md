@@ -19,10 +19,8 @@ axon debug [context text ...] [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_BASE_URL` | OpenAI-compatible base URL (for example `http://host/v1`). |
-| `OPENAI_MODEL` | Model used to generate troubleshooting guidance. |
-
-`OPENAI_API_KEY` is optional unless your endpoint requires auth.
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required — debug fails fast without it. |
+| `OPENAI_MODEL` | Model name passed to the ACP adapter for troubleshooting guidance. Required. |
 
 ## Flags
 
@@ -47,6 +45,6 @@ axon debug "qdrant timeout after restart" --json
 
 ## Notes
 
-- Fails fast if `OPENAI_BASE_URL` or `OPENAI_MODEL` is missing.
-- Requests are sent to `{OPENAI_BASE_URL}/chat/completions`.
-- Keep `OPENAI_BASE_URL` as the API base (typically including `/v1`), not a full chat-completions URL.
+- Fails fast if `AXON_ACP_ADAPTER_CMD` is unset or empty.
+- Fails fast if `OPENAI_MODEL` is unset or empty.
+- LLM completions go through the ACP adapter subprocess (`AXON_ACP_ADAPTER_CMD`), not directly to an OpenAI-compatible HTTP endpoint.

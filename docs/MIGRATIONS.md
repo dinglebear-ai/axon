@@ -19,6 +19,7 @@ Location of inline DDL:
 | `axon_embed_jobs` | `crates/jobs/embed.rs` |
 | `axon_ingest_jobs` | `crates/jobs/ingest/schema.rs` |
 | `axon_refresh_jobs`, `axon_refresh_targets`, `axon_refresh_schedules` | `crates/jobs/refresh.rs` |
+| `axon_watch_defs`, `axon_watch_runs`, `axon_watch_run_artifacts` | `crates/jobs/watch.rs` |
 
 A reference migration file has been created at:
 
@@ -126,7 +127,7 @@ Current advisory lock keys in use (prevent collisions when adding new tables):
 |--------|----------|-----|
 | crawl | `CRAWL_SCHEMA_LOCK_KEY` | `0x6372_6177_6c00_0000` |
 | extract | `EXTRACT_SCHEMA_LOCK_KEY` | `0x6578_7472_6163_7400` |
-| embed | `EMBED_SCHEMA_LOCK_KEY` | *(check embed.rs)* |
+| embed | `EMBED_SCHEMA_LOCK_KEY` | `0xA804_0002` |
 | ingest | `INGEST_SCHEMA_LOCK_KEY` | `0x696e_6765_7374_0000` |
 | refresh | *(none — runs without advisory lock)* | — |
 

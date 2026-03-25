@@ -8,7 +8,7 @@ use crate::crates::core::content::{
 };
 use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{accent, confirm_destructive, muted, primary, symbol_for_status};
-use crate::crates::jobs::backend::JobBackend;
+use crate::crates::jobs::backend::{JobBackend, JobPayload};
 use crate::crates::services::extract as extract_service;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
@@ -21,7 +21,6 @@ pub async fn run_extract(
     cfg: &Config,
     backend: &Arc<dyn JobBackend>,
 ) -> Result<(), Box<dyn Error>> {
-    let _ = backend; // backend reserved for future lite-mode dispatch
     if maybe_handle_extract_subcommand(cfg).await? {
         return Ok(());
     }
@@ -44,7 +43,7 @@ pub async fn run_extract(
     let prompt = require_extract_prompt(cfg)?;
 
     if !cfg.wait {
-        let result = enqueue_extract_job(cfg, &urls, prompt).await;
+        let result = enqueue_extract_job(cfg, &urls, prompt, backend).await;
         if result.is_ok() {
             log_info(&format!(
                 "job_enqueued command=extract queue={}",
@@ -127,7 +126,33 @@ async fn enqueue_extract_job(
     cfg: &Config,
     urls: &[String],
     prompt: String,
+    backend: &Arc<dyn JobBackend>,
 ) -> Result<(), Box<dyn Error>> {
+    if cfg.lite_mode {
+        let job_id = backend
+            .enqueue(JobPayload::Extract {
+                urls: urls.to_vec(),
+                config_json: "{}".to_string(),
+            })
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
+            );
+        } else {
+            println!(
+                "  {} {}",
+                primary("Extract Job"),
+                accent(&job_id.to_string())
+            );
+            println!("  {}", muted("Status: pending"));
+            println!("Job ID: {job_id}");
+        }
+        return Ok(());
+    }
+
     let result = extract_service::extract_start_with_prompt(cfg, urls, Some(prompt), None).await?;
     let job_id = result.job_id;
     if cfg.json_output {

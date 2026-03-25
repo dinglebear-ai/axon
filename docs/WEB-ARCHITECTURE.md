@@ -24,14 +24,15 @@ Axon runs two independent web servers:
 Source: `crates/web.rs` + `crates/web/`
 
 Serves:
-- `GET /` — static HTML shell (embedded via `include_str!` in release, disk reads in debug)
-- `GET /static/*` — CSS, JS assets
 - `WebSocket /ws` — command execution bridge (runs axon subcommands as subprocesses, streams stdout/stderr back)
+- `WebSocket /ws/shell` — shell WebSocket endpoint
+- `GET /output/{*path}` — output file serving (markdown, screenshots, JSON artifacts)
+- `GET /download/{job_id}/*` — job artifact download routes (pack.md, pack.xml, archive.zip, file)
 - Docker stats broadcast (bollard integration, pushed over WebSocket)
 
-Authentication: Token-based via `AXON_SHELL_WS_TOKEN` env var (checked in WebSocket upgrade handler).
+Authentication: Token-based via `AXON_WEB_API_TOKEN` env var (checked in WebSocket upgrade handler).
 
-Started by: `cargo run --bin axon -- serve` (local process, runs on port 49000). In Docker this was managed by `docker/s6-rc.d/axon-workers/`.
+Started by: `cargo run --bin axon -- serve` (local process, runs on port 49000). In Docker this is managed by `docker/s6/s6-rc.d/web-server/`.
 
 ### Server 2: Next.js dev server (port 49010)
 
@@ -59,10 +60,10 @@ Browser → Next.js (49010) → proxy.ts → axum (49000) → subprocesses
 
 ### 1. Dual authentication layers
 
-- axum has its own token check (`AXON_SHELL_WS_TOKEN`)
-- Next.js proxy has its own token check (`AXON_WEB_API_TOKEN`)
-- These are different tokens, requiring both to be set correctly
-- If they diverge (different values in `.env`), requests silently fail with auth errors that are difficult to diagnose
+- axum uses `AXON_WEB_API_TOKEN` for its `/ws` and `/ws/shell` gate
+- Next.js proxy also uses `AXON_WEB_API_TOKEN` (enforced by `proxy.ts`) on all `/api/*` routes
+- The shell WebSocket server (`apps/web/shell-server.mjs`) optionally uses `AXON_SHELL_WS_TOKEN`, falling back to `AXON_WEB_API_TOKEN`
+- Multiple token surfaces still require careful alignment to avoid silent auth failures
 
 ### 2. Two error response formats
 
@@ -81,12 +82,11 @@ Every browser request:
 
 This adds latency and a failure point. If axum is unavailable, the Next.js proxy returns an opaque 502 with no diagnostic detail.
 
-### 4. Static asset duplication
+### 4. Static asset serving
 
-- axum embeds `crates/web/static/` assets (neural.js, app.js, style.css, index.html)
-- Next.js has its own complete asset pipeline
-- Both are served, but to different UIs — the axum UI (port 49000 direct) and the Next.js UI (port 49010)
-- Changes to shared behavior (e.g., command format) must be updated in both UIs
+- The axum server (`crates/web.rs`) no longer serves a static HTML shell or JS/CSS assets — `GET /` and `GET /static/*` routes have been removed
+- All UI is served by Next.js (port 49010)
+- Output artifacts (screenshots, markdown, JSON) are served by axum's `/output/{*path}` route and accessible to the Next.js UI via the proxy
 
 ### 5. Port management
 
@@ -120,11 +120,11 @@ Browser / MCP client → Next.js (49010 only)
 
 3. **Docker stats stream moves to Next.js.** Replace bollard → axum WebSocket broadcast with bollard → SSE endpoint in a Next.js API route.
 
-4. **Single auth token.** Remove `AXON_SHELL_WS_TOKEN`. Use `AXON_WEB_API_TOKEN` everywhere. All authenticated routes go through the same `proxy.ts` middleware.
+4. **Single auth token.** Consolidate `AXON_SHELL_WS_TOKEN` and `AXON_WEB_API_TOKEN` into one token. All authenticated routes go through the same middleware.
 
 5. **Remove the proxy hop.** API routes call axon subprocesses directly via `child_process.spawn` (Node.js) rather than proxying to axum. This eliminates the internal proxy and the second auth layer.
 
-6. **Static assets served by Next.js.** `crates/web/static/` and `crates/web.rs` can be removed. The Next.js build pipeline handles all static assets.
+6. **Static assets fully owned by Next.js.** `crates/web.rs` can be removed (static HTML/JS routes were already removed; only WS + output file serving remains). The Next.js build pipeline handles all static assets.
 
 ---
 
@@ -133,16 +133,15 @@ Browser / MCP client → Next.js (49010 only)
 ### Remove / demote
 
 - `crates/web.rs` — axum HTTP server (remove or reduce to health endpoint only)
-- `crates/web/execute.rs` — subprocess execution via axum (move to Next.js API route)
+- `crates/web/execute/` — subprocess execution via axum (move to Next.js API route)
 - `crates/web/docker_stats.rs` — bollard stats broadcaster (move to Next.js API route)
-- `crates/web/static/` — static assets (superseded by apps/web build)
-- `docker/s6-rc.d/axon-workers/` — no longer starts HTTP server on 49000
+- `docker/s6/s6-rc.d/web-server/` — no longer starts HTTP server on 49000
 
 ### Update
 
 - `apps/web/proxy.ts` — simplified (no forward proxy, direct subprocess spawn)
 - `apps/web/app/api/` — add execute, ws/stats endpoints
-- `.env.example` — remove `AXON_SHELL_WS_TOKEN`, keep `AXON_WEB_API_TOKEN`
+- `.env.example` — consolidate shell WS token vars, keep `AXON_WEB_API_TOKEN`
 - CLAUDE.md / SWAG config — update port documentation
 
 ### Prerequisite

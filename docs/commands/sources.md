@@ -32,7 +32,7 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--collection <name>` | `cortex` | Qdrant collection to inspect. |
-| `--json` | `false` | Emits a JSON object map: `{url: chunk_count}`. |
+| `--json` | `false` | Emits a JSON object with `count`, `limit`, `offset`, and `urls` (array of `[url, chunk_count]` pairs). |
 
 ## Examples
 

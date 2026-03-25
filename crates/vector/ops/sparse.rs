@@ -2,7 +2,12 @@
 //!
 //! Computes TF-weighted sparse vectors for Qdrant's `bm42` sparse index.
 //! Qdrant applies IDF correction server-side (`"modifier": "idf"` in collection config).
-//! Client-side we emit raw term frequency counts — no normalization needed here.
+//! Client-side we emit log-normalized term frequency: `ln(1 + raw_count)`.
+//!
+//! Log normalization prevents documents with extreme term repetition (e.g. 500 occurrences
+//! of a term) from drowning out documents with moderate repetition (e.g. 20 occurrences).
+//! This mirrors standard BM25 TF saturation: the marginal value of the 500th occurrence
+//! is near zero. Qdrant's IDF weighting then amplifies rare, discriminative terms as usual.
 //!
 //! # Hash stability
 //! `term_to_index` uses a fixed-seed FNV-1a hash. The seed is baked into the constant
@@ -53,7 +58,7 @@ pub(crate) static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
 /// Represents a Qdrant sparse vector as parallel `indices` and `values` arrays.
 ///
 /// - `indices`: unique bucket indices in range `0..SPARSE_DIM`
-/// - `values`: TF weight for each index (always positive; Qdrant applies IDF)
+/// - `values`: log-normalized TF weight `ln(1 + raw_count)` for each index (always positive; Qdrant applies IDF)
 #[derive(Debug, Clone, Default)]
 pub struct SparseVector {
     pub indices: Vec<u32>,
@@ -94,7 +99,11 @@ pub fn term_to_index(term: &str) -> u32 {
 /// Returns a `SparseVector` with one entry per unique token bucket.
 /// Short tokens (< 3 bytes; equivalent to < 3 chars for ASCII-only alphanumeric tokens),
 /// stopwords, and non-alphanumeric tokens are excluded.
-/// On hash collision two distinct terms map to the same bucket; their TF counts are summed.
+/// On hash collision two distinct terms map to the same bucket; their TF counts are summed
+/// before log normalization.
+///
+/// TF weight = `ln(1 + raw_count)` — log normalization prevents high-repetition documents
+/// from dominating BM42 scoring regardless of term content.
 pub fn compute_sparse_vector(text: &str) -> SparseVector {
     // Pre-allocate for typical chunk sizes (~150 unique terms) to avoid 3-4 resizes.
     let estimated_capacity = if text.len() > 200 { 128 } else { 16 };
@@ -118,7 +127,7 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
     let mut values = Vec::with_capacity(bucket_tf.len());
     for (idx, count) in bucket_tf {
         indices.push(idx);
-        values.push(count as f32); // raw TF; Qdrant applies IDF server-side (see collision note in module doc)
+        values.push((1.0_f32 + count as f32).ln()); // log-normalized TF; Qdrant applies IDF server-side
     }
     SparseVector { indices, values }
 }

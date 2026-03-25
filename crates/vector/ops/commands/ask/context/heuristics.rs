@@ -55,14 +55,7 @@ pub(super) fn query_requests_low_signal_sources(query_tokens: &[String], raw_que
 }
 
 pub(super) fn is_low_signal_source_url(url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    let is_web_url = lower.starts_with("http://") || lower.starts_with("https://");
-    lower.contains("/docs/sessions/")
-        || lower.contains("docs/sessions/")
-        || lower.contains("/.cache/")
-        || lower.contains(".cache/")
-        || (!is_web_url && lower.contains("/logs/"))
-        || (!is_web_url && lower.ends_with(".log"))
+    ranking::is_low_signal_url(url)
 }
 
 pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {

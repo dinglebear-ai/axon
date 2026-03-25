@@ -141,7 +141,7 @@ Each lane is an independent AMQP consumer with its own channel. Lanes share the 
 
 3. **Qdrant write throughput.** All workers write to the same Qdrant instance. Qdrant handles concurrent writes well, but very high embed rates can produce write contention. Qdrant supports sharding for horizontal scaling at the vector store layer.
 
-4. **PostgreSQL connection pool.** Each worker container creates a `PgPool` with `max_connections=5` (default). 10 worker containers = 50 connections. Postgres default `max_connections=100` supports ~20 worker containers before exhaustion. Tune with `AXON_PG_POOL_MAX_CONNECTIONS` if needed, or use PgBouncer.
+4. **PostgreSQL connection pool.** Each worker container creates a `PgPool` with `max_connections=10` (default). 10 worker containers = 100 connections, reaching the Postgres default `max_connections=100`. Tune with `AXON_PG_POOL_SIZE` env var if needed, or use PgBouncer.
 
 ---
 

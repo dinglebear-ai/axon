@@ -39,7 +39,7 @@ All global flags apply. Key flags:
 | `--query <text>` | — | Focus text (alternative to positional argument). |
 | `--limit <n>` | `10` | Desired number of suggested URLs (clamped to 1..100). |
 | `--collection <name>` | `cortex` | Qdrant collection to analyze. |
-| `--json` | `false` | Emits structured suggestions + filtered URLs + raw model output. |
+| `--json` | `false` | Emits `{"suggestions": [...urls]}` JSON object. |
 
 Note: `suggest` runs synchronously and does not enqueue jobs.
 

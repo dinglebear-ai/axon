@@ -264,7 +264,7 @@ HTTP:
 - `crates/web.rs`
 - `crates/web/shell.rs`
 - `crates/web/execute.rs`
-- `crates/web/execute/polling.rs`
+- `crates/web/execute/async_mode.rs`
 - `crates/web/execute/files.rs`
 - `crates/web/download.rs`
 - `apps/web/lib/ws-protocol.ts`

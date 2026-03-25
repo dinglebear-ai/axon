@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use crate::crates::jobs::status::JobStatus;
 
+const WAIT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
 pub type JobId = Uuid;
 
 /// Which job table a job belongs to.
@@ -119,6 +121,23 @@ pub trait JobBackend: Send + Sync {
 
     /// Get the error_text for a failed job. Returns None if not found or no error.
     async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>>;
+
+    /// Poll until the job reaches a terminal state (completed/failed/canceled).
+    /// Returns the final status string. Used in lite mode to keep the process
+    /// alive while in-process workers finish.
+    async fn wait_for_job(&self, id: JobId, kind: JobKind) -> BackendResult<String> {
+        loop {
+            if let Some(row) = self.job_status(id, kind).await? {
+                match row.status {
+                    JobStatus::Completed | JobStatus::Failed | JobStatus::Canceled => {
+                        return Ok(row.status.as_str().to_string());
+                    }
+                    _ => {}
+                }
+            }
+            tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+        }
+    }
 }
 
 #[cfg(test)]

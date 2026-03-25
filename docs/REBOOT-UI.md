@@ -40,7 +40,7 @@ Canonical source of truth for the Axon Shell's visual design language, component
 AxonFrame
   ├── NeuralCanvas (profile="current")
   ├── Atmospheric gradient overlays (2 layers)
-  └── AxonShell (orchestrator — 555 lines)
+  └── AxonShell (orchestrator — ~408 lines)
         ├── [Mobile] Header bar + PulseMobilePaneSwitcher
         ├── [Mobile] AxonSidebar (variant="mobile")
         ├── [Mobile] Chat pane (Conversation + AxonMessageList + AxonPromptComposer)
@@ -57,14 +57,14 @@ AxonFrame
 
 | File | Lines | Responsibility |
 |------|-------|---------------|
-| `axon-shell.tsx` | ~555 | Orchestrator — state, layout, event wiring |
-| `axon-sidebar.tsx` | ~393 | Unified sidebar (mobile + desktop via `variant` prop) |
-| `axon-message-list.tsx` | ~205 | `React.memo` message list + bubble constants |
-| `axon-prompt-composer.tsx` | ~304 | Composer + model/permission/tools dropdowns |
-| `axon-terminal-pane.tsx` | ~95 | Terminal emulator wrapper |
-| `axon-pane-handle.tsx` | ~27 | Collapsed pane handle |
-| `axon-frame.tsx` | ~15 | Background frame (NeuralCanvas + gradients) |
-| `axon-ui-config.ts` | ~280 | Types + UI configuration constants |
+| `axon-shell.tsx` | ~408 | Orchestrator — state, layout, event wiring |
+| `axon-sidebar.tsx` | ~484 | Unified sidebar (mobile + desktop via `variant` prop) |
+| `axon-message-list.tsx` | ~425 | `React.memo` message list + bubble constants |
+| `axon-prompt-composer.tsx` | ~491 | Composer + model/permission/tools dropdowns |
+| `axon-terminal-pane.tsx` | ~96 | Terminal emulator wrapper |
+| `axon-pane-handle.tsx` | ~36 | Collapsed pane handle |
+| `axon-frame.tsx` | ~25 | Background frame (NeuralCanvas + gradients) |
+| `axon-ui-config.ts` | ~24 | Types + UI configuration constants |
 
 ---
 

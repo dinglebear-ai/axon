@@ -104,7 +104,7 @@ Operational guidance:
 TEI behavior:
 
 - batch embedding with automatic split on payload-too-large patterns
-- retry on transient overload (`429`, `503`) with exponential backoff
+- retry on transient overload (`429` or any `5xx`) with exponential backoff
 - client batch sizing via `TEI_MAX_CLIENT_BATCH_SIZE`
 
 Embed pipeline controls:
@@ -199,7 +199,7 @@ Track:
 - `crates/crawl/engine.rs`
 - `crates/jobs/worker_lane.rs`
 - `crates/jobs/common/watchdog.rs`
-- `crates/vector/ops/tei.rs`
+- `crates/vector/ops/tei/tei_client.rs`
 - `crates/vector/ops/commands/*`
 - `apps/web/app/api/pulse/chat/route.ts`
 - `apps/web/app/api/ai/copilot/route.ts`

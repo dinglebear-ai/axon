@@ -303,30 +303,24 @@ async fn write_entity_relationships(
     Ok(())
 }
 
-async fn process_graph_job(
+/// Core graph extraction for a single URL. No job-table interaction — callers handle that.
+/// Used by both the full Postgres worker and the lite SQLite worker.
+pub(crate) async fn process_graph_url(
     cfg: &Config,
     neo4j: &Neo4jClient,
     taxonomy: &Taxonomy,
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<(), Box<dyn Error>> {
-    let job_start = std::time::Instant::now();
-    let Some((url, job_cfg)) = load_graph_job(pool, id).await? else {
-        return Ok(());
-    };
-    let source_type = job_cfg.source_type.unwrap_or_else(|| "crawl".to_string());
-
-    let points = qdrant_retrieve_by_url(cfg, &url, None).await?;
+    url: &str,
+    source_type: &str,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let points = qdrant_retrieve_by_url(cfg, url, None).await?;
     if points.is_empty() {
-        let result = serde_json::json!({
+        return Ok(serde_json::json!({
             "url": url,
             "chunk_count": 0,
             "entity_count": 0,
             "relation_count": 0,
             "similarity_edges": 0,
-        });
-        let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
-        return Ok(());
+        }));
     }
 
     let mut chunks = Vec::new();
@@ -341,8 +335,7 @@ async fn process_graph_job(
             other => other.to_string(),
         };
         let chunk_index = point.payload.chunk_index.unwrap_or_default();
-        // Extract entities before moving chunk_text into GraphChunk — avoids clone.
-        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk_text, &source_type));
+        taxonomy_candidates.extend(taxonomy.extract_entities(&chunk_text, source_type));
         chunks.push(GraphChunk {
             point_id,
             chunk_index,
@@ -354,13 +347,13 @@ async fn process_graph_job(
     let (clear_candidates, ambiguous_candidates) = partition_by_ambiguity(merged_candidates);
     let mut entities = clear_candidates
         .into_iter()
-        .map(|candidate| {
+        .map(|c| {
             (
-                normalize_entity_name(&candidate.name),
+                normalize_entity_name(&c.name),
                 MergedEntity {
-                    name: candidate.name,
-                    entity_type: candidate.entity_type,
-                    confidence: candidate.confidence,
+                    name: c.name,
+                    entity_type: c.entity_type,
+                    confidence: c.confidence,
                 },
             )
         })
@@ -371,7 +364,7 @@ async fn process_graph_job(
     } else {
         let prompt_text = chunks
             .iter()
-            .map(|chunk| chunk.chunk_text.as_str())
+            .map(|c| c.chunk_text.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
         Some(extract_entities_llm(cfg, &prompt_text).await?)
@@ -385,18 +378,35 @@ async fn process_graph_job(
         write_entity_relationships(neo4j, &relationships).await?;
     }
 
-    write_document_and_chunks(neo4j, cfg, &url, &source_type, &chunks).await?;
+    write_document_and_chunks(neo4j, cfg, url, source_type, &chunks).await?;
     write_entities(neo4j, &entities).await?;
     let mention_count =
-        write_chunk_mentions(neo4j, taxonomy, &source_type, &chunks, &entities).await?;
-    let similarity_edges = compute_similarity(cfg, neo4j, &url).await?;
-    let result = serde_json::json!({
+        write_chunk_mentions(neo4j, taxonomy, source_type, &chunks, &entities).await?;
+    let similarity_edges = compute_similarity(cfg, neo4j, url).await?;
+
+    Ok(serde_json::json!({
         "url": url,
         "chunk_count": chunks.len(),
         "entity_count": entities.len(),
         "relation_count": relationship_count + mention_count + similarity_edges.len(),
         "similarity_edges": similarity_edges.len(),
-    });
+    }))
+}
+
+async fn process_graph_job(
+    cfg: &Config,
+    neo4j: &Neo4jClient,
+    taxonomy: &Taxonomy,
+    pool: &PgPool,
+    id: Uuid,
+) -> Result<(), Box<dyn Error>> {
+    let job_start = std::time::Instant::now();
+    let Some((url, job_cfg)) = load_graph_job(pool, id).await? else {
+        return Ok(());
+    };
+    let source_type = job_cfg.source_type.unwrap_or_else(|| "crawl".to_string());
+
+    let result = process_graph_url(cfg, neo4j, taxonomy, &url, &source_type).await?;
     let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
 
     log_done(&format!(

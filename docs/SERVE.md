@@ -30,10 +30,10 @@ Bind host is controlled by `AXON_SERVE_HOST`:
 apps/web ──────▶ axum (single port, single binary)
                  │
                  ├── GET /output/{*path}          → serve generated output files
-                 ├── GET /download/{id}/pack.md   → crawl artifact download
-                 ├── GET /download/{id}/pack.xml
-                 ├── GET /download/{id}/archive.zip
-                 ├── GET /download/{id}/file/{*path}
+                 ├── GET /download/{job_id}/pack.md   → crawl artifact download
+                 ├── GET /download/{job_id}/pack.xml
+                 ├── GET /download/{job_id}/archive.zip
+                 ├── GET /download/{job_id}/file/{*path}
                  │
                  ├── WS /ws                       → command bridge + docker stats
                      │
@@ -46,10 +46,10 @@ apps/web ──────▶ axum (single port, single binary)
                      │   server→client: {"type":"job.cancel.response","data":{"ctx":...,"payload":{"ok":true,...}}}
                      │
                      └── server→client (broadcast): {"type":"stats","containers":{...},"aggregate":{...}}
-                         └── bollard polls Docker socket every 1000ms
+                         └── bollard polls Docker socket every 500ms
 
                  └── WS /ws/shell                 → PTY bridge for terminal UI
-                     └── localhost-only (non-loopback rejected with 403)
+                     └── origin-checked + token-gated (non-allowed origins rejected with 403)
 ```
 
 ## WebSocket Authentication
@@ -87,9 +87,9 @@ crates/web.rs ws_upgrade() checks ?token= against AXON_WEB_API_TOKEN
 
 ### `/ws/shell` — PTY bridge
 
-Loopback-only restriction enforced in `shell_ws_upgrade()`. Non-loopback connections receive HTTP 403 before upgrade.
+Origin checking is enforced in `shell_ws_upgrade()` via `effective_shell_allowed_origins()`, which combines `AXON_SHELL_ALLOWED_ORIGINS` with `AXON_WEB_ALLOWED_ORIGINS`. Non-allowed origins receive HTTP 403 before upgrade.
 
-IPv4-mapped loopback (`::ffff:127.0.0.1`) is explicitly accepted — Rust's `IpAddr::is_loopback()` returns `false` for this address form.
+Token auth uses the same `check_auth()` path as `/ws` — checked against `AXON_WEB_API_TOKEN`. Rejected connections receive HTTP 403 (not 401). Inbound message size is capped at 64 KiB at the upgrade level.
 
 Auth is handled by the shell server (`shell-server.mjs`) separately from the Rust WS gate. See `apps/web/CLAUDE.md → Shell Server`.
 
@@ -156,7 +156,7 @@ Compatibility messages still emitted for frontend migration paths:
 
 Only these command modes can be executed from the UI (whitelist in `execute/constants.rs`):
 
-`scrape`, `crawl`, `map`, `extract`, `search`, `research`, `embed`, `debug`, `doctor`, `query`, `retrieve`, `ask`, `evaluate`, `suggest`, `sources`, `domains`, `stats`, `status`, `dedupe`, `github`, `reddit`, `youtube`, `sessions`, `screenshot`
+`scrape`, `crawl`, `map`, `extract`, `search`, `research`, `embed`, `debug`, `doctor`, `query`, `retrieve`, `ask`, `evaluate`, `suggest`, `sources`, `domains`, `stats`, `status`, `dedupe`, `github`, `reddit`, `youtube`, `sessions`, `screenshot`, `pulse_chat`, `mcp_refresh` (internal), `pulse_chat_probe` (internal)
 
 ## Allowed Flags
 
@@ -184,7 +184,7 @@ Only these flags can be passed from the UI (whitelist in `execute/constants.rs`)
 | `max_posts` | `--max-posts` |
 | `min_score` | `--min-score` |
 | `scrape_links` | `--scrape-links` |
-| `no_source` | `--no-source` |
+| `include_source` | `--include-source` |
 | `claude` | `--claude` |
 | `codex` | `--codex` |
 | `gemini` | `--gemini` |
@@ -195,6 +195,20 @@ Only these flags can be passed from the UI (whitelist in `execute/constants.rs`)
 | `performance_profile` | `--performance-profile` |
 | `batch_concurrency` | `--batch-concurrency` |
 | `depth` | `--depth` |
+| `responses_mode` | `--responses-mode` |
+| `agent` | `--agent` |
+| `model` | `--model` |
+| `session_mode` | `--session-mode` |
+| `mcp_servers` | `--mcp-servers` |
+| `blocked_mcp_tools` | `--blocked-mcp-tools` |
+| `session_id` | `--session-id` |
+| `assistant_mode` | `--assistant-mode` |
+| `enable_fs` | `--enable-fs` |
+| `enable_terminal` | `--enable-terminal` |
+| `permission_timeout_secs` | `--permission-timeout-secs` |
+| `adapter_timeout_secs` | `--adapter-timeout-secs` |
+| `offset` | `--offset` |
+| `max_points` | `--max-points` |
 
 ## Docker Stats
 
@@ -203,5 +217,5 @@ The stats poller connects to the Docker socket via `bollard::Docker::connect_wit
 1. Lists containers matching `axon-*` prefix with status `running`
 2. For each container, fetches one-shot stats
 3. Computes: CPU% (docker stats formula), memory (usage - cache), network I/O rates, block I/O rates
-4. Broadcasts the aggregated JSON to all connected WebSocket clients every 1000ms
+4. Broadcasts the aggregated JSON to all connected WebSocket clients every 500ms
 5. The frontend maps per-container CPU to neuron cluster EPSP injection, and network I/O to extra action potential firing

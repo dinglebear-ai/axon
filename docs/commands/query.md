@@ -39,6 +39,8 @@ All global flags apply. Key flags:
 | `--limit <n>` | `10` | Number of query results to return. |
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
 | `--diagnostics` | `false` | Adds per-result debug fields in human output (`vector_score`, full URL). |
+| `--since <date>` | — | Filter results to content indexed on or after this date. Accepts `7d`, `30d`, `1w`, `YYYY-MM-DD`, or RFC3339. |
+| `--before <date>` | — | Filter results to content indexed on or before this date. Same formats as `--since`. |
 | `--json` | `false` | Machine-readable output (one JSON object per result line). |
 
 Note: `query` runs synchronously and does not enqueue jobs.

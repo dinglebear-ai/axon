@@ -74,8 +74,9 @@ Sub-config struct definitions are scaffolded in `crates/core/config/types/subcon
 7. Run `cargo test` to verify
 
 Call sites to update (search for `cfg.github_token`, `cfg.reddit_*`):
-- `crates/cli/commands/github.rs`
-- `crates/cli/commands/reddit.rs`
+- `crates/ingest/github.rs`
+- `crates/ingest/reddit.rs`
+- `crates/cli/commands/refresh/github.rs`
 - `crates/jobs/ingest/ops.rs`
 
 ### Phase 2: Migrate `AskConfig`
@@ -144,7 +145,7 @@ axon_rust/
     ├── crawl/          ← spider.rs crawl engine
     ├── jobs/           ← AMQP workers
     ├── vector/         ← TEI + Qdrant ops
-    ← mcp/             ← MCP server
+    ├── mcp/            ← MCP server
     ├── web.rs          ← axum web UI
     └── ingest/         ← github/reddit/youtube ingest
 ```

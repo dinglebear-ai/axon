@@ -166,7 +166,11 @@ async fn send_chunk_with_retries(
             .await
             .unwrap_or_else(|_| "<response body unavailable>".to_string());
         drop(permit);
-        if status == StatusCode::PAYLOAD_TOO_LARGE && chunk.len() > 1 {
+        // 413 = payload too large; 422 with "batch size" body = TEI batch limit exceeded.
+        // Both mean "chunk is too big for the server" — split and retry.
+        let is_batch_too_large = (status == StatusCode::PAYLOAD_TOO_LARGE)
+            || (status == StatusCode::UNPROCESSABLE_ENTITY && err_body.contains("batch size"));
+        if is_batch_too_large && chunk.len() > 1 {
             return Ok(ChunkOutcome::Split);
         }
         if is_retryable_status(status) && attempt < max_attempts {

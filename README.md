@@ -324,6 +324,8 @@ Axon implements a multi-layered incremental crawl mechanism to minimize network 
 | `sessions [--claude] [--codex] [--gemini] [--project <name>]` | Ingest AI session exports (Claude/Codex/Gemini) into Qdrant | No |
 | `screenshot <url>...` | Capture page screenshot(s) via Chrome | No |
 | `completions <bash|zsh|fish>` | Generate shell completion scripts | No |
+| `graph <sub>` | Knowledge graph operations: `build`, `status`, `explore`, `stats`, `worker`. Requires `AXON_NEO4J_URL`. | Depends |
+| `migrate --from <src> --to <dst>` | Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search). No re-embedding needed. | No |
 | `sources` | List all indexed URLs + chunk counts | No |
 | `domains` | List indexed domains + stats | No |
 | `stats` | Qdrant collection stats | No |
@@ -433,7 +435,12 @@ All flags are global (usable with any subcommand).
 | `--wait <bool>` | bool | `false` | Run synchronously and block until completion. Without this, async commands enqueue and return immediately. |
 | `--yes` | flag | `false` | Skip confirmation prompts (non-interactive mode). |
 | `--json` | flag | `false` | Machine-readable JSON output on stdout. |
+| `--graph` | flag | `false` | Enable graph-enhanced retrieval for `ask` (requires Neo4j via `AXON_NEO4J_URL`). |
 | `--reclaimed` | flag | `false` | `status` mode: show only watchdog-reclaimed jobs. Default `status` hides reclaimed jobs. |
+| `--active` | flag | `false` | List/status mode: show only active jobs (running/pending). |
+| `--recent` | flag | `false` | List/status mode: show active + completed jobs (hide failed/canceled). |
+| `--lite` | flag | `false` | Run without Postgres/Redis/RabbitMQ. Uses SQLite + in-process workers. |
+| `--sqlite-path <path>` | path | — | Path to the SQLite jobs database (lite mode only). |
 
 #### Crawl & Scrape
 
@@ -453,6 +460,18 @@ All flags are global (usable with any subcommand).
 | `--exclude-path-prefix <prefixes>` | csv | *(locale list)* | Comma-separated URL path prefixes to exclude (e.g. `/fr,/de`). Defaults to a broad locale-prefix list. |
 | `--url-glob <patterns>` | csv | — | Comma-separated brace-glob patterns for URL expansion. |
 | `--start-url <url>` | string | `https://example.com` | Seed URL override. |
+| `--url-whitelist <patterns>` | repeatable | — | Only crawl URLs matching these regex patterns. Default: none (crawl all in-scope URLs). |
+| `--block-assets <bool>` | bool | `false` | Block image/CSS/font downloads during crawl. |
+| `--max-page-bytes <n>` | u64 | `0` | Maximum response size per page in bytes (0 = unlimited). |
+| `--redirect-policy-strict <bool>` | bool | `false` | Only follow same-origin redirects. |
+| `--sitemap-only` | flag | `false` | Skip the crawl phase; only run sitemap backfill. |
+| `--normalize <bool>` | bool | `false` | Deduplicate trailing-slash URL variants during crawl. |
+| `--auto-switch-thin-ratio <ratio>` | f64 | `0.60` | Thin-page ratio (0.0–1.0) that triggers auto-switch to Chrome. |
+| `--auto-switch-min-pages <n>` | usize | `10` | Minimum pages crawled before auto-switch eligibility check fires. |
+| `--root-selector <css>` | string | — | CSS selector to scope content extraction (e.g. `article, main`). |
+| `--exclude-selector <css>` | string | — | CSS selector to exclude elements from extraction (e.g. `.sidebar`). |
+| `--since <date>` | string | — | Lower temporal bound for query/ask results. Formats: `7d`, `30d`, `YYYY-MM-DD`, RFC3339. |
+| `--before <date>` | string | — | Upper temporal bound for query/ask results. Same formats as `--since`. |
 
 #### Browser / Chrome
 
@@ -468,6 +487,14 @@ All flags are global (usable with any subcommand).
 | `--chrome-bootstrap <bool>` | bool | `true` | — | Enable Chrome bootstrap. |
 | `--chrome-bootstrap-timeout-ms <ms>` | u64 | `3000` | — | Bootstrap timeout in ms. |
 | `--chrome-bootstrap-retries <n>` | usize | `2` | — | Bootstrap retry count. |
+| `--chrome-network-idle-timeout <s>` | u64 | `15` | — | Seconds to wait for Chrome network idle before page capture. |
+| `--chrome-wait-for-selector <css>` | string | — | — | CSS selector to wait for before Chrome captures the page. |
+| `--chrome-screenshot <bool>` | bool | `false` | — | Capture full-page PNG screenshots during Chrome crawl. |
+| `--bypass-csp <bool>` | bool | `false` | — | Bypass Content Security Policy in Chrome. |
+| `--accept-invalid-certs <bool>` | bool | `false` | — | Accept invalid or self-signed TLS certificates. |
+| `--screenshot-full-page <bool>` | bool | `true` | — | Capture full scrollable page (`true`) or viewport only (`false`). |
+| `--viewport <WxH>` | string | `1920x1080` | — | Viewport dimensions for Chrome rendering. |
+| `--header <HEADER>` | repeatable | — | — | Custom HTTP header in `Key: Value` format. Repeatable. Applied to crawl, scrape, extract, and Chrome re-fetch paths. |
 
 #### Caching
 
@@ -548,12 +575,12 @@ All flags are global (usable with any subcommand).
 
 Concurrency tuned relative to available CPU cores:
 
-| Profile | Crawl concurrency | Sitemap concurrency | Backfill concurrency | Timeout | Retries | Backoff |
-|---------|------------------|---------------------|----------------------|---------|---------|---------|
-| `high-stable` (default) | CPUs×8 (64–192) | CPUs×12 (64–256) | CPUs×6 (32–128) | 20s | 2 | 250ms |
-| `balanced` | CPUs×4 (32–96) | CPUs×6 (32–128) | CPUs×3 (16–64) | 30s | 2 | 300ms |
-| `extreme` | CPUs×16 (128–384) | CPUs×20 (128–512) | CPUs×10 (64–256) | 15s | 1 | 100ms |
-| `max` | CPUs×24 (256–1024) | CPUs×32 (256–1536) | CPUs×20 (128–1024) | 12s | 1 | 50ms |
+| Profile | Crawl concurrency | Backfill concurrency | Timeout | Retries | Backoff |
+|---------|------------------|----------------------|---------|---------|---------|
+| `high-stable` (default) | CPUs×8 (64–192) | CPUs×6 (32–128) | 20s | 2 | 250ms |
+| `balanced` | CPUs×4 (32–96) | CPUs×3 (16–64) | 30s | 2 | 300ms |
+| `extreme` | CPUs×16 (128–384) | CPUs×10 (64–256) | 15s | 1 | 100ms |
+| `max` | CPUs×24 (256–1024) | CPUs×20 (128–1024) | 12s | 1 | 50ms |
 
 ## Troubleshooting
 
@@ -668,6 +695,122 @@ Differs from the other three tables: uses `source_type` + `target` instead of `u
 
 **Index:** `idx_axon_ingest_jobs_pending` — partial index on `created_at ASC WHERE status = 'pending'` for efficient FIFO queue polling.
 
+### axon_refresh_jobs
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| `id` | UUID | NOT NULL | — | Primary key |
+| `status` | TEXT | NOT NULL | — | `pending` / `running` / `completed` / `failed` / `canceled` |
+| `urls_json` | JSONB | NOT NULL | — | Array of URLs to refresh |
+| `created_at` | TIMESTAMPTZ | NOT NULL | `NOW()` | Job creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | `NOW()` | Last status change |
+| `started_at` | TIMESTAMPTZ | NULL | — | When worker began processing |
+| `finished_at` | TIMESTAMPTZ | NULL | — | When job completed/failed/canceled |
+| `error_text` | TEXT | NULL | — | Error message on failure |
+| `result_json` | JSONB | NULL | — | Refresh results |
+| `config_json` | JSONB | NOT NULL | — | Serialized job configuration |
+
+### axon_refresh_targets
+
+Tracks per-URL HTTP cache metadata for conditional GET refresh (ETag / Last-Modified / content hash).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `url` | TEXT | NOT NULL (PK) | Target URL |
+| `etag` | TEXT | NULL | Last ETag seen |
+| `last_modified` | TEXT | NULL | Last-Modified header value |
+| `content_hash` | TEXT | NULL | SHA-256 of last markdown content |
+| `markdown_chars` | INTEGER | NULL | Character count of last content |
+| `last_status` | INTEGER | NULL | HTTP status code of last fetch |
+| `last_checked_at` | TIMESTAMPTZ | NOT NULL | Last fetch attempt timestamp |
+| `last_changed_at` | TIMESTAMPTZ | NULL | Last time content actually changed |
+| `error_text` | TEXT | NULL | Error on last failed fetch |
+
+### axon_refresh_schedules
+
+Named recurring refresh schedules. Backed by `axon refresh schedule ...` commands. Each schedule maps a name to a set of URLs and a recurrence interval.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | UUID | NOT NULL (PK) | Primary key |
+| `name` | TEXT | NOT NULL (UNIQUE) | Schedule name |
+| `seed_url` | TEXT | NULL | Optional seed URL |
+| `urls_json` | JSONB | NULL | Array of URLs to refresh on schedule |
+| `every_seconds` | BIGINT | NOT NULL | Recurrence interval in seconds |
+| `enabled` | BOOLEAN | NOT NULL | Whether schedule is active |
+| `next_run_at` | TIMESTAMPTZ | NOT NULL | Next scheduled run time |
+| `last_run_at` | TIMESTAMPTZ | NULL | Last time the schedule ran |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Last update timestamp |
+
+### axon_graph_jobs
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | UUID | NOT NULL (PK) | Primary key |
+| `url` | TEXT | NOT NULL | Source URL for graph extraction |
+| `status` | TEXT | NOT NULL | `pending` / `running` / `completed` / `failed` / `canceled` |
+| `chunk_count` | INTEGER | NULL | Number of chunks processed |
+| `entity_count` | INTEGER | NULL | Extracted entity count |
+| `relation_count` | INTEGER | NULL | Extracted relation count |
+| `result_json` | JSONB | NULL | Extraction results |
+| `config_json` | JSONB | NULL | Serialized job configuration |
+| `error_text` | TEXT | NULL | Error message on failure |
+| `created_at` | TIMESTAMPTZ | NULL | Job creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NULL | Last status change |
+| `started_at` | TIMESTAMPTZ | NULL | When worker began processing |
+| `finished_at` | TIMESTAMPTZ | NULL | When job completed/failed/canceled |
+
+### axon_watch_defs
+
+Top-level recurring watch definitions (e.g. `task_type=refresh`). Managed by `axon watch ...` commands.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | UUID | NOT NULL (PK) | Primary key |
+| `name` | TEXT | NOT NULL (UNIQUE) | Watch name |
+| `task_type` | TEXT | NOT NULL | Task type (currently: `refresh`) |
+| `task_payload` | JSONB | NOT NULL | Task payload (e.g. `{"urls":["https://..."]}`) |
+| `every_seconds` | BIGINT | NOT NULL | Recurrence interval in seconds |
+| `enabled` | BOOLEAN | NOT NULL | Whether watch is active |
+| `next_run_at` | TIMESTAMPTZ | NOT NULL | Next scheduled run time |
+| `lease_expires_at` | TIMESTAMPTZ | NULL | Worker lease expiry for concurrency safety |
+| `last_run_at` | TIMESTAMPTZ | NULL | Last time the watch fired |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Last update timestamp |
+
+**Index:** `idx_axon_watch_defs_due` — partial index on `next_run_at ASC WHERE enabled = TRUE` for efficient due-watch polling.
+
+### axon_watch_runs
+
+Execution history for each `axon_watch_defs` trigger.
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | UUID | NOT NULL (PK) | Primary key |
+| `watch_id` | UUID | NOT NULL (FK → axon_watch_defs) | Parent watch definition |
+| `status` | TEXT | NOT NULL | `pending` / `running` / `completed` / `failed` / `canceled` |
+| `dispatched_job_id` | UUID | NULL | Downstream job dispatched by this run |
+| `error_text` | TEXT | NULL | Error on failure |
+| `result_json` | JSONB | NULL | Run results |
+| `started_at` | TIMESTAMPTZ | NULL | Run start time |
+| `finished_at` | TIMESTAMPTZ | NULL | Run completion time |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Last update timestamp |
+
+### axon_watch_run_artifacts
+
+Artifacts produced by a watch run (e.g. output files, diffs).
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| `id` | BIGSERIAL | NOT NULL (PK) | Auto-increment primary key |
+| `watch_run_id` | UUID | NOT NULL (FK → axon_watch_runs) | Parent run |
+| `kind` | TEXT | NOT NULL | Artifact kind discriminator |
+| `path` | TEXT | NULL | Filesystem path of the artifact |
+| `payload` | JSONB | NULL | Artifact payload data |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Creation timestamp |
+
 ## Gotchas
 
 ### `--wait false` (default) = fire-and-forget
@@ -693,12 +836,12 @@ When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_
 - **Optional model override:** `OPENAI_MODEL=<model-name>`
 
 ### TEI batch size / 413 handling
-`tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, effective max: 128).
+`tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 128, max: 128).
 
 ### TEI retries / timeouts
 
 `tei_embed()` retries transient failures (transport errors, HTTP 429, and HTTP 5xx) with exponential backoff + jitter.
-- `TEI_MAX_RETRIES` controls max attempts per TEI request (default: 10, max: 20).
+- `TEI_MAX_RETRIES` controls max attempts per TEI request (default: 5, max: 20).
 - `TEI_REQUEST_TIMEOUT_MS` controls per-attempt request timeout (default: 30000, clamped 100..600000).
 - Hard client errors (HTTP 4xx except 429) fail fast (no retry storm).
 - HTTP 413 still triggers batch-splitting logic before retrying smaller chunks.
@@ -712,8 +855,8 @@ When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_
 ### Thin page filtering
 Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin. If `--drop-thin-markdown true` (default), thin pages are skipped — not saved to disk or embedded.
 
-### Collection must exist before upsert
-`ensure_collection()` issues a PUT to Qdrant to create or update the collection with the correct vector dimension. This is idempotent — safe to call on every embed.
+### ensure_collection() auto-creates collections
+`ensure_collection()` does a GET first; only issues a PUT on 404 (collection not found). Safe to call on every embed — no 409 Conflict on existing collections. New collections are created with named dense + bm42 sparse vectors (hybrid mode). Existing unnamed-vector collections are left unchanged (hybrid search disabled for those; use `axon migrate` to upgrade).
 
 ### Default collection name
 The default Qdrant collection is `cortex` (set via `AXON_COLLECTION` or `--collection`). If you previously used an older build that defaulted to `spider_rust`, pass `--collection spider_rust` explicitly.

@@ -79,7 +79,7 @@ Implemented in `crates/core/http.rs`:
 `/ws` upgrade path (`crates/web.rs`):
 
 - Gate is active when `AXON_WEB_API_TOKEN` is set; disabled (open) when unset
-- One token type: `AXON_WEB_API_TOKEN` — the same static secret used by `proxy.ts` for `/api/*` routes
+- Token for `/ws`: `AXON_WEB_API_TOKEN` — the primary static secret; `proxy.ts` accepts either `AXON_WEB_API_TOKEN` or `AXON_WEB_BROWSER_API_TOKEN` for `/api/*` routes (when both are set, `/ws` always uses `AXON_WEB_API_TOKEN`)
 - Browser sends it as `?token=` query param (appended by `hooks/use-axon-ws.ts`)
 - MCP OAuth clients (`atk_` tokens) do not have access to `/ws` — they use the MCP tool API instead
 - Non-loopback connections to `/ws/shell` rejected with 403; IPv4-mapped loopback (`::ffff:127.0.0.1`) accepted correctly

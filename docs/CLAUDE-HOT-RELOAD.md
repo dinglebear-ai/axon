@@ -238,7 +238,7 @@ whitelist in `claude-watcher/run`.
 ### 1-second debounce not enough
 
 **Symptom:** Session loads a half-written agent/skill file.
-**Fix:** Increase `sleep 1` to `sleep 2` in `docker/s6/s6-rc.d/claude-watcher/run`.
+**Fix:** Increase `sleep 1` to `sleep 2` in `docker/web/s6-rc.d/claude-watcher/run`.
 
 ---
 

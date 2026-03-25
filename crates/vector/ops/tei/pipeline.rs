@@ -32,7 +32,24 @@ async fn embed_prepared_doc(
     if doc.chunks.is_empty() {
         return Err(format!("all chunks empty for {}", doc.url).into());
     }
-    let vectors = tei_embed(cfg, &doc.chunks)
+    // Prepend title and URL to each chunk before embedding. The embedding model
+    // sees "[<title>] <url>\n\n<chunk>" but the original chunk text is stored in
+    // the payload — search results and snippets show unmodified content.
+    //
+    // This improves dense retrieval accuracy by anchoring each chunk to its
+    // source document's topical identity (domain, page title). Without this,
+    // a chunk from any domain that happens to share vocabulary with the query
+    // can outscore the authoritative source because the embedding has no
+    // document-level context.
+    let embed_texts: Vec<String> = doc
+        .chunks
+        .iter()
+        .map(|chunk| match &doc.title {
+            Some(t) if !t.is_empty() => format!("[{}] {}\n\n{}", t, doc.url, chunk),
+            _ => format!("{}\n\n{}", doc.url, chunk),
+        })
+        .collect();
+    let vectors = tei_embed(cfg, &embed_texts)
         .await
         .map_err(|e| -> SendError { format!("TEI embed for {}: {e}", doc.url).into() })?;
     if vectors.is_empty() {

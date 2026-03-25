@@ -75,8 +75,8 @@ mkdir -p ~/.local/share/axon/axon/{postgres,redis,rabbitmq,qdrant,output,artifac
 ### Infrastructure (Docker)
 
 ```bash
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
-docker compose ps
+docker compose -f docker-compose.services.yaml up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+docker compose -f docker-compose.services.yaml ps
 ```
 
 ### Workers (local processes)
@@ -129,7 +129,7 @@ Current `just dev` behavior:
 Workers run in the foreground locally — output goes to the terminal directly. For infra containers:
 
 ```bash
-docker compose logs -f axon-postgres axon-redis axon-rabbitmq axon-qdrant
+docker compose -f docker-compose.services.yaml logs -f axon-postgres axon-redis axon-rabbitmq axon-qdrant
 ```
 
 ## Health Checks
@@ -325,8 +325,8 @@ Primary logs:
 
 ```bash
 docker compose logs -f axon-workers
-docker compose logs -f axon-rabbitmq
-docker compose logs -f axon-qdrant
+docker compose -f docker-compose.services.yaml logs -f axon-rabbitmq
+docker compose -f docker-compose.services.yaml logs -f axon-qdrant
 ```
 
 Structured app logs are written under mounted logs volume for workers.
@@ -356,6 +356,7 @@ To stop only local worker processes started with `just workers` or `just dev`, u
 ## Source Map
 
 - `docker-compose.yaml`
+- `docker-compose.services.yaml`
 - `docker-compose.test.yaml`
 - `scripts/dev-setup.sh`
 - `Justfile`

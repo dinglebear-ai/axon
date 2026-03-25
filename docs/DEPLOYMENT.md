@@ -84,7 +84,7 @@ Populate `.env` before first deploy. `dev-setup.sh` handles secrets and service 
 
 - `AXON_DATA_DIR` — root for all persistent volume data
 - `AXON_PG_URL`, `AXON_REDIS_URL`, `AXON_AMQP_URL`, `QDRANT_URL` — infrastructure service URLs
-- `TEI_URL` — external text embedding service (not in Compose)
+- `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.services.yaml`)
 - `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` — LLM endpoint
 
 ### Web UI
@@ -153,13 +153,16 @@ docker compose build
 **Full Docker deployment** (includes workers and web UI with published ports):
 
 ```bash
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome axon-workers axon-web
+# Start infrastructure first (postgres, redis, rabbitmq, qdrant, tei, chrome)
+docker compose -f docker-compose.services.yaml up -d
+# Then start app containers (workers + web)
+docker compose up -d axon-workers axon-web
 ```
 
 **Local dev mode** (infra in Docker, workers and web run as local processes):
 
 ```bash
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+docker compose -f docker-compose.services.yaml up -d
 
 # All workers at once (recommended):
 just workers
@@ -231,8 +234,8 @@ docker compose down
 3. Rebuild/restart:
 
 ```bash
-docker compose build
-docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+docker compose -f docker-compose.services.yaml build
+docker compose -f docker-compose.services.yaml up -d
 ```
 
 Restart workers and web locally as in the standard deploy procedure.
