@@ -315,6 +315,7 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
 mod tests {
     use super::*;
     use chrono::Utc;
+    use std::error::Error;
     use tempfile::NamedTempFile;
 
     fn lite_cfg(path: &std::path::Path) -> Config {
@@ -324,8 +325,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lite_watch_create_and_list_round_trip() {
-        let temp = NamedTempFile::new().expect("temp db");
+    async fn lite_watch_create_and_list_round_trip() -> Result<(), Box<dyn Error>> {
+        let temp = NamedTempFile::new()?;
         let cfg = lite_cfg(temp.path());
         let created = create_watch_def(
             &cfg,
@@ -338,17 +339,17 @@ mod tests {
                 next_run_at: Utc::now(),
             },
         )
-        .await
-        .expect("create watch");
+        .await?;
 
-        let listed = list_watch_defs(&cfg, 20).await.expect("list defs");
+        let listed = list_watch_defs(&cfg, 20).await?;
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, created.id);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn lite_watch_run_now_records_completed_run() {
-        let temp = NamedTempFile::new().expect("temp db");
+    async fn lite_watch_run_now_records_completed_run() -> Result<(), Box<dyn Error>> {
+        let temp = NamedTempFile::new()?;
         let mut cfg = lite_cfg(temp.path());
         cfg.output_dir = std::env::temp_dir().join(format!("axon-watch-lite-{}", Uuid::new_v4()));
         cfg.embed = false;
@@ -363,11 +364,11 @@ mod tests {
                 next_run_at: Utc::now(),
             },
         )
-        .await
-        .expect("create watch");
+        .await?;
 
-        let run = run_watch_now(&cfg, &watch).await.expect("run now");
+        let run = run_watch_now(&cfg, &watch).await?;
         assert_eq!(run.watch_id, watch.id);
         assert_eq!(run.status, WATCH_RUN_STATUS_COMPLETED);
+        Ok(())
     }
 }

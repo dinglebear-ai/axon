@@ -1,5 +1,21 @@
 # Changelog
-Last Modified: 2026-03-25 (session: v0.33.1 — mcporter dual-mode smoke coverage)
+Last Modified: 2026-03-26 (session: v0.33.2 — embed JSON contract and test cleanup)
+
+## [0.33.2] — fix/embed-json-contract
+
+### Highlights
+
+- **Embed JSON contract cleanup** — `axon embed --json` now emits one machine-readable JSON object on `stdout`; human progress output moved off the JSON channel.
+- **Stable embed metadata** — `axon embed status --json` now exposes top-level `collection`, `target`, and `source` fields so automation does not need to scrape nested blobs to find collection metadata.
+- **Lite-mode embed parity** — lite embed workers no longer leak a second JSON payload during in-process completion; the start and status paths now present one coherent contract.
+- **Warning cleanup in touched tests** — warning-only `.unwrap()` / `.expect()` additions were removed from the affected CLI, services, MCP config, watch-lite, and refresh-schedule test modules.
+- **Embed command docs corrected** — `docs/commands/embed.md` now documents the fixed local CLI JSON shape instead of the old leaked behavior.
+
+### Commits since v0.33.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix(cli) | normalize embed JSON output contract and remove warning-only unwraps |
 
 ## [0.33.1] — fix/mcp-smoke-dual-mode
 

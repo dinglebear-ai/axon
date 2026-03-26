@@ -238,18 +238,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_watch_lists_in_lite_mode() {
+    async fn run_watch_lists_in_lite_mode() -> Result<(), Box<dyn Error>> {
         let cfg = Config::default_lite();
-        run_watch(&cfg)
-            .await
-            .expect("lite mode watch list should succeed");
+        run_watch(&cfg).await?;
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
     async fn cli_watch_create_emits_json_with_id() -> Result<(), Box<dyn Error>> {
         let pg_url = resolve_test_pg_url()
-            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
+            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url.clone();
         cfg.json_output = true;
@@ -274,7 +273,7 @@ mod tests {
     #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
     async fn cli_watch_list_returns_definitions() -> Result<(), Box<dyn Error>> {
         let pg_url = resolve_test_pg_url()
-            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
+            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url;
         cfg.positional = vec!["list".to_string()];
@@ -286,7 +285,7 @@ mod tests {
     #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
     async fn cli_watch_run_now_dispatches_task_and_returns_run_id() -> Result<(), Box<dyn Error>> {
         let pg_url = resolve_test_pg_url()
-            .expect("AXON_TEST_PG_URL must be set for ignored CLI infra tests");
+            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url.clone();
         cfg.positional = vec![

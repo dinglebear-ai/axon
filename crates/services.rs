@@ -25,25 +25,26 @@ pub mod watch;
 mod service_context_tests {
     use super::context::ServiceContext;
     use crate::crates::core::config::Config;
+    use std::error::Error;
 
     #[tokio::test]
-    async fn service_context_resolves_capabilities_for_lite_mode() {
+    async fn service_context_resolves_capabilities_for_lite_mode()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
         let cfg = Config::default_lite();
-        let ctx = ServiceContext::new(std::sync::Arc::new(cfg))
-            .await
-            .expect("service context");
+        let ctx = ServiceContext::new(std::sync::Arc::new(cfg)).await?;
 
         assert!(!ctx.capabilities.export.supported);
         assert!(!ctx.capabilities.graph.supported);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn service_context_resolves_capabilities_for_full_mode() {
+    async fn service_context_resolves_capabilities_for_full_mode()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
         let cfg = Config::default();
-        let ctx = ServiceContext::new(std::sync::Arc::new(cfg))
-            .await
-            .expect("service context");
+        let ctx = ServiceContext::new(std::sync::Arc::new(cfg)).await?;
 
         assert!(ctx.capabilities.export.supported);
+        Ok(())
     }
 }

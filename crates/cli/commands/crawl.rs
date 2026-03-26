@@ -28,10 +28,6 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         if subcommands::maybe_handle_subcommand(cfg).await? {
             return Ok(());
         }
-        if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-            println!("Lite mode: workers run in-process automatically. No separate worker needed.");
-            return Ok(());
-        }
         let urls = parse_urls(cfg);
         if urls.is_empty() {
             return Err(

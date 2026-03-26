@@ -335,27 +335,32 @@ mod tests {
     use crate::crates::jobs::embed::EmbedJob;
     use crate::crates::jobs::refresh::RefreshJob;
     use chrono::{DateTime, TimeZone, Utc};
+    use std::error::Error;
     use uuid::Uuid;
 
-    fn test_ts() -> DateTime<Utc> {
+    fn test_ts() -> Result<DateTime<Utc>, Box<dyn Error>> {
         Utc.with_ymd_and_hms(2026, 3, 15, 12, 0, 0)
             .single()
-            .expect("valid timestamp")
+            .ok_or_else(|| "valid timestamp".into())
     }
 
-    fn assert_job_status_trait<T: JobStatus>(job: &T, expected_status: &str) {
+    fn assert_job_status_trait<T: JobStatus>(
+        job: &T,
+        expected_status: &str,
+    ) -> Result<(), Box<dyn Error>> {
         assert_eq!(job.status(), expected_status);
-        assert_eq!(job.updated_at(), test_ts());
+        assert_eq!(job.updated_at(), test_ts()?);
+        Ok(())
     }
 
     #[test]
-    fn embed_job_implements_shared_job_status_trait() {
+    fn embed_job_implements_shared_job_status_trait() -> Result<(), Box<dyn Error>> {
         let job = EmbedJob {
-            id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").expect("valid uuid"),
+            id: Uuid::parse_str("66666666-6666-6666-6666-666666666666")?,
             status: "running".to_string(),
-            created_at: test_ts(),
-            updated_at: test_ts(),
-            started_at: Some(test_ts()),
+            created_at: test_ts()?,
+            updated_at: test_ts()?,
+            started_at: Some(test_ts()?),
             finished_at: None,
             error_text: None,
             input_text: "/tmp/embed-input".to_string(),
@@ -363,24 +368,24 @@ mod tests {
             config_json: serde_json::json!({"collection": "cortex"}),
         };
 
-        assert_job_status_trait(&job, "running");
+        assert_job_status_trait(&job, "running")
     }
 
     #[test]
-    fn refresh_job_implements_shared_job_status_trait() {
+    fn refresh_job_implements_shared_job_status_trait() -> Result<(), Box<dyn Error>> {
         let job = RefreshJob {
-            id: Uuid::parse_str("77777777-7777-7777-7777-777777777777").expect("valid uuid"),
+            id: Uuid::parse_str("77777777-7777-7777-7777-777777777777")?,
             status: "completed".to_string(),
-            created_at: test_ts(),
-            updated_at: test_ts(),
-            started_at: Some(test_ts()),
-            finished_at: Some(test_ts()),
+            created_at: test_ts()?,
+            updated_at: test_ts()?,
+            started_at: Some(test_ts()?),
+            finished_at: Some(test_ts()?),
             error_text: None,
             urls_json: serde_json::json!(["https://example.com"]),
             result_json: Some(serde_json::json!({"checked": 1})),
             config_json: serde_json::json!({"embed": true}),
         };
 
-        assert_job_status_trait(&job, "completed");
+        assert_job_status_trait(&job, "completed")
     }
 }

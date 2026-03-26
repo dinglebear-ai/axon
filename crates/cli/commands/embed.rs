@@ -210,7 +210,13 @@ async fn enqueue_embed_job(
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"job_id": job_id, "status": status})
+            serde_json::json!({
+                "job_id": job_id,
+                "status": status,
+                "target": input,
+                "collection": cfg.collection,
+                "source": "rust",
+            })
         );
     } else {
         println!("  {} {}", primary("Embed Job"), accent(&job_id));

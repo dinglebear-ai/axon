@@ -25,6 +25,13 @@ struct SharedJobRecord {
     config_json: Option<serde_json::Value>,
 }
 
+fn payload_string(payload: Option<&serde_json::Value>, key: &str) -> Option<String> {
+    payload
+        .and_then(|value| value.get(key))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
 impl SharedJobRecord {
     fn crawl(job: &CrawlJob) -> Self {
         Self {
@@ -159,6 +166,10 @@ pub struct JobStatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result_json: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_json: Option<serde_json::Value>,
@@ -244,6 +255,10 @@ pub struct JobSummaryEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metrics: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub result_json: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_json: Option<serde_json::Value>,
@@ -277,6 +292,9 @@ impl JobSummaryEntry {
 
 impl From<SharedJobRecord> for JobStatusResponse {
     fn from(value: SharedJobRecord) -> Self {
+        let collection = payload_string(value.result_json.as_ref(), "collection")
+            .or_else(|| payload_string(value.config_json.as_ref(), "collection"));
+        let source = payload_string(value.result_json.as_ref(), "source");
         Self {
             id: value.id,
             status: value.status,
@@ -292,6 +310,8 @@ impl From<SharedJobRecord> for JobStatusResponse {
             urls: value.urls.clone(),
             urls_json: value.urls,
             metrics: value.result_json.clone(),
+            collection,
+            source,
             result_json: value.result_json,
             config_json: value.config_json,
         }
@@ -300,6 +320,9 @@ impl From<SharedJobRecord> for JobStatusResponse {
 
 impl From<SharedJobRecord> for JobSummaryEntry {
     fn from(value: SharedJobRecord) -> Self {
+        let collection = payload_string(value.result_json.as_ref(), "collection")
+            .or_else(|| payload_string(value.config_json.as_ref(), "collection"));
+        let source = payload_string(value.result_json.as_ref(), "source");
         Self {
             id: value.id,
             status: value.status,
@@ -315,6 +338,8 @@ impl From<SharedJobRecord> for JobSummaryEntry {
             urls: value.urls.clone(),
             urls_json: value.urls,
             metrics: value.result_json.clone(),
+            collection,
+            source,
             result_json: value.result_json,
             config_json: value.config_json,
         }
@@ -388,7 +413,7 @@ mod tests {
             finished_at: None,
             error_text: None,
             input_text: "/tmp/embed-input".to_string(),
-            result_json: Some(serde_json::json!({"chunks_embedded": 7})),
+            result_json: Some(serde_json::json!({"chunks_embedded": 7, "source": "rust"})),
             config_json: serde_json::json!({"collection": "cortex"}),
         }
     }
@@ -492,10 +517,15 @@ mod tests {
             .expect("serialize");
         assert_eq!(json["status"], "running");
         assert_eq!(json["target"], "/tmp/embed-input");
-        assert_eq!(json["metrics"], serde_json::json!({"chunks_embedded": 7}));
+        assert_eq!(json["collection"], "cortex");
+        assert_eq!(json["source"], "rust");
+        assert_eq!(
+            json["metrics"],
+            serde_json::json!({"chunks_embedded": 7, "source": "rust"})
+        );
         assert_eq!(
             json["result_json"],
-            serde_json::json!({"chunks_embedded": 7})
+            serde_json::json!({"chunks_embedded": 7, "source": "rust"})
         );
     }
 

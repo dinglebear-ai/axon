@@ -310,6 +310,7 @@ mod tests {
     use crate::crates::jobs::backend::JobPayload;
     use crate::crates::jobs::lite::ops::enqueue_job;
     use crate::crates::jobs::lite::store::open_sqlite_pool;
+    use std::error::Error;
     use tempfile::NamedTempFile;
 
     fn lite_cfg(path: &std::path::Path) -> Config {
@@ -319,12 +320,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lite_list_and_status_use_sqlite_backend() {
-        let temp = NamedTempFile::new().expect("temp db file");
+    async fn lite_list_and_status_use_sqlite_backend() -> Result<(), Box<dyn Error>> {
+        let temp = NamedTempFile::new()?;
         let cfg = lite_cfg(temp.path());
-        let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy())
-            .await
-            .expect("sqlite pool");
+        let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
         let id = enqueue_job(
             &pool,
             &JobPayload::Embed {
@@ -332,28 +331,26 @@ mod tests {
                 config_json: "{\"collection\":\"cortex\"}".into(),
             },
         )
-        .await
-        .expect("enqueue embed job");
+        .await?;
 
-        let jobs = list_jobs(&cfg, JobKind::Embed, 50, 0)
-            .await
-            .expect("list jobs");
+        let jobs = list_jobs(&cfg, JobKind::Embed, 50, 0).await?;
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].target.as_deref(), Some("README.md"));
 
         let job = job_status(&cfg, JobKind::Embed, id)
-            .await
-            .expect("status")
-            .expect("job exists");
+            .await?
+            .ok_or("job missing from sqlite backend")?;
         assert_eq!(job.id, id);
         assert_eq!(job.target.as_deref(), Some("README.md"));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn lite_worker_reports_in_process_mode() {
-        let temp = NamedTempFile::new().expect("temp db file");
+    async fn lite_worker_reports_in_process_mode() -> Result<(), Box<dyn Error>> {
+        let temp = NamedTempFile::new()?;
         let cfg = lite_cfg(temp.path());
-        let mode = run_worker(&cfg, JobKind::Crawl).await.expect("worker mode");
+        let mode = run_worker(&cfg, JobKind::Crawl).await?;
         assert!(matches!(mode, WorkerMode::InProcess));
+        Ok(())
     }
 }

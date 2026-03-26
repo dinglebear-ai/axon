@@ -3,19 +3,14 @@ use crate::crates::cli::commands::ingest_common;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{accent, muted, primary};
-use crate::crates::jobs::ingest::IngestSource;
 use crate::crates::services::context::ServiceContext;
-use crate::crates::services::ingest as ingest_service;
+use crate::crates::services::ingest::{self as ingest_service, IngestSource};
 use crate::crates::services::types::StartDisposition;
 use std::error::Error;
 
 pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
         if ingest_common::maybe_handle_ingest_subcommand(cfg, "ingest").await? {
-            return Ok(());
-        }
-        if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-            println!("Lite mode: workers run in-process automatically. No separate worker needed.");
             return Ok(());
         }
 
@@ -80,6 +75,7 @@ mod tests {
     use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
     use async_trait::async_trait;
+    use std::error::Error;
     use std::sync::Arc;
 
     /// Minimal no-op backend for unit tests that do not exercise the job path.
@@ -119,13 +115,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_ingest_requires_target() {
+    async fn run_ingest_requires_target() -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut cfg = test_config("");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec![];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
-            .await
-            .expect("service context")
+            .await?
             .with_job_backend(noop_backend());
         let err = run_ingest(&cfg, &ctx)
             .await
@@ -134,16 +129,17 @@ mod tests {
             err.to_string().contains("ingest requires a target"),
             "unexpected error: {err}"
         );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn run_ingest_unknown_target_gives_helpful_error() {
+    async fn run_ingest_unknown_target_gives_helpful_error()
+    -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut cfg = test_config("");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec!["not-a-target".to_string()];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
-            .await
-            .expect("service context")
+            .await?
             .with_job_backend(noop_backend());
         let err = run_ingest(&cfg, &ctx)
             .await
@@ -152,5 +148,6 @@ mod tests {
             err.to_string().contains("cannot determine ingest source"),
             "unexpected error: {err}"
         );
+        Ok(())
     }
 }

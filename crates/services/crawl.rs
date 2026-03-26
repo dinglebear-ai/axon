@@ -402,22 +402,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn crawl_start_with_context_completes_in_lite_mode() {
+    async fn crawl_start_with_context_completes_in_lite_mode()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
-            .expect("service context")
+            .map_err(|e| e.to_string())?
             .with_job_backend(Arc::new(CompletedLiteBackend));
 
-        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
-            .await
-            .expect("lite crawl outcome");
+        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None).await?;
 
         assert_eq!(outcome.disposition, StartDisposition::Completed);
         assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
         assert_eq!(outcome.result.jobs.len(), 1);
         assert_eq!(outcome.result.jobs[0].url, cfg.start_url);
+        Ok(())
     }
 
     #[test]
@@ -430,16 +430,12 @@ mod tests {
             ]
         }));
 
-        let output_files = result
-            .output_files
-            .as_ref()
-            .expect("output_files should be mapped from payload");
         assert_eq!(
-            output_files,
-            &vec![
+            result.output_files.as_ref(),
+            Some(&vec![
                 "/tmp/axon-output/manifest.jsonl".to_string(),
                 "/tmp/axon-output/markdown/index.md".to_string(),
-            ]
+            ])
         );
     }
 }

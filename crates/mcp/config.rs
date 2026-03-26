@@ -190,14 +190,15 @@ pub fn load_mcp_config() -> Config {
 mod tests {
     use super::*;
     use std::env;
+    use std::error::Error;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[allow(unsafe_code)]
     #[test]
-    fn load_mcp_config_reads_origin_allowlists() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    fn load_mcp_config_reads_origin_allowlists() -> Result<(), Box<dyn Error>> {
+        let _guard = ENV_LOCK.lock().map_err(|_| "env lock poisoned")?;
         const WEB: &str = "AXON_WEB_ALLOWED_ORIGINS";
         const SHELL: &str = "AXON_SHELL_ALLOWED_ORIGINS";
         let prev_web = env::var(WEB).ok();
@@ -230,12 +231,13 @@ mod tests {
             Some(v) => unsafe { env::set_var(SHELL, v) },
             None => unsafe { env::remove_var(SHELL) },
         }
+        Ok(())
     }
 
     #[allow(unsafe_code)]
     #[test]
-    fn load_mcp_config_normalizes_tei_url() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    fn load_mcp_config_normalizes_tei_url() -> Result<(), Box<dyn Error>> {
+        let _guard = ENV_LOCK.lock().map_err(|_| "env lock poisoned")?;
         const TEI: &str = "TEI_URL";
         let prev_tei = env::var(TEI).ok();
 
@@ -254,12 +256,13 @@ mod tests {
             Some(v) => unsafe { env::set_var(TEI, v) },
             None => unsafe { env::remove_var(TEI) },
         }
+        Ok(())
     }
 
     #[allow(unsafe_code)]
     #[test]
-    fn load_mcp_config_reads_graph_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    fn load_mcp_config_reads_graph_env() -> Result<(), Box<dyn Error>> {
+        let _guard = ENV_LOCK.lock().map_err(|_| "env lock poisoned")?;
         const URL: &str = "AXON_NEO4J_URL";
         const USER: &str = "AXON_NEO4J_USER";
         const PASSWORD: &str = "AXON_NEO4J_PASSWORD";
@@ -294,12 +297,13 @@ mod tests {
             Some(v) => unsafe { env::set_var(PASSWORD, v) },
             None => unsafe { env::remove_var(PASSWORD) },
         }
+        Ok(())
     }
 
     #[allow(unsafe_code)]
     #[test]
-    fn load_mcp_config_reads_lite_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    fn load_mcp_config_reads_lite_env() -> Result<(), Box<dyn Error>> {
+        let _guard = ENV_LOCK.lock().map_err(|_| "env lock poisoned")?;
         const LITE: &str = "AXON_LITE";
         const SQLITE: &str = "AXON_SQLITE_PATH";
         let prev_lite = env::var(LITE).ok();
@@ -326,5 +330,6 @@ mod tests {
             Some(v) => unsafe { env::set_var(SQLITE, v) },
             None => unsafe { env::remove_var(SQLITE) },
         }
+        Ok(())
     }
 }

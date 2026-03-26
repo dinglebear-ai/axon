@@ -1,7 +1,7 @@
 # axon embed
 Last Modified: 2026-03-25
 
-Embed local content into Qdrant. Input can be a file path, directory path, or URL. By default this command enqueues an async embed job and returns a job ID.
+Embed local content into Qdrant. Input can be a file path, directory path, or URL. In `--json` mode, stdout is a single machine-readable JSON object with no progress chatter mixed in.
 
 ## Synopsis
 
@@ -55,7 +55,7 @@ axon embed worker            # run embed worker inline
 ## Examples
 
 ```bash
-# Async (default): enqueue and return job ID
+# Default mode: start embed job and return job JSON
 axon embed ./docs
 
 # Synchronous inline embedding
@@ -75,4 +75,7 @@ axon embed list --json
 
 - Subcommands and input names can collide. If you need to embed a local path named `status`, pass it as a real path (`./status`) so it is treated as input, not a subcommand.
 - `embed clear` is destructive and prompts unless `--yes` is set.
-- Without workers running, async jobs stay pending until a worker (`axon embed worker` or `axon-workers`) consumes them.
+- Full mode (`AXON_LITE=0`) returns a queued async job by default when `--wait false`, and jobs stay pending until a worker (`axon embed worker` or `axon-workers`) consumes them.
+- Lite mode (`AXON_LITE=1`) runs embed jobs in-process. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
+- `axon embed status <job_id> --json` returns a single top-level job object. The stable fields for automation are `id`, `status`, `target`, `collection`, `metrics`, `result_json`, and `config_json`.
+- The local source identifier for file embeds is the `target` field. Do not expect a nested `data.url` / `data.collection` envelope from the CLI.

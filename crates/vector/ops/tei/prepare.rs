@@ -114,18 +114,14 @@ pub(super) fn emit_embed_summary(
     chunks_embedded: usize,
 ) {
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({"chunks_embedded": chunks_embedded, "collection": cfg.collection})
-        );
-    } else {
-        println!(
-            "{} embedded {} chunks into {}",
-            symbol_for_status("completed"),
-            chunks_embedded,
-            accent(&cfg.collection)
-        );
+        return;
     }
+    eprintln!(
+        "{} embedded {} chunks into {}",
+        symbol_for_status("completed"),
+        chunks_embedded,
+        accent(&cfg.collection)
+    );
 }
 
 #[cfg(test)]

@@ -244,7 +244,9 @@ async fn run_embed_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -> 
         return Ok(None);
     };
 
-    let summary = crate::crates::vector::ops::embed_path_native(cfg, &input)
+    let mut worker_cfg = cfg.clone();
+    worker_cfg.json_output = false;
+    let summary = crate::crates::vector::ops::embed_path_native(&worker_cfg, &input)
         .await
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
 

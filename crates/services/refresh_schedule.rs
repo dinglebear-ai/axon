@@ -397,13 +397,12 @@ pub async fn refresh_schedule_worker(cfg: &Config) -> Result<(), Box<dyn Error>>
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use std::error::Error;
 
     #[test]
-    fn validate_github_repo_accepts_owner_repo_slug() {
-        assert_eq!(
-            validate_github_repo("owner/repo").expect("valid repo"),
-            "owner/repo"
-        );
+    fn validate_github_repo_accepts_owner_repo_slug() -> Result<(), Box<dyn Error>> {
+        assert_eq!(validate_github_repo("owner/repo")?, "owner/repo");
+        Ok(())
     }
 
     #[test]
@@ -415,13 +414,14 @@ mod tests {
     }
 
     #[test]
-    fn refresh_should_reingest_github_uses_jobs_predicate() {
+    fn refresh_should_reingest_github_uses_jobs_predicate() -> Result<(), Box<dyn Error>> {
         let pushed_at = "2026-03-25T12:00:00Z";
         let last_run_at = Some(
             Utc.with_ymd_and_hms(2026, 3, 24, 12, 0, 0)
                 .single()
-                .unwrap(),
+                .ok_or("valid timestamp")?,
         );
         assert!(refresh_should_reingest_github(pushed_at, last_run_at));
+        Ok(())
     }
 }
