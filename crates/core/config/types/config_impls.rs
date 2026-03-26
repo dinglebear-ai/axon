@@ -165,6 +165,8 @@ impl Default for Config {
             mcp_transport: McpTransport::Http,
             mcp_http_host: "127.0.0.1".to_string(),
             mcp_http_port: 8001,
+            web_dev_port: 49010,
+            shell_server_port: 49011,
             custom_headers: vec![],
         }
     }
@@ -374,6 +376,8 @@ impl fmt::Debug for Config {
             .field("mcp_transport", &self.mcp_transport)
             .field("mcp_http_host", &self.mcp_http_host)
             .field("mcp_http_port", &self.mcp_http_port)
+            .field("web_dev_port", &self.web_dev_port)
+            .field("shell_server_port", &self.shell_server_port)
             .field(
                 "custom_headers",
                 &self

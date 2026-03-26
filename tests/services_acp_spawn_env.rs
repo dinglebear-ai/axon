@@ -26,10 +26,13 @@
 /// tests in the same binary.
 use axon::crates::services::acp::AcpClientScaffold;
 use axon::crates::services::types::AcpAdapterCommand;
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Global lock: env var mutation is not thread-safe; serialize these tests.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+const ENV_BIN: &str = "/usr/bin/env";
 
 /// Vars that spawn_adapter() MUST strip before exec-ing the adapter subprocess.
 const STRIPPED_VARS: &[&str] = &[
@@ -39,30 +42,40 @@ const STRIPPED_VARS: &[&str] = &[
     "OPENAI_MODEL",
 ];
 
-/// Spawn a shell that prints the concatenated values of all STRIPPED_VARS.
-/// Returns the trimmed stdout. Empty string means all vars were absent/stripped.
-async fn run_env_probe() -> String {
-    // "printf '%s' $VAR1$VAR2..." — empty vars contribute nothing; non-empty
-    // vars produce visible output that fails the assertion.
-    let args_inner = STRIPPED_VARS
-        .iter()
-        .map(|v| format!("\"${v}\""))
-        .collect::<Vec<_>>()
-        .join("");
-    let cmd = format!("printf '%s' {args_inner}");
+fn parse_env(stdout: &[u8]) -> HashMap<String, String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect()
+}
 
-    let adapter = AcpAdapterCommand::new("sh", vec!["-c".to_string(), cmd]);
+/// Spawn a validated env probe and return the child environment as key/value pairs.
+async fn run_env_probe() -> HashMap<String, String> {
+    let adapter = AcpAdapterCommand::new(ENV_BIN, vec![]);
     let scaffold = AcpClientScaffold::new(adapter);
-    // Use skip_validation variant: "sh" is a blocked shell in production but is
-    // needed here to probe env var inheritance inside the env_clear allowlist.
     let child = scaffold
-        .spawn_adapter_skip_validation()
-        .expect("spawn_adapter_skip_validation should succeed");
+        .spawn_adapter()
+        .expect("spawn_adapter should succeed for /usr/bin/env");
     let output = child
         .wait_with_output()
         .await
         .expect("child should complete");
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
+    parse_env(&output.stdout)
+}
+
+/// Spawn a validated env probe and return just the requested values.
+async fn run_selected_env_probe(vars: &[&str]) -> Vec<Option<String>> {
+    let env = run_env_probe().await;
+    vars.iter().map(|key| env.get(*key).cloned()).collect()
+}
+
+/// Returns true when all STRIPPED_VARS were absent from the child env.
+async fn stripped_vars_are_absent() -> bool {
+    run_selected_env_probe(STRIPPED_VARS)
+        .await
+        .iter()
+        .all(Option::is_none)
 }
 
 /// When CLAUDECODE is set in the parent environment, the child must NOT inherit it.
@@ -77,14 +90,14 @@ async fn spawn_adapter_strips_claudecode_nested_session_guard() {
     // SAFETY: ENV_LOCK is held; no concurrent env mutation in this process.
     unsafe { std::env::set_var("CLAUDECODE", "test_poison_nested_session") };
 
-    let output = run_env_probe().await;
+    let output = stripped_vars_are_absent().await;
 
     // SAFETY: ENV_LOCK is held.
     unsafe { std::env::remove_var("CLAUDECODE") };
     assert!(
-        output.is_empty(),
+        output,
         "CLAUDECODE must be stripped from child env by spawn_adapter(), \
-         but child still saw it (output: {output:?})"
+         but child still saw it"
     );
 }
 
@@ -103,7 +116,7 @@ async fn spawn_adapter_strips_llm_proxy_vars() {
         std::env::set_var("OPENAI_MODEL", "poison-axon-model");
     }
 
-    let output = run_env_probe().await;
+    let output = stripped_vars_are_absent().await;
 
     // SAFETY: ENV_LOCK is held.
     unsafe {
@@ -112,9 +125,9 @@ async fn spawn_adapter_strips_llm_proxy_vars() {
         std::env::remove_var("OPENAI_MODEL");
     }
     assert!(
-        output.is_empty(),
+        output,
         "OPENAI_* proxy vars must be stripped from child env by spawn_adapter(), \
-         but child still saw: {output:?}"
+         but child still saw one or more values"
     );
 }
 
@@ -135,26 +148,7 @@ async fn spawn_adapter_passes_through_gemini_auth_vars() {
         }
     }
 
-    // Build a probe that prints the concatenated values of GEMINI_VARS.
-    let args_inner = GEMINI_VARS
-        .iter()
-        .map(|v| format!("\"${v}\""))
-        .collect::<Vec<_>>()
-        .join("");
-    let cmd = format!("printf '%s' {args_inner}");
-
-    let adapter = AcpAdapterCommand::new("sh", vec!["-c".to_string(), cmd]);
-    let scaffold = AcpClientScaffold::new(adapter);
-    // Use skip_validation variant: "sh" is a blocked shell in production but is
-    // needed here to probe env var inheritance inside the env_clear allowlist.
-    let child = scaffold
-        .spawn_adapter_skip_validation()
-        .expect("spawn_adapter_skip_validation should succeed");
-    let output = child
-        .wait_with_output()
-        .await
-        .expect("child should complete");
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let values = run_selected_env_probe(GEMINI_VARS).await;
 
     // SAFETY: ENV_LOCK is held.
     unsafe {
@@ -163,12 +157,10 @@ async fn spawn_adapter_passes_through_gemini_auth_vars() {
         }
     }
 
-    // Both vars should be present in the child's output (sentinel repeated twice).
-    let expected = SENTINEL.repeat(GEMINI_VARS.len());
     assert_eq!(
-        stdout, expected,
-        "GEMINI_API_KEY and GOOGLE_API_KEY must be passed through to child env, \
-         but child saw: {stdout:?} (expected: {expected:?})"
+        values,
+        vec![Some(SENTINEL.to_string()), Some(SENTINEL.to_string())],
+        "GEMINI_API_KEY and GOOGLE_API_KEY must be passed through to child env"
     );
 }
 
@@ -185,7 +177,7 @@ async fn spawn_adapter_strips_all_isolation_vars_together() {
         std::env::set_var("OPENAI_MODEL", "poison");
     }
 
-    let output = run_env_probe().await;
+    let output = stripped_vars_are_absent().await;
 
     // SAFETY: ENV_LOCK is held.
     unsafe {
@@ -193,8 +185,5 @@ async fn spawn_adapter_strips_all_isolation_vars_together() {
             std::env::remove_var(v);
         }
     }
-    assert!(
-        output.is_empty(),
-        "All isolation vars must be stripped together; child saw: {output:?}"
-    );
+    assert!(output, "All isolation vars must be stripped together");
 }

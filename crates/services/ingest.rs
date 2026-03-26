@@ -1,13 +1,17 @@
 use crate::crates::core::config::Config;
 use crate::crates::ingest;
 use crate::crates::ingest::progress::PhaseReporter;
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
-use crate::crates::jobs::ingest::{
-    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
-    recover_stale_ingest_jobs, run_ingest_worker, start_ingest_job,
-};
+use crate::crates::jobs::ingest::{get_ingest_job, list_ingest_jobs, start_ingest_job};
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{IngestJobResult, IngestResult, IngestStartResult};
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::types::{
+    ExecutionMode, IngestJobResult, IngestResult, IngestStartResult, JobStartOutcome,
+    StartDisposition,
+};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -39,11 +43,54 @@ pub async fn ingest_start(
     Ok(map_ingest_start_result(job_id.to_string()))
 }
 
+pub async fn ingest_start_with_context(
+    cfg: &Config,
+    source: IngestSource,
+    service_context: &ServiceContext,
+) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
+    if !cfg.lite_mode {
+        let result = ingest_start(cfg, source).await?;
+        return Ok(JobStartOutcome {
+            disposition: StartDisposition::Enqueued,
+            execution_mode: ExecutionMode::Enqueued,
+            result,
+        });
+    }
+
+    let backend = service_context
+        .require_job_backend()
+        .map_err(|e| -> Box<dyn Error> { e })?;
+    let (source_type, target) = match &source {
+        IngestSource::Github { repo, .. } => ("github".to_string(), repo.clone()),
+        IngestSource::Reddit { target } => ("reddit".to_string(), target.clone()),
+        IngestSource::Youtube { target } => ("youtube".to_string(), target.clone()),
+        IngestSource::Sessions { .. } => {
+            return Err(anyhow::anyhow!(
+                "sessions ingest is handled by the sessions command, not ingest"
+            )
+            .into());
+        }
+    };
+    let job_id = backend
+        .enqueue(JobPayload::Ingest {
+            target,
+            source_type,
+            config_json: "{}".to_string(),
+        })
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?;
+    Ok(JobStartOutcome {
+        disposition: StartDisposition::Enqueued,
+        execution_mode: ExecutionMode::InProcess,
+        result: map_ingest_start_result(job_id.to_string()),
+    })
+}
+
 pub async fn ingest_status(
     cfg: &Config,
     id: Uuid,
 ) -> Result<Option<IngestJobResult>, Box<dyn Error>> {
-    let job = get_ingest_job(cfg, id).await?;
+    let job = job_service::job_status(cfg, JobKind::Ingest, id).await?;
     Ok(job.map(|value| {
         map_ingest_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
@@ -54,24 +101,24 @@ pub async fn ingest_list(
     limit: i64,
     offset: i64,
 ) -> Result<IngestResult, Box<dyn Error>> {
-    let jobs = list_ingest_jobs(cfg, None, limit, offset).await?;
+    let jobs = job_service::list_jobs(cfg, JobKind::Ingest, limit, offset).await?;
     Ok(map_ingest_result(serde_json::to_value(jobs)?))
 }
 
 pub async fn ingest_cancel(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
-    cancel_ingest_job(cfg, id).await
+    job_service::cancel_job(cfg, JobKind::Ingest, id).await
 }
 
 pub async fn ingest_cleanup(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    cleanup_ingest_jobs(cfg).await
+    job_service::cleanup_jobs(cfg, JobKind::Ingest).await
 }
 
 pub async fn ingest_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    clear_ingest_jobs(cfg).await
+    job_service::clear_jobs(cfg, JobKind::Ingest).await
 }
 
 pub async fn ingest_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    recover_stale_ingest_jobs(cfg).await
+    job_service::recover_jobs(cfg, JobKind::Ingest).await
 }
 
 pub async fn ingest_status_raw(
@@ -90,7 +137,10 @@ pub async fn ingest_list_raw(
 }
 
 pub async fn ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    run_ingest_worker(cfg).await
+    match job_service::run_worker(cfg, JobKind::Ingest).await? {
+        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Unsupported(message) => Err(message.into()),
+    }
 }
 
 // --- Service functions ---

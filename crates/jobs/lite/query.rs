@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::crates::jobs::backend::{JobStatusRow, JobSummary};
 use crate::crates::jobs::status::JobStatus;
+use crate::crates::services::types::ServiceJob;
 
 use super::store::now_ms;
 
@@ -18,7 +19,7 @@ type JobStatusRowTuple = (
     Option<String>,
 );
 
-fn ms_to_dt(ms: i64) -> DateTime<Utc> {
+pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(ms).unwrap_or_default()
 }
 
@@ -129,6 +130,147 @@ pub async fn job_errors(
             .await?;
 
     Ok(row.and_then(|(e,)| e))
+}
+
+type ServiceJobTuple = (
+    String,
+    String,
+    i64,
+    i64,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn list_service_query(kind: crate::crates::jobs::backend::JobKind) -> &'static str {
+    match kind {
+        crate::crates::jobs::backend::JobKind::Crawl => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
+             FROM axon_crawl_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+        crate::crates::jobs::backend::JobKind::Embed => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json \
+             FROM axon_embed_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+        crate::crates::jobs::backend::JobKind::Extract => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json \
+             FROM axon_extract_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+        crate::crates::jobs::backend::JobKind::Ingest => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
+             FROM axon_ingest_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+        crate::crates::jobs::backend::JobKind::Refresh => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
+             FROM axon_refresh_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+        crate::crates::jobs::backend::JobKind::Graph => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
+             FROM axon_graph_jobs ORDER BY created_at DESC LIMIT 500"
+        }
+    }
+}
+
+fn status_service_query(kind: crate::crates::jobs::backend::JobKind) -> &'static str {
+    match kind {
+        crate::crates::jobs::backend::JobKind::Crawl => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
+             FROM axon_crawl_jobs WHERE id = ?"
+        }
+        crate::crates::jobs::backend::JobKind::Embed => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json \
+             FROM axon_embed_jobs WHERE id = ?"
+        }
+        crate::crates::jobs::backend::JobKind::Extract => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json \
+             FROM axon_extract_jobs WHERE id = ?"
+        }
+        crate::crates::jobs::backend::JobKind::Ingest => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
+             FROM axon_ingest_jobs WHERE id = ?"
+        }
+        crate::crates::jobs::backend::JobKind::Refresh => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
+             FROM axon_refresh_jobs WHERE id = ?"
+        }
+        crate::crates::jobs::backend::JobKind::Graph => {
+            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+             NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
+             FROM axon_graph_jobs WHERE id = ?"
+        }
+    }
+}
+
+fn service_job_from_tuple(row: ServiceJobTuple) -> ServiceJob {
+    let (
+        id,
+        status,
+        created_at,
+        updated_at,
+        started_at,
+        finished_at,
+        error_text,
+        url,
+        source_type,
+        target,
+        urls_json,
+        result_json,
+        config_json,
+    ) = row;
+    ServiceJob {
+        id: Uuid::parse_str(&id).unwrap_or_default(),
+        status,
+        created_at: ms_to_dt(created_at),
+        updated_at: ms_to_dt(updated_at),
+        started_at: started_at.map(ms_to_dt),
+        finished_at: finished_at.map(ms_to_dt),
+        error_text,
+        url,
+        source_type,
+        target,
+        urls_json: urls_json.and_then(|s| serde_json::from_str(&s).ok()),
+        result_json: result_json.and_then(|s| serde_json::from_str(&s).ok()),
+        config_json: config_json.and_then(|s| serde_json::from_str(&s).ok()),
+    }
+}
+
+pub async fn list_service_jobs(
+    pool: &SqlitePool,
+    kind: crate::crates::jobs::backend::JobKind,
+) -> Result<Vec<ServiceJob>, sqlx::Error> {
+    let rows: Vec<ServiceJobTuple> = sqlx::query_as(list_service_query(kind))
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(service_job_from_tuple).collect())
+}
+
+pub async fn service_job(
+    pool: &SqlitePool,
+    kind: crate::crates::jobs::backend::JobKind,
+    id: Uuid,
+) -> Result<Option<ServiceJob>, sqlx::Error> {
+    let row: Option<ServiceJobTuple> = sqlx::query_as(status_service_query(kind))
+        .bind(id.to_string())
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(service_job_from_tuple))
 }
 
 #[cfg(test)]

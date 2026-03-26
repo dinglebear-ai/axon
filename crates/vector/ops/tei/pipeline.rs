@@ -126,10 +126,12 @@ async fn embed_prepared_doc_with_timeout(
 /// The first doc in a pipeline is embedded before the collection mode is known.
 /// If the collection turns out to be Named, these points need the `"dense"` +
 /// `"bm42"` named vector structure instead of a flat `"vector": [...]` array.
-fn rebuild_points_as_named(points: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+fn rebuild_points_as_named(
+    points: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, SendError> {
     points
         .into_iter()
-        .filter_map(|pt| {
+        .map(|pt| {
             // Handle both string and numeric point IDs (Qdrant supports both).
             let id = match &pt["id"] {
                 serde_json::Value::String(s) if !s.is_empty() => {
@@ -137,10 +139,10 @@ fn rebuild_points_as_named(points: Vec<serde_json::Value>) -> Vec<serde_json::Va
                 }
                 serde_json::Value::Number(n) => serde_json::Value::Number(n.clone()),
                 other => {
-                    log_warn(&format!(
-                        "rebuild_points_as_named: unexpected point id type: {other}, skipping"
-                    ));
-                    return None;
+                    return Err(format!(
+                        "rebuild_points_as_named: unexpected point id type: {other}"
+                    )
+                    .into());
                 }
             };
             let payload = pt["payload"].clone();
@@ -153,7 +155,7 @@ fn rebuild_points_as_named(points: Vec<serde_json::Value>) -> Vec<serde_json::Va
                 .collect();
             let chunk = payload["chunk_text"].as_str().unwrap_or_default();
             let sv = super::super::sparse::compute_sparse_vector(chunk);
-            Some(serde_json::json!({
+            Ok(serde_json::json!({
                 "id": id,
                 "vector": {
                     "dense": dense,
@@ -183,7 +185,7 @@ async fn bootstrap_first_doc(
                 .await
                 .map_err(|e| -> SendError { format!("collection init/cache: {e}").into() })?;
             let chunks = if mode == VectorMode::Named {
-                let rebuilt = rebuild_points_as_named(points);
+                let rebuilt = rebuild_points_as_named(points)?;
                 let n = rebuilt.len();
                 pending_points.extend(rebuilt);
                 n

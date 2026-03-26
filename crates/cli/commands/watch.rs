@@ -1,5 +1,4 @@
 use crate::crates::core::config::Config;
-use crate::crates::services::refresh as refresh_service;
 use crate::crates::services::watch as watch_svc;
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
@@ -158,28 +157,10 @@ async fn handle_watch_create(
 async fn handle_watch_run_now(cfg: &Config, raw_id: &str) -> Result<(), Box<dyn Error>> {
     let raw_id = raw_id.to_string();
     let watch_id = parse_uuid(Some(&raw_id), "run-now")?;
-    let all = watch_svc::list_watch_defs(cfg, 500).await?;
-    let watch = all
-        .into_iter()
-        .find(|w| w.id == watch_id)
+    let watch = watch_svc::get_watch_def(cfg, watch_id)
+        .await?
         .ok_or("watch not found")?;
-    let dispatched_job_id = if watch.task_type == "refresh" {
-        let urls = watch
-            .task_payload
-            .get("urls")
-            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-            .unwrap_or_default();
-        if urls.is_empty() {
-            None
-        } else {
-            Some(Uuid::parse_str(
-                &refresh_service::refresh_start(cfg, &urls).await?.job_id,
-            )?)
-        }
-    } else {
-        None
-    };
-    let run = watch_svc::create_watch_run(cfg, watch_id, dispatched_job_id).await?;
+    let run = watch_svc::run_watch_now(cfg, &watch).await?;
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&run)?);
     } else {
@@ -254,6 +235,14 @@ mod tests {
             .await
             .expect_err("unknown subcommand should error");
         assert!(err.to_string().contains("bogus"));
+    }
+
+    #[tokio::test]
+    async fn run_watch_lists_in_lite_mode() {
+        let cfg = Config::default_lite();
+        run_watch(&cfg)
+            .await
+            .expect("lite mode watch list should succeed");
     }
 
     #[tokio::test]

@@ -324,13 +324,20 @@ async fn fetch_collection_point_count(cfg: &Config) -> Result<u64> {
 }
 
 pub(super) async fn query_watch_defs(pool: &PgPool) -> Result<Vec<WatchExport>> {
-    let rows = sqlx::query(
+    let rows = match sqlx::query(
         r#"SELECT id, name, task_type, task_payload, every_seconds, enabled, next_run_at, last_run_at, created_at, updated_at
            FROM axon_watch_defs
            ORDER BY name ASC"#,
     )
     .fetch_all(pool)
-    .await?;
+    .await
+    {
+        Ok(rows) => rows,
+        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("42P01") => {
+            return Ok(vec![]);
+        }
+        Err(err) => return Err(err.into()),
+    };
 
     rows.into_iter()
         .map(|row| -> Result<WatchExport, sqlx::Error> {

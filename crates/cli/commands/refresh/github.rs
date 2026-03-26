@@ -1,15 +1,8 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::http::http_client;
-use crate::crates::core::logging::{log_debug, log_info, log_warn};
 use crate::crates::core::ui::{accent, muted, symbol_for_status};
-use crate::crates::services::ingest::{self as ingest_service, IngestSource};
-use crate::crates::services::refresh::{
-    self as refresh_service, RefreshSchedule, RefreshScheduleCreate, create_refresh_schedule,
-};
-use chrono::{Duration, Utc};
-use sqlx::PgPool;
+use crate::crates::services::refresh::{RefreshScheduleCreate, create_refresh_schedule};
+use chrono::Utc;
 use std::error::Error;
-use uuid::Uuid;
 
 use super::schedule::tier_to_seconds;
 
@@ -118,105 +111,6 @@ pub(crate) async fn handle_refresh_schedule_add_github(
         println!("  {} {}", muted("Enabled:"), created.enabled);
     }
     Ok(())
-}
-
-/// Check the `pushed_at` timestamp from the GitHub API for a given repo.
-pub(crate) async fn check_github_pushed_at(
-    cfg: &Config,
-    repo: &str,
-) -> Result<String, Box<dyn Error>> {
-    let repo = validate_github_repo(repo)?;
-    let url = format!("https://api.github.com/repos/{repo}");
-    let client = http_client()?;
-    let mut req = client.get(&url).header("User-Agent", "axon-refresh");
-    if let Some(token) = cfg.github_token.as_deref()
-        && !token.is_empty()
-    {
-        req = req.header("Authorization", format!("Bearer {token}"));
-    }
-    let resp: serde_json::Value = req.send().await?.error_for_status()?.json().await?;
-    resp["pushed_at"]
-        .as_str()
-        .map(String::from)
-        .ok_or_else(|| anyhow::anyhow!("missing pushed_at in GitHub API response").into())
-}
-
-/// Dispatch a GitHub re-ingest job for a single schedule entry.
-///
-/// Returns `Ok(Some(job_id))` if a job was enqueued, `Ok(None)` if skipped (no new pushes),
-/// or `Err` on failure.
-pub(crate) async fn dispatch_github_refresh(
-    cfg: &Config,
-    pool: &PgPool,
-    schedule: &RefreshSchedule,
-    target: &str,
-) -> Result<Option<Uuid>, Box<dyn Error>> {
-    let target = validate_github_repo(target)?;
-    let next_run_at = Utc::now() + Duration::seconds(schedule.every_seconds);
-
-    match check_github_pushed_at(cfg, target).await {
-        Ok(pushed_at) => {
-            if refresh_service::refresh_should_reingest_github(&pushed_at, schedule.last_run_at) {
-                match ingest_service::ingest_start(
-                    cfg,
-                    IngestSource::Github {
-                        repo: target.to_string(),
-                        include_source: true,
-                    },
-                )
-                .await
-                {
-                    Ok(started) => {
-                        let job_id =
-                            Uuid::parse_str(&started.job_id).unwrap_or_else(|_| Uuid::nil());
-                        log_info(&format!(
-                            "refresh github_ingest_queued repo={target} job_id={job_id}"
-                        ));
-                        if let Err(err) = refresh_service::refresh_mark_schedule_ran(
-                            pool,
-                            schedule.id,
-                            next_run_at,
-                        )
-                        .await
-                        {
-                            log_warn(&format!(
-                                "refresh github mark_ran failed schedule={} id={}: {err}",
-                                schedule.name, schedule.id
-                            ));
-                        }
-                        return Ok(Some(job_id));
-                    }
-                    Err(err) => {
-                        log_warn(&format!(
-                            "refresh github ingest enqueue failed schedule={} repo={target} error={err}",
-                            schedule.name
-                        ));
-                        return Err(err);
-                    }
-                }
-            }
-            log_debug(&format!(
-                "refresh github_skip_no_push repo={target} schedule={}",
-                schedule.name
-            ));
-            if let Err(err) =
-                refresh_service::refresh_mark_schedule_ran(pool, schedule.id, next_run_at).await
-            {
-                log_warn(&format!(
-                    "refresh github mark_ran failed schedule={} id={}: {err}",
-                    schedule.name, schedule.id
-                ));
-            }
-            Ok(None)
-        }
-        Err(err) => {
-            log_warn(&format!(
-                "refresh github pushed_at check failed schedule={} repo={target} error={err}",
-                schedule.name
-            ));
-            Err(err)
-        }
-    }
 }
 
 #[cfg(test)]

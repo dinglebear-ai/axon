@@ -159,29 +159,19 @@ docker compose -f docker-compose.services.yaml up -d
 docker compose up -d axon-workers axon-web
 ```
 
-**Local dev mode** (infra in Docker, workers and web run as local processes):
+**Local dev mode** (infra in Docker, app stack supervised locally):
 
 ```bash
 docker compose -f docker-compose.services.yaml up -d
 
-# All workers at once (recommended):
-just workers
+# Start the full local stack supervisor:
+cargo run --bin axon -- serve
 
-# Or each in a separate terminal:
-cargo run --bin axon -- crawl worker
-cargo run --bin axon -- embed worker
-cargo run --bin axon -- extract worker
-cargo run --bin axon -- ingest worker
-cargo run --bin axon -- refresh worker
-
-# Web frontend:
-cd apps/web && pnpm dev
-
-# Or full dev stack (infra + all workers + web UI):
+# Or via just:
 just dev
 ```
 
-`just dev` now builds `axon` first and only starts services on successful build. It then runs serve/MCP/workers from `target/debug/axon` (instead of parallel `cargo run` invocations) plus the shell server and Next.js dev server.
+`axon serve` now verifies required infra health, then supervises the bridge backend, MCP HTTP server, local workers, shell server, and Next.js dev server. `just dev` is a thin wrapper that starts infra first and then runs `axon serve`.
 
 4. Verify health:
 
@@ -208,7 +198,7 @@ docker compose logs --tail=200 axon-postgres axon-redis axon-rabbitmq axon-qdran
 ## Validation Checklist
 
 - All infra containers report healthy (postgres, redis, rabbitmq, qdrant, chrome).
-- Worker processes are running (five workers: crawl, embed, extract, ingest, refresh).
+- `axon serve` is running and supervising the local child processes.
 - Web frontend is reachable at http://localhost:49010.
 - `doctor` passes critical services.
 - At least one sync command succeeds (`scrape`).

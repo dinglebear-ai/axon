@@ -3,6 +3,7 @@ use crate::crates::jobs::embed::EmbedJob;
 use crate::crates::jobs::extract::ExtractJob;
 use crate::crates::jobs::ingest::IngestJob;
 use crate::crates::jobs::refresh::RefreshJob;
+use crate::crates::services::types::ServiceJob;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -114,6 +115,24 @@ impl SharedJobRecord {
             config_json: Some(job.config_json.clone()),
         }
     }
+
+    fn service(job: &ServiceJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status.clone(),
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text.clone(),
+            url: job.url.clone(),
+            source_type: job.source_type.clone(),
+            target: job.target.clone(),
+            urls: job.urls_json.clone(),
+            result_json: job.result_json.clone(),
+            config_json: job.config_json.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -164,6 +183,10 @@ impl JobStatusResponse {
 
     pub fn from_refresh(job: &RefreshJob) -> Self {
         SharedJobRecord::refresh(job).into()
+    }
+
+    pub fn from_service_job(job: &ServiceJob) -> Self {
+        SharedJobRecord::service(job).into()
     }
 }
 
@@ -245,6 +268,10 @@ impl JobSummaryEntry {
 
     pub fn from_refresh(job: &RefreshJob) -> Self {
         SharedJobRecord::refresh(job).into()
+    }
+
+    pub fn from_service_job(job: &ServiceJob) -> Self {
+        SharedJobRecord::service(job).into()
     }
 }
 

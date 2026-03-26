@@ -1,18 +1,11 @@
 mod add;
-mod run_due;
-mod worker;
 
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{accent, muted, subtle, symbol_for_status};
-use crate::crates::jobs::watch::list_watch_defs;
 use crate::crates::services::refresh as refresh_service;
+use crate::crates::services::watch as watch_service;
 use chrono::{DateTime, Utc};
 use std::error::Error;
-
-pub use run_due::handle_refresh_schedule_run_due;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub use worker::refresh_schedule_tick_secs_default;
 
 pub(super) const REFRESH_TIER_HIGH_SECONDS: i64 = 1800;
 pub(super) const REFRESH_TIER_MEDIUM_SECONDS: i64 = 21600;
@@ -40,7 +33,7 @@ pub async fn handle_refresh_schedule(cfg: &Config) -> Result<(), Box<dyn Error>>
         "disable" => handle_refresh_schedule_disable(cfg).await?,
         "delete" => handle_refresh_schedule_delete(cfg).await?,
         "run-due" => handle_refresh_schedule_run_due(cfg).await?,
-        "worker" => worker::handle_refresh_schedule_worker(cfg).await?,
+        "worker" => refresh_service::refresh_schedule_worker(cfg).await?,
         _ => return Err(anyhow::anyhow!("unknown refresh schedule subcommand: {action}").into()),
     }
     Ok(())
@@ -59,7 +52,7 @@ pub(super) fn schedule_name_arg(
 
 async fn handle_refresh_schedule_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let (watch_defs, legacy_schedules) = tokio::try_join!(
-        list_watch_defs(cfg, 500),
+        watch_service::list_watch_defs(cfg, 500),
         refresh_service::refresh_schedule_list(cfg, 200)
     )?;
     let mut seen = std::collections::HashSet::new();
@@ -272,6 +265,60 @@ async fn handle_refresh_schedule_delete(cfg: &Config) -> Result<(), Box<dyn Erro
             "{} refresh schedule not found: {}",
             symbol_for_status("error"),
             accent(&name)
+        );
+    }
+    Ok(())
+}
+
+async fn handle_refresh_schedule_run_due(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let mut batch: usize = 25;
+    let mut idx = 2usize;
+    while idx < cfg.positional.len() {
+        match cfg.positional[idx].as_str() {
+            "--batch" => {
+                let value = cfg
+                    .positional
+                    .get(idx + 1)
+                    .ok_or("refresh schedule run-due requires value after --batch")?;
+                batch = value
+                    .parse::<usize>()
+                    .map_err(|_| "refresh schedule run-due --batch must be an integer")?;
+                if batch == 0 {
+                    return Err(anyhow::anyhow!(
+                        "refresh schedule run-due --batch must be greater than 0"
+                    )
+                    .into());
+                }
+                idx += 2;
+            }
+            token => {
+                return Err(
+                    anyhow::anyhow!("unknown refresh schedule run-due flag: {token}").into(),
+                );
+            }
+        }
+    }
+
+    let sweep = refresh_service::refresh_schedule_run_due(cfg, batch).await?;
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({
+                "claimed": sweep.claimed_count,
+                "dispatched": sweep.dispatched_count,
+                "skipped": sweep.skipped_count,
+                "failed": sweep.failed_count,
+                "jobs": sweep.jobs,
+            })
+        );
+    } else {
+        println!(
+            "{} claimed={} dispatched={} skipped={} failed={}",
+            symbol_for_status("completed"),
+            sweep.claimed_count,
+            sweep.dispatched_count,
+            sweep.skipped_count,
+            sweep.failed_count
         );
     }
     Ok(())

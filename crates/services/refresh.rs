@@ -1,25 +1,34 @@
+#[path = "refresh_schedule.rs"]
+mod refresh_schedule;
+
 use crate::crates::core::config::Config;
+use crate::crates::core::content::url_to_domain;
+use crate::crates::core::http::validate_url;
+use crate::crates::crawl::manifest::read_manifest_urls;
 use crate::crates::jobs::refresh::{
     cancel_refresh_job, cleanup_refresh_jobs, clear_refresh_jobs, get_refresh_job,
-    list_refresh_jobs, list_refresh_schedules, recover_stale_refresh_jobs, run_refresh_once,
-    run_refresh_worker, set_refresh_schedule_enabled, start_refresh_job,
+    list_refresh_jobs, recover_stale_refresh_jobs, run_refresh_once, run_refresh_worker,
+    start_refresh_job,
 };
-use crate::crates::jobs::refresh::{
-    claim_due_refresh_schedules_with_pool, ensure_schema_once, mark_refresh_schedule_ran_with_pool,
-    should_reingest_github as jobs_should_reingest_github,
+use crate::crates::services::types::{
+    RefreshJobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
 };
+pub use refresh_schedule::{
+    RefreshScheduleDueSweep, refresh_claim_due_schedules, refresh_ensure_schema,
+    refresh_mark_schedule_ran, refresh_schedule_create, refresh_schedule_delete,
+    refresh_schedule_disable, refresh_schedule_enable, refresh_schedule_list,
+    refresh_schedule_run_due, refresh_schedule_run_due_with_pool,
+    refresh_schedule_tick_secs_default, refresh_schedule_worker, refresh_should_reingest_github,
+};
+use std::collections::HashSet;
+use std::error::Error;
+use std::path::PathBuf;
+use uuid::Uuid;
 
 pub use crate::crates::jobs::refresh::{
     RefreshJob, RefreshSchedule, RefreshScheduleCreate, create_refresh_schedule,
     delete_refresh_schedule, list_refresh_jobs as schedule_list_jobs,
 };
-use crate::crates::services::types::{
-    RefreshJobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
-};
-use chrono::{DateTime, Utc};
-use sqlx::PgPool;
-use std::error::Error;
-use uuid::Uuid;
 
 pub async fn refresh_now(
     cfg: &Config,
@@ -77,57 +86,96 @@ pub async fn refresh_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
     run_refresh_worker(cfg).await
 }
 
-pub async fn refresh_schedule_list(
+fn manifest_candidate_paths(cfg: &Config, seed_url: &str) -> Vec<PathBuf> {
+    let domain = url_to_domain(seed_url);
+    let base = cfg.output_dir.join("domains").join(domain);
+    vec![
+        base.join("latest").join("manifest.jsonl"),
+        base.join("sync").join("manifest.jsonl"),
+    ]
+}
+
+pub async fn urls_from_manifest_seed(
     cfg: &Config,
-    limit: i64,
-) -> Result<Vec<RefreshSchedule>, Box<dyn Error>> {
-    list_refresh_schedules(cfg, limit).await
+    seed_url: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    for path in manifest_candidate_paths(cfg, seed_url) {
+        if !path.exists() {
+            continue;
+        }
+        let urls = read_manifest_urls(&path).await?;
+        if !urls.is_empty() {
+            let mut sorted: Vec<String> = urls.into_iter().collect();
+            sorted.sort();
+            return Ok(sorted);
+        }
+    }
+    Ok(Vec::new())
 }
 
-pub async fn refresh_schedule_create(
+fn looks_like_domain_seed(url: &str) -> bool {
+    let Ok(parsed) = spider::url::Url::parse(url) else {
+        return false;
+    };
+    parsed.path() == "/" && parsed.query().is_none() && parsed.fragment().is_none()
+}
+
+pub async fn resolve_refresh_urls(
     cfg: &Config,
-    schedule: &RefreshScheduleCreate,
-) -> Result<RefreshSchedule, Box<dyn Error>> {
-    create_refresh_schedule(cfg, schedule).await
+    seed_url: &str,
+    input_urls: &[String],
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut urls = input_urls.to_vec();
+
+    if urls.is_empty() && !seed_url.trim().is_empty() {
+        let seeded = urls_from_manifest_seed(cfg, seed_url).await?;
+        if !seeded.is_empty() {
+            urls = seeded;
+        }
+    } else if urls.len() == 1 && looks_like_domain_seed(&urls[0]) {
+        let seeded = urls_from_manifest_seed(cfg, &urls[0]).await?;
+        if !seeded.is_empty() {
+            urls = seeded;
+        }
+    }
+
+    let mut deduped = Vec::new();
+    let mut seen = HashSet::new();
+    for url in urls {
+        validate_url(&url)?;
+        if seen.insert(url.clone()) {
+            deduped.push(url);
+        }
+    }
+
+    Ok(deduped)
 }
 
-pub async fn refresh_schedule_delete(cfg: &Config, name: &str) -> Result<bool, Box<dyn Error>> {
-    delete_refresh_schedule(cfg, name).await
-}
+pub async fn resolve_refresh_schedule_urls(
+    cfg: &Config,
+    schedule: &RefreshSchedule,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut urls = match schedule.urls_json.as_ref() {
+        Some(value) => serde_json::from_value::<Vec<String>>(value.clone()).unwrap_or_default(),
+        None => Vec::new(),
+    };
 
-pub async fn refresh_schedule_enable(cfg: &Config, name: &str) -> Result<bool, Box<dyn Error>> {
-    set_refresh_schedule_enabled(cfg, name, true).await
-}
+    if urls.is_empty()
+        && let Some(seed_url) = schedule.seed_url.as_deref()
+    {
+        urls = urls_from_manifest_seed(cfg, seed_url).await?;
+    }
 
-pub async fn refresh_schedule_disable(cfg: &Config, name: &str) -> Result<bool, Box<dyn Error>> {
-    set_refresh_schedule_enabled(cfg, name, false).await
-}
+    let mut deduped = Vec::new();
+    let mut seen = HashSet::new();
+    for url in urls {
+        validate_url(&url)?;
+        if seen.insert(url.clone()) {
+            deduped.push(url);
+        }
+    }
 
-/// Initialize the refresh schema once per pool. Used by the schedule sweep worker.
-pub async fn refresh_ensure_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
-    ensure_schema_once(pool).await
-}
-
-/// Claim due refresh schedules for processing. Returns claimed schedule records.
-pub async fn refresh_claim_due_schedules(
-    pool: &PgPool,
-    limit: i64,
-) -> Result<Vec<RefreshSchedule>, Box<dyn Error>> {
-    claim_due_refresh_schedules_with_pool(pool, limit).await
-}
-
-/// Mark a refresh schedule as having run, updating `last_run_at` and `next_run_at`.
-pub async fn refresh_mark_schedule_ran(
-    pool: &PgPool,
-    id: Uuid,
-    next_run_at: DateTime<Utc>,
-) -> Result<bool, Box<dyn Error>> {
-    mark_refresh_schedule_ran_with_pool(pool, id, next_run_at).await
-}
-
-/// Pure function: should we re-ingest a GitHub repo given `pushed_at` vs `last_run_at`?
-pub fn refresh_should_reingest_github(pushed_at: &str, last_run_at: Option<DateTime<Utc>>) -> bool {
-    jobs_should_reingest_github(pushed_at, last_run_at)
+    Ok(deduped)
 }
 
 #[cfg(test)]

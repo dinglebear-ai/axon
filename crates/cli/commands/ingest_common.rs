@@ -1,14 +1,16 @@
 use crate::crates::cli::commands::common::{
     JobStatus, filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup,
     handle_job_clear, handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
+    handle_worker_mode,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_done;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
-use crate::crates::jobs::ingest as ingest_jobs;
-use crate::crates::jobs::ingest::IngestJob;
+use crate::crates::jobs::backend::JobKind;
 use crate::crates::services::ingest::{self as ingest_service, IngestSource};
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::types::ServiceJob;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -32,17 +34,17 @@ pub async fn maybe_handle_ingest_subcommand(
     match subcmd {
         "status" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "status")?;
-            let job = ingest_jobs::get_ingest_job(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Ingest, id).await?;
             handle_ingest_status(cfg, job, id).await?;
         }
         "cancel" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "cancel")?;
-            let canceled = ingest_jobs::cancel_ingest_job(cfg, id).await?;
+            let canceled = job_service::cancel_job(cfg, JobKind::Ingest, id).await?;
             handle_job_cancel(cfg, id, canceled, "ingest")?;
         }
         "errors" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "errors")?;
-            let job = ingest_jobs::get_ingest_job(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Ingest, id).await?;
             handle_job_errors(cfg, job, id, "ingest")?;
         }
         "list" => {
@@ -51,16 +53,23 @@ pub async fn maybe_handle_ingest_subcommand(
             } else {
                 None
             };
-            let jobs = ingest_jobs::list_ingest_jobs(cfg, source_filter, 50, 0).await?;
+            let jobs = job_service::list_jobs(cfg, JobKind::Ingest, 50, 0).await?;
+            let jobs = if let Some(filter) = source_filter {
+                jobs.into_iter()
+                    .filter(|job| job.source_type.as_deref() == Some(filter))
+                    .collect()
+            } else {
+                jobs
+            };
             handle_ingest_list(cfg, jobs).await?;
         }
         "cleanup" => {
-            let removed = ingest_jobs::cleanup_ingest_jobs(cfg).await?;
+            let removed = job_service::cleanup_jobs(cfg, JobKind::Ingest).await?;
             handle_job_cleanup(cfg, removed, "ingest")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all ingest jobs and purge ingest queue?")? {
-                let removed = ingest_jobs::clear_ingest_jobs(cfg).await?;
+                let removed = job_service::clear_jobs(cfg, JobKind::Ingest).await?;
                 handle_job_clear(cfg, removed, "ingest")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -68,9 +77,9 @@ pub async fn maybe_handle_ingest_subcommand(
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => ingest_jobs::run_ingest_worker(cfg).await?,
+        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Ingest).await?)?,
         "recover" => {
-            let reclaimed = ingest_jobs::recover_stale_ingest_jobs(cfg).await?;
+            let reclaimed = job_service::recover_jobs(cfg, JobKind::Ingest).await?;
             handle_job_recover(cfg, reclaimed, "ingest")?;
         }
         _ => return Ok(false),
@@ -155,7 +164,7 @@ fn ingest_progress(result_json: &Option<serde_json::Value>) -> Option<String> {
 
 async fn handle_ingest_status(
     cfg: &Config,
-    job: Option<IngestJob>,
+    job: Option<ServiceJob>,
     id: Uuid,
 ) -> Result<(), Box<dyn Error>> {
     match job {
@@ -176,8 +185,8 @@ async fn handle_ingest_status(
             println!(
                 "  {} {} / {}",
                 muted("Source:"),
-                job.source_type,
-                job.target
+                job.source_type.as_deref().unwrap_or("unknown"),
+                job.target.as_deref().unwrap_or("unknown")
             );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
@@ -192,12 +201,12 @@ async fn handle_ingest_status(
             }
             println!("Job ID: {}", job.id);
         }
-        None => handle_job_status::<IngestJob>(cfg, None, id, "Ingest")?,
+        None => handle_job_status::<ServiceJob>(cfg, None, id, "Ingest")?,
     }
     Ok(())
 }
 
-async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Box<dyn Error>> {
+async fn handle_ingest_list(cfg: &Config, jobs: Vec<ServiceJob>) -> Result<(), Box<dyn Error>> {
     let jobs = filter_jobs_for_status_view(cfg, jobs);
     if cfg.json_output {
         handle_job_list(cfg, jobs, "Ingest")?;
@@ -217,8 +226,8 @@ async fn handle_ingest_list(cfg: &Config, jobs: Vec<IngestJob>) -> Result<(), Bo
                     "  {} {} {}/{}{progress}{reclaim}",
                     symbol_for_status(&job.status),
                     accent(&job.id().to_string()),
-                    job.source_type,
-                    job.target
+                    job.source_type.as_deref().unwrap_or("unknown"),
+                    job.target.as_deref().unwrap_or("unknown")
                 );
             }
         }

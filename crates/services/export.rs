@@ -6,6 +6,7 @@ mod verify;
 use seeds::RebuildSeedsInput;
 
 use crate::crates::core::config::Config;
+use crate::crates::jobs::common::make_pool;
 use crate::crates::services::types::{
     ExportManifest, ExportMetadata, ExportVerifyReport, IngestExports, RefreshExports, ScrapeExport,
 };
@@ -122,6 +123,17 @@ pub async fn export_manifest(
         watches,
         qdrant_summary,
     })
+}
+
+pub async fn export_manifest_for_config(
+    cfg: &Config,
+    opts: &ExportOptions,
+) -> Result<ExportManifest> {
+    if cfg.lite_mode {
+        anyhow::bail!("export is not available in lite mode");
+    }
+    let pool = make_pool(cfg).await?;
+    export_manifest(cfg, &pool, opts).await
 }
 
 pub fn verify_manifest_json(raw_json: &str) -> Result<ExportVerifyReport> {

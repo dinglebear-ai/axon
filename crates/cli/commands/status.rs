@@ -1,5 +1,4 @@
 pub(crate) mod metrics;
-mod presentation;
 
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
@@ -45,14 +44,6 @@ pub async fn status_text(cfg: &Config) -> Result<String, Box<dyn Error>> {
 }
 
 async fn run_status_impl(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
-    presentation::emit_status_human(
-        &jobs.crawl,
-        &jobs.extract,
-        &jobs.embed,
-        &jobs.ingest,
-        &jobs.refresh,
-        &jobs.graph,
-    );
+    println!("{}", status_text(cfg).await?);
     Ok(())
 }

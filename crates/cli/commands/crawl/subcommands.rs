@@ -1,15 +1,16 @@
 use super::audit;
 use crate::crates::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_recover, handle_job_status, truncate_chars,
+    handle_job_errors, handle_job_recover, handle_job_status, handle_worker_mode, truncate_chars,
 };
 use crate::crates::cli::commands::job_contracts::JobSummaryEntry;
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
 };
-use crate::crates::services::crawl as crawl_service;
-use crate::crates::services::crawl::CrawlJob;
+use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::types::ServiceJob;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -20,27 +21,27 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
     match subcmd {
         "status" => {
             let id = parse_required_job_id(cfg, "status")?;
-            let job = crawl_service::crawl_status_raw(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Crawl, id).await?;
             handle_status_subcommand(cfg, job, id).await?;
         }
         "cancel" => {
             let id = parse_required_job_id(cfg, "cancel")?;
-            let canceled = crawl_service::crawl_cancel(cfg, id).await?;
+            let canceled = job_service::cancel_job(cfg, JobKind::Crawl, id).await?;
             handle_job_cancel(cfg, id, canceled, "crawl")?;
         }
         "errors" => {
             let id = parse_required_job_id(cfg, "errors")?;
-            let job = crawl_service::crawl_status_raw(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Crawl, id).await?;
             handle_job_errors(cfg, job, id, "crawl")?;
         }
         "list" => handle_list_subcommand(cfg).await?,
         "cleanup" => {
-            let removed = crawl_service::crawl_cleanup(cfg).await?;
+            let removed = job_service::cleanup_jobs(cfg, JobKind::Crawl).await?;
             handle_job_cleanup(cfg, removed, "crawl")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all crawl jobs and purge crawl queue?")? {
-                let removed = crawl_service::crawl_clear(cfg).await?;
+                let removed = job_service::clear_jobs(cfg, JobKind::Crawl).await?;
                 handle_job_clear(cfg, removed, "crawl")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -48,9 +49,9 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => crawl_service::crawl_worker(cfg).await?,
+        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Crawl).await?)?,
         "recover" => {
-            let reclaimed = crawl_service::crawl_recover(cfg).await?;
+            let reclaimed = job_service::recover_jobs(cfg, JobKind::Crawl).await?;
             handle_job_recover(cfg, reclaimed, "crawl")?;
         }
         "audit" => {
@@ -124,7 +125,7 @@ fn print_status_metrics(metrics: &serde_json::Value) {
 
 async fn handle_status_subcommand(
     cfg: &Config,
-    job: Option<CrawlJob>,
+    job: Option<ServiceJob>,
     id: Uuid,
 ) -> Result<(), Box<dyn Error>> {
     match job {
@@ -142,7 +143,11 @@ async fn handle_status_subcommand(
                 symbol_for_status(&job.status),
                 status_text(&job.status)
             );
-            println!("  {} {}", muted("URL:"), job.url);
+            println!(
+                "  {} {}",
+                muted("URL:"),
+                job.url.as_deref().unwrap_or("unknown")
+            );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
             if let Some(err) = job.error_text.as_deref() {
@@ -154,7 +159,7 @@ async fn handle_status_subcommand(
             println!();
             println!("Job ID: {}", job.id);
         }
-        None => handle_job_status::<CrawlJob>(cfg, None, id, "Crawl")?,
+        None => handle_job_status::<ServiceJob>(cfg, None, id, "Crawl")?,
     }
     Ok(())
 }
@@ -165,7 +170,7 @@ async fn handle_status_subcommand(
 /// - completed: "342 docs · 5.2s"
 /// - failed:    first 60 chars of error_text
 /// - other:     None
-fn job_progress_summary(job: &CrawlJob) -> Option<String> {
+fn job_progress_summary(job: &ServiceJob) -> Option<String> {
     match job.status.as_str() {
         "running" => {
             let metrics = job.result_json.as_ref()?;
@@ -217,9 +222,13 @@ fn job_progress_summary(job: &CrawlJob) -> Option<String> {
 }
 
 async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, crawl_service::crawl_list_raw(cfg, 50, 0).await?);
+    let jobs = filter_jobs_for_status_view(
+        cfg,
+        job_service::list_jobs(cfg, JobKind::Crawl, 50, 0).await?,
+    );
     if cfg.json_output {
-        let entries: Vec<JobSummaryEntry> = jobs.iter().map(JobSummaryEntry::from_crawl).collect();
+        let entries: Vec<JobSummaryEntry> =
+            jobs.iter().map(JobSummaryEntry::from_service_job).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
         println!("{}", primary("Crawl Jobs"));
@@ -234,7 +243,7 @@ async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
                         symbol_for_status(&job.status),
                         accent(&job.id.to_string()),
                         status_text(&job.status),
-                        muted(&job.url),
+                        muted(job.url.as_deref().unwrap_or("")),
                         muted(&p),
                     );
                 } else {
@@ -243,7 +252,7 @@ async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
                         symbol_for_status(&job.status),
                         accent(&job.id.to_string()),
                         status_text(&job.status),
-                        muted(&job.url),
+                        muted(job.url.as_deref().unwrap_or("")),
                     );
                 }
             }

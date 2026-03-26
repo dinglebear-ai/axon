@@ -4,6 +4,19 @@ use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vec
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static DEDUPE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard that resets DEDUPE_IN_PROGRESS to false when dropped.
+/// Ensures the flag is cleared even if dedupe_payload returns an error.
+struct DedupeGuard;
+
+impl Drop for DedupeGuard {
+    fn drop(&mut self) {
+        DEDUPE_IN_PROGRESS.store(false, Ordering::Release);
+    }
+}
 
 use super::client::{
     qdrant_delete_points, qdrant_domain_facets, qdrant_retrieve_by_url,
@@ -179,6 +192,16 @@ struct DedupeRecord {
 /// points) this can take 60-120+ seconds. This is inherent to deduplication and
 /// cannot be replaced with a facet query.
 pub async fn dedupe_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
+    // Prevent concurrent deduplication runs — two simultaneous full-collection
+    // scrolls race on deletes and produce misleading duplicate counts.
+    if DEDUPE_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        .is_err()
+    {
+        return Err("deduplication already in progress for this process".into());
+    }
+    let _guard = DedupeGuard;
+
     let mut by_key: HashMap<(String, i64), Vec<DedupeRecord>> = HashMap::new();
     // Selective payload: only fetch the fields needed for dedup (url, chunk_index,
     // scraped_at). Avoids transferring multi-KB chunk_text per point — ~28x less

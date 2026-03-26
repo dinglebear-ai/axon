@@ -589,12 +589,9 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         serve_port,
         mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
         mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-        mcp_http_port: env::var("AXON_MCP_HTTP_PORT")
-            .ok()
-            .as_deref()
-            .map(parse_mcp_http_port)
-            .transpose()?
-            .unwrap_or(8001),
+        mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
+        web_dev_port: env_port("AXON_WEB_DEV_PORT", 49010)?,
+        shell_server_port: env_port("SHELL_SERVER_PORT", 49011)?,
         custom_headers: global.custom_headers,
     };
 
@@ -658,9 +655,13 @@ fn resolve_mcp_transport(
     }
 }
 
-fn parse_mcp_http_port(raw: &str) -> Result<u16, String> {
-    raw.parse::<u16>()
-        .map_err(|e| format!("invalid AXON_MCP_HTTP_PORT '{raw}': {e}"))
+fn env_port(env_var: &str, default: u16) -> Result<u16, String> {
+    match env::var(env_var).ok() {
+        None => Ok(default),
+        Some(raw) => raw
+            .parse::<u16>()
+            .map_err(|e| format!("invalid {env_var} '{raw}': {e}")),
+    }
 }
 
 #[cfg(test)]

@@ -86,10 +86,10 @@ async fn refresh_schedule_list_reads_from_watch_defs_refresh() -> Result<(), Box
 
 #[test]
 fn refresh_schedule_run_due_uses_service_refresh_start() {
-    let source = include_str!("schedule/run_due.rs");
+    let source = include_str!("../../../services/refresh_schedule.rs");
     assert!(
-        source.contains("refresh_service::refresh_start"),
-        "schedule run-due path should dispatch via services::refresh::refresh_start"
+        source.contains("match refresh_start(cfg, &urls).await"),
+        "schedule run-due path should dispatch via services::refresh::refresh_start inside services"
     );
 }
 
@@ -97,11 +97,11 @@ fn refresh_schedule_run_due_uses_service_refresh_start() {
 fn watch_run_now_refresh_task_uses_service_layer() {
     let source = include_str!("../watch.rs");
     assert!(
-        source.contains("refresh_service::refresh_start"),
-        "watch run-now should dispatch refresh via services layer"
+        source.contains("watch_svc::run_watch_now"),
+        "watch run-now should delegate through services::watch::run_watch_now"
     );
     assert!(
-        !source.contains("jobs::refresh"),
-        "watch should not import jobs::refresh directly for dispatch"
+        !source.contains("refresh_service::refresh_start"),
+        "watch CLI should not dispatch refresh directly"
     );
 }

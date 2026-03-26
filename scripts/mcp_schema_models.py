@@ -64,7 +64,10 @@ class StructDef:
     def subaction_enum_name(self) -> str | None:
         for f in self.fields:
             if f.name == "subaction":
-                return f.inner_type
+                inner = f.inner_type
+                if inner == "String":
+                    return None
+                return inner
         return None
 
     def optional_fields(self) -> list[FieldDef]:

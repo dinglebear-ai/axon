@@ -5,6 +5,15 @@ fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
 
+fn env_bool(name: &str) -> Option<bool> {
+    env(name).map(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
 fn parse_origin_allowlist(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(str::trim)
@@ -53,6 +62,21 @@ pub fn load_mcp_config() -> Config {
     if let Some(v) = env("AXON_COLLECTION") {
         cfg.collection = v;
     }
+    if let Some(v) = env_bool("AXON_LITE") {
+        cfg.lite_mode = v;
+    }
+    if let Some(v) = env("AXON_SQLITE_PATH") {
+        cfg.sqlite_path = std::path::PathBuf::from(v);
+    }
+    if let Some(v) = env("AXON_NEO4J_URL") {
+        cfg.neo4j_url = normalize_local_service_url(v);
+    }
+    if let Some(v) = env("AXON_NEO4J_USER") {
+        cfg.neo4j_user = v;
+    }
+    if let Some(v) = env("AXON_NEO4J_PASSWORD") {
+        cfg.neo4j_password = v;
+    }
     if let Some(v) = env("AXON_CRAWL_QUEUE") {
         cfg.crawl_queue = v;
     }
@@ -67,6 +91,38 @@ pub fn load_mcp_config() -> Config {
     }
     if let Some(v) = env("AXON_REFRESH_QUEUE") {
         cfg.refresh_queue = v;
+    }
+    if let Some(v) = env("AXON_GRAPH_QUEUE") {
+        cfg.graph_queue = v;
+    }
+    if let Some(v) = env("AXON_GRAPH_CONCURRENCY")
+        && let Ok(n) = v.parse::<usize>()
+    {
+        cfg.graph_concurrency = n;
+    }
+    if let Some(v) = env("AXON_GRAPH_LLM_URL") {
+        cfg.graph_llm_url = normalize_local_service_url(v);
+    }
+    if let Some(v) = env("AXON_GRAPH_LLM_MODEL") {
+        cfg.graph_llm_model = v;
+    }
+    if let Some(v) = env("AXON_GRAPH_SIMILARITY_THRESHOLD")
+        && let Ok(f) = v.parse::<f64>()
+    {
+        cfg.graph_similarity_threshold = f;
+    }
+    if let Some(v) = env("AXON_GRAPH_SIMILARITY_LIMIT")
+        && let Ok(n) = v.parse::<usize>()
+    {
+        cfg.graph_similarity_limit = n;
+    }
+    if let Some(v) = env("AXON_GRAPH_CONTEXT_MAX_CHARS")
+        && let Ok(n) = v.parse::<usize>()
+    {
+        cfg.graph_context_max_chars = n;
+    }
+    if let Some(v) = env("AXON_GRAPH_TAXONOMY_PATH") {
+        cfg.graph_taxonomy_path = v;
     }
 
     // Ask authoritative tuning
@@ -197,6 +253,78 @@ mod tests {
         match prev_tei {
             Some(v) => unsafe { env::set_var(TEI, v) },
             None => unsafe { env::remove_var(TEI) },
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn load_mcp_config_reads_graph_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const URL: &str = "AXON_NEO4J_URL";
+        const USER: &str = "AXON_NEO4J_USER";
+        const PASSWORD: &str = "AXON_NEO4J_PASSWORD";
+        let prev_url = env::var(URL).ok();
+        let prev_user = env::var(USER).ok();
+        let prev_password = env::var(PASSWORD).ok();
+
+        unsafe {
+            env::set_var(URL, "http://127.0.0.1:7474");
+            env::set_var(USER, "neo4j");
+            env::set_var(PASSWORD, "secret");
+        }
+
+        let cfg = load_mcp_config();
+
+        assert_eq!(
+            cfg.neo4j_url,
+            normalize_local_service_url("http://127.0.0.1:7474".to_string())
+        );
+        assert_eq!(cfg.neo4j_user, "neo4j");
+        assert_eq!(cfg.neo4j_password, "secret");
+
+        match prev_url {
+            Some(v) => unsafe { env::set_var(URL, v) },
+            None => unsafe { env::remove_var(URL) },
+        }
+        match prev_user {
+            Some(v) => unsafe { env::set_var(USER, v) },
+            None => unsafe { env::remove_var(USER) },
+        }
+        match prev_password {
+            Some(v) => unsafe { env::set_var(PASSWORD, v) },
+            None => unsafe { env::remove_var(PASSWORD) },
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn load_mcp_config_reads_lite_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const LITE: &str = "AXON_LITE";
+        const SQLITE: &str = "AXON_SQLITE_PATH";
+        let prev_lite = env::var(LITE).ok();
+        let prev_sqlite = env::var(SQLITE).ok();
+
+        unsafe {
+            env::set_var(LITE, "true");
+            env::set_var(SQLITE, "/tmp/axon-test.db");
+        }
+
+        let cfg = load_mcp_config();
+
+        assert!(cfg.lite_mode);
+        assert_eq!(
+            cfg.sqlite_path,
+            std::path::PathBuf::from("/tmp/axon-test.db")
+        );
+
+        match prev_lite {
+            Some(v) => unsafe { env::set_var(LITE, v) },
+            None => unsafe { env::remove_var(LITE) },
+        }
+        match prev_sqlite {
+            Some(v) => unsafe { env::set_var(SQLITE, v) },
+            None => unsafe { env::remove_var(SQLITE) },
         }
     }
 }

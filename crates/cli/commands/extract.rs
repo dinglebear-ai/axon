@@ -1,6 +1,7 @@
+use crate::crates::cli::commands::CommandFuture;
 use crate::crates::cli::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
-    handle_job_recover, handle_job_status, parse_urls,
+    handle_job_recover, handle_job_status, handle_worker_mode, parse_urls,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::content::{
@@ -8,8 +9,11 @@ use crate::crates::core::content::{
 };
 use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{accent, confirm_destructive, muted, primary, symbol_for_status};
-use crate::crates::jobs::backend::{JobBackend, JobPayload};
+use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::extract as extract_service;
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::types::StartDisposition;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use std::error::Error;
@@ -17,43 +21,39 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-pub async fn run_extract(
-    cfg: &Config,
-    backend: &Arc<dyn JobBackend>,
-) -> Result<(), Box<dyn Error>> {
-    if maybe_handle_extract_subcommand(cfg).await? {
-        return Ok(());
-    }
-    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
-        return Ok(());
-    }
-
-    let urls = parse_urls(cfg);
-    if urls.is_empty() {
-        return Err(
-            anyhow::anyhow!("extract requires at least one URL (positional or --urls)").into(),
-        );
-    }
-    log_info(&format!(
-        "command=extract urls={} wait={}",
-        urls.len(),
-        cfg.wait
-    ));
-    let prompt = require_extract_prompt(cfg)?;
-
-    if !cfg.wait {
-        let result = enqueue_extract_job(cfg, &urls, prompt, backend).await;
-        if result.is_ok() {
-            log_info(&format!(
-                "job_enqueued command=extract queue={}",
-                cfg.extract_queue
-            ));
+pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
+    Box::pin(async move {
+        if maybe_handle_extract_subcommand(cfg).await? {
+            return Ok(());
         }
-        return result;
-    }
 
-    run_extract_sync(cfg, urls, &prompt).await
+        let urls = parse_urls(cfg);
+        if urls.is_empty() {
+            return Err(anyhow::anyhow!(
+                "extract requires at least one URL (positional or --urls)"
+            )
+            .into());
+        }
+        log_info(&format!(
+            "command=extract urls={} wait={}",
+            urls.len(),
+            cfg.wait
+        ));
+        let prompt = require_extract_prompt(cfg)?;
+
+        if !cfg.wait {
+            let result = enqueue_extract_job(cfg, &urls, prompt, service_context).await;
+            if result.is_ok() {
+                log_info(&format!(
+                    "job_enqueued command=extract queue={}",
+                    cfg.extract_queue
+                ));
+            }
+            return result;
+        }
+
+        run_extract_sync(cfg, urls, &prompt).await
+    })
 }
 
 async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
@@ -64,30 +64,30 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
     match subcmd {
         "status" => {
             let id = parse_extract_job_id(cfg, "status")?;
-            let job = extract_service::extract_status_raw(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
             handle_job_status(cfg, job, id, "Extract")?;
         }
         "cancel" => {
             let id = parse_extract_job_id(cfg, "cancel")?;
-            let canceled = extract_service::extract_cancel(cfg, id).await?;
+            let canceled = job_service::cancel_job(cfg, JobKind::Extract, id).await?;
             handle_job_cancel(cfg, id, canceled, "extract")?;
         }
         "errors" => {
             let id = parse_extract_job_id(cfg, "errors")?;
-            let job = extract_service::extract_status_raw(cfg, id).await?;
+            let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
             handle_job_errors(cfg, job, id, "extract")?;
         }
         "list" => {
-            let jobs = extract_service::extract_list_raw(cfg, 50, 0).await?;
+            let jobs = job_service::list_jobs(cfg, JobKind::Extract, 50, 0).await?;
             handle_job_list(cfg, jobs, "Extract")?;
         }
         "cleanup" => {
-            let removed = extract_service::extract_cleanup(cfg).await?;
+            let removed = job_service::cleanup_jobs(cfg, JobKind::Extract).await?;
             handle_job_cleanup(cfg, removed, "extract")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all extract jobs and purge extract queue?")? {
-                let removed = extract_service::extract_clear(cfg).await?;
+                let removed = job_service::clear_jobs(cfg, JobKind::Extract).await?;
                 handle_job_clear(cfg, removed, "extract")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -95,9 +95,9 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => extract_service::extract_worker(cfg).await?,
+        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Extract).await?)?,
         "recover" => {
-            let reclaimed = extract_service::extract_recover(cfg).await?;
+            let reclaimed = job_service::recover_jobs(cfg, JobKind::Extract).await?;
             handle_job_recover(cfg, reclaimed, "extract")?;
         }
         _ => return Ok(false),
@@ -126,43 +126,25 @@ async fn enqueue_extract_job(
     cfg: &Config,
     urls: &[String],
     prompt: String,
-    backend: &Arc<dyn JobBackend>,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    if cfg.lite_mode {
-        let job_id = backend
-            .enqueue(JobPayload::Extract {
-                urls: urls.to_vec(),
-                config_json: "{}".to_string(),
-            })
-            .await
-            .map_err(|e| -> Box<dyn Error> { e })?;
-        if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
-            );
-        } else {
-            println!(
-                "  {} {}",
-                primary("Extract Job"),
-                accent(&job_id.to_string())
-            );
-            println!("  {}", muted("Status: pending"));
-            println!("Job ID: {job_id}");
-        }
-        return Ok(());
-    }
-
-    let result = extract_service::extract_start_with_prompt(cfg, urls, Some(prompt), None).await?;
-    let job_id = result.job_id;
+    let outcome =
+        extract_service::extract_start_with_context(cfg, urls, Some(prompt), service_context, None)
+            .await?;
+    let job_id = outcome.result.job_id;
+    let status = if outcome.disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
+    };
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"job_id": job_id, "status": "pending", "source": "rust"})
+            serde_json::json!({"job_id": job_id, "status": status})
         );
     } else {
         println!("  {} {}", primary("Extract Job"), accent(&job_id));
-        println!("  {}", muted("Status: pending"));
+        println!("  {}", muted(&format!("Status: {status}")));
         println!("Job ID: {job_id}");
     }
     Ok(())

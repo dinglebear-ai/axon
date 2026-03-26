@@ -95,8 +95,7 @@ const ACP_ADAPTER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// Environment variables forwarded to ACP adapter subprocesses.
 ///
 /// `env_clear()` strips everything; only these keys are re-injected from the
-/// parent environment when present.  Kept as a module-level constant so
-/// `spawn_adapter` and `spawn_adapter_skip_validation` stay in sync.
+/// parent environment when present.
 const ACP_ENV_ALLOWLIST: &[&str] = &[
     "PATH",
     "HOME",
@@ -197,9 +196,8 @@ impl AcpClientScaffold {
     /// Build the adapter subprocess `Command` with common configuration:
     /// args, cwd, env allowlist, stdio pipes, and `kill_on_drop`.
     ///
-    /// Shared by `spawn_adapter` and `spawn_adapter_skip_validation` to
-    /// eliminate duplication.  `env_clear()` only affects the *subprocess*
-    /// environment — the parent (Axon) process environment is never touched.
+    /// `env_clear()` only affects the *subprocess* environment — the parent
+    /// (Axon) process environment is never touched.
     fn build_adapter_command(&self) -> tokio::process::Command {
         let mut command = tokio::process::Command::new(&self.adapter.program);
         command.args(&self.adapter.args);
@@ -250,19 +248,6 @@ impl AcpClientScaffold {
                 }
             }
         }
-        let child = self.build_adapter_command().spawn()?;
-        Ok(child)
-    }
-
-    /// Test-only variant of `spawn_adapter` that skips `validate_adapter_command`.
-    ///
-    /// Used by env-isolation integration tests that need to spawn a real shell
-    /// (e.g. `sh`) without being blocked by the shell-name validator.
-    #[cfg(any(test, feature = "test-helpers"))]
-    #[doc(hidden)]
-    pub fn spawn_adapter_skip_validation(
-        &self,
-    ) -> Result<tokio::process::Child, Box<dyn std::error::Error>> {
         let child = self.build_adapter_command().spawn()?;
         Ok(child)
     }

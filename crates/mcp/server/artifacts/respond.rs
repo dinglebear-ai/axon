@@ -2,6 +2,7 @@ use super::super::common::internal_error;
 use super::path::build_artifact_path;
 use super::shape::{clip_inline_json, json_shape_preview, line_count, sha256_hex};
 use crate::crates::mcp::schema::{AxonToolResponse, ResponseMode};
+use crate::crates::vector::ops::qdrant::env_usize_clamped;
 use rmcp::ErrorData;
 use uuid::Uuid;
 
@@ -94,7 +95,7 @@ pub async fn respond_with_mode(
                 "artifact": artifact,
             }),
         )),
-        ResponseMode::Inline => {
+        ResponseMode::Inline | ResponseMode::AutoInline => {
             let (inline, truncated) = clip_inline_json(&payload, 12_000);
             Ok(AxonToolResponse::ok(
                 action,
@@ -125,10 +126,7 @@ pub async fn respond_with_mode(
 }
 
 fn inline_bytes_threshold() -> usize {
-    std::env::var("AXON_INLINE_BYTES_THRESHOLD")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(8_192)
+    env_usize_clamped("AXON_INLINE_BYTES_THRESHOLD", 8_192, 0, usize::MAX)
 }
 
 #[cfg(test)]

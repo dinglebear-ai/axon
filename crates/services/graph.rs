@@ -5,8 +5,8 @@ use crate::crates::jobs::graph::{enqueue_graph_job, ensure_graph_schema, run_gra
 use crate::crates::services::types::{
     GraphBuildResult, GraphExploreResult, GraphStatsResult, GraphStatusResult,
 };
-use crate::crates::vector::ops::qdrant::qdrant_indexed_urls;
-use spider::url::Url;
+use crate::crates::vector::ops::qdrant::{qdrant_indexed_urls, qdrant_urls_for_domain};
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::collections::BTreeMap;
 use std::error::Error;
 use uuid::Uuid;
@@ -15,29 +15,16 @@ fn require_neo4j(cfg: &Config) -> Result<Neo4jClient, Box<dyn Error>> {
     Neo4jClient::from_config(cfg)?.ok_or_else(|| "graph operations require AXON_NEO4J_URL".into())
 }
 
+fn require_graph_support(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    if cfg.lite_mode {
+        return Err("graph is not available in lite mode".into());
+    }
+    Ok(())
+}
+
 /// Maximum number of URLs to retrieve from Qdrant for graph build operations.
 /// Prevents unbounded full-collection scrolls that cause DoS on large collections.
 const GRAPH_BUILD_URL_LIMIT: usize = 50_000;
-
-/// Pre-fetch limit for domain-scoped graph builds.
-/// Larger than GRAPH_BUILD_URL_LIMIT to improve domain coverage,
-/// but still capped to prevent unbounded full-collection scrolls.
-const GRAPH_BUILD_DOMAIN_FETCH_LIMIT: usize = 500_000;
-
-/// Check whether `url` belongs to `domain` (exact match or subdomain).
-///
-/// `domain_suffix` must be `".{domain}"` — pre-computed by the caller to avoid
-/// a per-URL allocation when filtering large URL lists.
-fn url_matches_domain(url: &str, domain: &str, domain_suffix: &str) -> bool {
-    Url::parse(url)
-        .ok()
-        .and_then(|parsed| {
-            parsed
-                .host_str()
-                .map(|host| host == domain || host.ends_with(domain_suffix))
-        })
-        .unwrap_or(false)
-}
 
 pub async fn graph_build(
     cfg: &Config,
@@ -45,26 +32,25 @@ pub async fn graph_build(
     domain: Option<&str>,
     all: bool,
 ) -> Result<GraphBuildResult, Box<dyn Error>> {
+    require_graph_support(cfg)?;
     let _neo4j = require_neo4j(cfg)?;
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool).await?;
 
     let mut urls = if let Some(url) = url {
         vec![url.to_string()]
-    } else if domain.is_some() {
-        // Domain-scoped builds fetch more URLs to improve domain coverage,
-        // then filter down to only matching domain URLs.
-        qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_DOMAIN_FETCH_LIMIT)).await?
+    } else if let Some(domain) = domain {
+        // Use server-side domain filter instead of fetching 500k URLs and filtering in Rust.
+        qdrant_urls_for_domain(cfg, domain)
+            .await?
+            .into_iter()
+            .collect::<Vec<_>>()
     } else {
+        if !all {
+            return Err("graph_build requires a URL, --all, or domain filter".into());
+        }
         qdrant_indexed_urls(cfg, Some(GRAPH_BUILD_URL_LIMIT)).await?
     };
-
-    if let Some(domain) = domain {
-        let suffix = format!(".{domain}");
-        urls.retain(|candidate| url_matches_domain(candidate, domain, &suffix));
-    } else if !all && url.is_none() {
-        return Err("graph_build requires a URL, --all, or domain filter".into());
-    }
 
     urls.sort();
     urls.dedup();
@@ -72,10 +58,20 @@ pub async fn graph_build(
         urls.truncate(GRAPH_BUILD_URL_LIMIT);
     }
 
-    let mut job_ids = Vec::new();
-    for item in &urls {
-        let job_id = enqueue_graph_job(&pool, cfg, item, "crawl").await?;
-        job_ids.push(job_id.to_string());
+    // Enqueue concurrently (32 at a time) — each URL holds an independent pg advisory lock
+    // so parallel enqueues are safe. Serial enqueue of 50k URLs would take 8–40 minutes.
+    const ENQUEUE_CONCURRENCY: usize = 32;
+    let mut iter = urls.iter();
+    let mut inflight: FuturesUnordered<_> = FuturesUnordered::new();
+    for url in iter.by_ref().take(ENQUEUE_CONCURRENCY) {
+        inflight.push(enqueue_graph_job(&pool, cfg, url, "crawl"));
+    }
+    let mut job_ids = Vec::with_capacity(urls.len());
+    while let Some(result) = inflight.next().await {
+        job_ids.push(result?.to_string());
+        if let Some(url) = iter.next() {
+            inflight.push(enqueue_graph_job(&pool, cfg, url, "crawl"));
+        }
     }
 
     Ok(GraphBuildResult {
@@ -89,6 +85,7 @@ pub async fn graph_build(
 }
 
 pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Error>> {
+    require_graph_support(cfg)?;
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool).await?;
     let rows = sqlx::query_as::<_, (String, i64)>(
@@ -137,6 +134,7 @@ pub async fn graph_explore(
     cfg: &Config,
     entity: &str,
 ) -> Result<GraphExploreResult, Box<dyn Error>> {
+    require_graph_support(cfg)?;
     let entity = entity.trim();
     if entity.is_empty() {
         return Err("graph_explore requires a non-empty entity name".into());
@@ -165,6 +163,7 @@ pub async fn graph_explore(
 }
 
 pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error>> {
+    require_graph_support(cfg)?;
     let neo4j = require_neo4j(cfg)?;
     let rows = neo4j
         .query(
@@ -184,6 +183,7 @@ pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error
 }
 
 pub async fn graph_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    require_graph_support(cfg)?;
     run_graph_worker(cfg)
         .await
         .map_err(|err| -> Box<dyn Error> { err.into() })

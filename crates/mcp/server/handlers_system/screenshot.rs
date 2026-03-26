@@ -1,8 +1,6 @@
 use crate::crates::mcp::schema::{AxonToolResponse, ScreenshotRequest};
 use crate::crates::mcp::server::AxonMcpServer;
-use crate::crates::mcp::server::artifacts::{
-    ensure_artifact_root, resolve_artifact_output_path, respond_with_mode,
-};
+use crate::crates::mcp::server::artifacts::{ensure_artifact_root, resolve_artifact_output_path};
 use crate::crates::mcp::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
 use rmcp::ErrorData;
 
@@ -53,8 +51,6 @@ impl AxonMcpServer {
             .url
             .ok_or_else(|| invalid_params("url is required for screenshot"))?;
         validate_mcp_url(&url)?;
-        let response_mode = req.response_mode;
-
         let (width, height) = Self::parse_viewport(
             req.viewport.as_deref(),
             self.cfg.viewport_width,
@@ -107,13 +103,16 @@ impl AxonMcpServer {
             "full_page": full_page,
             "viewport": format!("{}x{}", width, height),
         });
-        respond_with_mode(
+        // Screenshot already materializes the primary artifact as a PNG on disk.
+        // Returning the small metadata envelope inline avoids a second JSON
+        // artifact round-trip and prevents MCP stdio crashes in this path.
+        Ok(AxonToolResponse::ok(
             "screenshot",
             "screenshot",
-            response_mode,
-            "screenshot",
-            payload,
-        )
-        .await
+            serde_json::json!({
+                "response_mode": "inline",
+                "data": payload,
+            }),
+        ))
     }
 }

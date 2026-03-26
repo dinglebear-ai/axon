@@ -1,7 +1,7 @@
 # axon serve
-Last Modified: 2026-03-03
+Last Modified: 2026-03-25
 
-Start Axon's axum WebSocket execution bridge backend used by `apps/web`.
+Start Axon's local stack supervisor.
 
 ## Synopsis
 
@@ -15,11 +15,37 @@ All global flags apply. Key flags for this command:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--port <n>` | `49000` | Port for the serve backend. Env: `AXON_SERVE_PORT`. |
+| `--port <n>` | `49000` | Port for the Rust websocket/download bridge. Env: `AXON_SERVE_PORT`. |
 
 Host binding is controlled by `AXON_SERVE_HOST` (default `127.0.0.1`).
 
-## Endpoints
+## Managed Processes
+
+- Rust websocket/download bridge on `AXON_SERVE_PORT` (default `49000`)
+- MCP HTTP server on `AXON_MCP_HTTP_PORT` (default `8001`)
+- `apps/web/shell-server.mjs` on `SHELL_SERVER_PORT` (default `49011`)
+- `apps/web` Next.js dev server on `AXON_WEB_DEV_PORT` (default `49010`)
+- Full-mode workers: crawl, embed, extract, ingest, refresh, and graph when Neo4j is configured
+
+## Container Preflight
+
+`axon serve` fails fast if required infrastructure containers are not running and healthy.
+
+Full mode (`AXON_LITE != 1`) requires:
+
+- `axon-postgres`
+- `axon-redis`
+- `axon-rabbitmq`
+- `axon-qdrant`
+- `axon-tei`
+- `axon-chrome`
+
+Lite mode (`AXON_LITE=1`) requires only:
+
+- `axon-qdrant`
+- `axon-tei`
+
+## Bridge Endpoints
 
 - `GET /ws` - command execution WebSocket bridge
 - `GET /ws/shell` - shell WebSocket (loopback-only)
@@ -32,18 +58,21 @@ Host binding is controlled by `AXON_SERVE_HOST` (default `127.0.0.1`).
 ## Examples
 
 ```bash
-# Default localhost bind on :49000
+# Default localhost bind on :49000 and supervise the local stack
 axon serve
 
 # Custom port
 axon serve --port 8080
 
-# Bind all interfaces (for reverse proxy/container use)
+# Bind the Rust bridge on all interfaces
 AXON_SERVE_HOST=0.0.0.0 axon serve --port 49000
 ```
 
 ## Notes
 
-- `serve` does not host the Next.js frontend itself; it provides backend WS/HTTP routes.
+- `serve` is now the primary local dev entrypoint.
+- `serve` restarts failed child processes with bounded exponential backoff.
+- `serve` aborts the whole stack after repeated fast failures instead of crash-looping forever.
+- `serve` does not auto-start Docker containers; it only checks them.
 - `/ws/shell` rejects non-loopback clients with HTTP 403.
 - See `docs/SERVE.md` for full protocol and architecture details.

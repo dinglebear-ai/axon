@@ -1,15 +1,11 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
-use crate::crates::jobs::crawl::{CrawlJob, list_jobs};
-use crate::crates::jobs::embed::{EmbedJob, list_embed_jobs};
-use crate::crates::jobs::extract::{ExtractJob, list_extract_jobs};
-use crate::crates::jobs::graph::{GraphJob, list_graph_jobs};
-use crate::crates::jobs::ingest::{IngestJob, list_ingest_jobs};
-use crate::crates::jobs::refresh::{RefreshJob, list_refresh_jobs};
+use crate::crates::jobs::backend::JobKind;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
+use crate::crates::services::jobs as job_service;
 use crate::crates::services::types::{
     DedupeResult, DetailedDomainFacet, DetailedDomainsResult, DoctorResult, DomainFacet,
-    DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
+    DomainsResult, Pagination, ServiceJob, SourcesResult, StatsResult, StatusResult,
 };
 use crate::crates::vector::ops::qdrant::{
     dedupe_payload, domains_payload, env_usize_clamped, payload_domain, payload_url,
@@ -269,12 +265,12 @@ pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
 // ── Status business logic ───────────────────────────────────────────────────
 
 pub(crate) struct StatusJobs {
-    pub crawl: Vec<CrawlJob>,
-    pub extract: Vec<ExtractJob>,
-    pub embed: Vec<EmbedJob>,
-    pub ingest: Vec<IngestJob>,
-    pub refresh: Vec<RefreshJob>,
-    pub graph: Vec<GraphJob>,
+    pub crawl: Vec<ServiceJob>,
+    pub extract: Vec<ServiceJob>,
+    pub embed: Vec<ServiceJob>,
+    pub ingest: Vec<ServiceJob>,
+    pub refresh: Vec<ServiceJob>,
+    pub graph: Vec<ServiceJob>,
 }
 
 /// Filter + view-mode in one pass: drop reclaimed/non-reclaimed jobs, then
@@ -297,32 +293,32 @@ fn filter_and_view<T>(
 pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn Error>> {
     let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
         async {
-            list_jobs(cfg, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Crawl, 20, 0)
                 .await
                 .map_err(|e| format!("crawl: {e}"))
         },
         async {
-            list_extract_jobs(cfg, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Extract, 20, 0)
                 .await
                 .map_err(|e| format!("extract: {e}"))
         },
         async {
-            list_embed_jobs(cfg, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Embed, 20, 0)
                 .await
                 .map_err(|e| format!("embed: {e}"))
         },
         async {
-            list_ingest_jobs(cfg, None, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Ingest, 20, 0)
                 .await
                 .map_err(|e| format!("ingest: {e}"))
         },
         async {
-            list_refresh_jobs(cfg, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Refresh, 20, 0)
                 .await
                 .map_err(|e| format!("refresh: {e}"))
         },
         async {
-            list_graph_jobs(cfg, 20, 0)
+            job_service::list_jobs(cfg, JobKind::Graph, 20, 0)
                 .await
                 .map_err(|e| format!("graph: {e}"))
         },
@@ -349,12 +345,12 @@ pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn
 }
 
 pub(crate) fn build_status_payload(
-    crawl_jobs: &[CrawlJob],
-    extract_jobs: &[ExtractJob],
-    embed_jobs: &[EmbedJob],
-    ingest_jobs: &[IngestJob],
-    refresh_jobs: &[RefreshJob],
-    graph_jobs: &[GraphJob],
+    crawl_jobs: &[ServiceJob],
+    extract_jobs: &[ServiceJob],
+    embed_jobs: &[ServiceJob],
+    ingest_jobs: &[ServiceJob],
+    refresh_jobs: &[ServiceJob],
+    graph_jobs: &[ServiceJob],
 ) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": crawl_jobs,

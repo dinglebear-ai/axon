@@ -14,6 +14,7 @@ use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
 use self::crates::jobs::backend::JobBackend;
 use self::crates::jobs::full::FullBackend;
 use self::crates::jobs::lite::LiteBackend;
+use self::crates::services::context::ServiceContext;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
@@ -80,17 +81,17 @@ async fn record_command_run(pg_url: String, command: String) {
 async fn run_once(
     cfg: &Config,
     start_url: &str,
-    backend: &Arc<dyn JobBackend>,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     match cfg.command {
         CommandKind::Scrape => run_scrape(cfg).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
-        CommandKind::Crawl => run_crawl(cfg, backend).await?,
+        CommandKind::Crawl => run_crawl(cfg, service_context).await?,
         CommandKind::Refresh => run_refresh(cfg).await?,
         CommandKind::Watch => run_watch(cfg).await?,
-        CommandKind::Extract => run_extract(cfg, backend).await?,
+        CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg).await?,
-        CommandKind::Embed => run_embed(cfg, backend).await?,
+        CommandKind::Embed => run_embed(cfg, service_context).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Doctor => run_doctor(cfg).await?,
         CommandKind::Query => run_query(cfg).await?,
@@ -103,7 +104,7 @@ async fn run_once(
         CommandKind::Stats => run_stats(cfg).await?,
         CommandKind::Status => run_status(cfg).await?,
         CommandKind::Dedupe => run_dedupe(cfg).await?,
-        CommandKind::Ingest => run_ingest(cfg, backend).await?,
+        CommandKind::Ingest => run_ingest(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg).await?,
         CommandKind::Research => run_research(cfg).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
@@ -190,6 +191,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?,
         )
     };
+    let service_context = ServiceContext::new(Arc::clone(&cfg_arc))
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?
+        .with_job_backend(Arc::clone(&backend));
     let cfg = cfg_arc.as_ref();
 
     // Skip Postgres telemetry in lite mode (no Postgres connection required).
@@ -218,7 +223,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 cfg.command.as_str(),
                 every_seconds
             ));
-            match run_once(cfg, &start_url, &backend).await {
+            match run_once(cfg, &start_url, &service_context).await {
                 Ok(_) => {}
                 Err(e) => {
                     log_warn(&format!("cron run_once failed: {e:#}"));
@@ -235,7 +240,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         ));
         return Ok(());
     }
-    run_once(cfg, &start_url, &backend).await?;
+    run_once(cfg, &start_url, &service_context).await?;
 
     if is_async_enqueue_mode(cfg) {
         log_done(&format!("command={} enqueued", cfg.command.as_str()));

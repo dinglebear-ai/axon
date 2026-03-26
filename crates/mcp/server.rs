@@ -47,9 +47,9 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::Parameters,
     model::{
-        AnnotateAble, ListResourcesResult, Meta, PaginatedRequestParams, RawResource,
-        ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-        ServerCapabilities, ServerInfo,
+        AnnotateAble, ExtensionCapabilities, InitializeRequestParams, InitializeResult,
+        ListResourcesResult, Meta, PaginatedRequestParams, RawResource, ReadResourceRequestParams,
+        ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -108,6 +108,9 @@ impl AxonMcpServer {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_owned();
+        if action == "status" {
+            tracing::info!(action = %action, subaction = %subaction, dashboard_uri = STATUS_DASHBOARD_URI, "mcp_app status tool called — widget should render");
+        }
         tracing::info!(action = %action, subaction = %subaction, "mcp request");
         let request: AxonRequest = parse_axon_request(raw).map_err(|e| {
             tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
@@ -149,16 +152,61 @@ fn mcp_tool_schema_markdown() -> &'static str {
 
 fn axon_tool_meta() -> Meta {
     let mut m = Meta::new();
+    // Nested form: _meta.ui.resourceUri (TypeScript SDK convention)
     m.insert(
         "ui".to_string(),
         serde_json::json!({ "resourceUri": STATUS_DASHBOARD_URI }),
     );
+    // Flat form: _meta["ui/resourceUri"] (RESOURCE_URI_META_KEY in ext-apps SDK)
+    // registerAppTool() normalizes _meta to include both — we must do the same.
+    m.insert(
+        "ui/resourceUri".to_string(),
+        serde_json::json!(STATUS_DASHBOARD_URI),
+    );
     m
+}
+
+fn mcp_apps_server_capabilities() -> ServerCapabilities {
+    let mut extensions = ExtensionCapabilities::new();
+    // Declare MCP Apps extension support so the host knows to render widgets.
+    extensions.insert(
+        "io.modelcontextprotocol/ui".to_string(),
+        serde_json::from_value(serde_json::json!({
+            "mimeTypes": ["text/html;profile=mcp-app"]
+        }))
+        .unwrap_or_default(),
+    );
+    ServerCapabilities::builder()
+        .enable_tools()
+        .enable_resources()
+        .enable_extensions_with(extensions)
+        .build()
 }
 
 #[tool_handler(router = Self::tool_router())]
 impl ServerHandler for AxonMcpServer {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        tracing::info!(
+            client_name = %request.client_info.name,
+            client_version = %request.client_info.version,
+            protocol_version = %request.protocol_version,
+            has_extensions = %request.capabilities.extensions.is_some(),
+            extensions = ?request.capabilities.extensions,
+            "mcp_app initialize — client capabilities"
+        );
+        let info = self.get_info();
+        Ok(InitializeResult::new(info.capabilities)
+            .with_protocol_version(request.protocol_version)
+            .with_server_info(info.server_info)
+            .with_instructions(info.instructions.unwrap_or_default()))
+    }
+
     fn get_info(&self) -> ServerInfo {
+        tracing::info!("mcp_app get_info called — client connected");
         let mut info = ServerInfo::default();
         info.instructions = Some(concat!(
             "Axon is a self-hosted RAG engine for web crawl, scrape, extract, embed, and semantic search.\n",
@@ -191,10 +239,7 @@ impl ServerHandler for AxonMcpServer {
             "\n",
             "All async operations (crawl, embed, ingest, extract) return a job_id. Poll with `action:status` or pass `wait:true` for synchronous execution."
         ).into());
-        info.capabilities = ServerCapabilities::builder()
-            .enable_tools()
-            .enable_resources()
-            .build();
+        info.capabilities = mcp_apps_server_capabilities();
         info
     }
 
@@ -203,6 +248,7 @@ impl ServerHandler for AxonMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
+        tracing::info!("mcp_app list_resources called");
         let schema_resource: Resource = RawResource {
             uri: MCP_TOOL_SCHEMA_URI.to_string(),
             name: "mcp-tool-schema".to_string(),
@@ -244,6 +290,7 @@ impl ServerHandler for AxonMcpServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
+        tracing::info!(uri = %request.uri, "mcp_app read_resource called");
         if request.uri == STATUS_DASHBOARD_URI {
             return Ok(ReadResourceResult::new(vec![
                 ResourceContents::TextResourceContents {

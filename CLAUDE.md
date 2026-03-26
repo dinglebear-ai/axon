@@ -5,7 +5,7 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 
 ## Quick Start
 
-> **Local dev mode**: Workers and the web frontend run as local processes, not in Docker. Infrastructure (Postgres, Redis, RabbitMQ, Qdrant, Chrome, TEI) runs via a separate Docker Compose file (`docker-compose.services.yaml`).
+> **Local dev mode**: `axon serve` supervises the local app stack (bridge backend, MCP HTTP, workers, shell server, Next.js). Infrastructure (Postgres, Redis, RabbitMQ, Qdrant, Chrome, TEI) runs via a separate Docker Compose file (`docker-compose.services.yaml`).
 
 ```bash
 # 1. Start infrastructure only
@@ -16,14 +16,8 @@ docker compose -f docker-compose.services.yaml up -d
 ./scripts/axon doctor
 ./scripts/axon scrape https://example.com --wait true
 
-# 3. Run workers locally (each in a separate terminal or tmux pane)
-cargo run --bin axon -- crawl worker
-cargo run --bin axon -- embed worker
-cargo run --bin axon -- extract worker
-cargo run --bin axon -- graph worker
-
-# 4. Run the web frontend locally
-cd apps/web && pnpm dev    # → http://localhost:49010
+# 3. Run the local app stack supervisor
+cargo run --bin axon -- serve    # starts bridge backend, MCP HTTP, workers, shell server, Next.js
 
 # MCP server via CLI subcommand
 ./scripts/axon mcp
@@ -251,8 +245,8 @@ For local dev, workers and web run as local processes instead:
 
 | Service | Local dev | Command |
 |---------|-----------|---------|
-| `axon-workers` | **local process** | `cargo run --bin axon -- crawl worker` (and equivalent for extract/embed/ingest) |
-| `axon-web` | **local process** | `cd apps/web && pnpm dev` (port 49010) |
+| `axon-workers` | **local supervisor** | `cargo run --bin axon -- serve` |
+| `axon-web` | **supervised child** | started by `axon serve` (port 49010) |
 
 All services live on the `axon` bridge network. Data volumes use `${AXON_DATA_DIR:-./data}/axon/...` (override with `AXON_DATA_DIR`).
 
@@ -261,13 +255,8 @@ All services live on the `axon` bridge network. Data volumes use `${AXON_DATA_DI
 just services-up
 # or: docker compose -f docker-compose.services.yaml up -d
 
-# Run workers locally (each in its own terminal or via a process manager)
-cargo run --bin axon -- crawl worker
-cargo run --bin axon -- embed worker
-cargo run --bin axon -- extract worker
-
-# Run the frontend locally
-cd apps/web && pnpm dev    # → http://localhost:49010
+# Run the local app stack supervisor
+cargo run --bin axon -- serve
 
 # Check infra health
 docker compose -f docker-compose.services.yaml ps
@@ -275,7 +264,7 @@ docker compose -f docker-compose.services.yaml ps
 # Tail infra logs
 docker compose -f docker-compose.services.yaml logs -f
 
-# Full local dev (infra + all workers + web server + MCP + Next.js)
+# Full local dev (infra + axon serve supervisor)
 just dev
 
 # Stop everything
@@ -561,7 +550,7 @@ just services-down # stop infra
 just up          # build + start app containers (workers + web)
 just down        # stop app containers
 just down-all    # stop everything (app + infra)
-just dev         # full local dev (infra + workers + web + MCP)
+just dev         # full local dev (infra + axon serve supervisor)
 ```
 
 ### Run directly

@@ -92,6 +92,61 @@ pub struct StatusResult {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceJob {
+    pub id: uuid::Uuid,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub started_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub error_text: Option<String>,
+    pub url: Option<String>,
+    pub source_type: Option<String>,
+    pub target: Option<String>,
+    pub urls_json: Option<serde_json::Value>,
+    pub result_json: Option<serde_json::Value>,
+    pub config_json: Option<serde_json::Value>,
+}
+
+impl ServiceJob {
+    pub fn from_status_row(row: crate::crates::jobs::backend::JobStatusRow) -> Self {
+        Self {
+            id: row.id,
+            status: row.status.as_str().to_string(),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            started_at: row.started_at,
+            finished_at: row.finished_at,
+            error_text: row.error_text,
+            url: None,
+            source_type: None,
+            target: None,
+            urls_json: None,
+            result_json: row.result_json,
+            config_json: None,
+        }
+    }
+
+    pub fn from_summary(summary: crate::crates::jobs::backend::JobSummary) -> Self {
+        Self {
+            id: summary.id,
+            status: summary.status.as_str().to_string(),
+            created_at: summary.created_at,
+            updated_at: summary.created_at,
+            started_at: None,
+            finished_at: None,
+            error_text: None,
+            url: None,
+            source_type: None,
+            target: Some(summary.target),
+            urls_json: None,
+            result_json: None,
+            config_json: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DedupeResult {
     pub completed: bool,

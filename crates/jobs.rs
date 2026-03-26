@@ -11,5 +11,6 @@ pub mod lite;
 pub mod refresh;
 pub mod status;
 pub mod watch;
+pub mod watch_lite;
 pub mod watch_worker;
 pub(crate) mod worker_lane;

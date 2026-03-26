@@ -375,7 +375,7 @@ Checks:
 2. If path-like, file exists (or assumed to be in PATH — non-existence is allowed at validation time)
 3. Not a directory (no trailing `/` or `\`)
 
-> **Warning: Escape hatch.** `spawn_adapter_skip_validation()` bypasses all command validation. It exists solely for integration tests that need to spawn shell interpreters to verify environment isolation. It must never be called from production code paths — gate behind `#[cfg(any(test, feature = "test-helpers"))]`. A CI grep ban enforces this boundary.
+Integration tests verify environment isolation through validated binaries such as `/usr/bin/env`, not by bypassing adapter validation. There is no test-only ACP spawn escape hatch anymore.
 
 ---
 

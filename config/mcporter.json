@@ -1,12 +1,16 @@
 {
   "mcpServers": {
-    "axon-axon": {
-      "command": "axon",
+    "axon": {
+      "command": "bash",
       "args": [
-        "mcp"
+        "-lc",
+        "cd /home/jmagar/workspace/axon_rust && set -a && source ./.env && set +a && export AXON_LITE=\"${AXON_LITE:-0}\" && export AXON_MCP_TRANSPORT=stdio && export AXON_PG_URL=\"${AXON_PG_MCP_URL:-${AXON_PG_URL:-}}\" && exec ./target/debug/axon mcp"
       ],
       "env": {
-        "AXON_MCP_TRANSPORT": "stdio"
+        "AXON_DATA_DIR": "/home/jmagar/workspace/axon_rust/.cache/mcporter-runtime",
+        "AXON_MCP_TRANSPORT": "stdio",
+        "AXON_LOG_FILE": "/home/jmagar/workspace/axon_rust/.cache/mcporter-runtime/axon/logs/axon.log",
+        "AXON_SQLITE_PATH": "/home/jmagar/workspace/axon_rust/.cache/mcporter-runtime/axon/mcporter-jobs.db"
       }
     },
     "plate": {

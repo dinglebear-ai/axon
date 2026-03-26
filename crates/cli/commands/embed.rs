@@ -1,6 +1,7 @@
+use crate::crates::cli::commands::CommandFuture;
 use crate::crates::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
+    handle_job_errors, handle_job_list, handle_job_recover, handle_job_status, handle_worker_mode,
 };
 use crate::crates::cli::commands::status::metrics::{
     collection_from_config, display_embed_input, embed_metrics_suffix, format_error,
@@ -11,46 +12,46 @@ use crate::crates::core::logging::{log_done, log_info};
 use crate::crates::core::ui::{
     accent, confirm_destructive, error, muted, primary, status_label, subtle, symbol_for_status,
 };
-use crate::crates::jobs::backend::{JobBackend, JobPayload};
+use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::embed as embed_service;
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::types::StartDisposition;
 use std::error::Error;
 use std::path::Path;
-use std::sync::Arc;
 use uuid::Uuid;
 
-pub async fn run_embed(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
-    if maybe_handle_embed_subcommand(cfg).await? {
-        return Ok(());
-    }
-    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
-        return Ok(());
-    }
-
-    log_info(&format!(
-        "command=embed collection={} wait={}",
-        cfg.collection, cfg.wait
-    ));
-    let embed_start = std::time::Instant::now();
-    let input = resolve_embed_input(cfg);
-    if !cfg.wait {
-        let result = enqueue_embed_job(cfg, &input, backend).await;
-        if result.is_ok() {
-            log_info(&format!(
-                "job_enqueued command=embed queue={}",
-                cfg.embed_queue
-            ));
+pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
+    Box::pin(async move {
+        if maybe_handle_embed_subcommand(cfg).await? {
+            return Ok(());
         }
-        return result;
-    }
 
-    embed_service::embed_now(cfg, &input).await?;
-    log_done(&format!(
-        "command=embed complete collection={} duration_ms={}",
-        cfg.collection,
-        embed_start.elapsed().as_millis()
-    ));
-    Ok(())
+        log_info(&format!(
+            "command=embed collection={} wait={}",
+            cfg.collection, cfg.wait
+        ));
+        let embed_start = std::time::Instant::now();
+        let input = resolve_embed_input(cfg);
+        if !cfg.wait {
+            let result = enqueue_embed_job(cfg, &input, service_context).await;
+            if result.is_ok() {
+                log_info(&format!(
+                    "job_enqueued command=embed queue={}",
+                    cfg.embed_queue
+                ));
+            }
+            return result;
+        }
+
+        embed_service::embed_now(cfg, &input).await?;
+        log_done(&format!(
+            "command=embed complete collection={} duration_ms={}",
+            cfg.collection,
+            embed_start.elapsed().as_millis()
+        ));
+        Ok(())
+    })
 }
 
 async fn maybe_handle_embed_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
@@ -70,7 +71,7 @@ async fn maybe_handle_embed_subcommand(cfg: &Config) -> Result<bool, Box<dyn Err
         "list" => handle_embed_list(cfg).await?,
         "cleanup" => handle_embed_cleanup(cfg).await?,
         "clear" => handle_embed_clear(cfg).await?,
-        "worker" => embed_service::embed_worker(cfg).await?,
+        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Embed).await?)?,
         "recover" => handle_embed_recover(cfg).await?,
         _ => return Ok(false),
     }
@@ -88,24 +89,27 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
 
 async fn handle_embed_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "status")?;
-    let job = embed_service::embed_status_raw(cfg, id).await?;
+    let job = job_service::job_status(cfg, JobKind::Embed, id).await?;
     handle_job_status(cfg, job, id, "Embed")
 }
 
 async fn handle_embed_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "cancel")?;
-    let canceled = embed_service::embed_cancel(cfg, id).await?;
+    let canceled = job_service::cancel_job(cfg, JobKind::Embed, id).await?;
     handle_job_cancel(cfg, id, canceled, "embed")
 }
 
 async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "errors")?;
-    let job = embed_service::embed_status_raw(cfg, id).await?;
+    let job = job_service::job_status(cfg, JobKind::Embed, id).await?;
     handle_job_errors(cfg, job, id, "embed")
 }
 
 async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, embed_service::embed_list_raw(cfg, 50, 0).await?);
+    let jobs = filter_jobs_for_status_view(
+        cfg,
+        job_service::list_jobs(cfg, JobKind::Embed, 50, 0).await?,
+    );
     if cfg.json_output {
         return handle_job_list(cfg, jobs, "Embed");
     }
@@ -119,9 +123,10 @@ async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // Empty map: URLs and paths display as-is; UUID-based paths show parent/markdown.
     let empty_crawl_map = std::collections::HashMap::new();
     for job in &jobs {
-        let target = display_embed_input(&job.input_text, &empty_crawl_map);
+        let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
         let metrics = embed_metrics_suffix(&job.status, job.result_json.as_ref());
-        let collection = collection_from_config(&job.config_json);
+        let collection =
+            collection_from_config(job.config_json.as_ref().unwrap_or(&serde_json::Value::Null));
         let age = job_runtime_text(
             &job.status,
             job.started_at.as_ref(),
@@ -157,7 +162,7 @@ async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn handle_embed_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let removed = embed_service::embed_cleanup(cfg).await?;
+    let removed = job_service::cleanup_jobs(cfg, JobKind::Embed).await?;
     handle_job_cleanup(cfg, removed, "embed")
 }
 
@@ -171,12 +176,12 @@ async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let removed = embed_service::embed_clear(cfg).await?;
+    let removed = job_service::clear_jobs(cfg, JobKind::Embed).await?;
     handle_job_clear(cfg, removed, "embed")
 }
 
 async fn handle_embed_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let reclaimed = embed_service::embed_recover(cfg).await?;
+    let reclaimed = job_service::recover_jobs(cfg, JobKind::Embed).await?;
     handle_job_recover(cfg, reclaimed, "embed")
 }
 
@@ -192,52 +197,27 @@ fn resolve_embed_input(cfg: &Config) -> String {
 async fn enqueue_embed_job(
     cfg: &Config,
     input: &str,
-    backend: &Arc<dyn JobBackend>,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    if cfg.lite_mode {
-        let job_id = backend
-            .enqueue(JobPayload::Embed {
-                input: input.to_string(),
-                config_json: "{}".to_string(),
-            })
-            .await
-            .map_err(|e| -> Box<dyn Error> { e })?;
-        if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
-            );
-        } else {
-            println!("  {} {}", primary("Embed Job"), accent(&job_id.to_string()));
-            println!("  {}", muted(&format!("Input: {input}")));
-        }
-        // Keep the process alive until the in-process worker finishes.
-        let final_status = backend
-            .wait_for_job(job_id, crate::crates::jobs::backend::JobKind::Embed)
-            .await
-            .map_err(|e| -> Box<dyn Error> { e })?;
-        if final_status == "failed" {
-            if let Ok(Some(err)) = backend
-                .job_errors(job_id, crate::crates::jobs::backend::JobKind::Embed)
-                .await
-            {
-                return Err(format!("embed job {job_id} failed: {err}").into());
-            }
-            return Err(format!("embed job {job_id} failed").into());
-        }
-        return Ok(());
-    }
-
-    let result = embed_service::embed_start_with_input(cfg, input, None, None).await?;
-    let job_id = result.job_id;
+    let outcome =
+        embed_service::embed_start_with_context(cfg, input, service_context, None, None).await?;
+    let job_id = outcome.result.job_id;
+    let status = if outcome.disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
+    };
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"job_id": job_id, "status": "pending", "source": "rust"})
+            serde_json::json!({"job_id": job_id, "status": status})
         );
     } else {
         println!("  {} {}", primary("Embed Job"), accent(&job_id));
         println!("  {}", muted(&format!("Input: {input}")));
+        if outcome.disposition == StartDisposition::Completed {
+            println!("  {}", muted("Lite mode completed the embed in-process."));
+        }
         println!("Job ID: {job_id}");
     }
     Ok(())

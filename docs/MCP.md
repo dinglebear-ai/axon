@@ -296,27 +296,31 @@ Success responses are normalized:
 
 ## mcporter Smoke Tests
 ```bash
-# Primary MCP smoke path (includes resource checks via help + schema)
-./scripts/test-mcp-tools-mcporter.sh
+# Primary MCP smoke path.
+# Runs both suites:
+# - full mode: AXON_LITE=0
+# - lite mode: AXON_LITE=1
+bash ./scripts/test-mcp-tools-mcporter.sh
 
-# Optional expanded run (network-heavy/side-effect actions)
-./scripts/test-mcp-tools-mcporter.sh --full
-
-# Individual calls
-mcporter list axon --schema
-mcporter call axon.axon action:help
-mcporter call axon.axon action:doctor
-mcporter call axon.axon action:scrape url:https://example.com
-mcporter call axon.axon action:query query:'rust mcp sdk'
-mcporter call axon.axon action:ingest subaction:start source_type:github target:owner/repo
-mcporter call axon.axon action:crawl subaction:list limit:5 offset:0
-mcporter call axon.axon action:graph subaction:stats
-mcporter call axon.axon action:refresh subaction:list limit:5 offset:0
-mcporter call axon.axon action:refresh subaction:schedule schedule_subaction:list
-mcporter call axon.axon action:artifacts subaction:head path:.cache/axon-mcp/help-actions.json limit:20
-mcporter call axon.axon action:artifacts subaction:list
-mcporter call axon.axon action:artifacts subaction:search pattern:failed limit:25
+# Local introspection against the repo's mcporter config
+mcporter --config config/mcporter.json list axon --schema
+mcporter --config config/mcporter.json call axon.axon action:help response_mode:inline --output json
+mcporter --config config/mcporter.json call axon.axon action:doctor --output json
+mcporter --config config/mcporter.json call axon.axon action:scrape url:https://www.rust-lang.org/learn/get-started --output json
+mcporter --config config/mcporter.json call axon.axon action:query query:'rust mcp sdk' --output json
+mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
+mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 offset:0 --output json
+mcporter --config config/mcporter.json call axon.axon action:refresh subaction:schedule schedule_subaction:list --output json
+mcporter --config config/mcporter.json call axon.axon action:artifacts subaction:list --output json
 ```
+
+What the smoke harness enforces:
+- `mcporter list --schema` exposes the `axon` tool and the expected top-level actions.
+- `action:help` exposes the full routed surface, including nested lifecycle and `refresh schedule` subactions.
+- Every exposed route has a real smoke case.
+- Full mode requires successful responses for the full MCP surface.
+- Lite mode requires successful responses for lite-supported routes and intentional unavailability for `export` and `graph:*`.
+- Suite logs and generated configs live under `.cache/mcporter-test/`.
 
 ## Artifact Inspection Workflow
 

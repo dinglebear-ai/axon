@@ -15,6 +15,7 @@ use axon::crates::services::acp::{AcpClientScaffold, validate_adapter_command};
 use axon::crates::services::types::{
     AcpAdapterCommand, AcpBridgeEvent, AcpSessionUpdateEvent, AcpSessionUpdateKind,
 };
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 // ── EnvVarGuard ───────────────────────────────────────────────────────────────
@@ -203,6 +204,28 @@ fn validate_adapter_accepts_absolute_path() {
 
 /// Global lock: env var mutation is not thread-safe; serialize env-touching tests.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+const ENV_BIN: &str = "/usr/bin/env";
+
+fn parse_env(stdout: &[u8]) -> HashMap<String, String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect()
+}
+
+async fn spawn_env_probe() -> HashMap<String, String> {
+    let adapter = AcpAdapterCommand::new(ENV_BIN, vec![]);
+    let scaffold = AcpClientScaffold::new(adapter);
+    let child = scaffold
+        .spawn_adapter()
+        .expect("spawn_adapter should succeed for /usr/bin/env");
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("child should complete");
+    parse_env(&output.stdout)
+}
 
 /// Proxy vars (HTTP_PROXY, HTTPS_PROXY, etc.) must NOT leak into adapter subprocesses.
 /// The adapter connects directly to its own API endpoints; proxy vars would break auth.
@@ -230,33 +253,14 @@ async fn spawn_adapter_does_not_pass_proxy_vars() {
         .map(|(key, val)| unsafe { EnvVarGuard::set(key, val) })
         .collect();
 
-    // Build a probe that prints the concatenated values of all proxy vars.
-    let args_inner = PROXY_VARS
-        .iter()
-        .map(|(key, _)| format!("\"${key}\""))
-        .collect::<Vec<_>>()
-        .join("");
-    let cmd = format!("printf '%s' {args_inner}");
-
-    let adapter = AcpAdapterCommand::new("sh", vec!["-c".to_string(), cmd]);
-    let scaffold = AcpClientScaffold::new(adapter);
-    // Use skip_validation variant: "sh" is a blocked shell in production but is
-    // needed here to probe env var inheritance inside the env_clear allowlist.
-    let child = scaffold
-        .spawn_adapter_skip_validation()
-        .expect("spawn_adapter_skip_validation should succeed");
-    let output = child
-        .wait_with_output()
-        .await
-        .expect("child should complete");
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let env = spawn_env_probe().await;
 
     // _guards drops here, restoring all proxy vars to their original values.
 
     assert!(
-        stdout.is_empty(),
+        PROXY_VARS.iter().all(|(key, _)| !env.contains_key(*key)),
         "proxy vars must NOT be passed through to adapter subprocess \
-         (env_clear allowlist should exclude them), but child saw: {stdout:?}"
+         (env_clear allowlist should exclude them)"
     );
 }
 
@@ -274,27 +278,13 @@ async fn spawn_adapter_does_not_pass_claudecode() {
     // SAFETY: ENV_LOCK is held for this entire test; single-threaded env access.
     let _guard = unsafe { EnvVarGuard::set("CLAUDECODE", "poison_nested_session") };
 
-    let adapter = AcpAdapterCommand::new(
-        "sh",
-        vec!["-c".to_string(), "printf '%s' \"$CLAUDECODE\"".to_string()],
-    );
-    let scaffold = AcpClientScaffold::new(adapter);
-    // Use skip_validation variant: "sh" is a blocked shell in production but is
-    // needed here to probe env var inheritance inside the env_clear allowlist.
-    let child = scaffold
-        .spawn_adapter_skip_validation()
-        .expect("spawn_adapter_skip_validation should succeed");
-    let output = child
-        .wait_with_output()
-        .await
-        .expect("child should complete");
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let env = spawn_env_probe().await;
 
     // _guard drops here, restoring CLAUDECODE to its prior state.
 
     assert!(
-        stdout.is_empty(),
-        "CLAUDECODE must not be in env_clear allowlist, but child saw: {stdout:?}"
+        !env.contains_key("CLAUDECODE"),
+        "CLAUDECODE must not be in env_clear allowlist"
     );
 }
 
@@ -361,24 +351,10 @@ fn permission_responder_map_composite_key_isolates_sessions() {
 async fn spawn_adapter_passes_through_path() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
-    let adapter = AcpAdapterCommand::new(
-        "sh",
-        vec!["-c".to_string(), "printf '%s' \"$PATH\"".to_string()],
-    );
-    let scaffold = AcpClientScaffold::new(adapter);
-    // Use skip_validation variant: "sh" is a blocked shell in production but is
-    // needed here to probe env var inheritance inside the env_clear allowlist.
-    let child = scaffold
-        .spawn_adapter_skip_validation()
-        .expect("spawn_adapter_skip_validation should succeed");
-    let output = child
-        .wait_with_output()
-        .await
-        .expect("child should complete");
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let env = spawn_env_probe().await;
 
     assert!(
-        !stdout.is_empty(),
+        env.get("PATH").is_some_and(|value| !value.is_empty()),
         "PATH must be in env_clear allowlist so adapter can find executables"
     );
 }

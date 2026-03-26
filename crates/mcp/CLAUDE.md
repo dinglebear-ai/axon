@@ -183,25 +183,25 @@ cargo run --bin axon -- mcp
 Primary MCP smoke path:
 
 ```bash
-./scripts/test-mcp-tools-mcporter.sh
+bash ./scripts/test-mcp-tools-mcporter.sh
 ```
 
 Schema/introspection:
 
 ```bash
-mcporter list axon --schema
+mcporter --config config/mcporter.json list axon --schema
 ```
 
 Smoke calls:
 
 ```bash
-mcporter call axon.axon action:doctor
-mcporter call axon.axon action:sources limit:5
-mcporter call axon.axon action:crawl subaction:list limit:5
-mcporter call axon.axon action:refresh subaction:list limit:5
+mcporter --config config/mcporter.json call axon.axon action:doctor --output json
+mcporter --config config/mcporter.json call axon.axon action:sources limit:5 --output json
+mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
+mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 --output json
 ```
 
-When adding a new subaction, add at least one smoke example here.
+The smoke harness runs both full (`AXON_LITE=0`) and lite (`AXON_LITE=1`) suites. When adding a new action or subaction, add at least one smoke case and keep both mode expectations explicit.
 
 ## Change Checklist (Mandatory)
 - [ ] `schema.rs` updated

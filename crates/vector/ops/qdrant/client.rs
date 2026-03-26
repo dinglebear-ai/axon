@@ -236,7 +236,7 @@ pub async fn qdrant_indexed_urls(cfg: &Config, limit: Option<usize>) -> Result<V
         .map(|s| s.into_iter().collect())
 }
 
-pub(crate) async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result<HashSet<String>> {
+pub async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result<HashSet<String>> {
     let filter = serde_json::json!({
         "must": [
             {"key": "domain", "match": {"value": domain}},

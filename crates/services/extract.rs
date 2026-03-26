@@ -1,12 +1,15 @@
 //! Service-layer wrappers for extract job lifecycle operations and prompt-aware enqueue helpers.
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::extract::{
-    self as extract_jobs, cancel_extract_job, cleanup_extract_jobs, clear_extract_jobs,
-    get_extract_job, list_extract_jobs, recover_stale_extract_jobs, start_extract_job,
-};
+use crate::crates::jobs::backend::{JobKind, JobPayload};
+use crate::crates::jobs::extract::{get_extract_job, list_extract_jobs, start_extract_job};
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
-use crate::crates::services::types::{ExtractJobResult, ExtractStartResult};
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::types::{
+    ExecutionMode, ExtractJobResult, ExtractStartResult, JobStartOutcome, StartDisposition,
+};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -29,7 +32,7 @@ pub async fn extract_status(
     cfg: &Config,
     id: Uuid,
 ) -> Result<Option<ExtractJobResult>, Box<dyn Error>> {
-    let job = get_extract_job(cfg, id).await?;
+    let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
     Ok(job.map(|value| {
         map_extract_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
@@ -40,24 +43,24 @@ pub async fn extract_list(
     limit: i64,
     offset: i64,
 ) -> Result<ExtractJobResult, Box<dyn Error>> {
-    let jobs = list_extract_jobs(cfg, limit, offset).await?;
+    let jobs = job_service::list_jobs(cfg, JobKind::Extract, limit, offset).await?;
     Ok(map_extract_job_result(serde_json::to_value(jobs)?))
 }
 
 pub async fn extract_cancel(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
-    cancel_extract_job(cfg, id).await
+    job_service::cancel_job(cfg, JobKind::Extract, id).await
 }
 
 pub async fn extract_cleanup(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    cleanup_extract_jobs(cfg).await
+    job_service::cleanup_jobs(cfg, JobKind::Extract).await
 }
 
 pub async fn extract_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    clear_extract_jobs(cfg).await
+    job_service::clear_jobs(cfg, JobKind::Extract).await
 }
 
 pub async fn extract_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    recover_stale_extract_jobs(cfg).await
+    job_service::recover_jobs(cfg, JobKind::Extract).await
 }
 
 pub async fn extract_status_raw(
@@ -76,7 +79,10 @@ pub async fn extract_list_raw(
 }
 
 pub async fn extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    extract_jobs::run_extract_worker(cfg).await
+    match job_service::run_worker(cfg, JobKind::Extract).await? {
+        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Unsupported(message) => Err(message.into()),
+    }
 }
 
 // --- Service functions ---
@@ -122,4 +128,37 @@ pub async fn extract_start_with_prompt(
     .await;
 
     Ok(map_extract_start_result(job_id.to_string()))
+}
+
+pub async fn extract_start_with_context(
+    cfg: &Config,
+    urls: &[String],
+    prompt: Option<String>,
+    service_context: &ServiceContext,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<JobStartOutcome<ExtractStartResult>, Box<dyn Error>> {
+    if !cfg.lite_mode {
+        let result = extract_start_with_prompt(cfg, urls, prompt, tx).await?;
+        return Ok(JobStartOutcome {
+            disposition: StartDisposition::Enqueued,
+            execution_mode: ExecutionMode::Enqueued,
+            result,
+        });
+    }
+
+    let backend = service_context
+        .require_job_backend()
+        .map_err(|e| -> Box<dyn Error> { e })?;
+    let job_id = backend
+        .enqueue(JobPayload::Extract {
+            urls: urls.to_vec(),
+            config_json: "{}".to_string(),
+        })
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?;
+    Ok(JobStartOutcome {
+        disposition: StartDisposition::Enqueued,
+        execution_mode: ExecutionMode::InProcess,
+        result: map_extract_start_result(job_id.to_string()),
+    })
 }

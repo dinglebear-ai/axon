@@ -1,3 +1,4 @@
+use crate::crates::core::config::Config;
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
@@ -63,6 +64,32 @@ pub async fn reclaim_stale_running_jobs(
     }
 
     Ok(total)
+}
+
+pub async fn reclaim_stale_running_jobs_for_table(
+    pool: &SqlitePool,
+    table: &str,
+    stale_threshold_ms: i64,
+) -> Result<u64, sqlx::Error> {
+    let threshold = now_ms() - stale_threshold_ms;
+    let result = sqlx::query(&format!(
+        "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
+         updated_at=? WHERE status='running' AND updated_at < ?",
+        table
+    ))
+    .bind(now_ms())
+    .bind(threshold)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Open a SQLite pool from the path stored in `cfg.sqlite_path`.
+///
+/// Shared by `services/jobs.rs` and `jobs/watch_lite.rs` to avoid duplicating
+/// the `open_sqlite_pool(&cfg.sqlite_path.to_string_lossy())` call pattern.
+pub(crate) async fn open_config_pool(cfg: &Config) -> Result<SqlitePool, sqlx::Error> {
+    open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await
 }
 
 /// Current time as Unix milliseconds.

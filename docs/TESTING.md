@@ -215,33 +215,37 @@ just verify
 
 ## MCP Tooling Tests (mcporter)
 
-Use the existing smoke script to quickly validate MCP tool contract coverage (tools/actions/subactions/resources):
+Use the existing smoke script to validate MCP tool contract coverage and real mcporter behavior in both runtime modes:
 
 ```bash
-# quick smoke set (just wrapper)
+# wrapper
 just mcp-smoke
 
 # equivalent direct script call
-./scripts/test-mcp-tools-mcporter.sh
-
-# extended set (includes heavier actions)
-./scripts/test-mcp-tools-mcporter.sh --full
+bash ./scripts/test-mcp-tools-mcporter.sh
 ```
 
 Prerequisites:
 - `mcporter` installed (`npm install -g mcporter@0.7.3`).
-- MCP config available at `config/mcporter.json`.
+- `jq` installed.
+- Debug binary built: `cargo build --bin axon`.
+- MCP config available at [`config/mcporter.json`](/home/jmagar/workspace/axon_rust/config/mcporter.json).
 
 Useful direct checks:
 
 ```bash
-mcporter list axon --schema
-mcporter call axon.axon action:help response_mode:inline --output json
-mcporter call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
+mcporter --config config/mcporter.json list axon --schema
+mcporter --config config/mcporter.json call axon.axon action:help response_mode:inline --output json
+mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
 ```
 
 Notes:
 - Script artifacts/logs are written under `.cache/mcporter-test/`.
+- The script generates suite-specific mcporter configs under `.cache/mcporter-test/` and runs:
+  - full mode with `AXON_LITE=0`
+  - lite mode with `AXON_LITE=1`
+- The full suite requires the Postgres/Redis/AMQP-backed stack. The lite suite intentionally asserts that `export` and `graph:*` are unavailable.
+- `screenshot` uses a higher mcporter call timeout than the default because Chrome startup can exceed 60s on some machines.
 - CI parity: the `mcp-smoke` workflow job runs this same script in GitHub Actions.
 - Canonical MCP runtime/testing reference: `docs/MCP.md`.
 

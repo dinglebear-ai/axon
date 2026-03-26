@@ -1,7 +1,8 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::http::{cdp_discovery_url, validate_url};
+use crate::crates::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};
 use crate::crates::crawl::engine::resolve_cdp_ws_url;
 use spider::configuration::Viewport;
+use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
 use spider::website::Website;
 use std::error::Error;
@@ -48,14 +49,36 @@ pub(crate) async fn spider_screenshot_with_options(
     );
 
     let mut website = Website::new(url);
-    website.with_chrome_connection(Some(chrome_url));
-    website.with_screenshot(Some(screenshot_config));
-    website.with_viewport(Some(Viewport::new(width, height)));
+    website
+        .with_chrome_connection(Some(chrome_url))
+        .with_chrome_intercept(RequestInterceptConfiguration::new(cfg.chrome_intercept))
+        .with_stealth(cfg.chrome_stealth || cfg.chrome_anti_bot)
+        .with_fingerprint(true)
+        .with_screenshot(Some(screenshot_config))
+        .with_viewport(Some(Viewport::new(width, height)))
+        .with_blacklist_url(Some(ssrf_blacklist_compact_strings().to_vec()))
+        // Single page only — no crawling beyond the target URL.
+        .with_limit(1)
+        .with_depth(0)
+        .with_subdomains(false);
 
-    // Single page only — no crawling beyond the target URL.
-    website.with_limit(1);
-    website.with_depth(0);
-    website.with_subdomains(false);
+    if let Some(ua) = cfg.chrome_user_agent.as_deref() {
+        website.with_user_agent(Some(ua));
+    }
+    if let Some(proxy) = cfg.chrome_proxy.as_deref() {
+        website.with_proxies(Some(vec![proxy.to_string()]));
+    }
+    if let Some(timeout_ms) = cfg.request_timeout_ms {
+        website.with_request_timeout(Some(std::time::Duration::from_millis(timeout_ms)));
+    }
+    if cfg.accept_invalid_certs {
+        website.with_danger_accept_invalid_certs(true);
+    }
+    if cfg.bypass_csp {
+        website.with_csp_bypass(true);
+    }
+    let retries = cfg.fetch_retries.min(u8::MAX as usize) as u8;
+    website.with_retry(retries);
 
     // Wait for network idle so JS-rendered pages finish loading before capture.
     website.with_wait_for_idle_network0(Some(spider::configuration::WaitForIdleNetwork::new(
@@ -66,21 +89,28 @@ pub(crate) async fn spider_screenshot_with_options(
 
     // Dismiss browser dialogs that would otherwise block capture indefinitely.
     website.with_dismiss_dialogs(true);
+    website.configuration.disable_log = true;
 
     // Build the website config (required after Chrome settings).
     let mut website = website
         .build()
         .map_err(|_| format!("failed to build Spider website config for screenshot of {url}"))?;
 
+    let mut rx = website
+        .subscribe(16)
+        .ok_or_else(|| format!("failed to subscribe to spider screenshot channel for {url}"))?;
+    let collect = tokio::spawn(async move { rx.recv().await.ok() });
+
     website.crawl().await;
+    website.unsubscribe();
 
-    let pages = website
-        .get_pages()
-        .ok_or_else(|| format!("no pages returned from screenshot crawl of {url}"))?;
-
-    let page = pages.first().ok_or_else(|| {
-        format!("screenshot crawl of {url} returned zero pages — Chrome may not be reachable")
-    })?;
+    let page = match collect.await {
+        Ok(Some(page)) => page,
+        Ok(None) | Err(_) => website
+            .get_pages()
+            .and_then(|pages| pages.first().cloned())
+            .ok_or_else(|| format!("no pages returned from screenshot crawl of {url}"))?,
+    };
 
     page.screenshot_bytes.clone().ok_or_else(|| {
         format!("screenshot bytes not captured for {url} — Chrome may not be reachable").into()

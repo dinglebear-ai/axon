@@ -1,16 +1,17 @@
 mod github;
-mod resolve;
 mod schedule;
 
 use crate::crates::cli::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
-    handle_job_recover, handle_job_status,
+    handle_job_recover, handle_job_status, handle_worker_mode,
 };
+use crate::crates::cli::commands::common_urls::parse_urls;
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, symbol_for_status};
+use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::jobs as job_service;
 use crate::crates::services::refresh as refresh_service;
-use resolve::resolve_refresh_urls;
 use schedule::handle_refresh_schedule;
 use std::error::Error;
 use uuid::Uuid;
@@ -20,7 +21,9 @@ pub async fn run_refresh(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let urls = resolve_refresh_urls(cfg).await?;
+    let seed_url = cfg.start_url.clone();
+    let input_urls = parse_urls(cfg);
+    let urls = refresh_service::resolve_refresh_urls(cfg, &seed_url, &input_urls).await?;
     if urls.is_empty() {
         return Err(anyhow::anyhow!(
             "refresh requires at least one URL or a crawl manifest seed URL"
@@ -94,7 +97,7 @@ async fn maybe_handle_refresh_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
         "list" => handle_refresh_list(cfg).await?,
         "cleanup" => handle_refresh_cleanup(cfg).await?,
         "clear" => handle_refresh_clear(cfg).await?,
-        "worker" => refresh_service::refresh_worker(cfg).await?,
+        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Refresh).await?)?,
         "recover" => handle_refresh_recover(cfg).await?,
         _ => return Ok(false),
     }
@@ -112,29 +115,29 @@ fn parse_refresh_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Erro
 
 async fn handle_refresh_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "status")?;
-    let job = refresh_service::refresh_status(cfg, id).await?.job;
+    let job = job_service::job_status(cfg, JobKind::Refresh, id).await?;
     handle_job_status(cfg, job, id, "Refresh")
 }
 
 async fn handle_refresh_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "cancel")?;
-    let canceled = refresh_service::refresh_cancel(cfg, id).await?;
+    let canceled = job_service::cancel_job(cfg, JobKind::Refresh, id).await?;
     handle_job_cancel(cfg, id, canceled, "refresh")
 }
 
 async fn handle_refresh_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "errors")?;
-    let job = refresh_service::refresh_status(cfg, id).await?.job;
+    let job = job_service::job_status(cfg, JobKind::Refresh, id).await?;
     handle_job_errors(cfg, job, id, "refresh")
 }
 
 async fn handle_refresh_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = refresh_service::refresh_list(cfg, 50, 0).await?.jobs;
+    let jobs = job_service::list_jobs(cfg, JobKind::Refresh, 50, 0).await?;
     handle_job_list(cfg, jobs, "Refresh")
 }
 
 async fn handle_refresh_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let removed = refresh_service::refresh_cleanup(cfg).await?;
+    let removed = job_service::cleanup_jobs(cfg, JobKind::Refresh).await?;
     handle_job_cleanup(cfg, removed, "refresh")
 }
 
@@ -148,24 +151,25 @@ async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let removed = refresh_service::refresh_clear(cfg).await?;
+    let removed = job_service::clear_jobs(cfg, JobKind::Refresh).await?;
     handle_job_clear(cfg, removed, "refresh")
 }
 
 async fn handle_refresh_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let reclaimed = refresh_service::refresh_recover(cfg).await?;
+    let reclaimed = job_service::recover_jobs(cfg, JobKind::Refresh).await?;
     handle_job_recover(cfg, reclaimed, "refresh")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::schedule::{
-        handle_refresh_schedule_run_due, refresh_schedule_tick_secs_default, tier_to_seconds,
-    };
+    use super::schedule::tier_to_seconds;
     use crate::crates::jobs::common::{make_pool, test_config};
     use crate::crates::services::refresh::{
         RefreshScheduleCreate, create_refresh_schedule, delete_refresh_schedule,
         schedule_list_jobs as list_refresh_jobs,
+    };
+    use crate::crates::services::refresh::{
+        refresh_schedule_run_due, refresh_schedule_tick_secs_default,
     };
     use chrono::{Duration, Utc};
     use std::env;
@@ -254,7 +258,7 @@ mod tests {
         )
         .await?;
 
-        handle_refresh_schedule_run_due(&cfg).await?;
+        refresh_schedule_run_due(&cfg, 25).await?;
 
         let jobs = list_refresh_jobs(&cfg, 50, 0).await?;
         let matching_job = jobs.iter().find(|job| {

@@ -11,55 +11,58 @@ mod sync_backfill_migration_tests;
 mod sync_crawl_migration_tests;
 
 use super::common::parse_urls;
+use crate::crates::cli::commands::CommandFuture;
 use crate::crates::core::config::Config;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::core::ui::{muted, primary, print_option, print_phase};
-use crate::crates::jobs::backend::{JobBackend, JobKind, JobPayload};
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::crawl as crawl_service;
+use crate::crates::services::types::StartDisposition;
 use spider::url::Url;
 use std::error::Error;
 use std::path::Path;
-use std::sync::Arc;
 
-pub async fn run_crawl(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
-    if subcommands::maybe_handle_subcommand(cfg).await? {
-        return Ok(());
-    }
-    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
-        return Ok(());
-    }
-    let urls = parse_urls(cfg);
-    if urls.is_empty() {
-        return Err(
-            anyhow::anyhow!("crawl requires at least one URL (positional or --urls)").into(),
-        );
-    }
-    for url in &urls {
-        validate_url(url)?;
-        warn_if_url_looks_like_local_file(url).await;
-    }
-    let start_url = urls.first().map(String::as_str).unwrap_or("");
-    log_info(&format!(
-        "command=crawl url={start_url} wait={} render_mode={:?} max_pages={} depth={}",
-        cfg.wait, cfg.render_mode, cfg.max_pages, cfg.max_depth
-    ));
-    if cfg.wait {
+pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
+    Box::pin(async move {
+        if subcommands::maybe_handle_subcommand(cfg).await? {
+            return Ok(());
+        }
+        if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
+            println!("Lite mode: workers run in-process automatically. No separate worker needed.");
+            return Ok(());
+        }
+        let urls = parse_urls(cfg);
+        if urls.is_empty() {
+            return Err(
+                anyhow::anyhow!("crawl requires at least one URL (positional or --urls)").into(),
+            );
+        }
         for url in &urls {
-            sync_crawl::run_sync_crawl(cfg, url).await?;
+            validate_url(url)?;
+            warn_if_url_looks_like_local_file(url).await;
         }
-        Ok(())
-    } else {
-        let result = run_async_enqueue_multi(cfg, &urls, backend).await;
-        if result.is_ok() {
-            log_info(&format!(
-                "job_enqueued command=crawl queue={}",
-                cfg.crawl_queue
-            ));
+        let start_url = urls.first().map(String::as_str).unwrap_or("");
+        log_info(&format!(
+            "command=crawl url={start_url} wait={} render_mode={:?} max_pages={} depth={}",
+            cfg.wait, cfg.render_mode, cfg.max_pages, cfg.max_depth
+        ));
+        if cfg.wait {
+            for url in &urls {
+                sync_crawl::run_sync_crawl(cfg, url).await?;
+            }
+            Ok(())
+        } else {
+            let result = run_async_enqueue_multi(cfg, &urls, service_context).await;
+            if result.is_ok() {
+                log_info(&format!(
+                    "job_enqueued command=crawl queue={}",
+                    cfg.crawl_queue
+                ));
+            }
+            result
         }
-        result
-    }
+    })
 }
 
 async fn local_filename_exists_case_insensitive(file_name: &str) -> bool {
@@ -189,7 +192,7 @@ fn print_async_options(cfg: &Config, start_url: &str) {
 async fn run_async_enqueue_multi(
     cfg: &Config,
     urls: &[String],
-    backend: &Arc<dyn JobBackend>,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     // Chrome bootstrap probe belongs to sync crawl — the worker owns Chrome in async mode.
     // Skipping it here eliminates ~10s of failed probe retries on startup.
@@ -200,68 +203,39 @@ async fn run_async_enqueue_multi(
     print_async_options(cfg, &display);
     println!();
 
-    if cfg.lite_mode {
-        for url in urls {
-            let job_id = backend
-                .enqueue(JobPayload::Crawl {
-                    url: url.clone(),
-                    config_json: "{}".to_string(),
-                })
-                .await
-                .map_err(|e| -> Box<dyn Error> { e })?;
-            if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({"url": url, "job_id": job_id, "status": "pending"})
-                );
-            } else {
-                println!(
-                    "  {} {} → {}",
-                    primary("Crawl Job"),
-                    crate::crates::core::ui::accent(&job_id.to_string()),
-                    muted(url)
-                );
-            }
-            // Keep the process alive until the crawl (and any auto-enqueued embed) finishes.
-            let final_status = backend
-                .wait_for_job(job_id, JobKind::Crawl)
-                .await
-                .map_err(|e| -> Box<dyn Error> { e })?;
-            if final_status == "failed" {
-                if let Ok(Some(err)) = backend.job_errors(job_id, JobKind::Crawl).await {
-                    return Err(format!("crawl job {job_id} failed: {err}").into());
-                }
-                return Err(format!("crawl job {job_id} failed").into());
-            }
-            // If crawl succeeded, the worker auto-enqueued an embed job.
-            // Wait for pending embed jobs on the same output dir to drain.
-            wait_for_pending_embed_jobs(backend).await;
-        }
-        println!();
-        return Ok(());
-    }
-
-    let result = crawl_service::crawl_start(cfg, urls, None).await?;
-    println!(
-        "  {}",
-        muted(
-            "Async enqueue mode skips sitemap preflight; worker performs discovery during crawl."
-        )
-    );
-    if cfg.embed {
+    let outcome = crawl_service::crawl_start_with_context(cfg, urls, service_context, None).await?;
+    if outcome.disposition == StartDisposition::Enqueued {
         println!(
             "  {}",
-            muted("Embedding job will be queued automatically after crawl completion.")
+            muted(
+                "Async enqueue mode skips sitemap preflight; worker performs discovery during crawl."
+            )
+        );
+        if cfg.embed {
+            println!(
+                "  {}",
+                muted("Embedding job will be queued automatically after crawl completion.")
+            );
+        }
+    } else if !cfg.json_output {
+        println!(
+            "  {}",
+            muted("Lite mode completed the crawl in-process before exiting.")
         );
     }
-    for job in &result.jobs {
+    for job in &outcome.result.jobs {
+        let status = if outcome.disposition == StartDisposition::Completed {
+            "completed"
+        } else {
+            "pending"
+        };
         if cfg.json_output {
             println!(
                 "{}",
                 serde_json::json!({
                     "url": job.url,
                     "job_id": job.job_id,
-                    "status": "pending",
+                    "status": status,
                     "output_dir": job.output_dir,
                     "predicted_paths": job.predicted_paths,
                 })
@@ -273,41 +247,21 @@ async fn run_async_enqueue_multi(
                 crate::crates::core::ui::accent(&job.job_id),
                 muted(&job.url)
             );
-            println!(
-                "  {}",
-                muted(&format!("Check status: axon crawl status {}", job.job_id))
-            );
+            if outcome.disposition == StartDisposition::Enqueued {
+                println!(
+                    "  {}",
+                    muted(&format!("Check status: axon crawl status {}", job.job_id))
+                );
+            }
         }
     }
     println!();
     if !cfg.json_output {
-        for job in &result.jobs {
+        for job in &outcome.result.jobs {
             println!("Job ID: {}", job.job_id);
         }
     }
     Ok(())
-}
-
-/// In lite mode, the crawl worker auto-enqueues an embed job after completing.
-/// Poll until no embed jobs remain in pending or running state so the process
-/// doesn't exit before embedding finishes.
-async fn wait_for_pending_embed_jobs(backend: &Arc<dyn JobBackend>) {
-    use crate::crates::jobs::backend::JobKind;
-    loop {
-        match backend.list_jobs(JobKind::Embed).await {
-            Ok(jobs) => {
-                use crate::crates::jobs::status::JobStatus;
-                let active = jobs
-                    .iter()
-                    .any(|j| j.status == JobStatus::Pending || j.status == JobStatus::Running);
-                if !active {
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "0.33.0"
+version = "0.33.1"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -81,11 +81,6 @@ dotenvy = "0.15"
 rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server", "schemars", "elicitation"] }
 html5gum = "0.8"
 agent-client-protocol = { version = "0.10.0", features = ["unstable"] }
-
-[features]
-# Exposes test-only helpers (e.g. spawn_adapter_skip_validation) to integration
-# tests in tests/. Must be enabled via `cargo test --features test-helpers`.
-test-helpers = []
 
 [profile.release]
 opt-level = 3

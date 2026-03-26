@@ -2,8 +2,8 @@ use super::{REFRESH_TIER_MEDIUM_SECONDS, schedule_name_arg, tier_to_seconds};
 use crate::crates::core::config::Config;
 use crate::crates::core::http::validate_url;
 use crate::crates::core::ui::{accent, muted, symbol_for_status};
-use crate::crates::jobs::watch::{WatchDefCreate, create_watch_def};
 use crate::crates::services::refresh as refresh_service;
+use crate::crates::services::watch as watch_service;
 use chrono::{Duration, Utc};
 use std::error::Error;
 
@@ -154,9 +154,9 @@ async fn create_refresh_watch_def(
         "seed_url": created.seed_url,
         "urls": created.urls_json,
     });
-    create_watch_def(
+    watch_service::create_watch_def(
         cfg,
-        &WatchDefCreate {
+        &watch_service::WatchDefCreate {
             name: created.name.clone(),
             task_type: "refresh".to_string(),
             task_payload: watch_payload,

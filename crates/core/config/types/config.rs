@@ -513,6 +513,12 @@ pub struct Config {
     /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.
     pub mcp_http_port: u16,
 
+    /// Port for the Next.js dev server managed by `axon serve`. Env: `AXON_WEB_DEV_PORT`. Default: `49010`.
+    pub web_dev_port: u16,
+
+    /// Port for `apps/web/shell-server.mjs` managed by `axon serve`. Env: `SHELL_SERVER_PORT`. Default: `49011`.
+    pub shell_server_port: u16,
+
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
     pub custom_headers: Vec<String>,
 }

@@ -251,29 +251,30 @@ If you instead configure Claude Desktop to use `stdio` mode (`axon mcp --transpo
 ### mcporter
 
 ```bash
-# List available tools (triggers OAuth if not yet authenticated)
-mcporter list axon
+# Local repo config (stdio)
+mcporter --config config/mcporter.json list axon --schema
 
 # Call a tool
-mcporter call axon.axon action:help
-mcporter call axon.axon action:doctor
-mcporter call axon.axon action:query query:"embedding pipeline"
+mcporter --config config/mcporter.json call axon.axon action:help
+mcporter --config config/mcporter.json call axon.axon action:doctor
+mcporter --config config/mcporter.json call axon.axon action:query query:"embedding pipeline"
 ```
 
-Configure the server URL in your mcporter config:
+To test OAuth over HTTP instead of the repo-local stdio config, register a separate mcporter entry:
 ```bash
-mcporter add axon http://localhost:8001/mcp
+mcporter add axon-http http://localhost:8001/mcp
+mcporter list axon-http
+mcporter call axon-http.axon action:help
 ```
 
 ### Smoke test
 
 ```bash
-# Primary MCP smoke test (requires mcporter)
-./scripts/test-mcp-tools-mcporter.sh
-
-# Full run (includes network-heavy operations)
-./scripts/test-mcp-tools-mcporter.sh --full
+# Primary MCP smoke test (requires mcporter, jq, and a built debug binary)
+bash ./scripts/test-mcp-tools-mcporter.sh
 ```
+
+The smoke script uses [`config/mcporter.json`](/home/jmagar/workspace/axon_rust/config/mcporter.json), runs both full (`AXON_LITE=0`) and lite (`AXON_LITE=1`) suites, and writes logs under `.cache/mcporter-test/`.
 
 ---
 

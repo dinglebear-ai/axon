@@ -157,7 +157,7 @@ rebuild:
     just test
     just docker-build
 
-# ── Web UI (axum built-in server) ─────────────────────────────────
+# ── Local stack supervisor ────────────────────────────────────────
 
 serve port="49000":
     {{rust_dev_env}}; AXON_SERVE_HOST=0.0.0.0 cargo run --locked --bin axon -- serve --port {{port}}
@@ -209,8 +209,8 @@ workers:
     for pid in "${PIDS[@]}"; do wait "$pid" || EXIT=$?; done
     exit "$EXIT"
 
-# Start infra, axum server, MCP server, workers, shell server, and Next.js dev server
-# Ctrl+C cleanly stops all spawned processes via the EXIT trap.
+# Start infra, then hand off to the Rust supervisor.
+# `axon serve` now owns the backend bridge, MCP HTTP server, workers, shell server, and Next.js.
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -222,19 +222,4 @@ dev:
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
     docker compose -f docker-compose.services.yaml up -d --wait axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-tei axon-chrome
-    PIDS=()
-    cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
-    trap cleanup INT TERM EXIT
-    AXON_SERVE_HOST=0.0.0.0 "$AXON_BIN" serve --port 49000 & PIDS+=($!)
-    AXON_MCP_HTTP_PORT=8001 "$AXON_BIN" mcp & PIDS+=($!)
-    "$AXON_BIN" crawl worker & PIDS+=($!)
-    "$AXON_BIN" embed worker & PIDS+=($!)
-    "$AXON_BIN" extract worker & PIDS+=($!)
-    "$AXON_BIN" ingest worker & PIDS+=($!)
-    "$AXON_BIN" refresh worker & PIDS+=($!)
-    "$AXON_BIN" graph worker & PIDS+=($!)
-    (cd apps/web && node shell-server.mjs) & PIDS+=($!)
-    (cd apps/web && pnpm dev) & PIDS+=($!)
-    EXIT=0
-    for pid in "${PIDS[@]}"; do wait "$pid" || EXIT=$?; done
-    exit "$EXIT"
+    AXON_SERVE_HOST=0.0.0.0 "$AXON_BIN" serve --port 49000

@@ -32,9 +32,9 @@ pub async fn screenshot_capture(
     let normalized = normalize_url(url);
     validate_url(&normalized)?;
 
-    let bytes = spider_screenshot_with_options(
-        cfg,
-        &normalized,
+    let bytes = capture_screenshot_bytes(
+        cfg.clone(),
+        normalized.to_string(),
         cfg.viewport_width,
         cfg.viewport_height,
         cfg.screenshot_full_page,
@@ -61,4 +61,41 @@ pub async fn screenshot_capture(
     });
 
     Ok(map_screenshot_result(payload))
+}
+
+async fn capture_screenshot_bytes(
+    cfg: Config,
+    normalized: String,
+    width: u32,
+    height: u32,
+    full_page: bool,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let task = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let worker = std::thread::Builder::new()
+            .name("axon-screenshot".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || -> Result<Vec<u8>, String> {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| format!("failed to build screenshot runtime: {e}"))?;
+                runtime
+                    .block_on(spider_screenshot_with_options(
+                        &cfg,
+                        &normalized,
+                        width,
+                        height,
+                        full_page,
+                    ))
+                    .map_err(|e| e.to_string())
+            })
+            .map_err(|e| format!("failed to spawn screenshot thread: {e}"))?;
+        worker
+            .join()
+            .map_err(|_| "screenshot thread panicked".to_string())?
+    })
+    .await
+    .map_err(|e| format!("screenshot task failed: {e}"))?;
+
+    task.map_err(Into::into)
 }

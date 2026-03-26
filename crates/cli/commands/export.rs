@@ -1,7 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info};
-use crate::crates::jobs::common::make_pool;
-use crate::crates::services::export::{ExportOptions, export_manifest, verify_manifest_json};
+use crate::crates::services::export::{
+    ExportOptions, export_manifest_for_config, verify_manifest_json,
+};
 use std::error::Error;
 
 pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -42,14 +43,13 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .into());
     }
 
-    let pool = make_pool(cfg).await?;
     let options = ExportOptions {
         include_history: cfg.export_include_history,
         statuses: vec![],
     };
 
-    log_info("Collecting export data from Postgres and Qdrant");
-    let manifest = export_manifest(cfg, &pool, &options).await?;
+    log_info("Collecting export data from configured services");
+    let manifest = export_manifest_for_config(cfg, &options).await?;
     let json = serde_json::to_string_pretty(&manifest)?;
 
     if cfg.json_output {
@@ -80,4 +80,19 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
     ));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_export;
+    use crate::crates::core::config::Config;
+
+    #[tokio::test]
+    async fn run_export_rejects_lite_mode_without_verify_input() {
+        let cfg = Config::default_lite();
+        let err = run_export(&cfg)
+            .await
+            .expect_err("lite export should be rejected");
+        assert!(err.to_string().contains("not available in lite mode"));
+    }
 }

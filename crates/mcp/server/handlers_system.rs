@@ -7,7 +7,6 @@ use super::common::{
     MCP_TOOL_SCHEMA_URI, internal_error, invalid_params, logged_internal_error, parse_limit_usize,
     parse_offset, to_pagination,
 };
-use crate::crates::jobs::common::make_pool;
 use crate::crates::mcp::schema::{
     ArtifactsRequest, ArtifactsSubaction, AxonToolResponse, DoctorRequest, DomainsRequest,
     ExportRequest, HelpRequest, SourcesRequest, StatsRequest,
@@ -279,6 +278,8 @@ impl AxonMcpServer {
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "refresh": ["start", "status", "cancel", "list", "cleanup", "clear", "recover", "schedule"],
+                    "refresh_schedule": ["list", "create", "delete", "enable", "disable"],
+                    "graph": ["build", "status", "explore", "stats"],
                     "query": ["query"],
                     "retrieve": ["retrieve"],
                     "search": ["search"],
@@ -348,6 +349,7 @@ impl AxonMcpServer {
             "count": result.count,
             "limit": result.limit,
             "offset": result.offset,
+            // Chunk counts are available in SourcesResult but excluded from the wire response.
             "urls": result.urls.iter().map(|(url, _chunks)| url).collect::<Vec<_>>(),
         });
         respond_with_mode("sources", "sources", response_mode, "sources", payload).await
@@ -368,14 +370,11 @@ impl AxonMcpServer {
         &self,
         req: ExportRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let pool = make_pool(self.cfg.as_ref())
-            .await
-            .map_err(|e| logged_internal_error("export pool", e.as_ref()))?;
         let options = export::ExportOptions {
             include_history: req.include_history.unwrap_or(false),
             statuses: vec![],
         };
-        let manifest = export::export_manifest(self.cfg.as_ref(), &pool, &options)
+        let manifest = export::export_manifest_for_config(self.cfg.as_ref(), &options)
             .await
             .map_err(|e| logged_internal_error("export", e.as_ref()))?;
         let payload =

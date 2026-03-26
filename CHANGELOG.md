@@ -1,5 +1,21 @@
 # Changelog
-Last Modified: 2026-03-25 (session: v0.33.0 — lite mode + retrieval quality improvements)
+Last Modified: 2026-03-25 (session: v0.33.1 — mcporter dual-mode smoke coverage)
+
+## [0.33.1] — fix/mcp-smoke-dual-mode
+
+### Highlights
+
+- **Dual-mode mcporter smoke harness** — `scripts/test-mcp-tools-mcporter.sh` now generates suite-local mcporter configs and validates the MCP surface in both full mode (`AXON_LITE=0`) and lite mode (`AXON_LITE=1`), including schema/help parity checks and route-level smoke coverage.
+- **Lite/full contract enforcement** — lite smoke explicitly expects `export` and `graph:*` to be unavailable, while full smoke requires successful coverage for the full routed surface.
+- **mcporter runtime normalization** — `config/mcporter.json` now uses the normalized local server name `axon`, stdio transport, and repo-local runtime paths for logs and SQLite state.
+- **MCP config/help fixes** — `crates/mcp/config.rs` loads lite and graph env correctly; `action:help` now advertises `graph` and `refresh_schedule`, keeping the server-reported contract aligned with mcporter discovery.
+- **Screenshot/export smoke stability** — screenshot capture now succeeds through MCP, and export tolerates missing watch history tables instead of failing hard.
+
+### Commits since v0.33.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 3fc64858 | feat(lite+retrieval) | lite mode backend + BM42/query retrieval improvements |
 
 ## [0.33.0] — feat/lite-mode
 

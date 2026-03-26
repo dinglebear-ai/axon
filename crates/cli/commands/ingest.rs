@@ -1,88 +1,70 @@
+use crate::crates::cli::commands::CommandFuture;
 use crate::crates::cli::commands::ingest_common;
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{accent, muted, primary};
-use crate::crates::jobs::backend::{JobBackend, JobPayload};
 use crate::crates::jobs::ingest::IngestSource;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::ingest as ingest_service;
+use crate::crates::services::types::StartDisposition;
 use std::error::Error;
-use std::sync::Arc;
 
-pub async fn run_ingest(cfg: &Config, backend: &Arc<dyn JobBackend>) -> Result<(), Box<dyn Error>> {
-    if ingest_common::maybe_handle_ingest_subcommand(cfg, "ingest").await? {
-        return Ok(());
-    }
-    if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
-        println!("Lite mode: workers run in-process automatically. No separate worker needed.");
-        return Ok(());
-    }
+pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
+    Box::pin(async move {
+        if ingest_common::maybe_handle_ingest_subcommand(cfg, "ingest").await? {
+            return Ok(());
+        }
+        if cfg.lite_mode && cfg.positional.first().map(|s| s.as_str()) == Some("worker") {
+            println!("Lite mode: workers run in-process automatically. No separate worker needed.");
+            return Ok(());
+        }
 
-    let target = cfg
-        .positional
-        .first()
-        .cloned()
-        .ok_or("ingest requires a target: GitHub slug (owner/repo), YouTube URL or @handle, or Reddit subreddit (r/name) or URL")?;
+        let target = cfg
+            .positional
+            .first()
+            .cloned()
+            .ok_or("ingest requires a target: GitHub slug (owner/repo), YouTube URL or @handle, or Reddit subreddit (r/name) or URL")?;
 
-    log_info(&format!("command=ingest target={target}"));
-    let source = ingest_service::classify_target(&target, cfg.github_include_source)?;
+        log_info(&format!("command=ingest target={target}"));
+        let source = ingest_service::classify_target(&target, cfg.github_include_source)?;
 
-    if !cfg.wait {
-        if cfg.lite_mode {
-            let result = enqueue_ingest_lite(cfg, &source, backend).await;
+        if !cfg.wait {
+            let result = enqueue_ingest_job(cfg, source, service_context).await;
             if result.is_ok() {
-                log_info("job_enqueued command=ingest queue=lite");
+                log_info(&format!(
+                    "job_enqueued command=ingest queue={}",
+                    cfg.ingest_queue
+                ));
             }
             return result;
         }
-        let result = ingest_common::enqueue_ingest_job(cfg, source).await;
-        if result.is_ok() {
-            log_info(&format!(
-                "job_enqueued command=ingest queue={}",
-                cfg.ingest_queue
-            ));
-        }
-        return result;
-    }
 
-    ingest_common::run_ingest_sync(cfg, source).await
+        ingest_common::run_ingest_sync(cfg, source).await
+    })
 }
 
-async fn enqueue_ingest_lite(
+async fn enqueue_ingest_job(
     cfg: &Config,
-    source: &IngestSource,
-    backend: &Arc<dyn JobBackend>,
+    source: IngestSource,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let (source_type, target) = match source {
-        IngestSource::Github { repo, .. } => ("github".to_string(), repo.clone()),
-        IngestSource::Reddit { target } => ("reddit".to_string(), target.clone()),
-        IngestSource::Youtube { target } => ("youtube".to_string(), target.clone()),
-        IngestSource::Sessions { .. } => {
-            return Err(anyhow::anyhow!(
-                "sessions ingest is handled by the sessions command, not ingest"
-            )
-            .into());
-        }
+    let outcome = ingest_service::ingest_start_with_context(cfg, source, service_context).await?;
+    let job_id = outcome.result.job_id;
+    let status = if outcome.disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
     };
-    let job_id = backend
-        .enqueue(JobPayload::Ingest {
-            target: target.clone(),
-            source_type: source_type.clone(),
-            config_json: "{}".to_string(),
-        })
-        .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"job_id": job_id, "status": "pending", "source": "lite"})
+            serde_json::json!({"job_id": job_id, "status": status})
         );
     } else {
-        println!(
-            "  {} {}",
-            primary("Ingest Job"),
-            accent(&job_id.to_string())
-        );
-        println!("  {}", muted(&format!("Source: {source_type} / {target}")));
+        println!("  {} {}", primary("Ingest Job"), accent(&job_id));
+        if outcome.disposition == StartDisposition::Completed {
+            println!("  {}", muted("Lite mode completed the ingest in-process."));
+        }
         println!("Job ID: {job_id}");
     }
     Ok(())
@@ -93,10 +75,12 @@ mod tests {
     use super::*;
     use crate::crates::core::config::CommandKind;
     use crate::crates::jobs::backend::{
-        BackendResult, JobId, JobKind, JobPayload, JobStatusRow, JobSummary,
+        BackendResult, JobBackend, JobId, JobKind, JobPayload, JobStatusRow, JobSummary,
     };
     use crate::crates::jobs::common::test_config;
+    use crate::crates::services::context::ServiceContext;
     use async_trait::async_trait;
+    use std::sync::Arc;
 
     /// Minimal no-op backend for unit tests that do not exercise the job path.
     struct NoopBackend;
@@ -139,8 +123,11 @@ mod tests {
         let mut cfg = test_config("");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec![];
-        let backend = noop_backend();
-        let err = run_ingest(&cfg, &backend)
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context")
+            .with_job_backend(noop_backend());
+        let err = run_ingest(&cfg, &ctx)
             .await
             .expect_err("expected missing target error");
         assert!(
@@ -154,8 +141,11 @@ mod tests {
         let mut cfg = test_config("");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec!["not-a-target".to_string()];
-        let backend = noop_backend();
-        let err = run_ingest(&cfg, &backend)
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context")
+            .with_job_backend(noop_backend());
+        let err = run_ingest(&cfg, &ctx)
             .await
             .expect_err("expected classification error");
         assert!(

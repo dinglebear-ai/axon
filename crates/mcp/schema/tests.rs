@@ -131,6 +131,154 @@ fn parse_stats_action() {
 }
 
 #[test]
+fn parse_help_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "help",
+        "subaction": "help",
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "help should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Help(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("help"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Help variant");
+    }
+}
+
+#[test]
+fn parse_status_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "status",
+        "subaction": "status",
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "status should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Status(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("status"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Status variant");
+    }
+}
+
+#[test]
+fn parse_doctor_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "doctor",
+        "subaction": "doctor",
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "doctor should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Doctor(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("doctor"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Doctor variant");
+    }
+}
+
+#[test]
+fn parse_domains_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "domains",
+        "subaction": "domains",
+        "limit": 10,
+        "offset": 0,
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "domains should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Domains(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("domains"));
+        assert_eq!(req.limit, Some(10));
+        assert_eq!(req.offset, Some(0));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Domains variant");
+    }
+}
+
+#[test]
+fn parse_sources_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "sources",
+        "subaction": "sources",
+        "limit": 10,
+        "offset": 0,
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "sources should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Sources(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("sources"));
+        assert_eq!(req.limit, Some(10));
+        assert_eq!(req.offset, Some(0));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Sources variant");
+    }
+}
+
+#[test]
+fn parse_stats_action_with_singleton_subaction() {
+    let raw = obj(json!({
+        "action": "stats",
+        "subaction": "stats",
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "stats should accept singleton subaction for API compatibility"
+    );
+    if let Ok(AxonRequest::Stats(req)) = result {
+        assert_eq!(req.subaction.as_deref(), Some("stats"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Stats variant");
+    }
+}
+
+#[test]
+fn parse_query_action_with_auto_inline_alias() {
+    let raw = obj(json!({
+        "action": "query",
+        "query": "semantic search test",
+        "response_mode": "auto-inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "auto-inline should deserialize as a supported response mode alias"
+    );
+    if let Ok(AxonRequest::Query(q)) = result {
+        assert_eq!(q.query.as_deref(), Some("semantic search test"));
+        assert!(matches!(q.response_mode, Some(ResponseMode::AutoInline)));
+    } else {
+        panic!("expected Query variant");
+    }
+}
+
+#[test]
 fn parse_graph_build_action() {
     let raw = obj(json!({
         "action": "graph",

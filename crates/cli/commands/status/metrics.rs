@@ -85,6 +85,7 @@ pub(crate) fn format_error(error_text: Option<&str>) -> Option<String> {
 }
 
 /// Section header symbol: ✗ if any failed, ◐ if any active, ✓ if all terminal.
+#[allow(dead_code)]
 pub(super) fn section_symbol(statuses: &[&str]) -> String {
     if statuses.iter().any(|s| matches!(*s, "failed" | "error")) {
         symbol_for_status("failed")
@@ -98,6 +99,7 @@ pub(super) fn section_symbol(statuses: &[&str]) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub(super) fn extract_metrics_suffix(result_json: Option<&Value>, url_count: usize) -> String {
     let sep = subtle(" | ");
     let mut parts = vec![metric(url_count, "urls")];
@@ -155,6 +157,7 @@ pub(crate) fn embed_metrics_suffix(status: &str, result_json: Option<&Value>) ->
     )
 }
 
+#[allow(dead_code)]
 pub(super) fn ingest_metrics_suffix(status: &str, result_json: Option<&Value>) -> String {
     let sep = subtle(" | ");
     if matches!(status, "pending" | "running" | "processing") {
@@ -163,6 +166,7 @@ pub(super) fn ingest_metrics_suffix(status: &str, result_json: Option<&Value>) -
     ingest_completed_metrics_suffix(result_json, &sep)
 }
 
+#[allow(dead_code)]
 fn ingest_active_metrics_suffix(result_json: Option<&Value>, sep: &str) -> String {
     let Some(r) = result_json else {
         return String::new();
@@ -210,6 +214,7 @@ fn ingest_active_metrics_suffix(result_json: Option<&Value>, sep: &str) -> Strin
 /// - Task progress: `"3/5 tasks"`
 /// - Current phase label
 /// - Phase-specific detail (e.g., `"42 issues, page 2"` for `fetching_issues`)
+#[allow(dead_code)]
 fn build_rich_active_suffix(
     r: &Value,
     chunks: u64,
@@ -260,6 +265,7 @@ fn build_rich_active_suffix(
 }
 
 /// Format `"done/total label"` from two JSON keys, if both are present.
+#[allow(dead_code)]
 fn format_fraction(r: &Value, done_key: &str, total_key: &str, label: &str) -> Option<String> {
     let done = r.get(done_key).and_then(|v| v.as_u64())?;
     let total = r.get(total_key).and_then(|v| v.as_u64())?;
@@ -273,6 +279,7 @@ fn format_fraction(r: &Value, done_key: &str, total_key: &str, label: &str) -> O
 }
 
 /// Contextual detail string for the current phase.
+#[allow(dead_code)]
 fn phase_detail(r: &Value, phase: Option<&str>) -> Option<String> {
     match phase? {
         "fetching_issues" => fetch_detail(r, "issues_fetched", "issues_page", "issues"),
@@ -289,6 +296,7 @@ fn phase_detail(r: &Value, phase: Option<&str>) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn fetch_detail(r: &Value, count_key: &str, page_key: &str, label: &str) -> Option<String> {
     let fetched = r.get(count_key).and_then(|v| v.as_u64());
     let page = r.get(page_key).and_then(|v| v.as_u64());
@@ -304,6 +312,7 @@ fn fetch_detail(r: &Value, count_key: &str, page_key: &str, label: &str) -> Opti
     }
 }
 
+#[allow(dead_code)]
 fn ingest_completed_metrics_suffix(result_json: Option<&Value>, sep: &str) -> String {
     let Some(r) = result_json else {
         return String::new();
@@ -333,6 +342,7 @@ fn ingest_completed_metrics_suffix(result_json: Option<&Value>, sep: &str) -> St
     format!("{sep}{}", metric(chunks, "chunks"))
 }
 
+#[allow(dead_code)]
 fn progress_with_chunks(
     payload: &Value,
     done_key: &str,
@@ -346,6 +356,7 @@ fn progress_with_chunks(
     Some(format_progress_with_chunks(done, total, label, chunks, sep))
 }
 
+#[allow(dead_code)]
 fn completed_progress_with_chunks(
     payload: &Value,
     done_key: &str,
@@ -362,6 +373,7 @@ fn completed_progress_with_chunks(
     Some(format_progress_with_chunks(done, total, label, chunks, sep))
 }
 
+#[allow(dead_code)]
 fn format_progress_with_chunks(
     done: u64,
     total: u64,
@@ -383,6 +395,7 @@ pub(crate) fn collection_from_config(config_json: &Value) -> Option<&str> {
     config_json.get("collection").and_then(|v| v.as_str())
 }
 
+#[allow(dead_code)]
 pub(super) fn summarize_urls(urls_json: &Value) -> (String, usize) {
     let urls = urls_json
         .as_array()

@@ -7,7 +7,7 @@ Self-hosted web crawling and RAG pipeline powered by Spider.rs. Single binary (`
 
 [![CI](https://github.com/jmagar/axon_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/jmagar/axon_rust/actions/workflows/ci.yml)
 
-- `mcp-smoke`: runs as a dedicated job in the `CI` workflow and executes `./scripts/test-mcp-tools-mcporter.sh`.
+- `mcp-smoke`: runs as a dedicated job in the `CI` workflow and executes `./scripts/test-mcp-tools-mcporter.sh` in both full (`AXON_LITE=0`) and lite (`AXON_LITE=1`) modes.
 - `test-infra`: manual lane (`workflow_dispatch`) for ignored infra-backed tests; use Actions -> CI -> Run workflow -> `run_infra_tests=true`.
 
 ## Overview
@@ -87,7 +87,8 @@ MCP defaults are context-safe:
 - Artifact-first responses (`response_mode=path`) written to `.cache/axon-mcp/` inside the running process/container (override with `AXON_MCP_ARTIFACT_DIR`; in Docker this is typically bind-mounted to `${AXON_DATA_DIR}/axon/artifacts`)
 - Inline responses are optional (`response_mode=inline|both`) and capped
 - Resource: `axon://schema/mcp-tool`
-- Primary MCP test path: `./scripts/test-mcp-tools-mcporter.sh`
+- Local mcporter config: `config/mcporter.json` registers the server as `axon`
+- Primary MCP test path: `./scripts/test-mcp-tools-mcporter.sh` runs schema/help parity plus smoke coverage in both full and lite modes
 
 ## Quick Start
 

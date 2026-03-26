@@ -34,15 +34,19 @@ HTTP MCP transport is still the default and is commonly managed via container ru
 Primary MCP smoke path:
 
 ```bash
-./scripts/test-mcp-tools-mcporter.sh
+bash ./scripts/test-mcp-tools-mcporter.sh
 ```
 
 ```bash
-mcporter list axon --schema
-mcporter call axon.axon action:doctor
-mcporter call axon.axon action:crawl subaction:list limit:5
-mcporter call axon.axon action:refresh subaction:list limit:5
+mcporter --config config/mcporter.json list axon --schema
+mcporter --config config/mcporter.json call axon.axon action:doctor --output json
+mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
+mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 --output json
 ```
+
+The smoke harness runs both:
+- full mode (`AXON_LITE=0`) with successful coverage for the full routed surface
+- lite mode (`AXON_LITE=1`) with expected unavailability checks for `export` and `graph:*`
 
 ## Change Rule
 When changing tool behavior, update in the same commit:

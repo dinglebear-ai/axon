@@ -36,6 +36,8 @@ pub enum ResponseMode {
     Path,
     Inline,
     Both,
+    #[serde(alias = "auto-inline")]
+    AutoInline,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
@@ -190,12 +192,16 @@ pub enum SearchTimeRange {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HelpRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StatusRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
@@ -283,12 +289,16 @@ pub struct MapRequest {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DoctorRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DomainsRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     #[allow(dead_code)] // accepted for API compat but response is always inline
@@ -298,6 +308,8 @@ pub struct DomainsRequest {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourcesRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     #[allow(dead_code)] // accepted for API compat but response is always inline
@@ -307,6 +319,8 @@ pub struct SourcesRequest {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StatsRequest {
+    #[allow(dead_code)] // accepted for API compat but ignored by handlers
+    pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 
