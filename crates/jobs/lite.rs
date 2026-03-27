@@ -72,6 +72,11 @@ impl LiteBackend {
     fn table_for(kind: JobKind) -> &'static str {
         kind.table_name()
     }
+
+    /// Expose the shared SQLite pool for callers that need direct access (e.g. service layer).
+    pub fn pool(&self) -> &Arc<SqlitePool> {
+        &self.pool
+    }
 }
 
 #[async_trait]
