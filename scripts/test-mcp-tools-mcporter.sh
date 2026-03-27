@@ -323,8 +323,8 @@ run_suite() {
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and ((.data.data.json | type == "object") or (.data.artifact.path | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
   run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
-  run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and (.data.data.all_ok | type == "boolean")' call_tool action:doctor
-  run_json_case "${prefix}_stats" '.ok == true and .action == "stats" and .subaction == "stats" and (.data.data.collection | type == "string") and (.data.data.counts | type == "object")' call_tool action:stats
+  run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and .data.data.all_ok == true' call_tool action:doctor
+  run_json_case "${prefix}_stats" '.ok == true and .action == "stats" and .subaction == "stats" and (.data.data.collection | type == "string") and (.data.data.collection | length) > 0 and (.data.data.counts | type == "object")' call_tool action:stats
   run_json_case "${prefix}_domains" '.ok == true and .action == "domains" and .subaction == "domains" and (.data.data.domains | type == "array") and .data.data.limit == 5' call_tool action:domains limit:5 offset:0
   run_json_case "${prefix}_sources" '.ok == true and .action == "sources" and .subaction == "sources" and (.data.data.urls | type == "array") and .data.data.limit == 5' call_tool action:sources limit:5 offset:0
   if [[ "$lite_value" == "0" ]]; then
@@ -333,8 +333,8 @@ run_suite() {
     run_error_case "${prefix}_export_unavailable" "export is not available in lite mode because it requires Postgres-backed history" call_tool action:export
   fi
   run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk"' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
-  run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
-  run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.markdown | type == \"string\") and (.data.data.status_code | type == \"number\")" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and (.data.data.urls | length) > 0 and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
+  run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.markdown | type == \"string\") and (.data.data.markdown | length) > 0 and (.data.data.status_code | type == \"number\")" call_tool action:scrape url:"$REAL_PAGE_URL"
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.content | type == \"string\")" call_tool action:retrieve url:"$REAL_PAGE_URL"
   run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
   run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and (.data.shape.search_results | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
@@ -427,10 +427,10 @@ run_suite() {
 
   echo "== $mode graph ==" | tee -a "$SUMMARY"
   if [[ "$lite_value" == "0" ]]; then
-    run_json_case "${prefix}_graph_status" '.ok == true and .action == "graph" and .subaction == "status"' call_tool action:graph subaction:status
-    run_json_case "${prefix}_graph_stats" '.ok == true and .action == "graph" and .subaction == "stats"' call_tool action:graph subaction:stats
-    run_json_case "${prefix}_graph_explore" '.ok == true and .action == "graph" and .subaction == "explore"' call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
-    run_json_case "${prefix}_graph_build" '.ok == true and .action == "graph" and .subaction == "build"' call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
+    run_json_case "${prefix}_graph_status" '.ok == true and .action == "graph" and .subaction == "status" and (.data.response_mode | type == "string") and ((.data.data.counts | type == "object") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:status
+    run_json_case "${prefix}_graph_stats" '.ok == true and .action == "graph" and .subaction == "stats" and (.data.response_mode | type == "string") and ((.data.data.rows | type == "array") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:stats
+    run_json_case "${prefix}_graph_explore" '.ok == true and .action == "graph" and .subaction == "explore" and (.data.response_mode | type == "string") and ((.data.data.entity | type == "string") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
+    run_json_case "${prefix}_graph_build" '.ok == true and .action == "graph" and .subaction == "build" and (.data.response_mode | type == "string") and ((.data.data.queued | type == "number") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
   else
     run_error_case "${prefix}_graph_status_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:status
     run_error_case "${prefix}_graph_stats_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:stats
