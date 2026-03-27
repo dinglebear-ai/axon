@@ -127,13 +127,14 @@ pub trait JobBackend: Send + Sync {
     /// alive while in-process workers finish.
     async fn wait_for_job(&self, id: JobId, kind: JobKind) -> BackendResult<String> {
         loop {
-            if let Some(row) = self.job_status(id, kind).await? {
-                match row.status {
+            match self.job_status(id, kind).await? {
+                Some(row) => match row.status {
                     JobStatus::Completed | JobStatus::Failed | JobStatus::Canceled => {
                         return Ok(row.status.as_str().to_string());
                     }
                     _ => {}
-                }
+                },
+                None => return Err(format!("job {id} not found in {}", kind.table_name()).into()),
             }
             tokio::time::sleep(WAIT_POLL_INTERVAL).await;
         }

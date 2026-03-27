@@ -38,8 +38,11 @@ pub async fn list_jobs(pool: &SqlitePool, table: &str) -> Result<Vec<JobSummary>
         "axon_ingest_jobs" => {
             "SELECT id, status, created_at, COALESCE(target, '') as target FROM axon_ingest_jobs ORDER BY created_at DESC LIMIT 500"
         }
+        "axon_graph_jobs" => {
+            "SELECT id, status, created_at, '' as target FROM axon_graph_jobs ORDER BY created_at DESC LIMIT 500"
+        }
         _ => {
-            // crawl_jobs, refresh_jobs, graph_jobs use 'url' or have no target
+            // crawl_jobs and refresh_jobs use 'url'.
             &format!(
                 "SELECT id, status, created_at, COALESCE(url, '') as target FROM {} ORDER BY created_at DESC LIMIT 500",
                 table
@@ -330,6 +333,26 @@ mod tests {
 
         let deleted = cleanup_jobs(&pool, "axon_crawl_jobs").await.unwrap();
         assert_eq!(deleted, 1);
+    }
+
+    #[tokio::test]
+    async fn list_jobs_handles_graph_jobs_without_url_column() {
+        let pool = open_sqlite_pool(":memory:").await.unwrap();
+        let now = now_ms();
+        sqlx::query(
+            "INSERT INTO axon_graph_jobs (id, status, config_json, created_at, updated_at) \
+             VALUES (?, 'pending', '{}', ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let jobs = list_jobs(&pool, "axon_graph_jobs").await.unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].target, "");
     }
 
     #[tokio::test]

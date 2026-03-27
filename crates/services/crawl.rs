@@ -155,6 +155,9 @@ pub async fn crawl_start_with_context(
             result,
         });
     }
+    if urls.is_empty() {
+        return Err("No URLs provided for crawl".into());
+    }
 
     let mut jobs = Vec::with_capacity(urls.len());
     for url in urls {
@@ -177,15 +180,28 @@ pub async fn crawl_start_with_context(
             .wait_for_job(job_id, JobKind::Crawl)
             .await
             .map_err(|e| -> Box<dyn Error> { e })?;
-        if final_status == "failed" {
-            if let Ok(Some(err)) = service_context
-                .jobs
-                .job_errors(job_id, JobKind::Crawl)
-                .await
-            {
-                return Err(format!("crawl job {job_id} failed: {err}").into());
+        match final_status.as_str() {
+            "failed" => {
+                if let Ok(Some(err)) = service_context
+                    .jobs
+                    .job_errors(job_id, JobKind::Crawl)
+                    .await
+                {
+                    return Err(format!("crawl job {job_id} failed: {err}").into());
+                }
+                return Err(format!("crawl job {job_id} failed").into());
             }
-            return Err(format!("crawl job {job_id} failed").into());
+            "canceled" => {
+                if let Ok(Some(err)) = service_context
+                    .jobs
+                    .job_errors(job_id, JobKind::Crawl)
+                    .await
+                {
+                    return Err(format!("crawl job {job_id} canceled: {err}").into());
+                }
+                return Err(format!("crawl job {job_id} canceled").into());
+            }
+            _ => {}
         }
         wait_for_pending_embed_jobs(service_context.jobs.as_ref()).await;
     }
@@ -289,6 +305,7 @@ mod tests {
     use uuid::Uuid;
 
     struct CompletedLiteRuntime;
+    struct CanceledLiteRuntime;
 
     #[async_trait]
     impl ServiceJobRuntime for CompletedLiteRuntime {
@@ -306,6 +323,79 @@ mod tests {
 
         async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
             Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
+        {
+            Ok(vec![])
+        }
+
+        async fn job_status(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
+        {
+            Ok(None)
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn std::error::Error>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+            Ok(WorkerMode::InProcess)
+        }
+    }
+
+    #[async_trait]
+    impl ServiceJobRuntime for CanceledLiteRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+            Ok(Uuid::new_v4())
+        }
+
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            Ok("canceled".to_string())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(Some("user canceled".to_string()))
         }
 
         async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
@@ -436,6 +526,38 @@ mod tests {
         assert_eq!(outcome.result.jobs.len(), 1);
         assert_eq!(outcome.result.jobs[0].url, cfg.start_url);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn crawl_start_with_context_rejects_empty_urls_in_lite_mode() {
+        let mut cfg = test_config("https://docs.rs");
+        cfg.lite_mode = true;
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .map_err(|e| e.to_string())
+            .unwrap()
+            .with_jobs_runtime(Arc::new(CompletedLiteRuntime));
+
+        let err = crawl_start_with_context(&cfg, &[], &ctx, None)
+            .await
+            .expect_err("empty urls must fail");
+        assert!(err.to_string().contains("No URLs provided"));
+    }
+
+    #[tokio::test]
+    async fn crawl_start_with_context_surfaces_canceled_jobs_in_lite_mode() {
+        let mut cfg = test_config("https://docs.rs");
+        cfg.lite_mode = true;
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .map_err(|e| e.to_string())
+            .unwrap()
+            .with_jobs_runtime(Arc::new(CanceledLiteRuntime));
+
+        let err = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
+            .await
+            .expect_err("canceled crawl must fail");
+        assert!(err.to_string().contains("canceled"));
     }
 
     #[test]

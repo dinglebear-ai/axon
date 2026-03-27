@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::http::parse_custom_headers;
 use crate::crates::core::http::{cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};
 use crate::crates::crawl::engine::resolve_cdp_ws_url;
 use spider::configuration::Viewport;
@@ -76,6 +77,12 @@ pub(crate) async fn spider_screenshot_with_options(
     }
     if cfg.bypass_csp {
         website.with_csp_bypass(true);
+    }
+    if !cfg.custom_headers.is_empty() {
+        let map = parse_custom_headers(&cfg.custom_headers);
+        if !map.is_empty() {
+            website.with_headers(Some(map));
+        }
     }
     let retries = cfg.fetch_retries.min(u8::MAX as usize) as u8;
     website.with_retry(retries);

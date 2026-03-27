@@ -1,4 +1,4 @@
-use crate::crates::mcp::schema::{AxonToolResponse, ScreenshotRequest};
+use crate::crates::mcp::schema::{AxonToolResponse, ResponseMode, ScreenshotRequest};
 use crate::crates::mcp::server::AxonMcpServer;
 use crate::crates::mcp::server::artifacts::{ensure_artifact_root, resolve_artifact_output_path};
 use crate::crates::mcp::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
@@ -106,13 +106,34 @@ impl AxonMcpServer {
         // Screenshot already materializes the primary artifact as a PNG on disk.
         // Returning the small metadata envelope inline avoids a second JSON
         // artifact round-trip and prevents MCP stdio crashes in this path.
-        Ok(AxonToolResponse::ok(
-            "screenshot",
-            "screenshot",
-            serde_json::json!({
+        let response = match req.response_mode.unwrap_or(ResponseMode::Path) {
+            ResponseMode::Path => serde_json::json!({
+                "response_mode": "path",
+                "artifact": {
+                    "path": payload["path"].clone(),
+                    "bytes": payload["size_bytes"].clone(),
+                    "mime_type": "image/png",
+                },
+                "shape": {
+                    "type": "screenshot",
+                    "viewport": payload["viewport"].clone(),
+                    "full_page": payload["full_page"].clone(),
+                },
+            }),
+            ResponseMode::Inline | ResponseMode::AutoInline => serde_json::json!({
                 "response_mode": "inline",
                 "data": payload,
             }),
-        ))
+            ResponseMode::Both => serde_json::json!({
+                "response_mode": "both",
+                "data": payload.clone(),
+                "artifact": {
+                    "path": payload["path"].clone(),
+                    "bytes": payload["size_bytes"].clone(),
+                    "mime_type": "image/png",
+                },
+            }),
+        };
+        Ok(AxonToolResponse::ok("screenshot", "screenshot", response))
     }
 }

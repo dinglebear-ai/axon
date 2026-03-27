@@ -9,38 +9,46 @@ pub fn truncate_chars(s: &str, max_chars: usize) -> &str {
     s.char_indices().nth(max_chars).map_or(s, |(i, _)| &s[..i])
 }
 
-fn expand_numeric_range(start: i64, end: i64, step: i64) -> Vec<String> {
-    let mut out = Vec::new();
-    if step == 0 {
-        return out;
-    }
-    let mut current = start;
-    if start <= end && step > 0 {
-        while current <= end {
-            out.push(current.to_string());
-            current += step;
-        }
-    } else if start >= end && step < 0 {
-        while current >= end {
-            out.push(current.to_string());
-            current += step;
-        }
-    }
-    out
-}
-
 fn expand_numeric_range_limited(
     start: i64,
     end: i64,
     step: i64,
     limit: usize,
 ) -> (Vec<String>, bool) {
-    let mut values = expand_numeric_range(start, end, step);
-    let truncated = values.len() > limit;
-    if truncated {
-        values.truncate(limit);
+    let mut out = Vec::new();
+    if step == 0 {
+        return (out, false);
     }
-    (values, truncated)
+    let mut current = start;
+    let mut truncated = false;
+    if start <= end && step > 0 {
+        while current <= end {
+            if out.len() >= limit {
+                truncated = true;
+                break;
+            }
+            out.push(current.to_string());
+            let Some(next) = current.checked_add(step) else {
+                truncated = true;
+                break;
+            };
+            current = next;
+        }
+    } else if start >= end && step < 0 {
+        while current >= end {
+            if out.len() >= limit {
+                truncated = true;
+                break;
+            }
+            out.push(current.to_string());
+            let Some(next) = current.checked_add(step) else {
+                truncated = true;
+                break;
+            };
+            current = next;
+        }
+    }
+    (out, truncated)
 }
 
 fn expand_brace_token(token: &str, limit: usize) -> (Vec<String>, bool) {
@@ -285,6 +293,20 @@ mod tests {
         assert_eq!(
             expanded.last().map(String::as_str),
             Some("https://example.com/page/10000")
+        );
+    }
+
+    #[test]
+    fn expands_url_glob_range_stops_on_overflow() {
+        let expanded = expand_url_glob_seed(
+            "https://example.com/page/{9223372036854775806..9223372036854775807}",
+        );
+        assert_eq!(
+            expanded,
+            vec![
+                "https://example.com/page/9223372036854775806".to_string(),
+                "https://example.com/page/9223372036854775807".to_string(),
+            ]
         );
     }
 

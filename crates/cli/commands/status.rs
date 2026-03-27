@@ -2,8 +2,12 @@ pub(crate) mod metrics;
 
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
+use crate::crates::core::ui::{
+    muted, primary, status_text as human_status_text, symbol_for_status,
+};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::system::{build_status_payload, load_status_jobs};
+use crate::crates::services::types::ServiceJob;
 use std::error::Error;
 
 pub async fn run_status(
@@ -54,9 +58,64 @@ pub async fn status_text(
 }
 
 async fn run_status_impl(
-    cfg: &Config,
+    _cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    println!("{}", status_text(cfg, service_context).await?);
+    let jobs = load_status_jobs(service_context).await?;
+    print_status_section("Crawl", &jobs.crawl, |job| {
+        job.url.clone().unwrap_or_else(|| job.id.to_string())
+    });
+    print_status_section("Extract", &jobs.extract, |job| {
+        job.urls_json
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| job.id.to_string())
+    });
+    print_status_section("Embed", &jobs.embed, |job| {
+        job.target.clone().unwrap_or_else(|| job.id.to_string())
+    });
+    print_status_section("Ingest", &jobs.ingest, |job| {
+        match (&job.source_type, &job.target) {
+            (Some(source_type), Some(target)) => format!("{source_type}: {target}"),
+            (_, Some(target)) => target.clone(),
+            _ => job.id.to_string(),
+        }
+    });
+    print_status_section("Refresh", &jobs.refresh, |job| {
+        job.target
+            .clone()
+            .or_else(|| job.url.clone())
+            .unwrap_or_else(|| job.id.to_string())
+    });
+    print_status_section("Graph", &jobs.graph, |job| {
+        job.url.clone().unwrap_or_else(|| job.id.to_string())
+    });
     Ok(())
+}
+
+fn print_status_section(
+    title: &str,
+    jobs: &[ServiceJob],
+    label_for: impl Fn(&ServiceJob) -> String,
+) {
+    println!("{}", primary(title));
+    if jobs.is_empty() {
+        println!("  {}", muted("None."));
+        println!();
+        return;
+    }
+
+    for job in jobs.iter().take(10) {
+        println!(
+            "  {} {} {} {}",
+            symbol_for_status(&job.status),
+            human_status_text(&job.status),
+            label_for(job),
+            muted(&job.id.to_string()),
+        );
+        if let Some(err) = job.error_text.as_deref() {
+            println!("    {}", muted(err));
+        }
+    }
+    println!();
 }

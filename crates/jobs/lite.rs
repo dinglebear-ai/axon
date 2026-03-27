@@ -30,7 +30,8 @@ impl LiteBackend {
         let path = cfg.sqlite_path.to_string_lossy().to_string();
         let pool = Arc::new(open_sqlite_pool(&path).await?);
 
-        let stale_threshold_ms = (300 + 60) * 1_000i64;
+        let stale_threshold_ms =
+            (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
         store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
 
         let cancel_store = Arc::new(CancelStore::new());
