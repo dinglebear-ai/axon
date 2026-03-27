@@ -10,14 +10,18 @@ use crate::crates::core::config::Config;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, symbol_for_status};
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::refresh as refresh_service;
 use schedule::handle_refresh_schedule;
 use std::error::Error;
 use uuid::Uuid;
 
-pub async fn run_refresh(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    if maybe_handle_refresh_subcommand(cfg).await? {
+pub async fn run_refresh(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    if maybe_handle_refresh_subcommand(cfg, service_context).await? {
         return Ok(());
     }
 
@@ -84,21 +88,26 @@ pub async fn run_refresh(cfg: &Config) -> Result<(), Box<dyn Error>> {
 #[path = "refresh/schedule_compat_tests.rs"]
 mod schedule_compat_tests;
 
-async fn maybe_handle_refresh_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
+async fn maybe_handle_refresh_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<bool, Box<dyn Error>> {
     let Some(subcmd) = cfg.positional.first().map(|s| s.as_str()) else {
         return Ok(false);
     };
 
     match subcmd {
         "schedule" => handle_refresh_schedule(cfg).await?,
-        "status" => handle_refresh_status(cfg).await?,
-        "cancel" => handle_refresh_cancel(cfg).await?,
-        "errors" => handle_refresh_errors(cfg).await?,
-        "list" => handle_refresh_list(cfg).await?,
-        "cleanup" => handle_refresh_cleanup(cfg).await?,
-        "clear" => handle_refresh_clear(cfg).await?,
-        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Refresh).await?)?,
-        "recover" => handle_refresh_recover(cfg).await?,
+        "status" => handle_refresh_status(cfg, service_context).await?,
+        "cancel" => handle_refresh_cancel(cfg, service_context).await?,
+        "errors" => handle_refresh_errors(cfg, service_context).await?,
+        "list" => handle_refresh_list(cfg, service_context).await?,
+        "cleanup" => handle_refresh_cleanup(cfg, service_context).await?,
+        "clear" => handle_refresh_clear(cfg, service_context).await?,
+        "worker" => {
+            handle_worker_mode(job_service::run_worker(service_context, JobKind::Refresh).await?)?
+        }
+        "recover" => handle_refresh_recover(cfg, service_context).await?,
         _ => return Ok(false),
     }
 
@@ -113,35 +122,53 @@ fn parse_refresh_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Erro
     Ok(Uuid::parse_str(id)?)
 }
 
-async fn handle_refresh_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_refresh_status(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "status")?;
-    let job = job_service::job_status(cfg, JobKind::Refresh, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Refresh, id).await?;
     handle_job_status(cfg, job, id, "Refresh")
 }
 
-async fn handle_refresh_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_refresh_cancel(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "cancel")?;
-    let canceled = job_service::cancel_job(cfg, JobKind::Refresh, id).await?;
+    let canceled = job_service::cancel_job(service_context, JobKind::Refresh, id).await?;
     handle_job_cancel(cfg, id, canceled, "refresh")
 }
 
-async fn handle_refresh_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_refresh_errors(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_refresh_job_id(cfg, "errors")?;
-    let job = job_service::job_status(cfg, JobKind::Refresh, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Refresh, id).await?;
     handle_job_errors(cfg, job, id, "refresh")
 }
 
-async fn handle_refresh_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let jobs = job_service::list_jobs(cfg, JobKind::Refresh, 50, 0).await?;
+async fn handle_refresh_list(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let jobs = job_service::list_jobs(service_context, JobKind::Refresh, 50, 0).await?;
     handle_job_list(cfg, jobs, "Refresh")
 }
 
-async fn handle_refresh_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let removed = job_service::cleanup_jobs(cfg, JobKind::Refresh).await?;
+async fn handle_refresh_cleanup(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let removed = job_service::cleanup_jobs(service_context, JobKind::Refresh).await?;
     handle_job_cleanup(cfg, removed, "refresh")
 }
 
-async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_refresh_clear(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     if !confirm_destructive(cfg, "Clear all refresh jobs and purge refresh queue?")? {
         if cfg.json_output {
             println!("{}", serde_json::json!({ "removed": 0 }));
@@ -151,12 +178,15 @@ async fn handle_refresh_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let removed = job_service::clear_jobs(cfg, JobKind::Refresh).await?;
+    let removed = job_service::clear_jobs(service_context, JobKind::Refresh).await?;
     handle_job_clear(cfg, removed, "refresh")
 }
 
-async fn handle_refresh_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let reclaimed = job_service::recover_jobs(cfg, JobKind::Refresh).await?;
+async fn handle_refresh_recover(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let reclaimed = job_service::recover_jobs(service_context, JobKind::Refresh).await?;
     handle_job_recover(cfg, reclaimed, "refresh")
 }
 

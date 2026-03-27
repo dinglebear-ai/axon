@@ -1,9 +1,10 @@
 use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 use std::sync::Arc;
 
 use super::events;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct ExecCommandContext {
     pub(crate) exec_id: String,
     pub(crate) mode: String,
@@ -14,6 +15,8 @@ pub(crate) struct ExecCommandContext {
     pub(crate) flags: serde_json::Value,
     /// Base server config from `AppState`.
     pub(crate) cfg: Arc<Config>,
+    /// Shared service runtime from `AppState`.
+    pub(crate) service_context: Arc<ServiceContext>,
 }
 
 impl ExecCommandContext {

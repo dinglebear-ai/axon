@@ -1,5 +1,21 @@
 # Changelog
-Last Modified: 2026-03-26 (session: v0.33.2 — embed JSON contract and test cleanup)
+Last Modified: 2026-03-26 (session: v0.33.3 — shared runtime cutover completion)
+
+## [0.33.3] — refactor/services-runtime-cutover
+
+### Highlights
+
+- **Shared service runtime cutover completed** — CLI remained on a single process-scoped `ServiceContext`, while MCP and web now route lifecycle/status calls through shared service-runtime plumbing instead of raw config-only paths.
+- **MCP lifecycle handlers unified** — crawl, extract, embed, ingest, refresh, and status handlers now resolve through `ServiceContext` and the runtime-backed job services layer.
+- **Web execution paths unified** — WebSocket cancel and sync status flows now reuse shared runtime context instead of reconstructing job backends per request.
+- **Runtime defect cleanup** — `ServiceJobRuntime` now computes active jobs without nonexistent backend methods, and full-mode worker launch avoids non-`Send` future failures.
+- **Test call-site cleanup** — graph/watch CLI tests and web sync-mode/context tests now match the new service-context signatures so the full test target compiles again.
+
+### Commits since v0.33.2
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | refactor(services) | finish shared runtime cutover across CLI, MCP, and web |
 
 ## [0.33.2] — fix/embed-json-contract
 

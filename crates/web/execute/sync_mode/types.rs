@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 
 /// Typed error alias for service call wrappers — erased to `String` only at the WS boundary.
 pub(crate) type SvcError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -55,6 +56,7 @@ pub(crate) struct DirectParams {
     pub(super) mode: ServiceMode,
     pub(super) input: String,
     pub(super) cfg: Arc<Config>,
+    pub(super) service_context: Arc<ServiceContext>,
     pub(super) limit: usize,
     pub(super) offset: usize,
     pub(super) max_points: Option<usize>,

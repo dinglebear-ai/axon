@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::JobBackend;
+use crate::crates::services::runtime::{ServiceJobRuntime, resolve_runtime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityState {
@@ -63,29 +63,31 @@ impl ServiceCapabilities {
 pub struct ServiceContext {
     pub cfg: Arc<Config>,
     pub capabilities: ServiceCapabilities,
-    pub job_backend: Option<Arc<dyn JobBackend>>,
+    pub jobs: Arc<dyn ServiceJobRuntime>,
 }
 
 impl ServiceContext {
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
+        let jobs = resolve_runtime(Arc::clone(&cfg)).await?;
         Ok(Self {
             cfg,
             capabilities,
-            job_backend: None,
+            jobs,
         })
     }
 
-    pub fn with_job_backend(mut self, job_backend: Arc<dyn JobBackend>) -> Self {
-        self.job_backend = Some(job_backend);
-        self
+    pub fn from_runtime(cfg: Arc<Config>, jobs: Arc<dyn ServiceJobRuntime>) -> Self {
+        let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
+        Self {
+            cfg,
+            capabilities,
+            jobs,
+        }
     }
 
-    pub fn require_job_backend(
-        &self,
-    ) -> Result<&Arc<dyn JobBackend>, Box<dyn std::error::Error + Send + Sync>> {
-        self.job_backend
-            .as_ref()
-            .ok_or_else(|| "service context is missing a job backend".into())
+    pub fn with_jobs_runtime(mut self, jobs: Arc<dyn ServiceJobRuntime>) -> Self {
+        self.jobs = jobs;
+        self
     }
 }

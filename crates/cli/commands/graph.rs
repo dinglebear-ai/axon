@@ -1,6 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{accent, muted, primary};
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::graph as graph_svc;
 use clap::{Parser, Subcommand};
 use std::error::Error;
@@ -39,7 +40,10 @@ fn parse_graph_runtime_args(args: &[String]) -> Result<GraphRuntimeArgs, Box<dyn
     .map_err(|err| err.to_string().into())
 }
 
-pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_graph(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     match parse_graph_runtime_args(&cfg.positional)?.action {
         Some(GraphRuntimeSubcommand::Build {
             positional_url,
@@ -59,7 +63,7 @@ pub async fn run_graph(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some(GraphRuntimeSubcommand::Status) => handle_status(cfg).await,
         Some(GraphRuntimeSubcommand::Explore { entity }) => handle_explore(cfg, &entity).await,
         Some(GraphRuntimeSubcommand::Stats) => handle_stats(cfg).await,
-        Some(GraphRuntimeSubcommand::Worker) => handle_worker(cfg).await,
+        Some(GraphRuntimeSubcommand::Worker) => handle_worker(cfg, service_context).await,
         None => {
             Err(anyhow::anyhow!("Usage: axon graph <build|status|explore|stats|worker>").into())
         }
@@ -179,14 +183,19 @@ async fn handle_stats(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn handle_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_worker(
+    _cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     log_info("command=graph.worker");
-    graph_svc::graph_worker(cfg).await
+    graph_svc::graph_worker(service_context).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::{GraphRuntimeSubcommand, parse_graph_runtime_args};
+    use crate::crates::services::context::ServiceContext;
+    use std::sync::Arc;
 
     #[test]
     fn parse_graph_runtime_args_accepts_build_flags() {
@@ -246,7 +255,10 @@ mod tests {
         use crate::crates::core::config::Config;
         let mut cfg = Config::test_default();
         cfg.positional = vec!["build".to_string()];
-        let err = super::run_graph(&cfg)
+        let service_context = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context");
+        let err = super::run_graph(&cfg, &service_context)
             .await
             .expect_err("no target should error");
         assert!(
@@ -260,7 +272,10 @@ mod tests {
         use crate::crates::core::config::Config;
         let mut cfg = Config::test_default();
         cfg.positional = vec![];
-        let err = super::run_graph(&cfg)
+        let service_context = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context");
+        let err = super::run_graph(&cfg, &service_context)
             .await
             .expect_err("missing subcommand should error");
         assert!(

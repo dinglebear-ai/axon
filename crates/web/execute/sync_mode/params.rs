@@ -1,6 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
 use crate::crates::core::config::{Config, ConfigOverrides};
+use crate::crates::services::context::ServiceContext;
 
 use super::super::context::ExecCommandContext;
 use super::types::{DirectParams, PulseChatAgent, ServiceMode, flag_opt_usize, flag_usize};
@@ -69,6 +70,10 @@ pub(super) fn extract_params(
     let mode = ServiceMode::from_str(context.mode.as_str())?;
 
     let cfg = derive_cfg(context, flags);
+    let service_context = Arc::new(ServiceContext::from_runtime(
+        Arc::clone(&cfg),
+        Arc::clone(&context.service_context.jobs),
+    ));
     let limit = flag_usize(flags, "limit", cfg.search_limit);
     let offset = flag_usize(flags, "offset", 0);
     let max_points = flag_opt_usize(flags, "max_points");
@@ -126,6 +131,7 @@ pub(super) fn extract_params(
         mode,
         input: context.input.clone(),
         cfg,
+        service_context,
         limit,
         offset,
         max_points,
@@ -146,6 +152,88 @@ pub(super) fn extract_params(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::types::ServiceJob;
+    use async_trait::async_trait;
+    use uuid::Uuid;
+
+    struct NoopRuntime;
+
+    #[async_trait]
+    impl ServiceJobRuntime for NoopRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+            Err("not implemented".into())
+        }
+
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            Err("not implemented".into())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<ServiceJob>, Box<dyn std::error::Error>> {
+            Ok(Vec::new())
+        }
+
+        async fn job_status(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<ServiceJob>, Box<dyn std::error::Error>> {
+            Ok(None)
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn std::error::Error>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+            Ok(WorkerMode::Unsupported("test"))
+        }
+    }
+
+    fn test_service_context(base: Arc<Config>) -> Arc<ServiceContext> {
+        Arc::new(ServiceContext::from_runtime(base, Arc::new(NoopRuntime)))
+    }
 
     #[test]
     fn derive_cfg_applies_collection_override() {
@@ -156,6 +244,7 @@ mod tests {
             input: "test".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"collection": "my_custom_col"});
         let cfg = derive_cfg(&context, &flags);
@@ -172,6 +261,7 @@ mod tests {
             input: "test".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"collection": ""});
         let cfg = derive_cfg(&context, &flags);
@@ -187,6 +277,7 @@ mod tests {
             input: "rust async".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"limit": 25, "offset": 5});
         let params = extract_params(&context, &flags).expect("query is a recognised mode");
@@ -208,6 +299,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"session_id": "session-123"});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -226,6 +318,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"agent": "codex"});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -243,6 +336,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"agent": "codex", "model": "o3"});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -260,6 +354,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"agent": "gemini"});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -277,6 +372,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"agent": "gemini", "model": "gemini-3-pro-preview"});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -294,6 +390,7 @@ mod tests {
             input: "some input".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({});
         assert!(extract_params(&context, &flags).is_none());
@@ -308,6 +405,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"assistant_mode": true});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -323,6 +421,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(base),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({});
         let params = extract_params(&context, &flags).expect("pulse_chat is a recognised mode");
@@ -339,6 +438,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(Config::default()),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({});
         let params = extract_params(&context, &flags).expect("recognised mode");
@@ -360,6 +460,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(Config::default()),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({
             "enable_fs": false,
@@ -382,6 +483,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(Config::default()),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"session_id": "sess-abc"});
         let params = extract_params(&context, &flags).expect("recognised mode");
@@ -396,6 +498,7 @@ mod tests {
             input: "hello".to_string(),
             flags: serde_json::Value::Null,
             cfg: Arc::new(Config::default()),
+            service_context: test_service_context(Arc::new(Config::default())),
         };
         let flags = serde_json::json!({"session_id": ""});
         let params = extract_params(&context, &flags).expect("recognised mode");

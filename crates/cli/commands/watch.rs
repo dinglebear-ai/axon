@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::watch as watch_svc;
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
@@ -68,7 +69,10 @@ fn parse_uuid(raw: Option<&String>, action: &str) -> Result<Uuid, Box<dyn Error>
     Ok(Uuid::parse_str(id)?)
 }
 
-pub async fn run_watch(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_watch(
+    cfg: &Config,
+    _service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let parsed = parse_watch_runtime_args(&cfg.positional)?;
     let subcmd = parsed.action.unwrap_or(WatchRuntimeSubcommand::List);
     match subcmd {
@@ -174,6 +178,14 @@ mod tests {
     use super::*;
     use crate::crates::jobs::common::resolve_test_pg_url;
     use crate::crates::jobs::watch::list_watch_defs_with_pool;
+    use crate::crates::services::context::ServiceContext;
+    use std::sync::Arc;
+
+    async fn test_service_context(cfg: &Config) -> ServiceContext {
+        ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .expect("service context")
+    }
 
     #[test]
     fn parse_uuid_requires_id() {
@@ -231,7 +243,8 @@ mod tests {
     async fn run_watch_rejects_unknown_subcommand() {
         let mut cfg = Config::test_default();
         cfg.positional = vec!["bogus".to_string()];
-        let err = run_watch(&cfg)
+        let service_context = test_service_context(&cfg).await;
+        let err = run_watch(&cfg, &service_context)
             .await
             .expect_err("unknown subcommand should error");
         assert!(err.to_string().contains("bogus"));
@@ -240,7 +253,8 @@ mod tests {
     #[tokio::test]
     async fn run_watch_lists_in_lite_mode() -> Result<(), Box<dyn Error>> {
         let cfg = Config::default_lite();
-        run_watch(&cfg).await?;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
         Ok(())
     }
 
@@ -262,7 +276,8 @@ mod tests {
             "--task-payload".to_string(),
             "{\"urls\":[\"https://example.com\"]}".to_string(),
         ];
-        run_watch(&cfg).await?;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
         let pool = sqlx::PgPool::connect(&pg_url).await?;
         let defs = list_watch_defs_with_pool(&pool, 500).await?;
         assert!(defs.iter().any(|d| d.task_type == "refresh"));
@@ -277,7 +292,8 @@ mod tests {
         let mut cfg = Config::test_default();
         cfg.pg_url = pg_url;
         cfg.positional = vec!["list".to_string()];
-        run_watch(&cfg).await?;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
         Ok(())
     }
 
@@ -298,7 +314,8 @@ mod tests {
             "--task-payload".to_string(),
             "{\"urls\":[\"https://example.com\"]}".to_string(),
         ];
-        run_watch(&cfg).await?;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
 
         let pool = sqlx::PgPool::connect(&pg_url).await?;
         let defs = list_watch_defs_with_pool(&pool, 500).await?;
@@ -308,7 +325,8 @@ mod tests {
             .map(|d| d.id)
             .ok_or("missing watch definition")?;
         cfg.positional = vec!["run-now".to_string(), watch_id.to_string()];
-        run_watch(&cfg).await?;
+        let service_context = test_service_context(&cfg).await;
+        run_watch(&cfg, &service_context).await?;
         Ok(())
     }
 }

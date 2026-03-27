@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::debug as debug_svc;
 use crate::crates::services::error::{ServiceError, diagnostics_from_error};
 use crate::crates::services::ingest as ingest_svc;
@@ -253,10 +254,10 @@ pub(super) fn call_doctor(
 }
 
 pub(super) fn call_status(
-    cfg: Arc<Config>,
+    service_context: Arc<ServiceContext>,
 ) -> Pin<Box<dyn Future<Output = Result<StatusResult, SvcError>> + Send + 'static>> {
     Box::pin(async move {
-        system_svc::full_status(&cfg)
+        system_svc::full_status(service_context.as_ref())
             .await
             .map_err(|e| sanitize_svc_error("status", e.as_ref()))
     })

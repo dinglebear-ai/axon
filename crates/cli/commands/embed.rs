@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
-        if maybe_handle_embed_subcommand(cfg).await? {
+        if maybe_handle_embed_subcommand(cfg, service_context).await? {
             return Ok(());
         }
 
@@ -54,7 +54,10 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
     })
 }
 
-async fn maybe_handle_embed_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
+async fn maybe_handle_embed_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<bool, Box<dyn Error>> {
     let Some(subcmd) = cfg.positional.first().map(|s| s.as_str()) else {
         return Ok(false);
     };
@@ -65,14 +68,16 @@ async fn maybe_handle_embed_subcommand(cfg: &Config) -> Result<bool, Box<dyn Err
     }
 
     match subcmd {
-        "status" => handle_embed_status(cfg).await?,
-        "cancel" => handle_embed_cancel(cfg).await?,
-        "errors" => handle_embed_errors(cfg).await?,
-        "list" => handle_embed_list(cfg).await?,
-        "cleanup" => handle_embed_cleanup(cfg).await?,
-        "clear" => handle_embed_clear(cfg).await?,
-        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Embed).await?)?,
-        "recover" => handle_embed_recover(cfg).await?,
+        "status" => handle_embed_status(cfg, service_context).await?,
+        "cancel" => handle_embed_cancel(cfg, service_context).await?,
+        "errors" => handle_embed_errors(cfg, service_context).await?,
+        "list" => handle_embed_list(cfg, service_context).await?,
+        "cleanup" => handle_embed_cleanup(cfg, service_context).await?,
+        "clear" => handle_embed_clear(cfg, service_context).await?,
+        "worker" => {
+            handle_worker_mode(job_service::run_worker(service_context, JobKind::Embed).await?)?
+        }
+        "recover" => handle_embed_recover(cfg, service_context).await?,
         _ => return Ok(false),
     }
 
@@ -87,28 +92,40 @@ fn parse_embed_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Error>
     Ok(Uuid::parse_str(id)?)
 }
 
-async fn handle_embed_status(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_embed_status(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "status")?;
-    let job = job_service::job_status(cfg, JobKind::Embed, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Embed, id).await?;
     handle_job_status(cfg, job, id, "Embed")
 }
 
-async fn handle_embed_cancel(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_embed_cancel(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "cancel")?;
-    let canceled = job_service::cancel_job(cfg, JobKind::Embed, id).await?;
+    let canceled = job_service::cancel_job(service_context, JobKind::Embed, id).await?;
     handle_job_cancel(cfg, id, canceled, "embed")
 }
 
-async fn handle_embed_errors(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_embed_errors(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let id = parse_embed_job_id(cfg, "errors")?;
-    let job = job_service::job_status(cfg, JobKind::Embed, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Embed, id).await?;
     handle_job_errors(cfg, job, id, "embed")
 }
 
-async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_embed_list(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let jobs = filter_jobs_for_status_view(
         cfg,
-        job_service::list_jobs(cfg, JobKind::Embed, 50, 0).await?,
+        job_service::list_jobs(service_context, JobKind::Embed, 50, 0).await?,
     );
     if cfg.json_output {
         return handle_job_list(cfg, jobs, "Embed");
@@ -161,12 +178,18 @@ async fn handle_embed_list(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn handle_embed_cleanup(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let removed = job_service::cleanup_jobs(cfg, JobKind::Embed).await?;
+async fn handle_embed_cleanup(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let removed = job_service::cleanup_jobs(service_context, JobKind::Embed).await?;
     handle_job_cleanup(cfg, removed, "embed")
 }
 
-async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_embed_clear(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     if !confirm_destructive(cfg, "Clear all embed jobs and purge embed queue?")? {
         if cfg.json_output {
             println!("{}", serde_json::json!({ "removed": 0 }));
@@ -176,12 +199,15 @@ async fn handle_embed_clear(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let removed = job_service::clear_jobs(cfg, JobKind::Embed).await?;
+    let removed = job_service::clear_jobs(service_context, JobKind::Embed).await?;
     handle_job_clear(cfg, removed, "embed")
 }
 
-async fn handle_embed_recover(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let reclaimed = job_service::recover_jobs(cfg, JobKind::Embed).await?;
+async fn handle_embed_recover(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let reclaimed = job_service::recover_jobs(service_context, JobKind::Embed).await?;
     handle_job_recover(cfg, reclaimed, "embed")
 }
 

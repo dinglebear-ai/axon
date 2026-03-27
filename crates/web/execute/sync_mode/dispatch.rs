@@ -53,6 +53,16 @@ struct QueryPagination {
     max_points: Option<usize>,
 }
 
+struct SearchAndInfoContext {
+    cfg: std::sync::Arc<crate::crates::core::config::Config>,
+    service_context: std::sync::Arc<crate::crates::services::context::ServiceContext>,
+    input: String,
+    limit: usize,
+    offset: usize,
+    tx: mpsc::Sender<String>,
+    ws_ctx: CommandContext,
+}
+
 async fn dispatch_query_modes(
     mode: &ServiceMode,
     cfg: std::sync::Arc<crate::crates::core::config::Config>,
@@ -110,13 +120,17 @@ async fn dispatch_query_modes(
 
 async fn dispatch_search_and_info_modes(
     mode: &ServiceMode,
-    cfg: std::sync::Arc<crate::crates::core::config::Config>,
-    input: String,
-    limit: usize,
-    offset: usize,
-    tx: mpsc::Sender<String>,
-    ws_ctx: CommandContext,
+    ctx: SearchAndInfoContext,
 ) -> Option<Result<(), SvcError>> {
+    let SearchAndInfoContext {
+        cfg,
+        service_context,
+        input,
+        limit,
+        offset,
+        tx,
+        ws_ctx,
+    } = ctx;
     let search_opts = || SearchOptions {
         limit,
         offset,
@@ -166,7 +180,7 @@ async fn dispatch_search_and_info_modes(
             send_json_owned(tx, ws_ctx, result.payload).await;
         }
         ServiceMode::Status => {
-            let result = match call_status(cfg).await {
+            let result = match call_status(service_context).await {
                 Ok(r) => r,
                 Err(e) => return Some(Err(e)),
             };
@@ -258,6 +272,7 @@ pub(super) async fn dispatch_service(
         mode,
         input,
         cfg,
+        service_context,
         limit,
         offset,
         max_points,
@@ -293,12 +308,15 @@ pub(super) async fn dispatch_service(
 
     if let Some(result) = dispatch_search_and_info_modes(
         &mode,
-        cfg.clone(),
-        input.clone(),
-        limit,
-        offset,
-        tx.clone(),
-        ws_ctx.clone(),
+        SearchAndInfoContext {
+            cfg: cfg.clone(),
+            service_context: service_context.clone(),
+            input: input.clone(),
+            limit,
+            offset,
+            tx: tx.clone(),
+            ws_ctx: ws_ctx.clone(),
+        },
     )
     .await
     {

@@ -3,7 +3,7 @@ use crate::crates::cli::commands::job_contracts::{
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
-use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::runtime::WorkerMode;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;

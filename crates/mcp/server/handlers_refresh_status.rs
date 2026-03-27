@@ -15,7 +15,11 @@ impl AxonMcpServer {
         req: StatusRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let response_mode = req.response_mode;
-        let result = crate::crates::services::system::full_status(self.cfg.as_ref())
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("status.context", e.as_ref()))?;
+        let result = crate::crates::services::system::full_status(service_context.as_ref())
             .await
             .map_err(|e| logged_internal_error("status", e.as_ref()))?;
 

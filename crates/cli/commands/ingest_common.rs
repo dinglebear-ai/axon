@@ -8,6 +8,7 @@ use crate::crates::core::logging::log_done;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::ingest::{self as ingest_service, IngestSource};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::types::ServiceJob;
@@ -25,6 +26,7 @@ use uuid::Uuid;
 /// limitation shared with the crawl/batch/extract command routing.
 pub async fn maybe_handle_ingest_subcommand(
     cfg: &Config,
+    service_context: &ServiceContext,
     cmd_name: &str,
 ) -> Result<bool, Box<dyn Error>> {
     let Some(subcmd) = cfg.positional.first().map(|s| s.as_str()) else {
@@ -34,17 +36,17 @@ pub async fn maybe_handle_ingest_subcommand(
     match subcmd {
         "status" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "status")?;
-            let job = job_service::job_status(cfg, JobKind::Ingest, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
             handle_ingest_status(cfg, job, id).await?;
         }
         "cancel" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "cancel")?;
-            let canceled = job_service::cancel_job(cfg, JobKind::Ingest, id).await?;
+            let canceled = job_service::cancel_job(service_context, JobKind::Ingest, id).await?;
             handle_job_cancel(cfg, id, canceled, "ingest")?;
         }
         "errors" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "errors")?;
-            let job = job_service::job_status(cfg, JobKind::Ingest, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
             handle_job_errors(cfg, job, id, "ingest")?;
         }
         "list" => {
@@ -53,7 +55,7 @@ pub async fn maybe_handle_ingest_subcommand(
             } else {
                 None
             };
-            let jobs = job_service::list_jobs(cfg, JobKind::Ingest, 50, 0).await?;
+            let jobs = job_service::list_jobs(service_context, JobKind::Ingest, 50, 0).await?;
             let jobs = if let Some(filter) = source_filter {
                 jobs.into_iter()
                     .filter(|job| job.source_type.as_deref() == Some(filter))
@@ -64,12 +66,12 @@ pub async fn maybe_handle_ingest_subcommand(
             handle_ingest_list(cfg, jobs).await?;
         }
         "cleanup" => {
-            let removed = job_service::cleanup_jobs(cfg, JobKind::Ingest).await?;
+            let removed = job_service::cleanup_jobs(service_context, JobKind::Ingest).await?;
             handle_job_cleanup(cfg, removed, "ingest")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all ingest jobs and purge ingest queue?")? {
-                let removed = job_service::clear_jobs(cfg, JobKind::Ingest).await?;
+                let removed = job_service::clear_jobs(service_context, JobKind::Ingest).await?;
                 handle_job_clear(cfg, removed, "ingest")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -77,9 +79,11 @@ pub async fn maybe_handle_ingest_subcommand(
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Ingest).await?)?,
+        "worker" => {
+            handle_worker_mode(job_service::run_worker(service_context, JobKind::Ingest).await?)?
+        }
         "recover" => {
-            let reclaimed = job_service::recover_jobs(cfg, JobKind::Ingest).await?;
+            let reclaimed = job_service::recover_jobs(service_context, JobKind::Ingest).await?;
             handle_job_recover(cfg, reclaimed, "ingest")?;
         }
         _ => return Ok(false),
@@ -235,9 +239,13 @@ async fn handle_ingest_list(cfg: &Config, jobs: Vec<ServiceJob>) -> Result<(), B
     Ok(())
 }
 
-pub async fn enqueue_ingest_job(cfg: &Config, source: IngestSource) -> Result<(), Box<dyn Error>> {
-    let result = ingest_service::ingest_start(cfg, source).await?;
-    let job_id = result.job_id;
+pub async fn enqueue_ingest_job(
+    cfg: &Config,
+    source: IngestSource,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let result = ingest_service::ingest_start_with_context(cfg, source, service_context).await?;
+    let job_id = result.result.job_id;
     if cfg.json_output {
         println!(
             "{}",

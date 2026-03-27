@@ -87,8 +87,12 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("embed.list.context", e.as_ref()))?;
         let jobs = embed_list(
-            self.cfg.as_ref(),
+            service_context.as_ref(),
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
@@ -113,7 +117,11 @@ impl AxonMcpServer {
             EmbedSubaction::Start => self.handle_embed_start(req.input).await,
             EmbedSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let job = embed_status(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.status.context", e.as_ref()))?;
+                let job = embed_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("embed.status", e.as_ref()))?;
                 respond_with_mode(
@@ -127,7 +135,11 @@ impl AxonMcpServer {
             }
             EmbedSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled = embed_cancel(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cancel.context", e.as_ref()))?;
+                let canceled = embed_cancel(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("embed.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -141,7 +153,11 @@ impl AxonMcpServer {
                     .await
             }
             EmbedSubaction::Cleanup => {
-                let deleted = embed_cleanup(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cleanup.context", e.as_ref()))?;
+                let deleted = embed_cleanup(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -151,7 +167,11 @@ impl AxonMcpServer {
                 ))
             }
             EmbedSubaction::Clear => {
-                let deleted = embed_clear(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.clear.context", e.as_ref()))?;
+                let deleted = embed_clear(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -161,7 +181,11 @@ impl AxonMcpServer {
                 ))
             }
             EmbedSubaction::Recover => {
-                let recovered = embed_recover(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.recover.context", e.as_ref()))?;
+                let recovered = embed_recover(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("embed.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -202,8 +226,12 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("ingest.list.context", e.as_ref()))?;
         let jobs = ingest_list(
-            self.cfg.as_ref(),
+            service_context.as_ref(),
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
@@ -228,7 +256,11 @@ impl AxonMcpServer {
             IngestSubaction::Start => self.handle_ingest_start(req).await,
             IngestSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let job = ingest_status(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.status.context", e.as_ref()))?;
+                let job = ingest_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("ingest.status", e.as_ref()))?;
                 respond_with_mode(
@@ -242,7 +274,11 @@ impl AxonMcpServer {
             }
             IngestSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled = ingest_cancel(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cancel.context", e.as_ref()))?;
+                let canceled = ingest_cancel(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("ingest.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -256,7 +292,11 @@ impl AxonMcpServer {
                     .await
             }
             IngestSubaction::Cleanup => {
-                let deleted = ingest_cleanup(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cleanup.context", e.as_ref()))?;
+                let deleted = ingest_cleanup(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -266,7 +306,11 @@ impl AxonMcpServer {
                 ))
             }
             IngestSubaction::Clear => {
-                let deleted = ingest_clear(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.clear.context", e.as_ref()))?;
+                let deleted = ingest_clear(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -276,7 +320,11 @@ impl AxonMcpServer {
                 ))
             }
             IngestSubaction::Recover => {
-                let recovered = ingest_recover(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.recover.context", e.as_ref()))?;
+                let recovered = ingest_recover(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("ingest.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(

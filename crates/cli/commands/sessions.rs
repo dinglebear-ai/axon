@@ -1,11 +1,15 @@
 use crate::crates::cli::commands::ingest_common;
 use crate::crates::core::config::Config;
 use crate::crates::jobs::ingest::IngestSource;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::ingest as ingest_service;
 use std::error::Error;
 
-pub async fn run_sessions(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    if ingest_common::maybe_handle_ingest_subcommand(cfg, "sessions").await? {
+pub async fn run_sessions(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "sessions").await? {
         return Ok(());
     }
 
@@ -17,7 +21,7 @@ pub async fn run_sessions(cfg: &Config) -> Result<(), Box<dyn Error>> {
     };
 
     if !cfg.wait {
-        return ingest_common::enqueue_ingest_job(cfg, source).await;
+        return ingest_common::enqueue_ingest_job(cfg, source, service_context).await;
     }
 
     run_ingest_sync(cfg, source).await

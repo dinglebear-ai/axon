@@ -26,6 +26,7 @@ mod services_migration_tests;
 use super::config::load_mcp_config;
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::web::cors::cors_middleware;
 use axum::{
     Router,
@@ -61,6 +62,7 @@ use rmcp::{
     },
 };
 use std::sync::{Arc, LazyLock};
+use tokio::sync::OnceCell;
 
 const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
 const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
@@ -78,11 +80,39 @@ static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
 #[derive(Clone)]
 pub struct AxonMcpServer {
     cfg: Arc<Config>,
+    service_context: Arc<OnceCell<Arc<ServiceContext>>>,
 }
 
 impl AxonMcpServer {
     pub fn new(cfg: Config) -> Self {
-        Self { cfg: Arc::new(cfg) }
+        Self {
+            cfg: Arc::new(cfg),
+            service_context: Arc::new(OnceCell::new()),
+        }
+    }
+
+    pub(super) async fn base_service_context(
+        &self,
+    ) -> Result<Arc<ServiceContext>, Box<dyn std::error::Error + Send + Sync>> {
+        self.service_context
+            .get_or_try_init(|| async {
+                ServiceContext::new(Arc::clone(&self.cfg))
+                    .await
+                    .map(Arc::new)
+            })
+            .await
+            .map(Arc::clone)
+    }
+
+    pub(super) async fn service_context_for(
+        &self,
+        cfg: Config,
+    ) -> Result<ServiceContext, Box<dyn std::error::Error + Send + Sync>> {
+        let base = self.base_service_context().await?;
+        Ok(ServiceContext::from_runtime(
+            Arc::new(cfg),
+            Arc::clone(&base.jobs),
+        ))
     }
 }
 

@@ -61,9 +61,17 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = crawl_svc::crawl_list(cfg, limit, i64::try_from(offset).unwrap_or(i64::MAX))
+        let service_context = self
+            .service_context_for(cfg.clone())
             .await
-            .map_err(|e| logged_internal_error("crawl.list", e.as_ref()))?;
+            .map_err(|e| logged_internal_error("crawl.list.context", e.as_ref()))?;
+        let jobs = crawl_svc::crawl_list(
+            &service_context,
+            limit,
+            i64::try_from(offset).unwrap_or(i64::MAX),
+        )
+        .await
+        .map_err(|e| logged_internal_error("crawl.list", e.as_ref()))?;
         respond_with_mode(
             "crawl",
             "list",
@@ -108,8 +116,12 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("extract.list.context", e.as_ref()))?;
         let jobs = extract_svc::extract_list(
-            self.cfg.as_ref(),
+            service_context.as_ref(),
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
@@ -135,7 +147,11 @@ impl AxonMcpServer {
             CrawlSubaction::Start => self.handle_crawl_start(&cfg, req.urls).await,
             CrawlSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let result = crawl_svc::crawl_status(&cfg, id)
+                let service_context = self
+                    .service_context_for(cfg.clone())
+                    .await
+                    .map_err(|e| logged_internal_error("crawl.status.context", e.as_ref()))?;
+                let result = crawl_svc::crawl_status(&service_context, id)
                     .await
                     .map_err(|e| logged_internal_error("crawl.status", e.as_ref()))?;
                 let output_files = result.output_files;
@@ -150,7 +166,11 @@ impl AxonMcpServer {
             }
             CrawlSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled = crawl_svc::crawl_cancel(&cfg, id)
+                let service_context = self
+                    .service_context_for(cfg.clone())
+                    .await
+                    .map_err(|e| logged_internal_error("crawl.cancel.context", e.as_ref()))?;
+                let canceled = crawl_svc::crawl_cancel(&service_context, id)
                     .await
                     .map_err(|e| logged_internal_error("crawl.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -164,7 +184,11 @@ impl AxonMcpServer {
                     .await
             }
             CrawlSubaction::Cleanup => {
-                let deleted = crawl_svc::crawl_cleanup(&cfg)
+                let service_context = self
+                    .service_context_for(cfg.clone())
+                    .await
+                    .map_err(|e| logged_internal_error("crawl.cleanup.context", e.as_ref()))?;
+                let deleted = crawl_svc::crawl_cleanup(&service_context)
                     .await
                     .map_err(|e| logged_internal_error("crawl.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -174,7 +198,11 @@ impl AxonMcpServer {
                 ))
             }
             CrawlSubaction::Clear => {
-                let deleted = crawl_svc::crawl_clear(&cfg)
+                let service_context = self
+                    .service_context_for(cfg.clone())
+                    .await
+                    .map_err(|e| logged_internal_error("crawl.clear.context", e.as_ref()))?;
+                let deleted = crawl_svc::crawl_clear(&service_context)
                     .await
                     .map_err(|e| logged_internal_error("crawl.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -184,7 +212,11 @@ impl AxonMcpServer {
                 ))
             }
             CrawlSubaction::Recover => {
-                let recovered = crawl_svc::crawl_recover(&cfg)
+                let service_context = self
+                    .service_context_for(cfg.clone())
+                    .await
+                    .map_err(|e| logged_internal_error("crawl.recover.context", e.as_ref()))?;
+                let recovered = crawl_svc::crawl_recover(&service_context)
                     .await
                     .map_err(|e| logged_internal_error("crawl.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -208,7 +240,11 @@ impl AxonMcpServer {
             }
             ExtractSubaction::Status => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let job = extract_svc::extract_status(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("extract.status.context", e.as_ref()))?;
+                let job = extract_svc::extract_status(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("extract.status", e.as_ref()))?;
                 respond_with_mode(
@@ -222,7 +258,11 @@ impl AxonMcpServer {
             }
             ExtractSubaction::Cancel => {
                 let id = parse_job_id(req.job_id.as_deref())?;
-                let canceled = extract_svc::extract_cancel(self.cfg.as_ref(), id)
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("extract.cancel.context", e.as_ref()))?;
+                let canceled = extract_svc::extract_cancel(service_context.as_ref(), id)
                     .await
                     .map_err(|e| logged_internal_error("extract.cancel", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -236,7 +276,11 @@ impl AxonMcpServer {
                     .await
             }
             ExtractSubaction::Cleanup => {
-                let deleted = extract_svc::extract_cleanup(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("extract.cleanup.context", e.as_ref()))?;
+                let deleted = extract_svc::extract_cleanup(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("extract.cleanup", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -246,7 +290,11 @@ impl AxonMcpServer {
                 ))
             }
             ExtractSubaction::Clear => {
-                let deleted = extract_svc::extract_clear(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("extract.clear.context", e.as_ref()))?;
+                let deleted = extract_svc::extract_clear(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("extract.clear", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(
@@ -256,7 +304,11 @@ impl AxonMcpServer {
                 ))
             }
             ExtractSubaction::Recover => {
-                let recovered = extract_svc::extract_recover(self.cfg.as_ref())
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("extract.recover.context", e.as_ref()))?;
+                let recovered = extract_svc::extract_recover(service_context.as_ref())
                     .await
                     .map_err(|e| logged_internal_error("extract.recover", e.as_ref()))?;
                 Ok(AxonToolResponse::ok(

@@ -90,7 +90,7 @@ pub fn is_valid_cancel_job_id_pub(job_id: &str) -> bool {
     cancel::is_valid_cancel_job_id(job_id)
 }
 
-use crate::crates::core::config::Config;
+use crate::crates::services::context::ServiceContext;
 use constants::{ACP_MODES, ALLOWED_FLAGS, ALLOWED_MODES, ASYNC_MODES};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -152,9 +152,9 @@ pub(super) async fn handle_cancel(
     mode: &str,
     job_id: &str,
     tx: mpsc::Sender<String>,
-    cfg: Arc<Config>,
+    service_context: Arc<ServiceContext>,
 ) {
-    cancel::handle_cancel(mode, job_id, tx, cfg).await
+    cancel::handle_cancel(mode, job_id, tx, service_context).await
 }
 
 pub(crate) async fn handle_command(

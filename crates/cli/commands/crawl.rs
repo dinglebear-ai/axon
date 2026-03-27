@@ -25,7 +25,7 @@ use std::path::Path;
 
 pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
-        if subcommands::maybe_handle_subcommand(cfg).await? {
+        if subcommands::maybe_handle_subcommand(cfg, service_context).await? {
             return Ok(());
         }
         let urls = parse_urls(cfg);

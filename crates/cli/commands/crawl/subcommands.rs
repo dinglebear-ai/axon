@@ -9,39 +9,43 @@ use crate::crates::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
 };
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::types::ServiceJob;
 use std::error::Error;
 use uuid::Uuid;
 
-pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
+pub(super) async fn maybe_handle_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<bool, Box<dyn Error>> {
     let Some(subcmd) = cfg.positional.first().map(|s| s.as_str()) else {
         return Ok(false);
     };
     match subcmd {
         "status" => {
             let id = parse_required_job_id(cfg, "status")?;
-            let job = job_service::job_status(cfg, JobKind::Crawl, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Crawl, id).await?;
             handle_status_subcommand(cfg, job, id).await?;
         }
         "cancel" => {
             let id = parse_required_job_id(cfg, "cancel")?;
-            let canceled = job_service::cancel_job(cfg, JobKind::Crawl, id).await?;
+            let canceled = job_service::cancel_job(service_context, JobKind::Crawl, id).await?;
             handle_job_cancel(cfg, id, canceled, "crawl")?;
         }
         "errors" => {
             let id = parse_required_job_id(cfg, "errors")?;
-            let job = job_service::job_status(cfg, JobKind::Crawl, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Crawl, id).await?;
             handle_job_errors(cfg, job, id, "crawl")?;
         }
-        "list" => handle_list_subcommand(cfg).await?,
+        "list" => handle_list_subcommand(cfg, service_context).await?,
         "cleanup" => {
-            let removed = job_service::cleanup_jobs(cfg, JobKind::Crawl).await?;
+            let removed = job_service::cleanup_jobs(service_context, JobKind::Crawl).await?;
             handle_job_cleanup(cfg, removed, "crawl")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all crawl jobs and purge crawl queue?")? {
-                let removed = job_service::clear_jobs(cfg, JobKind::Crawl).await?;
+                let removed = job_service::clear_jobs(service_context, JobKind::Crawl).await?;
                 handle_job_clear(cfg, removed, "crawl")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -49,9 +53,11 @@ pub(super) async fn maybe_handle_subcommand(cfg: &Config) -> Result<bool, Box<dy
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Crawl).await?)?,
+        "worker" => {
+            handle_worker_mode(job_service::run_worker(service_context, JobKind::Crawl).await?)?
+        }
         "recover" => {
-            let reclaimed = job_service::recover_jobs(cfg, JobKind::Crawl).await?;
+            let reclaimed = job_service::recover_jobs(service_context, JobKind::Crawl).await?;
             handle_job_recover(cfg, reclaimed, "crawl")?;
         }
         "audit" => {
@@ -221,10 +227,13 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
     }
 }
 
-async fn handle_list_subcommand(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn handle_list_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let jobs = filter_jobs_for_status_view(
         cfg,
-        job_service::list_jobs(cfg, JobKind::Crawl, 50, 0).await?,
+        job_service::list_jobs(service_context, JobKind::Crawl, 50, 0).await?,
     );
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> =

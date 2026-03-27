@@ -6,8 +6,8 @@
 
 use super::events::{self, JobCancelResponsePayload, WsEventV2, serialize_v2_event};
 use super::ws_send::{send_done_dual, send_error_dual};
-use crate::crates::core::config::Config;
 use crate::crates::services;
+use crate::crates::services::context::ServiceContext;
 use std::string::ToString;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -69,15 +69,19 @@ async fn validate_and_parse_job_id(
 }
 
 /// Dispatch a cancel request to the appropriate job table.
-async fn dispatch_cancel(cancel_mode: &str, uuid: Uuid, cfg: &Config) -> Result<bool, String> {
+async fn dispatch_cancel(
+    cancel_mode: &str,
+    uuid: Uuid,
+    service_context: &ServiceContext,
+) -> Result<bool, String> {
     match cancel_mode {
-        "crawl" => services::crawl::crawl_cancel(cfg, uuid)
+        "crawl" => services::crawl::crawl_cancel(service_context, uuid)
             .await
             .map_err(|e| e.to_string()),
-        "extract" => services::extract::extract_cancel(cfg, uuid)
+        "extract" => services::extract::extract_cancel(service_context, uuid)
             .await
             .map_err(|e| e.to_string()),
-        "embed" => services::embed::embed_cancel(cfg, uuid)
+        "embed" => services::embed::embed_cancel(service_context, uuid)
             .await
             .map_err(|e| e.to_string()),
         other => Err(format!("cancel not supported for mode '{other}'")),
@@ -151,7 +155,7 @@ pub(super) async fn handle_cancel(
     mode: &str,
     job_id: &str,
     tx: mpsc::Sender<String>,
-    cfg: Arc<Config>,
+    service_context: Arc<ServiceContext>,
 ) {
     let cancel_mode = if mode.is_empty() { "crawl" } else { mode };
 
@@ -183,7 +187,7 @@ pub(super) async fn handle_cancel(
         None => return,
     };
 
-    let cancel_result = dispatch_cancel(cancel_mode, uuid, &cfg).await;
+    let cancel_result = dispatch_cancel(cancel_mode, uuid, service_context.as_ref()).await;
     handle_cancel_result(cancel_result, cancel_mode, job_id, &tx, &ws_ctx).await;
 }
 
@@ -191,8 +195,16 @@ pub(super) async fn handle_cancel(
 mod tests {
     use super::*;
     use crate::crates::core::config::Config;
-    use std::sync::Arc;
+    use crate::crates::services::context::ServiceContext;
     use tokio::sync::mpsc;
+
+    async fn test_service_context(cfg: &Config) -> Arc<ServiceContext> {
+        Arc::new(
+            ServiceContext::new(Arc::new(cfg.clone()))
+                .await
+                .expect("service context"),
+        )
+    }
 
     // ---- cancel_ok_from_output (pure, no I/O) --------------------------------
 
@@ -251,9 +263,9 @@ mod tests {
     #[tokio::test]
     async fn cancel_invalid_uuid_emits_error_event() {
         let (tx, mut rx) = mpsc::channel::<String>(16);
-        let cfg = Arc::new(Config::default());
+        let service_context = test_service_context(&Config::default()).await;
 
-        handle_cancel("crawl", "not-a-uuid", tx, cfg).await;
+        handle_cancel("crawl", "not-a-uuid", tx, service_context).await;
 
         let mut messages = Vec::new();
         while let Ok(msg) = rx.try_recv() {
@@ -278,10 +290,10 @@ mod tests {
     #[tokio::test]
     async fn cancel_empty_mode_falls_back_to_crawl_validates_uuid() {
         let (tx, mut rx) = mpsc::channel::<String>(16);
-        let cfg = Arc::new(Config::default());
+        let service_context = test_service_context(&Config::default()).await;
 
         // Empty mode → treated as "crawl"; still rejects invalid UUID before DB
-        handle_cancel("", "not-a-uuid", tx, cfg).await;
+        handle_cancel("", "not-a-uuid", tx, service_context).await;
 
         let mut messages = Vec::new();
         while let Ok(msg) = rx.try_recv() {
@@ -302,14 +314,14 @@ mod tests {
     #[tokio::test]
     async fn cancel_unknown_mode_emits_error() {
         let (tx, mut rx) = mpsc::channel::<String>(16);
-        let cfg = Arc::new(Config::default());
+        let service_context = test_service_context(&Config::default()).await;
 
         // "nonexistent_mode" is not in ALLOWED_MODES
         handle_cancel(
             "nonexistent_mode",
             "550e8400-e29b-41d4-a716-446655440000",
             tx,
-            cfg,
+            service_context,
         )
         .await;
 

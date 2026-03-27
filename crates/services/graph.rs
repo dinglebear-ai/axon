@@ -1,7 +1,10 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::neo4j::Neo4jClient;
 use crate::crates::jobs::common::make_pool;
-use crate::crates::jobs::graph::{enqueue_graph_job, ensure_graph_schema, run_graph_worker};
+use crate::crates::jobs::graph::{enqueue_graph_job, ensure_graph_schema};
+use crate::crates::services::context::ServiceContext;
+use crate::crates::services::jobs as job_service;
+use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
     GraphBuildResult, GraphExploreResult, GraphStatsResult, GraphStatusResult,
 };
@@ -182,9 +185,15 @@ pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error
     })
 }
 
-pub async fn graph_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    require_graph_support(cfg)?;
-    run_graph_worker(cfg)
-        .await
-        .map_err(|err| -> Box<dyn Error> { err.into() })
+pub async fn graph_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    require_graph_support(service_context.cfg.as_ref())?;
+    match job_service::run_worker(
+        service_context,
+        crate::crates::jobs::backend::JobKind::Graph,
+    )
+    .await?
+    {
+        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Unsupported(message) => Err(message.into()),
+    }
 }

@@ -6,7 +6,8 @@ use crate::crates::jobs::status::JobStatus;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
-use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::runtime::ServiceJobRuntime;
+use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
     CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode, JobStartOutcome,
     StartDisposition,
@@ -155,12 +156,10 @@ pub async fn crawl_start_with_context(
         });
     }
 
-    let backend = service_context
-        .require_job_backend()
-        .map_err(|e| -> Box<dyn Error> { e })?;
     let mut jobs = Vec::with_capacity(urls.len());
     for url in urls {
-        let job_id = backend
+        let job_id = service_context
+            .jobs
             .enqueue(crate::crates::jobs::backend::JobPayload::Crawl {
                 url: url.clone(),
                 config_json: "{}".to_string(),
@@ -173,17 +172,22 @@ pub async fn crawl_start_with_context(
     let result = map_crawl_start_result(&cfg.output_dir, &jobs);
     for job in &result.jobs {
         let job_id = Uuid::parse_str(&job.job_id)?;
-        let final_status = backend
+        let final_status = service_context
+            .jobs
             .wait_for_job(job_id, JobKind::Crawl)
             .await
             .map_err(|e| -> Box<dyn Error> { e })?;
         if final_status == "failed" {
-            if let Ok(Some(err)) = backend.job_errors(job_id, JobKind::Crawl).await {
+            if let Ok(Some(err)) = service_context
+                .jobs
+                .job_errors(job_id, JobKind::Crawl)
+                .await
+            {
                 return Err(format!("crawl job {job_id} failed: {err}").into());
             }
             return Err(format!("crawl job {job_id} failed").into());
         }
-        wait_for_pending_embed_jobs(backend).await;
+        wait_for_pending_embed_jobs(service_context.jobs.as_ref()).await;
     }
 
     Ok(JobStartOutcome {
@@ -194,35 +198,41 @@ pub async fn crawl_start_with_context(
 }
 
 /// Look up the current state of a crawl job by its UUID.
-pub async fn crawl_status(cfg: &Config, job_id: Uuid) -> Result<CrawlJobResult, Box<dyn Error>> {
-    let job = job_service::job_status(cfg, JobKind::Crawl, job_id).await?;
+pub async fn crawl_status(
+    service_context: &ServiceContext,
+    job_id: Uuid,
+) -> Result<CrawlJobResult, Box<dyn Error>> {
+    let job = job_service::job_status(service_context, JobKind::Crawl, job_id).await?;
     let payload = serde_json::to_value(job)?;
     Ok(map_crawl_job_result(payload))
 }
 
 pub async fn crawl_list(
-    cfg: &Config,
+    service_context: &ServiceContext,
     limit: i64,
     offset: i64,
 ) -> Result<CrawlJobResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(cfg, JobKind::Crawl, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Crawl, limit, offset).await?;
     Ok(map_crawl_job_result(serde_json::to_value(jobs)?))
 }
 
-pub async fn crawl_cancel(cfg: &Config, job_id: Uuid) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(cfg, JobKind::Crawl, job_id).await
+pub async fn crawl_cancel(
+    service_context: &ServiceContext,
+    job_id: Uuid,
+) -> Result<bool, Box<dyn Error>> {
+    job_service::cancel_job(service_context, JobKind::Crawl, job_id).await
 }
 
-pub async fn crawl_cleanup(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(cfg, JobKind::Crawl).await
+pub async fn crawl_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::cleanup_jobs(service_context, JobKind::Crawl).await
 }
 
-pub async fn crawl_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(cfg, JobKind::Crawl).await
+pub async fn crawl_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::clear_jobs(service_context, JobKind::Crawl).await
 }
 
-pub async fn crawl_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(cfg, JobKind::Crawl).await
+pub async fn crawl_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::recover_jobs(service_context, JobKind::Crawl).await
 }
 
 pub async fn crawl_status_raw(
@@ -240,21 +250,20 @@ pub async fn crawl_list_raw(
     crawl::list_jobs(cfg, limit, offset).await
 }
 
-pub async fn crawl_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    match job_service::run_worker(cfg, JobKind::Crawl).await? {
+pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    match job_service::run_worker(service_context, JobKind::Crawl).await? {
         WorkerMode::Started | WorkerMode::InProcess => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }
 
-async fn wait_for_pending_embed_jobs(
-    backend: &std::sync::Arc<dyn crate::crates::jobs::backend::JobBackend>,
-) {
+async fn wait_for_pending_embed_jobs(runtime: &dyn ServiceJobRuntime) {
     loop {
-        match backend.list_jobs(JobKind::Embed).await {
+        match runtime.list_jobs(JobKind::Embed, 50, 0).await {
             Ok(jobs) => {
                 let active = jobs.iter().any(|job| {
-                    job.status == JobStatus::Pending || job.status == JobStatus::Running
+                    job.status == JobStatus::Pending.as_str()
+                        || job.status == JobStatus::Running.as_str()
                 });
                 if !active {
                     break;
@@ -269,79 +278,88 @@ async fn wait_for_pending_embed_jobs(
 #[cfg(test)]
 mod tests {
     use super::{crawl_start_with_context, map_crawl_start_result, predict_crawl_output_dir};
-    use crate::crates::jobs::backend::{
-        BackendResult, JobBackend, JobId, JobPayload, JobStatusRow, JobSummary,
-    };
+    use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
     use crate::crates::jobs::common::test_config;
-    use crate::crates::jobs::status::JobStatus;
     use crate::crates::services::context::ServiceContext;
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
     use async_trait::async_trait;
-    use chrono::Utc;
     use std::path::Path;
     use std::sync::Arc;
     use uuid::Uuid;
 
-    struct CompletedLiteBackend;
+    struct CompletedLiteRuntime;
 
     #[async_trait]
-    impl JobBackend for CompletedLiteBackend {
-        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<JobId> {
+    impl ServiceJobRuntime for CompletedLiteRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
             Ok(Uuid::new_v4())
         }
 
-        async fn job_status(
-            &self,
-            id: JobId,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<Option<JobStatusRow>> {
-            Ok(Some(JobStatusRow {
-                id,
-                status: JobStatus::Completed,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-                started_at: None,
-                finished_at: Some(Utc::now()),
-                error_text: None,
-                result_json: None,
-            }))
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            Ok("completed".to_string())
         }
 
-        async fn cancel_job(
-            &self,
-            _id: JobId,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<bool> {
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
             Ok(false)
         }
 
         async fn list_jobs(
             &self,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<Vec<JobSummary>> {
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
+        {
             Ok(vec![])
         }
 
-        async fn cleanup_jobs(
+        async fn job_status(
             &self,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<u64> {
-            Ok(0)
-        }
-
-        async fn clear_jobs(
-            &self,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<u64> {
-            Ok(0)
-        }
-
-        async fn job_errors(
-            &self,
-            _id: JobId,
-            _kind: crate::crates::jobs::backend::JobKind,
-        ) -> BackendResult<Option<String>> {
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
+        {
             Ok(None)
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn std::error::Error>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn std::error::Error>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+            Ok(WorkerMode::InProcess)
         }
     }
 
@@ -409,7 +427,7 @@ mod tests {
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())?
-            .with_job_backend(Arc::new(CompletedLiteBackend));
+            .with_jobs_runtime(Arc::new(CompletedLiteRuntime));
 
         let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None).await?;
 

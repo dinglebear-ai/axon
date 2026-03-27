@@ -9,6 +9,7 @@ mod ws_handler;
 
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
+use crate::crates::services::context::ServiceContext;
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{ConnectInfo, Query, State};
@@ -96,6 +97,8 @@ pub(crate) struct AppState {
     api_token: Option<String>,
     /// Base server config — shared across all connections.
     pub(crate) cfg: Arc<Config>,
+    /// Shared service runtime reused across WS requests.
+    pub(crate) service_context: Arc<ServiceContext>,
     /// Maps ACP session_id → conn_id that originally resumed it (H-8).
     /// Prevents cross-connection session hijacking: only the originating
     /// connection may drain replay buffers or route permission responses.
@@ -125,6 +128,11 @@ struct WsQuery {
 pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Error>> {
     let (stats_tx, _) = broadcast::channel::<String>(64);
     let job_dirs: Arc<DashMap<String, PathBuf>> = Arc::new(DashMap::new());
+    let service_context = Arc::new(
+        ServiceContext::new(Arc::clone(&cfg))
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?,
+    );
 
     let api_token = std::env::var("AXON_WEB_API_TOKEN")
         .ok()
@@ -140,6 +148,7 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
         job_dirs: job_dirs.clone(),
         api_token: api_token.clone(),
         cfg: cfg.clone(),
+        service_context,
         session_ownership: Arc::new(DashMap::new()),
         rate_limiter: Arc::new(DashMap::new()),
     });

@@ -1,6 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::types::{
@@ -239,8 +240,8 @@ pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
     Ok(map_doctor_payload(payload))
 }
 
-pub async fn full_status(cfg: &Config) -> Result<StatusResult, Box<dyn Error>> {
-    let jobs = load_status_jobs(cfg).await?;
+pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResult, Box<dyn Error>> {
+    let jobs = load_status_jobs(service_context).await?;
     let payload = build_status_payload(
         &jobs.crawl,
         &jobs.extract,
@@ -290,35 +291,38 @@ fn filter_and_view<T>(
         .collect()
 }
 
-pub(crate) async fn load_status_jobs(cfg: &Config) -> Result<StatusJobs, Box<dyn Error>> {
+pub(crate) async fn load_status_jobs(
+    service_context: &ServiceContext,
+) -> Result<StatusJobs, Box<dyn Error>> {
+    let cfg = service_context.cfg.as_ref();
     let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
         async {
-            job_service::list_jobs(cfg, JobKind::Crawl, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Crawl, 20, 0)
                 .await
                 .map_err(|e| format!("crawl: {e}"))
         },
         async {
-            job_service::list_jobs(cfg, JobKind::Extract, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Extract, 20, 0)
                 .await
                 .map_err(|e| format!("extract: {e}"))
         },
         async {
-            job_service::list_jobs(cfg, JobKind::Embed, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Embed, 20, 0)
                 .await
                 .map_err(|e| format!("embed: {e}"))
         },
         async {
-            job_service::list_jobs(cfg, JobKind::Ingest, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Ingest, 20, 0)
                 .await
                 .map_err(|e| format!("ingest: {e}"))
         },
         async {
-            job_service::list_jobs(cfg, JobKind::Refresh, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Refresh, 20, 0)
                 .await
                 .map_err(|e| format!("refresh: {e}"))
         },
         async {
-            job_service::list_jobs(cfg, JobKind::Graph, 20, 0)
+            job_service::list_jobs(service_context, JobKind::Graph, 20, 0)
                 .await
                 .map_err(|e| format!("graph: {e}"))
         },

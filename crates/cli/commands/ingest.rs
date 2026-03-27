@@ -10,7 +10,7 @@ use std::error::Error;
 
 pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
-        if ingest_common::maybe_handle_ingest_subcommand(cfg, "ingest").await? {
+        if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "ingest").await? {
             return Ok(());
         }
 
@@ -69,49 +69,85 @@ async fn enqueue_ingest_job(
 mod tests {
     use super::*;
     use crate::crates::core::config::CommandKind;
-    use crate::crates::jobs::backend::{
-        BackendResult, JobBackend, JobId, JobKind, JobPayload, JobStatusRow, JobSummary,
-    };
+    use crate::crates::jobs::backend::JobKind;
     use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use async_trait::async_trait;
     use std::error::Error;
     use std::sync::Arc;
 
-    /// Minimal no-op backend for unit tests that do not exercise the job path.
-    struct NoopBackend;
+    struct NoopRuntime;
 
     #[async_trait]
-    impl JobBackend for NoopBackend {
-        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<JobId> {
-            unimplemented!("NoopBackend::enqueue not used in these tests")
+    impl ServiceJobRuntime for NoopRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+        async fn enqueue(
+            &self,
+            _payload: crate::crates::jobs::backend::JobPayload,
+        ) -> crate::crates::jobs::backend::BackendResult<uuid::Uuid> {
+            unimplemented!()
+        }
+        async fn wait_for_job(
+            &self,
+            _id: uuid::Uuid,
+            _kind: JobKind,
+        ) -> crate::crates::jobs::backend::BackendResult<String> {
+            unimplemented!()
+        }
+        async fn job_errors(
+            &self,
+            _id: uuid::Uuid,
+            _kind: JobKind,
+        ) -> crate::crates::jobs::backend::BackendResult<Option<String>> {
+            unimplemented!()
+        }
+        async fn has_active_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> crate::crates::jobs::backend::BackendResult<bool> {
+            unimplemented!()
+        }
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
+            unimplemented!()
         }
         async fn job_status(
             &self,
-            _id: JobId,
             _kind: JobKind,
-        ) -> BackendResult<Option<JobStatusRow>> {
+            _id: uuid::Uuid,
+        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
             unimplemented!()
         }
-        async fn cancel_job(&self, _id: JobId, _kind: JobKind) -> BackendResult<bool> {
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: uuid::Uuid,
+        ) -> Result<bool, Box<dyn Error>> {
             unimplemented!()
         }
-        async fn list_jobs(&self, _kind: JobKind) -> BackendResult<Vec<JobSummary>> {
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
             unimplemented!()
         }
-        async fn cleanup_jobs(&self, _kind: JobKind) -> BackendResult<u64> {
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
             unimplemented!()
         }
-        async fn clear_jobs(&self, _kind: JobKind) -> BackendResult<u64> {
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn Error>> {
             unimplemented!()
         }
-        async fn job_errors(&self, _id: JobId, _kind: JobKind) -> BackendResult<Option<String>> {
+        async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error>> {
             unimplemented!()
         }
-    }
-
-    fn noop_backend() -> Arc<dyn JobBackend> {
-        Arc::new(NoopBackend)
     }
 
     #[tokio::test]
@@ -121,7 +157,7 @@ mod tests {
         cfg.positional = vec![];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await?
-            .with_job_backend(noop_backend());
+            .with_jobs_runtime(Arc::new(NoopRuntime));
         let err = run_ingest(&cfg, &ctx)
             .await
             .expect_err("expected missing target error");
@@ -140,7 +176,7 @@ mod tests {
         cfg.positional = vec!["not-a-target".to_string()];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await?
-            .with_job_backend(noop_backend());
+            .with_jobs_runtime(Arc::new(NoopRuntime));
         let err = run_ingest(&cfg, &ctx)
             .await
             .expect_err("expected classification error");

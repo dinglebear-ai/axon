@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use crate::crates::core::config::Config;
 use crate::crates::services::acp::PermissionResponderMap;
+use crate::crates::services::context::ServiceContext;
 #[cfg(test)]
 use acp_session::acp_resume_json;
 #[cfg(test)]
@@ -78,6 +79,7 @@ struct WsConnState {
     crawl_base_dir: Arc<Mutex<Option<PathBuf>>>,
     permission_responders: PermissionResponderMap,
     conn_cfg: Arc<Config>,
+    service_context: Arc<ServiceContext>,
     conn_id: String,
     session_ownership: Arc<DashMap<String, String>>,
     client_ip: IpAddr,
@@ -130,6 +132,7 @@ pub(super) async fn handle_ws(
         crawl_base_dir,
         permission_responders,
         conn_cfg: state.cfg.clone(),
+        service_context: state.service_context.clone(),
         conn_id,
         session_ownership: state.session_ownership.clone(),
         client_ip,
@@ -273,19 +276,25 @@ fn handle_cancel_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: &mut Jo
     let tx = conn.exec_tx.clone();
     let job_ids_arc = conn.crawl_job_ids.clone();
     let cancel_mode = client_msg.mode;
-    let cancel_cfg = conn.conn_cfg.clone();
+    let cancel_service_context = conn.service_context.clone();
     let cancel_id = client_msg.id;
 
     tasks.spawn(async move {
         if !cancel_id.is_empty() {
             // Explicit job ID — cancel only that one.
-            execute::handle_cancel(&cancel_mode, &cancel_id, tx, cancel_cfg).await;
+            execute::handle_cancel(&cancel_mode, &cancel_id, tx, cancel_service_context).await;
             job_ids_arc.lock().await.retain(|id| id != &cancel_id);
         } else {
             // Implicit cancel — cancel ALL tracked job IDs.
             let ids: Vec<String> = job_ids_arc.lock().await.clone();
             for id in &ids {
-                execute::handle_cancel(&cancel_mode, id, tx.clone(), cancel_cfg.clone()).await;
+                execute::handle_cancel(
+                    &cancel_mode,
+                    id,
+                    tx.clone(),
+                    cancel_service_context.clone(),
+                )
+                .await;
             }
             job_ids_arc.lock().await.clear();
         }
@@ -329,6 +338,7 @@ async fn handle_execute_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: 
         input: client_msg.input,
         flags: client_msg.flags,
         cfg: conn.conn_cfg.clone(),
+        service_context: conn.service_context.clone(),
     };
 
     let tx = conn.exec_tx.clone();

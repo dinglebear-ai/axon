@@ -11,9 +11,6 @@ use self::crates::cli::commands::{
 };
 use self::crates::core::config::{CommandKind, Config, parse_args};
 use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
-use self::crates::jobs::backend::JobBackend;
-use self::crates::jobs::full::FullBackend;
-use self::crates::jobs::lite::LiteBackend;
 use self::crates::services::context::ServiceContext;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -87,8 +84,8 @@ async fn run_once(
         CommandKind::Scrape => run_scrape(cfg).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
         CommandKind::Crawl => run_crawl(cfg, service_context).await?,
-        CommandKind::Refresh => run_refresh(cfg).await?,
-        CommandKind::Watch => run_watch(cfg).await?,
+        CommandKind::Refresh => run_refresh(cfg, service_context).await?,
+        CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg).await?,
         CommandKind::Embed => run_embed(cfg, service_context).await?,
@@ -102,13 +99,13 @@ async fn run_once(
         CommandKind::Sources => run_sources(cfg).await?,
         CommandKind::Domains => run_domains(cfg).await?,
         CommandKind::Stats => run_stats(cfg).await?,
-        CommandKind::Status => run_status(cfg).await?,
+        CommandKind::Status => run_status(cfg, service_context).await?,
         CommandKind::Dedupe => run_dedupe(cfg).await?,
         CommandKind::Ingest => run_ingest(cfg, service_context).await?,
-        CommandKind::Sessions => run_sessions(cfg).await?,
+        CommandKind::Sessions => run_sessions(cfg, service_context).await?,
         CommandKind::Research => run_research(cfg).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
-        CommandKind::Graph => run_graph(cfg).await?,
+        CommandKind::Graph => run_graph(cfg, service_context).await?,
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Serve => run_serve(cfg).await?,
@@ -175,26 +172,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         cfg.performance_profile
     ));
 
-    // Build the job backend — lite mode uses SQLite + in-process workers;
-    // full mode uses Postgres + RabbitMQ (existing stack, unchanged).
     let cfg_arc = Arc::new(cfg);
-    let backend: Arc<dyn JobBackend> = if cfg_arc.lite_mode {
-        Arc::new(
-            LiteBackend::new(Arc::clone(&cfg_arc))
-                .await
-                .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?,
-        )
-    } else {
-        Arc::new(
-            FullBackend::new(Arc::clone(&cfg_arc))
-                .await
-                .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?,
-        )
-    };
     let service_context = ServiceContext::new(Arc::clone(&cfg_arc))
         .await
-        .map_err(|e| -> Box<dyn Error> { e })?
-        .with_job_backend(Arc::clone(&backend));
+        .map_err(|e| -> Box<dyn Error> { e })?;
     let cfg = cfg_arc.as_ref();
 
     // Skip Postgres telemetry in lite mode (no Postgres connection required).

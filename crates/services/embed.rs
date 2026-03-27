@@ -1,18 +1,18 @@
 //! Service-layer wrappers for embed job lifecycle operations and synchronous embedding entry points.
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::{JobBackend, JobKind, JobPayload};
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::embed::{get_embed_job, list_embed_jobs, start_embed_job};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
-use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::runtime::ServiceJobRuntime;
+use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
     EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
 };
 use crate::crates::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -31,38 +31,41 @@ pub fn map_embed_job_result(payload: serde_json::Value) -> EmbedJobResult {
 // --- Service lifecycle wrappers ---
 
 pub async fn embed_status(
-    cfg: &Config,
+    service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<Option<EmbedJobResult>, Box<dyn Error>> {
-    let job = job_service::job_status(cfg, JobKind::Embed, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Embed, id).await?;
     Ok(job.map(|value| {
         map_embed_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
 }
 
 pub async fn embed_list(
-    cfg: &Config,
+    service_context: &ServiceContext,
     limit: i64,
     offset: i64,
 ) -> Result<EmbedJobResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(cfg, JobKind::Embed, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Embed, limit, offset).await?;
     Ok(map_embed_job_result(serde_json::to_value(jobs)?))
 }
 
-pub async fn embed_cancel(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(cfg, JobKind::Embed, id).await
+pub async fn embed_cancel(
+    service_context: &ServiceContext,
+    id: Uuid,
+) -> Result<bool, Box<dyn Error>> {
+    job_service::cancel_job(service_context, JobKind::Embed, id).await
 }
 
-pub async fn embed_cleanup(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(cfg, JobKind::Embed).await
+pub async fn embed_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::cleanup_jobs(service_context, JobKind::Embed).await
 }
 
-pub async fn embed_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(cfg, JobKind::Embed).await
+pub async fn embed_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::clear_jobs(service_context, JobKind::Embed).await
 }
 
-pub async fn embed_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(cfg, JobKind::Embed).await
+pub async fn embed_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::recover_jobs(service_context, JobKind::Embed).await
 }
 
 pub async fn embed_status_raw(cfg: &Config, id: Uuid) -> Result<Option<EmbedJob>, Box<dyn Error>> {
@@ -77,8 +80,8 @@ pub async fn embed_list_raw(
     list_embed_jobs(cfg, limit, offset).await
 }
 
-pub async fn embed_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    match job_service::run_worker(cfg, JobKind::Embed).await? {
+pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    match job_service::run_worker(service_context, JobKind::Embed).await? {
         WorkerMode::Started | WorkerMode::InProcess => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
@@ -131,17 +134,15 @@ pub async fn embed_start_with_context(
         });
     }
 
-    let backend = service_context
-        .require_job_backend()
-        .map_err(|e| -> Box<dyn Error> { e })?;
-    let job_id = backend
+    let job_id = service_context
+        .jobs
         .enqueue(JobPayload::Embed {
             input: input.to_string(),
             config_json: "{}".to_string(),
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;
-    wait_for_embed_completion(backend, job_id).await?;
+    wait_for_embed_completion(service_context.jobs.as_ref(), job_id).await?;
     Ok(JobStartOutcome {
         disposition: StartDisposition::Completed,
         execution_mode: ExecutionMode::InProcess,
@@ -188,15 +189,15 @@ pub async fn embed_now_with_source(
 }
 
 async fn wait_for_embed_completion(
-    backend: &Arc<dyn JobBackend>,
+    runtime: &dyn ServiceJobRuntime,
     job_id: Uuid,
 ) -> Result<(), Box<dyn Error>> {
-    let final_status = backend
+    let final_status = runtime
         .wait_for_job(job_id, JobKind::Embed)
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;
     if final_status == "failed" {
-        if let Ok(Some(err)) = backend.job_errors(job_id, JobKind::Embed).await {
+        if let Ok(Some(err)) = runtime.job_errors(job_id, JobKind::Embed).await {
             return Err(format!("embed job {job_id} failed: {err}").into());
         }
         return Err(format!("embed job {job_id} failed").into());

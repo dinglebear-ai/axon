@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
-        if maybe_handle_extract_subcommand(cfg).await? {
+        if maybe_handle_extract_subcommand(cfg, service_context).await? {
             return Ok(());
         }
 
@@ -56,7 +56,10 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
     })
 }
 
-async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn Error>> {
+async fn maybe_handle_extract_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<bool, Box<dyn Error>> {
     let Some(subcmd) = cfg.positional.first().map(|s| s.as_str()) else {
         return Ok(false);
     };
@@ -64,30 +67,30 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
     match subcmd {
         "status" => {
             let id = parse_extract_job_id(cfg, "status")?;
-            let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Extract, id).await?;
             handle_job_status(cfg, job, id, "Extract")?;
         }
         "cancel" => {
             let id = parse_extract_job_id(cfg, "cancel")?;
-            let canceled = job_service::cancel_job(cfg, JobKind::Extract, id).await?;
+            let canceled = job_service::cancel_job(service_context, JobKind::Extract, id).await?;
             handle_job_cancel(cfg, id, canceled, "extract")?;
         }
         "errors" => {
             let id = parse_extract_job_id(cfg, "errors")?;
-            let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
+            let job = job_service::job_status(service_context, JobKind::Extract, id).await?;
             handle_job_errors(cfg, job, id, "extract")?;
         }
         "list" => {
-            let jobs = job_service::list_jobs(cfg, JobKind::Extract, 50, 0).await?;
+            let jobs = job_service::list_jobs(service_context, JobKind::Extract, 50, 0).await?;
             handle_job_list(cfg, jobs, "Extract")?;
         }
         "cleanup" => {
-            let removed = job_service::cleanup_jobs(cfg, JobKind::Extract).await?;
+            let removed = job_service::cleanup_jobs(service_context, JobKind::Extract).await?;
             handle_job_cleanup(cfg, removed, "extract")?;
         }
         "clear" => {
             if confirm_destructive(cfg, "Clear all extract jobs and purge extract queue?")? {
-                let removed = job_service::clear_jobs(cfg, JobKind::Extract).await?;
+                let removed = job_service::clear_jobs(service_context, JobKind::Extract).await?;
                 handle_job_clear(cfg, removed, "extract")?;
             } else if cfg.json_output {
                 println!("{}", serde_json::json!({ "removed": 0 }));
@@ -95,9 +98,11 @@ async fn maybe_handle_extract_subcommand(cfg: &Config) -> Result<bool, Box<dyn E
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => handle_worker_mode(job_service::run_worker(cfg, JobKind::Extract).await?)?,
+        "worker" => {
+            handle_worker_mode(job_service::run_worker(service_context, JobKind::Extract).await?)?
+        }
         "recover" => {
-            let reclaimed = job_service::recover_jobs(cfg, JobKind::Extract).await?;
+            let reclaimed = job_service::recover_jobs(service_context, JobKind::Extract).await?;
             handle_job_recover(cfg, reclaimed, "extract")?;
         }
         _ => return Ok(false),

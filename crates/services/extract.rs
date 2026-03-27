@@ -6,7 +6,7 @@ use crate::crates::jobs::extract::{get_extract_job, list_extract_jobs, start_ext
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
-use crate::crates::services::jobs::WorkerMode;
+use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
     ExecutionMode, ExtractJobResult, ExtractStartResult, JobStartOutcome, StartDisposition,
 };
@@ -29,38 +29,41 @@ pub fn map_extract_job_result(payload: serde_json::Value) -> ExtractJobResult {
 // --- Service lifecycle wrappers ---
 
 pub async fn extract_status(
-    cfg: &Config,
+    service_context: &ServiceContext,
     id: Uuid,
 ) -> Result<Option<ExtractJobResult>, Box<dyn Error>> {
-    let job = job_service::job_status(cfg, JobKind::Extract, id).await?;
+    let job = job_service::job_status(service_context, JobKind::Extract, id).await?;
     Ok(job.map(|value| {
         map_extract_job_result(serde_json::to_value(value).unwrap_or(serde_json::Value::Null))
     }))
 }
 
 pub async fn extract_list(
-    cfg: &Config,
+    service_context: &ServiceContext,
     limit: i64,
     offset: i64,
 ) -> Result<ExtractJobResult, Box<dyn Error>> {
-    let jobs = job_service::list_jobs(cfg, JobKind::Extract, limit, offset).await?;
+    let jobs = job_service::list_jobs(service_context, JobKind::Extract, limit, offset).await?;
     Ok(map_extract_job_result(serde_json::to_value(jobs)?))
 }
 
-pub async fn extract_cancel(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
-    job_service::cancel_job(cfg, JobKind::Extract, id).await
+pub async fn extract_cancel(
+    service_context: &ServiceContext,
+    id: Uuid,
+) -> Result<bool, Box<dyn Error>> {
+    job_service::cancel_job(service_context, JobKind::Extract, id).await
 }
 
-pub async fn extract_cleanup(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::cleanup_jobs(cfg, JobKind::Extract).await
+pub async fn extract_cleanup(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::cleanup_jobs(service_context, JobKind::Extract).await
 }
 
-pub async fn extract_clear(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::clear_jobs(cfg, JobKind::Extract).await
+pub async fn extract_clear(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::clear_jobs(service_context, JobKind::Extract).await
 }
 
-pub async fn extract_recover(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    job_service::recover_jobs(cfg, JobKind::Extract).await
+pub async fn extract_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
+    job_service::recover_jobs(service_context, JobKind::Extract).await
 }
 
 pub async fn extract_status_raw(
@@ -78,8 +81,8 @@ pub async fn extract_list_raw(
     list_extract_jobs(cfg, limit, offset).await
 }
 
-pub async fn extract_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    match job_service::run_worker(cfg, JobKind::Extract).await? {
+pub async fn extract_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
+    match job_service::run_worker(service_context, JobKind::Extract).await? {
         WorkerMode::Started | WorkerMode::InProcess => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
@@ -146,10 +149,8 @@ pub async fn extract_start_with_context(
         });
     }
 
-    let backend = service_context
-        .require_job_backend()
-        .map_err(|e| -> Box<dyn Error> { e })?;
-    let job_id = backend
+    let job_id = service_context
+        .jobs
         .enqueue(JobPayload::Extract {
             urls: urls.to_vec(),
             config_json: "{}".to_string(),
