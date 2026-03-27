@@ -41,7 +41,7 @@ impl ServiceJobRuntime for NoopRuntime {
         _kind: JobKind,
         _limit: i64,
         _offset: i64,
-    ) -> Result<Vec<ServiceJob>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<ServiceJob>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(Vec::new())
     }
 
@@ -49,7 +49,7 @@ impl ServiceJobRuntime for NoopRuntime {
         &self,
         _kind: JobKind,
         _id: Uuid,
-    ) -> Result<Option<ServiceJob>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<ServiceJob>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
 
@@ -57,15 +57,21 @@ impl ServiceJobRuntime for NoopRuntime {
         &self,
         _kind: JobKind,
         _id: Uuid,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         Ok(false)
     }
 
-    async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+    async fn cleanup_jobs(
+        &self,
+        _kind: JobKind,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         Ok(0)
     }
 
-    async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+    async fn clear_jobs(
+        &self,
+        _kind: JobKind,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         Ok(0)
     }
 
@@ -73,11 +79,14 @@ impl ServiceJobRuntime for NoopRuntime {
         &self,
         _kind: JobKind,
         _stale_threshold_ms: i64,
-    ) -> Result<u64, Box<dyn std::error::Error>> {
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         Ok(0)
     }
 
-    async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+    async fn run_worker(
+        &self,
+        _kind: JobKind,
+    ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
         Ok(WorkerMode::Unsupported("test"))
     }
 }
