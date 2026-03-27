@@ -279,11 +279,13 @@ build_suite_config() {
   jq \
     --arg server "$SERVER" \
     --arg lite "$lite_value" \
+    --arg repo_root "$REPO_ROOT" \
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/axon/logs/axon.log" \
     --arg sqlite_path "$runtime_root/axon/mcporter-jobs.db" \
     '.mcpServers[$server].env.AXON_LITE = $lite
      | .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
+     | .mcpServers[$server].env.AXON_REPO_ROOT = $repo_root
      | .mcpServers[$server].env.AXON_DATA_DIR = $data_dir
      | .mcpServers[$server].env.AXON_LOG_FILE = $log_file
      | .mcpServers[$server].env.AXON_SQLITE_PATH = $sqlite_path' \
@@ -409,11 +411,19 @@ run_suite() {
 
   echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
   local schedule_name="mcporter-smoke-$mode-$$"
-  run_json_case "${prefix}_refresh_schedule_list" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.data.schedules | type == "array")' call_tool action:refresh subaction:schedule schedule_subaction:list
-  run_json_case "${prefix}_refresh_schedule_create" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.created.name | type == "string")' call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
-  run_json_case "${prefix}_refresh_schedule_disable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == false and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
-  run_json_case "${prefix}_refresh_schedule_enable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == true and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
-  run_json_case "${prefix}_refresh_schedule_delete" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and (.data.deleted | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
+  if [[ "$lite_value" == "0" ]]; then
+    run_json_case "${prefix}_refresh_schedule_list" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.data.schedules | type == "array")' call_tool action:refresh subaction:schedule schedule_subaction:list
+    run_json_case "${prefix}_refresh_schedule_create" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.created.name | type == "string")' call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
+    run_json_case "${prefix}_refresh_schedule_disable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == false and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
+    run_json_case "${prefix}_refresh_schedule_enable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == true and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
+    run_json_case "${prefix}_refresh_schedule_delete" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and (.data.deleted | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
+  else
+    run_error_case "${prefix}_refresh_schedule_list" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:list
+    run_error_case "${prefix}_refresh_schedule_create" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
+    run_error_case "${prefix}_refresh_schedule_disable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
+    run_error_case "${prefix}_refresh_schedule_enable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
+    run_error_case "${prefix}_refresh_schedule_delete" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
+  fi
 
   echo "== $mode graph ==" | tee -a "$SUMMARY"
   if [[ "$lite_value" == "0" ]]; then

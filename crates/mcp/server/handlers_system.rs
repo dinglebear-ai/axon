@@ -278,6 +278,7 @@ impl AxonMcpServer {
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "refresh": ["start", "status", "cancel", "list", "cleanup", "clear", "recover", "schedule"],
+                    "refresh_schedule": ["create", "delete", "disable", "enable", "list"],
                     "graph": ["build", "status", "explore", "stats"],
                     "query": ["query"],
                     "retrieve": ["retrieve"],
@@ -369,6 +370,11 @@ impl AxonMcpServer {
         &self,
         req: ExportRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
+        if self.cfg.lite_mode {
+            return Err(invalid_params(
+                "export is not available in lite mode because it requires Postgres-backed history",
+            ));
+        }
         let options = export::ExportOptions {
             include_history: req.include_history.unwrap_or(false),
             statuses: vec![],

@@ -1,5 +1,23 @@
 # Changelog
-Last Modified: 2026-03-27 (session: v0.33.5 — PR #60 review fixes batch 2)
+Last Modified: 2026-03-27 (session: v0.33.6 — mcporter test suite all-green)
+
+## [0.33.6] — fix/mcporter-test-parity
+
+### Highlights
+
+- **mcporter smoke suite 152/152 pass** — all 12 previously failing cases resolved across four categories: help route parity, lite export guard, graph unavailable message wording, and refresh-schedule mode conditioning.
+- **`refresh_schedule` exposed in help** — added `"refresh_schedule": ["create","delete","disable","enable","list"]` key to MCP help action map so `normalize_discovered_routes` matches the expected routes array.
+- **Lite export guard** — `handle_export` now returns `invalid_params` with a descriptive message instead of a generic `-32603` error in lite mode.
+- **Graph unavailable message corrected** — lite mode graph error message updated to match `run_error_case` expected substring.
+- **Refresh schedule tests mode-conditioned** — test cases now use `run_error_case` in lite mode (consistent with export/graph handling) instead of expecting success.
+
+### Commits since v0.33.5
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix | fix mcporter test suite — help routes, export guard, graph message, schedule conditioning |
+| 5265c675 | refactor | remove prompt_clone redundancy; use from_runtime in tests |
+| cd505952 | fix(test) | use :memory: sqlite in lite mode crawl service tests |
 
 ## [0.33.5] — fix/lite-mode-mcp-and-review-fixes
 

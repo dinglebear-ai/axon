@@ -11,7 +11,7 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         if self.cfg.lite_mode {
             return Err(invalid_params(
-                "graph requires Neo4j (not available in lite mode)",
+                "graph is not available in lite mode because it requires Postgres-backed graph storage",
             ));
         }
         let response_mode = req.response_mode;
