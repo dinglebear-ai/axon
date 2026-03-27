@@ -334,8 +334,10 @@ mod tests {
             _kind: JobKind,
             _limit: i64,
             _offset: i64,
-        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
-        {
+        ) -> Result<
+            Vec<crate::crates::services::types::ServiceJob>,
+            Box<dyn std::error::Error + Send + Sync>,
+        > {
             Ok(vec![])
         }
 
@@ -343,8 +345,10 @@ mod tests {
             &self,
             _kind: JobKind,
             _id: Uuid,
-        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
-        {
+        ) -> Result<
+            Option<crate::crates::services::types::ServiceJob>,
+            Box<dyn std::error::Error + Send + Sync>,
+        > {
             Ok(None)
         }
 
@@ -352,15 +356,21 @@ mod tests {
             &self,
             _kind: JobKind,
             _id: Uuid,
-        ) -> Result<bool, Box<dyn std::error::Error>> {
+        ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
             Ok(false)
         }
 
-        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+        async fn cleanup_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
-        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+        async fn clear_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
@@ -368,14 +378,14 @@ mod tests {
             &self,
             _kind: JobKind,
             _stale_threshold_ms: i64,
-        ) -> Result<u64, Box<dyn std::error::Error>> {
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
         async fn run_worker(
             &self,
             _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+        ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
             Ok(WorkerMode::InProcess)
         }
     }
@@ -407,8 +417,10 @@ mod tests {
             _kind: JobKind,
             _limit: i64,
             _offset: i64,
-        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
-        {
+        ) -> Result<
+            Vec<crate::crates::services::types::ServiceJob>,
+            Box<dyn std::error::Error + Send + Sync>,
+        > {
             Ok(vec![])
         }
 
@@ -416,8 +428,10 @@ mod tests {
             &self,
             _kind: JobKind,
             _id: Uuid,
-        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn std::error::Error>>
-        {
+        ) -> Result<
+            Option<crate::crates::services::types::ServiceJob>,
+            Box<dyn std::error::Error + Send + Sync>,
+        > {
             Ok(None)
         }
 
@@ -425,15 +439,21 @@ mod tests {
             &self,
             _kind: JobKind,
             _id: Uuid,
-        ) -> Result<bool, Box<dyn std::error::Error>> {
+        ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
             Ok(false)
         }
 
-        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+        async fn cleanup_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
-        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn std::error::Error>> {
+        async fn clear_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
@@ -441,14 +461,14 @@ mod tests {
             &self,
             _kind: JobKind,
             _stale_threshold_ms: i64,
-        ) -> Result<u64, Box<dyn std::error::Error>> {
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
         }
 
         async fn run_worker(
             &self,
             _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn std::error::Error>> {
+        ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
             Ok(WorkerMode::InProcess)
         }
     }
@@ -511,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn crawl_start_with_context_completes_in_lite_mode()
-    -> Result<(), Box<dyn std::error::Error>> {
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
