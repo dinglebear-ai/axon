@@ -544,6 +544,7 @@ mod tests {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
         cfg.wait = true;
+        cfg.sqlite_path = std::path::PathBuf::from(":memory:");
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())?
@@ -564,6 +565,7 @@ mod tests {
     async fn crawl_start_with_context_rejects_empty_urls_in_lite_mode() {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
+        cfg.sqlite_path = std::path::PathBuf::from(":memory:");
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())
@@ -582,6 +584,7 @@ mod tests {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
         cfg.wait = false;
+        cfg.sqlite_path = std::path::PathBuf::from(":memory:");
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())?
@@ -602,6 +605,7 @@ mod tests {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
         cfg.wait = true;
+        cfg.sqlite_path = std::path::PathBuf::from(":memory:");
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())
