@@ -539,7 +539,9 @@ mod tests {
             .map_err(|e| e.to_string())?
             .with_jobs_runtime(Arc::new(CompletedLiteRuntime));
 
-        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None).await?;
+        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
+            .await
+            .map_err(|e| e.to_string())?;
 
         assert_eq!(outcome.disposition, StartDisposition::Completed);
         assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);

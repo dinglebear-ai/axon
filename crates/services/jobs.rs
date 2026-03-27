@@ -7,13 +7,22 @@ use crate::crates::services::context::ServiceContext;
 pub use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::ServiceJob;
 
+// Helper: downgrade Send+Sync error to plain Box<dyn Error> for callers that don't need Send+Sync.
+fn downgrade(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error> {
+    e.to_string().into()
+}
+
 pub async fn list_jobs(
     service_context: &ServiceContext,
     kind: JobKind,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
-    service_context.jobs.list_jobs(kind, limit, offset).await
+    service_context
+        .jobs
+        .list_jobs(kind, limit, offset)
+        .await
+        .map_err(downgrade)
 }
 
 pub async fn list_ingest_jobs(
@@ -26,6 +35,7 @@ pub async fn list_ingest_jobs(
         .jobs
         .list_ingest_jobs(source_filter, limit, offset)
         .await
+        .map_err(downgrade)
 }
 
 pub async fn job_status(
@@ -33,7 +43,11 @@ pub async fn job_status(
     kind: JobKind,
     id: Uuid,
 ) -> Result<Option<ServiceJob>, Box<dyn Error>> {
-    service_context.jobs.job_status(kind, id).await
+    service_context
+        .jobs
+        .job_status(kind, id)
+        .await
+        .map_err(downgrade)
 }
 
 pub async fn cancel_job(
@@ -41,21 +55,33 @@ pub async fn cancel_job(
     kind: JobKind,
     id: Uuid,
 ) -> Result<bool, Box<dyn Error>> {
-    service_context.jobs.cancel_job(kind, id).await
+    service_context
+        .jobs
+        .cancel_job(kind, id)
+        .await
+        .map_err(downgrade)
 }
 
 pub async fn cleanup_jobs(
     service_context: &ServiceContext,
     kind: JobKind,
 ) -> Result<u64, Box<dyn Error>> {
-    service_context.jobs.cleanup_jobs(kind).await
+    service_context
+        .jobs
+        .cleanup_jobs(kind)
+        .await
+        .map_err(downgrade)
 }
 
 pub async fn clear_jobs(
     service_context: &ServiceContext,
     kind: JobKind,
 ) -> Result<u64, Box<dyn Error>> {
-    service_context.jobs.clear_jobs(kind).await
+    service_context
+        .jobs
+        .clear_jobs(kind)
+        .await
+        .map_err(downgrade)
 }
 
 pub async fn job_errors(
@@ -79,13 +105,18 @@ pub async fn recover_jobs(
         .jobs
         .recover_jobs(kind, stale_threshold_ms)
         .await
+        .map_err(downgrade)
 }
 
 pub async fn run_worker(
     service_context: &ServiceContext,
     kind: JobKind,
 ) -> Result<WorkerMode, Box<dyn Error>> {
-    service_context.jobs.run_worker(kind).await
+    service_context
+        .jobs
+        .run_worker(kind)
+        .await
+        .map_err(downgrade)
 }
 
 #[cfg(test)]
@@ -128,7 +159,7 @@ mod tests {
             _kind: JobKind,
             _limit: i64,
             _offset: i64,
-        ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+        ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
             Ok(Vec::new())
         }
 
@@ -137,7 +168,7 @@ mod tests {
             source_filter: Option<&str>,
             _limit: i64,
             _offset: i64,
-        ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+        ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
             self.seen_filters
                 .lock()
                 .expect("lock")
@@ -149,19 +180,23 @@ mod tests {
             &self,
             _kind: JobKind,
             _id: Uuid,
-        ) -> Result<Option<ServiceJob>, Box<dyn Error>> {
+        ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
             Ok(None)
         }
 
-        async fn cancel_job(&self, _kind: JobKind, _id: Uuid) -> Result<bool, Box<dyn Error>> {
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
             Ok(false)
         }
 
-        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
             Ok(0)
         }
 
-        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
             Ok(0)
         }
 
@@ -169,11 +204,14 @@ mod tests {
             &self,
             _kind: JobKind,
             _stale_threshold_ms: i64,
-        ) -> Result<u64, Box<dyn Error>> {
+        ) -> Result<u64, Box<dyn Error + Send + Sync>> {
             Ok(0)
         }
 
-        async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error>> {
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             Ok(WorkerMode::Unsupported("test"))
         }
     }
