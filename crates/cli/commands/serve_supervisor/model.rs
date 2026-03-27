@@ -9,27 +9,15 @@ pub(super) const RESTART_BACKOFF_MAX_SECS: u64 = 30;
 pub(super) const RESTART_STABLE_WINDOW_SECS: u64 = 30;
 pub(super) const SHUTDOWN_GRACE_SECS: u64 = 5;
 pub(super) const MAX_UNSTABLE_RESTARTS: usize = 3;
-const ANSI_RESET: &str = "\x1b[0m";
-const ANSI_BOLD: &str = "\x1b[1m";
-const ANSI_DIM: &str = "\x1b[2m";
+pub(super) const ANSI_RESET: &str = "\x1b[0m";
+pub(super) const ANSI_BOLD: &str = "\x1b[1m";
+pub(super) const ANSI_DIM: &str = "\x1b[2m";
 pub(super) const ANSI_RED: &str = "\x1b[31m";
 pub(super) const ANSI_GREEN: &str = "\x1b[32m";
 pub(super) const ANSI_YELLOW: &str = "\x1b[33m";
 pub(super) const ANSI_BLUE: &str = "\x1b[34m";
 pub(super) const ANSI_MAGENTA: &str = "\x1b[35m";
 pub(super) const ANSI_CYAN: &str = "\x1b[36m";
-
-pub(super) fn ansi_reset() -> &'static str {
-    ANSI_RESET
-}
-
-pub(super) fn ansi_bold() -> &'static str {
-    ANSI_BOLD
-}
-
-pub(super) fn ansi_dim() -> &'static str {
-    ANSI_DIM
-}
 
 pub(super) fn child_color(name: &str) -> &'static str {
     match name {

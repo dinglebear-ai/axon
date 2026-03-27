@@ -2,6 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
@@ -22,6 +23,10 @@ pub enum WorkerMode {
     Unsupported(&'static str),
 }
 
+// NOTE: #[async_trait] is required here because this trait is used as
+// `dyn ServiceJobRuntime` (object safety). Native async fn in traits (Rust 1.75+)
+// uses RPITIT which makes the trait non-object-safe. Once all callers are
+// converted to generics, this can be removed.
 #[async_trait]
 pub trait ServiceJobRuntime: Send + Sync {
     fn mode_name(&self) -> &'static str;
@@ -37,6 +42,22 @@ pub trait ServiceJobRuntime: Send + Sync {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error>>;
+    async fn list_ingest_jobs(
+        &self,
+        source_filter: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+        let jobs = self.list_jobs(JobKind::Ingest, limit, offset).await?;
+        if let Some(filter) = source_filter {
+            Ok(jobs
+                .into_iter()
+                .filter(|job| job.source_type.as_deref() == Some(filter))
+                .collect())
+        } else {
+            Ok(jobs)
+        }
+    }
     async fn job_status(
         &self,
         kind: JobKind,
@@ -57,18 +78,20 @@ pub async fn resolve_runtime(
     cfg: Arc<Config>,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
     if cfg.lite_mode {
+        let pool = open_config_pool(&cfg)
+            .await
+            .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
         let backend = LiteBackend::new(Arc::clone(&cfg))
             .await
             .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
         return Ok(Arc::new(LiteServiceRuntime {
-            cfg,
+            _cfg: cfg,
             backend: Arc::new(backend),
+            pool,
         }));
     }
 
-    let backend = FullBackend::new(Arc::clone(&cfg))
-        .await
-        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+    let backend = FullBackend::new(Arc::clone(&cfg));
     Ok(Arc::new(FullServiceRuntime {
         cfg,
         backend: Arc::new(backend),
@@ -81,8 +104,9 @@ pub struct FullServiceRuntime {
 }
 
 pub struct LiteServiceRuntime {
-    cfg: Arc<Config>,
+    _cfg: Arc<Config>,
     backend: Arc<LiteBackend>,
+    pool: SqlitePool,
 }
 
 fn graph_to_service_job(job: GraphJob) -> ServiceJob {
@@ -219,13 +243,13 @@ impl ServiceJobRuntime for FullServiceRuntime {
         self.backend.job_errors(id, kind).await
     }
 
+    // NOTE: FullBackend::list_jobs fetches up to 500 rows server-side. A proper
+    // fix requires adding a count_active_jobs query to the JobBackend trait or
+    // per-kind Postgres modules. Short-circuit .iter().any() avoids extra
+    // allocation but the 500-row fetch remains a backend limitation.
     async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool> {
-        Ok(self
-            .backend
-            .list_jobs(kind)
-            .await?
-            .into_iter()
-            .any(|job| has_active_status(job.status)))
+        let jobs = self.backend.list_jobs(kind).await?;
+        Ok(jobs.iter().any(|job| has_active_status(job.status)))
     }
 
     async fn list_jobs(
@@ -274,6 +298,21 @@ impl ServiceJobRuntime for FullServiceRuntime {
         })
     }
 
+    async fn list_ingest_jobs(
+        &self,
+        source_filter: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+        Ok(
+            crate::crates::jobs::ingest::list_ingest_jobs(&self.cfg, source_filter, limit, offset)
+                .await?
+                .into_iter()
+                .map(ingest_to_service_job)
+                .collect(),
+        )
+    }
+
     async fn job_status(
         &self,
         kind: JobKind,
@@ -295,10 +334,8 @@ impl ServiceJobRuntime for FullServiceRuntime {
             JobKind::Refresh => crate::crates::jobs::refresh::get_refresh_job(&self.cfg, id)
                 .await?
                 .map(refresh_to_service_job),
-            JobKind::Graph => graph_jobs::list_graph_jobs(&self.cfg, 500, 0)
+            JobKind::Graph => graph_jobs::get_graph_job(&self.cfg, id)
                 .await?
-                .into_iter()
-                .find(|job| job.id == id)
                 .map(graph_to_service_job),
         })
     }
@@ -432,13 +469,18 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         self.backend.job_errors(id, kind).await
     }
 
+    /// SQL EXISTS check against the cached pool — avoids fetching all rows.
     async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool> {
-        Ok(self
-            .backend
-            .list_jobs(kind)
-            .await?
-            .into_iter()
-            .any(|job| has_active_status(job.status)))
+        let table = kind.table_name();
+        let sql = format!(
+            "SELECT EXISTS(SELECT 1 FROM {} WHERE status IN ('pending','running') LIMIT 1)",
+            table,
+        );
+        let exists: bool = sqlx::query_scalar(&sql)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+        Ok(exists)
     }
 
     async fn list_jobs(
@@ -447,8 +489,16 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         _limit: i64,
         _offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
-        Ok(lite_query::list_service_jobs(&pool, kind).await?)
+        Ok(lite_query::list_service_jobs(&self.pool, kind).await?)
+    }
+
+    async fn list_ingest_jobs(
+        &self,
+        source_filter: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
+        Ok(lite_query::list_ingest_service_jobs(&self.pool, source_filter, limit, offset).await?)
     }
 
     async fn job_status(
@@ -456,23 +506,19 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         kind: JobKind,
         id: Uuid,
     ) -> Result<Option<ServiceJob>, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
-        Ok(lite_query::service_job(&pool, kind, id).await?)
+        Ok(lite_query::service_job(&self.pool, kind, id).await?)
     }
 
     async fn cancel_job(&self, kind: JobKind, id: Uuid) -> Result<bool, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
-        Ok(cancel_row(&pool, kind.table_name(), id).await?)
+        Ok(cancel_row(&self.pool, kind.table_name(), id).await?)
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
-        Ok(lite_query::cleanup_jobs(&pool, kind.table_name()).await?)
+        Ok(lite_query::cleanup_jobs(&self.pool, kind.table_name()).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
-        Ok(lite_query::clear_jobs(&pool, kind.table_name()).await?)
+        Ok(lite_query::clear_jobs(&self.pool, kind.table_name()).await?)
     }
 
     async fn recover_jobs(
@@ -480,9 +526,8 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         kind: JobKind,
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error>> {
-        let pool = open_config_pool(&self.cfg).await?;
         Ok(
-            reclaim_stale_running_jobs_for_table(&pool, kind.table_name(), stale_threshold_ms)
+            reclaim_stale_running_jobs_for_table(&self.pool, kind.table_name(), stale_threshold_ms)
                 .await?,
         )
     }

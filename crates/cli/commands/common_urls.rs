@@ -29,7 +29,6 @@ fn expand_numeric_range_limited(
             }
             out.push(current.to_string());
             let Some(next) = current.checked_add(step) else {
-                truncated = true;
                 break;
             };
             current = next;
@@ -42,7 +41,6 @@ fn expand_numeric_range_limited(
             }
             out.push(current.to_string());
             let Some(next) = current.checked_add(step) else {
-                truncated = true;
                 break;
             };
             current = next;

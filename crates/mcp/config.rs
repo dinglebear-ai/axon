@@ -6,11 +6,10 @@ fn env(name: &str) -> Option<String> {
 }
 
 fn env_bool(name: &str) -> Option<bool> {
-    env(name).map(|v| {
-        matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
+    env(name).and_then(|v| match v.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Some(true),
+        "0" | "false" | "no" | "n" | "off" => Some(false),
+        _ => None,
     })
 }
 

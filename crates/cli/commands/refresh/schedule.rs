@@ -303,13 +303,13 @@ async fn handle_refresh_schedule_run_due(cfg: &Config) -> Result<(), Box<dyn Err
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({
+            serde_json::to_string_pretty(&serde_json::json!({
                 "claimed": sweep.claimed_count,
                 "dispatched": sweep.dispatched_count,
                 "skipped": sweep.skipped_count,
                 "failed": sweep.failed_count,
                 "jobs": sweep.jobs,
-            })
+            }))?
         );
     } else {
         println!(

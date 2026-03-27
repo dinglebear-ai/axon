@@ -5,7 +5,7 @@ use crate::crates::cli::commands::common::{
     handle_job_cancel, handle_job_cleanup, handle_job_clear, handle_job_errors, handle_job_list,
     handle_job_recover, handle_job_status, handle_worker_mode,
 };
-use crate::crates::cli::commands::common_urls::parse_urls;
+use crate::crates::cli::commands::common_urls::{parse_urls, start_url_from_cfg};
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, symbol_for_status};
@@ -25,7 +25,7 @@ pub async fn run_refresh(
         return Ok(());
     }
 
-    let seed_url = cfg.start_url.clone();
+    let seed_url = start_url_from_cfg(cfg);
     let input_urls = parse_urls(cfg);
     let urls = refresh_service::resolve_refresh_urls(cfg, &seed_url, &input_urls).await?;
     if urls.is_empty() {
@@ -66,11 +66,11 @@ pub async fn run_refresh(
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({
+            serde_json::to_string_pretty(&serde_json::json!({
                 "job_id": job_id,
                 "status": "pending",
                 "urls": urls,
-            })
+            }))?
         );
     } else {
         println!(

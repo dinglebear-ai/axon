@@ -11,7 +11,7 @@ use crate::crates::crawl::engine::{
 use crate::crates::crawl::manifest::{
     manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
 };
-use crate::crates::services::embed::{embed_now, embed_start_with_input};
+use crate::crates::services::embed::{embed_now_with_source, embed_start_with_input};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -306,7 +306,7 @@ async fn finalize_crawl(
         let input = markdown_dir.to_string_lossy().to_string();
         if cfg.lite_mode {
             let spinner = Spinner::new("embedding crawl output");
-            embed_now(cfg, &input).await?;
+            embed_now_with_source(cfg, &input, Some("crawl")).await?;
             spinner.finish("embedded into Qdrant");
         } else {
             let embed_result = embed_start_with_input(cfg, &input, None, Some("crawl")).await?;

@@ -237,6 +237,18 @@ pub async fn list_watch_runs(
     Ok(rows.into_iter().map(parse_watch_run_row).collect())
 }
 
+async fn get_watch_run(cfg: &Config, run_id: Uuid) -> Result<Option<WatchRun>, Box<dyn Error>> {
+    let pool = open_config_pool(cfg).await?;
+    let row = sqlx::query_as::<_, WatchRunRow>(
+        "SELECT id, watch_id, status, dispatched_job_id, error_text, result_json, started_at, finished_at, created_at, updated_at \
+         FROM axon_watch_runs WHERE id = ? LIMIT 1",
+    )
+    .bind(run_id.to_string())
+    .fetch_optional(&pool)
+    .await?;
+    Ok(row.map(parse_watch_run_row))
+}
+
 pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, Box<dyn Error>> {
     let run = create_watch_run(cfg, watch.id, None).await?;
     let outcome: Result<(), Box<dyn Error>> = match watch.task_type.as_str() {
@@ -304,11 +316,7 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
         return Err(err);
     }
 
-    Ok(list_watch_runs(cfg, watch.id, 1)
-        .await?
-        .into_iter()
-        .next()
-        .unwrap_or(run))
+    Ok(get_watch_run(cfg, run.id).await?.unwrap_or(run))
 }
 
 #[cfg(test)]

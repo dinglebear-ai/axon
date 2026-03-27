@@ -32,14 +32,9 @@ fn parse_origin_allowlist(raw: &str) -> Vec<String> {
 }
 
 fn default_sqlite_path() -> std::path::PathBuf {
-    let base = env::var("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
-            env::var("HOME")
-                .map(|h| std::path::PathBuf::from(h).join(".local/share"))
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        });
-    base.join("axon").join("jobs.db")
+    crate::crates::core::paths::axon_data_base_dir()
+        .join("axon")
+        .join("jobs.db")
 }
 
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {

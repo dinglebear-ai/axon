@@ -97,6 +97,26 @@ pub async fn enqueue_graph_job(
     Ok(id)
 }
 
+pub async fn get_graph_job(
+    cfg: &Config,
+    id: uuid::Uuid,
+) -> Result<Option<GraphJob>, Box<dyn std::error::Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    let row = sqlx::query_as::<_, GraphJob>(
+        r#"
+        SELECT id, url, status, chunk_count, entity_count, relation_count, error_text,
+               created_at, updated_at, started_at, finished_at
+        FROM axon_graph_jobs
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(&pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn list_graph_jobs(
     cfg: &Config,
     limit: i64,

@@ -1,9 +1,11 @@
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 use std::process::Command;
+use tempfile::NamedTempFile;
 
 #[test]
 fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
+    let sqlite = NamedTempFile::new().expect("temp sqlite path");
     let tei = MockServer::start();
     tei.mock(|when, then| {
         when.method(POST).path("/embed");
@@ -19,6 +21,8 @@ fn query_with_diagnostics_emits_structured_diagnostics_on_error() {
     });
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
+        .env("AXON_LITE", "1")
+        .env("AXON_SQLITE_PATH", sqlite.path())
         .arg("--tei-url")
         .arg(tei.base_url())
         .arg("--qdrant-url")

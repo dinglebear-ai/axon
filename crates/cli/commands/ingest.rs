@@ -53,7 +53,7 @@ async fn enqueue_ingest_job(
     if cfg.json_output {
         println!(
             "{}",
-            serde_json::json!({"job_id": job_id, "status": status})
+            serde_json::to_string_pretty(&serde_json::json!({"job_id": job_id, "status": status}))?
         );
     } else {
         println!("  {} {}", primary("Ingest Job"), accent(&job_id));

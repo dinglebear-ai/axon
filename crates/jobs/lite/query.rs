@@ -264,6 +264,37 @@ pub async fn list_service_jobs(
     Ok(rows.into_iter().map(service_job_from_tuple).collect())
 }
 
+pub async fn list_ingest_service_jobs(
+    pool: &SqlitePool,
+    source_filter: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ServiceJob>, sqlx::Error> {
+    let rows: Vec<ServiceJobTuple> = sqlx::query_as(
+        "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
+         NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
+         FROM axon_ingest_jobs \
+         WHERE (?1 IS NULL OR source_type = ?1) \
+         ORDER BY CASE status \
+           WHEN 'running' THEN 0 \
+           WHEN 'pending' THEN 1 \
+           WHEN 'completed' THEN 2 \
+           WHEN 'failed' THEN 3 \
+           WHEN 'canceled' THEN 4 \
+           ELSE 5 \
+         END, \
+         created_at DESC, \
+         updated_at DESC \
+         LIMIT ?2 OFFSET ?3",
+    )
+    .bind(source_filter)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(service_job_from_tuple).collect())
+}
+
 pub async fn service_job(
     pool: &SqlitePool,
     kind: crate::crates::jobs::backend::JobKind,
@@ -361,5 +392,44 @@ mod tests {
         let id = Uuid::new_v4();
         let row = job_status_row(&pool, "axon_crawl_jobs", id).await.unwrap();
         assert!(row.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_ingest_service_jobs_applies_source_filter_before_limit() {
+        let pool = open_sqlite_pool(":memory:").await.unwrap();
+        let now = now_ms();
+
+        for i in 0..60 {
+            sqlx::query(
+                "INSERT INTO axon_ingest_jobs (id, status, source_type, target, config_json, created_at, updated_at) \
+                 VALUES (?, 'completed', 'github', ?, '{}', ?, ?)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(format!("owner/repo-{i}"))
+            .bind(now + i)
+            .bind(now + i)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        sqlx::query(
+            "INSERT INTO axon_ingest_jobs (id, status, source_type, target, config_json, created_at, updated_at) \
+             VALUES (?, 'completed', 'sessions', 'sessions', '{}', ?, ?)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(now - 1)
+        .bind(now - 1)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let jobs = list_ingest_service_jobs(&pool, Some("sessions"), 50, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].source_type.as_deref(), Some("sessions"));
+        assert_eq!(jobs[0].target.as_deref(), Some("sessions"));
     }
 }

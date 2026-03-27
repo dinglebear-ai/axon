@@ -55,14 +55,7 @@ pub async fn maybe_handle_ingest_subcommand(
             } else {
                 None
             };
-            let jobs = job_service::list_jobs(service_context, JobKind::Ingest, 50, 0).await?;
-            let jobs = if let Some(filter) = source_filter {
-                jobs.into_iter()
-                    .filter(|job| job.source_type.as_deref() == Some(filter))
-                    .collect()
-            } else {
-                jobs
-            };
+            let jobs = job_service::list_ingest_jobs(service_context, source_filter, 50, 0).await?;
             handle_ingest_list(cfg, jobs).await?;
         }
         "cleanup" => {

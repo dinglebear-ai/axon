@@ -1,8 +1,8 @@
-use super::serve_supervisor_model::{
+use super::model::{
     ANSI_YELLOW, ChildSpec, ComposeServiceStatus, DOCKER_SERVICES_FILE, PortBinding, PortOwner,
     SERVE_CHILD_ROLE_BRIDGE, SERVE_CHILD_ROLE_ENV,
 };
-use super::serve_supervisor_runtime::log_supervisor;
+use super::runtime::log_supervisor;
 use crate::crates::core::config::Config;
 use std::error::Error;
 use std::net::TcpListener;
@@ -64,7 +64,18 @@ pub(super) async fn require_command(name: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub(super) async fn reconcile_nextjs_dev_lock() -> Result<(), Box<dyn Error>> {
-    let lock_path = PathBuf::from("apps/web/.next/dev/lock");
+    let cwd = std::env::current_dir().map_err(|err| {
+        format!("failed to determine working directory for Next.js lock check: {err}")
+    })?;
+    let web_dir = cwd.join("apps/web");
+    if !web_dir.is_dir() {
+        return Err(format!(
+            "`axon serve` must be invoked from the workspace root (expected {} to exist)",
+            web_dir.display()
+        )
+        .into());
+    }
+    let lock_path = web_dir.join(".next/dev/lock");
     if !tokio::fs::try_exists(&lock_path).await.unwrap_or(false) {
         return Ok(());
     }
@@ -336,6 +347,34 @@ pub(super) fn port_owner_matches_binding(command: &str, binding: &PortBinding) -
 }
 
 pub(super) async fn terminate_port_owner(owner: &PortOwner) -> Result<(), Box<dyn Error>> {
+    // Re-verify the PID still belongs to the expected command before sending
+    // SIGTERM.  Between the initial `ss` inspection and this point the PID
+    // could have been recycled by the kernel for an unrelated process (TOCTOU).
+    let current_cmd = match inspect_process_command(owner.pid).await {
+        Ok(cmd) => cmd,
+        Err(_) => {
+            // Process already exited — nothing to kill.
+            log_supervisor(
+                "serve",
+                ANSI_YELLOW,
+                &format!("pid {} vanished before SIGTERM — skipping", owner.pid),
+            );
+            return Ok(());
+        }
+    };
+
+    if current_cmd != owner.command {
+        log_supervisor(
+            "serve",
+            ANSI_YELLOW,
+            &format!(
+                "pid {} was recycled (expected `{}`, found `{}`) — skipping SIGTERM",
+                owner.pid, owner.command, current_cmd
+            ),
+        );
+        return Ok(());
+    }
+
     log_supervisor(
         "serve",
         ANSI_YELLOW,

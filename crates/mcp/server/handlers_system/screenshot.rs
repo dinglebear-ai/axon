@@ -109,6 +109,7 @@ impl AxonMcpServer {
         let response = match req.response_mode.unwrap_or(ResponseMode::Path) {
             ResponseMode::Path => serde_json::json!({
                 "response_mode": "path",
+                "data": payload.clone(),
                 "artifact": {
                     "path": payload["path"].clone(),
                     "bytes": payload["size_bytes"].clone(),

@@ -29,8 +29,8 @@ pub struct FullBackend {
 }
 
 impl FullBackend {
-    pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(Self { cfg })
+    pub fn new(cfg: Arc<Config>) -> Self {
+        Self { cfg }
     }
 }
 
@@ -209,8 +209,22 @@ impl JobBackend for FullBackend {
                 }))
             }
             JobKind::Graph => {
-                // Graph jobs don't expose a get_graph_job function yet.
-                Ok(None)
+                let opt = crate::crates::jobs::graph::get_graph_job(cfg, id)
+                    .await
+                    .map_err(lift_err)?;
+                let Some(job) = opt else {
+                    return Ok(None);
+                };
+                Ok(Some(JobStatusRow {
+                    id: job.id,
+                    status: parse_status(&job.status),
+                    created_at: job.created_at,
+                    updated_at: job.updated_at,
+                    started_at: job.started_at,
+                    finished_at: job.finished_at,
+                    error_text: job.error_text,
+                    result_json: None,
+                }))
             }
         }
     }

@@ -111,15 +111,17 @@ pub(crate) async fn spider_screenshot_with_options(
     website.crawl().await;
     website.unsubscribe();
 
-    let page = match collect.await {
-        Ok(Some(page)) => page,
-        Ok(None) | Err(_) => website
-            .get_pages()
-            .and_then(|pages| pages.first().cloned())
-            .ok_or_else(|| format!("no pages returned from screenshot crawl of {url}"))?,
+    let screenshot_bytes = match collect.await {
+        Ok(Some(page)) => page.screenshot_bytes,
+        Ok(None) | Err(_) => Some(
+            website
+                .get_pages()
+                .and_then(|pages| pages.first().and_then(|page| page.screenshot_bytes.clone()))
+                .ok_or_else(|| format!("no pages returned from screenshot crawl of {url}"))?,
+        ),
     };
 
-    page.screenshot_bytes.clone().ok_or_else(|| {
+    screenshot_bytes.ok_or_else(|| {
         format!("screenshot bytes not captured for {url} — Chrome may not be reachable").into()
     })
 }

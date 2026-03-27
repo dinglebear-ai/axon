@@ -1,9 +1,9 @@
-use super::serve_supervisor_model::{
-    ANSI_RED, ANSI_YELLOW, ChildSpec, MAX_UNSTABLE_RESTARTS, RESTART_BACKOFF_INITIAL_SECS,
-    RESTART_BACKOFF_MAX_SECS, RESTART_STABLE_WINDOW_SECS, SERVE_CHILD_ROLE_BRIDGE,
-    SERVE_CHILD_ROLE_ENV, SHUTDOWN_GRACE_SECS, ansi_bold, ansi_dim, ansi_reset, child_color,
+use super::model::{
+    ANSI_BOLD, ANSI_DIM, ANSI_RED, ANSI_RESET, ANSI_YELLOW, ChildSpec, MAX_UNSTABLE_RESTARTS,
+    RESTART_BACKOFF_INITIAL_SECS, RESTART_BACKOFF_MAX_SECS, RESTART_STABLE_WINDOW_SECS,
+    SERVE_CHILD_ROLE_BRIDGE, SERVE_CHILD_ROLE_ENV, SHUTDOWN_GRACE_SECS, child_color,
 };
-use super::serve_supervisor_preflight::{preflight_dependencies, supervised_child_specs};
+use super::preflight::{preflight_dependencies, supervised_child_specs};
 use crate::crates::core::config::Config;
 use std::error::Error;
 use std::process::Stdio;
@@ -87,7 +87,7 @@ async fn supervise_child(
                 let exit_status = tokio::select! {
                     _ = shutdown.cancelled() => {
                         terminate_child(&spec.name, &mut child).await;
-                        child.wait().await.ok()
+                        None
                     }
                     status = child.wait() => status.ok(),
                 };
@@ -108,14 +108,16 @@ async fn supervise_child(
                     &format!("exited after {:?} with {}", uptime, code),
                 );
 
-                let delay = next_restart_delay(backoff_secs);
-                if uptime.as_secs() >= RESTART_STABLE_WINDOW_SECS {
+                let delay = if uptime.as_secs() >= RESTART_STABLE_WINDOW_SECS {
                     backoff_secs = RESTART_BACKOFF_INITIAL_SECS;
                     unstable_restarts = 0;
+                    RESTART_BACKOFF_INITIAL_SECS
                 } else {
+                    let delay = next_restart_delay(backoff_secs);
                     backoff_secs = (backoff_secs * 2).min(RESTART_BACKOFF_MAX_SECS);
                     unstable_restarts += 1;
-                }
+                    delay
+                };
 
                 if reached_unstable_restart_limit(unstable_restarts) {
                     let message = format!(
@@ -217,40 +219,29 @@ async fn terminate_child(name: &str, child: &mut Child) {
 pub(super) fn log_supervisor(label: &str, color: &str, message: &str) {
     eprintln!(
         "{}{}[{}]{} {}",
-        ansi_bold(),
-        color,
-        label,
-        ansi_reset(),
-        message
+        ANSI_BOLD, color, label, ANSI_RESET, message
     );
 }
 
 pub(super) fn log_child_event(name: &str, message: &str) {
     let color = child_color(name);
-    eprintln!(
-        "{}{}[{}]{} {}",
-        ansi_bold(),
-        color,
-        name,
-        ansi_reset(),
-        message
-    );
+    eprintln!("{}{}[{}]{} {}", ANSI_BOLD, color, name, ANSI_RESET, message);
 }
 
 pub(super) fn log_stream_line(name: &str, stream_name: &str, message: &str) {
     let color = child_color(name);
     eprintln!(
         "{}{}[{}{}:{}{}]{} {}{}{}",
-        ansi_bold(),
+        ANSI_BOLD,
         color,
         name,
-        ansi_dim(),
+        ANSI_DIM,
         stream_name,
         color,
-        ansi_reset(),
-        ansi_dim(),
+        ANSI_RESET,
+        ANSI_DIM,
         message,
-        ansi_reset()
+        ANSI_RESET
     );
 }
 
