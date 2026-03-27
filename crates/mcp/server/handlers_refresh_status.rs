@@ -192,6 +192,11 @@ impl AxonMcpServer {
         limit: Option<i64>,
         response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
+        if self.cfg.lite_mode {
+            return Err(invalid_params(
+                "refresh scheduling is not available in lite mode",
+            ));
+        }
         let sub = schedule_subaction.as_deref().unwrap_or("list");
         match sub {
             "list" => {

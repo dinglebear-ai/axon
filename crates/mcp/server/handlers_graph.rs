@@ -9,6 +9,11 @@ impl AxonMcpServer {
         &self,
         req: GraphRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
+        if self.cfg.lite_mode {
+            return Err(invalid_params(
+                "graph requires Neo4j (not available in lite mode)",
+            ));
+        }
         let response_mode = req.response_mode;
         match req.subaction {
             GraphSubaction::Build => {
