@@ -1,5 +1,8 @@
 use crate::crates::core::config::Config;
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
 ///
@@ -7,8 +10,9 @@ use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     if path != ":memory:"
         && let Some(parent) = std::path::Path::new(path).parent()
+        && let Err(e) = tokio::fs::create_dir_all(parent).await
     {
-        tokio::fs::create_dir_all(parent).await.ok();
+        tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
     }
 
     let connect_str = if path == ":memory:" {
@@ -17,17 +21,14 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         format!("sqlite://{}?mode=rwc", path)
     };
 
+    let opts: SqliteConnectOptions = connect_str.parse()?;
+    let opts = opts
+        .pragma("journal_mode", "WAL")
+        .pragma("busy_timeout", "5000");
+
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
-        .connect(&connect_str)
-        .await?;
-
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool)
-        .await?;
-
-    sqlx::query("PRAGMA busy_timeout=5000")
-        .execute(&pool)
+        .connect_with(opts)
         .await?;
 
     sqlx::migrate!("crates/jobs/lite/migrations")
@@ -75,6 +76,19 @@ pub async fn reclaim_stale_running_jobs_for_table(
     table: &str,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
+    const VALID_TABLES: &[&str] = &[
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+        "axon_refresh_jobs",
+        "axon_graph_jobs",
+    ];
+    if !VALID_TABLES.contains(&table) {
+        return Err(sqlx::Error::Configuration(
+            format!("reclaim_stale_running_jobs_for_table: unknown table '{table}'").into(),
+        ));
+    }
     let threshold = now_ms() - stale_threshold_ms;
     let result = sqlx::query(&format!(
         "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
