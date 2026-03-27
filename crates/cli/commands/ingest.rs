@@ -115,37 +115,42 @@ mod tests {
             _kind: JobKind,
             _limit: i64,
             _offset: i64,
-        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
+        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn Error + Send + Sync>>
+        {
             unimplemented!()
         }
         async fn job_status(
             &self,
             _kind: JobKind,
             _id: uuid::Uuid,
-        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
+        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn Error + Send + Sync>>
+        {
             unimplemented!()
         }
         async fn cancel_job(
             &self,
             _kind: JobKind,
             _id: uuid::Uuid,
-        ) -> Result<bool, Box<dyn Error>> {
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
-        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
-        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
         async fn recover_jobs(
             &self,
             _kind: JobKind,
             _stale_threshold_ms: i64,
-        ) -> Result<u64, Box<dyn Error>> {
+        ) -> Result<u64, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
-        async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error>> {
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
     }
