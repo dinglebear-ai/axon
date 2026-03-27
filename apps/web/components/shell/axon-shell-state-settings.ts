@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useShellStore } from '@/lib/shell-store'
 
 export function useAxonShellSettings() {
@@ -12,6 +13,29 @@ export function useAxonShellSettings() {
   const setPermissionTimeoutSecs = useShellStore((s) => s.setPermissionTimeoutSecs)
   const setAdapterTimeoutSecs = useShellStore((s) => s.setAdapterTimeoutSecs)
 
+  const settingsState = useMemo(
+    () => ({
+      enableFs,
+      setEnableFs,
+      enableTerminal,
+      setEnableTerminal,
+      permissionTimeoutSecs,
+      setPermissionTimeoutSecs,
+      adapterTimeoutSecs,
+      setAdapterTimeoutSecs,
+    }),
+    [
+      enableFs,
+      setEnableFs,
+      enableTerminal,
+      setEnableTerminal,
+      permissionTimeoutSecs,
+      setPermissionTimeoutSecs,
+      adapterTimeoutSecs,
+      setAdapterTimeoutSecs,
+    ],
+  )
+
   return {
     enableFs,
     setEnableFs,
@@ -21,5 +45,6 @@ export function useAxonShellSettings() {
     setPermissionTimeoutSecs,
     adapterTimeoutSecs,
     setAdapterTimeoutSecs,
+    settingsState,
   }
 }

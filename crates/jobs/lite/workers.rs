@@ -102,10 +102,28 @@ async fn worker_loop<F, Fut>(
                     let result = run_job(Arc::clone(&pool), id).await;
                     match result {
                         Ok(result_json) => {
-                            let _ = mark_completed(&pool, table, id, result_json.as_ref()).await;
+                            if let Err(e) =
+                                mark_completed(&pool, table, id, result_json.as_ref()).await
+                            {
+                                tracing::error!(
+                                    table,
+                                    job_id = %id,
+                                    error = %e,
+                                    "lite worker: failed to mark job completed — job will remain in 'running' state"
+                                );
+                            }
                         }
                         Err(e) => {
-                            let _ = mark_failed(&pool, table, id, &e.to_string()).await;
+                            if let Err(mark_err) =
+                                mark_failed(&pool, table, id, &e.to_string()).await
+                            {
+                                tracing::error!(
+                                    table,
+                                    job_id = %id,
+                                    error = %mark_err,
+                                    "lite worker: failed to mark job failed — job will remain in 'running' state"
+                                );
+                            }
                         }
                     }
                 }
@@ -314,60 +332,61 @@ async fn run_extract_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -
 }
 
 async fn run_ingest_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -> JobResult {
-    let row: Option<(String, String, String)> =
-        sqlx::query_as("SELECT source_type, target, config_json FROM axon_ingest_jobs WHERE id=?")
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT config_json FROM axon_ingest_jobs WHERE id=?")
             .bind(id.to_string())
             .fetch_optional(pool)
             .await?;
-    let Some((source_type, target, config_json)) = row else {
+    let Some((config_json,)) = row else {
         return Ok(None);
     };
 
-    let result = match source_type.as_str() {
-        "github" => {
-            let (owner, repo) = crate::crates::ingest::github::parse_github_repo(&target)
-                .ok_or_else(|| format!("invalid github target: {target}"))?;
-            crate::crates::services::ingest::ingest_github(cfg, &owner, &repo, None)
+    let preview = &config_json[..config_json.len().min(120)];
+    let source: crate::crates::jobs::ingest::IngestSource = serde_json::from_str(&config_json)
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})").into()
+        })?;
+
+    let result = match source {
+        crate::crates::jobs::ingest::IngestSource::Github {
+            repo,
+            include_source,
+        } => {
+            let (owner, repo_name) = crate::crates::ingest::github::parse_github_repo(&repo)
+                .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
+                    format!("invalid github target: {repo}").into()
+                })?;
+            let mut github_cfg = cfg.clone();
+            github_cfg.github_include_source = include_source;
+            crate::crates::services::ingest::ingest_github(&github_cfg, &owner, &repo_name, None)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
         }
-        "reddit" => crate::crates::services::ingest::ingest_reddit(cfg, &target, None)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?,
-        "youtube" => crate::crates::services::ingest::ingest_youtube(cfg, &target, None)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?,
-        "sessions" => {
-            let source: crate::crates::jobs::ingest::IngestSource = serde_json::from_str(
-                &config_json,
-            )
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                format!("invalid sessions ingest config for job {id}: {e}").into()
-            })?;
-            let crate::crates::jobs::ingest::IngestSource::Sessions {
-                sessions_claude,
-                sessions_codex,
-                sessions_gemini,
-                sessions_project,
-            } = source
-            else {
-                return Err(format!(
-                    "invalid sessions ingest config for job {id}: expected sessions source"
-                )
-                .into());
-            };
-
+        crate::crates::jobs::ingest::IngestSource::Reddit { target } => {
+            crate::crates::services::ingest::ingest_reddit(cfg, &target, None)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+        }
+        crate::crates::jobs::ingest::IngestSource::Youtube { target } => {
+            crate::crates::services::ingest::ingest_youtube(cfg, &target, None)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+        }
+        crate::crates::jobs::ingest::IngestSource::Sessions {
+            sessions_claude,
+            sessions_codex,
+            sessions_gemini,
+            sessions_project,
+        } => {
             let mut sessions_cfg = cfg.clone();
             sessions_cfg.sessions_claude = sessions_claude;
             sessions_cfg.sessions_codex = sessions_codex;
             sessions_cfg.sessions_gemini = sessions_gemini;
             sessions_cfg.sessions_project = sessions_project;
-
             crate::crates::services::ingest::ingest_sessions(&sessions_cfg, None)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
         }
-        other => return Err(format!("unknown source_type '{other}' in ingest job {id}").into()),
     };
 
     Ok(Some(result.payload))
@@ -415,7 +434,11 @@ async fn run_graph_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -> 
         return Ok(None);
     };
 
-    let job_cfg: serde_json::Value = serde_json::from_str(&config_json).unwrap_or_default();
+    let job_cfg: serde_json::Value = serde_json::from_str(&config_json).map_err(
+        |e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("graph job {id}: malformed config_json: {e}").into()
+        },
+    )?;
     let url = job_cfg["url"]
         .as_str()
         .ok_or("graph job missing 'url' in config_json — enqueue via services::graph::graph_build")?

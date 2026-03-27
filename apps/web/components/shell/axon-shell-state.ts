@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PromptInputFile } from '@/components/ai-elements/prompt-input'
 import type { NeuralCanvasHandle } from '@/components/neural-canvas'
-import { useAxonAcp } from '@/hooks/use-axon-acp'
-import { fetchSessionWithRetry } from '@/hooks/use-axon-session'
-import { useAxonWs } from '@/hooks/use-axon-ws'
 import { useCopyFeedback } from '@/hooks/use-copy-feedback'
 import { useMcpServers } from '@/hooks/use-mcp-servers'
 import { useWorkspaceFiles } from '@/hooks/use-workspace-files'
@@ -13,8 +10,8 @@ import { apiFetch } from '@/lib/api-fetch'
 import { getAcpModeConfigOption, getAcpModelConfigOption } from '@/lib/pulse/acp-config'
 import { persistToolPreferences, TOOL_PREFERENCES_LS_KEY } from '@/lib/shell/tool-preferences'
 import { useShellStore } from '@/lib/shell-store'
-import type { ContainerStats, WsServerMsg } from '@/lib/ws-protocol'
 import { useAxonShellActions } from './axon-shell-state-actions'
+import { useAxonShellConnection } from './axon-shell-state-connection'
 import {
   type AxonMobilePane,
   agentDisplayName,
@@ -131,125 +128,37 @@ export function useAxonShellState() {
     [layout, setEditorMarkdown],
   )
 
-  const { send: wsSend, subscribeByTypes: subscribeWsByTypes } = useAxonWs()
-
-  // When true, permission requests are auto-approved by picking the first
-  // option. When false (default), the request is ignored and the backend
-  // permission prompt times out -- making the problem visible instead of
-  // silently approving potentially destructive operations.
-  const enableAutoApprove = false
-
-  const onPermissionRequest = useCallback(
-    ({
-      session_id,
-      tool_call_id,
-      options,
-    }: {
-      session_id: string
-      tool_call_id: string
-      options: string[]
-    }) => {
-      if (!enableAutoApprove) {
-        console.warn(
-          `[acp] permission request ignored (auto-approve disabled) tool_call_id=${tool_call_id}`,
-        )
-        return
-      }
-      const chosen = options[0]
-      if (!chosen) return
-      console.info(
-        `[acp] auto-responding to permission request tool_call_id=${tool_call_id} with option=${chosen}`,
-      )
-      wsSend({ type: 'permission_response', session_id, tool_call_id, option_id: chosen })
-    },
-    [wsSend],
+  const onHandoffConsumed = useCallback(
+    () => setPendingHandoffContext(null),
+    [setPendingHandoffContext],
   )
 
-  // Guard against stale onSessionInfoUpdate responses overwriting a newer
-  // session selection. Each invocation bumps the generation counter; after
-  // the async fetch resolves we verify the generation hasn't advanced.
-  const sessionInfoGenRef = useRef(0)
-
-  const onSessionInfoUpdate = useCallback(
-    (sessionId: string) => {
-      const gen = ++sessionInfoGenRef.current
-      fetchSessionWithRetry(sessionId, () => sessionInfoGenRef.current !== gen, {
-        assistantMode: layout.railMode === 'assistant',
-        forceRefresh: true,
-      })
-        .then(() => {
-          // Stale: user has moved to a different session since this fetch started.
-          if (sessionInfoGenRef.current !== gen) return
-          session.onSessionIdChange(sessionId)
-        })
-        .catch(() => {
-          // Ignore fetch failures — the session may not yet be on disk.
-        })
-    },
-    [layout.railMode, session],
-  )
-
-  const { submitPrompt, isStreaming, connected } = useAxonAcp({
-    activeSessionId: session.chatSessionId,
-    agent: pulseAgent ?? 'claude',
-    model: pulseModel,
-    sessionMode,
-    enabledMcpServers: mcp.enabledMcpServers,
-    blockedMcpTools,
-    assistantMode: layout.railMode === 'assistant',
-    handoffContext: pendingHandoffContext,
-    onSessionIdChange: session.onSessionIdChange,
-    onSessionFallback: undefined,
-    onSessionInfoUpdate,
-    onMessagesChange: messages.onMessagesChange,
-    onAcpConfigOptionsUpdate: setAcpConfigOptions,
-    onCommandsUpdate: handleCommandsUpdate,
-    onHandoffConsumed: () => setPendingHandoffContext(null),
-    onTurnComplete,
-    onEditorUpdate,
-    onPermissionRequest,
-    enableFs: settings.enableFs,
-    enableTerminal: settings.enableTerminal,
-    permissionTimeoutSecs: settings.permissionTimeoutSecs,
-    adapterTimeoutSecs: settings.adapterTimeoutSecs,
-  })
-
-  const isStreamingRef = useRef(false)
-  const lastSyncedSessionIdRef = useRef<string | null>(null)
-  useEffect(() => {
-    isStreamingRef.current = isStreaming
-  }, [isStreaming])
-
-  useEffect(() => {
-    return subscribeWsByTypes(['command.done', 'command.error'], (msg: WsServerMsg) => {
-      if (msg.type === 'command.done' || msg.type === 'command.error') {
-        canvasRef.current?.setIntensity(0.15)
-        setTimeout(() => canvasRef.current?.setIntensity(0), 3000)
-      }
+  const { submitPrompt, isStreaming, connected, handleStats, bumpSessionInfoGen, isStreamingRef } =
+    useAxonShellConnection({
+      chatSessionId: session.chatSessionId,
+      pulseAgent: pulseAgent ?? 'claude',
+      pulseModel,
+      sessionMode,
+      enabledMcpServers: mcp.enabledMcpServers,
+      blockedMcpTools,
+      assistantMode: layout.railMode === 'assistant',
+      handoffContext: pendingHandoffContext,
+      onSessionIdChange: session.onSessionIdChange,
+      onMessagesChange: messages.onMessagesChange,
+      onAcpConfigOptionsUpdate: setAcpConfigOptions,
+      onCommandsUpdate: handleCommandsUpdate,
+      onHandoffConsumed,
+      onTurnComplete,
+      onEditorUpdate,
+      canvasRef,
+      enableFs: settings.enableFs,
+      enableTerminal: settings.enableTerminal,
+      permissionTimeoutSecs: settings.permissionTimeoutSecs,
+      adapterTimeoutSecs: settings.adapterTimeoutSecs,
+      railMode: layout.railMode,
     })
-  }, [subscribeWsByTypes])
 
-  useEffect(() => {
-    if (isStreaming) {
-      canvasRef.current?.setIntensity(1)
-    }
-  }, [isStreaming])
-
-  const handleStats = useCallback(
-    (data: {
-      aggregate: { cpu_percent: number }
-      containers: Record<string, ContainerStats>
-      container_count: number
-    }) => {
-      canvasRef.current?.stimulate(data.containers)
-      if (!isStreamingRef.current) {
-        const maxCpu = data.container_count * 100
-        const norm = Math.min(data.aggregate.cpu_percent / maxCpu, 1)
-        canvasRef.current?.setIntensity(0.02 + norm * 0.83)
-      }
-    },
-    [],
-  )
+  const lastSyncedSessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!toolPrefsHydrated) return
@@ -370,12 +279,6 @@ export function useAxonShellState() {
     }
   }, [activeFile, setEditorMarkdown])
 
-  // Invalidate any in-flight onSessionInfoUpdate fetch so it cannot
-  // overwrite a manual session selection with a stale session ID.
-  const bumpSessionInfoGen = useCallback(() => {
-    sessionInfoGenRef.current++
-  }, [])
-
   const {
     composerProps,
     handleEditMessage,
@@ -462,96 +365,8 @@ export function useAxonShellState() {
   const chatTitle = activeSession?.preview?.slice(0, 60) ?? activeSession?.project ?? 'New chat'
   const agentLabel = agentDisplayName(pulseAgent ?? 'claude')
 
-  const layoutState = useMemo(
-    () => ({
-      canvasProfile: layout.canvasProfile,
-      chatFlex: layout.chatFlex,
-      chatOpen: layout.chatOpen,
-      editorOpen: layout.editorOpen,
-      isDragging: layout.isDragging,
-      layoutRestored: layout.layoutRestored,
-      mobilePane: layout.mobilePane,
-      railMode: layout.railMode,
-      rightPane: layout.rightPane,
-      sectionRef: layout.sectionRef,
-      sidebarOpen: layout.sidebarOpen,
-      sidebarWidth: layout.sidebarWidth,
-      transitionClass: layout.transitionClass,
-      density: layout.density,
-    }),
-    [
-      layout.canvasProfile,
-      layout.chatFlex,
-      layout.chatOpen,
-      layout.editorOpen,
-      layout.isDragging,
-      layout.layoutRestored,
-      layout.mobilePane,
-      layout.railMode,
-      layout.rightPane,
-      layout.sectionRef,
-      layout.sidebarOpen,
-      layout.sidebarWidth,
-      layout.transitionClass,
-      layout.density,
-    ],
-  )
-
-  const layoutActions = useMemo(
-    () => ({
-      handleCanvasProfileChange: layout.handleCanvasProfileChange,
-      nudgeChatFlex: layout.nudgeChatFlex,
-      nudgeSidebar: layout.nudgeSidebar,
-      persistChatOpen: layout.persistChatOpen,
-      persistRightPane: layout.persistRightPane,
-      persistSidebarOpen: layout.persistSidebarOpen,
-      resetChatFlex: layout.resetChatFlex,
-      resetSidebarWidth: layout.resetSidebarWidth,
-      setMobilePaneTracked: layout.setMobilePaneTracked,
-      setRailModeTracked: layout.setRailModeTracked,
-      startChatResize: layout.startChatResize,
-      startSidebarResize: layout.startSidebarResize,
-      setDensityTracked: layout.setDensityTracked,
-    }),
-    [
-      layout.handleCanvasProfileChange,
-      layout.nudgeChatFlex,
-      layout.nudgeSidebar,
-      layout.persistChatOpen,
-      layout.persistRightPane,
-      layout.persistSidebarOpen,
-      layout.resetChatFlex,
-      layout.resetSidebarWidth,
-      layout.setMobilePaneTracked,
-      layout.setRailModeTracked,
-      layout.startChatResize,
-      layout.startSidebarResize,
-      layout.setDensityTracked,
-    ],
-  )
-
-  const settingsState = useMemo(
-    () => ({
-      enableFs: settings.enableFs,
-      setEnableFs: settings.setEnableFs,
-      enableTerminal: settings.enableTerminal,
-      setEnableTerminal: settings.setEnableTerminal,
-      permissionTimeoutSecs: settings.permissionTimeoutSecs,
-      setPermissionTimeoutSecs: settings.setPermissionTimeoutSecs,
-      adapterTimeoutSecs: settings.adapterTimeoutSecs,
-      setAdapterTimeoutSecs: settings.setAdapterTimeoutSecs,
-    }),
-    [
-      settings.enableFs,
-      settings.setEnableFs,
-      settings.enableTerminal,
-      settings.setEnableTerminal,
-      settings.permissionTimeoutSecs,
-      settings.setPermissionTimeoutSecs,
-      settings.adapterTimeoutSecs,
-      settings.setAdapterTimeoutSecs,
-    ],
-  )
+  const { layoutState, layoutActions } = layout
+  const { settingsState } = settings
 
   const conversationState = useMemo(
     () => ({

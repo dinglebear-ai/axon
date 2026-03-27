@@ -28,35 +28,44 @@ import {
 } from './axon-shell-state-helpers'
 import type { RailMode } from './axon-ui-config'
 
-type LayoutControls = {
+type LayoutStateFields = {
+  canvasProfile: NeuralCanvasProfile
   chatFlex: number
   chatOpen: boolean
+  density: AxonDensity
   editorOpen: boolean
-  handleCanvasProfileChange: (profile: NeuralCanvasProfile) => void
   isDragging: boolean
   layoutRestored: boolean
   mobilePane: AxonMobilePane
+  railMode: RailMode
+  rightPane: RightPane
+  sectionRef: React.RefObject<HTMLElement | null>
+  sidebarOpen: boolean
+  sidebarWidth: number
+  transitionClass: string
+}
+
+type LayoutActionFields = {
+  handleCanvasProfileChange: (profile: NeuralCanvasProfile) => void
   nudgeChatFlex: (delta: number) => void
   nudgeSidebar: (delta: number) => void
   persistChatOpen: (open: boolean) => void
   persistRightPane: (pane: RightPane) => void
   persistSidebarOpen: (open: boolean) => void
-  railMode: RailMode
   resetChatFlex: () => void
   resetSidebarWidth: () => void
-  rightPane: RightPane
-  sectionRef: React.RefObject<HTMLElement | null>
+  setDensityTracked: (density: AxonDensity) => void
   setMobilePaneTracked: (nextPane: AxonMobilePane) => void
   setRailModeTracked: (mode: RailMode) => void
-  sidebarOpen: boolean
-  sidebarWidth: number
   startChatResize: (startX: number) => void
   startSidebarResize: (startX: number) => void
-  transitionClass: string
-  canvasProfile: NeuralCanvasProfile
-  density: AxonDensity
-  setDensityTracked: (density: AxonDensity) => void
 }
+
+type LayoutControls = LayoutStateFields &
+  LayoutActionFields & {
+    layoutState: LayoutStateFields
+    layoutActions: LayoutActionFields
+  }
 
 export function useAxonShellLayoutControls(): LayoutControls {
   // Read from store (surgical per-field subscriptions)
@@ -311,6 +320,74 @@ export function useAxonShellLayoutControls(): LayoutControls {
     [isDragging, layoutRestored],
   )
 
+  const layoutState = useMemo(
+    () => ({
+      canvasProfile,
+      chatFlex,
+      chatOpen,
+      editorOpen,
+      isDragging,
+      layoutRestored,
+      mobilePane,
+      railMode,
+      rightPane,
+      sectionRef,
+      sidebarOpen,
+      sidebarWidth,
+      transitionClass,
+      density,
+    }),
+    [
+      canvasProfile,
+      chatFlex,
+      chatOpen,
+      editorOpen,
+      isDragging,
+      layoutRestored,
+      mobilePane,
+      railMode,
+      rightPane,
+      sectionRef,
+      sidebarOpen,
+      sidebarWidth,
+      transitionClass,
+      density,
+    ],
+  )
+
+  const layoutActions = useMemo(
+    () => ({
+      handleCanvasProfileChange,
+      nudgeChatFlex,
+      nudgeSidebar,
+      persistChatOpen,
+      persistRightPane,
+      persistSidebarOpen,
+      resetChatFlex,
+      resetSidebarWidth,
+      setMobilePaneTracked,
+      setRailModeTracked,
+      startChatResize,
+      startSidebarResize,
+      setDensityTracked,
+    }),
+    [
+      handleCanvasProfileChange,
+      nudgeChatFlex,
+      nudgeSidebar,
+      persistChatOpen,
+      persistRightPane,
+      persistSidebarOpen,
+      resetChatFlex,
+      resetSidebarWidth,
+      setMobilePaneTracked,
+      setRailModeTracked,
+      startChatResize,
+      startSidebarResize,
+      setDensityTracked,
+    ],
+  )
+
   return {
     canvasProfile,
     chatFlex,
@@ -318,7 +395,9 @@ export function useAxonShellLayoutControls(): LayoutControls {
     editorOpen,
     handleCanvasProfileChange,
     isDragging,
+    layoutActions,
     layoutRestored,
+    layoutState,
     mobilePane,
     nudgeChatFlex,
     nudgeSidebar,

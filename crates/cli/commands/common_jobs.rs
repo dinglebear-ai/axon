@@ -5,7 +5,6 @@ use crate::crates::core::config::Config;
 use crate::crates::core::ui::{accent, muted, primary, status_text, symbol_for_status};
 use crate::crates::services::runtime::WorkerMode;
 use chrono::{DateTime, Utc};
-use serde::Serialize;
 use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
@@ -59,10 +58,12 @@ macro_rules! impl_job_status {
                 self.error_text.as_deref()
             }
             fn to_status_response_json(&self) -> Value {
-                serde_json::to_value($status_ctor(self)).unwrap_or_default()
+                serde_json::to_value($status_ctor(self))
+                    .unwrap_or_else(|e| serde_json::json!({"error": e.to_string()}))
             }
             fn to_summary_entry_json(&self) -> Value {
-                serde_json::to_value($summary_ctor(self)).unwrap_or_default()
+                serde_json::to_value($summary_ctor(self))
+                    .unwrap_or_else(|e| serde_json::json!({"error": e.to_string()}))
             }
             fn to_errors_response_json(&self) -> Value {
                 serde_json::to_value(JobErrorsResponse::from_job(
@@ -70,7 +71,7 @@ macro_rules! impl_job_status {
                     self.status.clone(),
                     self.error_text.clone(),
                 ))
-                .unwrap_or_default()
+                .unwrap_or_else(|e| serde_json::json!({"error": e.to_string()}))
             }
         }
     };
@@ -112,7 +113,7 @@ fn print_pretty_json(value: &Value) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn handle_job_status<T: JobStatus + Serialize>(
+pub fn handle_job_status<T: JobStatus>(
     cfg: &Config,
     job: Option<T>,
     job_id: Uuid,
@@ -187,7 +188,7 @@ pub fn handle_job_cancel(
     Ok(())
 }
 
-pub fn handle_job_errors<T: JobStatus + Serialize>(
+pub fn handle_job_errors<T: JobStatus>(
     cfg: &Config,
     job: Option<T>,
     id: Uuid,
@@ -232,7 +233,7 @@ pub fn handle_job_errors<T: JobStatus + Serialize>(
     Ok(())
 }
 
-pub fn handle_job_list<T: JobStatus + Serialize>(
+pub fn handle_job_list<T: JobStatus>(
     cfg: &Config,
     jobs: Vec<T>,
     command_name: &str,

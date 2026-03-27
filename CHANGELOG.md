@@ -1,5 +1,25 @@
 # Changelog
-Last Modified: 2026-03-26 (session: v0.33.3 — shared runtime cutover completion)
+Last Modified: 2026-03-27 (session: v0.33.4 — shell state split and lite follow-up fixes)
+
+## [0.33.4] — fix/shell-state-and-lite-followups
+
+### Highlights
+
+- **Shell state split continued** — Pulse shell connection, settings, and layout state now expose focused state/action bundles, reducing the monolithic `axon-shell-state.ts` surface and keeping the job detail UI split aligned with the extracted component module.
+- **Lite worker hardening** — SQLite store setup now creates parent directories asynchronously, applies a `busy_timeout`, logs failed completion/failure transitions, and reconstructs ingest work from `config_json` instead of trusting stale denormalized columns.
+- **CLI job JSON resilience** — `common_jobs.rs` no longer requires `Serialize` on status handlers and now emits explicit JSON error payloads instead of silently defaulting to `{}` when serialization fails.
+- **PR follow-up batch landed** — the remaining lite-mode, refresh, screenshot, supervisor, watch, config, and diagnostics review threads from PR `#60` were fixed and resolved in four incremental commits.
+- **Local tool artifact hygiene** — `.gitignore` now covers Beads/Dolt-generated local files so repo-local helper state stays out of commits by default.
+
+### Commits since v0.33.3
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix(ui+lite) | split shell/job detail state further and harden lite worker follow-ups |
+| 3d24c15e | fix | address remaining PR review follow-ups |
+| 4cfd173c | fix | address PR comments #13-20 |
+| 98005219 | fix | address PR comments #3-12 |
+| 9c3751c6 | fix | address PR comments #1-2 - harden lite claims and sessions ingest |
 
 ## [0.33.3] — refactor/services-runtime-cutover
 

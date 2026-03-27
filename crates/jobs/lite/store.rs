@@ -8,7 +8,7 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     if path != ":memory:"
         && let Some(parent) = std::path::Path::new(path).parent()
     {
-        std::fs::create_dir_all(parent).ok();
+        tokio::fs::create_dir_all(parent).await.ok();
     }
 
     let connect_str = if path == ":memory:" {
@@ -23,6 +23,10 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .await?;
 
     sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool)
+        .await?;
+
+    sqlx::query("PRAGMA busy_timeout=5000")
         .execute(&pool)
         .await?;
 
