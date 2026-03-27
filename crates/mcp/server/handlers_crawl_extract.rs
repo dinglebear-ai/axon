@@ -99,7 +99,6 @@ impl AxonMcpServer {
         }
         validate_mcp_urls(&urls)?;
         let mut cfg = self.cfg.as_ref().clone();
-        let prompt_clone = prompt.clone();
         cfg.query = prompt;
         if let Some(mp) = max_pages {
             cfg.max_pages = mp;
@@ -111,7 +110,7 @@ impl AxonMcpServer {
         let outcome = extract_svc::extract_start_with_context(
             &cfg,
             &urls,
-            prompt_clone,
+            cfg.query.clone(),
             &service_context,
             None,
         )
