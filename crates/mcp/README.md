@@ -15,6 +15,8 @@ Axon MCP server crate backing the `axon mcp` command.
 - Parser is strict (no fallback action keys, no alias remapping)
 - Context-safe default: `response_mode=path` (artifact-first output in `.cache/axon-mcp/`)
 - Resource exposed: `axon://schema/mcp-tool`
+- MCP App resource exposed: `ui://axon/status-dashboard`
+- MCP Apps capability is advertised so compatible hosts can render the dashboard widget
 
 See source-of-truth docs:
 - `docs/MCP.md`

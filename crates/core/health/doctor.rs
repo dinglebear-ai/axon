@@ -17,7 +17,7 @@ use std::error::Error;
 use std::future::Future;
 use std::time::Instant;
 
-fn elapsed_ms(start: Instant) -> u64 {
+pub(super) fn elapsed_ms(start: Instant) -> u64 {
     let ms = start.elapsed().as_millis();
     if ms > u128::from(u64::MAX) {
         u64::MAX
@@ -26,7 +26,10 @@ fn elapsed_ms(start: Instant) -> u64 {
     }
 }
 
-async fn probe_tei_info(url: &str, client: &reqwest::Client) -> (Option<Value>, Option<String>) {
+pub(super) async fn probe_tei_info(
+    url: &str,
+    client: &reqwest::Client,
+) -> (Option<Value>, Option<String>) {
     if url.trim().is_empty() {
         return (None, Some("not configured".to_string()));
     }
@@ -50,7 +53,7 @@ async fn probe_tei_info(url: &str, client: &reqwest::Client) -> (Option<Value>, 
     (None, last_error)
 }
 
-fn tei_model_from_info(info: &Value) -> Option<String> {
+pub(super) fn tei_model_from_info(info: &Value) -> Option<String> {
     let str_field = |key: &str| info.get(key).and_then(Value::as_str).map(str::to_string);
     str_field("model_id")
         .or_else(|| str_field("model_name"))
@@ -64,7 +67,7 @@ fn tei_model_from_info(info: &Value) -> Option<String> {
         })
 }
 
-fn tei_info_summary(info: &Value) -> Option<String> {
+pub(super) fn tei_info_summary(info: &Value) -> Option<String> {
     let mut parts = Vec::new();
     for key in [
         "model_sha",
@@ -86,7 +89,7 @@ fn tei_info_summary(info: &Value) -> Option<String> {
     }
 }
 
-fn resolve_openai_model(cfg: &Config) -> String {
+pub(super) fn resolve_openai_model(cfg: &Config) -> String {
     if !cfg.openai_model.trim().is_empty() {
         return cfg.openai_model.clone();
     }
@@ -100,7 +103,7 @@ fn resolve_openai_model(cfg: &Config) -> String {
 /// (e.g. `http://host:8080/v1`). If it's missing, the probe will hit
 /// `http://host:8080/models` instead of `http://host:8080/v1/models`
 /// and likely return a 404.
-async fn probe_openai(
+pub(super) async fn probe_openai(
     cfg: &Config,
     openai_model: &str,
     client: &reqwest::Client,
@@ -129,7 +132,7 @@ async fn probe_openai(
 }
 
 /// Probe the Chrome CDP management endpoint. Returns (ok, detail).
-async fn probe_chrome(chrome_url: Option<&str>) -> (bool, Option<String>) {
+pub(super) async fn probe_chrome(chrome_url: Option<&str>) -> (bool, Option<String>) {
     let url = match chrome_url {
         Some(u) if !u.trim().is_empty() => u,
         _ => return (false, None),
@@ -162,7 +165,7 @@ struct DoctorProbes {
     stale_jobs_ms: u64,
 }
 
-async fn timed_probe<T, F>(future: F) -> (T, u64)
+pub(super) async fn timed_probe<T, F>(future: F) -> (T, u64)
 where
     F: Future<Output = T>,
 {

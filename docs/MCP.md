@@ -9,6 +9,8 @@ Last Modified: 2026-03-11
 - Tool name: `axon`
 - Routing fields: `action` + `subaction` for lifecycle families
 - Response behavior field: `response_mode` (`path|inline|both`, default `path`; `auto-inline` is a server-emitted value indicating the auto-inline path was taken — it cannot be requested by the caller)
+- Resources: `axon://schema/mcp-tool`, `ui://axon/status-dashboard`
+- MCP Apps capability is enabled so compatible hosts can render the status dashboard widget
 
 Canonical schema and action contract:
 - `docs/MCP-TOOL-SCHEMA.md`

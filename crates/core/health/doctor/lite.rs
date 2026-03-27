@@ -1,126 +1,15 @@
 //! Lite-mode doctor report: SQLite + HTTP services only (no PG/Redis/AMQP probes).
 
-use crate::crates::cli::commands::probe::{probe_http, with_path};
+use crate::crates::cli::commands::probe::probe_http;
 use crate::crates::core::config::Config;
 use crate::crates::core::health::browser_diagnostics_pattern;
+use crate::crates::core::health::doctor::{
+    probe_chrome, probe_openai, probe_tei_info, resolve_openai_model, tei_info_summary,
+    tei_model_from_info, timed_probe,
+};
 use crate::crates::core::http::build_client;
 use serde_json::Value;
 use std::error::Error;
-use std::future::Future;
-use std::time::Instant;
-
-fn elapsed_ms(start: Instant) -> u64 {
-    let ms = start.elapsed().as_millis();
-    if ms > u128::from(u64::MAX) {
-        u64::MAX
-    } else {
-        ms as u64
-    }
-}
-
-async fn timed_probe<T, F: Future<Output = T>>(future: F) -> (T, u64) {
-    let start = Instant::now();
-    let value = future.await;
-    (value, elapsed_ms(start))
-}
-
-async fn probe_tei_info(url: &str, client: &reqwest::Client) -> (Option<Value>, Option<String>) {
-    if url.trim().is_empty() {
-        return (None, Some("not configured".to_string()));
-    }
-    let mut last_error = None;
-    for path in ["/info", "/v1/info"] {
-        let endpoint = with_path(url, path);
-        match client.get(endpoint).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                let status = resp.status();
-                match resp.json::<Value>().await {
-                    Ok(json) => return (Some(json), Some(format!("{path} {status}"))),
-                    Err(err) => last_error = Some(format!("{path} invalid json: {err}")),
-                }
-            }
-            Ok(resp) => last_error = Some(format!("{path} {}", resp.status())),
-            Err(err) => last_error = Some(err.to_string()),
-        }
-    }
-    (None, last_error)
-}
-
-fn tei_model_from_info(info: &Value) -> Option<String> {
-    let str_field = |key: &str| info.get(key).and_then(Value::as_str).map(str::to_string);
-    str_field("model_id")
-        .or_else(|| str_field("model_name"))
-        .or_else(|| {
-            let model = info.get("model")?;
-            model
-                .as_str()
-                .or_else(|| model.get("id").and_then(Value::as_str))
-                .or_else(|| model.get("name").and_then(Value::as_str))
-                .map(str::to_string)
-        })
-}
-
-fn tei_info_summary(info: &Value) -> Option<String> {
-    let mut parts = Vec::new();
-    for key in [
-        "model_sha",
-        "max_concurrent_requests",
-        "max_client_batch_size",
-        "max_batch_total_tokens",
-        "max_input_tokens",
-        "max_input_length",
-    ] {
-        if let Some(value) = info.get(key) {
-            parts.push(format!("{key}={value}"));
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(", "))
-    }
-}
-
-fn resolve_openai_model(cfg: &Config) -> String {
-    if !cfg.openai_model.trim().is_empty() {
-        return cfg.openai_model.clone();
-    }
-    std::env::var("OPENAI_MODEL").unwrap_or_default()
-}
-
-async fn probe_chrome_lite(chrome_url: Option<&str>) -> (bool, Option<String>) {
-    let url = match chrome_url {
-        Some(u) if !u.trim().is_empty() => u,
-        _ => return (false, None),
-    };
-    probe_http(url, &["/json/version", "/json"]).await
-}
-
-async fn probe_openai_lite(
-    cfg: &Config,
-    openai_model: &str,
-    client: &reqwest::Client,
-) -> (bool, String) {
-    let base = cfg.openai_base_url.trim().trim_end_matches('/');
-    if base.is_empty() {
-        return (false, "not configured".to_string());
-    }
-    if openai_model.trim().is_empty() {
-        return (false, "OPENAI_MODEL not set".to_string());
-    }
-    let url = format!("{base}/models");
-    let mut req = client.get(&url);
-    if !cfg.openai_api_key.trim().is_empty() {
-        req = req.bearer_auth(&cfg.openai_api_key);
-    }
-    match req.send().await {
-        Ok(resp) if resp.status().is_success() => {
-            (true, format!("http {} /models", resp.status().as_u16()))
-        }
-        Ok(resp) => (false, format!("http {} /models", resp.status().as_u16())),
-        Err(e) => (false, e.to_string()),
-    }
-}
 
 fn build_browser_runtime_lite(
     diagnostics: &crate::crates::core::health::BrowserDiagnosticsPattern,
@@ -153,14 +42,14 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     ) = spider::tokio::join!(
         timed_probe(probe_http(&cfg.tei_url, &["/health", "/"])),
         timed_probe(probe_http(&cfg.qdrant_url, &["/healthz", "/"])),
-        timed_probe(probe_chrome_lite(cfg.chrome_remote_url.as_deref())),
+        timed_probe(probe_chrome(cfg.chrome_remote_url.as_deref())),
     );
 
     let (tei_info_probe, openai_probe, openai_probe_ms) = match probe_client_result {
         Ok(ref client) => {
             let ((tei_info, _), (openai, openai_ms)) = spider::tokio::join!(
                 timed_probe(probe_tei_info(&cfg.tei_url, client)),
-                timed_probe(probe_openai_lite(cfg, &openai_model, client)),
+                timed_probe(probe_openai(cfg, &openai_model, client)),
             );
             (tei_info, openai, openai_ms)
         }

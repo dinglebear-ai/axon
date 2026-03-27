@@ -183,6 +183,13 @@ pub(super) async fn inspect_compose_services() -> Result<Vec<ComposeServiceStatu
 }
 
 pub(super) async fn inspect_port_owners(port: u16) -> Result<Vec<PortOwner>, Box<dyn Error>> {
+    if cfg!(target_os = "macos") {
+        return inspect_port_owners_lsof(port).await;
+    }
+    inspect_port_owners_ss(port).await
+}
+
+async fn inspect_port_owners_ss(port: u16) -> Result<Vec<PortOwner>, Box<dyn Error>> {
     let output = Command::new("ss")
         .args(["-ltnp", &format!("( sport = :{port} )")])
         .stdout(Stdio::piped())
@@ -204,6 +211,41 @@ pub(super) async fn inspect_port_owners(port: u16) -> Result<Vec<PortOwner>, Box
             owners.push(PortOwner {
                 pid,
                 command: inspect_process_command(pid).await?,
+            });
+        }
+    }
+    Ok(owners)
+}
+
+async fn inspect_port_owners_lsof(port: u16) -> Result<Vec<PortOwner>, Box<dyn Error>> {
+    let output = Command::new("lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("lsof port inspection failed: {}", stderr.trim()).into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut owners = Vec::new();
+    let mut current_pid = None;
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix('p') {
+            current_pid = rest.parse::<u32>().ok();
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('c')
+            && let Some(pid) = current_pid
+        {
+            if owners.iter().any(|owner: &PortOwner| owner.pid == pid) {
+                continue;
+            }
+            owners.push(PortOwner {
+                pid,
+                command: rest.to_string(),
             });
         }
     }

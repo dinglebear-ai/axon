@@ -263,9 +263,10 @@ const { App } = globalThis.ExtApps;
   }
 
   // ── App lifecycle ─────────────────────────────────────────────────────────
-  const applyTheme = (t) =>
-    document.documentElement.classList.toggle('dark', t === 'dark') ||
+  const applyTheme = (t) => {
+    document.documentElement.classList.toggle('dark', t === 'dark');
     document.documentElement.classList.toggle('light', t !== 'dark');
+  };
 
   const app = new App({ name: 'AxonStatusDashboard', version: '1.0.0' }, {});
 

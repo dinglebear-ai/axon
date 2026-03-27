@@ -266,6 +266,7 @@ impl ServerHandler for AxonMcpServer {
             "- `extract` — structured data extraction via LLM\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",
+            "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
             "\n",
             "All async operations (crawl, embed, ingest, extract) return a job_id. Poll with `action:status` or pass `wait:true` for synchronous execution."
         ).into());

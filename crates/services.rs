@@ -27,11 +27,14 @@ mod service_context_tests {
     use super::context::ServiceContext;
     use crate::crates::core::config::Config;
     use std::error::Error;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn service_context_resolves_capabilities_for_lite_mode()
     -> Result<(), Box<dyn Error + Send + Sync>> {
-        let cfg = Config::default_lite();
+        let sqlite = NamedTempFile::new()?;
+        let mut cfg = Config::default_lite();
+        cfg.sqlite_path = sqlite.path().to_path_buf();
         let ctx = ServiceContext::new(std::sync::Arc::new(cfg)).await?;
 
         assert!(!ctx.capabilities.export.supported);

@@ -107,6 +107,11 @@ impl_job_status!(
     JobSummaryEntry::from_service_job
 );
 
+fn print_pretty_json(value: &Value) -> Result<(), Box<dyn Error>> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
 pub fn handle_job_status<T: JobStatus + Serialize>(
     cfg: &Config,
     job: Option<T>,
@@ -139,13 +144,10 @@ pub fn handle_job_status<T: JobStatus + Serialize>(
         }
         None => {
             if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "error": format!("job not found: {job_id}"),
-                        "job_id": job_id
-                    })
-                );
+                print_pretty_json(&serde_json::json!({
+                    "error": format!("job not found: {job_id}"),
+                    "job_id": job_id
+                }))?;
             } else {
                 println!(
                     "{} {}",
@@ -214,13 +216,10 @@ pub fn handle_job_errors<T: JobStatus + Serialize>(
         }
         None => {
             if cfg.json_output {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "error": format!("job not found: {id}"),
-                        "job_id": id
-                    })
-                );
+                print_pretty_json(&serde_json::json!({
+                    "error": format!("job not found: {id}"),
+                    "job_id": id
+                }))?;
             } else {
                 println!(
                     "{} {}",
@@ -268,7 +267,7 @@ pub fn handle_job_cleanup(
     command_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::json!({ "removed": removed }));
+        print_pretty_json(&serde_json::json!({ "removed": removed }))?;
     } else {
         println!(
             "{} removed {} {command_name} jobs",
@@ -285,7 +284,7 @@ pub fn handle_job_clear(
     command_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::json!({ "removed": removed }));
+        print_pretty_json(&serde_json::json!({ "removed": removed }))?;
     } else {
         println!(
             "{} cleared {} {command_name} jobs and attempted queue purge",
@@ -302,7 +301,7 @@ pub fn handle_job_recover(
     command_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::json!({ "reclaimed": reclaimed }));
+        print_pretty_json(&serde_json::json!({ "reclaimed": reclaimed }))?;
     } else {
         println!(
             "{} reclaimed {} stale {command_name} jobs",
