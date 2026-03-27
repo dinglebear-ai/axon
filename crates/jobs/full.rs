@@ -251,7 +251,10 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::cancel_refresh_job(cfg, id)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Ok(false),
+            JobKind::Graph => Err(
+                "FullBackend: cancel_job for Graph is not implemented; use graph-specific APIs"
+                    .into(),
+            ),
         }
     }
 
@@ -371,7 +374,10 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::cleanup_refresh_jobs(cfg)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Ok(0),
+            JobKind::Graph => Err(
+                "FullBackend: cleanup_jobs for Graph is not implemented; use graph-specific APIs"
+                    .into(),
+            ),
         }
     }
 
@@ -397,7 +403,10 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::clear_refresh_jobs(cfg)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Ok(0),
+            JobKind::Graph => Err(
+                "FullBackend: clear_jobs for Graph is not implemented; use graph-specific APIs"
+                    .into(),
+            ),
         }
     }
 
