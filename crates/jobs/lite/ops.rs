@@ -94,8 +94,9 @@ pub async fn claim_next_pending(
             Ok(None)
         }
         Some((id_str,)) => {
-            sqlx::query(&format!(
-                "UPDATE {} SET status='running', started_at=?, updated_at=? WHERE id=?",
+            let result = sqlx::query(&format!(
+                "UPDATE {} SET status='running', started_at=?, updated_at=? \
+                 WHERE id=? AND status='pending'",
                 table
             ))
             .bind(now)
@@ -103,6 +104,11 @@ pub async fn claim_next_pending(
             .bind(&id_str)
             .execute(&mut *tx)
             .await?;
+
+            if result.rows_affected() == 0 {
+                tx.rollback().await?;
+                return Ok(None);
+            }
 
             tx.commit().await?;
             Ok(Some(
@@ -193,6 +199,7 @@ mod tests {
     use super::*;
     use crate::crates::jobs::backend::JobPayload;
     use crate::crates::jobs::lite::store::open_sqlite_pool;
+    use std::sync::Arc;
 
     async fn test_pool() -> SqlitePool {
         open_sqlite_pool(":memory:").await.expect("pool")
@@ -280,5 +287,64 @@ mod tests {
                 .expect("fetch");
         assert_eq!(row.0, "failed");
         assert_eq!(row.1, "connection timeout");
+    }
+
+    #[tokio::test]
+    async fn concurrent_claims_only_return_one_job() {
+        let path = format!("/tmp/axon-lite-claim-{}.db", Uuid::new_v4());
+        let pool_a = Arc::new(open_sqlite_pool(&path).await.expect("pool a"));
+        let pool_b = Arc::new(open_sqlite_pool(&path).await.expect("pool b"));
+
+        let id = enqueue_job(
+            &pool_a,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue");
+
+        async fn claim_with_lock_retry(
+            pool: &SqlitePool,
+            table: &str,
+        ) -> Result<Option<Uuid>, sqlx::Error> {
+            for _ in 0..5 {
+                match claim_next_pending(pool, table).await {
+                    Ok(result) => return Ok(result),
+                    Err(sqlx::Error::Database(db_err))
+                        if db_err.message().contains("database is locked") =>
+                    {
+                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+
+            claim_next_pending(pool, table).await
+        }
+
+        let (claim_a, claim_b) = tokio::join!(
+            claim_with_lock_retry(pool_a.as_ref(), "axon_crawl_jobs"),
+            claim_with_lock_retry(pool_b.as_ref(), "axon_crawl_jobs")
+        );
+
+        let claims = [claim_a.expect("claim a"), claim_b.expect("claim b")];
+        let winners = claims.iter().filter(|claim| **claim == Some(id)).count();
+        assert_eq!(
+            winners, 1,
+            "exactly one worker should claim the pending job"
+        );
+
+        let status: (String,) = sqlx::query_as("SELECT status FROM axon_crawl_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(pool_a.as_ref())
+            .await
+            .expect("fetch");
+        assert_eq!(status.0, "running");
+
+        drop(pool_a);
+        drop(pool_b);
+        std::fs::remove_file(path).ok();
     }
 }

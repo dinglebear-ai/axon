@@ -2,6 +2,7 @@ use crate::crates::core::config::Config;
 use crate::crates::ingest;
 use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
+use crate::crates::jobs::ingest::types::{source_type_label, target_label};
 pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{get_ingest_job, list_ingest_jobs, start_ingest_job};
 use crate::crates::services::context::ServiceContext;
@@ -57,23 +58,15 @@ pub async fn ingest_start_with_context(
         });
     }
 
-    let (source_type, target) = match &source {
-        IngestSource::Github { repo, .. } => ("github".to_string(), repo.clone()),
-        IngestSource::Reddit { target } => ("reddit".to_string(), target.clone()),
-        IngestSource::Youtube { target } => ("youtube".to_string(), target.clone()),
-        IngestSource::Sessions { .. } => {
-            return Err(anyhow::anyhow!(
-                "sessions ingest is handled by the sessions command, not ingest"
-            )
-            .into());
-        }
-    };
+    let source_type = source_type_label(&source).to_string();
+    let target = target_label(&source);
+    let config_json = serde_json::to_string(&source)?;
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Ingest {
             target,
             source_type,
-            config_json: "{}".to_string(),
+            config_json,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;
@@ -315,4 +308,139 @@ pub async fn ingest_sessions(
         "chunks": chunks,
     });
     Ok(map_ingest_result(payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
+    use crate::crates::jobs::common::test_config;
+    use crate::crates::services::context::ServiceContext;
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::types::{ExecutionMode, StartDisposition};
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    struct CaptureRuntime {
+        payloads: Mutex<Vec<JobPayload>>,
+    }
+
+    #[async_trait]
+    impl ServiceJobRuntime for CaptureRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
+            self.payloads.lock().expect("lock").push(payload);
+            Ok(Uuid::new_v4())
+        }
+
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            Ok("completed".to_string())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
+            Ok(vec![])
+        }
+
+        async fn job_status(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<crate::crates::services::types::ServiceJob>, Box<dyn Error>> {
+            Ok(None)
+        }
+
+        async fn cancel_job(&self, _kind: JobKind, _id: Uuid) -> Result<bool, Box<dyn Error>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn Error>> {
+            Ok(0)
+        }
+
+        async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error>> {
+            Ok(WorkerMode::InProcess)
+        }
+    }
+
+    #[tokio::test]
+    async fn ingest_start_with_context_enqueues_sessions_jobs_in_lite_mode() {
+        let mut cfg = test_config("postgresql://axon:postgres@127.0.0.1:53432/axon");
+        cfg.lite_mode = true;
+        cfg.sessions_claude = true;
+        cfg.sessions_codex = false;
+        cfg.sessions_gemini = true;
+        cfg.sessions_project = Some("axon-rust".to_string());
+
+        let runtime = Arc::new(CaptureRuntime {
+            payloads: Mutex::new(Vec::new()),
+        });
+        let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+        let source = IngestSource::Sessions {
+            sessions_claude: true,
+            sessions_codex: false,
+            sessions_gemini: true,
+            sessions_project: Some("axon-rust".to_string()),
+        };
+
+        let outcome = ingest_start_with_context(&cfg, source.clone(), &service_context)
+            .await
+            .expect("enqueue sessions");
+
+        assert_eq!(outcome.disposition, StartDisposition::Enqueued);
+        assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
+
+        let payloads = runtime.payloads.lock().expect("lock");
+        assert_eq!(payloads.len(), 1);
+        let JobPayload::Ingest {
+            target,
+            source_type,
+            config_json,
+        } = &payloads[0]
+        else {
+            panic!("expected ingest payload");
+        };
+
+        assert_eq!(source_type, "sessions");
+        assert_eq!(target, "claude,gemini:axon-rust");
+        let decoded: IngestSource =
+            serde_json::from_str(config_json).expect("decode source config");
+        assert!(matches!(
+            decoded,
+            IngestSource::Sessions {
+                sessions_claude: true,
+                sessions_codex: false,
+                sessions_gemini: true,
+                sessions_project: Some(ref project),
+            } if project == "axon-rust"
+        ));
+    }
 }

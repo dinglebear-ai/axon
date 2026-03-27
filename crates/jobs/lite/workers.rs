@@ -314,12 +314,12 @@ async fn run_extract_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -
 }
 
 async fn run_ingest_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -> JobResult {
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT source_type, target FROM axon_ingest_jobs WHERE id=?")
+    let row: Option<(String, String, String)> =
+        sqlx::query_as("SELECT source_type, target, config_json FROM axon_ingest_jobs WHERE id=?")
             .bind(id.to_string())
             .fetch_optional(pool)
             .await?;
-    let Some((source_type, target)) = row else {
+    let Some((source_type, target, config_json)) = row else {
         return Ok(None);
     };
 
@@ -337,6 +337,36 @@ async fn run_ingest_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) ->
         "youtube" => crate::crates::services::ingest::ingest_youtube(cfg, &target, None)
             .await
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?,
+        "sessions" => {
+            let source: crate::crates::jobs::ingest::IngestSource = serde_json::from_str(
+                &config_json,
+            )
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                format!("invalid sessions ingest config for job {id}: {e}").into()
+            })?;
+            let crate::crates::jobs::ingest::IngestSource::Sessions {
+                sessions_claude,
+                sessions_codex,
+                sessions_gemini,
+                sessions_project,
+            } = source
+            else {
+                return Err(format!(
+                    "invalid sessions ingest config for job {id}: expected sessions source"
+                )
+                .into());
+            };
+
+            let mut sessions_cfg = cfg.clone();
+            sessions_cfg.sessions_claude = sessions_claude;
+            sessions_cfg.sessions_codex = sessions_codex;
+            sessions_cfg.sessions_gemini = sessions_gemini;
+            sessions_cfg.sessions_project = sessions_project;
+
+            crate::crates::services::ingest::ingest_sessions(&sessions_cfg, None)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+        }
         other => return Err(format!("unknown source_type '{other}' in ingest job {id}").into()),
     };
 
