@@ -173,6 +173,15 @@ pub async fn crawl_start_with_context(
     }
 
     let result = map_crawl_start_result(&cfg.output_dir, &jobs);
+
+    if !cfg.wait {
+        return Ok(JobStartOutcome {
+            disposition: StartDisposition::Enqueued,
+            execution_mode: ExecutionMode::InProcess,
+            result,
+        });
+    }
+
     for job in &result.jobs {
         let job_id = Uuid::parse_str(&job.job_id)?;
         let final_status = service_context
@@ -534,6 +543,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
+        cfg.wait = true;
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())?
@@ -567,9 +577,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn crawl_start_with_context_enqueues_without_blocking_in_lite_mode()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut cfg = test_config("https://docs.rs");
+        cfg.lite_mode = true;
+        cfg.wait = false;
+        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
+            .await
+            .map_err(|e| e.to_string())?
+            .with_jobs_runtime(Arc::new(CompletedLiteRuntime));
+
+        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        assert_eq!(outcome.disposition, StartDisposition::Enqueued);
+        assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
+        assert_eq!(outcome.result.jobs.len(), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn crawl_start_with_context_surfaces_canceled_jobs_in_lite_mode() {
         let mut cfg = test_config("https://docs.rs");
         cfg.lite_mode = true;
+        cfg.wait = true;
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
             .await
             .map_err(|e| e.to_string())

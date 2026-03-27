@@ -22,9 +22,14 @@ impl AxonMcpServer {
             return Err(invalid_params("urls cannot be empty"));
         }
         validate_mcp_urls(&urls)?;
-        let result = crawl_svc::crawl_start(cfg, &urls, None)
+        let service_context = self
+            .service_context_for(cfg.clone())
+            .await
+            .map_err(|e| logged_internal_error("crawl.start.context", e.as_ref()))?;
+        let outcome = crawl_svc::crawl_start_with_context(cfg, &urls, &service_context, None)
             .await
             .map_err(|e| logged_internal_error("crawl.start", e.as_ref()))?;
+        let result = outcome.result;
         let job_ids = result.job_ids;
         let output_dir = result.output_dir;
         let predicted_paths = result.predicted_paths;
@@ -94,17 +99,28 @@ impl AxonMcpServer {
         }
         validate_mcp_urls(&urls)?;
         let mut cfg = self.cfg.as_ref().clone();
+        let prompt_clone = prompt.clone();
         cfg.query = prompt;
         if let Some(mp) = max_pages {
             cfg.max_pages = mp;
         }
-        let result = extract_svc::extract_start(&cfg, &urls, None)
+        let service_context = self
+            .base_service_context()
             .await
-            .map_err(|e| logged_internal_error("extract.start", e.as_ref()))?;
+            .map_err(|e| logged_internal_error("extract.start.context", e.as_ref()))?;
+        let outcome = extract_svc::extract_start_with_context(
+            &cfg,
+            &urls,
+            prompt_clone,
+            &service_context,
+            None,
+        )
+        .await
+        .map_err(|e| logged_internal_error("extract.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "extract",
             "start",
-            serde_json::json!({ "job_id": result.job_id }),
+            serde_json::json!({ "job_id": outcome.result.job_id }),
         ))
     }
 

@@ -1,5 +1,29 @@
 # Changelog
-Last Modified: 2026-03-27 (session: v0.33.4 — shell state split and lite follow-up fixes)
+Last Modified: 2026-03-27 (session: v0.33.5 — PR #60 review fixes batch 2)
+
+## [0.33.5] — fix/lite-mode-mcp-and-review-fixes
+
+### Highlights
+
+- **MCP handlers wired to service context** — crawl, extract, embed, and ingest MCP start handlers now call `_with_context` variants, routing through the shared `ServiceContext` so lite mode is respected end-to-end.
+- **`crawl_start_with_context` early-return fix** — when `cfg.wait` is false the function now returns immediately after enqueueing instead of falling through to the blocking wait loop.
+- **`embed_start_with_context` early-return fix** — same fix; non-blocking enqueue path now returns before calling `wait_for_embed_completion`.
+- **PR #60 review batch complete (rs8.1–rs8.9)** — double pool open, SQLite PRAGMA application, migration 0003 data safety, monolith splits, Graph op errors, list_jobs pagination, MCP lite guards, and `Box<dyn Error>` Send+Sync boundaries all addressed and committed.
+
+### Commits since v0.33.4
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | fix | wire MCP start handlers to service context; fix crawl/embed early-return |
+| 4f6f5fd3 | refactor(rs8.4) | split oversized runtime.rs and workers.rs |
+| 71ac0393 | fix(rs8.8) | fix Box<dyn Error> vs Box<dyn Error+Send+Sync> boundaries |
+| c7ad4dc9 | fix(rs8.7) | add lite mode guards to graph and refresh MCP handlers |
+| 48f5796e | fix(rs8.6) | fix hardcoded LIMIT 500 in lite list_jobs |
+| e084b4e6 | fix(rs8.1) | remove double pool open in resolve_runtime |
+| 0909b192 | fix(rs8.5+rs8.8) | fix Graph ops in FullBackend and update test mock bounds |
+| 73d6ea11 | fix(rs8.3) | wrap migration 0003 in transaction and preserve unknown-status rows |
+| 7b751c43 | fix(rs8.2) | apply SQLite PRAGMAs via SqliteConnectOptions |
+| 438f9f7c | fix(ui+lite) | split shell/job detail state further and harden lite worker follow-ups |
 
 ## [0.33.4] — fix/shell-state-and-lite-followups
 

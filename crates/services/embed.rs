@@ -142,6 +142,15 @@ pub async fn embed_start_with_context(
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;
+
+    if !cfg.wait {
+        return Ok(JobStartOutcome {
+            disposition: StartDisposition::Enqueued,
+            execution_mode: ExecutionMode::InProcess,
+            result: map_embed_start_result(job_id.to_string()),
+        });
+    }
+
     wait_for_embed_completion(service_context.jobs.as_ref(), job_id).await?;
     Ok(JobStartOutcome {
         disposition: StartDisposition::Completed,

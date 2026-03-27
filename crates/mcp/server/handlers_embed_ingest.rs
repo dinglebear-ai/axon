@@ -9,12 +9,12 @@ use crate::crates::mcp::schema::{
     IngestSubaction, ResponseMode, SessionsIngestOptions,
 };
 use crate::crates::services::embed::{
-    embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_input,
+    embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_context,
     embed_status,
 };
 use crate::crates::services::ingest::{
     IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
-    ingest_start, ingest_status,
+    ingest_start_with_context, ingest_status,
 };
 use rmcp::ErrorData;
 
@@ -69,13 +69,18 @@ impl AxonMcpServer {
         input: Option<String>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
-        let result = embed_start_with_input(self.cfg.as_ref(), &input, None, None)
+        let service_context = self
+            .base_service_context()
             .await
-            .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
+            .map_err(|e| logged_internal_error("embed.start.context", e.as_ref()))?;
+        let outcome =
+            embed_start_with_context(self.cfg.as_ref(), &input, &service_context, None, None)
+                .await
+                .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "embed",
             "start",
-            serde_json::json!({ "job_id": result.job_id }),
+            serde_json::json!({ "job_id": outcome.result.job_id }),
         ))
     }
 
@@ -208,13 +213,17 @@ impl AxonMcpServer {
             req.include_source,
             self.cfg.as_ref(),
         )?;
-        let result = ingest_start(self.cfg.as_ref(), source)
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("ingest.start.context", e.as_ref()))?;
+        let outcome = ingest_start_with_context(self.cfg.as_ref(), source, &service_context)
             .await
             .map_err(|e| logged_internal_error("ingest.start", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
             "ingest",
             "start",
-            serde_json::json!({ "job_id": result.job_id }),
+            serde_json::json!({ "job_id": outcome.result.job_id }),
         ))
     }
 
