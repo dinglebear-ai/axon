@@ -162,7 +162,11 @@ export function useAxonShellConnection(
     return subscribeWsByTypes(['command.done', 'command.error'], (msg: WsServerMsg) => {
       if (msg.type === 'command.done' || msg.type === 'command.error') {
         params.canvasRef.current?.setIntensity(0.15)
-        setTimeout(() => params.canvasRef.current?.setIntensity(0), 3000)
+        setTimeout(() => {
+          if (!isStreamingRef.current) {
+            params.canvasRef.current?.setIntensity(0)
+          }
+        }, 3000)
       }
     })
   }, [subscribeWsByTypes, params.canvasRef])
@@ -181,6 +185,10 @@ export function useAxonShellConnection(
     }) => {
       params.canvasRef.current?.stimulate(data.containers)
       if (!isStreamingRef.current) {
+        if (data.container_count === 0) {
+          params.canvasRef.current?.setIntensity(0.02)
+          return
+        }
         const maxCpu = data.container_count * 100
         const norm = Math.min(data.aggregate.cpu_percent / maxCpu, 1)
         params.canvasRef.current?.setIntensity(0.02 + norm * 0.83)

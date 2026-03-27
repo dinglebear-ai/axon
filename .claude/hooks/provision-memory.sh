@@ -42,10 +42,11 @@ provision_memory_dir() {
   # Setup .lavra/.gitattributes for union merge (folder-level, paths use memory/ prefix)
   local GITATTR="$LAVRA_DIR/.gitattributes"
 
-  if [[ ! -f "$GITATTR" ]] || ! grep -q 'memory/knowledge.jsonl' "$GITATTR" 2>/dev/null; then
-    echo "memory/knowledge.jsonl merge=union" > "$GITATTR"
-    echo "memory/knowledge.archive.jsonl merge=union" >> "$GITATTR"
-  fi
+  touch "$GITATTR"
+  grep -qF 'memory/knowledge.jsonl merge=union' "$GITATTR" 2>/dev/null \
+    || echo "memory/knowledge.jsonl merge=union" >> "$GITATTR"
+  grep -qF 'memory/knowledge.archive.jsonl merge=union' "$GITATTR" 2>/dev/null \
+    || echo "memory/knowledge.archive.jsonl merge=union" >> "$GITATTR"
 
   # Write installed version for staleness detection by auto-recall.sh
   # .lavra-version lives at .lavra/ root, not .lavra/memory/

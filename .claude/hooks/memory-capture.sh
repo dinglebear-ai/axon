@@ -50,9 +50,10 @@ done
 
 [[ -z "$TYPE" || -z "$CONTENT" ]] && exit 0
 
-# Generate key
+# Generate key — slug from first 60 chars + short hash of full content for uniqueness
 SLUG=$(echo "$CONTENT" | head -c 60 | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
-KEY="${TYPE}-${SLUG}"
+HASH=$(echo "$CONTENT" | sha256sum | head -c 8)
+KEY="${TYPE}-${SLUG}-${HASH}"
 
 # Detect source
 SOURCE="user"
@@ -111,12 +112,16 @@ if command -v sqlite3 &>/dev/null; then
   fi
 fi
 
-# Check for duplicate key before appending to JSONL
-if [[ -f "$KNOWLEDGE_FILE" ]] && grep -qF "\"key\":\"$KEY\"" "$KNOWLEDGE_FILE"; then
-  exit 0  # Skip duplicate
-fi
-
-echo "$ENTRY" >> "$KNOWLEDGE_FILE"
+# Atomic duplicate-check + append using a lock file
+LOCK_FILE="${KNOWLEDGE_FILE}.lock"
+(
+  flock -w 5 200 || exit 0  # Skip silently if lock is held too long
+  # Check for duplicate key
+  if [[ -f "$KNOWLEDGE_FILE" ]] && grep -qF "\"key\":\"$KEY\"" "$KNOWLEDGE_FILE"; then
+    exit 0  # Skip duplicate
+  fi
+  echo "$ENTRY" >> "$KNOWLEDGE_FILE"
+) 200>"$LOCK_FILE"
 
 # Rotation: archive oldest 2500 when file exceeds 5000 lines
 # High threshold avoids rewriting the file (which breaks merge=union)

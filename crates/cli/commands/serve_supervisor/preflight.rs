@@ -352,14 +352,19 @@ pub(super) async fn terminate_port_owner(owner: &PortOwner) -> Result<(), Box<dy
     // could have been recycled by the kernel for an unrelated process (TOCTOU).
     let current_cmd = match inspect_process_command(owner.pid).await {
         Ok(cmd) => cmd,
-        Err(_) => {
-            // Process already exited — nothing to kill.
-            log_supervisor(
-                "serve",
-                ANSI_YELLOW,
-                &format!("pid {} vanished before SIGTERM — skipping", owner.pid),
-            );
-            return Ok(());
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("ps inspection failed") {
+                // `ps -p <pid>` exits non-zero when the PID doesn't exist.
+                log_supervisor(
+                    "serve",
+                    ANSI_YELLOW,
+                    &format!("pid {} vanished before SIGTERM — skipping", owner.pid),
+                );
+                return Ok(());
+            }
+            // Propagate unexpected errors (permission denied, ps not found, etc.)
+            return Err(e);
         }
     };
 

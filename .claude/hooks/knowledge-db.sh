@@ -227,8 +227,10 @@ _kb_sync_jsonl() {
   FILE_LINES=$(wc -l < "$JSONL_FILE" 2>/dev/null | tr -d ' ')
   [[ "$FILE_LINES" -eq 0 ]] && return 0
 
-  # How many lines to import: difference + 50 margin for safety
-  local SKIP=$(( DB_COUNT - 50 ))
+  # Skip lines already in DB, but use file line count as the upper bound
+  # (DB_COUNT may include rows from other files, so clamp to file size)
+  local SKIP=$(( DB_COUNT > FILE_LINES ? FILE_LINES : DB_COUNT ))
+  SKIP=$(( SKIP - 50 ))
   [[ "$SKIP" -lt 0 ]] && SKIP=0
 
   tail -n +"$(( SKIP + 1 ))" "$JSONL_FILE" | while IFS= read -r LINE; do

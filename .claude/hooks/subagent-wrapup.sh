@@ -21,11 +21,11 @@ if [[ -n "$TRANSCRIPT_PATH" ]] && [[ -f "$TRANSCRIPT_PATH" ]]; then
   BEAD_ID=$(grep -oE 'BEAD_ID: [A-Za-z0-9._-]+' "$TRANSCRIPT_PATH" 2>/dev/null | head -1 | sed 's/BEAD_ID: //')
 
   if [[ -n "$BEAD_ID" ]]; then
-    # Subagent is working on a bead - prompt it to log learnings
+    # Subagent is working on a bead - remind it to log learnings (non-blocking)
     cat << EOF
 {
-  "decision": "block",
-  "reason": "Before completing, please log what you learned to the bead using one or more of these formats:
+  "decision": "allow",
+  "reason": "Reminder: before completing, please log what you learned to the bead using one or more of these formats:
 
 bd comments add $BEAD_ID \"LEARNED: [key technical insight you discovered]\"
 bd comments add $BEAD_ID \"DECISION: [important choice you made and why]\"
