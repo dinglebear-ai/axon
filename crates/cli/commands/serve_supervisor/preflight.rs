@@ -272,7 +272,13 @@ pub(super) async fn inspect_process_command(pid: u32) -> Result<String, Box<dyn 
         .await?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("ps inspection failed for pid {pid}: {}", stderr.trim()).into());
+        let stderr_trim = stderr.trim();
+        if stderr_trim.is_empty() {
+            // ps exits non-zero with empty stderr when the PID simply doesn't exist.
+            return Err(format!("ps pid not found: {pid}").into());
+        }
+        // ps itself failed (permission denied, unsupported flag, etc.) — propagate.
+        return Err(format!("ps inspection failed for pid {pid}: {stderr_trim}").into());
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
@@ -354,8 +360,8 @@ pub(super) async fn terminate_port_owner(owner: &PortOwner) -> Result<(), Box<dy
         Ok(cmd) => cmd,
         Err(e) => {
             let msg = e.to_string();
-            if msg.contains("ps inspection failed") {
-                // `ps -p <pid>` exits non-zero when the PID doesn't exist.
+            if msg.starts_with("ps pid not found:") {
+                // `ps -p <pid>` exits non-zero with empty stderr when the PID doesn't exist.
                 log_supervisor(
                     "serve",
                     ANSI_YELLOW,
@@ -363,7 +369,7 @@ pub(super) async fn terminate_port_owner(owner: &PortOwner) -> Result<(), Box<dy
                 );
                 return Ok(());
             }
-            // Propagate unexpected errors (permission denied, ps not found, etc.)
+            // Propagate real ps failures (permission denied, ps not found, etc.)
             return Err(e);
         }
     };

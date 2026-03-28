@@ -112,10 +112,14 @@ if command -v sqlite3 &>/dev/null; then
   fi
 fi
 
-# Atomic duplicate-check + append using a lock file
+# Atomic duplicate-check + append using a lock file when flock is available.
+# When flock is not installed, fall through and append without locking so the
+# entry is not silently dropped on systems that lack the utility.
 LOCK_FILE="${KNOWLEDGE_FILE}.lock"
 (
-  flock -w 5 200 || exit 0  # Skip silently if lock is held too long
+  if command -v flock >/dev/null 2>&1; then
+    flock -w 5 200 || exit 0  # Lock contention — skip to avoid race
+  fi
   # Check for duplicate key
   if [[ -f "$KNOWLEDGE_FILE" ]] && grep -qF "\"key\":\"$KEY\"" "$KNOWLEDGE_FILE"; then
     exit 0  # Skip duplicate

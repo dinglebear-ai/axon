@@ -662,13 +662,16 @@ pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
     };
     read("AXON_ACP_ADAPTER_CMD").or_else(|| {
         let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let var = match agent.trim().to_lowercase().as_str() {
-            "claude" => "AXON_ACP_CLAUDE_ADAPTER_CMD",
-            "codex" => "AXON_ACP_CODEX_ADAPTER_CMD",
-            "gemini" => "AXON_ACP_GEMINI_ADAPTER_CMD",
+        let (var, default_cmd) = match agent.trim().to_lowercase().as_str() {
+            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude"),
+            "codex" => ("AXON_ACP_CODEX_ADAPTER_CMD", "codex"),
+            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_CMD", "gemini"),
             _ => return None,
         };
-        read(var)
+        // Fall back to the well-known built-in default for the selected agent when the
+        // per-agent override var is unset, so ask/evaluate/research don't fail simply
+        // because AXON_ACP_<AGENT>_ADAPTER_CMD was never explicitly configured.
+        Some(read(var).unwrap_or_else(|| default_cmd.to_string()))
     })
 }
 

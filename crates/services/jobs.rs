@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt;
 
 use uuid::Uuid;
 
@@ -8,8 +9,25 @@ pub use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::ServiceJob;
 
 // Helper: downgrade Send+Sync error to plain Box<dyn Error> for callers that don't need Send+Sync.
+// Wraps the original error to preserve the Display output and source chain without stringifying.
 fn downgrade(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error> {
-    e.to_string().into()
+    struct Wrapper(Box<dyn Error + Send + Sync>);
+    impl fmt::Display for Wrapper {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+    impl fmt::Debug for Wrapper {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+    impl Error for Wrapper {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            self.0.source()
+        }
+    }
+    Box::new(Wrapper(e))
 }
 
 pub async fn list_jobs(

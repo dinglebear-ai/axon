@@ -69,6 +69,8 @@ call_lefthook()
 }
 
 call_lefthook run "pre-commit" "$@"
+_lefthook_exit=$?
+if [ $_lefthook_exit -ne 0 ]; then exit $_lefthook_exit; fi
 
 # --- BEGIN BEADS INTEGRATION v0.62.0 ---
 # This section is managed by beads. Do not remove these markers.

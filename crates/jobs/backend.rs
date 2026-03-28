@@ -30,6 +30,17 @@ impl JobKind {
             Self::Graph => "axon_graph_jobs",
         }
     }
+
+    pub fn all() -> &'static [JobKind] {
+        &[
+            Self::Crawl,
+            Self::Embed,
+            Self::Extract,
+            Self::Ingest,
+            Self::Refresh,
+            Self::Graph,
+        ]
+    }
 }
 
 /// Job submission payload — one variant per job type.
@@ -125,7 +136,15 @@ pub trait JobBackend: Send + Sync {
     /// Poll until the job reaches a terminal state (completed/failed/canceled).
     /// Returns the final status string. Used in lite mode to keep the process
     /// alive while in-process workers finish.
+    ///
+    /// Times out after `AXON_JOB_WAIT_TIMEOUT_SECS` (default 300s).
     async fn wait_for_job(&self, id: JobId, kind: JobKind) -> BackendResult<String> {
+        let timeout_secs: u64 = std::env::var("AXON_JOB_WAIT_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+
         loop {
             match self.job_status(id, kind).await? {
                 Some(row) => match row.status {
@@ -137,6 +156,11 @@ pub trait JobBackend: Send + Sync {
                 None => return Err(format!("job {id} not found in {}", kind.table_name()).into()),
             }
             tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+            if tokio::time::Instant::now() >= deadline {
+                return Err(
+                    format!("job {id} timed out after {timeout_secs}s in state running").into(),
+                );
+            }
         }
     }
 }

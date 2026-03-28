@@ -5,6 +5,8 @@ use runners::{
     run_ingest_job_lite, run_refresh_job_lite,
 };
 
+use crate::crates::jobs::backend::JobKind;
+
 use crate::crates::core::config::Config;
 use crate::crates::jobs::lite::cancel::CancelStore;
 use crate::crates::jobs::lite::ops::{claim_next_pending, mark_completed, mark_failed};
@@ -18,14 +20,29 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Handles to wake specific worker types when new jobs are enqueued.
 pub struct WorkerHandles {
-    pub crawl: Arc<Notify>,
-    pub embed: Arc<Notify>,
-    pub extract: Arc<Notify>,
-    pub ingest: Arc<Notify>,
-    pub refresh: Arc<Notify>,
-    pub graph: Arc<Notify>,
+    pub(crate) crawl: Arc<Notify>,
+    pub(crate) embed: Arc<Notify>,
+    pub(crate) extract: Arc<Notify>,
+    pub(crate) ingest: Arc<Notify>,
+    pub(crate) refresh: Arc<Notify>,
+    pub(crate) graph: Arc<Notify>,
     /// JoinHandles for all spawned worker tasks. Drop or join to monitor for panics.
-    pub task_handles: Vec<tokio::task::JoinHandle<()>>,
+    #[allow(dead_code)]
+    pub(crate) task_handles: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl WorkerHandles {
+    /// Notify the worker for the given job kind that a new job is available.
+    pub(crate) fn notify(&self, kind: JobKind) {
+        match kind {
+            JobKind::Crawl => self.crawl.notify_one(),
+            JobKind::Embed => self.embed.notify_one(),
+            JobKind::Extract => self.extract.notify_one(),
+            JobKind::Ingest => self.ingest.notify_one(),
+            JobKind::Refresh => self.refresh.notify_one(),
+            JobKind::Graph => self.graph.notify_one(),
+        }
+    }
 }
 
 /// Spawn in-process worker tasks for all 6 job types.

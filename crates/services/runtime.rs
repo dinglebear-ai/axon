@@ -1,5 +1,4 @@
 mod full;
-mod mapping;
 
 use std::error::Error;
 use std::sync::Arc;

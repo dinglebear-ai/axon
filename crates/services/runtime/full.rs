@@ -7,10 +7,6 @@ use uuid::Uuid;
 use crate::crates::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload};
 use crate::crates::services::types::ServiceJob;
 
-use super::mapping::{
-    crawl_to_service_job, embed_to_service_job, extract_to_service_job, graph_to_service_job,
-    ingest_to_service_job, refresh_to_service_job,
-};
 use super::{FullServiceRuntime, ServiceJobRuntime, WorkerMode, lift_ss};
 
 #[async_trait]
@@ -65,20 +61,20 @@ impl ServiceJobRuntime for FullServiceRuntime {
                 .await
                 .map_err(lift_ss)?
                 .into_iter()
-                .map(crawl_to_service_job)
+                .map(ServiceJob::from)
                 .collect(),
             JobKind::Embed => crate::crates::jobs::embed::list_embed_jobs(&self.cfg, limit, offset)
                 .await
                 .map_err(lift_ss)?
                 .into_iter()
-                .map(embed_to_service_job)
+                .map(ServiceJob::from)
                 .collect(),
             JobKind::Extract => {
                 crate::crates::jobs::extract::list_extract_jobs(&self.cfg, limit, offset)
                     .await
                     .map_err(lift_ss)?
                     .into_iter()
-                    .map(extract_to_service_job)
+                    .map(ServiceJob::from)
                     .collect()
             }
             JobKind::Ingest => {
@@ -86,7 +82,7 @@ impl ServiceJobRuntime for FullServiceRuntime {
                     .await
                     .map_err(lift_ss)?
                     .into_iter()
-                    .map(ingest_to_service_job)
+                    .map(ServiceJob::from)
                     .collect()
             }
             JobKind::Refresh => {
@@ -94,14 +90,14 @@ impl ServiceJobRuntime for FullServiceRuntime {
                     .await
                     .map_err(lift_ss)?
                     .into_iter()
-                    .map(refresh_to_service_job)
+                    .map(ServiceJob::from)
                     .collect()
             }
             JobKind::Graph => crate::crates::jobs::graph::list_graph_jobs(&self.cfg, limit, offset)
                 .await
                 .map_err(lift_ss)?
                 .into_iter()
-                .map(graph_to_service_job)
+                .map(ServiceJob::from)
                 .collect(),
         })
     }
@@ -117,7 +113,7 @@ impl ServiceJobRuntime for FullServiceRuntime {
                 .await
                 .map_err(lift_ss)?
                 .into_iter()
-                .map(ingest_to_service_job)
+                .map(ServiceJob::from)
                 .collect(),
         )
     }
@@ -131,27 +127,27 @@ impl ServiceJobRuntime for FullServiceRuntime {
             JobKind::Crawl => crate::crates::jobs::crawl::get_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(crawl_to_service_job),
+                .map(ServiceJob::from),
             JobKind::Embed => crate::crates::jobs::embed::get_embed_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(embed_to_service_job),
+                .map(ServiceJob::from),
             JobKind::Extract => crate::crates::jobs::extract::get_extract_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(extract_to_service_job),
+                .map(ServiceJob::from),
             JobKind::Ingest => crate::crates::jobs::ingest::get_ingest_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(ingest_to_service_job),
+                .map(ServiceJob::from),
             JobKind::Refresh => crate::crates::jobs::refresh::get_refresh_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(refresh_to_service_job),
+                .map(ServiceJob::from),
             JobKind::Graph => crate::crates::jobs::graph::get_graph_job(&self.cfg, id)
                 .await
                 .map_err(lift_ss)?
-                .map(graph_to_service_job),
+                .map(ServiceJob::from),
         })
     }
 

@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::jobs::backend::JobKind;
 use sqlx::{
     SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -24,10 +25,12 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     let opts: SqliteConnectOptions = connect_str.parse()?;
     let opts = opts
         .pragma("journal_mode", "WAL")
-        .pragma("busy_timeout", "5000");
+        .pragma("busy_timeout", "5000")
+        .pragma("foreign_keys", "ON");
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(4)
+        .max_connections(8)
+        .acquire_timeout(std::time::Duration::from_secs(30))
         .connect_with(opts)
         .await?;
 
@@ -47,18 +50,11 @@ pub async fn reclaim_stale_running_jobs(
     let threshold = now_ms() - stale_threshold_ms;
     let mut total: u64 = 0;
 
-    for table in &[
-        "axon_crawl_jobs",
-        "axon_embed_jobs",
-        "axon_extract_jobs",
-        "axon_ingest_jobs",
-        "axon_refresh_jobs",
-        "axon_graph_jobs",
-    ] {
+    for kind in JobKind::all() {
         let result = sqlx::query(&format!(
             "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
              updated_at=? WHERE status='running' AND updated_at < ?",
-            table
+            kind.table_name()
         ))
         .bind(now_ms())
         .bind(threshold)
@@ -76,15 +72,7 @@ pub async fn reclaim_stale_running_jobs_for_table(
     table: &str,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
-    const VALID_TABLES: &[&str] = &[
-        "axon_crawl_jobs",
-        "axon_embed_jobs",
-        "axon_extract_jobs",
-        "axon_ingest_jobs",
-        "axon_refresh_jobs",
-        "axon_graph_jobs",
-    ];
-    if !VALID_TABLES.contains(&table) {
+    if !JobKind::all().iter().any(|k| k.table_name() == table) {
         return Err(sqlx::Error::Configuration(
             format!("reclaim_stale_running_jobs_for_table: unknown table '{table}'").into(),
         ));
@@ -97,6 +85,21 @@ pub async fn reclaim_stale_running_jobs_for_table(
     ))
     .bind(now_ms())
     .bind(threshold)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Reclaim stale watch leases from a previous crashed process.
+///
+/// Clears `lease_expires_at` for any `axon_watch_defs` row whose lease has
+/// already expired so the scheduler can re-acquire them immediately.
+pub async fn reclaim_stale_watch_leases(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let now = now_ms();
+    let result = sqlx::query(
+        "UPDATE axon_watch_defs SET lease_expires_at = NULL WHERE lease_expires_at < ?",
+    )
+    .bind(now)
     .execute(pool)
     .await?;
     Ok(result.rows_affected())

@@ -109,6 +109,134 @@ pub struct ServiceJob {
     pub config_json: Option<serde_json::Value>,
 }
 
+// ── From<XJob> for ServiceJob ────────────────────────────────────────────────
+
+impl From<crate::crates::jobs::crawl::CrawlJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::crawl::CrawlJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: Some(job.url),
+            source_type: None,
+            target: None,
+            urls_json: None,
+            result_json: job.result_json,
+            config_json: None,
+        }
+    }
+}
+
+impl From<crate::crates::jobs::embed::EmbedJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::embed::EmbedJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: None,
+            source_type: None,
+            target: Some(job.input_text),
+            urls_json: None,
+            result_json: job.result_json,
+            config_json: Some(job.config_json),
+        }
+    }
+}
+
+impl From<crate::crates::jobs::extract::ExtractJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::extract::ExtractJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: None,
+            source_type: None,
+            target: None,
+            urls_json: Some(job.urls_json),
+            result_json: job.result_json,
+            config_json: None,
+        }
+    }
+}
+
+impl From<crate::crates::jobs::ingest::IngestJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::ingest::IngestJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: None,
+            source_type: Some(job.source_type),
+            target: Some(job.target),
+            urls_json: None,
+            result_json: job.result_json,
+            config_json: Some(job.config_json),
+        }
+    }
+}
+
+impl From<crate::crates::jobs::refresh::RefreshJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::refresh::RefreshJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: None,
+            source_type: None,
+            target: None,
+            urls_json: Some(job.urls_json),
+            result_json: job.result_json,
+            config_json: Some(job.config_json),
+        }
+    }
+}
+
+impl From<crate::crates::jobs::graph::GraphJob> for ServiceJob {
+    fn from(job: crate::crates::jobs::graph::GraphJob) -> Self {
+        Self {
+            id: job.id,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            started_at: job.started_at,
+            finished_at: job.finished_at,
+            error_text: job.error_text,
+            url: Some(job.url),
+            source_type: None,
+            target: None,
+            urls_json: None,
+            result_json: Some(serde_json::json!({
+                "chunk_count": job.chunk_count,
+                "entity_count": job.entity_count,
+                "relation_count": job.relation_count,
+            })),
+            config_json: None,
+        }
+    }
+}
+
+// ── Named constructors ────────────────────────────────────────────────────────
+
 impl ServiceJob {
     pub fn from_status_row(row: crate::crates::jobs::backend::JobStatusRow) -> Self {
         Self {

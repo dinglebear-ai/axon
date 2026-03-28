@@ -33,6 +33,7 @@ impl LiteBackend {
         let stale_threshold_ms =
             (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
         store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
+        store::reclaim_stale_watch_leases(&pool).await?;
 
         let cancel_store = Arc::new(CancelStore::new());
         let worker_handles = workers::spawn_workers(
@@ -54,11 +55,14 @@ impl LiteBackend {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pool = Arc::new(open_sqlite_pool(path).await?);
 
-        let stale_threshold_ms = (300 + 60) * 1_000i64;
+        let dummy_cfg = Arc::new(Config::default_lite());
+        let stale_threshold_ms =
+            (dummy_cfg.watchdog_stale_timeout_secs + dummy_cfg.watchdog_confirm_secs).max(0)
+                * 1_000i64;
         store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
+        store::reclaim_stale_watch_leases(&pool).await?;
 
         let cancel_store = Arc::new(CancelStore::new());
-        let dummy_cfg = Arc::new(Config::default_lite());
         let worker_handles =
             workers::spawn_workers(Arc::clone(&pool), dummy_cfg, Arc::clone(&cancel_store));
 
@@ -85,14 +89,7 @@ impl JobBackend for LiteBackend {
         let kind = payload.kind();
         let id = ops::enqueue_job(&self.pool, &payload).await?;
 
-        match kind {
-            JobKind::Crawl => self.workers.crawl.notify_one(),
-            JobKind::Embed => self.workers.embed.notify_one(),
-            JobKind::Extract => self.workers.extract.notify_one(),
-            JobKind::Ingest => self.workers.ingest.notify_one(),
-            JobKind::Refresh => self.workers.refresh.notify_one(),
-            JobKind::Graph => self.workers.graph.notify_one(),
-        }
+        self.workers.notify(kind);
 
         Ok(id)
     }
