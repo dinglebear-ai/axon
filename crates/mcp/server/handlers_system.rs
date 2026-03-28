@@ -278,6 +278,7 @@ impl AxonMcpServer {
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "refresh": ["start", "status", "cancel", "list", "cleanup", "clear", "recover", "schedule"],
+                    "refresh_schedule": ["create", "delete", "disable", "enable", "list"],
                     "graph": ["build", "status", "explore", "stats"],
                     "query": ["query"],
                     "retrieve": ["retrieve"],

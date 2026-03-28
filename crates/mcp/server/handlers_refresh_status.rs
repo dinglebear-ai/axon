@@ -3,9 +3,11 @@ use super::common::{
     invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
     respond_with_mode, validate_mcp_urls,
 };
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::mcp::schema::{
     AxonToolResponse, RefreshRequest, RefreshSubaction, ResponseMode, StatusRequest,
 };
+use crate::crates::services::jobs as job_service;
 use crate::crates::services::refresh::{self as refresh_service, RefreshScheduleCreate};
 use rmcp::ErrorData;
 
@@ -81,13 +83,27 @@ impl AxonMcpServer {
             return Err(invalid_params("urls cannot be empty"));
         }
         validate_mcp_urls(&urls)?;
-        let result = refresh_service::refresh_start(self.cfg.as_ref(), &urls)
+        let service_context = self
+            .base_service_context()
             .await
-            .map_err(|e| logged_internal_error("refresh.start", e.as_ref()))?;
+            .map_err(|e| logged_internal_error("refresh.start.context", e.as_ref()))?;
+        // Enqueue via ServiceContext so both full (Postgres) and lite (SQLite) backends work.
+        // The backend payload takes one URL per job; enqueue one per URL and return the last id.
+        let mut job_id = uuid::Uuid::nil();
+        for url in &urls {
+            job_id = service_context
+                .jobs
+                .enqueue(JobPayload::Refresh {
+                    url: url.clone(),
+                    config_json: "{}".into(),
+                })
+                .await
+                .map_err(|e| logged_internal_error("refresh.start", e.as_ref()))?;
+        }
         Ok(AxonToolResponse::ok(
             "refresh",
             "start",
-            serde_json::json!({ "job_id": result.job_id }),
+            serde_json::json!({ "job_id": job_id }),
         ))
     }
 
@@ -97,7 +113,11 @@ impl AxonMcpServer {
         response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let id = parse_job_id(job_id)?;
-        let job = refresh_service::refresh_status(self.cfg.as_ref(), id)
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.status.context", e.as_ref()))?;
+        let job = job_service::job_status(&service_context, JobKind::Refresh, id)
             .await
             .map_err(|e| logged_internal_error("refresh.status", e.as_ref()))?;
         respond_with_mode(
@@ -105,7 +125,7 @@ impl AxonMcpServer {
             "status",
             response_mode,
             &format!("refresh-status-{id}"),
-            serde_json::json!({ "job": job.job }),
+            serde_json::json!({ "job": job.map(|j| serde_json::to_value(j).unwrap_or(serde_json::Value::Null)) }),
         )
         .await
     }
@@ -115,7 +135,11 @@ impl AxonMcpServer {
         job_id: Option<&str>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let id = parse_job_id(job_id)?;
-        let canceled = refresh_service::refresh_cancel(self.cfg.as_ref(), id)
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.cancel.context", e.as_ref()))?;
+        let canceled = job_service::cancel_job(&service_context, JobKind::Refresh, id)
             .await
             .map_err(|e| logged_internal_error("refresh.cancel", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
@@ -133,8 +157,13 @@ impl AxonMcpServer {
     ) -> Result<AxonToolResponse, ErrorData> {
         let limit = parse_limit(limit, 20);
         let offset = parse_offset(offset);
-        let jobs = refresh_service::refresh_list(
-            self.cfg.as_ref(),
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.list.context", e.as_ref()))?;
+        let jobs = job_service::list_jobs(
+            &service_context,
+            JobKind::Refresh,
             limit,
             i64::try_from(offset).unwrap_or(i64::MAX),
         )
@@ -145,13 +174,21 @@ impl AxonMcpServer {
             "list",
             response_mode,
             "refresh-list",
-            serde_json::json!({ "jobs": jobs.jobs, "limit": limit, "offset": offset }),
+            serde_json::json!({
+                "jobs": jobs.iter().map(|j| serde_json::to_value(j).unwrap_or(serde_json::Value::Null)).collect::<Vec<_>>(),
+                "limit": limit,
+                "offset": offset,
+            }),
         )
         .await
     }
 
     async fn handle_refresh_cleanup(&self) -> Result<AxonToolResponse, ErrorData> {
-        let deleted = refresh_service::refresh_cleanup(self.cfg.as_ref())
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.cleanup.context", e.as_ref()))?;
+        let deleted = job_service::cleanup_jobs(&service_context, JobKind::Refresh)
             .await
             .map_err(|e| logged_internal_error("refresh.cleanup", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
@@ -162,7 +199,11 @@ impl AxonMcpServer {
     }
 
     async fn handle_refresh_clear(&self) -> Result<AxonToolResponse, ErrorData> {
-        let deleted = refresh_service::refresh_clear(self.cfg.as_ref())
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.clear.context", e.as_ref()))?;
+        let deleted = job_service::clear_jobs(&service_context, JobKind::Refresh)
             .await
             .map_err(|e| logged_internal_error("refresh.clear", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
@@ -173,7 +214,11 @@ impl AxonMcpServer {
     }
 
     async fn handle_refresh_recover(&self) -> Result<AxonToolResponse, ErrorData> {
-        let recovered = refresh_service::refresh_recover(self.cfg.as_ref())
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.recover.context", e.as_ref()))?;
+        let recovered = job_service::recover_jobs(&service_context, JobKind::Refresh)
             .await
             .map_err(|e| logged_internal_error("refresh.recover", e.as_ref()))?;
         Ok(AxonToolResponse::ok(
