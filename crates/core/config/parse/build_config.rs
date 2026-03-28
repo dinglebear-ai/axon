@@ -663,8 +663,8 @@ pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
     read("AXON_ACP_ADAPTER_CMD").or_else(|| {
         let agent = env::var("AXON_ASK_AGENT").ok()?;
         let (var, default_cmd) = match agent.trim().to_lowercase().as_str() {
-            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude"),
-            "codex" => ("AXON_ACP_CODEX_ADAPTER_CMD", "codex"),
+            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude-agent-acp"),
+            "codex" => ("AXON_ACP_CODEX_ADAPTER_CMD", "codex-acp"),
             "gemini" => ("AXON_ACP_GEMINI_ADAPTER_CMD", "gemini"),
             _ => return None,
         };
@@ -685,13 +685,13 @@ pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
     };
     read("AXON_ACP_ADAPTER_ARGS").or_else(|| {
         let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let var = match agent.trim().to_lowercase().as_str() {
-            "claude" => "AXON_ACP_CLAUDE_ADAPTER_ARGS",
-            "codex" => "AXON_ACP_CODEX_ADAPTER_ARGS",
-            "gemini" => "AXON_ACP_GEMINI_ADAPTER_ARGS",
+        let (var, default_args) = match agent.trim().to_lowercase().as_str() {
+            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_ARGS", None),
+            "codex" => ("AXON_ACP_CODEX_ADAPTER_ARGS", None),
+            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_ARGS", Some("--experimental-acp")),
             _ => return None,
         };
-        read(var)
+        read(var).or_else(|| default_args.map(str::to_string))
     })
 }
 

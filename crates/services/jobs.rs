@@ -24,7 +24,7 @@ fn downgrade(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error> {
     }
     impl Error for Wrapper {
         fn source(&self) -> Option<&(dyn Error + 'static)> {
-            self.0.source()
+            Some(self.0.as_ref())
         }
     }
     Box::new(Wrapper(e))

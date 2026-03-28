@@ -88,10 +88,10 @@ impl AxonMcpServer {
             .await
             .map_err(|e| logged_internal_error("refresh.start.context", e.as_ref()))?;
         // Enqueue via ServiceContext so both full (Postgres) and lite (SQLite) backends work.
-        // The backend payload takes one URL per job; enqueue one per URL and return the last id.
-        let mut job_id = uuid::Uuid::nil();
+        // The backend payload takes one URL per job; enqueue one per URL and collect all ids.
+        let mut job_ids = Vec::with_capacity(urls.len());
         for url in &urls {
-            job_id = service_context
+            let id = service_context
                 .jobs
                 .enqueue(JobPayload::Refresh {
                     url: url.clone(),
@@ -99,11 +99,15 @@ impl AxonMcpServer {
                 })
                 .await
                 .map_err(|e| logged_internal_error("refresh.start", e.as_ref()))?;
+            job_ids.push(id);
         }
         Ok(AxonToolResponse::ok(
             "refresh",
             "start",
-            serde_json::json!({ "job_id": job_id }),
+            serde_json::json!({
+                "job_ids": job_ids,
+                "job_id": job_ids.last().copied().unwrap_or(uuid::Uuid::nil()),
+            }),
         ))
     }
 
