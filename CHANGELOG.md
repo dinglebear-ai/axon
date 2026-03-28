@@ -1,5 +1,36 @@
 # Changelog
-Last Modified: 2026-03-27 (session: v0.33.6 — mcporter test suite all-green)
+Last Modified: 2026-03-28 (session: v0.33.8 — backend unification complete)
+
+## [0.33.8] — feat/lite-mode
+
+### Highlights
+
+- **Services-first contract complete** — dead `extract_status_raw`/`extract_list_raw` raw-backend functions removed from `services/extract.rs`; all callers use `ServiceContext.jobs` via the `ServiceJobRuntime` trait.
+- **`FullServiceRuntime` cleanup** — inline `kind.table_name()` match replaced with `kind.table_name()` direct call; all `|e| e.to_string().into()` error maps normalized to `lift_ss`.
+
+### Commits since v0.33.7
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | chore | remove dead extract raw fns; normalize lift_ss in FullServiceRuntime |
+| fcc7ba5b | refactor | complete backend unification and services-first contract |
+
+## [0.33.7] — feat/lite-mode
+
+### Highlights
+
+- **`LiteServiceRuntime::cancel_job` bug fixed** — now fires `CancellationToken` via `CancelStore::cancel()` so in-process workers are actually interrupted when cancel arrives through the service layer.
+- **FullBackend Graph ops wired** — `enqueue`/`cancel`/`cleanup`/`clear` for `JobKind::Graph` no longer return runtime errors; routed to real Postgres functions.
+- **Refresh lite-mode hardening** — 9 refresh service functions now return a clean error in lite mode instead of crashing on a missing Postgres connection.
+- **Sync paths through services layer** — `migrate.rs` CLI 375→37 lines (new `services::migrate`), `sync_crawl.rs` 428→10 lines (new `services::crawl_sync`), `extract.rs` sync path wrapped in `extract_sync()` service function.
+- **`LiteBackend::table_for` removed** — dead one-line wrapper replaced with direct `kind.table_name()` calls.
+- **`ServiceJobRuntime` documented as canonical abstraction** — doc comments and both CLAUDE.md files updated to clarify that `JobBackend` is a 3-method delegate, not the real contract.
+
+### Commits since v0.33.6
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| fcc7ba5b | refactor | complete backend unification and services-first contract |
 
 ## [0.33.6] — fix/mcporter-test-parity
 

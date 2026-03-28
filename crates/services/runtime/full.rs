@@ -36,14 +36,7 @@ impl ServiceJobRuntime for FullServiceRuntime {
                     .map_err(lift_ss)
             })
             .await?;
-        let table = match kind {
-            JobKind::Crawl => "axon_crawl_jobs",
-            JobKind::Embed => "axon_embed_jobs",
-            JobKind::Extract => "axon_extract_jobs",
-            JobKind::Ingest => "axon_ingest_jobs",
-            JobKind::Refresh => "axon_refresh_jobs",
-            JobKind::Graph => "axon_graph_jobs",
-        };
+        let table = kind.table_name();
         let sql = format!(
             "SELECT EXISTS(SELECT 1 FROM {} WHERE status IN ('pending','running') LIMIT 1)",
             table
@@ -164,19 +157,19 @@ impl ServiceJobRuntime for FullServiceRuntime {
         match kind {
             JobKind::Crawl => crate::crates::jobs::crawl::cancel_job(&self.cfg, id)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Embed => crate::crates::jobs::embed::cancel_embed_job(&self.cfg, id)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Extract => crate::crates::jobs::extract::cancel_extract_job(&self.cfg, id)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Ingest => crate::crates::jobs::ingest::cancel_ingest_job(&self.cfg, id)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Refresh => crate::crates::jobs::refresh::cancel_refresh_job(&self.cfg, id)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Graph => Err("cancel_job for Graph is not implemented in full mode".into()),
         }
     }
@@ -185,19 +178,19 @@ impl ServiceJobRuntime for FullServiceRuntime {
         match kind {
             JobKind::Crawl => crate::crates::jobs::crawl::cleanup_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Embed => crate::crates::jobs::embed::cleanup_embed_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Extract => crate::crates::jobs::extract::cleanup_extract_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Ingest => crate::crates::jobs::ingest::cleanup_ingest_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Refresh => crate::crates::jobs::refresh::cleanup_refresh_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Graph => Err("cleanup_jobs for Graph is not implemented in full mode".into()),
         }
     }
@@ -206,19 +199,19 @@ impl ServiceJobRuntime for FullServiceRuntime {
         match kind {
             JobKind::Crawl => crate::crates::jobs::crawl::clear_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Embed => crate::crates::jobs::embed::clear_embed_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Extract => crate::crates::jobs::extract::clear_extract_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Ingest => crate::crates::jobs::ingest::clear_ingest_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Refresh => crate::crates::jobs::refresh::clear_refresh_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Graph => Err("clear_jobs for Graph is not implemented in full mode".into()),
         }
     }
@@ -231,19 +224,19 @@ impl ServiceJobRuntime for FullServiceRuntime {
         match kind {
             JobKind::Crawl => crate::crates::jobs::crawl::recover_stale_crawl_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Embed => crate::crates::jobs::embed::recover_stale_embed_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Extract => crate::crates::jobs::extract::recover_stale_extract_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Ingest => crate::crates::jobs::ingest::recover_stale_ingest_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Refresh => crate::crates::jobs::refresh::recover_stale_refresh_jobs(&self.cfg)
                 .await
-                .map_err(|e| e.to_string().into()),
+                .map_err(lift_ss),
             JobKind::Graph => Err("recover_jobs for Graph is not implemented in full mode".into()),
         }
     }

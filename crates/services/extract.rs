@@ -6,7 +6,7 @@ use crate::crates::core::content::{
 };
 use crate::crates::core::logging::log_done;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
-use crate::crates::jobs::extract::{get_extract_job, list_extract_jobs, start_extract_job};
+use crate::crates::jobs::extract::start_extract_job;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -22,8 +22,6 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-pub use crate::crates::jobs::extract::ExtractJob;
 
 // --- Pure mapping helpers (no I/O, testable without live services) ---
 
@@ -73,21 +71,6 @@ pub async fn extract_clear(service_context: &ServiceContext) -> Result<u64, Box<
 
 pub async fn extract_recover(service_context: &ServiceContext) -> Result<u64, Box<dyn Error>> {
     job_service::recover_jobs(service_context, JobKind::Extract).await
-}
-
-pub async fn extract_status_raw(
-    cfg: &Config,
-    id: Uuid,
-) -> Result<Option<ExtractJob>, Box<dyn Error>> {
-    get_extract_job(cfg, id).await
-}
-
-pub async fn extract_list_raw(
-    cfg: &Config,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<ExtractJob>, Box<dyn Error>> {
-    list_extract_jobs(cfg, limit, offset).await
 }
 
 pub async fn extract_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
