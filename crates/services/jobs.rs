@@ -118,6 +118,7 @@ pub async fn recover_jobs(
 ) -> Result<u64, Box<dyn Error>> {
     let stale_threshold_ms = (service_context.cfg.watchdog_stale_timeout_secs
         + service_context.cfg.watchdog_confirm_secs)
+        .max(0)
         * 1_000;
     service_context
         .jobs

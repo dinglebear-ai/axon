@@ -55,16 +55,16 @@ impl LiteBackend {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pool = Arc::new(open_sqlite_pool(path).await?);
 
-        let dummy_cfg = Arc::new(Config::default_lite());
+        let default_cfg = Arc::new(Config::default_lite());
         let stale_threshold_ms =
-            (dummy_cfg.watchdog_stale_timeout_secs + dummy_cfg.watchdog_confirm_secs).max(0)
+            (default_cfg.watchdog_stale_timeout_secs + default_cfg.watchdog_confirm_secs).max(0)
                 * 1_000i64;
         store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
         store::reclaim_stale_watch_leases(&pool).await?;
 
         let cancel_store = Arc::new(CancelStore::new());
         let worker_handles =
-            workers::spawn_workers(Arc::clone(&pool), dummy_cfg, Arc::clone(&cancel_store));
+            workers::spawn_workers(Arc::clone(&pool), default_cfg, Arc::clone(&cancel_store));
 
         Ok(Self {
             pool,
