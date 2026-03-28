@@ -358,6 +358,19 @@ pub struct CrawlJobResult {
     pub output_files: Option<Vec<String>>,
 }
 
+/// Result of a synchronous (--wait true) crawl, including all phases
+/// (HTTP crawl, Chrome fallback, sitemap backfill, embed, audit diff).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrawlSyncResult {
+    pub pages_seen: u32,
+    pub markdown_files: u32,
+    pub thin_pages: u32,
+    pub error_pages: u32,
+    pub waf_blocked_pages: u32,
+    pub elapsed_ms: u128,
+    pub cache_hit: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbedStartResult {
     pub job_id: String,
@@ -376,6 +389,15 @@ pub struct ExtractStartResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtractJobResult {
     pub payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtractSyncResult {
+    pub summary: serde_json::Value,
+    pub summary_path: String,
+    pub items_path: String,
+    pub total_items: usize,
+    pub duration_ms: u128,
 }
 
 // ── Graph ────────────────────────────────────────────────────────────────────
@@ -398,6 +420,16 @@ pub struct GraphExploreResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphStatsResult {
     pub payload: serde_json::Value,
+}
+
+// ── Migrate ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrateResult {
+    pub from: String,
+    pub to: String,
+    pub points_migrated: u64,
+    pub pages_processed: u64,
 }
 
 // ── Ingest / screenshot ──────────────────────────────────────────────────────

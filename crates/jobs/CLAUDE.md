@@ -51,7 +51,11 @@ if cfg.lite_mode {
 
 ## `JobBackend` Trait (`backend.rs`)
 
-The uniform interface that both backends implement:
+> **`JobBackend` is NOT the canonical abstraction.** The canonical trait consumed by all callers (CLI, MCP, web) is [`ServiceJobRuntime`](../services/runtime.rs) in `crates/services/runtime.rs`, which returns the richer `ServiceJob` type and adds pagination, `has_active_jobs`, `recover_jobs`, and `run_worker`.
+>
+> In practice, only **3 of 8** `JobBackend` methods are delegated through the trait by the service layer: `enqueue`, `wait_for_job`, and `job_errors`. These return simple types (`Uuid`, `String`, `Option<String>`) that need no mapping. The remaining methods (`list_jobs`, `job_status`, `cancel_job`, `cleanup_jobs`, `clear_jobs`) are **bypassed** — `FullServiceRuntime` calls raw Postgres query functions directly, and `LiteServiceRuntime` calls `lite_query::*` directly, to avoid lossy type mapping from `JobStatusRow`/`JobSummary` → `ServiceJob`.
+
+The low-level persistence interface that both backends implement:
 
 ```rust
 #[async_trait]

@@ -1,12 +1,17 @@
 //! Graph extraction job persistence and schema entry points.
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::common::{enqueue_job, make_pool, sort_rows_for_status_view};
+use crate::crates::core::logging::log_warn;
+use crate::crates::jobs::common::{
+    JobTable, batched_cleanup_terminal_jobs, cancel_pending_or_running_job, enqueue_job, make_pool,
+    purge_queue_safe, sort_rows_for_status_view,
+};
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::FromRow;
 use sqlx::PgPool;
+use std::error::Error;
 
 pub(crate) mod context;
 pub(crate) mod extract;
@@ -38,7 +43,7 @@ pub async fn enqueue_graph_job(
     cfg: &Config,
     url: &str,
     source_type: &str,
-) -> Result<uuid::Uuid, Box<dyn std::error::Error>> {
+) -> Result<uuid::Uuid, Box<dyn Error>> {
     ensure_graph_schema(pool).await?;
 
     let mut tx = pool.begin().await?;
@@ -84,13 +89,8 @@ pub async fn enqueue_graph_job(
     tx.commit().await?;
 
     if let Err(err) = enqueue_job(cfg, &cfg.graph_queue, id).await {
-        crate::crates::jobs::common::mark_job_failed(
-            pool,
-            crate::crates::jobs::common::JobTable::Graph,
-            id,
-            &err.to_string(),
-        )
-        .await?;
+        crate::crates::jobs::common::mark_job_failed(pool, JobTable::Graph, id, &err.to_string())
+            .await?;
         return Err(format!("graph enqueue failed for {id}: {err}").into());
     }
 
@@ -100,7 +100,7 @@ pub async fn enqueue_graph_job(
 pub async fn get_graph_job(
     cfg: &Config,
     id: uuid::Uuid,
-) -> Result<Option<GraphJob>, Box<dyn std::error::Error>> {
+) -> Result<Option<GraphJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool).await?;
     let row = sqlx::query_as::<_, GraphJob>(
@@ -121,7 +121,7 @@ pub async fn list_graph_jobs(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<GraphJob>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GraphJob>, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_graph_schema(&pool).await?;
     let mut rows = sqlx::query_as::<_, GraphJob>(
@@ -154,6 +154,57 @@ pub async fn list_graph_jobs(
         |job| &job.updated_at,
     );
     Ok(rows)
+}
+
+const TABLE: JobTable = JobTable::Graph;
+
+pub async fn cancel_graph_job(cfg: &Config, id: uuid::Uuid) -> Result<bool, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    Ok(cancel_pending_or_running_job(&pool, TABLE, id).await?)
+}
+
+pub async fn cleanup_graph_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    Ok(batched_cleanup_terminal_jobs(&pool, TABLE).await?)
+}
+
+pub async fn clear_graph_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    let rows = sqlx::query("DELETE FROM axon_graph_jobs")
+        .execute(&pool)
+        .await?
+        .rows_affected();
+    if let Err(e) = purge_queue_safe(cfg, &cfg.graph_queue).await {
+        log_warn(&format!(
+            "queue_purge_failed queue={} error={e}",
+            cfg.graph_queue
+        ));
+    }
+    Ok(rows)
+}
+
+/// Parse `url` and `source_type` from a graph job's `config_json`.
+///
+/// Expected shape: `{"url": "...", "source_type": "..."}`.
+pub(crate) fn parse_graph_config(
+    config_json: &str,
+) -> Result<(String, String), Box<dyn Error + Send + Sync>> {
+    let v: serde_json::Value = serde_json::from_str(config_json)
+        .map_err(|e| format!("Graph config_json parse error: {e}"))?;
+    let url = v
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or("Graph config_json missing 'url' field")?
+        .to_string();
+    let source_type = v
+        .get("source_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("crawl")
+        .to_string();
+    Ok((url, source_type))
 }
 
 #[cfg(test)]

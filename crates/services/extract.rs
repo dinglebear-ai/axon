@@ -1,6 +1,10 @@
 //! Service-layer wrappers for extract job lifecycle operations and prompt-aware enqueue helpers.
 
 use crate::crates::core::config::Config;
+use crate::crates::core::content::{
+    DeterministicExtractionEngine, ExtractWebConfig, run_extract_with_engine,
+};
+use crate::crates::core::logging::log_done;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::extract::{get_extract_job, list_extract_jobs, start_extract_job};
 use crate::crates::services::context::ServiceContext;
@@ -8,9 +12,14 @@ use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
-    ExecutionMode, ExtractJobResult, ExtractStartResult, JobStartOutcome, StartDisposition,
+    ExecutionMode, ExtractJobResult, ExtractStartResult, ExtractSyncResult, JobStartOutcome,
+    StartDisposition,
 };
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use std::error::Error;
+use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -162,4 +171,192 @@ pub async fn extract_start_with_context(
         execution_mode: ExecutionMode::InProcess,
         result: map_extract_start_result(job_id.to_string()),
     })
+}
+
+// --- Sync extract (--wait true) ---
+
+/// Run extraction synchronously: crawl + extract all URLs inline and write
+/// output files. Returns a typed result with the summary JSON, file paths,
+/// and aggregate stats.
+pub async fn extract_sync(
+    cfg: &Config,
+    urls: &[String],
+    prompt: &str,
+) -> Result<ExtractSyncResult, Box<dyn Error>> {
+    let extract_start = std::time::Instant::now();
+    let items_path = cfg.output_dir.join("extract-items.ndjson");
+    if let Some(parent) = items_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let mut items_file = tokio::fs::File::create(&items_path).await?;
+
+    let agg = execute_extract_runs(cfg, urls, prompt, &mut items_file).await?;
+    let summary = build_extract_summary(cfg, urls, prompt, &agg)?;
+    let summary_path = write_extract_summary(cfg, &summary).await?;
+    let duration_ms = extract_start.elapsed().as_millis();
+
+    log_done(&format!(
+        "command=extract complete items={} duration_ms={duration_ms}",
+        agg.total_items,
+    ));
+
+    Ok(ExtractSyncResult {
+        summary,
+        summary_path: summary_path.to_string_lossy().into_owned(),
+        items_path: items_path.to_string_lossy().into_owned(),
+        total_items: agg.total_items,
+        duration_ms,
+    })
+}
+
+#[derive(Default)]
+struct ExtractAggregation {
+    runs: Vec<serde_json::Value>,
+    pages_visited: usize,
+    pages_with_data: usize,
+    deterministic_pages: usize,
+    llm_fallback_pages: usize,
+    llm_requests: usize,
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    total_tokens: u64,
+    estimated_cost_usd: f64,
+    parser_hits: serde_json::Map<String, serde_json::Value>,
+    total_items: usize,
+}
+
+async fn execute_extract_runs(
+    cfg: &Config,
+    urls: &[String],
+    prompt: &str,
+    items_file: &mut tokio::fs::File,
+) -> Result<ExtractAggregation, Box<dyn Error>> {
+    let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
+
+    let mut pending_runs = FuturesUnordered::new();
+    for url in urls.iter().cloned() {
+        let engine = Arc::clone(&engine);
+        let wcfg = build_extract_web_config(cfg, url.clone(), prompt);
+        pending_runs.push(async move {
+            let run = run_extract_with_engine(wcfg, engine).await;
+            (url, run)
+        });
+    }
+
+    let mut agg = ExtractAggregation::default();
+    while let Some((_url, run_result)) = pending_runs.next().await {
+        let run = run_result?;
+        accumulate_run(&mut agg, &run);
+
+        for item in &run.results {
+            let mut line = serde_json::to_string(item)?;
+            line.push('\n');
+            items_file.write_all(line.as_bytes()).await?;
+        }
+
+        agg.runs.push(serde_json::json!({
+            "url": run.start_url,
+            "pages_visited": run.pages_visited,
+            "pages_with_data": run.pages_with_data,
+            "deterministic_pages": run.metrics.deterministic_pages,
+            "llm_fallback_pages": run.metrics.llm_fallback_pages,
+            "llm_requests": run.metrics.llm_requests,
+            "prompt_tokens": run.metrics.prompt_tokens,
+            "completion_tokens": run.metrics.completion_tokens,
+            "total_tokens": run.metrics.total_tokens,
+            "estimated_cost_usd": run.metrics.estimated_cost_usd,
+            "parser_hits": run.parser_hits,
+            "total_items": run.results.len(),
+        }));
+    }
+
+    items_file.flush().await?;
+    Ok(agg)
+}
+
+fn accumulate_run(agg: &mut ExtractAggregation, run: &crate::crates::core::content::ExtractRun) {
+    agg.pages_visited += run.pages_visited;
+    agg.pages_with_data += run.pages_with_data;
+    agg.deterministic_pages += run.metrics.deterministic_pages;
+    agg.llm_fallback_pages += run.metrics.llm_fallback_pages;
+    agg.llm_requests += run.metrics.llm_requests;
+    agg.prompt_tokens += run.metrics.prompt_tokens;
+    agg.completion_tokens += run.metrics.completion_tokens;
+    agg.total_tokens += run.metrics.total_tokens;
+    agg.estimated_cost_usd += run.metrics.estimated_cost_usd;
+    for (name, count) in &run.parser_hits {
+        let current = agg
+            .parser_hits
+            .get(name.as_str())
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        agg.parser_hits
+            .insert(name.clone(), serde_json::json!(current + *count as u64));
+    }
+    agg.total_items += run.results.len();
+}
+
+fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractWebConfig {
+    ExtractWebConfig {
+        start_url: url,
+        prompt: prompt.to_string(),
+        limit: cfg.max_pages,
+        openai_base_url: cfg.openai_base_url.clone(),
+        openai_api_key: cfg.openai_api_key.clone(),
+        openai_model: cfg.openai_model.clone(),
+        acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
+        acp_adapter_args: cfg.acp_adapter_args.clone(),
+        custom_headers: cfg.custom_headers.clone(),
+        render_mode: cfg.render_mode,
+        chrome_remote_url: cfg.chrome_remote_url.clone(),
+        chrome_stealth: cfg.chrome_stealth,
+        chrome_anti_bot: cfg.chrome_anti_bot,
+        chrome_intercept: cfg.chrome_intercept,
+        bypass_csp: cfg.bypass_csp,
+        accept_invalid_certs: cfg.accept_invalid_certs,
+        request_timeout_ms: cfg.request_timeout_ms,
+        fetch_retries: cfg.fetch_retries,
+        user_agent: cfg.chrome_user_agent.clone(),
+        chrome_network_idle_timeout_secs: cfg.chrome_network_idle_timeout_secs,
+    }
+}
+
+fn build_extract_summary(
+    cfg: &Config,
+    urls: &[String],
+    prompt: &str,
+    agg: &ExtractAggregation,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    Ok(serde_json::json!({
+        "urls": urls,
+        "prompt": prompt,
+        "model": cfg.openai_model,
+        "pages_visited": agg.pages_visited,
+        "pages_with_data": agg.pages_with_data,
+        "deterministic_pages": agg.deterministic_pages,
+        "llm_fallback_pages": agg.llm_fallback_pages,
+        "llm_requests": agg.llm_requests,
+        "prompt_tokens": agg.prompt_tokens,
+        "completion_tokens": agg.completion_tokens,
+        "total_tokens": agg.total_tokens,
+        "estimated_cost_usd": agg.estimated_cost_usd,
+        "parser_hits": agg.parser_hits,
+        "total_items": agg.total_items,
+        "runs": agg.runs,
+    }))
+}
+
+async fn write_extract_summary(
+    cfg: &Config,
+    summary: &serde_json::Value,
+) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let summary_path = cfg
+        .output_path
+        .clone()
+        .unwrap_or_else(|| cfg.output_dir.join("extract-summary.json"));
+    if let Some(parent) = summary_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(&summary_path, serde_json::to_string_pretty(summary)?).await?;
+    Ok(summary_path)
 }

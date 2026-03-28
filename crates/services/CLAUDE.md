@@ -81,6 +81,10 @@ Check before using: `if !ctx.capabilities.graph.supported { return Err(...) }`. 
 
 ## `ServiceJobRuntime` Trait (`runtime.rs`)
 
+**This is the canonical job abstraction.** All callers (CLI, MCP, web) interact with jobs exclusively through `ServiceJobRuntime` via `ServiceContext.jobs` — never through `JobBackend` directly.
+
+`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. The two service runtime implementations (`FullServiceRuntime`, `LiteServiceRuntime`) delegate only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call backend-specific query functions directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
+
 The backend-agnostic job operations interface consumed by `ServiceContext.jobs`:
 
 - `enqueue(payload)` → `Uuid`

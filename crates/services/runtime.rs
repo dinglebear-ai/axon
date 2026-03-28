@@ -1,3 +1,29 @@
+//! Two-layer job abstraction architecture.
+//!
+//! This module defines [`ServiceJobRuntime`], the **canonical** backend-agnostic
+//! job operations trait consumed by all callers: CLI handlers, MCP handlers, and
+//! web routes via [`ServiceContext.jobs`](super::context::ServiceContext).
+//!
+//! ## Why two layers?
+//!
+//! [`JobBackend`](crate::crates::jobs::backend::JobBackend) (in `crates/jobs/backend.rs`)
+//! is the low-level persistence trait returning `JobStatusRow` and `JobSummary` — types
+//! tied to the raw database schema. Callers need the richer [`ServiceJob`] type with
+//! pagination, source metadata, and normalized fields.
+//!
+//! Rather than force a lossy `JobSummary → ServiceJob` conversion through the trait
+//! boundary, the service runtimes bypass `JobBackend` for most operations:
+//!
+//! - **Delegated through `JobBackend`:** `enqueue`, `wait_for_job`, `job_errors` — these
+//!   return simple types (`Uuid`, `String`, `Option<String>`) that need no mapping.
+//! - **Called directly on backend-specific functions:** `list_jobs`, `job_status`,
+//!   `cancel_job`, `cleanup_jobs`, `clear_jobs`, `recover_jobs` — `FullServiceRuntime`
+//!   calls raw Postgres query functions; `LiteServiceRuntime` calls `lite_query::*`.
+//!
+//! `ServiceJobRuntime` is a strict superset of `JobBackend`: it adds `has_active_jobs`,
+//! `recover_jobs`, `run_worker`, pagination (`limit`/`offset`), and returns `ServiceJob`
+//! everywhere instead of `JobStatusRow`/`JobSummary`.
+
 mod full;
 
 use std::error::Error;

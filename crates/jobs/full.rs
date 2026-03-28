@@ -100,13 +100,17 @@ impl JobBackend for FullBackend {
                     .map_err(lift_err)?;
                 Ok(id)
             }
-            JobPayload::Graph { .. } => {
-                // graph jobs require a pool + url + source_type — not available from the
-                // generic payload. Return a clear error until callers wire this properly.
-                Err(
-                    "FullBackend: Graph enqueue not yet wired (use enqueue_graph_job directly)"
-                        .into(),
-                )
+            JobPayload::Graph { config_json } => {
+                let (url, source_type) =
+                    crate::crates::jobs::graph::parse_graph_config(&config_json)?;
+                let pool = crate::crates::jobs::common::make_pool(cfg)
+                    .await
+                    .map_err(lift_err)?;
+                let id =
+                    crate::crates::jobs::graph::enqueue_graph_job(&pool, cfg, &url, &source_type)
+                        .await
+                        .map_err(lift_err)?;
+                Ok(id)
             }
         }
     }
@@ -251,10 +255,9 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::cancel_refresh_job(cfg, id)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Err(
-                "FullBackend: cancel_job for Graph is not implemented; use graph-specific APIs"
-                    .into(),
-            ),
+            JobKind::Graph => Ok(crate::crates::jobs::graph::cancel_graph_job(cfg, id)
+                .await
+                .map_err(lift_err)?),
         }
     }
 
@@ -374,10 +377,9 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::cleanup_refresh_jobs(cfg)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Err(
-                "FullBackend: cleanup_jobs for Graph is not implemented; use graph-specific APIs"
-                    .into(),
-            ),
+            JobKind::Graph => Ok(crate::crates::jobs::graph::cleanup_graph_jobs(cfg)
+                .await
+                .map_err(lift_err)?),
         }
     }
 
@@ -403,10 +405,9 @@ impl JobBackend for FullBackend {
             JobKind::Refresh => Ok(crate::crates::jobs::refresh::clear_refresh_jobs(cfg)
                 .await
                 .map_err(lift_err)?),
-            JobKind::Graph => Err(
-                "FullBackend: clear_jobs for Graph is not implemented; use graph-specific APIs"
-                    .into(),
-            ),
+            JobKind::Graph => Ok(crate::crates::jobs::graph::clear_graph_jobs(cfg)
+                .await
+                .map_err(lift_err)?),
         }
     }
 
