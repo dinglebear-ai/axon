@@ -109,10 +109,9 @@ impl AxonMcpServer {
                     );
                     tracing::error!("{msg}: {e}");
                     return Err(ErrorData::internal_error(
-                        format!("{msg} failed"),
+                        "refresh.start.partial failed".to_string(),
                         Some(serde_json::json!({
                             "partial_job_ids": job_ids,
-                            "failed_url": url,
                         })),
                     ));
                 }
