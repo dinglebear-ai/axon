@@ -16,7 +16,9 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
         cfg.acp_adapter_cmd
             .as_deref()
             .is_some_and(|program| !program.trim().is_empty()),
-        "AXON_ACP_ADAPTER_CMD is required for ask/evaluate commands"
+        "ask/evaluate requires an ACP adapter — set AXON_ASK_AGENT=claude|codex|gemini \
+         (uses the AXON_ACP_<AGENT>_ADAPTER_CMD you already have configured) \
+         or set AXON_ACP_ADAPTER_CMD directly"
     );
     Ok(())
 }

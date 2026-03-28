@@ -100,7 +100,7 @@ fn validate_ask_llm_config_rejects_missing_acp_adapter_command() {
     let err = validate_ask_llm_config(&cfg).expect_err("missing adapter should fail");
 
     assert!(
-        err.to_string()
-            .contains("AXON_ACP_ADAPTER_CMD is required for ask/evaluate commands")
+        err.to_string().contains("AXON_ASK_AGENT"),
+        "error should mention AXON_ASK_AGENT: {err}"
     );
 }

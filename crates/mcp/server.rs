@@ -23,7 +23,6 @@ mod oauth_google;
 #[path = "server/services_migration_tests.rs"]
 mod services_migration_tests;
 
-use super::config::load_mcp_config;
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::crates::core::config::Config;
 use crate::crates::services::context::ServiceContext;
@@ -349,21 +348,25 @@ impl ServerHandler for AxonMcpServer {
     }
 }
 
-pub async fn run_stdio_server() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = load_mcp_config();
+pub async fn run_stdio_server(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
     let service = AxonMcpServer::new(cfg).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }
 
-pub async fn run_http_server(host: &str, port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let cors_cfg = Arc::new(load_mcp_config());
+pub async fn run_http_server(
+    cfg: Config,
+    host: &str,
+    port: u16,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cors_cfg = Arc::new(cfg.clone());
     let oauth_state = GoogleOAuthState::from_env(host, port);
     let oauth_state_for_layer = oauth_state.clone();
+    let cfg_arc = Arc::new(cfg);
 
     let mcp_service: StreamableHttpService<AxonMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
-            || Ok(AxonMcpServer::new(load_mcp_config())),
+            move || Ok(AxonMcpServer::new((*cfg_arc).clone())),
             Default::default(),
             StreamableHttpServerConfig {
                 stateful_mode: true,

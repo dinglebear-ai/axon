@@ -91,7 +91,7 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
-            acp_adapter_cmd: Some("codex-acp".to_string()),
+            acp_adapter_cmd: None,
             acp_adapter_args: None,
             acp_prewarm: true,
             tavily_api_key: String::new(),

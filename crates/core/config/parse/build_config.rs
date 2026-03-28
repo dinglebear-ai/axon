@@ -429,15 +429,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .openai_model
             .or_else(|| env::var("OPENAI_MODEL").ok())
             .unwrap_or_default(),
-        acp_adapter_cmd: env::var("AXON_ACP_ADAPTER_CMD")
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-            .or_else(|| Some("codex-acp".to_string())),
-        acp_adapter_args: env::var("AXON_ACP_ADAPTER_ARGS")
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty()),
+        // Resolve ACP adapter for ask/research.
+        // Priority: AXON_ACP_ADAPTER_CMD (global override) → AXON_ASK_AGENT=claude|codex|gemini
+        // (use the matching AXON_ACP_{AGENT}_ADAPTER_* vars already configured for Pulse chat).
+        acp_adapter_cmd: resolve_ask_adapter_cmd(),
+        acp_adapter_args: resolve_ask_adapter_args(),
         acp_prewarm: env_bool("AXON_ACP_PREWARM", true),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
         neo4j_url: env::var("AXON_NEO4J_URL").ok().unwrap_or_default(),
@@ -648,6 +644,52 @@ fn resolve_mcp_transport(
             )),
         },
     }
+}
+
+/// Resolve adapter command for ask/research ACP calls.
+///
+/// Priority:
+/// 1. `AXON_ACP_ADAPTER_CMD` — explicit global override (existing behavior)
+/// 2. `AXON_ASK_AGENT=claude|codex|gemini` — look up the matching per-agent cmd var
+///    (`AXON_ACP_CLAUDE_ADAPTER_CMD`, `AXON_ACP_CODEX_ADAPTER_CMD`, or
+///    `AXON_ACP_GEMINI_ADAPTER_CMD`) that Pulse chat already uses.
+pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
+    let read = |var: &str| {
+        env::var(var)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    read("AXON_ACP_ADAPTER_CMD").or_else(|| {
+        let agent = env::var("AXON_ASK_AGENT").ok()?;
+        let var = match agent.trim().to_lowercase().as_str() {
+            "claude" => "AXON_ACP_CLAUDE_ADAPTER_CMD",
+            "codex" => "AXON_ACP_CODEX_ADAPTER_CMD",
+            "gemini" => "AXON_ACP_GEMINI_ADAPTER_CMD",
+            _ => return None,
+        };
+        read(var)
+    })
+}
+
+/// Resolve adapter args for ask/research ACP calls (mirrors `resolve_ask_adapter_cmd`).
+pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
+    let read = |var: &str| {
+        env::var(var)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    read("AXON_ACP_ADAPTER_ARGS").or_else(|| {
+        let agent = env::var("AXON_ASK_AGENT").ok()?;
+        let var = match agent.trim().to_lowercase().as_str() {
+            "claude" => "AXON_ACP_CLAUDE_ADAPTER_ARGS",
+            "codex" => "AXON_ACP_CODEX_ADAPTER_ARGS",
+            "gemini" => "AXON_ACP_GEMINI_ADAPTER_ARGS",
+            _ => return None,
+        };
+        read(var)
+    })
 }
 
 fn env_port(env_var: &str, default: u16) -> Result<u16, String> {

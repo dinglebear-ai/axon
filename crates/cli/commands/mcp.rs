@@ -3,16 +3,17 @@ use std::error::Error;
 
 pub async fn run_mcp(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.mcp_transport {
-        McpTransport::Stdio => crate::crates::mcp::run_stdio_server().await,
+        McpTransport::Stdio => crate::crates::mcp::run_stdio_server(cfg.clone()).await,
         McpTransport::Http => {
-            crate::crates::mcp::run_http_server(&cfg.mcp_http_host, cfg.mcp_http_port).await
+            crate::crates::mcp::run_http_server(cfg.clone(), &cfg.mcp_http_host, cfg.mcp_http_port)
+                .await
         }
         McpTransport::Both => {
             let host = cfg.mcp_http_host.clone();
             let port = cfg.mcp_http_port;
             tokio::try_join!(
-                crate::crates::mcp::run_stdio_server(),
-                crate::crates::mcp::run_http_server(&host, port),
+                crate::crates::mcp::run_stdio_server(cfg.clone()),
+                crate::crates::mcp::run_http_server(cfg.clone(), &host, port),
             )?;
             Ok(())
         }
