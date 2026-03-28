@@ -148,7 +148,7 @@ pub async fn mark_completed(
     result_json: Option<&serde_json::Value>,
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
-    match result_json {
+    let result = match result_json {
         Some(result) => {
             sqlx::query(&format!(
                 "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=? \
@@ -160,7 +160,7 @@ pub async fn mark_completed(
             .bind(result.to_string())
             .bind(id.to_string())
             .execute(pool)
-            .await?;
+            .await?
         }
         None => {
             sqlx::query(&format!(
@@ -172,8 +172,15 @@ pub async fn mark_completed(
             .bind(now)
             .bind(id.to_string())
             .execute(pool)
-            .await?;
+            .await?
         }
+    };
+    if result.rows_affected() == 0 {
+        tracing::warn!(
+            id = %id,
+            table = table,
+            "mark_completed: job row not found or not in running state (may have been canceled)"
+        );
     }
     Ok(())
 }
@@ -186,7 +193,7 @@ pub async fn mark_failed(
     error: &str,
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
-    sqlx::query(&format!(
+    let result = sqlx::query(&format!(
         "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=? \
          WHERE id=? AND status='running'",
         table
@@ -197,6 +204,13 @@ pub async fn mark_failed(
     .bind(id.to_string())
     .execute(pool)
     .await?;
+    if result.rows_affected() == 0 {
+        tracing::warn!(
+            id = %id,
+            table = table,
+            "mark_failed: job row not found or not in running state (may have been canceled)"
+        );
+    }
     Ok(())
 }
 
@@ -389,6 +403,72 @@ mod tests {
                 .expect("fetch");
         assert_eq!(row.0, "canceled");
         assert!(row.1.is_some());
+    }
+
+    #[tokio::test]
+    async fn cancel_row_returns_false_for_terminal_jobs() {
+        let pool = test_pool().await;
+        let id = enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue");
+
+        // Move to running, then completed (terminal state)
+        claim_next_pending(&pool, "axon_crawl_jobs")
+            .await
+            .expect("claim");
+        mark_completed(&pool, "axon_crawl_jobs", id, None)
+            .await
+            .expect("complete");
+
+        // Cancel should return false — job is already in a terminal state
+        let canceled = cancel_row(&pool, "axon_crawl_jobs", id)
+            .await
+            .expect("cancel");
+        assert!(
+            !canceled,
+            "cancel_row should return false for a completed job"
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_completed_succeeds_when_job_already_canceled() {
+        let pool = test_pool().await;
+        let id = enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue");
+
+        // Claim then cancel (simulates race: worker holds id, but job gets canceled)
+        claim_next_pending(&pool, "axon_crawl_jobs")
+            .await
+            .expect("claim");
+        cancel_row(&pool, "axon_crawl_jobs", id)
+            .await
+            .expect("cancel");
+
+        // mark_completed should not panic or error — it just logs and returns Ok
+        mark_completed(&pool, "axon_crawl_jobs", id, None)
+            .await
+            .expect("mark_completed should not error on canceled job");
+
+        // Job should still be canceled, not completed
+        let status: (String,) = sqlx::query_as("SELECT status FROM axon_crawl_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+        assert_eq!(status.0, "canceled");
     }
 
     #[tokio::test]

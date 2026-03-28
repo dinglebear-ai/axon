@@ -20,17 +20,25 @@ pub(super) async fn run_crawl_job_lite(
         .fetch_optional(pool)
         .await?;
     let Some((url,)) = row else {
+        tracing::warn!(id = %id, table = "axon_crawl_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 
     crate::crates::core::http::validate_url(&url)
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
 
+    // Derive a per-job output directory to prevent concurrent crawls from clobbering each other.
+    let job_output_dir = crate::crates::services::crawl::predict_crawl_output_dir(
+        &cfg.output_dir,
+        &url,
+        &id.to_string(),
+    );
+
     let (summary, _) = crate::crates::crawl::engine::run_crawl_once(
         cfg,
         &url,
         cfg.render_mode,
-        &cfg.output_dir,
+        &job_output_dir,
         None,
         cfg.discover_sitemaps,
         Arc::new(HashMap::new()),
@@ -41,8 +49,7 @@ pub(super) async fn run_crawl_job_lite(
 
     // Auto-enqueue embed job for the crawled output when embedding is enabled.
     let embed_job_id = if cfg.embed && summary.markdown_files > 0 {
-        let markdown_dir = cfg
-            .output_dir
+        let markdown_dir = job_output_dir
             .join("markdown")
             .to_string_lossy()
             .to_string();
@@ -85,6 +92,7 @@ pub(super) async fn run_embed_job_lite(
             .fetch_optional(pool)
             .await?;
     let Some((input,)) = row else {
+        tracing::warn!(id = %id, table = "axon_embed_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 
@@ -113,6 +121,7 @@ pub(super) async fn run_extract_job_lite(
             .fetch_optional(pool)
             .await?;
     let Some((urls_json,)) = row else {
+        tracing::warn!(id = %id, table = "axon_extract_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 
@@ -172,6 +181,7 @@ pub(super) async fn run_ingest_job_lite(
             .fetch_optional(pool)
             .await?;
     let Some((config_json,)) = row else {
+        tracing::warn!(id = %id, table = "axon_ingest_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 
@@ -236,17 +246,25 @@ pub(super) async fn run_refresh_job_lite(
         .fetch_optional(pool)
         .await?;
     let Some((url,)) = row else {
+        tracing::warn!(id = %id, table = "axon_refresh_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 
     crate::crates::core::http::validate_url(&url)
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
 
+    // Derive a per-job output directory to prevent concurrent refresh jobs from clobbering each other.
+    let job_output_dir = crate::crates::services::crawl::predict_crawl_output_dir(
+        &cfg.output_dir,
+        &url,
+        &id.to_string(),
+    );
+
     let (summary, _) = crate::crates::crawl::engine::run_crawl_once(
         cfg,
         &url,
         cfg.render_mode,
-        &cfg.output_dir,
+        &job_output_dir,
         None,
         cfg.discover_sitemaps,
         Arc::new(HashMap::new()),
@@ -273,6 +291,7 @@ pub(super) async fn run_graph_job_lite(
             .fetch_optional(pool)
             .await?;
     let Some((config_json,)) = row else {
+        tracing::warn!(id = %id, table = "axon_graph_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
 

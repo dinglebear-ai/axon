@@ -9,9 +9,17 @@ impl AxonMcpServer {
         &self,
         req: GraphRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        if self.cfg.lite_mode {
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("graph.context", e.as_ref()))?;
+        if !service_context.capabilities.graph.supported {
             return Err(invalid_params(
-                "graph is not available in lite mode because it requires Postgres-backed graph storage",
+                service_context
+                    .capabilities
+                    .graph
+                    .reason
+                    .unwrap_or("graph not supported in this mode"),
             ));
         }
         let response_mode = req.response_mode;

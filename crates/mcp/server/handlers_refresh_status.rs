@@ -89,17 +89,29 @@ impl AxonMcpServer {
             .map_err(|e| logged_internal_error("refresh.start.context", e.as_ref()))?;
         // Enqueue via ServiceContext so both full (Postgres) and lite (SQLite) backends work.
         // The backend payload takes one URL per job; enqueue one per URL and collect all ids.
-        let mut job_ids = Vec::with_capacity(urls.len());
+        // If any enqueue fails, we include the already-created IDs in the error so the caller
+        // can cancel orphaned jobs.
+        let mut job_ids: Vec<uuid::Uuid> = Vec::with_capacity(urls.len());
         for url in &urls {
-            let id = service_context
+            match service_context
                 .jobs
                 .enqueue(JobPayload::Refresh {
                     url: url.clone(),
                     config_json: "{}".into(),
                 })
                 .await
-                .map_err(|e| logged_internal_error("refresh.start", e.as_ref()))?;
-            job_ids.push(id);
+            {
+                Ok(id) => job_ids.push(id),
+                Err(e) => {
+                    let ctx = format!(
+                        "refresh.start failed on url {url} after enqueuing {} jobs: {:?}",
+                        job_ids.len(),
+                        job_ids
+                    );
+                    tracing::error!("{ctx}: {e}");
+                    return Err(logged_internal_error("refresh.start.partial", e.as_ref()));
+                }
+            }
         }
         Ok(AxonToolResponse::ok(
             "refresh",
@@ -124,12 +136,17 @@ impl AxonMcpServer {
         let job = job_service::job_status(&service_context, JobKind::Refresh, id)
             .await
             .map_err(|e| logged_internal_error("refresh.status", e.as_ref()))?;
+        let job_val = match job {
+            Some(j) => serde_json::to_value(&j)
+                .map_err(|e| logged_internal_error("refresh.status.serialize", &e))?,
+            None => serde_json::Value::Null,
+        };
         respond_with_mode(
             "refresh",
             "status",
             response_mode,
             &format!("refresh-status-{id}"),
-            serde_json::json!({ "job": job.map(|j| serde_json::to_value(j).unwrap_or(serde_json::Value::Null)) }),
+            serde_json::json!({ "job": job_val }),
         )
         .await
     }
@@ -173,13 +190,15 @@ impl AxonMcpServer {
         )
         .await
         .map_err(|e| logged_internal_error("refresh.list", e.as_ref()))?;
+        let jobs_val: Result<Vec<_>, _> = jobs.iter().map(serde_json::to_value).collect();
+        let jobs_val = jobs_val.map_err(|e| logged_internal_error("refresh.list.serialize", &e))?;
         respond_with_mode(
             "refresh",
             "list",
             response_mode,
             "refresh-list",
             serde_json::json!({
-                "jobs": jobs.iter().map(|j| serde_json::to_value(j).unwrap_or(serde_json::Value::Null)).collect::<Vec<_>>(),
+                "jobs": jobs_val,
                 "limit": limit,
                 "offset": offset,
             }),
@@ -241,12 +260,30 @@ impl AxonMcpServer {
         limit: Option<i64>,
         response_mode: Option<ResponseMode>,
     ) -> Result<AxonToolResponse, ErrorData> {
-        if self.cfg.lite_mode {
+        // Validate subaction early — before connecting to Postgres — so unknown
+        // subaction errors are always INVALID_PARAMS regardless of DB availability.
+        let sub = schedule_subaction.as_deref().unwrap_or("list");
+        match sub {
+            "list" | "create" | "delete" | "enable" | "disable" => {}
+            other => {
+                return Err(invalid_params(format!(
+                    "unknown schedule_subaction: {other}; expected list, create, delete, enable, disable"
+                )));
+            }
+        }
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("refresh.schedule.context", e.as_ref()))?;
+        if !service_context.capabilities.refresh_schedule.supported {
             return Err(invalid_params(
-                "refresh scheduling is not available in lite mode",
+                service_context
+                    .capabilities
+                    .refresh_schedule
+                    .reason
+                    .unwrap_or("refresh scheduling is not available in this mode"),
             ));
         }
-        let sub = schedule_subaction.as_deref().unwrap_or("list");
         match sub {
             "list" => {
                 self.handle_refresh_schedule_list(limit, response_mode)
@@ -265,9 +302,8 @@ impl AxonMcpServer {
                 self.handle_refresh_schedule_set_enabled(schedule_name, false)
                     .await
             }
-            other => Err(invalid_params(format!(
-                "unknown schedule_subaction: {other}; expected list, create, delete, enable, disable"
-            ))),
+            // Unreachable: early validation above catches all other values.
+            _ => unreachable!("schedule_subaction already validated"),
         }
     }
 

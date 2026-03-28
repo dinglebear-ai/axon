@@ -28,6 +28,14 @@ impl ServiceJobRuntime for FullServiceRuntime {
     }
 
     async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool> {
+        let pool = self
+            .pool
+            .get_or_try_init(|| async {
+                crate::crates::jobs::common::make_pool(&self.cfg)
+                    .await
+                    .map_err(lift_ss)
+            })
+            .await?;
         let table = match kind {
             JobKind::Crawl => "axon_crawl_jobs",
             JobKind::Embed => "axon_embed_jobs",
@@ -36,15 +44,12 @@ impl ServiceJobRuntime for FullServiceRuntime {
             JobKind::Refresh => "axon_refresh_jobs",
             JobKind::Graph => "axon_graph_jobs",
         };
-        let pool = crate::crates::jobs::common::make_pool(&self.cfg)
-            .await
-            .map_err(lift_ss)?;
         let sql = format!(
             "SELECT EXISTS(SELECT 1 FROM {} WHERE status IN ('pending','running') LIMIT 1)",
             table
         );
         let exists: bool = sqlx::query_scalar(&sql)
-            .fetch_one(&pool)
+            .fetch_one(pool)
             .await
             .map_err(lift_ss)?;
         Ok(exists)

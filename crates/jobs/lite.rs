@@ -73,13 +73,14 @@ impl LiteBackend {
         })
     }
 
-    fn table_for(kind: JobKind) -> &'static str {
-        kind.table_name()
-    }
-
     /// Expose the shared SQLite pool for callers that need direct access (e.g. service layer).
     pub fn pool(&self) -> &Arc<SqlitePool> {
         &self.pool
+    }
+
+    /// Expose the cancel store so the service layer can fire CancellationTokens on cancel.
+    pub fn cancel_store(&self) -> &Arc<CancelStore> {
+        &self.cancel_store
     }
 }
 
@@ -95,30 +96,30 @@ impl JobBackend for LiteBackend {
     }
 
     async fn job_status(&self, id: JobId, kind: JobKind) -> BackendResult<Option<JobStatusRow>> {
-        Ok(query::job_status_row(&self.pool, Self::table_for(kind), id).await?)
+        Ok(query::job_status_row(&self.pool, kind.table_name(), id).await?)
     }
 
     async fn cancel_job(&self, id: JobId, kind: JobKind) -> BackendResult<bool> {
         Ok(self
             .cancel_store
-            .cancel(id, &self.pool, Self::table_for(kind))
+            .cancel(id, &self.pool, kind.table_name())
             .await?)
     }
 
     async fn list_jobs(&self, kind: JobKind) -> BackendResult<Vec<JobSummary>> {
-        Ok(query::list_jobs(&self.pool, Self::table_for(kind)).await?)
+        Ok(query::list_jobs(&self.pool, kind.table_name()).await?)
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> BackendResult<u64> {
-        Ok(query::cleanup_jobs(&self.pool, Self::table_for(kind)).await?)
+        Ok(query::cleanup_jobs(&self.pool, kind.table_name()).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> BackendResult<u64> {
-        Ok(query::clear_jobs(&self.pool, Self::table_for(kind)).await?)
+        Ok(query::clear_jobs(&self.pool, kind.table_name()).await?)
     }
 
     async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>> {
-        Ok(query::job_errors(&self.pool, Self::table_for(kind), id).await?)
+        Ok(query::job_errors(&self.pool, kind.table_name(), id).await?)
     }
 }
 

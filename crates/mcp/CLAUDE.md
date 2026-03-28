@@ -1,5 +1,5 @@
 # crates/mcp — Axon MCP Server Guide
-Last Modified: 2026-03-03
+Last Modified: 2026-03-28
 
 ## Purpose
 `crates/mcp` implements the Axon Model Context Protocol server (`axon mcp`) that exposes crawler/RAG capabilities through a single MCP tool.
@@ -157,11 +157,34 @@ Default response behavior is artifact-first:
 - Inline responses are capped and include artifact pointers
 
 ## Configuration Model
-`load_mcp_config()` in `config.rs` must reuse existing Axon env vars. Do not create a parallel MCP env namespace.
+
+MCP config is threaded in directly via `build_config()` from `crates/core/config/parse/build_config.rs`. There is no `load_mcp_config()` function — it was removed when config was unified (commit `54244286`). The MCP server reads the standard `Config` struct like every other command.
 
 Expected runtime model:
 - `axon mcp` runs inside the same stack environment as workers.
-- Existing `.env`/container env should be sufficient.
+- Existing `.env`/container env is sufficient.
+
+## `ServiceContext` Wiring
+
+All MCP action handlers receive a `&ServiceContext` (from `crates/services/context`) constructed once at server startup. This gives handlers backend-agnostic job ops and capability gating:
+
+```rust
+// In handler dispatch
+let ctx = ServiceContext::new(Arc::new(cfg)).await?;
+// ...
+handlers_crawl_extract::handle_crawl(&ctx, request).await
+```
+
+**Lite mode capability guards:** Some actions are unavailable in lite mode and must be guarded:
+
+| Unsupported action | Guard |
+|--------------------|-------|
+| `graph` | `ctx.capabilities.graph` |
+| `refresh` schedule ops | `ctx.capabilities.refresh_schedule` |
+| `export` | `ctx.capabilities.export` |
+| `watch` scheduler | `ctx.capabilities.watch_scheduler` |
+
+Return `ErrorData::invalid_params("not supported in lite mode")` when `!capability.supported`.
 
 ## Implementation Rules
 1. Keep one tool (`axon`) only.

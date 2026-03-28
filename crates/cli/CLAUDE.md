@@ -78,8 +78,12 @@ cli/
 
 ```rust
 match cfg.command {
-    CommandKind::Crawl => run_crawl(cfg).await?,
-    CommandKind::Ask   => run_ask(cfg).await?,   // delegates to crates/services::query
+    CommandKind::Crawl      => run_crawl(cfg).await?,
+    CommandKind::Ask        => run_ask(cfg).await?,    // delegates to crates/services::query
+    CommandKind::Watch      => run_watch(cfg).await?,  // delegates to crates/services::watch
+    CommandKind::Dedupe     => run_dedupe(cfg).await?,
+    CommandKind::Migrate    => run_migrate(cfg).await?,
+    CommandKind::Graph      => run_graph(cfg).await?,
     // ...
 }
 ```

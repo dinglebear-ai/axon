@@ -191,10 +191,24 @@ fn spawn_log_task(
     let stream = stream?;
     Some(tokio::spawn(async move {
         let mut lines = BufReader::new(stream).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let trimmed = line.trim_end();
-            if !trimmed.is_empty() {
-                log_stream_line(&name, stream_name, trimmed);
+        loop {
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    let trimmed = line.trim_end();
+                    if !trimmed.is_empty() {
+                        log_stream_line(&name, stream_name, trimmed);
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    tracing::warn!(
+                        name = %name,
+                        stream = %stream_name,
+                        error = %e,
+                        "log stream I/O error, stopping log forwarding"
+                    );
+                    break;
+                }
             }
         }
     }))

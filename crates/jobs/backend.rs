@@ -109,7 +109,17 @@ pub struct JobSummary {
 
 pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Abstraction over job storage + dispatch.
+/// Low-level job persistence interface implemented by [`FullBackend`] and [`LiteBackend`].
+///
+/// **Note:** The canonical abstraction consumed by all callers (CLI, MCP, web) is
+/// [`ServiceJobRuntime`](crate::crates::services::runtime::ServiceJobRuntime), which
+/// returns the richer [`ServiceJob`](crate::crates::services::types::ServiceJob) type.
+/// In practice, only `enqueue`, `wait_for_job`, and `job_errors` are delegated through
+/// this trait by the service runtime layer; the remaining methods (`list_jobs`,
+/// `job_status`, `cancel_job`, `cleanup_jobs`, `clear_jobs`) are bypassed —
+/// `FullServiceRuntime` calls raw Postgres query functions directly, and
+/// `LiteServiceRuntime` calls `lite_query::*` directly, to avoid lossy type mapping
+/// from `JobStatusRow`/`JobSummary` to `ServiceJob`.
 #[async_trait]
 pub trait JobBackend: Send + Sync {
     /// Submit a new job. Returns the assigned JobId.

@@ -1,5 +1,5 @@
 # crates/core — Shared Infrastructure
-Last Modified: 2026-03-02
+Last Modified: 2026-03-28
 
 Foundational crate. Owns configuration parsing, the `Config` struct, HTTP client + SSRF protection, content transformation, logging, terminal UI, and health checks. Every other crate imports from here.
 
@@ -65,6 +65,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Spider tuning | `url_whitelist`, `block_assets`, `max_page_bytes`, `redirect_policy_strict`, `bypass_csp`, `accept_invalid_certs`, `custom_headers` |
 | Job watchdog | `watchdog_stale_timeout_secs` (300), `watchdog_confirm_secs` (60) |
 | Web UI | `serve_port` (default 49000, env: `AXON_SERVE_PORT`) |
+| Lite mode | `lite_mode: bool` (set by `AXON_LITE=1` or `--lite`; skips PG/Redis/AMQP checks), `sqlite_path: PathBuf` (default `$AXON_DATA_DIR/axon/jobs.db`, env: `AXON_SQLITE_PATH`) |
 
 **Debug redacts secrets:** `Config`'s `fmt::Debug` replaces `pg_url`, `redis_url`, `amqp_url`, `github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key` with `[REDACTED]`.
 
@@ -85,11 +86,15 @@ Translates `clap` output into the runtime `Config` struct:
 6. Parses viewport string ("1920x1080") into width/height
 7. Normalizes exclude-path-prefixes via `default_exclude_prefixes()` + user overrides
 
+## `Config::default_lite()`
+
+`Config::default_lite()` (in `config_impls.rs`) is a convenience constructor for lite mode. It sets `lite_mode: true` and fills service URLs with dummy values — use this in tests that need a `Config` without real service credentials. Do **not** use `Config::default()` for lite mode tests; use `Config::default_lite()`.
+
 ## CRITICAL: Adding a Field to `Config`
 
 When adding a **non-`Option`** field:
 1. Add the field to `Config` in `config/types/config.rs`
-2. Add a default in `Config::default()` in `config_impls.rs`
+2. Add a default in both `Config::default()` and `Config::default_lite()` in `config_impls.rs`
 3. **Update inline struct literals** in:
    - `crates/cli/commands/research.rs` (`make_test_config()`)
    - `crates/cli/commands/search.rs` (`make_test_config()`)

@@ -283,6 +283,11 @@ pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dy
 }
 
 async fn wait_for_pending_embed_jobs(runtime: &dyn ServiceJobRuntime) {
+    let timeout_secs: u64 = std::env::var("AXON_JOB_WAIT_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
     loop {
         match runtime.list_jobs(JobKind::Embed, 50, 0).await {
             Ok(jobs) => {
@@ -295,6 +300,12 @@ async fn wait_for_pending_embed_jobs(runtime: &dyn ServiceJobRuntime) {
                 }
             }
             Err(_) => break,
+        }
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!(
+                "wait_for_pending_embed_jobs: timed out after {timeout_secs}s waiting for embed jobs to complete"
+            );
+            break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }

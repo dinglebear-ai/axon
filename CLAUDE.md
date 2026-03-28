@@ -1,5 +1,5 @@
 # axon_cli — Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-03-18
+Last Modified: 2026-03-28
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
@@ -74,6 +74,7 @@ MCP docs:
 | `refresh <url>` | Periodic URL re-indexing (schedule, status, cancel, list). Supports `github:owner/repo` schedules with `pushed_at` gating. | Yes (default) |
 | `graph <sub>` | Knowledge graph operations: `build`, `status`, `explore`, `stats`, `worker`. Requires `AXON_NEO4J_URL`. | Depends |
 | `serve` | Start web UI server (axum + WebSocket + Docker stats) | No |
+| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. Requires full mode (not available with `AXON_LITE=1`). | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
 ### Job Subcommands (for crawl / extract / embed / refresh)
@@ -394,6 +395,30 @@ The CLI auto-detects whether it's running inside Docker:
 - **Outside Docker** (local dev): rewrites to localhost with mapped ports (`127.0.0.1:53432`, etc.)
 
 **So `.env` can use container DNS** — `normalize_local_service_url()` in `config.rs` handles translation transparently.
+
+## Lite Mode (`AXON_LITE=1`)
+
+Lite mode runs axon without Postgres, Redis, or RabbitMQ. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
+
+```bash
+AXON_LITE=1 axon scrape https://example.com   # no external services needed
+# or
+axon --lite scrape https://example.com
+```
+
+**What works in lite mode:** scrape, crawl (sync), map, embed, query, ask, extract, ingest, search, research, sources, stats, doctor, MCP server.
+
+**Unsupported in lite mode:** graph, refresh scheduling, watch scheduler, export.
+
+```bash
+# Env vars for lite mode
+AXON_LITE=1                              # enable lite mode
+AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/axon/jobs.db
+```
+
+The `ServiceContext` (in `crates/services/context.rs`) is constructed at startup and carries a `ServiceCapabilities` struct that gates unsupported operations. MCP handlers check `ctx.capabilities.<cap>.supported` before executing.
+
+See `crates/jobs/CLAUDE.md` for the `JobBackend` trait and backend selection details.
 
 ## Gotchas
 

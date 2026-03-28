@@ -58,7 +58,8 @@ pub fn spawn_workers(
     let refresh_notify = Arc::new(Notify::new());
     let graph_notify = Arc::new(Notify::new());
 
-    let task_handles = vec![
+    let worker_names: &[&str] = &["crawl", "embed", "extract", "ingest", "refresh", "graph"];
+    let raw_handles = vec![
         tokio::spawn(crawl_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
@@ -91,6 +92,24 @@ pub fn spawn_workers(
             Arc::clone(&graph_notify),
         )),
     ];
+
+    // Spawn a supervisor for each worker that logs panics/unexpected exits.
+    let task_handles: Vec<tokio::task::JoinHandle<()>> = raw_handles
+        .into_iter()
+        .zip(worker_names.iter())
+        .map(|(handle, &name)| {
+            tokio::spawn(async move {
+                match handle.await {
+                    Ok(()) => {
+                        tracing::error!(worker = name, "lite worker task exited unexpectedly (worker loops should never return)");
+                    }
+                    Err(e) => {
+                        tracing::error!(worker = name, error = ?e, "lite worker task panicked or was cancelled");
+                    }
+                }
+            })
+        })
+        .collect();
 
     WorkerHandles {
         crawl: crawl_notify,

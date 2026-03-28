@@ -20,7 +20,13 @@ type JobStatusRowTuple = (
 );
 
 pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
-    DateTime::from_timestamp_millis(ms).unwrap_or_default()
+    DateTime::from_timestamp_millis(ms).unwrap_or_else(|| {
+        tracing::warn!(
+            raw_ms = ms,
+            "invalid timestamp millis in job row, using epoch"
+        );
+        DateTime::default()
+    })
 }
 
 /// List all jobs in a table as summary rows (most recent first).
@@ -56,7 +62,10 @@ pub async fn list_jobs(pool: &SqlitePool, table: &str) -> Result<Vec<JobSummary>
     Ok(rows
         .into_iter()
         .map(|(id, status, created_at, target)| JobSummary {
-            id: Uuid::parse_str(&id).unwrap_or_default(),
+            id: Uuid::parse_str(&id).unwrap_or_else(|e| {
+                tracing::warn!(raw = %id, error = %e, "corrupt UUID in job row, using nil");
+                Uuid::nil()
+            }),
             status: JobStatus::from_str(&status),
             created_at: ms_to_dt(created_at),
             target,
@@ -106,14 +115,22 @@ pub async fn job_status_row(
     Ok(row.map(
         |(id, status, created_at, updated_at, started_at, finished_at, error_text, result_json)| {
             JobStatusRow {
-                id: Uuid::parse_str(&id).unwrap_or_default(),
+                id: Uuid::parse_str(&id).unwrap_or_else(|e| {
+                    tracing::warn!(raw = %id, error = %e, "corrupt UUID in job status row, using nil");
+                    Uuid::nil()
+                }),
                 status: JobStatus::from_str(&status),
                 created_at: ms_to_dt(created_at),
                 updated_at: ms_to_dt(updated_at),
                 started_at: started_at.map(ms_to_dt),
                 finished_at: finished_at.map(ms_to_dt),
                 error_text,
-                result_json: result_json.and_then(|s| serde_json::from_str(&s).ok()),
+                result_json: result_json.and_then(|s| {
+                    serde_json::from_str(&s).unwrap_or_else(|e| {
+                        tracing::warn!(error = %e, "corrupt result_json in job status row, using None");
+                        None
+                    })
+                }),
             }
         },
     ))
@@ -238,7 +255,10 @@ fn service_job_from_tuple(row: ServiceJobTuple) -> ServiceJob {
         config_json,
     ) = row;
     ServiceJob {
-        id: Uuid::parse_str(&id).unwrap_or_default(),
+        id: Uuid::parse_str(&id).unwrap_or_else(|e| {
+            tracing::warn!(raw = %id, error = %e, "corrupt UUID in service job row, using nil");
+            Uuid::nil()
+        }),
         status,
         created_at: ms_to_dt(created_at),
         updated_at: ms_to_dt(updated_at),
@@ -248,9 +268,24 @@ fn service_job_from_tuple(row: ServiceJobTuple) -> ServiceJob {
         url,
         source_type,
         target,
-        urls_json: urls_json.and_then(|s| serde_json::from_str(&s).ok()),
-        result_json: result_json.and_then(|s| serde_json::from_str(&s).ok()),
-        config_json: config_json.and_then(|s| serde_json::from_str(&s).ok()),
+        urls_json: urls_json.and_then(|s| {
+            serde_json::from_str(&s).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "corrupt urls_json in service job row, using None");
+                None
+            })
+        }),
+        result_json: result_json.and_then(|s| {
+            serde_json::from_str(&s).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "corrupt result_json in service job row, using None");
+                None
+            })
+        }),
+        config_json: config_json.and_then(|s| {
+            serde_json::from_str(&s).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "corrupt config_json in service job row, using None");
+                None
+            })
+        }),
     }
 }
 

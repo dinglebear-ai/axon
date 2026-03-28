@@ -125,3 +125,22 @@ async fn ingest_start_missing_source_type_returns_invalid_params() {
         "error message should mention source_type; got: {msg}"
     );
 }
+
+/// Verify the refresh.start response shape includes both `job_ids` (array) and
+/// `job_id` (last element) for multi-URL enqueue.
+#[test]
+fn refresh_start_response_includes_all_job_ids() {
+    let job_ids = vec![uuid::Uuid::new_v4(), uuid::Uuid::new_v4()];
+    let last = *job_ids.last().unwrap();
+    let response = serde_json::json!({
+        "job_ids": job_ids,
+        "job_id": last,
+    });
+    let ids: Vec<uuid::Uuid> = serde_json::from_value(response["job_ids"].clone()).unwrap();
+    assert_eq!(ids.len(), 2, "job_ids must contain all enqueued IDs");
+    let single: uuid::Uuid = serde_json::from_value(response["job_id"].clone()).unwrap();
+    assert_eq!(
+        single, last,
+        "job_id must equal the last element of job_ids"
+    );
+}

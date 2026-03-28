@@ -1,5 +1,5 @@
 # crates/services — Typed Service Layer
-Last Modified: 2026-03-16
+Last Modified: 2026-03-28
 
 The contract boundary between all entry points (CLI commands, MCP handlers, web routes) and the underlying business logic crates (`vector`, `jobs`, `crawl`, `ingest`). Every external caller goes through a service function — no entry point calls `crates/vector/ops/*` directly.
 
@@ -7,6 +7,8 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 
 ```
 services/
+├── context.rs              # ServiceContext + ServiceCapabilities — canonical handler entry point
+├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime() + FullServiceRuntime + LiteServiceRuntime
 ├── acp/                    # ACP adapter orchestration (Claude/Codex/Gemini subprocess)
 │   ├── adapters.rs         # Adapter subprocess wrappers (spawn, stdin/stdout)
 │   ├── bridge.rs           # Shared turn finalization: logging, EditorWrite, TurnResult dispatch
@@ -45,6 +47,51 @@ services/
 ├── debug.rs                # doctor + LLM-assisted debug
 └── events.rs               # ServiceEvent channel + emit()
 ```
+
+## `ServiceContext` — The Entry Point
+
+`ServiceContext` (in `context.rs`) is the canonical handler object passed to every CLI handler, MCP handler, and web route. Constructed once at startup:
+
+```rust
+let ctx = ServiceContext::new(Arc::new(cfg)).await?;
+// then pass &ctx to every handler
+```
+
+Fields:
+| Field | Type | Description |
+|-------|------|-------------|
+| `cfg` | `Arc<Config>` | Runtime config |
+| `capabilities` | `ServiceCapabilities` | Feature gate (lite mode restrictions) |
+| `jobs` | `Arc<dyn ServiceJobRuntime>` | Backend-agnostic job operations |
+
+**Never construct `ServiceContext` in tests** — use `ServiceContext::from_runtime(cfg, jobs)` with a mock `ServiceJobRuntime` instead.
+
+## `ServiceCapabilities` — Lite Mode Gating
+
+`ServiceCapabilities` (in `context.rs`) is derived from `cfg.lite_mode` and gates features unavailable in lite mode:
+
+| Capability | Full mode | Lite mode |
+|------------|-----------|-----------|
+| `export` | supported | unsupported — requires Postgres history |
+| `graph` | supported | unsupported — requires Postgres graph storage |
+| `refresh_schedule` | supported | unsupported |
+| `watch_scheduler` | supported | unsupported |
+
+Check before using: `if !ctx.capabilities.graph.supported { return Err(...) }`. MCP handlers return `invalid_params` for unsupported capabilities.
+
+## `ServiceJobRuntime` Trait (`runtime.rs`)
+
+The backend-agnostic job operations interface consumed by `ServiceContext.jobs`:
+
+- `enqueue(payload)` → `Uuid`
+- `job_status(kind, id)` → `Option<ServiceJob>`
+- `cancel_job(kind, id)` → `bool`
+- `list_jobs(kind, limit, offset)` → `Vec<ServiceJob>`
+- `cleanup_jobs(kind)`, `clear_jobs(kind)`, `recover_jobs(kind, stale_ms)` → `u64`
+- `run_worker(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
+- `wait_for_job(id, kind)` → `String` (final status)
+
+`resolve_runtime(cfg)` in `runtime.rs` constructs either `LiteServiceRuntime` (wraps `LiteBackend`) or `FullServiceRuntime` (wraps `FullBackend`) based on `cfg.lite_mode`.
 
 ## Architecture Contract
 
@@ -91,6 +138,8 @@ Key result types in `types/service.rs`:
 | `ScrapeResult` | `scrape::scrape` |
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
+| `GraphBuildResult` | `graph::build_graph` |
+| `WatchResult` | `watch::list_watches`, `watch::get_watch` |
 
 ## ServiceEvent — Async Progress Channel
 
@@ -179,12 +228,13 @@ Pure mapping tests (`map_*` functions) and channel tests run without live servic
 
 ## Adding a New Service Function
 
-1. Add the function to the appropriate `crates/services/<name>.rs`
+1. Add the function to the appropriate `crates/services/<name>.rs` — signature takes `&ServiceContext`
 2. Add a typed result struct to `crates/services/types/service.rs`
-3. Call from the CLI handler in `crates/cli/commands/<name>.rs` — replace any direct `run_*_native()` call
-4. Call from the MCP handler in `crates/mcp/server/handlers_*.rs`
-5. Add mapping helpers and unit tests for pure logic (no live services needed)
-6. Never print, log, or serialize inside the service function — return the typed result
+3. Call from the CLI handler in `crates/cli/commands/<name>.rs` — receives `&ServiceContext`
+4. Call from the MCP handler in `crates/mcp/server/handlers_*.rs` — receives `&ServiceContext`
+5. If the feature is unavailable in lite mode, check `ctx.capabilities.<cap>.supported` and return an error
+6. Add mapping helpers and unit tests for pure logic (no live services needed)
+7. Never print, log, or serialize inside the service function — return the typed result
 
 ## `watch.rs` and `events.rs` — Live Streaming
 

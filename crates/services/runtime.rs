@@ -4,13 +4,13 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload};
 use crate::crates::jobs::full::FullBackend;
 use crate::crates::jobs::lite::LiteBackend;
-use crate::crates::jobs::lite::ops::cancel_row;
 use crate::crates::jobs::lite::query as lite_query;
 use crate::crates::jobs::lite::store::reclaim_stale_running_jobs_for_table;
 use crate::crates::services::types::ServiceJob;
@@ -101,12 +101,17 @@ pub async fn resolve_runtime(
     Ok(Arc::new(FullServiceRuntime {
         cfg,
         backend: Arc::new(backend),
+        // Pool is initialized lazily on first call to has_active_jobs().
+        // This avoids eagerly connecting to Postgres at struct construction time,
+        // which would break tests that use Config::default() (empty pg_url).
+        pool: OnceCell::new(),
     }))
 }
 
 pub struct FullServiceRuntime {
     cfg: Arc<Config>,
     backend: Arc<FullBackend>,
+    pool: OnceCell<sqlx::PgPool>,
 }
 
 pub struct LiteServiceRuntime {
@@ -180,7 +185,11 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         kind: JobKind,
         id: Uuid,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(cancel_row(self.backend.pool(), kind.table_name(), id).await?)
+        Ok(self
+            .backend
+            .cancel_store()
+            .cancel(id, self.backend.pool(), kind.table_name())
+            .await?)
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {

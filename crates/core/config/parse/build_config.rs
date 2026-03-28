@@ -802,6 +802,73 @@ mod tests {
     }
 
     #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn resolve_ask_adapter_cmd_claude_returns_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("AXON_ACP_ADAPTER_CMD");
+            env::remove_var("AXON_ACP_CLAUDE_ADAPTER_CMD");
+            env::set_var("AXON_ASK_AGENT", "claude");
+        }
+        let result = resolve_ask_adapter_cmd();
+        assert_eq!(result, Some("claude-agent-acp".to_string()));
+        unsafe {
+            env::remove_var("AXON_ASK_AGENT");
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn resolve_ask_adapter_cmd_codex_returns_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("AXON_ACP_ADAPTER_CMD");
+            env::remove_var("AXON_ACP_CODEX_ADAPTER_CMD");
+            env::set_var("AXON_ASK_AGENT", "codex");
+        }
+        let result = resolve_ask_adapter_cmd();
+        assert_eq!(result, Some("codex-acp".to_string()));
+        unsafe {
+            env::remove_var("AXON_ASK_AGENT");
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn resolve_ask_adapter_args_gemini_returns_experimental_flag() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("AXON_ACP_ADAPTER_ARGS");
+            env::remove_var("AXON_ACP_GEMINI_ADAPTER_ARGS");
+            env::set_var("AXON_ASK_AGENT", "gemini");
+        }
+        let result = resolve_ask_adapter_args();
+        assert_eq!(result, Some("--experimental-acp".to_string()));
+        unsafe {
+            env::remove_var("AXON_ASK_AGENT");
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn resolve_ask_adapter_cmd_unknown_agent_returns_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("AXON_ACP_ADAPTER_CMD");
+            env::set_var("AXON_ASK_AGENT", "unknown-agent");
+        }
+        let result = resolve_ask_adapter_cmd();
+        assert_eq!(result, None);
+        unsafe {
+            env::remove_var("AXON_ASK_AGENT");
+        }
+    }
+
+    #[allow(unsafe_code)]
     #[test]
     fn into_config_normalizes_graph_llm_url_like_other_services() {
         let _guard = ENV_LOCK.lock().unwrap();

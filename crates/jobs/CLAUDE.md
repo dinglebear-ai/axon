@@ -1,22 +1,77 @@
-# crates/jobs — AMQP Job Workers
-Last Modified: 2026-02-27
+# crates/jobs — Job Workers (Full + Lite)
+Last Modified: 2026-03-28
 
-Async job workers backed by RabbitMQ (lapin) + PostgreSQL (sqlx).
+Async job workers. Two backends share the `JobBackend` trait:
+- **FullBackend** — Postgres persistence + RabbitMQ dispatch (default; requires `AXON_PG_URL` + `AXON_AMQP_URL`)
+- **LiteBackend** — SQLite persistence + in-process tokio workers (enabled via `AXON_LITE=1` or `--lite`)
 
 ## Module Layout
 
 ```text
 jobs/
-├── common/          # Shared infra: pool, AMQP channel, claim/mark/enqueue
+├── backend.rs       # JobBackend trait + JobPayload + JobKind + JobStatusRow + JobSummary
+├── full.rs          # FullBackend: Postgres + RabbitMQ (wraps existing per-job-type functions)
+├── lite.rs          # LiteBackend: SQLite pool + in-process worker spawning
+├── lite/            # LiteBackend submodules: cancel, ops, query, store, workers
+├── status.rs        # JobStatus enum
+├── common/          # Shared infra: pool, AMQP channel, claim/mark/enqueue (FullBackend path)
 ├── crawl/           # manifest, processor, repo, sitemap, watchdog, worker, runtime
 ├── extract/         # Extract worker
 ├── embed/           # Embed worker
 ├── refresh/         # Periodic URL re-indexing scheduler (RefreshSchedule CRUD + worker)
 ├── ingest.rs        # Ingest job schema + worker (github/reddit/youtube/sessions)
-├── status.rs        # JobStatus enum
 └── worker_lane.rs   # Generic AMQP/polling lane runtime module root — used by embed, extract, and refresh workers
                      # (Crawl uses its own loop in crawl/runtime/worker/loops.rs due to !Send spider futures)
 ```
+
+## Backend Selection (`AXON_LITE=1`)
+
+`ServiceContext::new(cfg)` calls `resolve_runtime(cfg)` in `crates/services/runtime.rs`, which selects the backend:
+
+```rust
+if cfg.lite_mode {
+    LiteServiceRuntime { backend: LiteBackend::new(cfg).await? }
+} else {
+    FullServiceRuntime { backend: FullBackend::new(cfg) }
+}
+```
+
+`cfg.lite_mode` is set when `AXON_LITE=1` env var is present or `--lite` flag is passed.
+
+**LiteBackend:**
+- Opens a single SQLite pool (`AXON_SQLITE_PATH` env or `$AXON_DATA_DIR/axon/jobs.db`)
+- Spawns in-process tokio workers at startup — no external AMQP workers needed
+- Graph, refresh scheduling, and watch scheduler are **unsupported** in lite mode (guarded by `ServiceCapabilities`)
+- Do NOT call `open_config_pool()` before `LiteBackend::new()` — the backend opens its own pool internally
+
+**FullBackend:**
+- Thin adapter over the existing per-job-type enqueue/query Postgres + RabbitMQ functions
+- Workers remain separate processes (s6 workers in Docker, or `axon <cmd> worker` locally)
+- `lift_err()` stringifies `Box<dyn Error>` to satisfy `Send+Sync` bounds on `BackendResult`
+
+## `JobBackend` Trait (`backend.rs`)
+
+The uniform interface that both backends implement:
+
+```rust
+#[async_trait]
+pub trait JobBackend: Send + Sync {
+    async fn enqueue(&self, payload: JobPayload) -> BackendResult<JobId>;
+    async fn job_status(&self, id: JobId, kind: JobKind) -> BackendResult<Option<JobStatusRow>>;
+    async fn cancel_job(&self, id: JobId, kind: JobKind) -> BackendResult<bool>;
+    async fn list_jobs(&self, kind: JobKind) -> BackendResult<Vec<JobSummary>>;
+    async fn cleanup_jobs(&self, kind: JobKind) -> BackendResult<u64>;
+    async fn clear_jobs(&self, kind: JobKind) -> BackendResult<u64>;
+    async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>>;
+    async fn wait_for_job(&self, id: JobId, kind: JobKind) -> BackendResult<String>;
+}
+```
+
+`wait_for_job()` polls until the job reaches a terminal state — used in lite mode to keep the process alive while in-process workers finish. Times out after `AXON_JOB_WAIT_TIMEOUT_SECS` (default 300s).
+
+**`JobPayload`** variants: `Crawl { url, config_json }`, `Embed { input, config_json }`, `Extract { urls, config_json }`, `Ingest { target, source_type, config_json }`, `Refresh { url, config_json }`, `Graph { config_json }`.
+
+**`JobKind`** variants with table names: `Crawl` → `axon_crawl_jobs`, `Embed` → `axon_embed_jobs`, `Extract` → `axon_extract_jobs`, `Ingest` → `axon_ingest_jobs`, `Refresh` → `axon_refresh_jobs`, `Graph` → `axon_graph_jobs`.
 
 ## Critical Patterns
 
