@@ -691,7 +691,14 @@ pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
             "gemini" => ("AXON_ACP_GEMINI_ADAPTER_ARGS", Some("--experimental-acp")),
             _ => return None,
         };
-        read(var).or_else(|| default_args.map(str::to_string))
+        // When a global adapter command override is set, don't inject agent-specific
+        // default args — the caller's command may not accept them (e.g. --experimental-acp
+        // is a Gemini-only flag and would break a custom adapter binary).
+        if read("AXON_ACP_ADAPTER_CMD").is_some() {
+            None
+        } else {
+            read(var).or_else(|| default_args.map(str::to_string))
+        }
     })
 }
 

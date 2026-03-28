@@ -143,7 +143,6 @@ Key result types in `types/service.rs`:
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
 | `GraphBuildResult` | `graph::build_graph` |
-| `WatchResult` | `watch::list_watches`, `watch::get_watch` |
 
 ## ServiceEvent — Async Progress Channel
 

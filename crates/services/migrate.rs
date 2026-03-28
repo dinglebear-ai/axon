@@ -176,6 +176,18 @@ async fn ensure_named_collection(
             .pointer("/result/config/params/vectors/dense")
             .is_some()
         {
+            // Verify bm42 sparse vector is also configured; without it scroll_and_upsert
+            // will attempt to upsert sparse vectors into a collection that lacks that schema.
+            if body
+                .pointer("/result/config/params/sparse_vectors/bm42")
+                .is_none()
+            {
+                return Err(anyhow::anyhow!(
+                    "destination '{collection}' has 'dense' vectors but is missing 'bm42' sparse \
+                     vectors; drop the collection or choose a different destination name"
+                )
+                .into());
+            }
             log_info(&format!(
                 "migrate dest_exists_named collection={collection}"
             ));

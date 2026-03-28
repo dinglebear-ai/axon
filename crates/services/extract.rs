@@ -16,7 +16,7 @@ use crate::crates::services::types::{
     StartDisposition,
 };
 use futures_util::StreamExt;
-use futures_util::stream::FuturesUnordered;
+use futures_util::stream;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -216,18 +216,16 @@ async fn execute_extract_runs(
 ) -> Result<ExtractAggregation, Box<dyn Error>> {
     let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
 
-    let mut pending_runs = FuturesUnordered::new();
-    for url in urls.iter().cloned() {
-        let engine = Arc::clone(&engine);
-        let wcfg = build_extract_web_config(cfg, url.clone(), prompt);
-        pending_runs.push(async move {
-            let run = run_extract_with_engine(wcfg, engine).await;
-            (url, run)
-        });
-    }
+    let mut pending_runs = stream::iter(urls.iter().cloned())
+        .map(|url| {
+            let engine = Arc::clone(&engine);
+            let wcfg = build_extract_web_config(cfg, url, prompt);
+            async move { run_extract_with_engine(wcfg, engine).await }
+        })
+        .buffer_unordered(16);
 
     let mut agg = ExtractAggregation::default();
-    while let Some((_url, run_result)) = pending_runs.next().await {
+    while let Some(run_result) = pending_runs.next().await {
         let run = run_result?;
         accumulate_run(&mut agg, &run);
 

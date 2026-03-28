@@ -103,13 +103,18 @@ impl AxonMcpServer {
             {
                 Ok(id) => job_ids.push(id),
                 Err(e) => {
-                    let ctx = format!(
-                        "refresh.start failed on url {url} after enqueuing {} jobs: {:?}",
-                        job_ids.len(),
-                        job_ids
+                    let msg = format!(
+                        "refresh.start failed on url {url} after enqueuing {} jobs",
+                        job_ids.len()
                     );
-                    tracing::error!("{ctx}: {e}");
-                    return Err(logged_internal_error("refresh.start.partial", e.as_ref()));
+                    tracing::error!("{msg}: {e}");
+                    return Err(ErrorData::internal_error(
+                        format!("{msg} failed"),
+                        Some(serde_json::json!({
+                            "partial_job_ids": job_ids,
+                            "failed_url": url,
+                        })),
+                    ));
                 }
             }
         }

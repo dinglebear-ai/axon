@@ -15,7 +15,7 @@ Last Modified: 2026-03-28
 mcp/
 ├── ../mcp.rs           # Crate root module file, re-exports
 ├── schema.rs           # AxonRequest/AxonToolResponse types, action/subaction enums
-├── config.rs           # load_mcp_config(): reuses Axon env vars
+├── config.rs           # OAuth token storage helpers (load_mcp_config() removed in 54244286)
 ├── server.rs           # AxonMcpServer: tool registration + action dispatch router
 └── server/
     ├── common.rs                   # Shared handler utilities
@@ -33,7 +33,7 @@ mcp/
 - Tool request/response types: `crates/mcp/schema.rs`
 - Tool router and dispatch: `crates/mcp/server.rs`
 - Handler implementations: `crates/mcp/server/handlers_*.rs`
-- Env/config loader: `crates/mcp/config.rs`
+- Runtime config: threaded in via `build_config()` from `crates/core/config/parse/build_config.rs` (no dedicated MCP config loader)
 
 If documentation and code diverge, update both in the same change.
 
@@ -172,7 +172,7 @@ All MCP action handlers receive a `&ServiceContext` (from `crates/services/conte
 // In handler dispatch
 let ctx = ServiceContext::new(Arc::new(cfg)).await?;
 // ...
-handlers_crawl_extract::handle_crawl(&ctx, request).await
+self.handle_crawl(request).await
 ```
 
 **Lite mode capability guards:** Some actions are unavailable in lite mode and must be guarded:

@@ -74,7 +74,7 @@ MCP docs:
 | `refresh <url>` | Periodic URL re-indexing (schedule, status, cancel, list). Supports `github:owner/repo` schedules with `pushed_at` gating. | Yes (default) |
 | `graph <sub>` | Knowledge graph operations: `build`, `status`, `explore`, `stats`, `worker`. Requires `AXON_NEO4J_URL`. | Depends |
 | `serve` | Start web UI server (axum + WebSocket + Docker stats) | No |
-| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. Requires full mode (not available with `AXON_LITE=1`). | Depends |
+| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. Scheduler automation requires full mode (`AXON_LITE=1` disables `watch_scheduler`). | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
 ### Job Subcommands (for crawl / extract / embed / refresh)
@@ -408,7 +408,7 @@ axon --lite scrape https://example.com
 
 **What works in lite mode:** scrape, crawl (sync), map, embed, query, ask, extract, ingest, search, research, sources, stats, doctor, MCP server.
 
-**Unsupported in lite mode:** graph, refresh scheduling, watch scheduler, export.
+**Unsupported in lite mode:** graph, refresh (including scheduling), watch scheduler, export.
 
 ```bash
 # Env vars for lite mode
