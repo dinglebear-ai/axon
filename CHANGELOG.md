@@ -1,5 +1,24 @@
 # Changelog
-Last Modified: 2026-03-28 (session: v0.33.8 — backend unification complete)
+Last Modified: 2026-03-29 (session: v0.33.9 — PR #60 simplification pass)
+
+## [0.33.9] — feat/lite-mode
+
+### Highlights
+
+- **`lift_err`/`lift_ss` deduplicated** — shared error-lifting helper moved to `backend.rs` as `pub(crate) fn lift_err`; `full.rs` imports it directly, `runtime.rs` aliases as `lift_ss` preserving all downstream call sites.
+- **`JobStatus::from_str` warns on corruption** — unknown DB status values now emit `tracing::warn!` instead of silently mapping to `Failed`, surfacing schema drift and corrupt rows in logs.
+- **`wait_for_job` deadline check fixed** — moved deadline check to before the sleep, eliminating the up-to-500ms overshoot where the loop ran one extra poll after timeout expired.
+- **`WorkerHandles::drop` aborts tasks** — added `Drop` impl that aborts all supervisor task handles so lite-mode background workers stop cleanly when `LiteBackend` is dropped (e.g. end of one-shot `axon scrape`).
+- **Documentation fixes** — `list_ingest_jobs` default warns about post-filter correctness limitation; `from_summary` explains `updated_at = created_at` approximation.
+
+### Commits since v0.33.8
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | refactor | PR #60 simplification — dedup lift_err, status warn, worker drop, deadline fix |
+| be1eb00f | merge | integrate main into feat/lite-mode (resolve 36 conflicts) |
+| 303a82ee | fix(mcp) | strip URL from internal_error on refresh.start partial failure |
+| 3213b0ef | fix | address 11 PR #60 review findings |
 
 ## [0.33.8] — feat/lite-mode
 

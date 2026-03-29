@@ -11,17 +11,9 @@ use async_trait::async_trait;
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{
-    BackendResult, JobBackend, JobId, JobKind, JobPayload, JobStatusRow, JobSummary,
+    BackendResult, JobBackend, JobId, JobKind, JobPayload, JobStatusRow, JobSummary, lift_err,
 };
 use crate::crates::jobs::status::JobStatus;
-
-// The existing job functions return `Box<dyn std::error::Error>` (without
-// Send + Sync bounds). `BackendResult` requires `Send + Sync`. Convert by
-// stringifying the error — the information is preserved and the trait bounds
-// are satisfied.
-fn lift_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error + Send + Sync> {
-    e.to_string().into()
-}
 
 /// Delegates all job operations to the existing Postgres + RabbitMQ functions.
 pub struct FullBackend {

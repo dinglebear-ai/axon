@@ -67,6 +67,17 @@ pub trait ServiceJobRuntime: Send + Sync {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>>;
+    /// List ingest jobs, optionally filtered by source type.
+    ///
+    /// **Default implementation:** fetches up to `limit` rows then post-filters
+    /// in Rust. This is semantically incorrect when `source_filter` is set and
+    /// matching rows number fewer than `limit` — the caller will receive fewer
+    /// rows than expected even if more matching rows exist.
+    ///
+    /// **Both concrete impls override this** (`LiteServiceRuntime` pushes the
+    /// filter into SQLite; `FullServiceRuntime` passes it to the Postgres query).
+    /// If a future impl forgets to override, results will be silently wrong for
+    /// filtered queries on large tables.
     async fn list_ingest_jobs(
         &self,
         source_filter: Option<&str>,
@@ -103,12 +114,9 @@ pub trait ServiceJobRuntime: Send + Sync {
     async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>>;
 }
 
-/// Convert any `Display` error into `Box<dyn Error + Send + Sync>` by stringifying.
-/// Used where underlying functions return `Box<dyn Error>` (without Send+Sync) but
-/// the trait requires Send+Sync.
-fn lift_ss<E: std::fmt::Display>(e: E) -> Box<dyn Error + Send + Sync> {
-    e.to_string().into()
-}
+// Re-export the shared error-lifting helper defined in jobs/backend.rs.
+// Named `lift_ss` here for backward compatibility with the runtime/full.rs sub-module.
+use crate::crates::jobs::backend::lift_err as lift_ss;
 
 pub async fn resolve_runtime(
     cfg: Arc<Config>,

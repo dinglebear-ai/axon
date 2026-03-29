@@ -26,8 +26,8 @@ pub struct WorkerHandles {
     pub(crate) ingest: Arc<Notify>,
     pub(crate) refresh: Arc<Notify>,
     pub(crate) graph: Arc<Notify>,
-    /// JoinHandles for all spawned worker tasks. Drop or join to monitor for panics.
-    #[allow(dead_code)]
+    /// Supervisor task handles. Aborted on drop so workers stop cleanly when
+    /// LiteBackend is dropped (e.g. end of a one-shot `axon scrape` command).
     pub(crate) task_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
@@ -41,6 +41,14 @@ impl WorkerHandles {
             JobKind::Ingest => self.ingest.notify_one(),
             JobKind::Refresh => self.refresh.notify_one(),
             JobKind::Graph => self.graph.notify_one(),
+        }
+    }
+}
+
+impl Drop for WorkerHandles {
+    fn drop(&mut self) {
+        for handle in &self.task_handles {
+            handle.abort();
         }
     }
 }

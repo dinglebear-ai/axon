@@ -273,6 +273,7 @@ impl ServiceJob {
             id: summary.id,
             status: summary.status.as_str().to_string(),
             created_at: summary.created_at,
+            // JobSummary carries no updated_at; use created_at as a floor value.
             updated_at: summary.created_at,
             started_at: None,
             finished_at: None,

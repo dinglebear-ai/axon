@@ -1,5 +1,7 @@
 use std::fmt;
 
+use tracing;
+
 /// Type-safe representation of the job status column values used across all
 /// `axon_*_jobs` tables.
 ///
@@ -57,7 +59,13 @@ impl JobStatus {
             "completed" => Self::Completed,
             "failed" => Self::Failed,
             "canceled" => Self::Canceled,
-            _ => Self::Failed,
+            _ => {
+                tracing::warn!(
+                    raw = s,
+                    "unknown job status value in DB — treating as Failed"
+                );
+                Self::Failed
+            }
         }
     }
 }
