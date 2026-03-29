@@ -40,10 +40,17 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// 1. `Authorization: Bearer <token>` request header
 /// 2. `x-api-key: <token>` request header
 /// 3. `?token=` query parameter
+///
+/// `client_ip` is used only when `AXON_WEB_ALLOW_INSECURE_DEV=true` is active
+/// (debug builds, no token configured). In that mode the bypass is restricted
+/// to requests from 127.0.0.1 or ::1 — it is NOT a blanket unauthenticated
+/// pass-through. Pass `None` to skip the localhost check (e.g. in test builds
+/// where the `#[cfg(test)]` bypass fires unconditionally before this point).
 pub fn check_auth(
     headers: &HeaderMap,
     query_token: Option<&str>,
     api_token: Option<&str>,
+    #[cfg_attr(test, allow(unused_variables))] client_ip: Option<std::net::IpAddr>,
 ) -> AuthOutcome {
     // Extract token from request headers before falling back to the query
     // parameter. This keeps tokens out of access logs for callers that can
@@ -83,21 +90,47 @@ pub fn check_auth(
         return AuthOutcome::Denied(DenyReason::InvalidToken);
     }
 
-    #[cfg(any(debug_assertions, test))]
+    // In test builds, bypass auth unconditionally so tests can run without
+    // needing a token or env var. This is compile-time gated — never present
+    // in release or debug builds.
+    #[cfg(test)]
     {
-        // Warn once per process, not on every check_auth() call.
-        static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-        WARNED.get_or_init(|| {
-            tracing::warn!(
-                context = "auth",
-                "AXON_WEB_API_TOKEN is not set \u{2014} auth is DISABLED in this debug build",
-            );
-        });
         AuthOutcome::Token
     }
-    #[cfg(not(any(debug_assertions, test)))]
+    #[cfg(not(test))]
     {
-        AuthOutcome::Denied(DenyReason::NoAuthConfigured)
+        #[cfg(debug_assertions)]
+        {
+            // Debug builds: only bypass when the operator has explicitly opted in
+            // AND the request originates from localhost (127.0.0.1 or ::1).
+            // Restricting to loopback prevents AXON_WEB_ALLOW_INSECURE_DEV from
+            // opening all surfaces to unauthenticated remote traffic on the
+            // development machine's network interfaces.
+            if std::env::var("AXON_WEB_ALLOW_INSECURE_DEV")
+                .map(|v| v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+            {
+                let from_localhost = client_ip.map(|ip| ip.is_loopback()).unwrap_or(false);
+                if from_localhost {
+                    static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+                    WARNED.get_or_init(|| {
+                        tracing::warn!(
+                            context = "auth",
+                            "Auth disabled via AXON_WEB_ALLOW_INSECURE_DEV=true (localhost only) \u{2014} do not use in production",
+                        );
+                    });
+                    AuthOutcome::Token
+                } else {
+                    AuthOutcome::Denied(DenyReason::NoAuthConfigured)
+                }
+            } else {
+                AuthOutcome::Denied(DenyReason::NoAuthConfigured)
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            AuthOutcome::Denied(DenyReason::NoAuthConfigured)
+        }
     }
 }
 
@@ -143,6 +176,7 @@ mod tests {
             &HeaderMap::new(),
             Some("correct-token"),
             Some("correct-token"),
+            None,
         );
         assert!(matches!(outcome, AuthOutcome::Token));
     }
@@ -153,6 +187,7 @@ mod tests {
             &HeaderMap::new(),
             Some("wrong-token"),
             Some("correct-token"),
+            None,
         );
         assert!(matches!(
             outcome,
@@ -162,7 +197,7 @@ mod tests {
 
     #[test]
     fn token_auth_rejects_missing_token() {
-        let outcome = check_auth(&HeaderMap::new(), None, Some("correct-token"));
+        let outcome = check_auth(&HeaderMap::new(), None, Some("correct-token"), None);
         assert!(matches!(
             outcome,
             AuthOutcome::Denied(DenyReason::NoCredentials)
@@ -173,7 +208,7 @@ mod tests {
     fn token_auth_succeeds_via_authorization_bearer_header() {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "Bearer correct-token".parse().unwrap());
-        let outcome = check_auth(&headers, None, Some("correct-token"));
+        let outcome = check_auth(&headers, None, Some("correct-token"), None);
         assert!(matches!(outcome, AuthOutcome::Token));
     }
 
@@ -181,7 +216,7 @@ mod tests {
     fn token_auth_succeeds_via_x_api_key_header() {
         let mut headers = HeaderMap::new();
         headers.insert("x-api-key", "correct-token".parse().unwrap());
-        let outcome = check_auth(&headers, None, Some("correct-token"));
+        let outcome = check_auth(&headers, None, Some("correct-token"), None);
         assert!(matches!(outcome, AuthOutcome::Token));
     }
 
@@ -191,7 +226,7 @@ mod tests {
         // The header must win and produce Token, not InvalidToken.
         let mut headers = HeaderMap::new();
         headers.insert("x-api-key", "correct-token".parse().unwrap());
-        let outcome = check_auth(&headers, Some("wrong-token"), Some("correct-token"));
+        let outcome = check_auth(&headers, Some("wrong-token"), Some("correct-token"), None);
         assert!(matches!(outcome, AuthOutcome::Token));
     }
 
@@ -199,7 +234,7 @@ mod tests {
     fn token_auth_succeeds_for_lowercase_bearer_header() {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "bearer correct-token".parse().unwrap());
-        let outcome = check_auth(&headers, None, Some("correct-token"));
+        let outcome = check_auth(&headers, None, Some("correct-token"), None);
         assert!(matches!(outcome, AuthOutcome::Token));
     }
 
@@ -207,10 +242,36 @@ mod tests {
     fn token_auth_rejects_wrong_bearer_token() {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "Bearer wrong-token".parse().unwrap());
-        let outcome = check_auth(&headers, None, Some("correct-token"));
+        let outcome = check_auth(&headers, None, Some("correct-token"), None);
         assert!(matches!(
             outcome,
             AuthOutcome::Denied(DenyReason::InvalidToken)
         ));
+    }
+
+    /// In test builds, `check_auth` bypasses auth when no token is configured.
+    /// This test documents the contract so future maintainers don't accidentally
+    /// remove the `#[cfg(test)]` bypass and break the test suite.
+    #[test]
+    fn check_auth_bypass_active_in_test_builds_when_no_token() {
+        // No API token configured (None) and no credentials provided.
+        // Under #[cfg(test)] this must return Token (bypass), not Denied.
+        let outcome = check_auth(&HeaderMap::new(), None, None, None);
+        assert_eq!(
+            outcome,
+            AuthOutcome::Token,
+            "test builds must bypass auth when AXON_WEB_API_TOKEN is unset"
+        );
+    }
+
+    /// Even in test builds, an explicit token must still be validated.
+    /// The bypass only fires when `api_token` is `None`.
+    #[test]
+    fn check_auth_still_validates_when_token_is_configured() {
+        let outcome = check_auth(&HeaderMap::new(), Some("wrong"), Some("correct"), None);
+        assert!(
+            matches!(outcome, AuthOutcome::Denied(DenyReason::InvalidToken)),
+            "explicit token mismatch must still be rejected in test builds"
+        );
     }
 }

@@ -265,7 +265,7 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
                 let mut failed = 0usize;
                 let mut refreshed = Vec::new();
                 for url in &urls {
-                    match crate::crates::services::scrape::scrape(cfg, url).await {
+                    match crate::crates::services::scrape::scrape(cfg, url, None).await {
                         Ok(result) => {
                             checked += 1;
                             refreshed.push(serde_json::json!({

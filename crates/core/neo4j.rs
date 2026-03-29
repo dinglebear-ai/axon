@@ -6,7 +6,7 @@ use crate::crates::core::http::http_client;
 use base64::Engine;
 use serde_json::Value;
 
-type Neo4jResult<T> = Result<T, Box<dyn std::error::Error>>;
+type Neo4jResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct Neo4jClient {
     http: reqwest::Client,

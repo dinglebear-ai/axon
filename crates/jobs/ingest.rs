@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 // Re-export all public types and functions to preserve the existing API.
 pub use self::ops::{
-    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, get_ingest_job, list_ingest_jobs,
-    start_ingest_job,
+    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, count_ingest_jobs, get_ingest_job,
+    list_ingest_jobs, start_ingest_job,
 };
 pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
 
@@ -31,6 +31,7 @@ use self::schema::ensure_schema;
 const TABLE: JobTable = JobTable::Ingest;
 const INGEST_HEARTBEAT_INTERVAL_SECS: u64 = 30;
 
+#[allow(deprecated)] // open_amqp_channel used for short-lived health check only
 pub async fn ingest_doctor(cfg: &Config) -> Result<serde_json::Value, String> {
     use crate::crates::core::health::redis_healthy;
     use crate::crates::jobs::common::open_amqp_channel;

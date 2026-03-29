@@ -135,7 +135,8 @@ pub async fn build_graph_context(
              ORDER BY size(neighbors) DESC",
             serde_json::json!({ "entity_names": entity_names.into_iter().collect::<Vec<_>>() }),
         )
-        .await?;
+        .await
+        .map_err(|e| e as Box<dyn std::error::Error>)?;
 
     let mut entities = rows
         .into_iter()

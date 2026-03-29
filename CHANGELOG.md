@@ -162,7 +162,86 @@ Last Modified: 2026-03-28 (session: v0.33.8 — backend unification complete)
 | cdf69b35 | feat(jobs/full) | FullBackend adapter wrapping existing Postgres/AMQP job functions |
 | 7768b5f3 | feat(jobs/lite) | LiteBackend struct implementing JobBackend trait |
 
-## [0.32.2] — feat/pulse-shell-and-hybrid-search
+## [0.33.2] — refactor/cleanup
+
+### Highlights
+
+- **`print_list_footer` helper** — Extracted duplicated "Showing X of Y total" pagination footer into a shared `print_list_footer(shown, total, limit, offset)` function in `common.rs`. Removes ~60 lines of repeated code from crawl, embed, and ingest list handlers.
+- **`filter_jobs_for_status_view` takes `&[T]`** — Signature changed from `Vec<T>` to `&[T]` + returns cloned slice, eliminating unnecessary `.clone()` calls at every call site.
+- **PR #59 review fixes** — Two-pass cleanup addressing all 39+35 review threads: heartbeat kill threshold, test isolation for env-var races, stuck/dead job liveness docs.
+
+### Commits since v0.33.1
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 4e2e39d4 | fix(review) | address remaining 35 PR #59 review threads (second pass) |
+| 86672db6 | fix(review) | address PR #59 review comments — all 39 threads |
+| 7e67aa91 | docs | document two-tier liveness enforcement for stuck/dead job detection |
+| dac0f14d | feat(jobs) | heartbeat kill threshold — cancel stuck jobs after 10min no progress via CancellationToken |
+| 3d3d6ed0 | fix(tests) | isolate parse/build_config env var races — use CLI flags for QDRANT+TEI in parse tests |
+
+## [0.33.1] — chore/cleanup
+
+### Highlights
+
+- **Sessions ingestion refactor** — `crates/ingest/sessions.rs` extracts shared `SessionDoc`, `SessionStateTracker`, `flatten_session_result`, `matches_project_filter`, `resolve_collection` abstractions; `claude.rs`, `codex.rs`, `gemini.rs` updated to use them. Reduces duplication across all three session ingestion paths.
+- **ACP warm session in ask/evaluate/suggest/debug** — `run_streaming_completion` (renamed from `run_acp_streaming_completion`) now accepts a `WarmAcpSession` pre-warmed path. Cold-start overlap with upstream I/O reduces first-token latency. `WarmAcpSession::complete_text` added as non-streaming convenience.
+- **Streaming refactor** — `StreamProcessorState` struct + `process_one_delta` extracted from inline streaming loop; reduces function complexity and enables warm/cold path branching.
+- **gitignore** — `specs/.current-spec` and `**/.progress.md` added to suppress Ralph Specum transient files.
+
+### Commits since v0.33.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| (this commit) | refactor | sessions ingestion refactor; ACP warm session path for ask/evaluate/suggest/debug |
+
+## [0.33.0] — chore/cleanup
+
+### Highlights
+
+- **ACP MCP: SSE transport** — `AcpMcpServerConfig` gains `Sse { name, url, headers }` variant; `convert_mcp_servers` correctly maps to `McpServer::Sse` via `McpServerSse::new`. Previously SSE configs were silently dropped.
+- **ACP MCP: HTTP headers** — `Http` variant gains `headers: Vec<(String,String)>`; headers forwarded via `HttpHeader::new` on session setup. Auth headers no longer silently lost.
+- **ACP MCP: Capability gating** — `McpCapabilities` read from `InitializeResponse` after adapter init; `filter_sdk_mcp_servers` drops Http/Sse servers when adapter doesn't advertise support. Prevents adapter rejection of unknown transports.
+- **ACP MCP: Fallback preservation** — Load-session fallback in both one-shot (`runtime.rs`) and persistent-conn (`turn.rs`) paths now correctly clones and threads MCP servers through to the fallback `NewSessionRequest`. Previously servers were lost on fallback.
+- **mcp.json disk format** — `transport: "sse"` and `headers: [{name, value}]` fields now parsed from disk; unknown transport strings warn + fall back to Http.
+
+### Commits since v0.32.4
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| 1549a85a | fix(acp) | expose spawn_adapter_skip_validation to integration tests |
+| 0e299364 | docs(acp) | update gap analysis with full MCP support status |
+| c8c5252e | fix(mcp) | warn on unknown transport in mcp.json disk loader |
+| 0baee292 | feat(mcp) | support SSE transport and HTTP headers in mcp.json disk loader |
+| d5d92c0e | fix(acp) | apply capability filter to per-turn MCP servers in persistent-conn path |
+| 0b508e91 | fix(acp) | pass MCP servers through load_session and create_new_session in persistent mode |
+| da582688 | chore(acp) | move INVARIANT comment; rename misleading test in session.rs |
+| cece1794 | fix(acp) | preserve MCP servers on load-session fallback in one-shot path |
+| dd5945f2 | chore(acp) | clarify dead_code annotation on filter_compatible_mcp_servers |
+| 48b17f72 | feat(acp) | read McpCapabilities from InitializeResponse; filter unsupported MCP transports |
+| bb4cc39c | fix(acp) | drop unknown MCP transports; add SDK SSE filter tests; assert header value |
+| 67592aaf | feat(acp) | implement Sse + headers in convert_mcp_servers; add filter_compatible/sdk_mcp_servers |
+| 8e9fe833 | fix(acp) | warn on SSE stub and dropped headers in mapping.rs |
+| f8f3382a | feat(acp) | add Sse variant and headers to AcpMcpServerConfig |
+
+## [0.32.3] — chore/cleanup
+
+### Highlights
+
+- **Security** — Debug auth bypass now requires explicit `AXON_WEB_ALLOW_INSECURE_DEV=true` (no longer implicit on missing token); startup warning emitted; shell PTY sessions emit structured audit log (session_id, duration_ms); `clear_collection_mode_cache()` called in migrate handler so workers pick up correct VectorMode without restart.
+- **Performance** — Graph worker Stage 1 writes parallelized with `tokio::join!()` (latent entity-before-relationship bug fixed); embed worker shares Redis connection at startup via `Arc<Mutex>` (no more per-job TCP handshakes); progress Postgres UPDATEs debounced to 500ms; TEI env-var reads cached in `LazyLock` (eliminates per-batch global process lock); Qdrant retry jitter added to all 4 retry sites (prevents thundering herd).
+- **CI/CD** — All CI jobs standardized to `rust-toolchain.toml` pin (`1.94.0`); weekly scheduled run for `#[ignore]` AMQP infra tests; `cargo-audit`/`cargo-deny` switched to `taiki-e/install-action` prebuilt binaries; Renovate `regexManagers` for 4 Dockerfile ARG binary versions; `services.env` protected by pre-commit env guard.
+- **Code quality** — `open_amqp_channel()` deprecated + `pub(crate)`; `#[must_use]` on 26 public service entry-points; `thiserror` derive on `PayloadParseError`; named exports standardized in 2 TSX components; `criterion` dev-dep removed; `f64::EPSILON as f32` → `f32::EPSILON` in similarity test.
+- **Testing** — 5 SQL safety tests (`JobTable`/`JobStatus` value validation); 2 collection mode cache tests; 2 auth bypass tests; CI schedule for infra tests.
+- **Docs** — `docs/spider-feature-flags.md` corrected (`glob` removed, `hedge` documented, version updated); `.env.example` `AXON_COLLECTION` unified to `cortex`; `docs/SECURITY.md` and `docs/auth/API-TOKEN.md` updated; ACP session cache constants labeled in `docs/ACP.md`.
+
+### Commits since v0.32.2
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| (pending) | chore | comprehensive review fixes: security, performance, CI/CD, quality (v0.32.3) |
+
+## [0.32.2] — main
 
 ### Highlights
 
@@ -172,6 +251,7 @@ Last Modified: 2026-03-28 (session: v0.33.8 — backend unification complete)
 
 | SHA | Type | Description |
 |-----|------|-------------|
+| b118e0c1 | fix | graph: named-vector support and error resilience in compute_similarity |
 | c90022bf | chore | bump version 0.32.0 → 0.32.1, add config files, update changelog |
 
 ## [0.32.1] — feat/pulse-shell-and-hybrid-search

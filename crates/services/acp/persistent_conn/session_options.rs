@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use agent_client_protocol::{
-    Agent, ClientSideConnection, SessionId, SetSessionConfigOptionRequest,
+    Agent, ClientSideConnection, SessionId, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use tokio::sync::mpsc;
 
@@ -104,8 +104,14 @@ pub(super) async fn apply_requested_mode_before_prompt(
         return Ok(());
     };
 
+    // Dedup: skip RPC if the adapter is already in the requested mode.
+    let current = runtime_state.current_mode.borrow().clone();
+    if current.as_deref() == Some(requested) {
+        return Ok(());
+    }
+
     let known_options = runtime_state.config_options.borrow().clone();
-    let (option_id, value_allowed) = resolve_mode_option_for_request(&known_options, requested);
+    let (_option_id, value_allowed) = resolve_mode_option_for_request(&known_options, requested);
     if !value_allowed {
         let msg = format!(
             "ACP runtime: requested session_mode '{requested}' is not in ACP mode options; keeping current value"
@@ -122,22 +128,29 @@ pub(super) async fn apply_requested_mode_before_prompt(
         return Ok(());
     }
 
-    let set_resp = conn
-        .set_session_config_option(SetSessionConfigOptionRequest::new(
-            session_id.clone(),
-            option_id,
-            requested,
-        ))
-        .await
-        .map_err(|err| format!("set_session_config_option(session_mode) failed: {err}"))?;
-
-    emit_config_options_update(
-        runtime_state,
-        session_id,
+    let msg = format!(
+        "ACP runtime: applying session_mode change (mode={requested}, session_id={})",
+        session_id.0
+    );
+    crate::crates::core::logging::log_info(&msg);
+    emit(
         service_tx,
-        set_resp.config_options,
+        ServiceEvent::Log {
+            level: LogLevel::Info,
+            message: msg,
+        },
     )
     .await;
+
+    conn.set_session_mode(SetSessionModeRequest::new(
+        session_id.clone(),
+        requested.to_string(),
+    ))
+    .await
+    .map_err(|err| format!("set_session_mode failed: {err}"))?;
+
+    // Update tracked mode so subsequent turns with the same mode are no-ops.
+    *runtime_state.current_mode.borrow_mut() = Some(requested.to_string());
     Ok(())
 }
 

@@ -18,6 +18,7 @@ pub fn map_screenshot_result(payload: serde_json::Value) -> ScreenshotResult {
 ///
 /// Requires Chrome to be configured via cfg.chrome_remote_url. Returns a
 /// `ScreenshotResult` containing the URL, output path, and file size in bytes.
+#[must_use = "screenshot_capture returns a Result that should be handled"]
 pub async fn screenshot_capture(
     cfg: &Config,
     url: &str,

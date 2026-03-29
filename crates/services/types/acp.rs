@@ -95,6 +95,16 @@ pub enum AcpMcpServerConfig {
     Http {
         name: String,
         url: String,
+        /// HTTP headers to send with every request (name, value) pairs.
+        #[serde(default)]
+        headers: Vec<(String, String)>,
+    },
+    Sse {
+        name: String,
+        url: String,
+        /// HTTP headers to send with every SSE request (name, value) pairs.
+        #[serde(default)]
+        headers: Vec<(String, String)>,
     },
 }
 
@@ -102,7 +112,7 @@ impl AcpMcpServerConfig {
     /// Returns the server name regardless of transport variant.
     pub fn name(&self) -> &str {
         match self {
-            Self::Stdio { name, .. } | Self::Http { name, .. } => name,
+            Self::Stdio { name, .. } | Self::Http { name, .. } | Self::Sse { name, .. } => name,
         }
     }
 }
@@ -224,6 +234,13 @@ pub struct AcpSessionUpdateEvent {
     /// File paths or URIs associated with the tool call (e.g. read/write targets).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_locations: Option<Vec<String>>,
+    /// Tool kind forwarded from the ACP ToolCall (e.g. "read", "edit", "execute").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind_detail: Option<String>,
+    /// Message identifier forwarded from `ContentChunk.message_id`.
+    /// Groups multiple chunks belonging to the same logical message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
 }
 
 // ── Permission request ───────────────────────────────────────────────────────
@@ -307,6 +324,27 @@ pub struct AcpUsageUpdate {
     pub cost_currency: Option<String>,
 }
 
+// ── Elicitation request (FR-031) ─────────────────────────────────────────────
+
+/// Elicitation request forwarded from the ACP agent to the frontend.
+///
+/// The ACP agent may request additional information from the user via
+/// `unstable_elicitation`. This event carries the prompt and optional
+/// schema so the frontend can render a form or free-text input.
+///
+/// TODO(FR-031): Populate from the real SDK `ElicitRequest` type once
+/// `agent_client_protocol` exposes `unstable_elicitation` (SDK v0.10.2 does not).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpElicitRequest {
+    pub session_id: String,
+    /// Human-readable prompt shown above the elicitation form.
+    pub message: String,
+    /// Optional JSON schema describing the expected response shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<serde_json::Value>,
+}
+
 // ── Bridge event (top-level enum) ────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -333,7 +371,15 @@ pub enum AcpBridgeEvent {
     /// ID of the session that received the update.
     SessionInfoUpdate {
         session_id: String,
+        title: Option<String>,
+        updated_at: Option<String>,
     },
+    /// Elicitation request from the ACP agent (FR-031).
+    ///
+    /// Forwarded to the frontend so the user can provide additional input.
+    /// TODO(FR-031): Wire this to the real SDK callback once `unstable_elicitation`
+    /// is available in `agent_client_protocol`.
+    ElicitRequest(AcpElicitRequest),
 }
 
 // ── Per-variant serialization helpers ────────────────────────────────────────
@@ -376,6 +422,12 @@ fn serialize_session_update<S: serde::Serializer>(
     }
     if let Some(ref locations) = update.tool_locations {
         map.serialize_entry("tool_locations", locations)?;
+    }
+    if let Some(ref kind) = update.kind_detail {
+        map.serialize_entry("kind", kind)?;
+    }
+    if let Some(ref mid) = update.message_id {
+        map.serialize_entry("message_id", mid)?;
     }
     map.end()
 }
@@ -496,12 +548,35 @@ fn serialize_usage_update<S: serde::Serializer>(
 
 fn serialize_session_info_update<S: serde::Serializer>(
     session_id: &str,
+    title: Option<&str>,
+    updated_at: Option<&str>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeMap;
     let mut map = serializer.serialize_map(None)?;
     map.serialize_entry("type", "session_info_update")?;
     map.serialize_entry("session_id", session_id)?;
+    if let Some(t) = title {
+        map.serialize_entry("title", t)?;
+    }
+    if let Some(u) = updated_at {
+        map.serialize_entry("updated_at", u)?;
+    }
+    map.end()
+}
+
+fn serialize_elicit_request<S: serde::Serializer>(
+    req: &AcpElicitRequest,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(None)?;
+    map.serialize_entry("type", "elicit_request")?;
+    map.serialize_entry("session_id", &req.session_id)?;
+    map.serialize_entry("message", &req.message)?;
+    if let Some(ref schema) = req.schema {
+        map.serialize_entry("schema", schema)?;
+    }
     map.end()
 }
 
@@ -536,12 +611,22 @@ impl serde::Serialize for AcpBridgeEvent {
                 old_session_id,
                 new_session_id,
             } => serialize_session_fallback(old_session_id, new_session_id, serializer),
-            Self::SessionInfoUpdate { session_id } => {
-                serialize_session_info_update(session_id, serializer)
-            }
+            Self::SessionInfoUpdate {
+                session_id,
+                title,
+                updated_at,
+            } => serialize_session_info_update(
+                session_id,
+                title.as_deref(),
+                updated_at.as_deref(),
+                serializer,
+            ),
+            Self::ElicitRequest(req) => serialize_elicit_request(req, serializer),
         }
     }
 }
 
-// Wire-shape tests moved to tests/services_acp_bridge_event_serialize.rs
-// to keep this file within the 500-line monolith policy limit.
+// Serde roundtrip tests live in the sibling file `acp_tests.rs` to keep this
+// file within the 500-line monolith policy limit.
+#[cfg(test)]
+mod acp_tests;

@@ -15,6 +15,7 @@ use std::error::Error;
 
 pub(crate) mod context;
 pub(crate) mod extract;
+pub(crate) mod persist;
 mod schema;
 pub(crate) mod similarity;
 pub(crate) mod taxonomy;
@@ -184,6 +185,15 @@ pub async fn clear_graph_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
         ));
     }
     Ok(rows)
+}
+
+pub async fn count_graph_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_graph_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_graph_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
 }
 
 /// Parse `url` and `source_type` from a graph job's `config_json`.

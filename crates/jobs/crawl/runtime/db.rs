@@ -1,9 +1,10 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::redis_healthy;
 use crate::crates::core::logging::{log_info, log_warn};
+#[allow(deprecated)] // open_amqp_channel used for short-lived health checks only
+use crate::crates::jobs::common::open_amqp_channel;
 use crate::crates::jobs::common::{
-    batch_enqueue_jobs, enqueue_job, make_pool, open_amqp_channel, purge_queue_safe,
-    sort_rows_for_status_view,
+    batch_enqueue_jobs, enqueue_job, make_pool, purge_queue_safe, sort_rows_for_status_view,
 };
 use redis::AsyncCommands;
 use std::error::Error;
@@ -18,6 +19,7 @@ pub async fn doctor(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
         Err(_) => false,
     };
 
+    #[allow(deprecated)] // Short-lived health check — Connection drop is acceptable here.
     let amqp_result = open_amqp_channel(cfg, &cfg.crawl_queue).await;
     let amqp_ok = amqp_result.is_ok();
     let amqp_error = amqp_result.err().map(|e| e.to_string());
@@ -306,6 +308,15 @@ pub async fn list_jobs(
         |job| &job.updated_at,
     );
     Ok(rows)
+}
+
+pub async fn count_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
 }
 
 pub async fn cancel_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {

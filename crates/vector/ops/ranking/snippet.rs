@@ -55,7 +55,9 @@ fn strip_markdown_inline(text: &str) -> String {
                         break;
                     }
                     Some(_) => {
-                        let (_, consumed) = iter.next().unwrap();
+                        let Some((_, consumed)) = iter.next() else {
+                            break;
+                        };
                         text_end_byte += consumed.len_utf8();
                     }
                 }

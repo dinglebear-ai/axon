@@ -1,7 +1,8 @@
 use anyhow::Context;
 
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_info;
+use crate::crates::core::logging::{log_info, log_warn};
+use crate::crates::services::acp_llm;
 
 mod context;
 mod normalize;
@@ -33,10 +34,22 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     ));
     validate_ask_llm_config(cfg)?;
 
+    // Start warming the ACP adapter before context retrieval so the cold-start
+    // overlaps with Qdrant queries instead of running sequentially after them.
+    let warm = match acp_llm::warm_session(cfg, None) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "ask: warm session failed to start, using cold path: {e}"
+            ));
+            None
+        }
+    };
+
     let ctx = build_ask_context(cfg, query)
         .await
         .context("failed to build ask context")?;
-    let (raw_answer, llm_elapsed_ms, _) = output::ask_llm_answer(cfg, query, &ctx.context)
+    let (raw_answer, llm_elapsed_ms, _) = output::ask_llm_answer(cfg, query, &ctx.context, warm)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
     let answer = normalize::normalize_ask_answer(cfg, query, &raw_answer, &ctx.context);

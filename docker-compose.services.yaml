@@ -149,13 +149,7 @@ services:
       HF_HUB_CACHE: /data/cache
       HF_HUB_ENABLE_HF_TRANSFER: 1
       HF_TOKEN: ${HF_TOKEN}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # GPU support: add docker-compose.gpu.yaml override for NVIDIA GPU acceleration
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -205,6 +199,11 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/ollama:/root/.ollama
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
+      NVIDIA_REQUIRE_CUDA: "cuda>=12.2"
+      CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-0}"
+    # GPU support: add docker-compose.gpu.yaml override for NVIDIA GPU acceleration
     healthcheck:
       test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
       interval: 15s

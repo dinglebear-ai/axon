@@ -2,10 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use agent_client_protocol::{
-    Agent, ClientSideConnection, ContentBlock, LoadSessionRequest, NewSessionRequest,
-    PromptRequest, SessionId,
+    Agent, CancelNotification, ClientSideConnection, ContentBlock, LoadSessionRequest,
+    NewSessionRequest, PromptRequest, SessionId,
 };
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::AcpBridgeEvent;
@@ -29,6 +30,7 @@ pub(super) async fn run_turn_on_conn(
     session_cwd: &Path,
     runtime_state: &Arc<AcpRuntimeState>,
     turn: TurnRequest,
+    cancel_token: &CancellationToken,
 ) {
     prepare_turn_runtime_state(runtime_state);
     let mut turn_ctx = build_turn_context(turn, session_id, runtime_state);
@@ -51,7 +53,7 @@ pub(super) async fn run_turn_on_conn(
         .await;
     }
 
-    let prompt_result = run_prompt(conn, runtime_state, &turn_ctx).await;
+    let prompt_result = run_prompt(conn, runtime_state, &turn_ctx, cancel_token).await;
     let _ = turn_ctx.result_tx.send(prompt_result);
 }
 
@@ -104,6 +106,12 @@ async fn ensure_turn_session(
     runtime_state: &Arc<AcpRuntimeState>,
     turn_ctx: &mut TurnContext,
 ) -> Result<(), String> {
+    let sdk_servers = super::super::mapping::convert_mcp_servers(&turn_ctx.req.mcp_servers);
+    let sdk_servers = super::super::mapping::filter_sdk_mcp_servers(
+        &sdk_servers,
+        runtime_state.mcp_http_supported.get(),
+        runtime_state.mcp_sse_supported.get(),
+    );
     let requested = turn_ctx
         .req
         .session_id
@@ -118,13 +126,20 @@ async fn ensure_turn_session(
             runtime_state,
             &turn_ctx.service_tx,
             requested_id,
+            sdk_servers,
         )
         .await
         .map(|id| turn_ctx.turn_session_id = id),
-        None => create_new_session(conn, session_cwd, runtime_state, &turn_ctx.service_tx)
-            .await
-            .map(|id| turn_ctx.turn_session_id = id)
-            .map_err(|err| format!("ACP failed to create new session: {err}")),
+        None => create_new_session(
+            conn,
+            session_cwd,
+            runtime_state,
+            &turn_ctx.service_tx,
+            sdk_servers,
+        )
+        .await
+        .map(|id| turn_ctx.turn_session_id = id)
+        .map_err(|err| format!("ACP failed to create new session: {err}")),
     }
 }
 
@@ -134,13 +149,14 @@ async fn load_or_fallback_session(
     runtime_state: &Arc<AcpRuntimeState>,
     service_tx: &Option<mpsc::Sender<ServiceEvent>>,
     requested_id: &str,
+    mcp_servers: Vec<agent_client_protocol::McpServer>,
 ) -> Result<SessionId, String> {
-    let load_result = conn
-        .load_session(LoadSessionRequest::new(
-            SessionId::new(requested_id),
-            session_cwd.to_path_buf(),
-        ))
-        .await;
+    let mut load_req =
+        LoadSessionRequest::new(SessionId::new(requested_id), session_cwd.to_path_buf());
+    if !mcp_servers.is_empty() {
+        load_req = load_req.mcp_servers(mcp_servers.clone());
+    }
+    let load_result = conn.load_session(load_req).await;
 
     match load_result {
         Ok(response) => {
@@ -165,11 +181,14 @@ async fn load_or_fallback_session(
                 },
             )
             .await;
-            let fallback = create_new_session(conn, session_cwd, runtime_state, service_tx)
-                .await
-                .map_err(|new_err| {
-                    format!("ACP failed to create fallback session after load failure: {new_err}")
-                })?;
+            let fallback =
+                create_new_session(conn, session_cwd, runtime_state, service_tx, mcp_servers)
+                    .await
+                    .map_err(|new_err| {
+                        format!(
+                            "ACP failed to create fallback session after load failure: {new_err}"
+                        )
+                    })?;
 
             emit(
                 service_tx,
@@ -191,11 +210,13 @@ async fn create_new_session(
     session_cwd: &Path,
     runtime_state: &Arc<AcpRuntimeState>,
     service_tx: &Option<mpsc::Sender<ServiceEvent>>,
+    mcp_servers: Vec<agent_client_protocol::McpServer>,
 ) -> Result<SessionId, String> {
-    let response = conn
-        .new_session(NewSessionRequest::new(session_cwd.to_path_buf()))
-        .await
-        .map_err(|err| err.to_string())?;
+    let mut req = NewSessionRequest::new(session_cwd.to_path_buf());
+    if !mcp_servers.is_empty() {
+        req = req.mcp_servers(mcp_servers);
+    }
+    let response = conn.new_session(req).await.map_err(|err| err.to_string())?;
 
     let turn_session_id = response.session_id;
     update_config_options_from_optional(
@@ -265,7 +286,14 @@ async fn run_prompt(
     conn: &mut ClientSideConnection,
     runtime_state: &Arc<AcpRuntimeState>,
     turn_ctx: &TurnContext,
+    cancel_token: &CancellationToken,
 ) -> Result<(), String> {
+    // Early exit if already cancelled — prevents wiring up the prompt future
+    // only to have the biased select! immediately pick the cancel branch.
+    if cancel_token.is_cancelled() {
+        return Err("ACP turn cancelled before prompt started".to_string());
+    }
+
     // Route callbacks for this turn's stream channel.
     *runtime_state.service_tx.borrow_mut() = turn_ctx.service_tx.clone();
 
@@ -280,18 +308,48 @@ async fn run_prompt(
         .map(ContentBlock::from)
         .collect();
 
-    let prompt_result = conn
-        .prompt(PromptRequest::new(
-            turn_ctx.turn_session_id.clone(),
-            prompt_blocks,
-        ))
-        .await;
+    // Pin the prompt future so we can race it against the cancel token.
+    // Both `prompt` and `cancel` take `&self` on `ClientSideConnection`, so
+    // concurrent shared borrows are valid — no exclusive borrow conflict.
+    let prompt_request = PromptRequest::new(turn_ctx.turn_session_id.clone(), prompt_blocks);
+    let prompt_fut = conn.prompt(prompt_request);
+    tokio::pin!(prompt_fut);
 
-    // Drop stale events cleanly once prompt completes.
+    let prompt_result: Result<agent_client_protocol::PromptResponse, String> = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => {
+            // WS disconnected: send cancel notification to the adapter, then
+            // wait up to 15 s for it to return PromptResponse{Cancelled}.
+            // Drop the service_tx so no more streaming events are queued.
+            *runtime_state.service_tx.borrow_mut() = None;
+            // FR-024: `conn.cancel()` sends `session/cancel` (a JSON-RPC
+            // notification) which IS the cancellation mechanism defined by
+            // the ACP spec.  The SDK 0.10.x does not expose a separate
+            // `unstable_cancel_request` method — `cancel()` covers FR-024.
+            let _ = conn.cancel(CancelNotification::new(turn_ctx.turn_session_id.clone())).await;
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                &mut prompt_fut,
+            )
+            .await
+            {
+                Ok(Ok(resp)) => Ok(resp),
+                Ok(Err(e)) => Err(e.to_string()),
+                Err(_) => Err(
+                    "ACP adapter cancel timed out after 15 s; \
+                     adapter will be killed when the connection handle drops"
+                        .to_string(),
+                ),
+            }
+        }
+        result = &mut prompt_fut => result.map_err(|e| e.to_string()),
+    };
+
+    // Drop stale events cleanly once prompt completes (may already be None if cancelled).
     *runtime_state.service_tx.borrow_mut() = None;
 
     match prompt_result {
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(e),
         Ok(response) => {
             finalize_successful_turn(
                 response.stop_reason,
@@ -315,4 +373,28 @@ async fn emit_prompt_start_log(service_tx: &Option<mpsc::Sender<ServiceEvent>>, 
         },
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crates::services::types::AcpMcpServerConfig;
+
+    #[test]
+    fn sdk_mcp_servers_from_empty_list_is_empty() {
+        let configs: Vec<AcpMcpServerConfig> = vec![];
+        let sdk = super::super::super::mapping::convert_mcp_servers(&configs);
+        assert!(sdk.is_empty());
+    }
+
+    #[test]
+    fn sdk_mcp_servers_from_stdio_has_one_entry() {
+        let configs = vec![AcpMcpServerConfig::Stdio {
+            name: "s".into(),
+            command: "/bin/echo".into(),
+            args: vec![],
+            env: vec![],
+        }];
+        let sdk = super::super::super::mapping::convert_mcp_servers(&configs);
+        assert_eq!(sdk.len(), 1);
+    }
 }

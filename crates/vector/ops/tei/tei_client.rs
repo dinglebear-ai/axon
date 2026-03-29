@@ -41,6 +41,24 @@ const TEI_MAX_BACKOFF_MS: u64 = 60_000;
 static TEI_CONCURRENCY: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
 
+// ── Cached env vars for hot-path embed operations ──────────────────────────
+// These are read once at process startup via LazyLock instead of calling
+// std::env::var() (which acquires a global lock) on every batch invocation.
+
+static TEI_BATCH_SIZE: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 64, 1, 128));
+
+static TEI_MAX_ATTEMPTS: LazyLock<usize> =
+    LazyLock::new(|| env_usize_clamped("TEI_MAX_RETRIES", TEI_MAX_RETRIES_DEFAULT, 1, 20));
+
+static TEI_TIMEOUT_MS: LazyLock<u64> = LazyLock::new(|| {
+    std::env::var("TEI_REQUEST_TIMEOUT_MS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map(|v| v.clamp(TEI_REQUEST_TIMEOUT_MS_MIN, TEI_REQUEST_TIMEOUT_MS_MAX))
+        .unwrap_or(TEI_REQUEST_TIMEOUT_MS_DEFAULT)
+});
+
 fn retry_delay(attempt: usize) -> Duration {
     let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(attempt as u32 - 1));
     let capped_ms = base_ms.min(TEI_MAX_BACKOFF_MS);
@@ -50,14 +68,6 @@ fn retry_delay(attempt: usize) -> Duration {
 
 fn is_retryable_status(status: StatusCode) -> bool {
     status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-}
-
-fn request_timeout_ms_from_env() -> u64 {
-    std::env::var("TEI_REQUEST_TIMEOUT_MS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .map(|v| v.clamp(TEI_REQUEST_TIMEOUT_MS_MIN, TEI_REQUEST_TIMEOUT_MS_MAX))
-        .unwrap_or(TEI_REQUEST_TIMEOUT_MS_DEFAULT)
 }
 
 enum ChunkOutcome {
@@ -201,10 +211,10 @@ pub(crate) async fn tei_embed(
     let client = http_client()?;
     let mut vectors = Vec::new();
 
-    let batch_size = env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 64, 1, 128);
+    let batch_size = *TEI_BATCH_SIZE;
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
-    let max_attempts = env_usize_clamped("TEI_MAX_RETRIES", TEI_MAX_RETRIES_DEFAULT, 1, 20);
-    let request_timeout_ms = request_timeout_ms_from_env();
+    let max_attempts = *TEI_MAX_ATTEMPTS;
+    let request_timeout_ms = *TEI_TIMEOUT_MS;
 
     log_debug(&format!(
         "tei_embed start chunk_count={} url={}",

@@ -63,6 +63,10 @@ pub async fn list_jobs(
     repo::list_jobs(cfg, limit, offset).await
 }
 
+pub async fn count_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    runtime::count_jobs(cfg).await
+}
+
 pub async fn cancel_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     repo::cancel_job(cfg, id).await
 }

@@ -91,10 +91,35 @@ pub(super) async fn establish_acp_session(
     )
     .await;
 
+    // Extract CWD before setup_session consumes session_setup via move.
+    let session_cwd = match &session_setup {
+        AcpSessionSetupRequest::New(req) => req.cwd.clone(),
+        AcpSessionSetupRequest::Load(req) => req.cwd.clone(),
+    };
+
     let spawned = spawn_adapter_with_io(adapter.clone(), tx)?;
-    let (conn, runtime_state, exit_rx) =
-        initialize_connection(spawned, &adapter, initialize, tx, permission_responders).await?;
-    let (session_id, initial_config_options) = setup_session(&conn, session_setup, tx).await?;
+    let (conn, runtime_state, exit_rx) = initialize_connection(
+        spawned,
+        &adapter,
+        initialize,
+        session_cwd,
+        tx,
+        permission_responders,
+    )
+    .await?;
+    // Apply capability filter: drop servers with transports the adapter doesn't support.
+    let session_setup = apply_mcp_capability_filter(
+        session_setup,
+        runtime_state.mcp_http_supported.get(),
+        runtime_state.mcp_sse_supported.get(),
+    );
+    let (session_id, initial_config_options) = setup_session(
+        &conn,
+        session_setup,
+        tx,
+        runtime_state.load_session_supported.get(),
+    )
+    .await?;
     let latest_config_options = apply_config_and_model(
         &conn,
         &session_id,
@@ -322,6 +347,27 @@ pub(super) async fn run_session_probe(
     // NOTE: do NOT clear permission_responders — shared across concurrent sessions.
 
     Ok(())
+}
+
+// ── apply_mcp_capability_filter ──────────────────────────────────────────────
+
+/// Apply adapter MCP transport capabilities to filter unsupported servers from session setup.
+fn apply_mcp_capability_filter(
+    setup: AcpSessionSetupRequest,
+    http: bool,
+    sse: bool,
+) -> AcpSessionSetupRequest {
+    use super::mapping::filter_sdk_mcp_servers;
+    match setup {
+        AcpSessionSetupRequest::New(mut req) => {
+            req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            AcpSessionSetupRequest::New(req)
+        }
+        AcpSessionSetupRequest::Load(mut req) => {
+            req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            AcpSessionSetupRequest::Load(req)
+        }
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

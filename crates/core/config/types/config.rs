@@ -261,6 +261,15 @@ pub struct Config {
     /// Sourced from `AXON_ACP_PREWARM` (default: `true`).
     pub acp_prewarm: bool,
 
+    /// Remote axon serve WebSocket URL for ACP completions.
+    /// When set, acp_llm routes through the remote WS instead of a local subprocess.
+    /// Env: `AXON_ACP_WS_URL`
+    pub acp_ws_url: Option<String>,
+
+    /// Bearer token for the remote WS ACP endpoint (matches AXON_WEB_API_TOKEN on server).
+    /// Env: `AXON_ACP_WS_TOKEN`
+    pub acp_ws_token: Option<String>,
+
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 
@@ -521,6 +530,9 @@ pub struct Config {
 
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
     pub custom_headers: Vec<String>,
+
+    /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
+    pub quiet: bool,
 }
 
 #[cfg(test)]

@@ -23,6 +23,8 @@ fn acpbridgeevent_assistant_delta_wire_shape() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
+        message_id: None,
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "assistant_delta");
@@ -49,6 +51,8 @@ fn acpbridgeevent_thinking_content_wire_shape() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
+        message_id: None,
     });
     let v: Value = serde_json::to_value(&event).unwrap();
     assert_eq!(v["type"], "thinking_content");
@@ -184,6 +188,8 @@ fn acpbridgeevent_session_fallback_wire_shape() {
 fn session_info_update_serializes_correctly() {
     let event = AcpBridgeEvent::SessionInfoUpdate {
         session_id: "abc-123".to_string(),
+        title: None,
+        updated_at: None,
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "session_info_update");

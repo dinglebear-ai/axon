@@ -5,6 +5,7 @@ pub use super::common_jobs::{
 };
 pub use super::common_urls::{parse_urls, start_url_from_cfg, truncate_chars};
 
+use crate::crates::core::ui::muted;
 use crate::crates::services::types::ServiceTimeRange;
 
 /// Convert a CLI time-range string to the services-layer [`ServiceTimeRange`] enum.
@@ -17,5 +18,21 @@ pub fn parse_service_time_range(value: Option<&str>) -> Option<ServiceTimeRange>
         Some("month") => Some(ServiceTimeRange::Month),
         Some("year") => Some(ServiceTimeRange::Year),
         _ => None,
+    }
+}
+
+pub fn print_list_footer(shown: usize, total: i64, limit: i64, offset: i64) {
+    if offset + limit < total {
+        println!(
+            "  {}",
+            muted(&format!(
+                "Showing {} of {} total — use --offset {} for next page",
+                shown,
+                total,
+                offset + limit,
+            ))
+        );
+    } else {
+        println!("  {}", muted(&format!("{total} total")));
     }
 }

@@ -45,7 +45,7 @@ pub(crate) struct DownloadQuery {
 /// to a specific job_id, with expiry) — not reusing the long-lived shared token.
 fn auth_download(headers: &HeaderMap, state: &DownloadAuthState) -> AuthOutcome {
     // Pass None for query_token — only header-based auth is accepted for downloads.
-    check_auth(headers, None, state.api_token.as_deref())
+    check_auth(headers, None, state.api_token.as_deref(), None)
 }
 
 /// Shared auth + validation + file loading for pack/zip download routes.

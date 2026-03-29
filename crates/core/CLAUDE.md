@@ -134,7 +134,7 @@ Blocks:
 
 **IPv6 implementation gotcha:** Use `host_str()` + `host.parse::<IpAddr>()` directly. Do **NOT** match on `spider::url::Host::Ipv4` / `spider::url::Host::Ipv6` enum variants — that pattern fails silently for IPv6 addresses. This was a confirmed production bug.
 
-**TOCTOU residual risk:** `validate_url()` checks IP at parse time; `reqwest` resolves DNS independently at connect time. TTL-0 DNS rebinding can bypass validation. Full mitigation requires connection pinning (not currently implemented). Acceptable risk for internal tooling.
+**DNS rebinding TOCTOU — MITIGATED (v0.32.4):** `validate_url()` checks the hostname at parse time (literal IPs, TLDs, `localhost`). The connect-time TOCTOU window is closed by `SsrfBlockingResolver` in `http/ssrf.rs`, which is wired into the reqwest client via `ClientBuilder::dns_resolver()`. The resolver calls `check_ip()` on every OS-resolved IP at the moment reqwest dials — even a TTL-0 record that flips to `127.0.0.1` after `validate_url()` is caught. Test builds skip the resolver (so httpmock servers on `127.0.0.1` work); the `ALLOW_LOOPBACK` thread-local still guards `validate_url()` in tests.
 
 **Secondary defense:** `ssrf_blacklist_patterns()` returns 12 regex patterns passed to `spider.rs` `with_blacklist_url()` — applied to every discovered URL during crawl, not just seed URLs.
 

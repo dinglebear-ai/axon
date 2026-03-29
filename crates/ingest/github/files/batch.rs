@@ -1,17 +1,19 @@
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_info;
+use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use anyhow::Result;
 use futures_util::stream::{self, StreamExt};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use tokio::time::timeout;
 
 use super::FileEmbedCtx;
 
 const FILE_PROGRESS_EVERY: usize = 25;
 const PHASE_COLLECTING_FILES: &str = "collecting_files";
 const PHASE_EMBEDDING_BATCH: &str = "embedding_batch";
+const FLUSH_BATCH_TIMEOUT_SECS: u64 = 120;
 
 /// Flush accumulated PreparedDocs to the embed pipeline every N docs to bound memory.
 pub(super) const EMBED_BATCH_SIZE: usize = 50;
@@ -24,7 +26,7 @@ pub(super) async fn collect_and_embed_batched(
     files_total: usize,
     reporter: &PhaseReporter,
 ) -> Result<(usize, usize)> {
-    let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 64);
+    let concurrency = std::cmp::min(ctx.cfg.batch_concurrency, 16);
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
             let ctx = Arc::clone(ctx);
@@ -50,7 +52,12 @@ pub(super) async fn collect_and_embed_batched(
 
         // Flush when the batch is large enough to keep memory bounded.
         if batch.len() >= EMBED_BATCH_SIZE {
-            total_chunks += flush_batch(&ctx.cfg, &mut batch, reporter).await?;
+            match flush_batch(&ctx.cfg, &mut batch, reporter).await {
+                Ok(n) => total_chunks += n,
+                Err(e) => log_warn(&format!(
+                    "github flush_batch_error files_done={files_done} err={e} — discarding batch, continuing"
+                )),
+            }
         }
 
         if files_done.is_multiple_of(FILE_PROGRESS_EVERY) || files_done == files_total {
@@ -70,7 +77,12 @@ pub(super) async fn collect_and_embed_batched(
 
     // Flush any remaining docs.
     if !batch.is_empty() {
-        total_chunks += flush_batch(&ctx.cfg, &mut batch, reporter).await?;
+        match flush_batch(&ctx.cfg, &mut batch, reporter).await {
+            Ok(n) => total_chunks += n,
+            Err(e) => log_warn(&format!(
+                "github flush_batch_final_error files_done={files_done} err={e} — discarding final batch"
+            )),
+        }
     }
 
     Ok((total_chunks, failed))
@@ -94,9 +106,13 @@ async fn flush_batch(
         .await;
 
     let batch_start = Instant::now();
-    let summary = embed_prepared_docs(cfg, docs, None)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let summary = timeout(
+        Duration::from_secs(FLUSH_BATCH_TIMEOUT_SECS),
+        embed_prepared_docs(cfg, docs, None),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("flush_batch timed out after {FLUSH_BATCH_TIMEOUT_SECS}s"))?
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
     let elapsed_ms = batch_start.elapsed().as_millis();
     log_info(&format!(
         "github embed_batch_done batch_size={count} chunks={} elapsed_ms={elapsed_ms}",

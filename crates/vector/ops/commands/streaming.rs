@@ -1,6 +1,5 @@
 use crate::crates::core::config::Config;
-use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
-use anyhow::{Result as AnyResult, anyhow};
+use crate::crates::services::acp_llm::{self, AcpCompletionRequest, WarmAcpSession};
 use std::error::Error;
 use std::io::Write;
 use tokio::sync::mpsc::UnboundedSender;
@@ -232,78 +231,121 @@ fn apply_optional_model(req: AcpCompletionRequest, model: &str) -> AcpCompletion
 
 const REPEAT_GUARD_STOP: &str = "repeat_guard_stop";
 
-async fn run_acp_streaming_completion(
+#[derive(Default)]
+struct StreamProcessorState {
+    answer: String,
+    saw_stream_payload: bool,
+    first_sources_pos: Option<usize>,
+    sources_search_from: usize,
+    repeat_guard_triggered: bool,
+}
+
+fn process_one_delta(
+    state: &mut StreamProcessorState,
+    delta: &str,
+    print_tokens: bool,
+    tagged: Option<&(UnboundedSender<TaggedToken>, &'static str)>,
+) -> Result<(), Box<dyn Error>> {
+    if state.repeat_guard_triggered {
+        return Err(REPEAT_GUARD_STOP.into());
+    }
+    process_stream_delta(
+        delta,
+        &mut state.answer,
+        print_tokens,
+        &mut state.saw_stream_payload,
+        tagged,
+    )?;
+    let scan_from = state.sources_search_from.saturating_sub(10);
+    if let Some(pos) =
+        check_sources_repetition(&state.answer, scan_from, &mut state.first_sources_pos)
+    {
+        state.answer.truncate(pos);
+        state.repeat_guard_triggered = true;
+    }
+    state.sources_search_from = state.answer.len().saturating_sub(15);
+    Ok(())
+}
+
+/// Run a streaming LLM completion, using a pre-warmed session when available.
+///
+/// Warm path: `WarmAcpSession` is `Send` — awaited directly.
+/// Cold path: `acp_llm::complete_streaming` is `!Send` — confined to a `spawn_blocking`
+/// thread so this function's future remains `Send` for web/MCP call sites.
+async fn run_streaming_completion(
     cfg: &Config,
     req: AcpCompletionRequest,
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
+    warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
-    let cfg = cfg.clone();
-    tokio::task::spawn_blocking(move || -> AnyResult<String> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| anyhow!(err.to_string()))?;
-        runtime.block_on(async move {
-            let mut answer = String::new();
-            let mut saw_stream_payload = false;
-            let mut first_sources_pos: Option<usize> = None;
-            let mut sources_search_from = 0usize;
-            let mut repeat_guard_triggered = false;
-            let stream_result = acp_llm::complete_streaming(&cfg, req, |delta| {
-                if repeat_guard_triggered {
-                    return Err(anyhow::anyhow!(REPEAT_GUARD_STOP).into());
-                }
-                let _ = process_stream_delta(
-                    delta,
-                    &mut answer,
-                    print_tokens,
-                    &mut saw_stream_payload,
-                    tagged.as_ref(),
-                )?;
-                let scan_from = sources_search_from.saturating_sub(10);
-                if let Some(second_pos) =
-                    check_sources_repetition(&answer, scan_from, &mut first_sources_pos)
-                {
-                    answer.truncate(second_pos);
-                    repeat_guard_triggered = true;
-                }
-                sources_search_from = answer.len().saturating_sub(15);
-                Ok(())
+    // Warm path: early return keeps the compiler from mixing Send/!Send await points.
+    if let Some(w) = warm {
+        let mut state = StreamProcessorState::default();
+        let stream_result = w
+            .complete_streaming(req, |delta| {
+                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
             })
             .await;
-
-            let fallback_text = match stream_result {
-                Ok(r) => r.text,
-                Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
-                Err(e) => return Err(anyhow!(e.to_string())),
-            };
-
-            finalize_stream_answer(answer, saw_stream_payload, fallback_text)
-                .map_err(|err| anyhow!(err.to_string()))
-        })
-    })
-    .await
-    .map_err(|err| -> Box<dyn Error> { Box::new(err) })?
-    .map_err(Into::into)
-}
-
-async fn run_acp_text_completion(cfg: &Config, req: AcpCompletionRequest) -> AnyResult<String> {
+        let fallback_text = match stream_result {
+            Ok(r) => r.text,
+            Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
+            Err(e) => return Err(e),
+        };
+        return finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text);
+    }
+    // Cold path: acp_llm::complete_streaming is !Send. spawn_blocking confines the
+    // !Send runtime to a blocking thread, keeping this function's future Send.
     let cfg = cfg.clone();
-    tokio::task::spawn_blocking(move || -> AnyResult<String> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+    tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|err| anyhow!(err.to_string()))?;
-        runtime.block_on(async move {
-            let response = acp_llm::complete_text(&cfg, req)
-                .await
-                .map_err(|err| anyhow!(err.to_string()))?;
-            Ok(response.text)
-        })
+            .map_err(|e| format!("acp cold runtime: {e}"))?;
+        let mut state = StreamProcessorState::default();
+        let stream_result = rt.block_on(acp_llm::complete_streaming(&cfg, req, |delta| {
+            process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
+        }));
+        let fallback_text = match stream_result {
+            Ok(r) => r.text,
+            Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
+            Err(e) => return Err(e.to_string()),
+        };
+        finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text)
+            .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|err| anyhow!(err.to_string()))?
+    .map_err(|e| -> Box<dyn Error> { format!("acp cold task panicked: {e}").into() })?
+    .map_err(|e| -> Box<dyn Error> { e.into() })
+}
+
+/// Run a non-streaming LLM completion, using a pre-warmed session when available.
+///
+/// Warm path: `WarmAcpSession` is `Send` — awaited directly.
+/// Cold path: `acp_llm::complete_text` is `!Send` — confined to a `spawn_blocking` thread.
+pub(super) async fn run_text_completion(
+    cfg: &Config,
+    req: AcpCompletionRequest,
+    warm: Option<WarmAcpSession>,
+) -> Result<String, Box<dyn Error>> {
+    // Warm path: early return.
+    if let Some(w) = warm {
+        return Ok(w.complete_text(req).await?.text);
+    }
+    // Cold path: spawn_blocking to keep this future Send.
+    let cfg = cfg.clone();
+    tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("acp cold runtime: {e}"))?;
+        rt.block_on(acp_llm::complete_text(&cfg, req))
+            .map(|r| r.text)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| -> Box<dyn Error> { format!("acp cold task panicked: {e}").into() })?
+    .map_err(|e| -> Box<dyn Error> { e.into() })
 }
 
 pub(crate) async fn ask_llm_streaming(
@@ -312,12 +354,14 @@ pub(crate) async fn ask_llm_streaming(
     query: &str,
     context: &str,
     print_tokens: bool,
+    warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_streaming_completion(
+    run_streaming_completion(
         cfg,
         ask_completion_request(cfg, query, context, true),
         print_tokens,
         None,
+        warm,
     )
     .await
 }
@@ -331,11 +375,12 @@ pub(crate) async fn ask_llm_streaming_tagged(
     stream: &'static str,
     tx: &UnboundedSender<TaggedToken>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_streaming_completion(
+    run_streaming_completion(
         cfg,
         ask_completion_request(cfg, query, context, true),
         false,
         Some((tx.clone(), stream)),
+        None,
     )
     .await
 }
@@ -345,8 +390,13 @@ pub(crate) async fn ask_llm_non_streaming(
     _client: &reqwest::Client,
     query: &str,
     context: &str,
-) -> AnyResult<String> {
-    run_acp_text_completion(cfg, ask_completion_request(cfg, query, context, false)).await
+) -> Result<String, Box<dyn Error>> {
+    run_text_completion(
+        cfg,
+        ask_completion_request(cfg, query, context, false),
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn baseline_llm_streaming(
@@ -354,12 +404,14 @@ pub(crate) async fn baseline_llm_streaming(
     _client: &reqwest::Client,
     query: &str,
     print_tokens: bool,
+    warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_streaming_completion(
+    run_streaming_completion(
         cfg,
         baseline_completion_request(cfg, query, true),
         print_tokens,
         None,
+        warm,
     )
     .await
 }
@@ -372,11 +424,12 @@ pub(crate) async fn baseline_llm_streaming_tagged(
     stream: &'static str,
     tx: &UnboundedSender<TaggedToken>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_streaming_completion(
+    run_streaming_completion(
         cfg,
         baseline_completion_request(cfg, query, true),
         false,
         Some((tx.clone(), stream)),
+        None,
     )
     .await
 }
@@ -386,9 +439,7 @@ pub(crate) async fn baseline_llm_non_streaming(
     _client: &reqwest::Client,
     query: &str,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_text_completion(cfg, baseline_completion_request(cfg, query, false))
-        .await
-        .map_err(Into::into)
+    run_text_completion(cfg, baseline_completion_request(cfg, query, false), None).await
 }
 
 pub(crate) async fn judge_llm_streaming(
@@ -396,12 +447,14 @@ pub(crate) async fn judge_llm_streaming(
     _client: &reqwest::Client,
     ctx: &JudgeContext<'_>,
     print_tokens: bool,
+    warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_streaming_completion(
+    run_streaming_completion(
         cfg,
         judge_completion_request(cfg, ctx, true),
         print_tokens,
         None,
+        warm,
     )
     .await
 }
@@ -411,9 +464,7 @@ pub(crate) async fn judge_llm_non_streaming(
     _client: &reqwest::Client,
     ctx: &JudgeContext<'_>,
 ) -> Result<String, Box<dyn Error>> {
-    run_acp_text_completion(cfg, judge_completion_request(cfg, ctx, false))
-        .await
-        .map_err(Into::into)
+    run_text_completion(cfg, judge_completion_request(cfg, ctx, false), None).await
 }
 
 #[cfg(test)]

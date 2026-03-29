@@ -390,4 +390,4 @@ const NeuralCanvas = forwardRef<NeuralCanvasHandle, NeuralCanvasProps>(function 
 
 NeuralCanvas.displayName = 'NeuralCanvas'
 
-export default NeuralCanvas
+export { NeuralCanvas }

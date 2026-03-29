@@ -35,7 +35,18 @@ pub const GRAPH_QUEUE_DEFAULT: &str = "axon.graph.jobs";
 /// Consequence on misuse: each call opens and immediately destroys an AMQP TCP
 /// connection — callers left holding a dropped Connection will receive
 /// `InvalidChannelState` errors on the returned channel.
-pub async fn open_amqp_channel(cfg: &Config, queue_name: &str) -> Result<Channel> {
+///
+/// # Footgun
+///
+/// The returned `Channel`'s backing `Connection` is dropped at the end of this
+/// function. lapin tears down the TCP socket asynchronously once the `Connection`
+/// is dropped, so the channel may work for one or two quick operations but will
+/// fail unpredictably for any long-lived consumer. Use
+/// `open_amqp_connection_and_channel()` instead and keep the `Connection` alive.
+#[deprecated(
+    note = "Connection is dropped immediately; use open_amqp_connection_and_channel() for long-lived consumers"
+)]
+pub(crate) async fn open_amqp_channel(cfg: &Config, queue_name: &str) -> Result<Channel> {
     let (_, ch) = open_amqp_connection_and_channel(cfg, queue_name).await?;
     Ok(ch)
 }
@@ -75,8 +86,13 @@ pub(crate) async fn open_amqp_connection_and_channel(
 
 /// Publish a job ID to an AMQP queue.
 ///
-/// Delegates to [`batch_enqueue_jobs`] with a single-element slice — same
-/// connection lifecycle, same publisher-confirm semantics, no duplicate code.
+/// # Delegation contract
+///
+/// This is a thin wrapper around [`batch_enqueue_jobs`] with a single-element
+/// slice. It intentionally reuses the same connection lifecycle, publisher-confirm
+/// semantics, and error handling — no duplicate code paths. If you need to change
+/// how jobs are published, modify `batch_enqueue_jobs`; do not add a separate
+/// connection/channel lifecycle here.
 pub async fn enqueue_job(cfg: &Config, queue_name: &str, job_id: Uuid) -> Result<()> {
     batch_enqueue_jobs(cfg, queue_name, &[job_id]).await
 }
@@ -192,15 +208,6 @@ pub(crate) async fn purge_queue_safe(cfg: &Config, queue_name: &str) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    /// `enqueue_job` delegates to `batch_enqueue_jobs` — verified at compile time
-    /// by the delegation in the implementation. This test documents the contract.
-    #[test]
-    fn enqueue_job_delegates_to_batch() {
-        // The implementation of enqueue_job is a one-liner calling batch_enqueue_jobs.
-        // If someone changes it to open a new connection, this test name serves as
-        // a reminder that the delegation contract was intentional.
-    }
-
     /// AMQP reconnect backoff constants must be self-consistent across the two
     /// reconnect implementations (crawl loops.rs and worker_lane.rs module).
     #[test]

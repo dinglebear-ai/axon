@@ -73,7 +73,7 @@ pub fn build_extraction_request(model: &str, text: &str) -> Value {
 
 pub fn parse_extraction_response(
     json_str: &str,
-) -> Result<ExtractionResult, Box<dyn std::error::Error>> {
+) -> Result<ExtractionResult, Box<dyn std::error::Error + Send + Sync>> {
     Ok(serde_json::from_str(json_str)?)
 }
 
@@ -123,7 +123,7 @@ pub fn resolve_type_conflict(type_a: &str, type_b: &str) -> String {
 pub async fn extract_entities_llm(
     cfg: &Config,
     text: &str,
-) -> Result<ExtractionResult, Box<dyn std::error::Error>> {
+) -> Result<ExtractionResult, Box<dyn std::error::Error + Send + Sync>> {
     let client = http_client()?;
     let endpoint = format!("{}/api/generate", cfg.graph_llm_url.trim_end_matches('/'));
     let response = client

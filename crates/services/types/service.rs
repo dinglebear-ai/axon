@@ -86,10 +86,22 @@ pub struct DebugResult {
     pub payload: serde_json::Value,
 }
 
+/// True DB-level job counts across all job types.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct StatusTotals {
+    pub crawl: i64,
+    pub extract: i64,
+    pub embed: i64,
+    pub ingest: i64,
+    pub refresh: i64,
+    pub graph: i64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusResult {
     pub payload: serde_json::Value,
     pub text: String,
+    pub totals: StatusTotals,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -461,11 +473,6 @@ pub struct RefreshJobResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RefreshJobListResult {
-    pub jobs: Vec<crate::crates::jobs::refresh::RefreshJob>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct RefreshRunResult {
     pub payload: serde_json::Value,
 }
@@ -473,4 +480,35 @@ pub struct RefreshRunResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScreenshotResult {
     pub payload: serde_json::Value,
+}
+
+// ── Job list pagination ──────────────────────────────────────────────────
+
+/// Paginated job list result — always includes true DB total count.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JobListResult<T> {
+    /// The fetched slice of jobs (up to `limit` items).
+    pub jobs: Vec<T>,
+    /// True total number of jobs in the DB (may exceed `jobs.len()`).
+    pub total: i64,
+    /// The limit that was applied.
+    pub limit: i64,
+    /// The offset that was applied.
+    pub offset: i64,
+}
+
+impl<T> JobListResult<T> {
+    pub fn new(jobs: Vec<T>, total: i64, limit: i64, offset: i64) -> Self {
+        Self {
+            jobs,
+            total,
+            limit,
+            offset,
+        }
+    }
+
+    /// True if the displayed slice is a subset of all available jobs.
+    pub fn is_truncated(&self) -> bool {
+        self.offset + self.limit < self.total
+    }
 }

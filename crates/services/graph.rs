@@ -14,8 +14,15 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use uuid::Uuid;
 
+/// Downcast `Box<dyn Error + Send + Sync>` → `Box<dyn Error>` for `?` compatibility.
+fn drop_ss(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error> {
+    e
+}
+
 fn require_neo4j(cfg: &Config) -> Result<Neo4jClient, Box<dyn Error>> {
-    Neo4jClient::from_config(cfg)?.ok_or_else(|| "graph operations require AXON_NEO4J_URL".into())
+    Neo4jClient::from_config(cfg)
+        .map_err(drop_ss)?
+        .ok_or_else(|| "graph operations require AXON_NEO4J_URL".into())
 }
 
 fn require_graph_support(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -29,6 +36,7 @@ fn require_graph_support(cfg: &Config) -> Result<(), Box<dyn Error>> {
 /// Prevents unbounded full-collection scrolls that cause DoS on large collections.
 const GRAPH_BUILD_URL_LIMIT: usize = 50_000;
 
+#[must_use = "graph_build returns a Result that should be handled"]
 pub async fn graph_build(
     cfg: &Config,
     url: Option<&str>,
@@ -87,6 +95,7 @@ pub async fn graph_build(
     })
 }
 
+#[must_use = "graph_status returns a Result that should be handled"]
 pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Error>> {
     require_graph_support(cfg)?;
     let pool = make_pool(cfg).await?;
@@ -133,6 +142,7 @@ pub async fn graph_status(cfg: &Config) -> Result<GraphStatusResult, Box<dyn Err
     })
 }
 
+#[must_use = "graph_explore returns a Result that should be handled"]
 pub async fn graph_explore(
     cfg: &Config,
     entity: &str,
@@ -155,7 +165,8 @@ pub async fn graph_explore(
              RETURN e.name, e.entity_type, coalesce(e.description, ''), neighbors, count(DISTINCT d), count(c)",
             serde_json::json!({ "name": entity }),
         )
-        .await?;
+        .await
+        .map_err(drop_ss)?;
 
     Ok(GraphExploreResult {
         payload: serde_json::json!({
@@ -165,6 +176,7 @@ pub async fn graph_explore(
     })
 }
 
+#[must_use = "graph_stats returns a Result that should be handled"]
 pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error>> {
     require_graph_support(cfg)?;
     let neo4j = require_neo4j(cfg)?;
@@ -176,7 +188,8 @@ pub async fn graph_stats(cfg: &Config) -> Result<GraphStatsResult, Box<dyn Error
              MATCH (c:Chunk) RETURN entities, relationships, documents, count(c) AS chunks",
             serde_json::json!({}),
         )
-        .await?;
+        .await
+        .map_err(drop_ss)?;
 
     Ok(GraphStatsResult {
         payload: serde_json::json!({

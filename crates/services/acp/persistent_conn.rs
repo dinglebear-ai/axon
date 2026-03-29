@@ -16,8 +16,11 @@ mod turn;
 use std::path::Path;
 use std::sync::Arc;
 
-use agent_client_protocol::{ClientSideConnection, InitializeRequest, SessionId};
+use agent_client_protocol::{
+    Agent, ClientSideConnection, CloseSessionRequest, InitializeRequest, SessionId,
+};
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::types::{AcpAdapterCommand, AcpPromptTurnRequest};
@@ -39,14 +42,27 @@ enum AdapterMessage {
 /// Handle to a long-lived ACP adapter process for one WebSocket connection.
 ///
 /// Created once on the first `pulse_chat` message; reused for all subsequent
-/// turns. Dropping this handle closes the channel → background loop exits →
-/// adapter process is killed via `kill_on_drop(true)`.
+/// turns. Dropping this handle:
+/// 1. Cancels `cancel_token` → any in-progress `run_prompt` select! fires the
+///    cancel branch, sends `session/cancel` to the adapter, and waits up to 15 s
+///    for a graceful `Cancelled` response before the process is killed.
+/// 2. Closes `tx` → the background loop's `rx.recv()` returns `None` on the
+///    next iteration, so the loop exits cleanly between turns.
+/// 3. Drops `_join` → the adapter process is killed via `kill_on_drop(true)`.
 ///
 /// This matches Zed's `Drop for AcpConnection { child.kill() }` semantics,
 /// adapted for tokio's `!Send` constraint via channel dispatch.
 pub struct AcpConnectionHandle {
     tx: mpsc::Sender<AdapterMessage>,
+    /// Cancelled on drop — signals in-progress turns to send `session/cancel`.
+    cancel_token: CancellationToken,
     _join: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for AcpConnectionHandle {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
 }
 
 impl AcpConnectionHandle {
@@ -55,7 +71,11 @@ impl AcpConnectionHandle {
     pub(crate) fn dummy() -> Self {
         let (tx, _rx) = mpsc::channel(1);
         let join = tokio::task::spawn(async {});
-        Self { tx, _join: join }
+        Self {
+            tx,
+            cancel_token: CancellationToken::new(),
+            _join: join,
+        }
     }
 
     /// Spawn the background adapter thread for this WS connection.
@@ -73,6 +93,9 @@ impl AcpConnectionHandle {
             .map(std::time::Duration::from_secs)
             .unwrap_or(std::time::Duration::from_secs(3600)); // Default 1h for persistent
 
+        let cancel_token = CancellationToken::new();
+        let loop_cancel = cancel_token.child_token();
+
         let (tx, rx) = mpsc::channel(16);
         let join = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -89,6 +112,7 @@ impl AcpConnectionHandle {
                         session_setup,
                         permission_responders,
                         rx,
+                        loop_cancel,
                     ),
                 )
                 .await
@@ -104,7 +128,11 @@ impl AcpConnectionHandle {
                 }
             });
         });
-        Self { tx, _join: join }
+        Self {
+            tx,
+            cancel_token,
+            _join: join,
+        }
     }
 
     /// Spawn the background adapter thread and begin session establishment eagerly.
@@ -127,6 +155,9 @@ impl AcpConnectionHandle {
             .map(std::time::Duration::from_secs)
             .unwrap_or(std::time::Duration::from_secs(3600));
 
+        let cancel_token = CancellationToken::new();
+        let loop_cancel = cancel_token.child_token();
+
         let (tx, rx) = mpsc::channel(16);
         let join = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -145,6 +176,7 @@ impl AcpConnectionHandle {
                         setup_tx,
                         permission_responders,
                         rx,
+                        loop_cancel,
                     ),
                 )
                 .await
@@ -160,7 +192,11 @@ impl AcpConnectionHandle {
                 }
             });
         });
-        Self { tx, _join: join }
+        Self {
+            tx,
+            cancel_token,
+            _join: join,
+        }
     }
 
     /// Dispatch a prompt turn to the background adapter thread.
@@ -182,6 +218,7 @@ async fn adapter_loop(
     session_setup: AcpSessionSetupRequest,
     permission_responders: PermissionResponderMap,
     mut rx: mpsc::Receiver<AdapterMessage>,
+    cancel_token: CancellationToken,
 ) {
     let session_cwd = match &session_setup {
         AcpSessionSetupRequest::New(req) => req.cwd.clone(),
@@ -238,6 +275,7 @@ async fn adapter_loop(
         &session_cwd,
         &runtime_state,
         first_turn,
+        &cancel_token,
     )
     .await;
 
@@ -248,6 +286,7 @@ async fn adapter_loop(
         &runtime_state,
         &mut exit_rx,
         &mut rx,
+        &cancel_token,
     )
     .await;
     tracing::info!(context = "acp_conn", "adapter loop ended");
@@ -255,6 +294,7 @@ async fn adapter_loop(
 
 /// Eager adapter setup: establishes the ACP session immediately (before any
 /// turn arrives), then enters the shared main loop.
+#[allow(clippy::too_many_arguments)]
 async fn adapter_loop_eager(
     adapter: AcpAdapterCommand,
     initialize: InitializeRequest,
@@ -263,6 +303,7 @@ async fn adapter_loop_eager(
     setup_tx: Option<mpsc::Sender<ServiceEvent>>,
     permission_responders: PermissionResponderMap,
     mut rx: mpsc::Receiver<AdapterMessage>,
+    cancel_token: CancellationToken,
 ) {
     let session_cwd = match &session_setup {
         AcpSessionSetupRequest::New(req) => req.cwd.clone(),
@@ -310,15 +351,93 @@ async fn adapter_loop_eager(
         &runtime_state,
         &mut exit_rx,
         &mut rx,
+        &cancel_token,
     )
     .await;
     tracing::info!(context = "acp_conn", "adapter loop ended (eager)");
+}
+
+/// Drain the `ClientSideConnection` subscribe stream, logging every JSON-RPC
+/// frame at `debug` level for observability (FR-023).
+///
+/// The task exits automatically when the broadcast sender is dropped (i.e.
+/// when the underlying connection closes). Errors from a lagged receiver are
+/// logged at warn level and the task continues rather than aborting — the
+/// stream is best-effort and must not interfere with normal turn execution.
+///
+/// This function is called from [`run_adapter_main_loop`] via
+/// `tokio::task::spawn_local`, which is valid because:
+/// - We are inside a `LocalSet` (created in [`AcpConnectionHandle::spawn`]).
+/// - `StreamReceiver` wraps `async_broadcast::Receiver` which is `!Send`.
+fn spawn_subscribe_drain(conn: &ClientSideConnection) -> tokio::task::JoinHandle<()> {
+    use agent_client_protocol::{StreamMessageContent, StreamMessageDirection};
+    let mut receiver = conn.subscribe();
+    tokio::task::spawn_local(async move {
+        loop {
+            let msg = match receiver.recv().await {
+                Ok(msg) => msg,
+                Err(ref e) => {
+                    // `StreamReceiver::recv()` converts `async_broadcast::RecvError`
+                    // to an ACP Error via `.data(e.to_string())`.
+                    // Overflowed (lagged) produces "receiving skipped N messages";
+                    // Closed produces "receiving from an empty and closed channel".
+                    let is_lagged = e
+                        .data
+                        .as_ref()
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.starts_with("receiving skipped"))
+                        .unwrap_or(false);
+                    if is_lagged {
+                        tracing::warn!(
+                            context = "acp_stream",
+                            "subscribe drain lagged; some messages dropped — continuing",
+                        );
+                        continue;
+                    }
+                    // Channel closed — exit cleanly.
+                    break;
+                }
+            };
+            let dir = match msg.direction {
+                StreamMessageDirection::Incoming => "←",
+                StreamMessageDirection::Outgoing => "→",
+            };
+            match &msg.message {
+                StreamMessageContent::Request { method, .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "request",
+                        method = %method,
+                    );
+                }
+                StreamMessageContent::Response { .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "response",
+                    );
+                }
+                StreamMessageContent::Notification { method, .. } => {
+                    tracing::debug!(
+                        context = "acp_stream",
+                        direction = dir,
+                        message_type = "notification",
+                        method = %method,
+                    );
+                }
+            }
+        }
+    })
 }
 
 /// Shared main loop for both lazy and eager adapter paths.
 ///
 /// Processes [`AdapterMessage::RunTurn`] messages until the channel closes
 /// (WS connection dropped) or the adapter process exits unexpectedly.
+///
+/// Calls [`spawn_subscribe_drain`] on entry to activate the JSON-RPC
+/// observability stream (FR-023) for the duration of this connection.
 async fn run_adapter_main_loop(
     conn: &mut ClientSideConnection,
     session_id: &SessionId,
@@ -326,16 +445,36 @@ async fn run_adapter_main_loop(
     runtime_state: &Arc<super::bridge::AcpRuntimeState>,
     exit_rx: &mut oneshot::Receiver<String>,
     rx: &mut mpsc::Receiver<AdapterMessage>,
+    cancel_token: &CancellationToken,
 ) {
+    // Wire the subscribe stream to the debug event bus (FR-023).
+    // The drain task owns the receiver and exits when the connection closes.
+    let _subscribe_drain = spawn_subscribe_drain(conn);
+
     loop {
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
                     Some(AdapterMessage::RunTurn(turn)) => {
-                        turn::run_turn_on_conn(conn, session_id, session_cwd, runtime_state, turn).await;
+                        turn::run_turn_on_conn(
+                            conn, session_id, session_cwd, runtime_state, turn, cancel_token,
+                        )
+                        .await;
                     }
                     None => {
                         tracing::info!(context = "acp_conn", "channel closed (connection ended)");
+                        // Best-effort session close before adapter teardown.
+                        if runtime_state.close_session_supported.get()
+                            && let Err(e) = conn
+                                .close_session(CloseSessionRequest::new(session_id.clone()))
+                                .await
+                        {
+                            tracing::warn!(
+                                context = "acp_conn",
+                                error = %e,
+                                "close_session failed (non-fatal)"
+                            );
+                        }
                         break;
                     }
                 }

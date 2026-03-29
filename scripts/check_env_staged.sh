@@ -17,6 +17,10 @@ while IFS= read -r f; do
         .env | .env.*)
             VIOLATIONS="${VIOLATIONS}  $f\n"
             ;;
+        # Block services.env (infra credentials — does not match .env* glob above)
+        services.env | *.env)
+            VIOLATIONS="${VIOLATIONS}  $f\n"
+            ;;
     esac
 done < <(git diff --cached --name-only 2>/dev/null)
 

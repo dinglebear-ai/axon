@@ -1,7 +1,8 @@
 use super::audit;
 use crate::crates::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_recover, handle_job_status, handle_worker_mode, truncate_chars,
+    handle_job_errors, handle_job_recover, handle_job_status, handle_worker_mode,
+    print_list_footer, truncate_chars,
 };
 use crate::crates::cli::commands::job_contracts::JobSummaryEntry;
 use crate::crates::core::config::Config;
@@ -231,14 +232,20 @@ async fn handle_list_subcommand(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(
-        cfg,
-        job_service::list_jobs(service_context, JobKind::Crawl, 50, 0).await?,
-    );
+    let all_jobs = job_service::list_jobs(service_context, JobKind::Crawl, 50, 0).await?;
+    let total = all_jobs.len() as i64;
+    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> =
             jobs.iter().map(JobSummaryEntry::from_service_job).collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
+        let out = serde_json::json!({
+            "jobs": entries,
+            "total": total,
+            "limit": 50_i64,
+            "offset": 0_i64,
+            "truncated": total > 50,
+        });
+        println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("{}", primary("Crawl Jobs"));
         if jobs.is_empty() {
@@ -266,6 +273,8 @@ async fn handle_list_subcommand(
                 }
             }
         }
+
+        print_list_footer(jobs.len(), total, 50, 0);
     }
     Ok(())
 }

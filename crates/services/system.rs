@@ -1,12 +1,18 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::jobs::crawl::count_jobs;
+use crate::crates::jobs::embed::count_embed_jobs;
+use crate::crates::jobs::extract::count_extract_jobs;
+use crate::crates::jobs::graph::count_graph_jobs;
+use crate::crates::jobs::ingest::count_ingest_jobs;
+use crate::crates::jobs::refresh::count_refresh_jobs;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::types::{
     DedupeResult, DetailedDomainFacet, DetailedDomainsResult, DoctorResult, DomainFacet,
-    DomainsResult, Pagination, ServiceJob, SourcesResult, StatsResult, StatusResult,
+    DomainsResult, Pagination, ServiceJob, SourcesResult, StatsResult, StatusResult, StatusTotals,
 };
 use crate::crates::vector::ops::qdrant::{
     dedupe_payload, domains_payload, env_usize_clamped, payload_domain, payload_url,
@@ -15,20 +21,14 @@ use crate::crates::vector::ops::qdrant::{
 use crate::crates::vector::ops::stats::stats_payload;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt;
 use tokio::sync::mpsc;
 
 const WATCHDOG_RECLAIM_PREFIX: &str = "watchdog reclaimed stale running ";
 const DEFAULT_DOMAINS_DETAILED_LIMIT: usize = 10_000_000;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("payload parse error: {0}")]
 pub struct PayloadParseError(String);
-impl fmt::Display for PayloadParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "payload parse error: {}", self.0)
-    }
-}
-impl Error for PayloadParseError {}
 
 pub fn map_sources_payload(
     payload: &serde_json::Value,
@@ -123,6 +123,7 @@ pub fn map_doctor_payload(payload: serde_json::Value) -> DoctorResult {
     DoctorResult { payload }
 }
 
+#[must_use = "sources returns a Result that should be handled"]
 pub async fn sources(
     cfg: &Config,
     pagination: Pagination,
@@ -133,6 +134,7 @@ pub async fn sources(
     Ok(map_sources_payload(&payload)?)
 }
 
+#[must_use = "domains returns a Result that should be handled"]
 pub async fn domains(
     cfg: &Config,
     pagination: Pagination,
@@ -174,6 +176,7 @@ pub fn summarize_detailed_domains_limited(
     DetailedDomainsResult { domains }
 }
 
+#[must_use = "detailed_domains returns a Result that should be handled"]
 pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box<dyn Error>> {
     let limit = env_usize_clamped(
         "AXON_DOMAINS_DETAILED_LIMIT",
@@ -226,6 +229,7 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     Ok(DetailedDomainsResult { domains })
 }
 
+#[must_use = "stats returns a Result that should be handled"]
 pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
     let payload = stats_payload(cfg)
         .await
@@ -233,6 +237,7 @@ pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
     Ok(map_stats_payload(payload))
 }
 
+#[must_use = "doctor returns a Result that should be handled"]
 pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
     let payload = build_doctor_report(cfg)
         .await
@@ -240,8 +245,9 @@ pub async fn doctor(cfg: &Config) -> Result<DoctorResult, Box<dyn Error>> {
     Ok(map_doctor_payload(payload))
 }
 
+#[must_use = "full_status returns a Result that should be handled"]
 pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResult, Box<dyn Error>> {
-    let jobs = load_status_jobs(service_context).await?;
+    let (jobs, totals) = load_status_jobs(service_context).await?;
     let payload = build_status_payload(
         &jobs.crawl,
         &jobs.extract,
@@ -249,18 +255,23 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         &jobs.ingest,
         &jobs.refresh,
         &jobs.graph,
+        &totals,
     );
     let text = [
         "Axon Status".to_string(),
-        format!("crawl jobs:   {}", jobs.crawl.len()),
-        format!("extract jobs: {}", jobs.extract.len()),
-        format!("embed jobs:   {}", jobs.embed.len()),
-        format!("ingest jobs:  {}", jobs.ingest.len()),
-        format!("refresh jobs: {}", jobs.refresh.len()),
-        format!("graph jobs:   {}", jobs.graph.len()),
+        format!("crawl jobs:   {} total", totals.crawl),
+        format!("extract jobs: {} total", totals.extract),
+        format!("embed jobs:   {} total", totals.embed),
+        format!("ingest jobs:  {} total", totals.ingest),
+        format!("refresh jobs: {} total", totals.refresh),
+        format!("graph jobs:   {} total", totals.graph),
     ]
     .join("\n");
-    Ok(StatusResult { payload, text })
+    Ok(StatusResult {
+        payload,
+        text,
+        totals,
+    })
 }
 
 // ── Status business logic ───────────────────────────────────────────────────
@@ -293,9 +304,22 @@ fn filter_and_view<T>(
 
 pub(crate) async fn load_status_jobs(
     service_context: &ServiceContext,
-) -> Result<StatusJobs, Box<dyn Error>> {
+) -> Result<(StatusJobs, StatusTotals), Box<dyn Error>> {
     let cfg = service_context.cfg.as_ref();
-    let (crawl_raw, extract_raw, embed_raw, ingest_raw, refresh_raw, graph_raw) = tokio::join!(
+    let (
+        crawl_raw,
+        extract_raw,
+        embed_raw,
+        ingest_raw,
+        refresh_raw,
+        graph_raw,
+        crawl_total,
+        extract_total,
+        embed_total,
+        ingest_total,
+        refresh_total,
+        graph_total,
+    ) = tokio::join!(
         async {
             job_service::list_jobs(service_context, JobKind::Crawl, 20, 0)
                 .await
@@ -326,9 +350,15 @@ pub(crate) async fn load_status_jobs(
                 .await
                 .map_err(|e| format!("graph: {e}"))
         },
+        async { count_jobs(cfg).await.unwrap_or(0) },
+        async { count_extract_jobs(cfg).await.unwrap_or(0) },
+        async { count_embed_jobs(cfg).await.unwrap_or(0) },
+        async { count_ingest_jobs(cfg).await.unwrap_or(0) },
+        async { count_refresh_jobs(cfg).await.unwrap_or(0) },
+        async { count_graph_jobs(cfg).await.unwrap_or(0) },
     );
 
-    Ok(StatusJobs {
+    let jobs = StatusJobs {
         crawl: filter_and_view(cfg, crawl_raw?, |j| &j.status, |j| j.error_text.as_deref()),
         extract: filter_and_view(
             cfg,
@@ -345,7 +375,16 @@ pub(crate) async fn load_status_jobs(
             |j| j.error_text.as_deref(),
         ),
         graph: filter_and_view(cfg, graph_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-    })
+    };
+    let totals = StatusTotals {
+        crawl: crawl_total,
+        extract: extract_total,
+        embed: embed_total,
+        ingest: ingest_total,
+        refresh: refresh_total,
+        graph: graph_total,
+    };
+    Ok((jobs, totals))
 }
 
 pub(crate) fn build_status_payload(
@@ -355,6 +394,7 @@ pub(crate) fn build_status_payload(
     ingest_jobs: &[ServiceJob],
     refresh_jobs: &[ServiceJob],
     graph_jobs: &[ServiceJob],
+    totals: &StatusTotals,
 ) -> serde_json::Value {
     serde_json::json!({
         "local_crawl_jobs": crawl_jobs,
@@ -363,6 +403,14 @@ pub(crate) fn build_status_payload(
         "local_ingest_jobs": ingest_jobs,
         "local_refresh_jobs": refresh_jobs,
         "local_graph_jobs": graph_jobs,
+        "totals": {
+            "crawl": totals.crawl,
+            "extract": totals.extract,
+            "embed": totals.embed,
+            "ingest": totals.ingest,
+            "refresh": totals.refresh,
+            "graph": totals.graph,
+        },
     })
 }
 
@@ -397,6 +445,7 @@ fn is_watchdog_reclaimed_failure(status: &str, error_text: Option<&str>) -> bool
         .is_some_and(|text| text.starts_with(WATCHDOG_RECLAIM_PREFIX))
 }
 
+#[must_use = "dedupe returns a Result that should be handled"]
 pub async fn dedupe(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
@@ -643,9 +692,10 @@ mod tests {
 
     #[test]
     fn status_payload_includes_refresh_jobs_key() {
-        let payload = build_status_payload(&[], &[], &[], &[], &[], &[]);
+        let payload = build_status_payload(&[], &[], &[], &[], &[], &[], &StatusTotals::default());
         assert!(payload.get("local_refresh_jobs").is_some());
         assert!(payload.get("local_graph_jobs").is_some());
+        assert!(payload.get("totals").is_some());
     }
 
     #[test]

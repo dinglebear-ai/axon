@@ -162,13 +162,17 @@ pub async fn validate_artifact_path(raw: &str) -> Result<PathBuf, ErrorData> {
             .await
             .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?
     } else {
-        let cwd = std::env::current_dir().map_err(|e| internal_error(e.to_string()))?;
-        let from_cwd = cwd.join(&candidate);
-        match tokio::fs::canonicalize(&from_cwd).await {
+        // Server-centric cache: try root-relative first (the stable client-facing
+        // identifier), then fall back to CWD-relative for local convenience.
+        let from_root = root.join(&candidate);
+        match tokio::fs::canonicalize(&from_root).await {
             Ok(p) => p,
-            Err(_) => tokio::fs::canonicalize(root.join(&candidate))
-                .await
-                .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?,
+            Err(_) => {
+                let cwd = std::env::current_dir().map_err(|e| internal_error(e.to_string()))?;
+                tokio::fs::canonicalize(cwd.join(&candidate))
+                    .await
+                    .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?
+            }
         }
     };
     // Security boundary: canonicalize() resolves ALL symlinks, so `canonical`

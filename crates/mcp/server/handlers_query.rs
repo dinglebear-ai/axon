@@ -1,8 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
-    internal_error, invalid_params, logged_internal_error, map_render_mode, map_scrape_format,
-    paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options, to_pagination,
-    to_retrieve_options, to_search_options, validate_mcp_url,
+    InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
+    map_scrape_format, paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options,
+    to_pagination, to_retrieve_options, to_search_options, validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -52,6 +52,7 @@ impl AxonMcpServer {
                 "offset": offset,
                 "results": result.results,
             }),
+            InlineHint::Default,
         )
         .await
     }
@@ -94,6 +95,7 @@ impl AxonMcpServer {
                 "chunks": chunk_count,
                 "content": content,
             }),
+            InlineHint::AlwaysPath,
         )
         .await
     }
@@ -140,6 +142,7 @@ impl AxonMcpServer {
                 "total_urls": total_urls,
                 "urls": paged_urls,
             }),
+            InlineHint::Default,
         )
         .await
     }
@@ -177,6 +180,7 @@ impl AxonMcpServer {
                 "offset": offset,
                 "results": result.results,
             }),
+            InlineHint::Default,
         )
         .await
     }
@@ -208,7 +212,7 @@ impl AxonMcpServer {
             cfg.exclude_selector = Some(sel);
         }
 
-        let result = scrape_svc::scrape(&cfg, &url)
+        let result = scrape_svc::scrape(&cfg, &url, None)
             .await
             .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e.as_ref()))?;
         respond_with_mode(
@@ -217,6 +221,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("scrape-{}", slugify(&url, 56)),
             result.payload,
+            InlineHint::AlwaysPath,
         )
         .await
     }
@@ -254,6 +259,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("research-{}", slugify(&query, 56)),
             result.payload,
+            InlineHint::Fields(&["summary"]),
         )
         .await
     }
@@ -291,6 +297,7 @@ impl AxonMcpServer {
             response_mode,
             &format!("ask-{}", slugify(&query, 56)),
             result.payload,
+            InlineHint::Fields(&["answer"]),
         )
         .await
     }

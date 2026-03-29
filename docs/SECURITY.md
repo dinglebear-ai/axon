@@ -191,9 +191,9 @@ Worker startup:
 
 ## Residual Risks
 
-1. DNS rebinding TOCTOU window:
-- URL is validated before request, but resolver behavior at connect time can still change.
-- Mitigation options: resolver pinning or additional network egress controls.
+1. DNS rebinding TOCTOU window — **MITIGATED** (v0.32.4):
+- `SsrfBlockingResolver` (in `crates/core/http/ssrf.rs`) is wired into the reqwest client via `ClientBuilder::dns_resolver()`. It re-runs `check_ip()` on every IP returned by the OS resolver at the moment TCP connects — the same instant reqwest would dial. A TTL-0 DNS record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
+- Two-layer defence: `validate_url()` blocks literal IPs, hostile TLDs, and `localhost` at parse time; `SsrfBlockingResolver` blocks any hostname whose DNS resolution produces a blocked IP at connect time.
 
 2. WebSocket auth requires explicit env config:
 - Gate is disabled if `AXON_WEB_API_TOKEN` is not set — any client can connect to `/ws`.
@@ -201,6 +201,8 @@ Worker startup:
 
 3. Upstream model endpoints:
 - security posture depends on TEI/LLM deployment hardening outside this repo.
+
+4. **`AXON_WEB_ALLOW_INSECURE_DEV` loopback bypass:** When set to `true`, requests from `127.0.0.1`/`::1` bypass the `AXON_WEB_API_TOKEN` check on `/api/*` and `/ws/shell` — even when the token IS configured. This flag must never be set to `true` in any deployment accessible from untrusted networks. Default is `false`. See `.env.example`.
 
 ## Operational Security Checklist
 
@@ -223,7 +225,8 @@ gitleaks detect --source=. --log-opts="HEAD~5..HEAD"
 ```
 
 3. Validate local-only bindings in compose.
-4. Run `./scripts/axon doctor`.
+4. Confirm `AXON_WEB_ALLOW_INSECURE_DEV=false` before any network-accessible deployment.
+5. Run `./scripts/axon doctor`.
 
 After deploy:
 

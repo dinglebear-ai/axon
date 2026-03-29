@@ -11,12 +11,24 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
 use anyhow::{Result, anyhow};
+use rand::RngExt as _;
 use reqwest::StatusCode;
 use std::collections::HashSet;
 use std::time::Duration;
 
 use super::types::QdrantPoint;
 use super::utils::{qdrant_base, retrieve_max_points};
+
+/// Exponential backoff with jitter for Qdrant retries.
+/// Base delay is 250ms * 2^(attempt-1), plus random jitter up to 100ms.
+/// Prevents thundering-herd when multiple workers retry simultaneously
+/// after a Qdrant restart.
+fn qdrant_retry_delay(attempt: usize) -> Duration {
+    debug_assert!(attempt >= 1, "attempt must be >= 1");
+    let base_ms = 250_u64.saturating_mul(1u64 << attempt.saturating_sub(1));
+    let jitter_ms = rand::rng().random_range(0..100);
+    Duration::from_millis(base_ms + jitter_ms)
+}
 
 async fn qdrant_delete_with_retry(
     client: &reqwest::Client,
@@ -41,7 +53,7 @@ async fn qdrant_delete_with_retry(
                     last_error = Some(format!(
                         "{context}: qdrant status={status} attempt={attempt}"
                     ));
-                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
                     continue;
                 }
                 return Err(anyhow!(
@@ -56,7 +68,7 @@ async fn qdrant_delete_with_retry(
                 }
                 last_error = Some(format!("{context}: send error attempt={attempt}: {err}"));
                 if attempt < MAX_ATTEMPTS {
-                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
                     continue;
                 }
             }
@@ -85,7 +97,7 @@ async fn scroll_page_with_retry(
                     log_warn(&format!(
                         "scroll_pages_raw: retrying after status={status} attempt={attempt}/{MAX_ATTEMPTS}"
                     ));
-                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
                     last_err = Some(anyhow!("qdrant scroll status={status} attempt={attempt}"));
                     continue;
                 }
@@ -97,7 +109,7 @@ async fn scroll_page_with_retry(
                     log_warn(&format!(
                         "scroll_pages_raw: retrying after transport error attempt={attempt}/{MAX_ATTEMPTS}: {err}"
                     ));
-                    tokio::time::sleep(Duration::from_millis(250 * (1 << (attempt - 1)))).await;
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
                 }
                 last_err = Some(err.into());
             }

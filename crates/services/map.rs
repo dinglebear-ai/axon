@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 /// Calls [`map_with_sitemap`] from the crawl engine directly, applies
 /// `opts.limit`/`opts.offset` pagination, and wraps the result into a typed
 /// [`MapResult`]. Emits log events when a `tx` sender is provided.
+#[must_use = "discover returns a Result that should be handled"]
 pub async fn discover(
     cfg: &Config,
     url: &str,

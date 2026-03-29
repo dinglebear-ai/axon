@@ -233,32 +233,45 @@ pub fn handle_job_errors<T: JobStatus>(
     Ok(())
 }
 
-pub fn handle_job_list<T: JobStatus>(
+pub fn handle_job_list<T: JobStatus + Clone>(
     cfg: &Config,
-    jobs: Vec<T>,
+    result: &crate::crates::services::types::JobListResult<T>,
     command_name: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, jobs);
+    let jobs = filter_jobs_for_status_view(cfg, result.jobs.clone());
     if cfg.json_output {
         let entries: Vec<Value> = jobs.iter().map(|j| j.to_summary_entry_json()).collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
+        let out = serde_json::json!({
+            "jobs": entries,
+            "total": result.total,
+            "limit": result.limit,
+            "offset": result.offset,
+            "truncated": result.is_truncated(),
+        });
+        println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(());
     }
 
     println!("{}", primary(&format!("{command_name} Jobs")));
     if jobs.is_empty() {
         println!("  {}", muted(&format!("No {command_name} jobs found.")));
-        return Ok(());
+    } else {
+        for job in &jobs {
+            println!(
+                "  {} {} {}",
+                symbol_for_status(job.status()),
+                accent(&job.id().to_string()),
+                status_text(job.status())
+            );
+        }
     }
 
-    for job in jobs {
-        println!(
-            "  {} {} {}",
-            symbol_for_status(job.status()),
-            accent(&job.id().to_string()),
-            status_text(job.status())
-        );
-    }
+    crate::crates::cli::commands::common::print_list_footer(
+        jobs.len(),
+        result.total,
+        result.limit,
+        result.offset,
+    );
     Ok(())
 }
 

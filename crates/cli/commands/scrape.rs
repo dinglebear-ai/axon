@@ -9,7 +9,7 @@ use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::core::ui::{muted, primary, print_option, print_phase};
 use crate::crates::services::embed as embed_service;
 use crate::crates::services::scrape as scrape_service;
-use futures_util::future::join_all;
+use futures::stream::{self, StreamExt};
 use std::error::Error;
 use uuid::Uuid;
 
@@ -33,11 +33,16 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
         cfg.wait
     ));
 
-    // Phase 1: scrape all URLs concurrently — each prints its result as it lands.
-    let tasks: Vec<_> = urls.iter().map(|url| scrape_one(cfg, url)).collect();
+    // Phase 1: scrape URLs concurrently, bounded by batch_concurrency.
+    let concurrency = cfg.batch_concurrency.max(1);
     let mut to_embed: Vec<(String, String)> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
-    for result in join_all(tasks).await {
+    let results: Vec<_> = stream::iter(&urls)
+        .map(|url| scrape_one(cfg, url))
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+    for result in results {
         match result {
             Ok(Some(pair)) => to_embed.push(pair),
             Ok(None) => {}
@@ -67,9 +72,12 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     if !errors.is_empty() {
-        return Err(
-            anyhow::anyhow!("{} scrape(s) failed: {}", errors.len(), errors.join("; ")).into(),
-        );
+        return Err(format!(
+            "{} scrape(s) failed:\n  {}",
+            errors.len(),
+            errors.join("\n  ")
+        )
+        .into());
     }
 
     Ok(())
@@ -102,7 +110,7 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>,
     // SSRF guard: validate before creating Website — must run before any
     // network activity so private-IP seeds are rejected immediately.
     validate_url(url)?;
-    let result = scrape_service::scrape(cfg, url).await?;
+    let result = scrape_service::scrape(cfg, url, None).await?;
     let normalized = result.url.clone();
     let markdown = result.markdown.clone();
     let output = result.output;

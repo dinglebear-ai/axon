@@ -72,11 +72,22 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
     }
 
     #[derive(serde::Deserialize)]
+    struct HeaderEntry {
+        name: String,
+        value: String,
+    }
+
+    #[derive(serde::Deserialize)]
     struct McpServerEntry {
         command: Option<String>,
         args: Option<Vec<String>>,
         env: Option<std::collections::HashMap<String, String>>,
         url: Option<String>,
+        /// "http" (default for URL entries) or "sse"
+        transport: Option<String>,
+        /// HTTP headers for http/sse transports
+        #[serde(default)]
+        headers: Vec<HeaderEntry>,
     }
 
     let raw = match tokio::fs::read_to_string(config_path).await {
@@ -108,7 +119,23 @@ pub(super) async fn fetch_axon_mcp_servers_from_disk(
                 return None;
             }
             if let Some(url) = url {
-                Some(AcpMcpServerConfig::Http { name, url })
+                let headers: Vec<(String, String)> = entry
+                    .headers
+                    .into_iter()
+                    .map(|h| (h.name, h.value))
+                    .collect();
+                match entry.transport.as_deref() {
+                    Some("sse") => Some(AcpMcpServerConfig::Sse { name, url, headers }),
+                    None | Some("http") => Some(AcpMcpServerConfig::Http { name, url, headers }),
+                    Some(unknown) => {
+                        tracing::warn!(
+                            server = %name,
+                            transport = %unknown,
+                            "mcp.json: unknown transport value; treating as http"
+                        );
+                        Some(AcpMcpServerConfig::Http { name, url, headers })
+                    }
+                }
             } else {
                 let cmd = command.unwrap_or_default();
                 // SEC-2: validate command before spawning a child process.
@@ -187,4 +214,72 @@ pub(super) fn is_safe_mcp_command(cmd: &str) -> bool {
         return false;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn parses_sse_entry_from_json() {
+        let json =
+            r#"{"mcpServers": {"my-sse": {"url": "http://localhost/sse", "transport": "sse"}}}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        tokio::fs::write(&path, json).await.unwrap();
+        let servers = fetch_axon_mcp_servers_from_disk(&path).await;
+        assert_eq!(servers.len(), 1);
+        assert!(matches!(servers[0], AcpMcpServerConfig::Sse { .. }));
+    }
+
+    #[tokio::test]
+    async fn parses_http_entry_with_headers() {
+        let json = r#"{"mcpServers": {"my-http": {"url": "http://localhost/mcp", "headers": [{"name": "Authorization", "value": "Bearer tok"}]}}}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        tokio::fs::write(&path, json).await.unwrap();
+        let servers = fetch_axon_mcp_servers_from_disk(&path).await;
+        assert_eq!(servers.len(), 1);
+        match &servers[0] {
+            AcpMcpServerConfig::Http { headers, .. } => {
+                assert_eq!(headers.len(), 1);
+                assert_eq!(headers[0].0, "Authorization");
+                assert_eq!(headers[0].1, "Bearer tok");
+            }
+            _ => panic!("expected Http"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_url_without_transport_defaults_to_http() {
+        let json = r#"{"mcpServers": {"my-http": {"url": "http://localhost/mcp"}}}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        tokio::fs::write(&path, json).await.unwrap();
+        let servers = fetch_axon_mcp_servers_from_disk(&path).await;
+        assert_eq!(servers.len(), 1);
+        assert!(matches!(servers[0], AcpMcpServerConfig::Http { .. }));
+    }
+
+    #[tokio::test]
+    async fn unknown_transport_falls_back_to_http() {
+        let json = r#"{"mcpServers": {"s": {"url": "http://localhost/x", "transport": "ws"}}}"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        tokio::fs::write(&path, json).await.unwrap();
+        let servers = fetch_axon_mcp_servers_from_disk(&path).await;
+        assert_eq!(servers.len(), 1);
+        assert!(matches!(servers[0], AcpMcpServerConfig::Http { .. }));
+    }
+
+    #[test]
+    fn is_safe_mcp_command_rejects_shell() {
+        assert!(!is_safe_mcp_command("bash"));
+        assert!(!is_safe_mcp_command("sh"));
+    }
+
+    #[test]
+    fn is_safe_mcp_command_accepts_absolute_path() {
+        assert!(is_safe_mcp_command("/usr/local/bin/mcp-server"));
+    }
 }

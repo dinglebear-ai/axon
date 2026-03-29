@@ -17,7 +17,9 @@ spider = { version = "2", default-features = false, features = [
     "ua_generator", "headers", "time", "control",
     "firewall", "hedge",
 ] }
-spider_agent       = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
+
+spider_agent       = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
+
 spider_transformations = "2"  # no feature flags — full crate used as-is
 ```
 
@@ -40,7 +42,9 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 | `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `crates/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
 | `adblock` | Chrome / Browser | Implicit ad/tracker request filtering during crawl. No local toggle — always active when chrome features are in use |
 | `cache_mem` | Caching | In-memory page/request deduplication during crawls. No local call site; spider uses it internally for request memoization |
-| `hedge` | Performance | Speculative parallel retry — issues a second request if the first doesn't respond within a threshold. Handled internally by spider; no direct call site in axon. |
+
+| `hedge` | Core | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `crates/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+
 
 ### spider_agent crate — 2 flags enabled
 
@@ -57,7 +61,7 @@ Used in two files for HTML→Markdown content transformation:
 
 ---
 
-## Full Flag Inventory (all 79)
+## Full Flag Inventory (all 79, includes `basic` meta-feature)
 
 `✅` = enabled in axon_rust · `—` = not used
 
@@ -67,7 +71,11 @@ Used in two files for HTML→Markdown content transformation:
 |------|--------|-------|
 | `ua_generator` | ✅ | Random realistic User-Agent generation per request |
 | `regex` | ✅ | URL blacklist/whitelist filtering |
+
 | `glob` | — | NOT enabled — glob URL patterns change `crawl_establish` to use a budget-aware `is_allowed()` check that immediately returns `BudgetExceeded` for the first URL with `with_limit(1)`, producing 0 pages from Chrome crawls. axon does not use URL glob patterns. Do NOT add this flag. |
+
+| `glob` | — | Removed — caused BudgetExceeded on first URL when using `with_limit(1)`. Do NOT re-enable. See CLAUDE.md gotchas. |
+
 | `fs` | — | Project uses Qdrant + Postgres instead of disk FS |
 | `sitemap` | ✅ | Sitemap discovery + backfill |
 | `time` | ✅ | Timing/duration tracking for crawl operations |
@@ -90,7 +98,9 @@ Used in two files for HTML→Markdown content transformation:
 | `io_uring` | — | |
 | `simd` | ✅ | SIMD-accelerated text/JSON parsing |
 | `inline-more` | ✅ | Aggressive function inlining in spider internals for runtime perf |
-| `hedge` | ✅ | Speculative parallel retry — issues a second request if the first is slow. Handled internally by spider. |
+
+| `hedge` | ✅ | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `crates/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+
 
 ### Storage (3)
 
@@ -197,7 +207,9 @@ Used in two files for HTML→Markdown content transformation:
 
 | Category | Total | Enabled |
 |----------|-------|---------|
+
 | Core | 25 | 11 (`basic`, `regex`, `sitemap`, `simd`, `inline-more`, `ua_generator`, `headers`, `hedge`, `time`, `control`) — `glob` is NOT enabled |
+
 | Storage | 3 | 0 |
 | Caching | 6 | 1 (`cache_mem`) |
 | Chrome / Browser | 17 | 7 (`chrome`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `adblock`) |

@@ -7,6 +7,7 @@ use rmcp::ErrorData;
 use uuid::Uuid;
 
 // Re-export artifact helpers that are imported by multiple handler modules.
+pub(super) use super::artifacts::InlineHint;
 pub(super) use super::artifacts::respond_with_mode;
 
 pub(super) const MCP_TOOL_SCHEMA_URI: &str = "axon://schema/mcp-tool";

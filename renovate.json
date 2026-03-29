@@ -95,14 +95,62 @@
     },
 
     {
-      "description": "Rust minor/major — manual review",
+      "description": "Rust minor/major — manual review with dashboard approval gate",
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["major", "minor"],
-      "automerge": false
+      "automerge": false,
+      "dependencyDashboardApproval": true
     }
   ],
 
   "npm": {
     "minimumReleaseAge": "3 days"
-  }
+  },
+
+  "regexManagers": [
+    {
+      "description": "yt-dlp standalone binary version in Dockerfile",
+      "fileMatch": ["^docker/Dockerfile$"],
+      "matchStrings": [
+        "ARG YT_DLP_VERSION=(?<currentValue>[^\\n]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "yt-dlp/yt-dlp",
+      "extractVersionTemplate": "^(?<version>.+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "description": "s6-overlay version in Dockerfile",
+      "fileMatch": ["^docker/Dockerfile$"],
+      "matchStrings": [
+        "ARG S6_OVERLAY_VERSION=(?<currentValue>[^\\n]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "just-containers/s6-overlay",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "description": "claude-agent-acp binary version in Dockerfile",
+      "fileMatch": ["^docker/Dockerfile$"],
+      "matchStrings": [
+        "ARG CLAUDE_ACP_VERSION=(?<currentValue>[^\\n]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "zed-industries/claude-agent-acp",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "loose"
+    },
+    {
+      "description": "codex-acp binary version in Dockerfile",
+      "fileMatch": ["^docker/Dockerfile$"],
+      "matchStrings": [
+        "ARG CODEX_ACP_VERSION=(?<currentValue>[^\\n]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "zed-industries/codex-acp",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "loose"
+    }
+  ]
 }

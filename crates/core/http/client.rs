@@ -51,6 +51,13 @@ pub fn build_client(
                 )),
             }
         }));
+    // Wire the SSRF-blocking DNS resolver in production builds to close the
+    // DNS rebinding TOCTOU window. Test builds skip this so httpmock servers
+    // on 127.0.0.1 remain reachable; validate_url() still guards in tests.
+    #[cfg(not(test))]
+    {
+        builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
+    }
     if let Some(ua) = user_agent {
         builder = builder.user_agent(ua);
     }

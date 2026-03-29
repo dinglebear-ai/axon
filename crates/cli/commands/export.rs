@@ -1,5 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info};
+use crate::crates::core::ui::Spinner;
 use crate::crates::services::export::{
     ExportOptions, export_manifest_for_config, verify_manifest_json,
 };
@@ -48,8 +49,20 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         statuses: vec![],
     };
 
-    log_info("Collecting export data from configured services");
+    if !cfg.quiet && !cfg.json_output {
+        log_info("export | collecting data from configured services");
+    }
+    let spinner = if !cfg.quiet && !cfg.json_output {
+        Some(Spinner::new(
+            "Collecting export data (this may take a moment for large collections)...",
+        ))
+    } else {
+        None
+    };
     let manifest = export_manifest_for_config(cfg, &options).await?;
+    if let Some(sp) = spinner {
+        sp.finish("export data collected");
+    }
     let json = serde_json::to_string_pretty(&manifest)?;
 
     if cfg.json_output {

@@ -73,7 +73,7 @@ pub async fn compute_similarity(
     cfg: &Config,
     neo4j: &Neo4jClient,
     url: &str,
-) -> Result<Vec<SimilarityEdge>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SimilarityEdge>, Box<dyn std::error::Error + Send + Sync>> {
     let client = http_client()?;
     let endpoint = format!(
         "{}/collections/{}/points/query",
@@ -218,6 +218,6 @@ mod tests {
             .iter()
             .find(|edge| edge.target_url == "https://b.com")
             .unwrap();
-        assert!((b.score - 0.91).abs() < f64::EPSILON as f32);
+        assert!((b.score - 0.91).abs() < f32::EPSILON);
     }
 }

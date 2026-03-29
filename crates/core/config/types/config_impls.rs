@@ -94,6 +94,8 @@ impl Default for Config {
             acp_adapter_cmd: None,
             acp_adapter_args: None,
             acp_prewarm: true,
+            acp_ws_url: None,
+            acp_ws_token: None,
             tavily_api_key: String::new(),
             neo4j_url: String::new(),
             neo4j_user: "neo4j".to_string(),
@@ -170,6 +172,7 @@ impl Default for Config {
             web_dev_port: 49010,
             shell_server_port: 49011,
             custom_headers: vec![],
+            quiet: false,
         }
     }
 }
@@ -290,6 +293,8 @@ impl fmt::Debug for Config {
             .field("acp_adapter_cmd", &self.acp_adapter_cmd)
             .field("acp_adapter_args", &self.acp_adapter_args)
             .field("acp_prewarm", &self.acp_prewarm)
+            .field("acp_ws_url", &self.acp_ws_url)
+            .field("acp_ws_token", &"[REDACTED]")
             .field("tavily_api_key", &"[REDACTED]")
             .field("neo4j_url", &"[REDACTED]")
             .field("neo4j_user", &self.neo4j_user)
@@ -391,6 +396,7 @@ impl fmt::Debug for Config {
                     })
                     .collect::<Vec<_>>(),
             )
+            .field("quiet", &self.quiet)
             .finish()
     }
 }

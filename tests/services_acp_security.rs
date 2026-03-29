@@ -133,6 +133,8 @@ fn acp_bridge_event_unknown_session_update_wire_type() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
+        message_id: None,
     });
 
     let json = serde_json::to_value(&event).unwrap();

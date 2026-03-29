@@ -51,7 +51,7 @@ spider = { version = "2", default-features = false, features = [
     "ua_generator", "headers", "time", "control",
     "firewall", "hedge",
 ] }
-spider_agent = { version = "2.46", default-features = false, features = ["search_tavily", "openai"] }
+spider_agent = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "sqlite", "uuid", "chrono"] }
 subtle = "2"
@@ -80,7 +80,7 @@ reflink-copy = "0.1"
 dotenvy = "0.15"
 rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server", "schemars", "elicitation"] }
 html5gum = "0.8"
-agent-client-protocol = { version = "0.10.0", features = ["unstable"] }
+agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
 
 [profile.release]
 opt-level = 3
@@ -93,7 +93,6 @@ opt-level = 2
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "process", "signal", "sync", "time"] }
-criterion = "0.8"
 # httpmock enables mock HTTP servers in unit tests, unlocking coverage for
 # tei_embed 413-retry logic, ensure_collection idempotency, and API clients
 # without requiring live services.

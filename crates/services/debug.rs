@@ -1,9 +1,11 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
+use crate::crates::core::logging::log_warn;
 use crate::crates::services::acp_llm::{self, AcpCompletionRequest};
 use crate::crates::services::types::DebugResult;
 use std::error::Error;
 
+#[must_use = "debug_report returns a Result that should be handled"]
 pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
     let acp_adapter_cmd = cfg
         .acp_adapter_cmd
@@ -16,6 +18,19 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
     if cfg.openai_model.is_empty() {
         return Err("OPENAI_MODEL is required for debug".into());
     }
+
+    // Start warming the ACP adapter before build_doctor_report so the cold-start
+    // overlaps with the HTTP health checks instead of running sequentially after them.
+    let warm = match acp_llm::warm_session(cfg, None) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "debug: warm session failed to start, using cold path: {e}"
+            ));
+            None
+        }
+    };
+
     let doctor_report = build_doctor_report(cfg).await?;
 
     let prompt = format!(
@@ -42,18 +57,25 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
             "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
         )
         .model(cfg.openai_model.clone());
-    let cfg_for_completion = cfg.clone();
-    let completion = tokio::task::spawn_blocking(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| format!("failed to build debug ACP runtime: {err}"))?;
-        rt.block_on(acp_llm::complete_text(&cfg_for_completion, request))
-            .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| format!("failed to join debug ACP task: {err}"))?
-    .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    // Warm path: WarmAcpSession is Send — await directly.
+    // Cold path: acp_llm::complete_text is !Send — use spawn_blocking to keep this
+    // function's future Send for web/MCP call sites that require Send + 'static.
+    let completion = if let Some(w) = warm {
+        w.complete_text(request).await?
+    } else {
+        let cfg_c = cfg.clone();
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| format!("failed to build debug ACP runtime: {err}"))?;
+            rt.block_on(acp_llm::complete_text(&cfg_c, request))
+                .map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|err| format!("failed to join debug ACP task: {err}"))?
+        .map_err(|err| -> Box<dyn Error> { err.into() })?
+    };
     let analysis = if completion.text.trim().is_empty() {
         "(no debug response)"
     } else {

@@ -7,10 +7,11 @@ use crate::crates::core::content::{
 };
 use crate::crates::core::health::redis_healthy;
 use crate::crates::core::logging::{log_debug, log_done, log_info, log_warn};
+#[allow(deprecated)] // open_amqp_channel used for short-lived health checks only
+use crate::crates::jobs::common::open_amqp_channel;
 use crate::crates::jobs::common::{
     JobTable, batched_cleanup_terminal_jobs, begin_schema_migration_tx, enqueue_job, make_pool,
-    mark_job_failed, open_amqp_channel, purge_queue_safe, reclaim_stale_running_jobs,
-    sort_rows_for_status_view,
+    mark_job_failed, purge_queue_safe, reclaim_stale_running_jobs, sort_rows_for_status_view,
 };
 use crate::crates::jobs::status::JobStatus;
 use chrono::{DateTime, Utc};
@@ -38,7 +39,7 @@ struct ExtractJobConfig {
     render_mode: crate::crates::core::config::RenderMode,
 }
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct ExtractJob {
     pub id: Uuid,
     pub status: String,
@@ -232,6 +233,15 @@ pub async fn list_extract_jobs(
     Ok(rows)
 }
 
+pub async fn count_extract_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = make_pool(cfg).await?;
+    ensure_schema(&pool).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM axon_extract_jobs")
+        .fetch_one(&pool)
+        .await?;
+    Ok(count)
+}
+
 pub async fn cancel_extract_job(cfg: &Config, id: Uuid) -> Result<bool, Box<dyn Error>> {
     let pool = make_pool(cfg).await?;
     ensure_schema(&pool).await?;
@@ -334,6 +344,7 @@ pub async fn recover_stale_extract_jobs(cfg: &Config) -> Result<u64, Box<dyn Err
 
 pub async fn extract_doctor(cfg: &Config) -> Result<serde_json::Value, String> {
     let pg_ok = make_pool(cfg).await.is_ok();
+    #[allow(deprecated)] // Short-lived health check — Connection drop is acceptable here.
     let amqp_ok = open_amqp_channel(cfg, &cfg.extract_queue).await.is_ok();
     let redis_ok = redis_healthy(&cfg.redis_url).await;
     Ok(serde_json::json!({

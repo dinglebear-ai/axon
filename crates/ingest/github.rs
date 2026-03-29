@@ -15,6 +15,8 @@ use meta::{GitHubPayloadParams, build_github_payload};
 
 /// Number of concurrent sub-tasks in `run_github_subtasks` (files, metadata, issues, PRs, wiki).
 const GITHUB_SUBTASK_COUNT: usize = 5;
+/// Hard ceiling on total GitHub ingest time — prevents a hung sub-task from blocking the job forever.
+const GITHUB_INGEST_TOTAL_TIMEOUT_SECS: u64 = 3600; // 1 hour
 
 // ── Shared repo context passed to all sub-tasks ──────────────────────────────
 
@@ -119,9 +121,17 @@ pub fn parse_github_repo(input: &str) -> Option<(String, String)> {
 
 // ── Octocrab helpers ───────────────────────────────────────────────────────────
 
+const OCTOCRAB_REQUEST_TIMEOUT_SECS: u64 = 60;
+
 /// Build an Octocrab instance — authenticated if a token is set, else default (unauthenticated).
+/// Applies a 60s read/write timeout via the hyper-timeout connector to prevent pagination hangs.
 fn build_octocrab(cfg: &Config) -> Result<Octocrab> {
-    let builder = Octocrab::builder();
+    let timeout = Some(std::time::Duration::from_secs(
+        OCTOCRAB_REQUEST_TIMEOUT_SECS,
+    ));
+    let builder = Octocrab::builder()
+        .set_read_timeout(timeout)
+        .set_write_timeout(timeout);
     let octo = if let Some(token) = cfg.github_token.as_deref() {
         builder.personal_token(token.to_string()).build()?
     } else {
@@ -378,8 +388,25 @@ pub async fn ingest_github(
         common.repo_slug, common.has_wiki
     ));
 
-    let results =
-        run_github_subtasks(cfg, &common, &repo_info, &octo, include_source, &reporter).await;
+    use tokio::time::timeout;
+    let results = timeout(
+        std::time::Duration::from_secs(GITHUB_INGEST_TOTAL_TIMEOUT_SECS),
+        run_github_subtasks(cfg, &common, &repo_info, &octo, include_source, &reporter),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        log_warn(&format!(
+            "github ingest timed out after {GITHUB_INGEST_TOTAL_TIMEOUT_SECS}s repo={}",
+            common.repo_slug
+        ));
+        [
+            ("files", Err(anyhow::anyhow!("timed out"))),
+            ("metadata", Err(anyhow::anyhow!("timed out"))),
+            ("issues", Err(anyhow::anyhow!("timed out"))),
+            ("prs", Err(anyhow::anyhow!("timed out"))),
+            ("wiki", Err(anyhow::anyhow!("timed out"))),
+        ]
+    });
     let (total, issues_count, prs_count) = tally_results(results, repo);
 
     reporter

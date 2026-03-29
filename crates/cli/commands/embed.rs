@@ -2,6 +2,7 @@ use crate::crates::cli::commands::CommandFuture;
 use crate::crates::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
     handle_job_errors, handle_job_list, handle_job_recover, handle_job_status, handle_worker_mode,
+    print_list_footer,
 };
 use crate::crates::cli::commands::status::metrics::{
     collection_from_config, display_embed_input, embed_metrics_suffix, format_error,
@@ -123,13 +124,13 @@ async fn handle_embed_list(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(
-        cfg,
-        job_service::list_jobs(service_context, JobKind::Embed, 50, 0).await?,
-    );
+    let all_jobs = job_service::list_jobs(service_context, JobKind::Embed, 50, 0).await?;
+    let total = all_jobs.len() as i64;
     if cfg.json_output {
-        return handle_job_list(cfg, jobs, "Embed");
+        let result = crate::crates::services::types::JobListResult::new(all_jobs, total, 50, 0);
+        return handle_job_list(cfg, &result, "Embed");
     }
+    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
 
     println!("{}", primary("Embed Jobs"));
     if jobs.is_empty() {
@@ -175,6 +176,8 @@ async fn handle_embed_list(
             println!("       {err_line}");
         }
     }
+
+    print_list_footer(jobs.len(), total, 50, 0);
     Ok(())
 }
 

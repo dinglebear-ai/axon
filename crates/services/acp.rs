@@ -252,6 +252,21 @@ impl AcpClientScaffold {
         Ok(child)
     }
 
+    /// Test-only variant of `spawn_adapter` that skips `validate_adapter_command`.
+    ///
+    /// Used by env-isolation integration tests that need to spawn a real shell
+    /// (e.g. `sh`) without being blocked by the shell-name validator.
+    ///
+    /// Gated behind `#[cfg(test)]` so it is excluded from release builds.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn spawn_adapter_skip_validation(
+        &self,
+    ) -> Result<tokio::process::Child, Box<dyn std::error::Error>> {
+        let child = self.build_adapter_command().spawn()?;
+        Ok(child)
+    }
+
     pub fn prepare_initialize(&self) -> Result<InitializeRequest, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         let mut req = InitializeRequest::new(ProtocolVersion::V1).client_info(
@@ -265,6 +280,12 @@ impl AcpClientScaffold {
                 .write_text_file(true);
         }
         caps.terminal = self.adapter.enable_terminal;
+        // TODO(FR-031): Enable `unstable_elicitation` capability once
+        // `agent_client_protocol::ClientCapabilities` exposes it (SDK v0.10.2 does not).
+        // When available: caps.unstable_elicitation = true;
+        //
+        // TODO(FR-032): Enable `unstable_logout` capability once the SDK exposes it.
+        // When available: caps.unstable_logout = true;
         req.client_capabilities = caps;
 
         Ok(req)
@@ -277,7 +298,11 @@ impl AcpClientScaffold {
     ) -> Result<AcpSessionSetupRequest, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         validate_prompt_turn_request(req)?;
-        build_session_setup(req.session_id.as_deref(), cwd, &req.mcp_servers)
+        Ok(build_session_setup(
+            req.session_id.as_deref(),
+            cwd,
+            &req.mcp_servers,
+        )?)
     }
 
     pub fn prepare_session_probe_setup(
@@ -287,7 +312,7 @@ impl AcpClientScaffold {
     ) -> Result<AcpSessionSetupRequest, Box<dyn std::error::Error>> {
         self.validate_adapter()?;
         validate_probe_request(req)?;
-        build_session_setup(req.session_id.as_deref(), cwd, &[])
+        Ok(build_session_setup(req.session_id.as_deref(), cwd, &[])?)
     }
 
     pub async fn start_prompt_turn(

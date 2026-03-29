@@ -1,7 +1,7 @@
 use crate::crates::cli::commands::common::{
     JobStatus, filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup,
     handle_job_clear, handle_job_errors, handle_job_list, handle_job_recover, handle_job_status,
-    handle_worker_mode,
+    handle_worker_mode, print_list_footer,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_done;
@@ -56,7 +56,8 @@ pub async fn maybe_handle_ingest_subcommand(
                 None
             };
             let jobs = job_service::list_ingest_jobs(service_context, source_filter, 50, 0).await?;
-            handle_ingest_list(cfg, jobs).await?;
+            let total = jobs.len() as i64;
+            handle_ingest_list(cfg, jobs, total).await?;
         }
         "cleanup" => {
             let removed = job_service::cleanup_jobs(service_context, JobKind::Ingest).await?;
@@ -203,16 +204,22 @@ async fn handle_ingest_status(
     Ok(())
 }
 
-async fn handle_ingest_list(cfg: &Config, jobs: Vec<ServiceJob>) -> Result<(), Box<dyn Error>> {
-    let jobs = filter_jobs_for_status_view(cfg, jobs);
+async fn handle_ingest_list(
+    cfg: &Config,
+    all_jobs: Vec<ServiceJob>,
+    total: i64,
+) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        handle_job_list(cfg, jobs, "Ingest")?;
-    } else {
+        let result = crate::crates::services::types::JobListResult::new(all_jobs, total, 50, 0);
+        return handle_job_list(cfg, &result, "Ingest");
+    }
+    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
+    {
         println!("{}", primary("Ingest Jobs"));
         if jobs.is_empty() {
             println!("  {}", muted("No ingest jobs found."));
         } else {
-            for job in jobs {
+            for job in &jobs {
                 let progress = ingest_progress(&job.result_json)
                     .map(|p| format!(" [{p}]"))
                     .unwrap_or_default();
@@ -228,6 +235,8 @@ async fn handle_ingest_list(cfg: &Config, jobs: Vec<ServiceJob>) -> Result<(), B
                 );
             }
         }
+
+        print_list_footer(jobs.len(), total, 50, 0);
     }
     Ok(())
 }

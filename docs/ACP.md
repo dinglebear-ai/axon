@@ -744,6 +744,8 @@ Process-wide. Keyed by `agent_key` (encodes agent type + MCP fingerprint + capab
 | Reaper interval | 60 seconds | Background cleanup frequency |
 | `AXON_ACP_MAX_CONCURRENT_SESSIONS` | 8 (env override) | Semaphore limit on concurrent ACP sessions |
 
+> **Configuration note:** `SESSION_TTL`, `MAX_REPLAY_BUFFER`, `MAX_REPLAY_BUFFER_BYTES`, and the reaper interval are hardcoded constants — they are **not** configurable via environment variables. Only `AXON_ACP_MAX_CONCURRENT_SESSIONS` can be overridden at runtime via env var.
+
 ### CachedSession
 
 ```rust
@@ -872,7 +874,7 @@ let response = warm.complete_streaming(req, on_delta).await?;  // uses pre-warme
 | Env Var | Purpose |
 |---------|---------|
 | `AXON_ACP_ADAPTER_CMD` | Adapter binary (required) |
-| `AXON_ACP_ADAPTER_ARGS` | Pipe-delimited args (optional) |
+| `AXON_ACP_ADAPTER_ARGS` | Pipe-delimited (`|`) list of args (optional). Spaces within each segment are preserved; pipe is the only separator. Example: `--stdio|--model|gemini-3-flash-preview`. Do NOT use spaces as delimiters. |
 | `OPENAI_MODEL` | Model override for ACP completion calls |
 
 ---

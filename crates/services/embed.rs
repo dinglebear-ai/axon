@@ -2,14 +2,17 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
-use crate::crates::jobs::embed::{get_embed_job, list_embed_jobs, start_embed_job};
+use crate::crates::jobs::embed::{
+    count_embed_jobs, get_embed_job, list_embed_jobs, start_embed_job,
+};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::runtime::ServiceJobRuntime;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
-    EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
+    EmbedJobResult, EmbedStartResult, ExecutionMode, JobListResult, JobStartOutcome,
+    StartDisposition,
 };
 use crate::crates::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
@@ -76,8 +79,11 @@ pub async fn embed_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<EmbedJob>, Box<dyn Error>> {
-    list_embed_jobs(cfg, limit, offset).await
+) -> Result<JobListResult<EmbedJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(list_embed_jobs(cfg, limit, offset), count_embed_jobs(cfg),);
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {

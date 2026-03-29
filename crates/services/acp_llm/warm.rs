@@ -24,11 +24,11 @@ pub struct WarmAcpSession {
     pub(super) handle: AcpConnectionHandle,
 }
 
-/// Start warming an ACP adapter session in the background.
+/// Spawn a fresh warm ACP session without consulting the pool.
 ///
-/// Returns immediately — adapter spawn → initialize → session setup runs on a
-/// dedicated `spawn_blocking` thread while the caller does other work.
-pub fn warm_session(
+/// Used internally by the pool to refill without risking circular calls.
+/// External callers should prefer [`warm_session`].
+pub(super) fn spawn_warm_session(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<WarmAcpSession, Box<dyn StdError>> {
@@ -53,6 +53,7 @@ pub fn warm_session(
     };
     let session_setup = scaffold.prepare_session_setup(&dummy_req, &cwd)?;
     let permission_responders: PermissionResponderMap = Arc::new(dashmap::DashMap::new());
+    let t = std::time::Instant::now();
     let handle = AcpConnectionHandle::spawn_eager(
         adapter,
         initialize,
@@ -61,7 +62,31 @@ pub fn warm_session(
         tx,
         permission_responders,
     );
+    crate::crates::core::logging::log_info(&format!(
+        "acp_llm: spawn_eager returned in {}ms (adapter init continues in background)",
+        t.elapsed().as_millis()
+    ));
     Ok(WarmAcpSession { handle })
+}
+
+/// Start warming an ACP adapter session in the background.
+///
+/// Checks the process-global warm pool first. If the pool has a ready session,
+/// returns it immediately (no subprocess spawn). Otherwise falls back to a new
+/// one-shot spawn via [`spawn_warm_session`].
+///
+/// For callers passing an event channel (`tx.is_some()`), pool sessions are
+/// bypassed because they were created without event forwarding.
+pub fn warm_session(
+    cfg: &Config,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<WarmAcpSession, Box<dyn StdError>> {
+    if tx.is_none()
+        && let Some(session) = super::pool::try_checkout(cfg)
+    {
+        return Ok(session);
+    }
+    spawn_warm_session(cfg, tx)
 }
 
 impl WarmAcpSession {
@@ -170,5 +195,33 @@ impl WarmAcpSession {
                 usage: state.usage,
             })
             .ok_or_else(|| "ACP warm session did not emit a turn result".into())
+    }
+
+    /// Send a prompt to the pre-warmed adapter and collect the full text response
+    /// without streaming. Delegates to `complete_streaming` with a no-op callback.
+    pub async fn complete_text(
+        self,
+        req: AcpCompletionRequest,
+    ) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
+        self.complete_streaming(req, |_| Ok(())).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crates::core::config::Config;
+
+    #[test]
+    fn warm_session_fails_without_adapter_cmd() {
+        let cfg = Config {
+            acp_adapter_cmd: None,
+            openai_model: "gpt-4o".to_string(),
+            ..Config::default()
+        };
+        let result = super::warm_session(&cfg, None);
+        assert!(
+            result.is_err(),
+            "warm_session must fail when ACP adapter cmd is not set"
+        );
     }
 }

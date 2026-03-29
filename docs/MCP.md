@@ -39,32 +39,11 @@ MCP transport env vars:
 - `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 
-MCP HTTP auth env vars:
-- `AXON_MCP_API_KEY` (optional static bearer token for `/mcp`)
+## Authentication
 
-OAuth broker env vars (optional; enables OAuth bearer tokens for `/mcp`):
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-
-Optional OAuth overrides:
-- `GOOGLE_OAUTH_AUTH_URL`
-- `GOOGLE_OAUTH_TOKEN_URL`
-- `GOOGLE_OAUTH_REDIRECT_PATH`
-- `GOOGLE_OAUTH_REDIRECT_HOST`
-- `GOOGLE_OAUTH_REDIRECT_URI`
-- `GOOGLE_OAUTH_BROKER_ISSUER`
-- `GOOGLE_OAUTH_SCOPES`
-- `GOOGLE_OAUTH_DCR_TOKEN`
-- `GOOGLE_OAUTH_REDIRECT_POLICY`
-- `GOOGLE_OAUTH_REDIS_URL` (falls back to `AXON_REDIS_URL`)
-- `GOOGLE_OAUTH_REDIS_PREFIX`
-
-`GOOGLE_OAUTH_REDIRECT_POLICY` modes:
-- `loopback_or_https` (default): allow loopback HTTP callbacks (`localhost`, `127.0.0.1`, `::1`) and any HTTPS callback
-- `loopback_only`: allow only loopback HTTP callbacks
-- `any`: allow any HTTP/HTTPS callback URI
-
-`/mcp` accepts either `Authorization: Bearer <AXON_MCP_API_KEY>` or a valid OAuth bearer token (`atk_...`). If neither auth mode is configured, requests to `/mcp` return unauthorized.
+Authentication is handled externally by the OAuth gateway and SWAG reverse proxy.
+The `/mcp` endpoint is unauthenticated at the application level — all auth enforcement
+happens at the ingress layer.
 
 ## Transport Notes
 `axon mcp` supports three transport modes:
@@ -122,25 +101,7 @@ HTTP MCP server example:
 {
   "mcpServers": {
     "axon-http": {
-      "url": "https://axon.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer <AXON_MCP_API_KEY>"
-      }
-    }
-  }
-}
-```
-
-OAuth bearer token is also accepted on `/mcp`:
-
-```json
-{
-  "mcpServers": {
-    "axon-http": {
-      "url": "https://axon.example.com/mcp",
-      "headers": {
-        "Authorization": "Bearer atk_your_oauth_token_here"
-      }
+      "url": "https://axon.example.com/mcp"
     }
   }
 }
@@ -165,53 +126,6 @@ OAuth bearer token is also accepted on `/mcp`:
   }
 }
 ```
-
-## OAuth Endpoints and Flow
-Implemented endpoints:
-- `GET /oauth/google/status`
-- `GET /oauth/google/login`
-- `GET /oauth/google/callback`
-- `GET /oauth/google/token`
-- `GET|POST /oauth/google/logout`
-- `GET /.well-known/oauth-protected-resource`
-- `GET /.well-known/oauth-authorization-server`
-- `POST /oauth/register`
-- `GET /oauth/authorize`
-- `POST /oauth/token`
-
-High-level flow:
-1. Client discovers metadata from the `/.well-known/*` endpoints.
-2. Client registers (`/oauth/register`) if needed.
-3. User authenticates via Google (`/oauth/google/login` -> Google -> `/oauth/google/callback`).
-4. Authorization code flow completes via `/oauth/authorize` and `/oauth/token`.
-5. Client calls `/mcp` with bearer token.
-
-Static API key alternative:
-- Clients can call `/mcp` directly with `Authorization: Bearer <AXON_MCP_API_KEY>`.
-- API key auth is full `/mcp` access and does not apply OAuth scope checks.
-- OAuth discovery endpoints remain available unchanged.
-
-## Token Persistence
-OAuth state is persisted in Redis when available; otherwise in-memory fallback is used.
-
-Stored record types:
-- pending login state
-- browser session tokens
-- dynamic clients
-- auth codes
-- access tokens
-- refresh tokens
-- rate-limit buckets
-
-Cookie:
-- `__Host-axon_oauth_session`
-
-TTL semantics (current behavior):
-- OAuth session: 7 days
-- Refresh tokens: 30 days
-- Auth code: 10 minutes
-- Pending login state: 15 minutes
-- Access token: per-issued token expiry
 
 ## Request Pattern
 Primary pattern:
@@ -346,9 +260,25 @@ Artifact responses written in path mode are pretty-printed JSON. The preferred i
 
 ### `response_mode` on All Actions
 
-`doctor`, `stats`, and `status` now support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
+All actions support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
 
 Valid `response_mode` values: `path|inline|both|auto-inline`. Note that `auto-inline` is system-assigned — it cannot be requested by the caller. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
+
+**Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
+
+- **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable without an `artifacts.head` follow-up, regardless of its length.
+- **`scrape`** and **`retrieve`**: Always return path mode regardless of the requested `response_mode`. These payloads can be megabytes of content — use `artifacts.head` or `artifacts.grep` with `relative_path` to access the content.
+
+### Unified Artifact Access Model
+
+The artifact cache is server-centric. All clients — local stdio and remote HTTP — should use `artifacts.*` subactions with the `relative_path` field to access artifact content:
+
+```bash
+# Access content via relative_path (works for all clients)
+mcporter call axon.axon action:artifacts subaction:head path:"ask/what-is-hybrid-search.json"
+```
+
+The `path` field (absolute filesystem path) is present in artifact metadata for transparency and debugging only. Do not depend on it — remote clients cannot open server-side paths directly.
 
 ### Auto-inline for Small Payloads
 
@@ -360,5 +290,5 @@ Path-mode responses include a `shape` field summarizing the payload structure:
 - **Strings ≤ 100 chars**: returned verbatim so Claude reads real values without a follow-up read.
 - **Strings > 100 chars**: summarized as `"<string N>"`.
 - **Arrays of objects with a `status`, `phase`, or `state` field**: summarized as `{"total": N, "by_status": {"completed": N, "running": N, ...}}`. Claude can answer status questions from the shape alone — no follow-up read needed.
-- **Other arrays**: `"<array[N]>"`.
+- **Other arrays**: `{"total": N, "sample": [<first 2 items, shape-previewed>]}`. The sample items let you understand the data structure without reading the file.
 - **Primitives**: verbatim.

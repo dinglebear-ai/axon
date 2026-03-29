@@ -73,7 +73,10 @@ pub async fn ensure_neo4j_schema(neo4j: &Neo4jClient) -> Result<(), Box<dyn std:
     ];
 
     for cypher in statements {
-        neo4j.execute(cypher, serde_json::json!({})).await?;
+        neo4j
+            .execute(cypher, serde_json::json!({}))
+            .await
+            .map_err(|e| e as Box<dyn std::error::Error>)?;
     }
 
     Ok(())

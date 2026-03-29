@@ -1,6 +1,6 @@
 use super::AxonMcpServer;
 use super::common::{
-    invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
+    InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
     respond_with_mode,
 };
 use crate::crates::core::config::Config;
@@ -13,8 +13,8 @@ use crate::crates::services::embed::{
     embed_status,
 };
 use crate::crates::services::ingest::{
-    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
-    ingest_start_with_context, ingest_status,
+    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_count, ingest_list,
+    ingest_recover, ingest_start_with_context, ingest_status,
 };
 use rmcp::ErrorData;
 
@@ -109,6 +109,7 @@ impl AxonMcpServer {
             response_mode,
             "embed-list",
             serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
         )
         .await
     }
@@ -135,6 +136,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("embed-status-{id}"),
                     serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
                 )
                 .await
             }
@@ -239,19 +241,25 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| logged_internal_error("ingest.list.context", e.as_ref()))?;
-        let jobs = ingest_list(
-            service_context.as_ref(),
-            limit,
-            i64::try_from(offset).unwrap_or(i64::MAX),
-        )
-        .await
-        .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
+        let offset_i64 = i64::try_from(offset).unwrap_or(i64::MAX);
+        let result = ingest_list(service_context.as_ref(), limit, offset_i64)
+            .await
+            .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
+        let total = ingest_count(self.cfg.as_ref()).await.unwrap_or(0);
+        let truncated = total > offset_i64 + limit;
         respond_with_mode(
             "ingest",
             "list",
             response_mode,
             "ingest-list",
-            serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            serde_json::json!({
+                "jobs": result.payload,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "truncated": truncated,
+            }),
+            InlineHint::Default,
         )
         .await
     }
@@ -278,6 +286,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("ingest-status-{id}"),
                     serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
                 )
                 .await
             }

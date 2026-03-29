@@ -1,24 +1,24 @@
 use super::{
-    IngestResult, SessionStateTracker, embed_with_retry, handle_spawn_result,
-    matches_project_filter, resolve_collection,
+    IngestResult, SessionDoc, SessionStateTracker, flatten_session_result, matches_project_filter,
+    resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
+use crate::crates::vector::ops::{PreparedDoc, chunk_text};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::MultiProgress;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::fs;
 
-pub(super) async fn ingest_gemini_sessions(
+pub(super) async fn collect_gemini_docs(
     cfg: &Config,
     state: &SessionStateTracker,
     multi: &MultiProgress,
-) -> IngestResult<usize> {
+) -> IngestResult<Vec<SessionDoc>> {
     let gemini_root = super::expand_home("~/.gemini");
     let projects_map = load_gemini_projects(&gemini_root).await;
 
@@ -30,46 +30,35 @@ pub(super) async fn ingest_gemini_sessions(
     );
     pb.enable_steady_tick(Duration::from_millis(100));
 
-    let mut total = 0;
-    let mut futures = FuturesUnordered::new();
-    let cfg_arc = Arc::new(cfg.clone());
+    let mut docs: Vec<SessionDoc> = Vec::new();
+    let mut futures: GeminiFutures = FuturesUnordered::new();
 
     for root in [gemini_root.join("history"), gemini_root.join("tmp")] {
         if !fs::try_exists(&root).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_dir(
-            cfg,
-            &cfg_arc,
-            state,
-            &projects_map,
-            root,
-            &mut futures,
-            &mut total,
-        )
-        .await?;
+        enqueue_gemini_dir(cfg, state, &projects_map, root, &mut futures, &mut docs).await?;
     }
 
     while let Some(res) = futures.next().await {
-        total += handle_spawn_result(res, state, "Gemini").await;
+        if let Some(doc) = flatten_session_result(res, "Gemini") {
+            docs.push(doc);
+        }
     }
 
-    pb.finish_with_message(format!("indexed {} chunks", total));
-    Ok(total)
+    pb.finish_with_message(format!("scanned {} files", docs.len()));
+    Ok(docs)
 }
 
-type GeminiFutures = FuturesUnordered<
-    tokio::task::JoinHandle<(PathBuf, std::time::SystemTime, u64, IngestResult<usize>)>,
->;
+type GeminiFutures = FuturesUnordered<tokio::task::JoinHandle<IngestResult<Option<SessionDoc>>>>;
 
 async fn enqueue_gemini_dir(
     cfg: &Config,
-    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     projects_map: &HashMap<String, String>,
     root: PathBuf,
     futures: &mut GeminiFutures,
-    total: &mut usize,
+    docs: &mut Vec<SessionDoc>,
 ) -> IngestResult<()> {
     let mut read_dir = fs::read_dir(root).await?;
     while let Some(entry) = read_dir.next_entry().await? {
@@ -101,7 +90,7 @@ async fn enqueue_gemini_dir(
         if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_chat_files(cfg_arc, state, chats_dir, collection, futures, total).await?;
+        enqueue_gemini_chat_files(state, chats_dir, collection, futures, docs).await?;
     }
     Ok(())
 }
@@ -124,12 +113,11 @@ async fn resolve_project_name(
 }
 
 async fn enqueue_gemini_chat_files(
-    cfg_arc: &Arc<Config>,
     state: &SessionStateTracker,
     chats_dir: PathBuf,
     collection: String,
     futures: &mut GeminiFutures,
-    total: &mut usize,
+    docs: &mut Vec<SessionDoc>,
 ) -> IngestResult<()> {
     let mut chats_read = fs::read_dir(chats_dir).await?;
     while let Some(chat_entry) = chats_read.next_entry().await? {
@@ -152,18 +140,17 @@ async fn enqueue_gemini_chat_files(
             continue;
         }
 
-        let cfg_shared = Arc::clone(cfg_arc);
         let coll_clone = collection.clone();
         let size = meta.len();
         futures.push(tokio::spawn(async move {
-            let res = process_gemini_file(&cfg_shared, chat_path.clone(), coll_clone).await;
-            (chat_path, mtime, size, res)
+            process_gemini_file(chat_path, coll_clone, mtime, size).await
         }));
 
         if futures.len() >= 32
             && let Some(res) = futures.next().await
+            && let Some(doc) = flatten_session_result(res, "Gemini")
         {
-            *total += handle_spawn_result(res, state, "Gemini").await;
+            docs.push(doc);
         }
     }
     Ok(())
@@ -189,19 +176,51 @@ async fn load_gemini_projects(root: &Path) -> HashMap<String, String> {
 }
 
 async fn process_gemini_file(
-    cfg: &Config,
     path: PathBuf,
     collection: String,
-) -> IngestResult<usize> {
+    mtime: SystemTime,
+    size: u64,
+) -> IngestResult<Option<SessionDoc>> {
     let content = fs::read_to_string(&path).await?;
     let session_text = parse_gemini_json(&content)?;
-
-    let mut session_cfg = cfg.clone();
-    session_cfg.collection = collection;
-
+    if session_text.trim().is_empty() {
+        return Ok(None);
+    }
+    let chunks = chunk_text(&session_text);
+    if chunks.is_empty() {
+        return Ok(None);
+    }
     let url = format!("file://{}", path.display());
-    let title = path.file_name().and_then(|n| n.to_str());
-    embed_with_retry(&session_cfg, &session_text, &url, "gemini_session", title).await
+    let title = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_string);
+    let session_id = path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .map(str::to_string);
+    let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
+    let extra = serde_json::json!({
+        "agent": "gemini",
+        "session_id": session_id,
+        "session_date": mtime_chrono.to_rfc3339(),
+    });
+    let doc = PreparedDoc {
+        url,
+        domain: "localhost".to_string(),
+        chunks,
+        source_type: "sessions".to_string(),
+        content_type: "text",
+        title,
+        extra: Some(extra),
+    };
+    Ok(Some(SessionDoc {
+        doc,
+        collection,
+        path,
+        mtime,
+        size,
+    }))
 }
 
 /// Parse Gemini chat JSON into session text (pure, no I/O).

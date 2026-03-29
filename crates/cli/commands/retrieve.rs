@@ -7,7 +7,10 @@ use std::error::Error;
 
 pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let target = cfg.positional.first().ok_or("retrieve requires URL")?;
-    log_info(&format!("command=retrieve url={target}"));
+    // TODO: cfg.quiet — suppress progress log when quiet mode lands
+    if !cfg.json_output {
+        log_info(&format!("command=retrieve url={target}"));
+    }
 
     let opts = RetrieveOptions { max_points: None };
     let result = query_svc::retrieve(cfg, target, opts).await?;
@@ -21,8 +24,10 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .unwrap_or("");
 
     if chunk_count == 0 {
-        println!("No content found for URL: {target}");
-        return Ok(());
+        return Err(format!(
+            "no content found for URL: {target} — run 'axon sources' to list indexed URLs"
+        )
+        .into());
     }
 
     if cfg.json_output {

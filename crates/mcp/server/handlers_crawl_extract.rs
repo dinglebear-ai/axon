@@ -1,7 +1,7 @@
 use super::AxonMcpServer;
 use super::common::{
-    apply_crawl_overrides, invalid_params, logged_internal_error, parse_job_id, parse_limit,
-    parse_offset, respond_with_mode, validate_mcp_urls,
+    InlineHint, apply_crawl_overrides, invalid_params, logged_internal_error, parse_job_id,
+    parse_limit, parse_offset, respond_with_mode, validate_mcp_urls,
 };
 use crate::crates::core::config::Config;
 use crate::crates::mcp::schema::{
@@ -83,6 +83,7 @@ impl AxonMcpServer {
             response_mode,
             "crawl-list",
             serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
         )
         .await
     }
@@ -148,6 +149,7 @@ impl AxonMcpServer {
             response_mode,
             "extract-list",
             serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
         )
         .await
     }
@@ -268,6 +270,7 @@ impl AxonMcpServer {
                     response_mode,
                     &format!("extract-status-{id}"),
                     serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
                 )
                 .await
             }

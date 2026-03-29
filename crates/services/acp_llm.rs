@@ -4,10 +4,13 @@
 //! - **One-shot** ([`complete_text`], [`complete_streaming`]): spawns a fresh adapter per request.
 //! - **Pre-warmed** ([`warm_session`]): starts the adapter eagerly so the first prompt has no cold-start.
 
+mod pool;
 mod runner;
 mod types;
 mod warm;
+mod ws_runner;
 
+pub use pool::{init_warm_pool, pool_size};
 pub use types::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, extract_completion_result, normalize_stream_flag,
@@ -23,6 +26,10 @@ pub async fn complete_text(
     cfg: &Config,
     req: AcpCompletionRequest,
 ) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
+    if cfg.acp_ws_url.is_some() {
+        let runner = ws_runner::AcpWsCompletionRunner::from_config(cfg)?;
+        return complete_text_with_runner(&runner, req).await;
+    }
     let runner = AcpRuntimeCompletionRunner::from_config(cfg)?;
     complete_text_with_runner(&runner, req).await
 }
@@ -35,6 +42,10 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
+    if cfg.acp_ws_url.is_some() {
+        let runner = ws_runner::AcpWsCompletionRunner::from_config(cfg)?;
+        return complete_streaming_with_runner(&runner, req, on_delta).await;
+    }
     let runner = AcpRuntimeCompletionRunner::from_config(cfg)?;
     complete_streaming_with_runner(&runner, req, on_delta).await
 }

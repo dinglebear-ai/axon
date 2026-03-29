@@ -26,8 +26,8 @@ impl PhaseReporter {
     /// Send an arbitrary progress JSON blob.
     pub async fn report(&self, progress: serde_json::Value) {
         let Some(tx) = &self.tx else { return };
-        if let Err(e) = tx.send(progress).await {
-            log_warn(&format!("progress_send_failed err={e}"));
+        if let Err(e) = tx.try_send(progress) {
+            log_warn(&format!("progress_send_dropped err={e}"));
         }
     }
 

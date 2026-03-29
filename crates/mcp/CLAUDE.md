@@ -24,7 +24,6 @@ mcp/
     ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research, screenshot
     ├── handlers_refresh_status.rs  # refresh + status action handlers
     ├── handlers_system.rs          # doctor, domains, sources, stats, artifacts, help
-    └── oauth_google/               # Google OAuth2 integration
 ```
 
 ## Source-of-Truth References

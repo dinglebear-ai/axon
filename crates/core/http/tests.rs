@@ -291,26 +291,34 @@ mod tests {
         );
     }
 
-    /// Documents the DNS rebinding TOCTOU residual risk in `validate_url()`.
+    /// Documents that `validate_url()` performs parse-time checks while
+    /// `SsrfBlockingResolver` handles the connect-time TOCTOU window.
+    ///
+    /// Both layers are required: `validate_url()` blocks literal IPs and hostile TLDs
+    /// immediately (no DNS roundtrip needed); `SsrfBlockingResolver` catches any
+    /// hostname that resolves to a private IP at the moment reqwest dials.
     #[test]
-    fn dns_rebinding_toctou_documents_residual_risk() {
+    fn dns_rebinding_toctou_is_mitigated_by_resolver() {
+        // A public hostname passes parse-time validation. In production builds,
+        // SsrfBlockingResolver then validates the resolved IP at connect time.
         assert!(
             validate_url("https://attacker-controlled.example.com/").is_ok(),
-            "public hostname should pass — DNS rebinding cannot be caught at parse time"
+            "public hostname should pass parse-time check"
         );
+        // Direct private IPs are caught at parse time, before any DNS lookup.
         assert!(
             validate_url("http://127.0.0.1/").is_err(),
-            "direct private IP must still be blocked"
+            "direct loopback must be blocked at parse time"
         );
         assert!(
             validate_url("http://[::1]/").is_err(),
-            "direct loopback IPv6 must still be blocked"
+            "direct loopback IPv6 must be blocked at parse time"
         );
     }
 
-    /// Verifies that a public IP passes validation — documents the TOCTOU window.
+    /// Verifies that public IPs pass and private IPs fail parse-time validation.
     #[test]
-    fn validate_url_accepts_public_ip_but_documents_rebinding_risk() {
+    fn validate_url_accepts_public_ip_rejects_private() {
         assert!(
             validate_url("http://93.184.216.34/").is_ok(),
             "public IP should pass validation"

@@ -154,7 +154,9 @@ async fn handle_refresh_list(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let jobs = job_service::list_jobs(service_context, JobKind::Refresh, 50, 0).await?;
-    handle_job_list(cfg, jobs, "Refresh")
+    let total = jobs.len() as i64;
+    let result = crate::crates::services::types::JobListResult::new(jobs, total, 50, 0);
+    handle_job_list(cfg, &result, "Refresh")
 }
 
 async fn handle_refresh_cleanup(

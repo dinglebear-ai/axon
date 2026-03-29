@@ -1,7 +1,8 @@
 use super::AxonMcpServer;
 use super::artifacts::{
-    artifact_root, clean_artifact_files, client_context_name, delete_artifact_file, line_count,
-    list_artifact_files, respond_with_mode, search_artifact_files, validate_artifact_path,
+    InlineHint, artifact_root, clean_artifact_files, client_context_name, delete_artifact_file,
+    line_count, list_artifact_files, respond_with_mode, search_artifact_files,
+    validate_artifact_path,
 };
 use super::common::{
     MCP_TOOL_SCHEMA_URI, internal_error, invalid_params, logged_internal_error, parse_limit_usize,
@@ -149,8 +150,15 @@ impl AxonMcpServer {
                 let limit = parse_limit_usize(req.limit, 50, 500);
                 let offset = parse_offset(req.offset);
                 let result = list_artifact_files(limit, offset).await?;
-                respond_with_mode("artifacts", "list", response_mode, "artifacts-list", result)
-                    .await
+                respond_with_mode(
+                    "artifacts",
+                    "list",
+                    response_mode,
+                    "artifacts-list",
+                    result,
+                    InlineHint::Default,
+                )
+                .await
             }
             ArtifactsSubaction::Search => {
                 let pattern = req
@@ -165,6 +173,7 @@ impl AxonMcpServer {
                     response_mode,
                     "artifacts-search",
                     result,
+                    InlineHint::Default,
                 )
                 .await
             }
@@ -300,6 +309,7 @@ impl AxonMcpServer {
                     "artifact_context": client_context_name()
                 }
             }),
+            InlineHint::Default,
         )
         .await
     }
@@ -312,7 +322,15 @@ impl AxonMcpServer {
         let result = system::doctor(self.cfg.as_ref())
             .await
             .map_err(|e| logged_internal_error("doctor", e.as_ref()))?;
-        respond_with_mode("doctor", "doctor", response_mode, "doctor", result.payload).await
+        respond_with_mode(
+            "doctor",
+            "doctor",
+            response_mode,
+            "doctor",
+            result.payload,
+            InlineHint::Default,
+        )
+        .await
     }
 
     pub(super) async fn handle_domains(
@@ -332,7 +350,15 @@ impl AxonMcpServer {
                 "vectors": d.vectors,
             })).collect::<Vec<_>>(),
         });
-        respond_with_mode("domains", "domains", response_mode, "domains", payload).await
+        respond_with_mode(
+            "domains",
+            "domains",
+            response_mode,
+            "domains",
+            payload,
+            InlineHint::Default,
+        )
+        .await
     }
 
     pub(super) async fn handle_sources(
@@ -351,7 +377,15 @@ impl AxonMcpServer {
             // Chunk counts are available in SourcesResult but excluded from the wire response.
             "urls": result.urls.iter().map(|(url, _chunks)| url).collect::<Vec<_>>(),
         });
-        respond_with_mode("sources", "sources", response_mode, "sources", payload).await
+        respond_with_mode(
+            "sources",
+            "sources",
+            response_mode,
+            "sources",
+            payload,
+            InlineHint::Default,
+        )
+        .await
     }
 
     pub(super) async fn handle_stats(
@@ -362,7 +396,15 @@ impl AxonMcpServer {
         let result = system::stats(self.cfg.as_ref())
             .await
             .map_err(|e| logged_internal_error("stats", e.as_ref()))?;
-        respond_with_mode("stats", "stats", response_mode, "stats", result.payload).await
+        respond_with_mode(
+            "stats",
+            "stats",
+            response_mode,
+            "stats",
+            result.payload,
+            InlineHint::Default,
+        )
+        .await
     }
 
     pub(super) async fn handle_export(
@@ -383,6 +425,14 @@ impl AxonMcpServer {
             .map_err(|e| logged_internal_error("export", e.as_ref()))?;
         let payload =
             serde_json::to_value(manifest).map_err(|e| logged_internal_error("export", &e))?;
-        respond_with_mode("export", "export", req.response_mode, "export", payload).await
+        respond_with_mode(
+            "export",
+            "export",
+            req.response_mode,
+            "export",
+            payload,
+            InlineHint::Default,
+        )
+        .await
     }
 }

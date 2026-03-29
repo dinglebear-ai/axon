@@ -214,6 +214,8 @@ fn unknown_session_update_produces_unknown_wire_type_not_status() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
+        message_id: None,
     });
 
     let json = serde_json::to_value(&event).unwrap();
@@ -241,6 +243,8 @@ fn plan_session_update_falls_through_as_status_wire_type() {
         tool_content: None,
         tool_input: None,
         tool_locations: None,
+        kind_detail: None,
+        message_id: None,
     });
 
     let json = serde_json::to_value(&event).unwrap();
@@ -288,7 +292,7 @@ fn session_info_update_maps_to_session_info_update_bridge_event() {
     let event = map_session_notification_event(&notification);
     match event {
         ServiceEvent::AcpBridge {
-            event: AcpBridgeEvent::SessionInfoUpdate { session_id },
+            event: AcpBridgeEvent::SessionInfoUpdate { session_id, .. },
         } => {
             assert_eq!(session_id, "test-session-id");
         }

@@ -334,5 +334,3 @@ export const TerminalEmulator = forwardRef<TerminalHandle, TerminalEmulatorProps
 
 // Named alias for dynamic import in the wrapper
 export { TerminalEmulator as TerminalEmulatorInner }
-
-export default TerminalEmulator

@@ -10,7 +10,7 @@ use crate::crates::jobs::backend::JobKind;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::extract as extract_service;
 use crate::crates::services::jobs as job_service;
-use crate::crates::services::types::StartDisposition;
+use crate::crates::services::types::{JobListResult, StartDisposition};
 use std::error::Error;
 use uuid::Uuid;
 
@@ -77,7 +77,9 @@ async fn maybe_handle_extract_subcommand(
         }
         "list" => {
             let jobs = job_service::list_jobs(service_context, JobKind::Extract, 50, 0).await?;
-            handle_job_list(cfg, jobs, "Extract")?;
+            let total = jobs.len() as i64;
+            let result = JobListResult::new(jobs, total, 50, 0);
+            handle_job_list(cfg, &result, "Extract")?;
         }
         "cleanup" => {
             let removed = job_service::cleanup_jobs(service_context, JobKind::Extract).await?;

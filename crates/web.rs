@@ -242,6 +242,7 @@ async fn serve_output_file(
         &req_headers,
         params.token.as_deref(),
         state.api_token.as_deref(),
+        None,
     );
     if matches!(auth, AuthOutcome::Denied(_)) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
@@ -343,6 +344,7 @@ async fn ws_upgrade(
         &headers,
         params.token.as_deref(),
         state.api_token.as_deref(),
+        Some(addr.ip()),
     );
 
     let log_msg = auth_log_message(&outcome, addr);
@@ -413,6 +415,7 @@ async fn shell_ws_upgrade(
         &headers,
         params.token.as_deref(),
         state.api_token.as_deref(),
+        Some(addr.ip()),
     );
     let log_msg = auth_log_message(&outcome, addr);
     match &outcome {

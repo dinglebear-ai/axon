@@ -14,6 +14,7 @@ use axon::crates::services::system::{
 };
 use axon::crates::services::types::{
     DoctorResult, DomainFacet, DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
+    StatusTotals,
 };
 
 // ── SourcesResult shape ───────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ fn status_result_payload_and_text_are_both_present() {
     let result = StatusResult {
         payload: payload.clone(),
         text: text.clone(),
+        totals: StatusTotals::default(),
     };
     assert!(result.payload.get("local_crawl_jobs").is_some());
     assert!(result.text.contains("Axon Status"));

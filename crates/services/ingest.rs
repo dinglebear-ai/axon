@@ -4,14 +4,16 @@ use crate::crates::ingest::progress::PhaseReporter;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::ingest::types::{source_type_label, target_label};
 pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
-use crate::crates::jobs::ingest::{get_ingest_job, list_ingest_jobs, start_ingest_job};
+use crate::crates::jobs::ingest::{
+    count_ingest_jobs, get_ingest_job, list_ingest_jobs, start_ingest_job,
+};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
-    ExecutionMode, IngestJobResult, IngestResult, IngestStartResult, JobStartOutcome,
-    StartDisposition,
+    ExecutionMode, IngestJobResult, IngestResult, IngestStartResult, JobListResult,
+    JobStartOutcome, StartDisposition,
 };
 use std::error::Error;
 use tokio::sync::mpsc;
@@ -115,6 +117,10 @@ pub async fn ingest_recover(service_context: &ServiceContext) -> Result<u64, Box
     job_service::recover_jobs(service_context, JobKind::Ingest).await
 }
 
+pub async fn ingest_count(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    count_ingest_jobs(cfg).await
+}
+
 pub async fn ingest_status_raw(
     cfg: &Config,
     id: Uuid,
@@ -126,8 +132,14 @@ pub async fn ingest_list_raw(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<Vec<IngestJob>, Box<dyn Error>> {
-    list_ingest_jobs(cfg, None, limit, offset).await
+) -> Result<JobListResult<IngestJob>, Box<dyn Error>> {
+    let (jobs, total) = tokio::join!(
+        list_ingest_jobs(cfg, None, limit, offset),
+        count_ingest_jobs(cfg),
+    );
+    let jobs = jobs?;
+    let total = total.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn ingest_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
@@ -144,6 +156,7 @@ pub async fn ingest_worker(service_context: &ServiceContext) -> Result<(), Box<d
 /// Calls `ingest::github::ingest_github` which performs the fetch and embed
 /// synchronously. For async/fire-and-forget behaviour use the job queue via
 /// the ingest CLI command.
+#[must_use = "ingest_github returns a Result that should be handled"]
 pub async fn ingest_github(
     cfg: &Config,
     owner: &str,
@@ -192,6 +205,7 @@ pub async fn ingest_github(
 /// Ingest a Reddit subreddit or thread into the vector store.
 ///
 /// `target` may be a subreddit name (e.g. `"rust"`) or a full thread URL.
+#[must_use = "ingest_reddit returns a Result that should be handled"]
 pub async fn ingest_reddit(
     cfg: &Config,
     target: &str,
@@ -234,6 +248,7 @@ pub async fn ingest_reddit(
 ///
 /// `url` may be a single video URL, a bare video ID, a playlist URL
 /// (`youtube.com/playlist?list=...`), or a channel URL (`/@handle`, `/c/`, `/channel/`).
+#[must_use = "ingest_youtube returns a Result that should be handled"]
 pub async fn ingest_youtube(
     cfg: &Config,
     url: &str,
@@ -276,6 +291,7 @@ pub async fn ingest_youtube(
 ///
 /// Session sources and paths are read from cfg (sessions_claude, sessions_codex,
 /// sessions_gemini, sessions_project).
+#[must_use = "ingest_sessions returns a Result that should be handled"]
 pub async fn ingest_sessions(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,

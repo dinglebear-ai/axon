@@ -6,12 +6,12 @@ use crate::crates::core::content::url_to_domain;
 use crate::crates::core::http::validate_url;
 use crate::crates::crawl::manifest::read_manifest_urls;
 use crate::crates::jobs::refresh::{
-    cancel_refresh_job, cleanup_refresh_jobs, clear_refresh_jobs, get_refresh_job,
-    list_refresh_jobs, recover_stale_refresh_jobs, run_refresh_once, run_refresh_worker,
-    start_refresh_job,
+    cancel_refresh_job, cleanup_refresh_jobs, clear_refresh_jobs, count_refresh_jobs,
+    get_refresh_job, list_refresh_jobs, recover_stale_refresh_jobs, run_refresh_once,
+    run_refresh_worker, start_refresh_job,
 };
 use crate::crates::services::types::{
-    RefreshJobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
+    JobListResult, RefreshJobResult, RefreshRunResult, RefreshStartResult,
 };
 pub use refresh_schedule::{
     RefreshScheduleDueSweep, refresh_claim_due_schedules, refresh_ensure_schema,
@@ -61,9 +61,12 @@ pub async fn refresh_list(
     cfg: &Config,
     limit: i64,
     offset: i64,
-) -> Result<RefreshJobListResult, Box<dyn Error>> {
+) -> Result<JobListResult<RefreshJob>, Box<dyn Error>> {
+    // Run sequentially to preserve Send-ness required by the MCP #[tool] macro.
+    // Box<dyn Error> is !Send, so tokio::join! would make the combined future !Send.
     let jobs = list_refresh_jobs(cfg, limit, offset).await?;
-    Ok(RefreshJobListResult { jobs })
+    let total = count_refresh_jobs(cfg).await.unwrap_or(jobs.len() as i64);
+    Ok(JobListResult::new(jobs, total, limit, offset))
 }
 
 pub async fn refresh_cancel(cfg: &Config, job_id: Uuid) -> Result<bool, Box<dyn Error>> {
@@ -181,7 +184,7 @@ pub async fn resolve_refresh_schedule_urls(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::services::types::{RefreshJobListResult, RefreshJobResult};
+    use crate::crates::services::types::RefreshJobResult;
     use chrono::{TimeZone, Utc};
 
     fn test_refresh_job() -> RefreshJob {
@@ -211,12 +214,11 @@ mod tests {
         let status = RefreshJobResult {
             job: Some(job.clone()),
         };
-        let list = RefreshJobListResult {
-            jobs: vec![job.clone()],
-        };
+        let list = JobListResult::new(vec![job.clone()], 1, 50, 0);
 
         assert_eq!(status.job.expect("job").id, job.id);
         assert_eq!(list.jobs.len(), 1);
         assert_eq!(list.jobs[0].id, job.id);
+        assert!(!list.is_truncated());
     }
 }

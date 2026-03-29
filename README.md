@@ -231,9 +231,7 @@ Migration note:
 
 ### Web App Security (`apps/web`)
 
-Full auth documentation (API token, shell token, MCP OAuth): **[`docs/auth/`](docs/auth/README.md)**
-
-Auth is enforced by `apps/web/proxy.ts` on all `/api/*` routes. Token required in `Authorization: Bearer <token>` or `x-api-key` header.
+Auth is enforced externally by an OAuth gateway + SWAG reverse proxy. Token required in `Authorization: Bearer <token>` or `x-api-key` header for `/api/*` routes.
 
 | Variable | Description |
 |----------|-------------|

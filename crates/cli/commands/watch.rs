@@ -99,22 +99,38 @@ pub async fn run_watch(
             println!("{}", serde_json::to_string_pretty(&runs)?);
         }
         WatchRuntimeSubcommand::Get { .. } => {
-            return Err(anyhow::anyhow!("watch get is not yet implemented").into());
+            return Err(
+                "'axon watch get' is not yet implemented — use 'axon watch list' to view all watches".into()
+            );
         }
         WatchRuntimeSubcommand::Update { .. } => {
-            return Err(anyhow::anyhow!("watch update is not yet implemented").into());
+            return Err(
+                "'axon watch update' is not yet implemented — cancel and re-create the watch with new settings".into()
+            );
         }
         WatchRuntimeSubcommand::Pause { .. } => {
-            return Err(anyhow::anyhow!("watch pause is not yet implemented").into());
+            return Err(
+                "'axon watch pause' is not yet implemented — delete and re-create with 'axon watch create'".into()
+            );
         }
         WatchRuntimeSubcommand::Resume { .. } => {
-            return Err(anyhow::anyhow!("watch resume is not yet implemented").into());
+            return Err(
+                "'axon watch resume' is not yet implemented — delete and re-create with 'axon watch create'".into()
+            );
         }
         WatchRuntimeSubcommand::Delete { .. } => {
-            return Err(anyhow::anyhow!("watch delete is not yet implemented").into());
+            return Err(
+                "'axon watch delete' is not yet implemented — once implemented, \
+                 use 'axon watch delete <id>' to safely remove a watch definition. \
+                 Direct Postgres manipulation (DELETE FROM axon_watch_definitions) is a last resort \
+                 and requires schema knowledge; ensure no running jobs reference the definition \
+                 before deleting, and only do this if you understand the table relationships.".into()
+            );
         }
         WatchRuntimeSubcommand::Artifacts { .. } => {
-            return Err(anyhow::anyhow!("watch artifacts is not yet implemented").into());
+            return Err(
+                "'axon watch artifacts' is not yet implemented — use 'axon watch history <id>' to view run history".into()
+            );
         }
     }
     Ok(())
