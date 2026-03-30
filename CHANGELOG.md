@@ -1,5 +1,19 @@
 # Changelog
-Last Modified: 2026-03-29 (session: v0.33.9 — PR #60 simplification pass)
+Last Modified: 2026-03-30 (session: v0.33.10 — inline GPU + CDI deadlock fix)
+
+## [0.33.10] — feat/lite-mode
+
+### Highlights
+
+- **GPU inlined into `docker-compose.services.yaml`** — `axon-tei` and `axon-ollama` now have `deploy.resources.reservations.devices` directly; no more `-f docker-compose.gpu.yaml` overlay needed.
+- **`docker-compose.gpu.yaml` removed** — `just services-up` starts the full GPU-enabled stack with no extra flags.
+- **CDI deadlock fix** — `nvidia-cdi-refresh.service`/`.path` masked; Docker `daemon.json` CDI feature flag removed; `nvidia-container-runtime` set to `legacy` mode. Eliminates `uvm_gpu_retain_by_uuid` deadlock on RTX 4070 + driver 590 + kernel 6.17.
+
+### Commits since v0.33.9
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | chore | inline GPU into services compose; remove gpu overlay; fix CDI deadlock |
 
 ## [0.33.9] — feat/lite-mode
 
