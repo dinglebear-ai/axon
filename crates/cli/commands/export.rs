@@ -12,9 +12,14 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
         let report = verify_manifest_json(&raw)?;
         if cfg.json_output {
             println!("{}", serde_json::to_string_pretty(&report)?);
-            if report.valid {
-                return Ok(());
-            }
+        } else if report.valid {
+            log_done(&format!(
+                "export verify passed path={} schema_version={}",
+                path.display(),
+                report.version.unwrap_or_default()
+            ));
+        }
+        if !report.valid {
             return Err(format!(
                 "export verify failed path={} missing_keys={} parse_error={} hash_mismatches={} count_mismatches={}",
                 path.display(),
@@ -25,23 +30,7 @@ pub async fn run_export(cfg: &Config) -> Result<(), Box<dyn Error>> {
             )
             .into());
         }
-        if report.valid {
-            log_done(&format!(
-                "export verify passed path={} schema_version={}",
-                path.display(),
-                report.version.unwrap_or_default()
-            ));
-            return Ok(());
-        }
-        return Err(format!(
-            "export verify failed path={} missing_keys={} parse_error={} hash_mismatches={} count_mismatches={}",
-            path.display(),
-            report.missing_required_keys.len(),
-            report.parse_error.as_deref().unwrap_or("none"),
-            report.hash_mismatches.len(),
-            report.count_mismatches.len(),
-        )
-        .into());
+        return Ok(());
     }
 
     let options = ExportOptions {

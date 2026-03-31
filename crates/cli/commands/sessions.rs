@@ -24,16 +24,10 @@ pub async fn run_sessions(
         return ingest_common::enqueue_ingest_job(cfg, source, service_context).await;
     }
 
-    run_ingest_sync(cfg, source).await
+    run_ingest_sync(cfg).await
 }
 
-async fn run_ingest_sync(cfg: &Config, source: IngestSource) -> Result<(), Box<dyn Error>> {
-    let IngestSource::Sessions { .. } = source else {
-        // NOTE: This branch is unreachable for current callers but guards against
-        // future callers passing the wrong IngestSource variant.
-        return Err(anyhow::anyhow!("sessions: expected Sessions source, got {:?}", source).into());
-    };
-
+async fn run_ingest_sync(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = ingest_service::ingest_sessions(cfg, None).await?;
     let chunks = result.payload["chunks"]
         .as_u64()

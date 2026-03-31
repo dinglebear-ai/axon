@@ -4,7 +4,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::JobPayload;
+use crate::crates::jobs::backend::{JobPayload, lift_err};
 use crate::crates::jobs::lite::ops::enqueue_job;
 
 pub(super) type JobResult =
@@ -24,8 +24,7 @@ pub(super) async fn run_crawl_job_lite(
         return Ok(None);
     };
 
-    crate::crates::core::http::validate_url(&url)
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+    crate::crates::core::http::validate_url(&url).map_err(lift_err)?;
 
     // Derive a per-job output directory to prevent concurrent crawls from clobbering each other.
     let job_output_dir = crate::crates::services::crawl::predict_crawl_output_dir(
@@ -45,7 +44,7 @@ pub(super) async fn run_crawl_job_lite(
         Some(&id.to_string()),
     )
     .await
-    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+    .map_err(lift_err)?;
 
     // Auto-enqueue embed job for the crawled output when embedding is enabled.
     let embed_job_id = if cfg.embed && summary.markdown_files > 0 {
@@ -100,7 +99,7 @@ pub(super) async fn run_embed_job_lite(
     worker_cfg.json_output = false;
     let summary = crate::crates::vector::ops::embed_path_native(&worker_cfg, &input)
         .await
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+        .map_err(lift_err)?;
 
     Ok(Some(serde_json::json!({
         "input": input,
@@ -160,7 +159,7 @@ pub(super) async fn run_extract_job_lite(
         };
         let run = crate::crates::core::content::run_extract_with_engine(wcfg, Arc::clone(&engine))
             .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+            .map_err(lift_err)?;
         total_items += run.results.len();
     }
 
@@ -204,17 +203,17 @@ pub(super) async fn run_ingest_job_lite(
             github_cfg.github_include_source = include_source;
             crate::crates::services::ingest::ingest_github(&github_cfg, &owner, &repo_name, None)
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+                .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Reddit { target } => {
             crate::crates::services::ingest::ingest_reddit(cfg, &target, None)
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+                .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Youtube { target } => {
             crate::crates::services::ingest::ingest_youtube(cfg, &target, None)
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+                .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Sessions {
             sessions_claude,
@@ -229,7 +228,7 @@ pub(super) async fn run_ingest_job_lite(
             sessions_cfg.sessions_project = sessions_project;
             crate::crates::services::ingest::ingest_sessions(&sessions_cfg, None)
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+                .map_err(lift_err)?
         }
     };
 
@@ -250,8 +249,7 @@ pub(super) async fn run_refresh_job_lite(
         return Ok(None);
     };
 
-    crate::crates::core::http::validate_url(&url)
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+    crate::crates::core::http::validate_url(&url).map_err(lift_err)?;
 
     // Derive a per-job output directory to prevent concurrent refresh jobs from clobbering each other.
     let job_output_dir = crate::crates::services::crawl::predict_crawl_output_dir(
@@ -271,7 +269,7 @@ pub(super) async fn run_refresh_job_lite(
         None,
     )
     .await
-    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+    .map_err(lift_err)?;
 
     Ok(Some(serde_json::json!({
         "url": url,
@@ -310,12 +308,12 @@ pub(super) async fn run_graph_job_lite(
         .to_string();
 
     let neo4j = crate::crates::core::neo4j::Neo4jClient::from_config(cfg)
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?
+        .map_err(lift_err)?
         .ok_or("graph jobs require AXON_NEO4J_URL")?;
 
     let taxonomy =
         crate::crates::jobs::graph::taxonomy::Taxonomy::resolve(&cfg.graph_taxonomy_path)
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+            .map_err(lift_err)?;
 
     let result = crate::crates::jobs::graph::worker::process_graph_url(
         cfg,
@@ -325,7 +323,7 @@ pub(super) async fn run_graph_job_lite(
         &source_type,
     )
     .await
-    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
+    .map_err(lift_err)?;
 
     Ok(Some(result))
 }

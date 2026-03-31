@@ -204,11 +204,11 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
             let metrics = job.result_json.as_ref()?;
             let crawled = metrics
                 .get("pages_crawled")
-                .and_then(|v: &serde_json::Value| v.as_u64())
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             let docs = metrics
                 .get("md_created")
-                .and_then(|v: &serde_json::Value| v.as_u64())
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             if crawled == 0 && docs == 0 {
                 return None;
@@ -223,11 +223,11 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
             let metrics = job.result_json.as_ref()?;
             let docs = metrics
                 .get("md_created")
-                .and_then(|v: &serde_json::Value| v.as_u64())
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             let elapsed_ms = metrics
                 .get("elapsed_ms")
-                .and_then(|v: &serde_json::Value| v.as_u64())
+                .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             let time = if elapsed_ms >= 1000 {
                 format!("{:.1}s", elapsed_ms as f64 / 1000.0)

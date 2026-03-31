@@ -168,72 +168,39 @@ type ServiceJobTuple = (
     Option<String>,
 );
 
-fn list_service_query(kind: crate::crates::jobs::backend::JobKind) -> &'static str {
+/// Returns the per-kind `SELECT … FROM <table>` fragment (no trailing clause).
+/// The caller appends either a `WHERE id = ?` or `ORDER BY … LIMIT … OFFSET …`.
+fn service_select_from(kind: crate::crates::jobs::backend::JobKind) -> &'static str {
     match kind {
         crate::crates::jobs::backend::JobKind::Crawl => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_crawl_jobs ORDER BY created_at DESC, id"
+             FROM axon_crawl_jobs"
         }
         crate::crates::jobs::backend::JobKind::Embed => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json \
-             FROM axon_embed_jobs ORDER BY created_at DESC, id"
+             FROM axon_embed_jobs"
         }
         crate::crates::jobs::backend::JobKind::Extract => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json \
-             FROM axon_extract_jobs ORDER BY created_at DESC, id"
+             FROM axon_extract_jobs"
         }
         crate::crates::jobs::backend::JobKind::Ingest => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
-             FROM axon_ingest_jobs ORDER BY created_at DESC, id"
+             FROM axon_ingest_jobs"
         }
         crate::crates::jobs::backend::JobKind::Refresh => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
-             FROM axon_refresh_jobs ORDER BY created_at DESC, id"
+             FROM axon_refresh_jobs"
         }
         crate::crates::jobs::backend::JobKind::Graph => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_graph_jobs ORDER BY created_at DESC, id"
-        }
-    }
-}
-
-fn status_service_query(kind: crate::crates::jobs::backend::JobKind) -> &'static str {
-    match kind {
-        crate::crates::jobs::backend::JobKind::Crawl => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_crawl_jobs WHERE id = ?"
-        }
-        crate::crates::jobs::backend::JobKind::Embed => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json \
-             FROM axon_embed_jobs WHERE id = ?"
-        }
-        crate::crates::jobs::backend::JobKind::Extract => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json \
-             FROM axon_extract_jobs WHERE id = ?"
-        }
-        crate::crates::jobs::backend::JobKind::Ingest => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
-             FROM axon_ingest_jobs WHERE id = ?"
-        }
-        crate::crates::jobs::backend::JobKind::Refresh => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
-             FROM axon_refresh_jobs WHERE id = ?"
-        }
-        crate::crates::jobs::backend::JobKind::Graph => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_graph_jobs WHERE id = ?"
+             FROM axon_graph_jobs"
         }
     }
 }
@@ -296,8 +263,8 @@ pub async fn list_service_jobs(
     offset: i64,
 ) -> Result<Vec<ServiceJob>, sqlx::Error> {
     let query = format!(
-        "{} LIMIT {} OFFSET {}",
-        list_service_query(kind),
+        "{} ORDER BY created_at DESC, id LIMIT {} OFFSET {}",
+        service_select_from(kind),
         limit,
         offset
     );
@@ -342,7 +309,8 @@ pub async fn service_job(
     kind: crate::crates::jobs::backend::JobKind,
     id: Uuid,
 ) -> Result<Option<ServiceJob>, sqlx::Error> {
-    let row: Option<ServiceJobTuple> = sqlx::query_as(status_service_query(kind))
+    let query = format!("{} WHERE id = ?", service_select_from(kind));
+    let row: Option<ServiceJobTuple> = sqlx::query_as(&query)
         .bind(id.to_string())
         .fetch_optional(pool)
         .await?;

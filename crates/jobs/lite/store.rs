@@ -47,23 +47,11 @@ pub async fn reclaim_stale_running_jobs(
     pool: &SqlitePool,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
-    let threshold = now_ms() - stale_threshold_ms;
     let mut total: u64 = 0;
-
     for kind in JobKind::all() {
-        let result = sqlx::query(&format!(
-            "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
-             updated_at=? WHERE status='running' AND updated_at < ?",
-            kind.table_name()
-        ))
-        .bind(now_ms())
-        .bind(threshold)
-        .execute(pool)
-        .await?;
-
-        total += result.rows_affected();
+        total += reclaim_stale_running_jobs_for_table(pool, kind.table_name(), stale_threshold_ms)
+            .await?;
     }
-
     Ok(total)
 }
 

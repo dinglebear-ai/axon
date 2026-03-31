@@ -36,7 +36,6 @@ pub fn tokenize_query(text: &str) -> Vec<String> {
 }
 
 pub fn tokenize_text_set(text: &str) -> HashSet<String> {
-    // Build HashSet directly without intermediate Vec allocation (LOW-2).
     text.to_ascii_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|t| t.len() >= 3 && !STOP_WORDS.contains(*t))
@@ -260,6 +259,23 @@ pub fn is_low_signal_url(url: &str) -> bool {
         || lower.contains(".cache/")
         || (!is_web_url && lower.contains("/logs/"))
         || (!is_web_url && lower.ends_with(".log"))
+}
+
+/// Returns `true` when the query explicitly asks for session logs, history, or
+/// similar low-signal sources that are normally filtered from results.
+///
+/// Used by both `query` and `ask` paths to decide whether to bypass
+/// `is_low_signal_url` filtering for a given request.
+pub fn query_wants_low_signal_sources(query_tokens: &[String], raw_query: &str) -> bool {
+    if raw_query.to_ascii_lowercase().contains("docs/sessions") {
+        return true;
+    }
+    query_tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "session" | "sessions" | "log" | "logs" | "history" | "histories"
+        )
+    })
 }
 
 #[cfg(test)]

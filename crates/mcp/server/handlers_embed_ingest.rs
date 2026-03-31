@@ -13,8 +13,8 @@ use crate::crates::services::embed::{
     embed_status,
 };
 use crate::crates::services::ingest::{
-    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_count, ingest_list,
-    ingest_recover, ingest_start_with_context, ingest_status,
+    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
+    ingest_start_with_context, ingest_status,
 };
 use rmcp::ErrorData;
 
@@ -245,8 +245,10 @@ impl AxonMcpServer {
         let result = ingest_list(service_context.as_ref(), limit, offset_i64)
             .await
             .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
-        let total = ingest_count(self.cfg.as_ref()).await.unwrap_or(0);
-        let truncated = total > offset_i64 + limit;
+        // Derive truncation from page fullness — avoids a separate count query
+        // that would bypass the service context and fail in lite mode.
+        let page_len = result.payload.as_array().map_or(0, |a| a.len() as i64);
+        let truncated = page_len >= limit;
         respond_with_mode(
             "ingest",
             "list",
@@ -254,7 +256,6 @@ impl AxonMcpServer {
             "ingest-list",
             serde_json::json!({
                 "jobs": result.payload,
-                "total": total,
                 "limit": limit,
                 "offset": offset,
                 "truncated": truncated,

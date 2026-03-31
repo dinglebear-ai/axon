@@ -175,8 +175,7 @@ async fn handle_watch_create(
 }
 
 async fn handle_watch_run_now(cfg: &Config, raw_id: &str) -> Result<(), Box<dyn Error>> {
-    let raw_id = raw_id.to_string();
-    let watch_id = parse_uuid(Some(&raw_id), "run-now")?;
+    let watch_id = parse_uuid(Some(&raw_id.to_string()), "run-now")?;
     let watch = watch_svc::get_watch_def(cfg, watch_id)
         .await?
         .ok_or("watch not found")?;

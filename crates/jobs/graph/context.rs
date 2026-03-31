@@ -94,7 +94,7 @@ pub async fn build_graph_context(
     cfg: &Config,
     neo4j: &Neo4jClient,
     chunk_texts: &[String],
-) -> Result<GraphContext, Box<dyn std::error::Error>> {
+) -> Result<GraphContext, Box<dyn std::error::Error + Send + Sync>> {
     if chunk_texts.is_empty() {
         return Ok(GraphContext {
             context_text: String::new(),
@@ -104,7 +104,8 @@ pub async fn build_graph_context(
         });
     }
 
-    let taxonomy = Taxonomy::resolve(&cfg.graph_taxonomy_path)?;
+    let taxonomy = Taxonomy::resolve(&cfg.graph_taxonomy_path)
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })?;
 
     let mut entity_names = BTreeSet::new();
     for text in chunk_texts {
@@ -135,8 +136,7 @@ pub async fn build_graph_context(
              ORDER BY size(neighbors) DESC",
             serde_json::json!({ "entity_names": entity_names.into_iter().collect::<Vec<_>>() }),
         )
-        .await
-        .map_err(|e| e as Box<dyn std::error::Error>)?;
+        .await?;
 
     let mut entities = rows
         .into_iter()

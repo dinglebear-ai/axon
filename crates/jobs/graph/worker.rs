@@ -276,7 +276,7 @@ async fn process_graph_job(
 
     let result = process_graph_url(cfg, neo4j, taxonomy, &url, &source_type)
         .await
-        .map_err(|e| e as Box<dyn Error>)?;
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
     let _ = mark_job_completed(pool, TABLE, id, Some(&result)).await?;
 
     log_done(&format!(

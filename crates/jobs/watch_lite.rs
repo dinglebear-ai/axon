@@ -155,6 +155,14 @@ pub async fn create_watch_run(
     dispatched_job_id: Option<Uuid>,
 ) -> Result<WatchRun, Box<dyn Error>> {
     let pool = open_config_pool(cfg).await?;
+    create_watch_run_with_pool(&pool, watch_id, dispatched_job_id).await
+}
+
+async fn create_watch_run_with_pool(
+    pool: &sqlx::SqlitePool,
+    watch_id: Uuid,
+    dispatched_job_id: Option<Uuid>,
+) -> Result<WatchRun, Box<dyn Error>> {
     let id = Uuid::new_v4();
     let now = now_ms();
     let row = sqlx::query_as::<_, WatchRunRow>(
@@ -170,7 +178,7 @@ pub async fn create_watch_run(
     .bind(now)
     .bind(now)
     .bind(now)
-    .fetch_one(&pool)
+    .fetch_one(pool)
     .await?;
     Ok(parse_watch_run_row(row))
 }
@@ -184,6 +192,17 @@ pub async fn finish_watch_run(
     error_text: Option<&str>,
 ) -> Result<bool, Box<dyn Error>> {
     let pool = open_config_pool(cfg).await?;
+    finish_watch_run_with_pool(&pool, watch_id, run_id, status, result_json, error_text).await
+}
+
+async fn finish_watch_run_with_pool(
+    pool: &sqlx::SqlitePool,
+    watch_id: Uuid,
+    run_id: Uuid,
+    status: &str,
+    result_json: Option<&serde_json::Value>,
+    error_text: Option<&str>,
+) -> Result<bool, Box<dyn Error>> {
     let now = now_ms();
     let updated = sqlx::query(
         "UPDATE axon_watch_runs \
@@ -197,7 +216,7 @@ pub async fn finish_watch_run(
     .bind(now)
     .bind(run_id.to_string())
     .bind(watch_id.to_string())
-    .execute(&pool)
+    .execute(pool)
     .await?
     .rows_affected();
 
@@ -214,7 +233,7 @@ pub async fn finish_watch_run(
     .bind(now)
     .bind(now)
     .bind(watch_id.to_string())
-    .execute(&pool)
+    .execute(pool)
     .await?;
 
     Ok(true)
@@ -237,20 +256,23 @@ pub async fn list_watch_runs(
     Ok(rows.into_iter().map(parse_watch_run_row).collect())
 }
 
-async fn get_watch_run(cfg: &Config, run_id: Uuid) -> Result<Option<WatchRun>, Box<dyn Error>> {
-    let pool = open_config_pool(cfg).await?;
+async fn get_watch_run_with_pool(
+    pool: &sqlx::SqlitePool,
+    run_id: Uuid,
+) -> Result<Option<WatchRun>, Box<dyn Error>> {
     let row = sqlx::query_as::<_, WatchRunRow>(
         "SELECT id, watch_id, status, dispatched_job_id, error_text, result_json, started_at, finished_at, created_at, updated_at \
          FROM axon_watch_runs WHERE id = ? LIMIT 1",
     )
     .bind(run_id.to_string())
-    .fetch_optional(&pool)
+    .fetch_optional(pool)
     .await?;
     Ok(row.map(parse_watch_run_row))
 }
 
 pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, Box<dyn Error>> {
-    let run = create_watch_run(cfg, watch.id, None).await?;
+    let pool = open_config_pool(cfg).await?;
+    let run = create_watch_run_with_pool(&pool, watch.id, None).await?;
     let outcome: Result<(), Box<dyn Error>> = match watch.task_type.as_str() {
         "refresh" => {
             let urls = watch
@@ -288,8 +310,8 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
                     "urls": urls,
                     "refreshed": refreshed,
                 });
-                let _ = finish_watch_run(
-                    cfg,
+                let _ = finish_watch_run_with_pool(
+                    &pool,
                     watch.id,
                     run.id,
                     WATCH_RUN_STATUS_COMPLETED,
@@ -304,8 +326,8 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
     };
 
     if let Err(err) = outcome {
-        let _ = finish_watch_run(
-            cfg,
+        let _ = finish_watch_run_with_pool(
+            &pool,
             watch.id,
             run.id,
             WATCH_RUN_STATUS_FAILED,
@@ -316,7 +338,7 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
         return Err(err);
     }
 
-    Ok(get_watch_run(cfg, run.id).await?.unwrap_or(run))
+    Ok(get_watch_run_with_pool(&pool, run.id).await?.unwrap_or(run))
 }
 
 #[cfg(test)]

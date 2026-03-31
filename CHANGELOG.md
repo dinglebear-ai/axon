@@ -1,5 +1,23 @@
 # Changelog
-Last Modified: 2026-03-31 (session: v0.34.0 — WAF diagnostics, enqueue-only LiteBackend, serve preflight auto-terminate)
+Last Modified: 2026-03-31 (session: v0.34.1 — simplification pass: dedup helpers, fix service-context abstractions)
+
+## [0.34.1] — simplification pass
+
+### Highlights
+
+- **Shared helpers extracted** — `read_env()` and `resolve_service_url()` deduplicated from `build_config.rs`; `query_wants_low_signal_sources()` extracted to `ranking.rs`; `is_low_signal_source_url()` wrapper deleted; `service_select_from()` SQL fragment removes 45 lines of copy-pasted queries in `lite/query.rs`.
+- **ServiceContext construction unified** — `new()` and `new_with_workers()` share a private `build()` helper; `wait_for_pending_embed_jobs` uses `has_active_jobs()` (single EXISTS query) instead of fetching 50 rows per poll tick.
+- **MCP Apps fixes** — redundant flat `"ui/resourceUri"` meta key removed; `serde_json::from_value(...).unwrap_or_default()` in capabilities replaced with direct Map construction; `ingest_count()` call that bypassed `ServiceContext` in lite mode removed.
+- **Graph error types fixed** — `Box<dyn Error + Send + Sync>` propagated through graph/context, graph/schema, graph/worker — explicit `as Box<dyn Error>` casts eliminated.
+- **lift_err / SQL / RAII cleanup** — `runners.rs` 13 verbose `.map_err` closures replaced with existing `lift_err`; `reclaim_stale_running_jobs` calls per-table helper; `watch_lite.rs` opens pool once per operation instead of per sub-call.
+- **doctor/lite dedup** — `build_browser_runtime` made `pub(super)` and shared with `doctor/lite.rs`; duplicate function deleted.
+
+### Commits since v0.34.0
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | refactor | simplification pass — dedup helpers, fix service-context abstractions |
+| 69700b9c | feat | WAF diagnostics, enqueue-only LiteBackend, serve preflight auto-terminate |
 
 ## [0.34.0] — WAF diagnostics + LiteBackend split
 

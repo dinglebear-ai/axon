@@ -42,12 +42,7 @@ pub async fn query_results(
     // Allow low-signal sources (session logs, file:// exports) only when the
     // query explicitly requests them. Otherwise they pollute results with
     // high-BM42-scoring noise (e.g. JSONL session exports full of mcp__ tool names).
-    let allow_low_signal = query_tokens.iter().any(|t| {
-        matches!(
-            t.as_str(),
-            "session" | "sessions" | "log" | "logs" | "history" | "histories"
-        )
-    });
+    let allow_low_signal = ranking::query_wants_low_signal_sources(&query_tokens, query);
     let candidates: Vec<ranking::AskCandidate> = hits
         .into_iter()
         .filter_map(|h| {

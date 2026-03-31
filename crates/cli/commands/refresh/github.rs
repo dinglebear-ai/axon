@@ -4,9 +4,7 @@ use crate::crates::services::refresh::{RefreshScheduleCreate, create_refresh_sch
 use chrono::Utc;
 use std::error::Error;
 
-use super::schedule::tier_to_seconds;
-
-const REFRESH_TIER_MEDIUM_SECONDS: i64 = 21600;
+use super::schedule::{REFRESH_TIER_MEDIUM_SECONDS, tier_to_seconds};
 
 fn validate_github_repo(repo: &str) -> Result<&str, Box<dyn Error>> {
     let trimmed = repo.trim();

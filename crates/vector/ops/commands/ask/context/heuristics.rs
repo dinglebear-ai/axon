@@ -43,19 +43,7 @@ pub(super) fn should_inject_supplemental(
 }
 
 pub(super) fn query_requests_low_signal_sources(query_tokens: &[String], raw_query: &str) -> bool {
-    if raw_query.to_ascii_lowercase().contains("docs/sessions") {
-        return true;
-    }
-    query_tokens.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "session" | "sessions" | "log" | "logs" | "history" | "histories"
-        )
-    })
-}
-
-pub(super) fn is_low_signal_source_url(url: &str) -> bool {
-    ranking::is_low_signal_url(url)
+    ranking::query_wants_low_signal_sources(query_tokens, raw_query)
 }
 
 pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {
@@ -304,36 +292,36 @@ mod tests {
         ));
     }
 
-    // ── is_low_signal_source_url ──────────────────────────────────────────────
+    // ── is_low_signal_url (via ranking) ──────────────────────────────────────
 
     #[test]
     fn is_low_signal_source_url_docs_sessions_path() {
-        assert!(is_low_signal_source_url(
+        assert!(ranking::is_low_signal_url(
             "https://example.com/docs/sessions/2026-03-01.md"
         ));
     }
 
     #[test]
     fn is_low_signal_source_url_cache_path() {
-        assert!(is_low_signal_source_url(
+        assert!(ranking::is_low_signal_url(
             "https://example.com/.cache/axon/something"
         ));
     }
 
     #[test]
     fn is_low_signal_source_url_local_log_file() {
-        assert!(is_low_signal_source_url("/var/logs/app.log"));
+        assert!(ranking::is_low_signal_url("/var/logs/app.log"));
     }
 
     #[test]
     fn is_low_signal_source_url_web_url_with_logs_segment_is_not_low_signal() {
         // is_web_url=true so the /logs/ guard is skipped
-        assert!(!is_low_signal_source_url("https://example.com/logs/"));
+        assert!(!ranking::is_low_signal_url("https://example.com/logs/"));
     }
 
     #[test]
     fn is_low_signal_source_url_normal_docs_url() {
-        assert!(!is_low_signal_source_url(
+        assert!(!ranking::is_low_signal_url(
             "https://docs.example.com/guide/getting-started"
         ));
     }

@@ -167,16 +167,12 @@ fn mcp_tool_schema_markdown() -> &'static str {
 
 fn axon_tool_meta() -> Meta {
     let mut m = Meta::new();
-    // Nested form: _meta.ui.resourceUri (TypeScript SDK convention)
+    // Nested form: _meta.ui.resourceUri (TypeScript SDK / MCP Apps convention).
+    // The MCP host SDK normalizes this into a flat key internally; we only need
+    // to emit the canonical nested form here.
     m.insert(
         "ui".to_string(),
         serde_json::json!({ "resourceUri": STATUS_DASHBOARD_URI }),
-    );
-    // Flat form: _meta["ui/resourceUri"] (RESOURCE_URI_META_KEY in ext-apps SDK)
-    // registerAppTool() normalizes _meta to include both — we must do the same.
-    m.insert(
-        "ui/resourceUri".to_string(),
-        serde_json::json!(STATUS_DASHBOARD_URI),
     );
     m
 }
@@ -184,13 +180,12 @@ fn axon_tool_meta() -> Meta {
 fn mcp_apps_server_capabilities() -> ServerCapabilities {
     let mut extensions = ExtensionCapabilities::new();
     // Declare MCP Apps extension support so the host knows to render widgets.
-    extensions.insert(
-        "io.modelcontextprotocol/ui".to_string(),
-        serde_json::from_value(serde_json::json!({
-            "mimeTypes": ["text/html;profile=mcp-app"]
-        }))
-        .unwrap_or_default(),
+    let mut ui_ext = serde_json::Map::new();
+    ui_ext.insert(
+        "mimeTypes".to_string(),
+        serde_json::json!(["text/html;profile=mcp-app"]),
     );
+    extensions.insert("io.modelcontextprotocol/ui".to_string(), ui_ext);
     ServerCapabilities::builder()
         .enable_tools()
         .enable_resources()

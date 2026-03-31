@@ -31,6 +31,35 @@ fn parse_origin_allowlist(raw: &str) -> Vec<String> {
     parse_csv_env(raw, ToOwned::to_owned)
 }
 
+/// Read an env var, trim it, and return `None` if missing or blank.
+fn read_env(var: &str) -> Option<String> {
+    env::var(var)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Resolve a required service URL from a CLI flag, env var, or fail with a lite-mode hint.
+fn resolve_service_url(
+    cli_value: Option<String>,
+    env_var: &str,
+    lite_mode: bool,
+) -> Result<String, String> {
+    if lite_mode {
+        return Ok(String::new());
+    }
+    Ok(normalize_local_service_url(
+        cli_value
+            .or_else(|| env::var(env_var).ok())
+            .ok_or_else(|| {
+                format!(
+                    "{env_var} is required (or set AXON_LITE=1 for lite mode). \
+                     Copy .env.example to .env and fill in credentials."
+                )
+            })?,
+    ))
+}
+
 fn default_sqlite_path() -> std::path::PathBuf {
     crate::crates::core::paths::axon_data_base_dir()
         .join("axon")
@@ -260,44 +289,9 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         })
         .unwrap_or_else(default_sqlite_path);
 
-    let pg_url = if lite_mode {
-        String::new()
-    } else {
-        normalize_local_service_url(
-            global
-                .pg_url
-                .or_else(|| env::var("AXON_PG_URL").ok())
-                .ok_or_else(|| {
-                    "AXON_PG_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
-                })?,
-        )
-    };
-
-    let redis_url = if lite_mode {
-        String::new()
-    } else {
-        normalize_local_service_url(
-            global
-                .redis_url
-                .or_else(|| env::var("AXON_REDIS_URL").ok())
-                .ok_or_else(|| {
-                    "AXON_REDIS_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
-                })?,
-        )
-    };
-
-    let amqp_url = if lite_mode {
-        String::new()
-    } else {
-        normalize_local_service_url(
-            global
-                .amqp_url
-                .or_else(|| env::var("AXON_AMQP_URL").ok())
-                .ok_or_else(|| {
-                    "AXON_AMQP_URL is required (or set AXON_LITE=1 for lite mode). Copy .env.example to .env and fill in credentials.".to_string()
-                })?,
-        )
-    };
+    let pg_url = resolve_service_url(global.pg_url, "AXON_PG_URL", lite_mode)?;
+    let redis_url = resolve_service_url(global.redis_url, "AXON_REDIS_URL", lite_mode)?;
+    let amqp_url = resolve_service_url(global.amqp_url, "AXON_AMQP_URL", lite_mode)?;
 
     let mut crawl_concurrency_limit = global.crawl_concurrency_limit;
     let mut backfill_concurrency_limit = global.backfill_concurrency_limit;
@@ -698,13 +692,7 @@ fn resolve_mcp_transport(
 ///    (`AXON_ACP_CLAUDE_ADAPTER_CMD`, `AXON_ACP_CODEX_ADAPTER_CMD`, or
 ///    `AXON_ACP_GEMINI_ADAPTER_CMD`) that Pulse chat already uses.
 pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
-    let read = |var: &str| {
-        env::var(var)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
-    read("AXON_ACP_ADAPTER_CMD").or_else(|| {
+    read_env("AXON_ACP_ADAPTER_CMD").or_else(|| {
         let agent = env::var("AXON_ASK_AGENT").ok()?;
         let (var, default_cmd) = match agent.trim().to_lowercase().as_str() {
             "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude-agent-acp"),
@@ -715,19 +703,13 @@ pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
         // Fall back to the well-known built-in default for the selected agent when the
         // per-agent override var is unset, so ask/evaluate/research don't fail simply
         // because AXON_ACP_<AGENT>_ADAPTER_CMD was never explicitly configured.
-        Some(read(var).unwrap_or_else(|| default_cmd.to_string()))
+        Some(read_env(var).unwrap_or_else(|| default_cmd.to_string()))
     })
 }
 
 /// Resolve adapter args for ask/research ACP calls (mirrors `resolve_ask_adapter_cmd`).
 pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
-    let read = |var: &str| {
-        env::var(var)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
-    read("AXON_ACP_ADAPTER_ARGS").or_else(|| {
+    read_env("AXON_ACP_ADAPTER_ARGS").or_else(|| {
         let agent = env::var("AXON_ASK_AGENT").ok()?;
         let (var, default_args) = match agent.trim().to_lowercase().as_str() {
             "claude" => ("AXON_ACP_CLAUDE_ADAPTER_ARGS", None),
@@ -738,10 +720,10 @@ pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
         // When a global adapter command override is set, don't inject agent-specific
         // default args — the caller's command may not accept them (e.g. --experimental-acp
         // is a Gemini-only flag and would break a custom adapter binary).
-        if read("AXON_ACP_ADAPTER_CMD").is_some() {
+        if read_env("AXON_ACP_ADAPTER_CMD").is_some() {
             None
         } else {
-            read(var).or_else(|| default_args.map(str::to_string))
+            read_env(var).or_else(|| default_args.map(str::to_string))
         }
     })
 }

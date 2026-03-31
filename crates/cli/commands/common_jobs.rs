@@ -122,8 +122,7 @@ pub fn handle_job_status<T: JobStatus>(
     match job {
         Some(job) => {
             if cfg.json_output {
-                let json = job.to_status_response_json();
-                println!("{}", serde_json::to_string_pretty(&json)?);
+                print_pretty_json(&job.to_status_response_json())?;
             } else {
                 println!(
                     "{} {}",

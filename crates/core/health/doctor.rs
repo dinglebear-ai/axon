@@ -269,7 +269,7 @@ fn build_pipeline_status(probes: &DoctorProbes, openai_ok: bool) -> Value {
     })
 }
 
-fn build_browser_runtime(
+pub(super) fn build_browser_runtime(
     diagnostics: &crate::crates::core::health::BrowserDiagnosticsPattern,
 ) -> Value {
     serde_json::json!({
@@ -357,8 +357,6 @@ fn report_overall_ok(pipelines: &Value, tei_ok: bool, qdrant_ok: bool) -> bool {
         && qdrant_ok
 }
 
-// NOTE: run_doctor delegates to build_doctor_report and only renders output.
-// Keep probe logic centralized in build_doctor_report to avoid drift.
 pub async fn build_doctor_report(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     if cfg.lite_mode {
         return lite::build(cfg).await;

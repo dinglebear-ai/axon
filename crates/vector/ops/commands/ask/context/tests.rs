@@ -1,10 +1,11 @@
 use super::build::collect_supplemental_candidate_indices;
 use super::heuristics::{
-    candidate_has_topical_overlap, is_low_signal_source_url, query_requests_low_signal_sources,
-    should_inject_supplemental, url_matches_domain_list,
+    candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
+    url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::ranking::AskCandidate;
+use crate::crates::vector::ops::ranking::is_low_signal_url;
 use std::collections::HashSet;
 
 fn test_candidate(url: &str, rerank_score: f64) -> AskCandidate {
@@ -65,18 +66,16 @@ fn supplemental_skips_when_coverage_is_already_strong() {
 
 #[test]
 fn low_signal_source_filter_matches_sessions_and_cache() {
-    assert!(is_low_signal_source_url(
+    assert!(is_low_signal_url(
         "docs/sessions/2026-02-26-context-injection-cleanup.md"
     ));
-    assert!(is_low_signal_source_url(".cache/axon-rust/output/file.md"));
-    assert!(is_low_signal_source_url("/home/user/app/logs/access.log"));
-    assert!(is_low_signal_source_url("logs/debug.log"));
-    assert!(!is_low_signal_source_url(
+    assert!(is_low_signal_url(".cache/axon-rust/output/file.md"));
+    assert!(is_low_signal_url("/home/user/app/logs/access.log"));
+    assert!(is_low_signal_url("logs/debug.log"));
+    assert!(!is_low_signal_url(
         "https://docs.datadoghq.com/logs/explorer/"
     ));
-    assert!(!is_low_signal_source_url(
-        "https://docs.rs/spider/latest/spider/"
-    ));
+    assert!(!is_low_signal_url("https://docs.rs/spider/latest/spider/"));
 }
 
 #[test]

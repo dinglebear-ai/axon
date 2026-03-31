@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use crate::crates::core::config::Config;
-use crate::crates::services::runtime::{
-    ServiceJobRuntime, resolve_runtime, resolve_runtime_with_workers,
-};
+use crate::crates::services::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityState {
@@ -69,18 +67,25 @@ pub struct ServiceContext {
 }
 
 impl ServiceContext {
-    /// Create a ServiceContext without in-process workers (enqueue-only in lite mode).
-    ///
-    /// This is the safe default for CLI commands that enqueue and exit.
-    /// Use `new_with_workers()` for long-lived processes that should process jobs.
-    pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    async fn build(
+        cfg: Arc<Config>,
+        spawn_workers: bool,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
-        let jobs = resolve_runtime(Arc::clone(&cfg)).await?;
+        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
         Ok(Self {
             cfg,
             capabilities,
             jobs,
         })
+    }
+
+    /// Create a ServiceContext without in-process workers (enqueue-only in lite mode).
+    ///
+    /// This is the safe default for CLI commands that enqueue and exit.
+    /// Use `new_with_workers()` for long-lived processes that should process jobs.
+    pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::build(cfg, false).await
     }
 
     /// Create a ServiceContext with in-process workers (lite mode only).
@@ -89,13 +94,7 @@ impl ServiceContext {
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
-        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), true).await?;
-        Ok(Self {
-            cfg,
-            capabilities,
-            jobs,
-        })
+        Self::build(cfg, true).await
     }
 
     pub fn from_runtime(cfg: Arc<Config>, jobs: Arc<dyn ServiceJobRuntime>) -> Self {

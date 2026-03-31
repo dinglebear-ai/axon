@@ -87,9 +87,11 @@ pub(crate) fn resolve_input_text(cfg: &Config) -> Option<String> {
         .map(str::trim)
         .filter(|q| !q.is_empty())
         .map(ToString::to_string)
-        .or_else(|| (!cfg.positional.is_empty()).then(|| cfg.positional.join(" ")))
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let joined = cfg.positional.join(" ");
+            let trimmed = joined.trim().to_string();
+            (!trimmed.is_empty()).then_some(trimmed)
+        })
 }
 
 #[cfg(test)]

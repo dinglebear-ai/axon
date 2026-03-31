@@ -5,8 +5,6 @@ use crate::crates::core::neo4j::Neo4jClient;
 use std::collections::HashMap;
 use std::error::Error;
 
-// ─── shared data types used by worker + persist ───────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct GraphChunk {
     pub point_id: String,
@@ -27,8 +25,6 @@ pub struct GraphRelationRecord {
     pub target: String,
     pub relation: String,
 }
-
-// ─── neo4j write helpers ──────────────────────────────────────────────────────
 
 pub fn candidate_names_for_chunk(
     taxonomy: &Taxonomy,
@@ -185,8 +181,6 @@ pub async fn write_entity_relationships(
         .await?;
     Ok(())
 }
-
-// ─── stage orchestration helpers (called by worker) ──────────────────────────
 
 /// Stage 1: write Document+Chunk nodes and Entity nodes in parallel.
 ///

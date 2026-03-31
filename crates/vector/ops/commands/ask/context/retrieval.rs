@@ -1,6 +1,6 @@
 use super::heuristics::{
-    authoritative_ratio, candidate_has_topical_overlap, is_low_signal_source_url,
-    query_requests_low_signal_sources, top_domains, url_matches_domain_list,
+    authoritative_ratio, candidate_has_topical_overlap, query_requests_low_signal_sources,
+    top_domains, url_matches_domain_list,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_debug;
@@ -72,7 +72,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         if url.is_empty() || chunk_text.len() < 40 {
             continue;
         }
-        if !allow_low_signal && is_low_signal_source_url(&url) {
+        if !allow_low_signal && ranking::is_low_signal_url(&url) {
             continue;
         }
         if !cfg.ask_authoritative_allowlist.is_empty()

@@ -320,28 +320,26 @@ impl From<SharedJobRecord> for JobStatusResponse {
 
 impl From<SharedJobRecord> for JobSummaryEntry {
     fn from(value: SharedJobRecord) -> Self {
-        let collection = payload_string(value.result_json.as_ref(), "collection")
-            .or_else(|| payload_string(value.config_json.as_ref(), "collection"));
-        let source = payload_string(value.result_json.as_ref(), "source");
+        let r: JobStatusResponse = value.into();
         Self {
-            id: value.id,
-            status: value.status,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            started_at: value.started_at,
-            finished_at: value.finished_at,
-            error: value.error_text.clone(),
-            error_text: value.error_text,
-            url: value.url,
-            source_type: value.source_type,
-            target: value.target,
-            urls: value.urls.clone(),
-            urls_json: value.urls,
-            metrics: value.result_json.clone(),
-            collection,
-            source,
-            result_json: value.result_json,
-            config_json: value.config_json,
+            id: r.id,
+            status: r.status,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+            error: r.error,
+            error_text: r.error_text,
+            url: r.url,
+            source_type: r.source_type,
+            target: r.target,
+            urls: r.urls,
+            urls_json: r.urls_json,
+            metrics: r.metrics,
+            collection: r.collection,
+            source: r.source,
+            result_json: r.result_json,
+            config_json: r.config_json,
         }
     }
 }

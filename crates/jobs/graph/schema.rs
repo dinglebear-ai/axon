@@ -64,7 +64,9 @@ pub async fn ensure_graph_schema(pool: &PgPool) -> Result<(), Box<dyn std::error
 }
 
 /// Ensure required Neo4j constraints and indexes exist.
-pub async fn ensure_neo4j_schema(neo4j: &Neo4jClient) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn ensure_neo4j_schema(
+    neo4j: &Neo4jClient,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let statements = [
         "CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE",
         "CREATE CONSTRAINT document_url IF NOT EXISTS FOR (d:Document) REQUIRE d.url IS UNIQUE",
@@ -73,10 +75,7 @@ pub async fn ensure_neo4j_schema(neo4j: &Neo4jClient) -> Result<(), Box<dyn std:
     ];
 
     for cypher in statements {
-        neo4j
-            .execute(cypher, serde_json::json!({}))
-            .await
-            .map_err(|e| e as Box<dyn std::error::Error>)?;
+        neo4j.execute(cypher, serde_json::json!({})).await?;
     }
 
     Ok(())

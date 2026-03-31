@@ -4,26 +4,12 @@ use crate::crates::cli::commands::probe::probe_http;
 use crate::crates::core::config::Config;
 use crate::crates::core::health::browser_diagnostics_pattern;
 use crate::crates::core::health::doctor::{
-    probe_chrome, probe_openai, probe_tei_info, resolve_openai_model, tei_info_summary,
-    tei_model_from_info, timed_probe,
+    build_browser_runtime, probe_chrome, probe_openai, probe_tei_info, resolve_openai_model,
+    tei_info_summary, tei_model_from_info, timed_probe,
 };
 use crate::crates::core::http::build_client;
 use serde_json::Value;
 use std::error::Error;
-
-fn build_browser_runtime_lite(
-    diagnostics: &crate::crates::core::health::BrowserDiagnosticsPattern,
-) -> Value {
-    serde_json::json!({
-        "selection": "chrome",
-        "diagnostics": {
-            "enabled": diagnostics.enabled,
-            "screenshot": diagnostics.screenshot,
-            "events": diagnostics.events,
-            "output_dir": diagnostics.output_dir,
-        },
-    })
-}
 
 /// Lite-mode doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
@@ -72,7 +58,7 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let (chrome_ok, ref chrome_detail) = chrome_probe;
     let tei_ok = tei_probe.0;
     let qdrant_ok = qdrant_probe.0;
-    let browser_runtime = build_browser_runtime_lite(&diagnostics);
+    let browser_runtime = build_browser_runtime(&diagnostics);
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
