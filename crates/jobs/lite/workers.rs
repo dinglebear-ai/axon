@@ -26,9 +26,9 @@ pub struct WorkerHandles {
     pub(crate) ingest: Arc<Notify>,
     pub(crate) refresh: Arc<Notify>,
     pub(crate) graph: Arc<Notify>,
-    /// Supervisor task handles. Aborted on drop so workers stop cleanly when
-    /// LiteBackend is dropped (e.g. end of a one-shot `axon scrape` command).
-    pub(crate) task_handles: Vec<tokio::task::JoinHandle<()>>,
+    /// Actual worker loops. These must be aborted on drop or lite workers keep
+    /// polling after the backend goes away.
+    pub(crate) worker_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl WorkerHandles {
@@ -47,7 +47,7 @@ impl WorkerHandles {
 
 impl Drop for WorkerHandles {
     fn drop(&mut self) {
-        for handle in &self.task_handles {
+        for handle in &self.worker_handles {
             handle.abort();
         }
     }
@@ -66,8 +66,7 @@ pub fn spawn_workers(
     let refresh_notify = Arc::new(Notify::new());
     let graph_notify = Arc::new(Notify::new());
 
-    let worker_names: &[&str] = &["crawl", "embed", "extract", "ingest", "refresh", "graph"];
-    let raw_handles = vec![
+    let worker_handles = vec![
         tokio::spawn(crawl_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
@@ -101,24 +100,6 @@ pub fn spawn_workers(
         )),
     ];
 
-    // Spawn a supervisor for each worker that logs panics/unexpected exits.
-    let task_handles: Vec<tokio::task::JoinHandle<()>> = raw_handles
-        .into_iter()
-        .zip(worker_names.iter())
-        .map(|(handle, &name)| {
-            tokio::spawn(async move {
-                match handle.await {
-                    Ok(()) => {
-                        tracing::error!(worker = name, "lite worker task exited unexpectedly (worker loops should never return)");
-                    }
-                    Err(e) => {
-                        tracing::error!(worker = name, error = ?e, "lite worker task panicked or was cancelled");
-                    }
-                }
-            })
-        })
-        .collect();
-
     WorkerHandles {
         crawl: crawl_notify,
         embed: embed_notify,
@@ -126,7 +107,7 @@ pub fn spawn_workers(
         ingest: ingest_notify,
         refresh: refresh_notify,
         graph: graph_notify,
-        task_handles,
+        worker_handles,
     }
 }
 
@@ -244,6 +225,7 @@ async fn graph_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notif
 mod tests {
     use super::*;
     use crate::crates::jobs::backend::JobPayload;
+    use crate::crates::jobs::lite::cancel::CancelStore;
     use crate::crates::jobs::lite::ops::enqueue_job;
     use crate::crates::jobs::lite::store::open_sqlite_pool;
 
@@ -286,5 +268,35 @@ mod tests {
             .await
             .unwrap();
         assert_ne!(row.0, "pending", "job should have been claimed");
+    }
+
+    #[tokio::test]
+    async fn dropping_worker_handles_aborts_worker_loops() {
+        let pool = Arc::new(open_sqlite_pool(":memory:").await.unwrap());
+        let cfg = Arc::new(Config::default_lite());
+        let cancel_store = Arc::new(CancelStore::new());
+
+        let handles = spawn_workers(pool, cfg, cancel_store);
+        let abort_handles: Vec<_> = handles
+            .worker_handles
+            .iter()
+            .map(tokio::task::JoinHandle::abort_handle)
+            .collect();
+
+        drop(handles);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if abort_handles
+                    .iter()
+                    .all(tokio::task::AbortHandle::is_finished)
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("worker tasks should be aborted when WorkerHandles is dropped");
     }
 }

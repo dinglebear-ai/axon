@@ -1,7 +1,7 @@
 # Changelog
 Last Modified: 2026-03-30 (session: v0.33.10 — inline GPU + CDI deadlock fix)
 
-## [0.33.10] — feat/lite-mode
+## [0.33.10] — infra/gpu + CDI
 
 ### Highlights
 
