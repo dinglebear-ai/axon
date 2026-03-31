@@ -121,10 +121,26 @@ use crate::crates::jobs::backend::lift_err as lift_ss;
 pub async fn resolve_runtime(
     cfg: Arc<Config>,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
+    resolve_runtime_with_workers(cfg, false).await
+}
+
+/// Resolve the job runtime, optionally spawning in-process workers (lite mode only).
+///
+/// `spawn_workers = true` should be used by long-lived processes (`axon serve`,
+/// MCP server, web server) or CLI commands that block until completion (`--wait`).
+/// `spawn_workers = false` (default via `resolve_runtime`) creates an enqueue-only
+/// backend — jobs are persisted but not processed in this process.
+pub async fn resolve_runtime_with_workers(
+    cfg: Arc<Config>,
+    spawn_workers: bool,
+) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
     if cfg.lite_mode {
-        let backend = LiteBackend::new(Arc::clone(&cfg))
-            .await
-            .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+        let backend = if spawn_workers {
+            LiteBackend::new_with_workers(Arc::clone(&cfg)).await
+        } else {
+            LiteBackend::new(Arc::clone(&cfg)).await
+        }
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
         return Ok(Arc::new(LiteServiceRuntime {
             _cfg: cfg,
             backend: Arc::new(backend),

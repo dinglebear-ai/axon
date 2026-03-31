@@ -1,17 +1,15 @@
 use super::{CollectorConfig, CrawlSummary};
-use crate::crates::core::logging::log_warn;
 
 pub(super) fn track_waf_block(
     waf_check: bool,
     blocked_crawl: bool,
     url: &str,
-    anti_bot_tech: &impl std::fmt::Debug,
+    _anti_bot_tech: &impl std::fmt::Debug,
     summary: &mut CrawlSummary,
 ) {
     if !(waf_check || blocked_crawl) {
         return;
     }
-    log_warn(&format!("waf: {} blocked by {:?}", url, anti_bot_tech));
     summary.waf_blocked_pages += 1;
     summary.waf_blocked_urls.insert(url.to_string());
 }

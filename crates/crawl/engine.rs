@@ -7,6 +7,7 @@ pub(crate) mod sitemap;
 mod tests;
 mod thin_refetch;
 mod url_utils;
+mod waf;
 
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::content::{
@@ -38,6 +39,7 @@ use url_utils::normalize_map_candidate_url;
 pub(crate) use url_utils::{MapScope, canonicalize_url_for_dedupe, is_excluded_url_path};
 #[cfg(test)]
 pub(crate) use url_utils::{is_junk_discovered_url, regex_escape};
+pub use waf::{WafDiagnostics, build_waf_diagnostics};
 
 #[derive(Debug, Default, Clone)]
 pub struct CrawlSummary {

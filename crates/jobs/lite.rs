@@ -17,25 +17,57 @@ use crate::crates::jobs::backend::{
 use self::cancel::CancelStore;
 use self::store::open_sqlite_pool;
 
-/// Lite-mode job backend: SQLite persistence + in-process tokio workers.
+/// Lite-mode job backend: SQLite persistence + optional in-process tokio workers.
+///
+/// By default, `new()` creates an enqueue-only backend (no workers). Use
+/// `new_with_workers()` when the process should also process jobs (e.g. `axon serve`
+/// or CLI with `--wait true`).
 pub struct LiteBackend {
     pool: Arc<SqlitePool>,
     cancel_store: Arc<CancelStore>,
-    workers: workers::WorkerHandles,
+    workers: Option<workers::WorkerHandles>,
 }
 
 impl LiteBackend {
-    /// Create a new LiteBackend using the SQLite path from Config.
-    pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let path = cfg.sqlite_path.to_string_lossy().to_string();
-        let pool = Arc::new(open_sqlite_pool(&path).await?);
-
+    /// Shared init: open pool, reclaim stale jobs, create cancel store.
+    async fn init(
+        pool: Arc<SqlitePool>,
+        cfg: &Config,
+    ) -> Result<Arc<CancelStore>, Box<dyn std::error::Error + Send + Sync>> {
         let stale_threshold_ms =
             (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
         store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
         store::reclaim_stale_watch_leases(&pool).await?;
+        Ok(Arc::new(CancelStore::new()))
+    }
 
-        let cancel_store = Arc::new(CancelStore::new());
+    /// Create an enqueue-only LiteBackend (no in-process workers).
+    ///
+    /// Jobs are persisted to SQLite but not processed. Use this for CLI
+    /// fire-and-forget commands where `axon serve` handles processing.
+    pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let path = cfg.sqlite_path.to_string_lossy().to_string();
+        let pool = Arc::new(open_sqlite_pool(&path).await?);
+        let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
+
+        Ok(Self {
+            pool,
+            cancel_store,
+            workers: None,
+        })
+    }
+
+    /// Create a LiteBackend with in-process workers that poll and execute jobs.
+    ///
+    /// Use this for long-lived processes (`axon serve`, MCP server, web server)
+    /// or CLI commands that block until completion (`--wait true`).
+    pub async fn new_with_workers(
+        cfg: Arc<Config>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let path = cfg.sqlite_path.to_string_lossy().to_string();
+        let pool = Arc::new(open_sqlite_pool(&path).await?);
+        let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
+
         let worker_handles = workers::spawn_workers(
             Arc::clone(&pool),
             Arc::clone(&cfg),
@@ -45,7 +77,7 @@ impl LiteBackend {
         Ok(Self {
             pool,
             cancel_store,
-            workers: worker_handles,
+            workers: Some(worker_handles),
         })
     }
 
@@ -54,22 +86,13 @@ impl LiteBackend {
         path: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pool = Arc::new(open_sqlite_pool(path).await?);
-
         let default_cfg = Arc::new(Config::default_lite());
-        let stale_threshold_ms =
-            (default_cfg.watchdog_stale_timeout_secs + default_cfg.watchdog_confirm_secs).max(0)
-                * 1_000i64;
-        store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
-        store::reclaim_stale_watch_leases(&pool).await?;
-
-        let cancel_store = Arc::new(CancelStore::new());
-        let worker_handles =
-            workers::spawn_workers(Arc::clone(&pool), default_cfg, Arc::clone(&cancel_store));
+        let cancel_store = Self::init(Arc::clone(&pool), &default_cfg).await?;
 
         Ok(Self {
             pool,
             cancel_store,
-            workers: worker_handles,
+            workers: None,
         })
     }
 
@@ -90,7 +113,9 @@ impl JobBackend for LiteBackend {
         let kind = payload.kind();
         let id = ops::enqueue_job(&self.pool, &payload).await?;
 
-        self.workers.notify(kind);
+        if let Some(ref workers) = self.workers {
+            workers.notify(kind);
+        }
 
         Ok(id)
     }

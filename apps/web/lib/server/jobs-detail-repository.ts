@@ -84,6 +84,7 @@ async function findCrawlJob(id: string, includeArtifacts: boolean): Promise<JobD
     includeArtifacts && outputDir ? await readCrawlManifest(outputDir).catch(() => []) : []
   const thinUrls = stringArray(res.thin_urls)
   const wafBlockedUrls = stringArray(res.waf_blocked_urls)
+  const wafDiagnostics = asJsonRecord(res.waf_diagnostics)
   const observedUrlSet = new Set<string>([
     ...manifestFiles.map((entry) => entry.url),
     ...thinUrls,
@@ -115,6 +116,18 @@ async function findCrawlJob(id: string, includeArtifacts: boolean): Promise<JobD
     filteredUrls: res.filtered_urls != null ? Number(res.filtered_urls) : null,
     errorPages: res.error_pages != null ? Number(res.error_pages) : null,
     wafBlockedPages: res.waf_blocked_pages != null ? Number(res.waf_blocked_pages) : null,
+    wafDiagnostics:
+      Object.keys(wafDiagnostics).length > 0
+        ? {
+            status: stringOrNull(wafDiagnostics.status) ?? 'unknown',
+            attemptedRecovery: boolOrNull(wafDiagnostics.attempted_recovery) ?? false,
+            detectedPages: numberOrNull(wafDiagnostics.detected_pages) ?? 0,
+            recoveredPages: numberOrNull(wafDiagnostics.recovered_pages) ?? 0,
+            remainingPages: numberOrNull(wafDiagnostics.remaining_pages) ?? 0,
+            detectedUrls: stringArray(wafDiagnostics.detected_urls),
+            remainingUrls: stringArray(wafDiagnostics.remaining_urls),
+          }
+        : null,
     cacheHit: res.cache_hit != null ? Boolean(res.cache_hit) : null,
     outputDir,
     staleUrlsDeleted: res.stale_urls_deleted != null ? Number(res.stale_urls_deleted) : null,
@@ -174,6 +187,7 @@ async function findRefreshJob(id: string): Promise<JobDetail | null> {
     filteredUrls: null,
     errorPages: null,
     wafBlockedPages: null,
+    wafDiagnostics: null,
     cacheHit: null,
     outputDir: null,
     staleUrlsDeleted: null,
@@ -233,6 +247,7 @@ async function findEmbedJob(id: string): Promise<JobDetail | null> {
     filteredUrls: null,
     errorPages: null,
     wafBlockedPages: null,
+    wafDiagnostics: null,
     cacheHit: null,
     outputDir: null,
     staleUrlsDeleted: null,
@@ -293,6 +308,7 @@ async function findExtractJob(id: string): Promise<JobDetail | null> {
     filteredUrls: null,
     errorPages: null,
     wafBlockedPages: null,
+    wafDiagnostics: null,
     cacheHit: null,
     outputDir: null,
     staleUrlsDeleted: null,
@@ -352,6 +368,7 @@ async function findIngestJob(id: string): Promise<JobDetail | null> {
     filteredUrls: null,
     errorPages: null,
     wafBlockedPages: null,
+    wafDiagnostics: null,
     cacheHit: null,
     outputDir: null,
     staleUrlsDeleted: null,

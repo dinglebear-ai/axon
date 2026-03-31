@@ -46,6 +46,7 @@ describe('job detail metadata helpers', () => {
       filteredUrls: null,
       errorPages: null,
       wafBlockedPages: null,
+      wafDiagnostics: null,
       cacheHit: null,
       outputDir: null,
       staleUrlsDeleted: null,

@@ -1,4 +1,4 @@
-use crate::crates::crawl::engine::CrawlSummary;
+use crate::crates::crawl::engine::{CrawlSummary, build_waf_diagnostics};
 use crate::crates::crawl::manifest::read_manifest_data;
 use std::error::Error;
 use std::path::Path;
@@ -40,6 +40,7 @@ pub(super) struct CompletedResultContext {
     pub(super) robots_backfill_stats: RobotsBackfillStats,
     pub(super) robots_discovery_stats: RobotsDiscoveryStats,
     pub(super) final_prompt: Option<String>,
+    pub(super) waf_retry_attempted: bool,
 }
 
 pub(super) async fn build_completed_result(
@@ -72,6 +73,12 @@ pub(super) async fn build_completed_result(
             .into_values()
             .map(|entry| entry.relative_path),
     );
+    let waf_diagnostics = build_waf_diagnostics(
+        &result_ctx.summary,
+        &result_ctx.final_summary,
+        result_ctx.waf_retry_attempted,
+        None,
+    );
 
     Ok(serde_json::json!({
         "phase": "completed",
@@ -84,6 +91,7 @@ pub(super) async fn build_completed_result(
         "waf_blocked_pages": result_ctx.final_summary.waf_blocked_pages,
         "thin_urls": sorted_vec(&result_ctx.final_summary.thin_urls),
         "waf_blocked_urls": sorted_vec(&result_ctx.final_summary.waf_blocked_urls),
+        "waf_diagnostics": waf_diagnostics,
         "pages_crawled": pages_crawled,
         "pages_discovered": pages_discovered,
         "crawl_stream_pages": result_ctx.summary.pages_seen,
@@ -175,6 +183,7 @@ mod tests {
                 robots_backfill_stats: RobotsBackfillStats::default(),
                 robots_discovery_stats: RobotsDiscoveryStats::default(),
                 final_prompt: None,
+                waf_retry_attempted: false,
             },
         )
         .await
@@ -185,6 +194,10 @@ mod tests {
         assert!(obj.contains_key("waf_blocked_urls"));
         assert!(obj.contains_key("error_pages"));
         assert!(obj.contains_key("waf_blocked_pages"));
+        assert_eq!(
+            obj["waf_diagnostics"]["status"],
+            serde_json::Value::String("detected_unrecovered".to_string())
+        );
         let output_files = obj["output_files"].as_array().expect("output_files array");
         assert_eq!(output_files.len(), 3);
         assert_eq!(

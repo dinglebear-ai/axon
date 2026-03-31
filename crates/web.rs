@@ -129,7 +129,7 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
     let (stats_tx, _) = broadcast::channel::<String>(64);
     let job_dirs: Arc<DashMap<String, PathBuf>> = Arc::new(DashMap::new());
     let service_context = Arc::new(
-        ServiceContext::new(Arc::clone(&cfg))
+        ServiceContext::new_with_workers(Arc::clone(&cfg))
             .await
             .map_err(|e| -> Box<dyn Error> { e })?,
     );

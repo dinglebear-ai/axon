@@ -173,9 +173,16 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    let service_context = ServiceContext::new(Arc::clone(&cfg_arc))
-        .await
-        .map_err(|e| -> Box<dyn Error> { e })?;
+    // Spawn in-process workers only when the CLI needs to wait for job completion
+    // in lite mode. Fire-and-forget commands enqueue to SQLite and exit — `axon serve`
+    // runs the workers. Serve/MCP/web create their own ServiceContext with workers.
+    let needs_workers = cfg_arc.lite_mode && cfg_arc.wait;
+    let service_context = if needs_workers {
+        ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
+    } else {
+        ServiceContext::new(Arc::clone(&cfg_arc)).await
+    }
+    .map_err(|e| -> Box<dyn Error> { e })?;
     let cfg = cfg_arc.as_ref();
 
     // Skip Postgres telemetry in lite mode (no Postgres connection required).

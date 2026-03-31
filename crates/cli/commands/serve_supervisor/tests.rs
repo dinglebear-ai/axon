@@ -1,3 +1,4 @@
+use super::preflight::{NextJsLockState, classify_nextjs_lock_state};
 use super::*;
 use std::collections::HashSet;
 
@@ -87,6 +88,30 @@ fn serve_runtime_child_sets_internal_bridge_role() {
         serve.env.iter().any(|(key, value)| {
             key == SERVE_CHILD_ROLE_ENV && value == SERVE_CHILD_ROLE_BRIDGE
         })
+    );
+}
+
+#[test]
+fn mcp_http_child_propagates_bind_host_and_port() {
+    let cfg = Config {
+        mcp_http_host: "0.0.0.0".to_string(),
+        mcp_http_port: 8123,
+        ..Config::default()
+    };
+    let specs = supervised_child_specs(&cfg).expect("child specs");
+    let mcp = specs
+        .iter()
+        .find(|spec| spec.name == "mcp-http")
+        .expect("mcp-http child");
+    assert!(
+        mcp.env
+            .iter()
+            .any(|(key, value)| key == "AXON_MCP_HTTP_HOST" && value == "0.0.0.0")
+    );
+    assert!(
+        mcp.env
+            .iter()
+            .any(|(key, value)| key == "AXON_MCP_HTTP_PORT" && value == "8123")
     );
 }
 
@@ -206,6 +231,19 @@ fn unstable_restart_limit_trips_after_three_failures() {
     assert!(!reached_unstable_restart_limit(1));
     assert!(!reached_unstable_restart_limit(2));
     assert!(reached_unstable_restart_limit(3));
+}
+
+#[test]
+fn nextjs_lock_with_active_next_dev_processes_requests_cleanup() {
+    let owners = vec![PortOwner {
+        pid: 123,
+        command: "pnpm exec next dev --port 49010".to_string(),
+    }];
+
+    assert_eq!(
+        classify_nextjs_lock_state(true, &owners),
+        NextJsLockState::TerminateActiveProcesses
+    );
 }
 
 fn child_names(specs: &[ChildSpec]) -> HashSet<&str> {

@@ -127,6 +127,27 @@ impl ChildSpec {
         }
     }
 
+    pub(super) fn axon_owned<const N: usize, I>(
+        name: &str,
+        exe: &Path,
+        args: [&str; N],
+        env: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (&'static str, String)>,
+    {
+        Self {
+            name: name.to_string(),
+            program: exe.as_os_str().to_os_string(),
+            args: args.into_iter().map(OsString::from).collect(),
+            cwd: None,
+            env: env
+                .into_iter()
+                .map(|(key, value)| (OsString::from(key), OsString::from(value)))
+                .collect(),
+        }
+    }
+
     pub(super) fn external<const N: usize, I>(
         name: &str,
         program: &str,

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::crates::core::config::Config;
-use crate::crates::services::runtime::{ServiceJobRuntime, resolve_runtime};
+use crate::crates::services::runtime::{
+    ServiceJobRuntime, resolve_runtime, resolve_runtime_with_workers,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilityState {
@@ -67,9 +69,28 @@ pub struct ServiceContext {
 }
 
 impl ServiceContext {
+    /// Create a ServiceContext without in-process workers (enqueue-only in lite mode).
+    ///
+    /// This is the safe default for CLI commands that enqueue and exit.
+    /// Use `new_with_workers()` for long-lived processes that should process jobs.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
         let jobs = resolve_runtime(Arc::clone(&cfg)).await?;
+        Ok(Self {
+            cfg,
+            capabilities,
+            jobs,
+        })
+    }
+
+    /// Create a ServiceContext with in-process workers (lite mode only).
+    ///
+    /// Use for `axon serve`, MCP server, web server, or CLI `--wait true`.
+    pub async fn new_with_workers(
+        cfg: Arc<Config>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let capabilities = ServiceCapabilities::from_config(cfg.as_ref());
+        let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), true).await?;
         Ok(Self {
             cfg,
             capabilities,

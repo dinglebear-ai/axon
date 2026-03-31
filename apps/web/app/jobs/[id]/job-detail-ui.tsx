@@ -131,6 +131,21 @@ export function JobDetailView({ job }: { job: JobDetail }) {
           </div>
         )}
 
+        {job.type === 'crawl' && job.wafDiagnostics && (
+          <Section title="WAF Recovery" icon={AlertCircle}>
+            <div className="space-y-0">
+              <KV label="Status" value={job.wafDiagnostics.status} mono />
+              <KV
+                label="Attempted Recovery"
+                value={job.wafDiagnostics.attemptedRecovery ? 'yes' : 'no'}
+              />
+              <KV label="Detected Pages" value={job.wafDiagnostics.detectedPages} />
+              <KV label="Recovered Pages" value={job.wafDiagnostics.recoveredPages} />
+              <KV label="Remaining Pages" value={job.wafDiagnostics.remainingPages} />
+            </div>
+          </Section>
+        )}
+
         {job.type === 'embed' && (
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Docs Embedded" value={job.docsEmbedded} icon={FileText} />
@@ -301,6 +316,16 @@ export function JobDetailView({ job }: { job: JobDetail }) {
                 title="WAF Blocked URLs"
                 items={job.wafBlockedUrls ?? []}
                 emptyText="No WAF-blocked URL list recorded."
+                renderItem={(url) => (
+                  <span className="break-all font-mono text-[11px] text-[var(--text-secondary)]">
+                    {url}
+                  </span>
+                )}
+              />
+              <ShowMoreList
+                title="WAF Remaining URLs"
+                items={job.wafDiagnostics?.remainingUrls ?? []}
+                emptyText="No unrecovered WAF URL list recorded."
                 renderItem={(url) => (
                   <span className="break-all font-mono text-[11px] text-[var(--text-secondary)]">
                     {url}

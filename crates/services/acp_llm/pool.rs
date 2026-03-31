@@ -108,12 +108,20 @@ static WARM_POOL: OnceLock<WarmSessionPool> = OnceLock::new();
 // Public API
 // ---------------------------------------------------------------------------
 
+fn should_init_warm_pool(cfg: &Config) -> bool {
+    cfg.acp_prewarm
+        && cfg
+            .acp_adapter_cmd
+            .as_deref()
+            .is_some_and(|cmd| !cmd.trim().is_empty())
+}
+
 /// Initialize the warm session pool at process startup.
 ///
 /// No-op when `acp_adapter_cmd` is unset or empty. Safe to call multiple
 /// times — only the first call has any effect (protected by [`OnceLock`]).
 pub fn init_warm_pool(cfg: &Config) {
-    if cfg.acp_adapter_cmd.as_deref().is_none_or(str::is_empty) {
+    if !should_init_warm_pool(cfg) {
         return;
     }
     let pool = WARM_POOL.get_or_init(|| WarmSessionPool::new(cfg));
@@ -185,6 +193,7 @@ pub fn pool_size() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::core::config::Config;
 
     fn make_key(cmd: &str, model: &str) -> CfgKey {
         CfgKey {
@@ -219,5 +228,16 @@ mod tests {
         // WARM_POOL may be initialized by other tests — just verify no panic and value is valid.
         let size = pool_size();
         assert!(size < usize::MAX, "pool_size() returned nonsense");
+    }
+
+    #[test]
+    fn prewarm_disabled_config_skips_pool_init() {
+        let cfg = Config {
+            acp_adapter_cmd: Some("claude-agent-acp".to_string()),
+            acp_prewarm: false,
+            ..Config::default()
+        };
+
+        assert!(!should_init_warm_pool(&cfg));
     }
 }

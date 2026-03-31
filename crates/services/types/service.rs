@@ -380,6 +380,7 @@ pub struct CrawlSyncResult {
     pub thin_pages: u32,
     pub error_pages: u32,
     pub waf_blocked_pages: u32,
+    pub waf_diagnostics: Option<crate::crates::crawl::engine::WafDiagnostics>,
     pub elapsed_ms: u128,
     pub cache_hit: bool,
 }

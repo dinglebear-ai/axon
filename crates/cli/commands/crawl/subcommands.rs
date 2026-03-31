@@ -128,6 +128,27 @@ fn print_status_metrics(metrics: &serde_json::Value) {
             sitemap_candidates
         );
     }
+    if let Some(waf) = metrics.get("waf_diagnostics").and_then(|v| v.as_object()) {
+        let status = waf
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let recovered = waf
+            .get("recovered_pages")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let remaining = waf
+            .get("remaining_pages")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        println!(
+            "  {} {} (recovered {}, remaining {})",
+            muted("waf recovery:"),
+            status,
+            recovered,
+            remaining
+        );
+    }
 }
 
 async fn handle_status_subcommand(

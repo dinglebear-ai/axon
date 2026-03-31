@@ -220,6 +220,59 @@ fn test_no_fallback_uncapped_three_pages_healthy() {
 }
 
 #[test]
+fn test_waf_diagnostics_reports_full_recovery() {
+    let mut blocked = HashSet::new();
+    blocked.insert("https://example.com/blocked-a".to_string());
+    blocked.insert("https://example.com/blocked-b".to_string());
+
+    let initial = CrawlSummary {
+        waf_blocked_pages: 2,
+        waf_blocked_urls: blocked.clone(),
+        ..summary(10, 0, 8)
+    };
+    let final_summary = CrawlSummary {
+        waf_blocked_pages: 2,
+        waf_blocked_urls: blocked,
+        ..summary(10, 0, 10)
+    };
+
+    let remaining = HashSet::new();
+    let diagnostics = build_waf_diagnostics(&initial, &final_summary, true, Some(&remaining))
+        .expect("waf diagnostics");
+
+    assert_eq!(diagnostics.status, "recovered_full");
+    assert_eq!(diagnostics.detected_pages, 2);
+    assert_eq!(diagnostics.recovered_pages, 2);
+    assert_eq!(diagnostics.remaining_pages, 0);
+    assert!(diagnostics.remaining_urls.is_empty());
+}
+
+#[test]
+fn test_waf_diagnostics_reports_unrecovered_without_retry() {
+    let mut blocked = HashSet::new();
+    blocked.insert("https://example.com/blocked-a".to_string());
+
+    let initial = CrawlSummary {
+        waf_blocked_pages: 1,
+        waf_blocked_urls: blocked.clone(),
+        ..summary(4, 0, 3)
+    };
+    let final_summary = initial.clone();
+
+    let diagnostics =
+        build_waf_diagnostics(&initial, &final_summary, false, None).expect("waf diagnostics");
+
+    assert_eq!(diagnostics.status, "detected_unrecovered");
+    assert_eq!(diagnostics.detected_pages, 1);
+    assert_eq!(diagnostics.recovered_pages, 0);
+    assert_eq!(diagnostics.remaining_pages, 1);
+    assert_eq!(
+        diagnostics.remaining_urls,
+        vec!["https://example.com/blocked-a"]
+    );
+}
+
+#[test]
 fn test_no_fallback_uncapped_nine_pages_healthy() {
     // 9-page site, healthy, max_pages uncapped — should NOT trigger Chrome
     assert!(!should_fallback_to_chrome(

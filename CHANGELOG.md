@@ -1,5 +1,21 @@
 # Changelog
-Last Modified: 2026-03-30 (session: v0.33.10 — inline GPU + CDI deadlock fix)
+Last Modified: 2026-03-31 (session: v0.34.0 — WAF diagnostics, enqueue-only LiteBackend, serve preflight auto-terminate)
+
+## [0.34.0] — WAF diagnostics + LiteBackend split
+
+### Highlights
+
+- **WAF diagnostics** — `WafDiagnostics` struct and `build_waf_diagnostics()` added to `engine.rs`; wired into crawl result builder and `crawl_sync`; surfaced in web UI job detail page (WAF Recovery section + remaining URLs list).
+- **Enqueue-only `LiteBackend`** — `LiteBackend::new()` now creates an enqueue-only backend (no workers); `new_with_workers()` starts in-process workers. Prevents unnecessary worker startup for fire-and-forget CLI commands. `ServiceContext` gains `new_without_workers()` variant.
+- **serve preflight auto-terminate** — `classify_nextjs_lock_state()` extracts lock state logic; active Next.js dev processes are now auto-terminated instead of erroring when a stale lock is found.
+- **`jobs-models.ts` / job detail UI** — `WafDiagnostics` TypeScript interface; WAF Recovery section and remaining URLs list rendered in job detail view.
+
+### Commits since v0.33.10
+
+| SHA | Type | Description |
+|-----|------|-------------|
+| *(this commit)* | feat | WAF diagnostics, enqueue-only LiteBackend, serve preflight auto-terminate |
+| c096677a | fix | address PR comments #1-2 - fix lite worker shutdown and changelog header |
 
 ## [0.33.10] — infra/gpu + CDI
 

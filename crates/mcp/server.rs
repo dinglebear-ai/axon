@@ -80,7 +80,7 @@ impl AxonMcpServer {
     ) -> Result<Arc<ServiceContext>, Box<dyn std::error::Error + Send + Sync>> {
         self.service_context
             .get_or_try_init(|| async {
-                ServiceContext::new(Arc::clone(&self.cfg))
+                ServiceContext::new_with_workers(Arc::clone(&self.cfg))
                     .await
                     .map(Arc::new)
             })

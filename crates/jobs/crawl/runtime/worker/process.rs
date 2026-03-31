@@ -432,6 +432,7 @@ async fn run_active_crawl_job(
                 robots_backfill_stats,
                 robots_discovery_stats,
                 final_prompt,
+                waf_retry_attempted: false,
             },
         )
         .await?;

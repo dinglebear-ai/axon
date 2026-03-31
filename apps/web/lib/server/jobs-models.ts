@@ -26,6 +26,16 @@ export interface CrawlMarkdownFile {
   changed: boolean | null
 }
 
+export interface WafDiagnostics {
+  status: string
+  attemptedRecovery: boolean
+  detectedPages: number
+  recoveredPages: number
+  remainingPages: number
+  detectedUrls: string[]
+  remainingUrls: string[]
+}
+
 export interface JobDetail {
   id: string
   type: JobType
@@ -49,6 +59,7 @@ export interface JobDetail {
   filteredUrls: number | null
   errorPages: number | null
   wafBlockedPages: number | null
+  wafDiagnostics: WafDiagnostics | null
   cacheHit: boolean | null
   outputDir: string | null
   staleUrlsDeleted: number | null

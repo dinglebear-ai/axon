@@ -11,6 +11,13 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NextJsLockState {
+    NoLock,
+    RemoveStaleLock,
+    TerminateActiveProcesses,
+}
+
 pub(super) async fn preflight_dependencies(cfg: &Config) -> Result<(), Box<dyn Error>> {
     require_command("docker").await?;
     require_command("node").await?;
@@ -76,37 +83,58 @@ pub(super) async fn reconcile_nextjs_dev_lock() -> Result<(), Box<dyn Error>> {
         .into());
     }
     let lock_path = web_dir.join(".next/dev/lock");
-    if !tokio::fs::try_exists(&lock_path).await.unwrap_or(false) {
-        return Ok(());
-    }
+    let lock_exists = tokio::fs::try_exists(&lock_path).await.unwrap_or(false);
 
     let next_dev_processes =
         inspect_processes_matching(&["next dev", "pnpm exec next dev"]).await?;
-    if next_dev_processes.is_empty() {
-        tokio::fs::remove_file(&lock_path).await.map_err(|err| {
-            format!(
-                "failed to remove stale Next.js dev lock {}: {err}",
-                lock_path.display()
-            )
-        })?;
-        log_supervisor(
-            "serve",
-            ANSI_YELLOW,
-            &format!("removed stale Next.js dev lock at {}", lock_path.display()),
-        );
-        return Ok(());
+    match classify_nextjs_lock_state(lock_exists, &next_dev_processes) {
+        NextJsLockState::NoLock => Ok(()),
+        NextJsLockState::RemoveStaleLock => {
+            tokio::fs::remove_file(&lock_path).await.map_err(|err| {
+                format!(
+                    "failed to remove stale Next.js dev lock {}: {err}",
+                    lock_path.display()
+                )
+            })?;
+            log_supervisor(
+                "serve",
+                ANSI_YELLOW,
+                &format!("removed stale Next.js dev lock at {}", lock_path.display()),
+            );
+            Ok(())
+        }
+        NextJsLockState::TerminateActiveProcesses => {
+            for owner in &next_dev_processes {
+                terminate_port_owner(owner).await?;
+            }
+            tokio::fs::remove_file(&lock_path).await.map_err(|err| {
+                format!(
+                    "failed to remove Next.js dev lock {} after stopping active processes: {err}",
+                    lock_path.display()
+                )
+            })?;
+            log_supervisor(
+                "serve",
+                ANSI_YELLOW,
+                &format!(
+                    "stopped active Next.js dev processes and removed lock at {}",
+                    lock_path.display()
+                ),
+            );
+            Ok(())
+        }
     }
+}
 
-    Err(format!(
-        "Next.js dev lock exists at {} and active Next.js processes were found: {}. Stop the other dev server first.",
-        lock_path.display(),
-        next_dev_processes
-            .iter()
-            .map(PortOwner::summary)
-            .collect::<Vec<_>>()
-            .join(", ")
-    )
-    .into())
+pub(super) fn classify_nextjs_lock_state(
+    lock_exists: bool,
+    next_dev_processes: &[PortOwner],
+) -> NextJsLockState {
+    match (lock_exists, next_dev_processes.is_empty()) {
+        (false, _) => NextJsLockState::NoLock,
+        (true, true) => NextJsLockState::RemoveStaleLock,
+        (true, false) => NextJsLockState::TerminateActiveProcesses,
+    }
 }
 
 pub(super) async fn reconcile_required_ports(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -444,11 +472,14 @@ pub(super) fn supervised_child_specs(cfg: &Config) -> Result<Vec<ChildSpec>, Box
                 ("AXON_SERVE_HOST", "0.0.0.0"),
             ],
         ),
-        ChildSpec::axon(
+        ChildSpec::axon_owned(
             "mcp-http",
             &exe,
             ["mcp", "--transport", "http"],
-            std::iter::empty::<(&str, &str)>(),
+            [
+                ("AXON_MCP_HTTP_HOST", cfg.mcp_http_host.clone()),
+                ("AXON_MCP_HTTP_PORT", cfg.mcp_http_port.to_string()),
+            ],
         ),
         ChildSpec::external(
             "shell-server",

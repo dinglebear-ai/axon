@@ -167,7 +167,7 @@ impl Default for Config {
             viewport_height: 1080,
             serve_port: 49000,
             mcp_transport: McpTransport::Http,
-            mcp_http_host: "127.0.0.1".to_string(),
+            mcp_http_host: "0.0.0.0".to_string(),
             mcp_http_port: 8001,
             web_dev_port: 49010,
             shell_server_port: 49011,

@@ -6,11 +6,11 @@
 
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::content::url_to_domain;
-use crate::crates::core::logging::{log_done, log_warn};
+use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::core::ui::Spinner;
 use crate::crates::crawl::engine::{
-    CrawlSummary, append_html_anchor_backfill, chrome_refetch_thin_pages, run_crawl_once,
-    run_sitemap_only, should_fallback_to_chrome, update_latest_reflink,
+    CrawlSummary, append_html_anchor_backfill, build_waf_diagnostics, chrome_refetch_thin_pages,
+    run_crawl_once, run_sitemap_only, should_fallback_to_chrome, update_latest_reflink,
 };
 use crate::crates::crawl::manifest::{
     manifest_cache_is_stale, read_manifest_data, read_manifest_urls, write_audit_diff,
@@ -55,6 +55,7 @@ pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult
             thin_pages: 0,
             error_pages: 0,
             waf_blocked_pages: 0,
+            waf_diagnostics: None,
             elapsed_ms: 0,
             cache_hit: true,
         });
@@ -89,6 +90,7 @@ pub async fn crawl_sync(cfg: &Config, start_url: &str) -> Result<CrawlSyncResult
         thin_pages: final_summary.thin_pages,
         error_pages: final_summary.error_pages,
         waf_blocked_pages: final_summary.waf_blocked_pages,
+        waf_diagnostics: build_waf_diagnostics(&final_summary, &final_summary, false, None),
         elapsed_ms: final_summary.elapsed_ms,
         cache_hit: false,
     })
@@ -150,6 +152,7 @@ async fn run_sitemap_only_crawl(
         thin_pages: summary.thin_pages,
         error_pages: summary.error_pages,
         waf_blocked_pages: summary.waf_blocked_pages,
+        waf_diagnostics: build_waf_diagnostics(&summary, &summary, false, None),
         elapsed_ms: summary.elapsed_ms,
         cache_hit: false,
     })
@@ -311,6 +314,19 @@ async fn maybe_refetch_waf_blocked(
     let mut waf_summary = summary.clone();
     waf_summary.thin_urls = summary.waf_blocked_urls.clone();
     let updated = chrome_refetch_thin_pages(cfg, waf_summary, &cfg.output_dir).await;
+    let remaining_urls = updated.thin_urls.clone();
+    if let Some(diagnostics) = build_waf_diagnostics(summary, &updated, true, Some(&remaining_urls))
+    {
+        let message = format!(
+            "waf: detected={} recovered={} remaining={}",
+            diagnostics.detected_pages, diagnostics.recovered_pages, diagnostics.remaining_pages
+        );
+        if diagnostics.remaining_pages == 0 {
+            log_info(&message);
+        } else {
+            log_warn(&message);
+        }
+    }
     Some(updated)
 }
 
