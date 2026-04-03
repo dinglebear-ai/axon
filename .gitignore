@@ -1,6 +1,7 @@
 # ── Secrets ──────────────────────────────────────────────────────────────────
 .env
 .env.*
+services.env
 !.env.example
 
 # ── Runtime artifacts ────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ backups/
 .full-review/
 .full-review-archive-*
 .bivvy
+
 
 # ── IDE / editor ─────────────────────────────────────────────────────────────
 .vscode/
