@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "server",
-  "dolt_database": "axon_rust",
-  "project_id": "c862601a-9e2f-4698-9440-98bdd5276e3a"
-}

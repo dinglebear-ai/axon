@@ -1,6 +1,0 @@
-[profile.default]
-# Keep local feedback fast and deterministic.
-fail-fast = false
-slow-timeout = { period = "60s", terminate-after = 2 }
-retries = 0
-status-level = "pass"

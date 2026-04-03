@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"rtk git commit -m \\\"$(cat <<'EOF'\\nfix: resolve Box<dyn Error> Send+Sync bounds in graph context and worker\\n\\nFix two compile errors introduced by the simplification pass:\\n- graph/contex...",
-  "error": "Exit code 1\n╭──────────────────────────────────────╮\n│ 🥊 lefthook v2.1.4  hook: pre-commit │\n╰──────────────────────────────────────╯\n│  biome (skip) no matching staged files\n│  mcp-schema-doc (skip) no matching staged files\n│  skills-ref (skip) no matching staged files\n│  no-next-middleware (skip) no matching staged files\n┃  dockerignore-guard ❯ \n\n.dockerignore guard check passed.\r\n\n┃  mcp-http-only ❯ \n\nOK: MCP CLI supports stdio, http, and both transport modes.\r\n\n┃  no-mod-rs ❯ \n\nOK: no mod.r...",
-  "timestamp": "2026-03-31T21:07:57.391Z",
-  "retry_count": 1
-}
