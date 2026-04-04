@@ -1,110 +1,154 @@
-# Axon RAG Engine
+# Axon
 
-> **Blazing fast, self-hosted RAG engine for web crawling, structured extraction, and semantic search via the Model Context Protocol.**
+Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. This repo is the research/runtime backbone for the Axon stack.
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
-[![Rust Version](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-Supported-brightgreen.svg)](https://github.com/jlowin/fastmcp)
-[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+## What this repository ships
 
----
+- `main.rs`, `lib.rs`: CLI entrypoint and dispatch
+- `crates/cli/`: CLI handlers
+- `crates/core/`: shared config, HTTP, content, and core types
+- `crates/crawl/`: crawl engine
+- `crates/jobs/`: async job runtime, queues, and workers
+- `crates/vector/`: Qdrant/embedding/search/RAG operations
+- `crates/mcp/`: MCP server and action router
+- `apps/web/`: Next.js web UI
+- `docs/`: architecture, MCP, auth, graph, export, restore, testing, and service references
+- `docker/` and compose files: infra and runtime deployment
 
-## ✨ Overview
-Axon is a powerful RAG (Retrieval-Augmented Generation) infrastructure suite built in Rust. It provides AI assistants with the ability to crawl entire websites, scrape markdown content, embed documents into vector stores, and perform hybrid semantic searches with optional graph-enhanced retrieval.
+## Runtime surfaces
 
-### 🎯 Key Features
-| Feature | Description |
-|---------|-------------|
-| **Atomic Hunts** | Job-isolated crawls with zero-cost reflinked "latest" views |
-| **Hybrid Search** | Combined Dense + BM42 sparse vectors for superior retrieval |
-| **Source Ingestion**| Native support for GitHub, Reddit, and YouTube content |
-| **Graph-Enhanced**| Optional Neo4j integration for complex relationship querying |
+Axon is both:
 
----
+- a CLI binary: `axon`
+- an MCP server subcommand: `axon mcp`
+- a local stack supervisor: `axon serve`
 
-## 🎯 Claude Code Integration
-Install the RAG infrastructure directly from the marketplace:
+### Major CLI commands
+
+| Command | Purpose |
+| --- | --- |
+| `scrape` | Scrape URLs to markdown or other output formats |
+| `crawl` | Crawl sites asynchronously or synchronously |
+| `map` | Discover URLs without scraping |
+| `extract` | Structured extraction |
+| `search` | Web search and optional crawl seeding |
+| `research` | Search with synthesized research output |
+| `embed` | Embed files, dirs, or URLs into Qdrant |
+| `query` | Semantic search |
+| `retrieve` | Fetch stored document chunks |
+| `ask` | RAG answer generation |
+| `evaluate` | Baseline vs RAG evaluation with judging |
+| `suggest` | Crawl-target suggestion |
+| `ingest` | GitHub, Reddit, or YouTube ingestion |
+| `sessions` | Ingest AI session exports |
+| `sources`, `domains`, `stats`, `status`, `doctor`, `debug` | Inspection and diagnostics |
+| `refresh` | Re-index scheduling and maintenance |
+| `graph` | Knowledge-graph operations |
+| `watch` | Scheduled task management |
+| `serve` | Local app stack supervisor |
+| `mcp` | MCP stdio server |
+
+The MCP server exposes a single `axon` tool with `action`/`subaction` routing. The canonical MCP contract lives in `docs/MCP.md` and `docs/MCP-TOOL-SCHEMA.md`.
+
+## Quick start
+
+### Infrastructure
 
 ```bash
-# Add the marketplace
-/plugin marketplace add jmagar/claude-homelab
-
-# Install the axon engine
-/plugin install axon @jmagar-claude-homelab
+docker compose -f docker-compose.services.yaml up -d
 ```
 
----
+### Local checks
 
-## ⚙️ Configuration & Credentials
-Axon requires a robust backend stack (Postgres, Redis, RabbitMQ, Qdrant).
-
-**Location:** `~/.axon/.env`
-
-### Required Variables
 ```bash
-QDRANT_URL="http://127.0.0.1:53333"
-TEI_URL="http://your-tei-server:52000"
-AXON_PG_URL="postgres://user:pass@localhost/axon"
-AXON_AMQP_URL="amqp://localhost/%2f"
+./scripts/axon doctor
+./scripts/axon scrape https://example.com --wait true
 ```
 
----
+### Local stack supervisor
 
-## 🛠️ Available Tools & Resources
-
-### 🔧 Primary Tool: `axon`
-The unified `axon` tool orchestrates the entire RAG pipeline.
-
-| Action | Subactions | Description |
-|--------|------------|-------------|
-| **`crawl`** | `start`, `status`, `cancel` | Full-site asynchronous discovery |
-| **`query`** | `hybrid`, `dense`, `sparse` | Semantic search over indexed content |
-| **`ask`** | `rag`, `graph` | Grounded Q&A with LLM synthesis |
-| **`ingest`**| `github`, `reddit`, `youtube` | External source synchronization |
-
-### 📊 Resources
-| URI | Description | Output Format |
-|-----|-------------|---------------|
-| `axon://status-dashboard` | Real-time job queue monitoring | MCP App Widget |
-| `axon://live/crawl/{id}` | Streaming crawl progress | Live Feed |
-
----
-
-## 🏗️ Architecture & Design
-Axon is built for massive scale and reliability:
-- **Distributed Workers:** Decoupled job producers and consumers via RabbitMQ.
-- **Monolith Guardrails:** Strict 500-line file and 80-line function limits enforced via git hooks.
-- **Auto-Switch Rendering:** Intelligent fallback from fast HTTP to headless Chrome for JS-heavy sites.
-
----
-
-## 🔧 Development
-### Prerequisites
-- Rust 1.75+
-- Docker Compose (for backend infrastructure)
-
-### Local Loop
 ```bash
-just test-fast        # Fastest inner-loop unit tests
-just test-infra       # Infrastructure-dependent integration tests
-cargo build --release # Production binary build
+cargo run --bin axon -- serve
 ```
 
-### Health Check
+### MCP server
+
 ```bash
-axon doctor           # Verify all backend services are reachable
+cargo run --bin axon -- mcp
 ```
 
----
+## Configuration
 
-## 🐛 Troubleshooting
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **Jobs Stuck** | Workers Down | Start consumers with `axon crawl worker` |
-| **413 Payload** | TEI Batch Size | Adjust `TEI_MAX_CLIENT_BATCH_SIZE` |
-| **Thin Pages** | JS Rendering | Ensure `axon-chrome` is running |
+This repo uses a large `.env.example`; the important core settings are:
 
----
+```bash
+AXON_SERVE_PORT=49000
+AXON_WEB_DEV_PORT=49010
+SHELL_SERVER_PORT=49011
+AXON_MCP_HTTP_PORT=8001
+AXON_MCP_TRANSPORT=http
+AXON_PG_URL=postgresql://...
+AXON_REDIS_URL=redis://...
+AXON_AMQP_URL=amqp://...
+QDRANT_URL=http://...
+TEI_URL=http://...
+AXON_COLLECTION=cortex
+```
 
-## 📄 License
-MIT © jmagar
+Optional subsystems include:
+
+- Neo4j graph retrieval
+- OpenAI-compatible LLM endpoints
+- Chrome rendering and diagnostics
+- source-ingestion credentials for GitHub, Reddit, and Tavily
+
+## Development commands
+
+```bash
+just setup
+just check
+just test
+just fmt
+just clippy
+just build
+just services-up
+just serve
+```
+
+Key workflows:
+
+- `just services-up`: start infrastructure only
+- `just serve`: start the local app stack supervisor
+- `just mcp-smoke`: MCP smoke test harness
+- `just verify`: Docker guards, fmt, clippy, check, and tests
+
+## Verification
+
+Recommended:
+
+```bash
+just check
+just test
+just fmt-check
+just clippy
+```
+
+For end-to-end stack work:
+
+```bash
+just services-up
+just serve
+```
+
+## Related docs
+
+- `CLAUDE.md`: canonical high-level command and architecture notes
+- `docs/ARCHITECTURE.md`: subsystem map
+- `docs/MCP.md`: MCP runtime and design guide
+- `docs/MCP-TOOL-SCHEMA.md`: MCP schema source of truth
+- `docs/TESTING.md`: test strategy and mcporter examples
+- `CHANGELOG.md`: release history
+
+## License
+
+MIT

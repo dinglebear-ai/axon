@@ -1,4 +1,21 @@
 # Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.35.0] - 2026-04-03
+
+### Fixed
+- **OAuth discovery 401 cascade**: BearerAuthMiddleware was blocking GET /.well-known/oauth-protected-resource, causing MCP clients to surface generic "unknown error". Added WellKnownMiddleware (RFC 9728) to return resource metadata.
+
+### Added
+- **docs/AUTHENTICATION.md**: New setup guide covering token generation and client config.
+- **README Authentication section**: Added quick-start examples and link to full guide.
+
 Last Modified: 2026-03-31 (session: v0.34.1 — simplification pass: dedup helpers, fix service-context abstractions)
 
 ## [0.34.1] — simplification pass
@@ -706,7 +723,6 @@ This section documents commits on `main` relative to `fe11a78d`.
 - **Pre-chunking optimization (`1a78dc82`)** — github files pre-chunked before TEI batching, eliminating 413 fallback path.
 - **Worker CPU tuning (`5802ff62`)** — CPU-based lane defaults and async stale-tail deletes for better throughput.
 
-## [Unreleased] — feat/web-integration-review-fixes
 
 This section documents commits on `feat/web-integration-review-fixes` relative to `main` (`fe11a78d`).
 
@@ -722,7 +738,6 @@ This section documents commits on `feat/web-integration-review-fixes` relative t
 
 - **Web integration full-review fixes (v0.23.0)** — 5 critical and 12 high findings from a comprehensive `apps/web ↔ crates/web` integration review addressed across 20 files. Security: `check_auth()` now reads `Authorization`/`x-api-key` headers (tokens no longer forced into query strings / access logs); CORS preflight uses an explicit header allowlist instead of reflecting arbitrary client headers; ACP sessions are bound to originating WS connection (cross-session interference prevented); shell PTY input capped at 64 KB; debug-build auth bypass now emits a prominent `log::warn!`. Protocol: `acp_resume_result` field renamed `success` → `ok` to match TypeScript Zod schema (session resume was silently broken); `permission_request` ACP events fully wired through TypeScript WS handler; all `format!()`-based JSON replaced with `serde_json::json!()` (injection-safe); four ACP permission flags (`enable_fs`, `enable_terminal`, `permission_timeout_secs`, `adapter_timeout_secs`) wired through `ALLOWED_FLAGS` → `params.rs` (UI controls now functional). Performance: WS channel-full drops replaced with visible `[output truncated]` sentinel; sync-mode concurrency semaphore added (`AXON_MAX_SYNC_CONCURRENT`, default 16); per-connection WS execute rate limiting (120 req/60s); dead ACP adapter evicted from `SESSION_CACHE` on `run_turn()` error; `axon-ws-exec.ts` singleton sends abort-triggered cancel to server and caps pending map at 100. Code quality: `NO_JSON_MODES` updated to reflect service-layer routing; `pulse_chat_probe`/`mcp_refresh` documented as internal-only; editor system prompt extracted to named constant; 22 pre-existing TypeScript `noUncheckedIndexedAccess` test errors fixed; 862 tests passing.
 
-## [Unreleased] — fix/pr-review-fixes-crawl-refactor
 
 This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative to `main` (`82ecd6e1`).
 
