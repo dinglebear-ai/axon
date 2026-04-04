@@ -1,5 +1,7 @@
 # Axon
 
+[![crates.io](https://img.shields.io/crates/v/axon)](https://crates.io/crates/axon)
+
 Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
 
 Version: 0.35.0 | License: MIT
