@@ -121,3 +121,6 @@ docker/mem0/config.json
 .mcp.json
 specs/.current-spec
 **/.progress.md
+
+# Personal local cheatsheet (never commit)
+CLAUDE.md.local
