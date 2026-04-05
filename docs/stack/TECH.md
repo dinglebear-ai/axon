@@ -1,0 +1,139 @@
+# Technology Choices -- Axon
+
+## Language and runtime
+
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| Core binary | Rust | 1.94+ (edition 2024) | CLI, MCP server, workers, backend bridge |
+| Web UI | TypeScript + Next.js | Node 22+ | Dashboard, Pulse workspace |
+| Scripts | Bash + Python | -- | Maintenance, testing, analysis |
+
+## Key dependencies
+
+### Rust crates
+
+| Crate | Version | Purpose |
+|-------|---------|---------|
+| `spider` | 2.x | Web crawling engine (HTTP + Chrome rendering) |
+| `spider_agent` | 2.47+ | Tavily search integration |
+| `spider_transformations` | 2.x | Content transformation (markdown, readability) |
+| `rmcp` | 1.1+ | MCP server framework (stdio + streamable-http) |
+| `axum` | 0.8 | HTTP server + WebSocket for backend bridge |
+| `tokio` | 1.x | Async runtime (multi-threaded) |
+| `sqlx` | 0.8 | PostgreSQL + SQLite async driver |
+| `lapin` | 4.x | RabbitMQ AMQP client |
+| `redis` | 1.0 | Redis client (tokio-comp) |
+| `reqwest` | 0.13 | HTTP client (rustls, streaming) |
+| `clap` | 4.x | CLI argument parsing |
+| `serde` / `serde_json` | 1.x | Serialization |
+| `text-splitter` | 0.29 | Semantic text chunking (code + markdown) |
+| `tree-sitter-*` | various | AST-based code chunking (Rust, Python, JS, TS, Go, Bash) |
+| `octocrab` | 0.49 | GitHub API client |
+| `bollard` | 0.20 | Docker API client |
+| `agent-client-protocol` | 0.10+ | ACP adapter protocol |
+
+### Infrastructure
+
+| Service | Image/Version | Purpose |
+|---------|--------------|---------|
+| PostgreSQL | 17-alpine | Job persistence, metadata storage |
+| Redis | 8.2-alpine | Queue state, cancel flags, caching |
+| RabbitMQ | 4.0-management | AMQP job queue with 6 queues |
+| Qdrant | v1.13.1 | Vector database (dense + sparse search) |
+| TEI | HuggingFace latest | Text embedding generation |
+| Chrome | Custom Dockerfile | Headless browser for JavaScript rendering |
+
+### Web UI (Next.js)
+
+| Package | Purpose |
+|---------|---------|
+| Next.js (App Router) | React framework |
+| Biome | Linter and formatter |
+| shadcn/ui | Component library |
+| pnpm | Package manager |
+
+## Embedding pipeline
+
+### TEI (Text Embeddings Inference)
+
+- Default model: `Qwen/Qwen3-Embedding-0.6B`
+- Pooling: `last-token`
+- Batch size: up to 128 (auto-splits on 413 Payload Too Large)
+- Retry: 5 attempts with exponential backoff (1s, 2s, 4s, 8s + jitter)
+- GPU acceleration via NVIDIA (optional; CPU fallback available)
+
+### Text chunking
+
+- `chunk_text()`: 2000 characters with 200-character overlap
+- Code files: tree-sitter AST-based chunking (preserves function boundaries)
+- Each chunk becomes one Qdrant point with `chunk_text` payload field
+
+## Hybrid vector search
+
+New Qdrant collections use named vectors with two search paths:
+
+| Vector | Type | Source | Purpose |
+|--------|------|--------|---------|
+| `dense` | Float (dimension matches model) | TEI embedding | Semantic similarity |
+| `bm42` | Sparse | Computed locally from chunk text | Keyword matching |
+
+Search uses Reciprocal Rank Fusion (RRF) via Qdrant `/query` API:
+1. Dense prefetch: HNSW search (`hnsw_ef=128`)
+2. Sparse prefetch: BM42 index search
+3. RRF fusion: merge and re-rank results
+
+Legacy unnamed-mode collections fall back to dense-only search. Use `axon migrate` to upgrade.
+
+### Tuning
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `AXON_HYBRID_SEARCH` | `true` | Enable hybrid search |
+| `AXON_HYBRID_CANDIDATES` | `100` | Prefetch candidates per arm |
+| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Ask pipeline window (higher for reranking) |
+| `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode (32-512) |
+
+## Crawl engine
+
+Spider-based crawling with three render modes:
+
+| Mode | Description |
+|------|-------------|
+| `http` | Pure HTTP fetch (fastest, no JS) |
+| `chrome` | Headless Chrome rendering (JS-heavy sites) |
+| `auto-switch` (default) | HTTP first; if >60% thin pages, retry with Chrome |
+
+Key Spider features enabled: `basic`, `chrome`, `regex`, `sitemap`, `adblock`, `chrome_stealth`, `firewall`, `ua_generator`.
+
+Features explicitly NOT enabled:
+- `balance`: silently throttles with zero logging
+- `glob`: causes budget-aware `is_allowed()` to reject first URL with `with_limit(1)`
+
+## ACP (Agent Client Protocol)
+
+LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use ACP:
+
+- Adapter subprocess spawned via `AXON_ACP_ADAPTER_CMD` (e.g., `claude`, `codex`, `gemini`)
+- Pre-warming eliminates cold-start latency (~45s)
+- `OPENAI_MODEL` controls the model used for completions
+- Max concurrent sessions: 8 (configurable)
+- Per-turn timeout: 5 minutes (configurable)
+- Remote ACP: route completions through a remote `axon serve` WebSocket
+
+## Build tooling
+
+| Tool | Purpose |
+|------|---------|
+| just | Task runner (30+ recipes) |
+| lefthook | Git hooks |
+| sccache | Compilation cache (auto-detected) |
+| mold | Fast linker (auto-detected) |
+| cargo-nextest | Parallel test runner |
+| cargo-deny | Dependency auditing |
+| cargo-llvm-cov | Code coverage |
+
+## See also
+
+- [ARCH.md](ARCH.md) -- architecture patterns
+- [PRE-REQS.md](PRE-REQS.md) -- prerequisites
+- [../repo/RECIPES.md](../repo/RECIPES.md) -- Justfile recipes
