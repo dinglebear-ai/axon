@@ -1,6 +1,6 @@
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::http::validate_url;
-use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::core::ui::{accent, muted, symbol_for_status};
 use crate::crates::crawl::engine::{CrawlSummary, run_crawl_once, should_fallback_to_chrome};
 use crate::crates::jobs::common::{JobTable, mark_job_completed, spawn_heartbeat_task};
@@ -93,8 +93,17 @@ pub(super) async fn process_job(
             .execute(pool)
             .await?;
             if is_canceled {
-                log_info(&format!("worker canceled crawl job {id}"));
+                eprintln!(
+                    "{} crawl job {} canceled",
+                    symbol_for_status("canceled"),
+                    muted(&id.to_string()),
+                );
             } else {
+                eprintln!(
+                    "{} crawl job {} failed",
+                    symbol_for_status("failed"),
+                    muted(&id.to_string()),
+                );
                 log_warn(&format!("worker failed crawl job {id}"));
             }
         }
@@ -235,7 +244,11 @@ async fn maybe_complete_cache_hit(
         "audit_report_path": report_path.to_string_lossy(),
     });
     mark_job_completed(pool, TABLE, id, Some(&result_json)).await?;
-    log_done(&format!("worker completed crawl job {id} (cache hit)"));
+    eprintln!(
+        "{} crawl job {} done (cache hit)",
+        symbol_for_status("completed"),
+        muted(&id.to_string()),
+    );
     Ok(true)
 }
 
@@ -261,7 +274,6 @@ fn spawn_progress_task(
                     continue; // drain channel, skip both DB write and log
                 }
                 let pages_crawled = progress.pages_seen as u64;
-                let filtered_urls = pages_crawled.saturating_sub(progress.markdown_files as u64);
 
                 if elapsed_log >= Duration::from_secs(5) {
                     eprintln!(
@@ -277,6 +289,8 @@ fn spawn_progress_task(
                 }
 
                 if elapsed_db >= Duration::from_millis(500) {
+                    let filtered_urls =
+                        pages_crawled.saturating_sub(progress.markdown_files as u64);
                     let progress_json = serde_json::json!({
                         "phase": "crawling",
                         "md_created": progress.markdown_files,
