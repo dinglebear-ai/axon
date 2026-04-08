@@ -1,6 +1,7 @@
 use crate::crates::core::config::{Config, RenderMode};
 use crate::crates::core::http::validate_url;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
+use crate::crates::core::ui::{accent, muted, symbol_for_status};
 use crate::crates::crawl::engine::{CrawlSummary, run_crawl_once, should_fallback_to_chrome};
 use crate::crates::jobs::common::{JobTable, mark_job_completed, spawn_heartbeat_task};
 use crate::crates::jobs::status::JobStatus;
@@ -40,7 +41,12 @@ pub(super) async fn process_job(
     validate_output_dir(&ctx.job_cfg.output_dir, &cfg.output_dir)?;
 
     let job_start = std::time::Instant::now();
-    log_info(&format!("crawl worker started job {} url={}", id, ctx.url));
+    eprintln!(
+        "{} crawl job {} {}",
+        symbol_for_status("running"),
+        muted(&id.to_string()),
+        accent(&ctx.url),
+    );
 
     let (heartbeat_stop_tx, heartbeat_task) =
         spawn_heartbeat_task(pool.clone(), TABLE, id, CRAWL_HEARTBEAT_INTERVAL_SECS);
@@ -63,10 +69,12 @@ pub(super) async fn process_job(
     match result {
         Ok(result_json) => {
             mark_job_completed(pool, TABLE, id, Some(&result_json)).await?;
-            log_done(&format!(
-                "worker completed crawl job {id} duration_ms={}",
-                job_start.elapsed().as_millis()
-            ));
+            eprintln!(
+                "{} crawl job {} done {}ms",
+                symbol_for_status("completed"),
+                muted(&id.to_string()),
+                accent(&job_start.elapsed().as_millis().to_string()),
+            );
         }
         Err(err) => {
             let is_canceled = err.contains(CANCEL_SENTINEL);
@@ -243,32 +251,51 @@ fn spawn_progress_task(
     let progress_job_id = id;
     let progress_task = tokio::spawn(
         async move {
-            let mut last_update = std::time::Instant::now();
+            let mut last_db_write = std::time::Instant::now();
+            let mut last_log = std::time::Instant::now();
             while let Some(progress) = progress_rx.recv().await {
-                if last_update.elapsed() < Duration::from_millis(500) {
-                    continue; // drain channel, skip DB write
+                let elapsed_db = last_db_write.elapsed();
+                let elapsed_log = last_log.elapsed();
+                if elapsed_db < Duration::from_millis(500) && elapsed_log < Duration::from_secs(5)
+                {
+                    continue; // drain channel, skip both DB write and log
                 }
                 let pages_crawled = progress.pages_seen as u64;
                 let filtered_urls = pages_crawled.saturating_sub(progress.markdown_files as u64);
 
-                let progress_json = serde_json::json!({
-                    "phase": "crawling",
-                    "md_created": progress.markdown_files,
-                    "thin_md": progress.thin_pages,
-                    "filtered_urls": filtered_urls,
-                    "pages_crawled": pages_crawled,
-                    "pages_discovered": progress.pages_discovered,
-                    "crawl_stream_pages": progress.pages_seen,
-                });
-                let _ = sqlx::query(
-                    "UPDATE axon_crawl_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
-                )
-                .bind(progress_job_id)
-                .bind(progress_json)
-                .bind(JobStatus::Running.as_str())
-                .execute(&progress_pool)
-                .await;
-                last_update = std::time::Instant::now();
+                if elapsed_log >= Duration::from_secs(5) {
+                    eprintln!(
+                        "{} crawl {} pages={}/{} md={} thin={}",
+                        symbol_for_status("running"),
+                        muted(&progress_job_id.to_string()),
+                        accent(&pages_crawled.to_string()),
+                        accent(&progress.pages_discovered.to_string()),
+                        accent(&progress.markdown_files.to_string()),
+                        accent(&progress.thin_pages.to_string()),
+                    );
+                    last_log = std::time::Instant::now();
+                }
+
+                if elapsed_db >= Duration::from_millis(500) {
+                    let progress_json = serde_json::json!({
+                        "phase": "crawling",
+                        "md_created": progress.markdown_files,
+                        "thin_md": progress.thin_pages,
+                        "filtered_urls": filtered_urls,
+                        "pages_crawled": pages_crawled,
+                        "pages_discovered": progress.pages_discovered,
+                        "crawl_stream_pages": progress.pages_seen,
+                    });
+                    let _ = sqlx::query(
+                        "UPDATE axon_crawl_jobs SET updated_at=NOW(), result_json=$2 WHERE id=$1 AND status=$3",
+                    )
+                    .bind(progress_job_id)
+                    .bind(progress_json)
+                    .bind(JobStatus::Running.as_str())
+                    .execute(&progress_pool)
+                    .await;
+                    last_db_write = std::time::Instant::now();
+                }
             }
         }
         .instrument(tracing::Span::current()),

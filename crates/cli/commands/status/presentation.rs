@@ -208,21 +208,39 @@ fn crawl_metrics_suffix(status: &str, metrics: &serde_json::Value) -> String {
         );
     }
     if matches!(status, "pending" | "running" | "processing" | "scraping") {
+        let pages_crawled = metrics
+            .get("pages_crawled")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let pages_discovered = metrics
+            .get("pages_discovered")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         let md_created = metrics
             .get("md_created")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let filtered_urls = metrics
-            .get("filtered_urls")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        if md_created > 0 || filtered_urls > 0 {
+        let thin_md = metrics.get("thin_md").and_then(|v| v.as_u64()).unwrap_or(0);
+        if pages_crawled > 0 || md_created > 0 {
             let sep = subtle(" | ");
-            return format!(
-                "{sep}{}{sep}{}",
-                metric(md_created, "crawled"),
-                metric(filtered_urls, "filtered"),
-            );
+            let pages_str = if pages_discovered > 0 {
+                format!(
+                    "{}{}{}",
+                    accent(&pages_crawled.to_string()),
+                    subtle("/"),
+                    accent(&pages_discovered.to_string()),
+                )
+            } else {
+                accent(&pages_crawled.to_string()).to_string()
+            };
+            let mut parts = vec![format!("{pages_str} {}", accent("pages"))];
+            if md_created > 0 {
+                parts.push(metric(md_created, "md").to_string());
+            }
+            if thin_md > 0 {
+                parts.push(metric(thin_md, "thin").to_string());
+            }
+            return format!("{sep}{}", parts.join(&sep));
         }
     }
     String::new()

@@ -118,6 +118,18 @@ async fn apply_browser_settings(
         website.with_wait_for_idle_network0(Some(spider::configuration::WaitForIdleNetwork::new(
             Some(Duration::from_secs(cfg.chrome_network_idle_timeout_secs)),
         )));
+        // Chrome needs more time than HTTP: the base_timeout budget is consumed
+        // by page load + network-idle wait + stealth mouse movement (triggered when
+        // spider detects WAF/Cloudflare headers). With the default 20s HTTP timeout
+        // and a 15s network-idle window, only ~5s remains for mouse movement — not
+        // enough, causing "mouse movement timeout exceeded" warnings.
+        // Floor: network_idle_secs + 30s covers page load, idle wait, and movement.
+        let chrome_min_timeout_ms = (cfg.chrome_network_idle_timeout_secs + 30) * 1_000;
+        let chrome_timeout_ms = cfg
+            .request_timeout_ms
+            .map(|t| t.max(chrome_min_timeout_ms))
+            .unwrap_or(chrome_min_timeout_ms);
+        website.with_request_timeout(Some(Duration::from_millis(chrome_timeout_ms)));
         if let Some(ref selector) = cfg.chrome_wait_for_selector {
             website.with_wait_for_selector(Some(WaitForSelector::new(
                 Some(Duration::from_secs(cfg.chrome_network_idle_timeout_secs)),
