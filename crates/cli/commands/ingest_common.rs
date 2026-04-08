@@ -57,7 +57,7 @@ pub async fn maybe_handle_ingest_subcommand(
             };
             let jobs = job_service::list_ingest_jobs(service_context, source_filter, 50, 0).await?;
             let total = jobs.len() as i64;
-            handle_ingest_list(cfg, jobs, total).await?;
+            handle_ingest_list(cfg, jobs, total, cmd_name).await?;
         }
         "cleanup" => {
             let removed = job_service::cleanup_jobs(service_context, JobKind::Ingest).await?;
@@ -208,6 +208,7 @@ async fn handle_ingest_list(
     cfg: &Config,
     all_jobs: Vec<ServiceJob>,
     total: i64,
+    cmd_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
         let result = crate::crates::services::types::JobListResult::new(all_jobs, total, 50, 0);
@@ -215,9 +216,14 @@ async fn handle_ingest_list(
     }
     let jobs = filter_jobs_for_status_view(cfg, all_jobs);
     {
-        println!("{}", primary("Ingest Jobs"));
+        let (header, empty_msg) = if cmd_name == "sessions" {
+            ("Sessions Jobs", "No sessions jobs found.")
+        } else {
+            ("Ingest Jobs", "No ingest jobs found.")
+        };
+        println!("{}", primary(header));
         if jobs.is_empty() {
-            println!("  {}", muted("No ingest jobs found."));
+            println!("  {}", muted(empty_msg));
         } else {
             for job in &jobs {
                 let progress = ingest_progress(&job.result_json)

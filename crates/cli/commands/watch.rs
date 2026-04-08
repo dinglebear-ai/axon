@@ -1,4 +1,5 @@
 use crate::crates::core::config::Config;
+use crate::crates::core::ui::{muted, primary};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::watch as watch_svc;
 use chrono::{Duration, Utc};
@@ -87,9 +88,15 @@ pub async fn run_watch(
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&watches)?);
             } else {
-                for w in watches {
-                    println!("{} {} {}", w.id, w.task_type, w.name);
+                println!("{}", primary("Watch Definitions"));
+                if watches.is_empty() {
+                    println!("  {}", muted("No watches defined."));
+                } else {
+                    for w in &watches {
+                        println!("  {} {} {}", w.id, w.task_type, w.name);
+                    }
                 }
+                println!("  {} total", watches.len());
             }
         }
         WatchRuntimeSubcommand::RunNow { id } => handle_watch_run_now(cfg, &id).await?,
