@@ -499,7 +499,12 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             20_000,
             400_000,
         ),
-        ask_candidate_limit: performance::env_usize_clamped("AXON_ASK_CANDIDATE_LIMIT", 64, 8, 200),
+        ask_candidate_limit: performance::env_usize_clamped(
+            "AXON_ASK_CANDIDATE_LIMIT",
+            150,
+            8,
+            300,
+        ),
         ask_chunk_limit: performance::env_usize_clamped("AXON_ASK_CHUNK_LIMIT", 10, 3, 40),
         ask_full_docs: performance::env_usize_clamped("AXON_ASK_FULL_DOCS", 4, 1, 20),
         ask_backfill_chunks: performance::env_usize_clamped("AXON_ASK_BACKFILL_CHUNKS", 3, 0, 20),
