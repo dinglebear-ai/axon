@@ -19,18 +19,86 @@ pub(super) struct AskRetrieval {
     pub(super) dropped_by_allowlist: usize,
 }
 
+fn build_candidates_from_hits(
+    hits: Vec<qdrant::QdrantSearchHit>,
+    allow_low_signal: bool,
+    allowlist: &[String],
+    dropped: &mut usize,
+) -> Vec<ranking::AskCandidate> {
+    let mut candidates = Vec::new();
+    for hit in hits {
+        let url = qdrant::payload_url_typed(&hit.payload).to_string();
+        let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
+        if url.is_empty() || chunk_text.len() < 40 {
+            continue;
+        }
+        if !allow_low_signal && ranking::is_low_signal_url(&url) {
+            continue;
+        }
+        if !allowlist.is_empty() && !url_matches_domain_list(&url, allowlist) {
+            *dropped += 1;
+            continue;
+        }
+        let path = ranking::extract_path_from_url(&url);
+        let url_tokens = ranking::tokenize_path_set(&path);
+        let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
+        candidates.push(ranking::AskCandidate {
+            score: hit.score,
+            url,
+            path,
+            chunk_text,
+            url_tokens,
+            chunk_tokens,
+            rerank_score: hit.score,
+        });
+    }
+    candidates
+}
+
+/// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).
+/// Primary candidates win; secondary only added if the chunk is not already present.
+fn merge_candidates(
+    mut primary: Vec<ranking::AskCandidate>,
+    secondary: Vec<ranking::AskCandidate>,
+) -> Vec<ranking::AskCandidate> {
+    let mut seen: std::collections::HashSet<String> = primary
+        .iter()
+        .map(|c| format!("{}|{}", c.url, &c.chunk_text[..c.chunk_text.len().min(80)]))
+        .collect();
+    for c in secondary {
+        let key = format!("{}|{}", c.url, &c.chunk_text[..c.chunk_text.len().min(80)]);
+        if seen.insert(key) {
+            primary.push(c);
+        }
+    }
+    primary
+}
+
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
-    let query_with_instruction = tei::prepend_query_instruction(query);
-    let mut ask_vectors = tei::tei_embed(cfg, &[query_with_instruction])
+    let query_tokens = ranking::tokenize_query(query);
+    let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
+
+    // Dual-embedding: embed both the NL question and a keyword form in a single TEI
+    // batch call. This improves recall for NL queries whose embedding drifts from
+    // the document space (e.g. "how do hooks work?" vs "hooks lifecycle events").
+    let keyword_query = query_tokens.join(" ");
+    let use_dual =
+        query_tokens.len() >= 3 && keyword_query.to_lowercase() != query.trim().to_lowercase();
+
+    let mut embed_inputs = vec![tei::prepend_query_instruction(query)];
+    if use_dual {
+        embed_inputs.push(tei::prepend_query_instruction(&keyword_query));
+    }
+
+    let mut ask_vectors = tei::tei_embed(cfg, &embed_inputs)
         .await
         .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
     let vecq = ask_vectors.remove(0);
-    let query_tokens = ranking::tokenize_query(query);
-    let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
+
     // Ask reranks candidates before context selection, so use a wider prefetch window
     // than query (which skips reranking). cfg.ask_hybrid_candidates (default: 150)
     // overrides cfg.hybrid_search_candidates (default: 100) for this path only.
@@ -45,6 +113,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     } else {
         cfg
     };
+
     let hits = qdrant::dispatch_vector_search(search_cfg, &vecq, query, cfg.ask_candidate_limit)
         .await
         .map_err(|e| {
@@ -64,36 +133,41 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
                 anyhow::Error::new(ServiceError::new(format!("vector search dispatch: {e}")))
             }
         })?;
-    let mut candidates = Vec::new();
+
     let mut dropped_by_allowlist = 0usize;
-    for hit in hits {
-        let url = qdrant::payload_url_typed(&hit.payload).to_string();
-        let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
-        if url.is_empty() || chunk_text.len() < 40 {
-            continue;
-        }
-        if !allow_low_signal && ranking::is_low_signal_url(&url) {
-            continue;
-        }
-        if !cfg.ask_authoritative_allowlist.is_empty()
-            && !url_matches_domain_list(&url, &cfg.ask_authoritative_allowlist)
+    let mut candidates = build_candidates_from_hits(
+        hits,
+        allow_low_signal,
+        &cfg.ask_authoritative_allowlist,
+        &mut dropped_by_allowlist,
+    );
+
+    // Secondary search with keyword embedding — swallowed on error since primary succeeded.
+    if use_dual && !ask_vectors.is_empty() {
+        let vecq_kw = ask_vectors.remove(0);
+        match qdrant::dispatch_vector_search(
+            search_cfg,
+            &vecq_kw,
+            &keyword_query,
+            cfg.ask_candidate_limit,
+        )
+        .await
         {
-            dropped_by_allowlist += 1;
-            continue;
+            Ok(kw_hits) => {
+                let secondary = build_candidates_from_hits(
+                    kw_hits,
+                    allow_low_signal,
+                    &cfg.ask_authoritative_allowlist,
+                    &mut dropped_by_allowlist,
+                );
+                candidates = merge_candidates(candidates, secondary);
+            }
+            Err(e) => log_debug(&format!(
+                "ask: keyword search failed (continuing with NL only): {e}"
+            )),
         }
-        let path = ranking::extract_path_from_url(&url);
-        let url_tokens = ranking::tokenize_path_set(&path);
-        let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
-        candidates.push(ranking::AskCandidate {
-            score: hit.score,
-            url,
-            path,
-            chunk_text,
-            url_tokens,
-            chunk_tokens,
-            rerank_score: hit.score,
-        });
     }
+
     if candidates.is_empty() {
         return Err(anyhow!("No relevant documents found for ask query"));
     }
@@ -117,7 +191,6 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         ));
     }
 
-    // Log the candidate funnel for diagnosing prefetch window adequacy.
     log_debug(&format!(
         "ask context_built candidates_retrieved={} candidates_after_score_filter={} candidates_selected={}",
         candidates.len(),

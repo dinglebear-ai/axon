@@ -135,7 +135,7 @@ fn check_sources_repetition(
     search_from: usize,
     first_sources_pos: &mut Option<usize>,
 ) -> Option<usize> {
-    let haystack = answer[search_from..].to_ascii_lowercase();
+    let haystack = answer.get(search_from..).unwrap_or("").to_ascii_lowercase();
     let needle = "\n## sources";
     if let Some(rel) = haystack.find(needle) {
         let abs = search_from + rel;

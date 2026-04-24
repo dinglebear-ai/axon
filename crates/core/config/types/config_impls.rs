@@ -114,7 +114,7 @@ impl Default for Config {
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 120_000,
-            ask_candidate_limit: 64,
+            ask_candidate_limit: 150,
             ask_chunk_limit: 10,
             ask_full_docs: 4,
             ask_backfill_chunks: 3,

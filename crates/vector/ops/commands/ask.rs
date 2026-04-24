@@ -1,5 +1,3 @@
-use anyhow::Context;
-
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::services::acp_llm;
@@ -46,9 +44,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         }
     };
 
-    let ctx = build_ask_context(cfg, query)
-        .await
-        .context("failed to build ask context")?;
+    let ctx = build_ask_context(cfg, query).await?;
     let (raw_answer, llm_elapsed_ms, _) = output::ask_llm_answer(cfg, query, &ctx.context, warm)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;

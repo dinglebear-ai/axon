@@ -112,7 +112,7 @@ services:
 
   axon-tei:
     <<: *common-service
-    image: ghcr.io/huggingface/text-embeddings-inference:89-latest
+    image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
     container_name: axon-tei
     ports:
       - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
@@ -124,13 +124,13 @@ services:
       - --dtype
       - float16
       - --max-concurrent-requests
-      - "${TEI_MAX_CONCURRENT_REQUESTS:-80}"
+      - "${TEI_MAX_CONCURRENT_REQUESTS:-512}"
       - --max-batch-tokens
       - "${TEI_MAX_BATCH_TOKENS:-163840}"
       - --max-batch-requests
-      - "${TEI_MAX_BATCH_REQUESTS:-80}"
+      - "${TEI_MAX_BATCH_REQUESTS:-128}"
       - --max-client-batch-size
-      - "${TEI_MAX_CLIENT_BATCH_SIZE:-128}"
+      - "${TEI_MAX_CLIENT_BATCH_SIZE:-96}"
       - --pooling
       - ${TEI_POOLING:-last-token}
       - --tokenization-workers
@@ -199,16 +199,17 @@ services:
 
   axon-ollama:
     <<: *common-service
-    image: ollama/ollama:0.6.5
+    image: ollama/ollama:latest
     container_name: axon-ollama
     ports:
-      - "127.0.0.1:11434:11434"
+      - "11434:11434"
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/ollama:/root/.ollama
     environment:
       NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
       NVIDIA_REQUIRE_CUDA: "cuda>=12.2"
       CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-0}"
+      OLLAMA_NUM_CTX: "65536"
     deploy:
       resources:
         reservations:

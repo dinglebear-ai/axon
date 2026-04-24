@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub(super) const SUPPLEMENTAL_CONTEXT_BUDGET_PCT: usize = 85;
 pub(super) const SUPPLEMENTAL_MIN_TOP_CHUNKS_FOR_COVERAGE: usize = 6;
-pub(super) const SUPPLEMENTAL_RELEVANCE_BONUS: f64 = 0.05;
+pub(super) const SUPPLEMENTAL_RELEVANCE_BONUS: f64 = 0.0;
 
 pub(super) fn push_context_entry(
     entries: &mut Vec<String>,
@@ -122,7 +122,7 @@ pub(super) fn candidate_has_topical_overlap(
     match query_tokens.len() {
         0 => true,
         1 | 2 => overlap >= 1,
-        3 | 4 => overlap >= 2 || coverage >= 0.5,
+        3 | 4 => overlap >= 1 || coverage >= 0.5,
         _ => overlap >= 2 && coverage >= 0.34,
     }
 }
@@ -467,12 +467,12 @@ mod tests {
     }
 
     #[test]
-    fn candidate_has_topical_overlap_three_tokens_single_match_fails() {
-        // 3-4 tokens: overlap >= 2 OR coverage >= 0.5
-        // coverage = 1/3 = 0.33 < 0.5, overlap = 1 < 2 => false
+    fn candidate_has_topical_overlap_three_tokens_single_match_passes() {
+        // 3-4 tokens: overlap >= 1 OR coverage >= 0.5
+        // overlap = 1 >= 1 => true (relaxed from old threshold of 2)
         let candidate = make_candidate("https://example.com", &["async"], &[]);
         let tokens = vec!["async".to_string(), "rust".to_string(), "tokio".to_string()];
-        assert!(!candidate_has_topical_overlap(&candidate, &tokens));
+        assert!(candidate_has_topical_overlap(&candidate, &tokens));
     }
 
     #[test]

@@ -59,7 +59,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Performance | `performance_profile`, `batch_concurrency` (default 16), `wait` (default false), `yes` (default false) |
 | Service URLs | `pg_url`, `redis_url`, `amqp_url`, `qdrant_url`, `tei_url`, `openai_*`, `tavily_api_key` |
 | Queues | `crawl_queue`, `extract_queue`, `embed_queue`, `ingest_queue`, `refresh_queue` |
-| RAG/Ask tuning | `ask_max_context_chars` (120k), `ask_candidate_limit` (64), `ask_chunk_limit` (10), `ask_full_docs` (4), `ask_min_relevance_score` (0.45) — all clamped |
+| RAG/Ask tuning | `ask_max_context_chars` (120k), `ask_candidate_limit` (150), `ask_chunk_limit` (10), `ask_full_docs` (4), `ask_min_relevance_score` (0.45) — all clamped |
 | Ingest credentials | `github_token`, `reddit_client_id`, `reddit_client_secret` |
 | Auto-switch | `auto_switch_thin_ratio` (0.60), `auto_switch_min_pages` (10) |
 | Spider tuning | `url_whitelist`, `block_assets`, `max_page_bytes`, `redirect_policy_strict`, `bypass_csp`, `accept_invalid_certs`, `custom_headers` |

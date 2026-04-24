@@ -113,7 +113,7 @@ impl Default for AskConfig {
     fn default() -> Self {
         Self {
             ask_max_context_chars: 120_000,
-            ask_candidate_limit: 64,
+            ask_candidate_limit: 150,
             ask_chunk_limit: 10,
             ask_full_docs: 4,
             ask_backfill_chunks: 3,
@@ -311,7 +311,7 @@ mod tests {
     fn ask_config_default_values() {
         let c = AskConfig::default();
         assert_eq!(c.ask_max_context_chars, 120_000);
-        assert_eq!(c.ask_candidate_limit, 64);
+        assert_eq!(c.ask_candidate_limit, 150);
         assert!((c.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert_eq!(c.ask_min_citations_nontrivial, 2);
         assert!(c.ask_authoritative_domains.is_empty());
