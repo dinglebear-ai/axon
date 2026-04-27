@@ -11,6 +11,51 @@ use std::error::Error;
 use std::path::Path;
 use std::time::Instant;
 
+/// Check URL against exclusions, also applying them relative to the effective scope root.
+///
+/// Standard `is_excluded_url_path` only matches from the domain root, so `/de` would
+/// not exclude `/docs/de/overview`. This function checks ONE additional level:
+///
+/// - When `scope_prefix_len > 0` (e.g. scope = `/docs`): checks the sub-path after the
+///   scope prefix. `/docs/de/overview` → `/de/overview` → excluded by `/de` ✓
+///   `/docs/en/settings` → `/en/settings` → not excluded by `/settings` ✓ (no false positive)
+///
+/// - When `scope_prefix_len == 0` (root scope, e.g. cross-host redirect): detects the
+///   first segment boundary in the path and checks the sub-path from there.
+///   `/docs/de/overview` → `/de/overview` → excluded ✓
+///   `/docs/en/settings` → `/en/settings` → not excluded ✓
+///
+/// Lowercases the path before comparison so `/zh-CN` is correctly caught by `/zh-cn`.
+fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) -> bool {
+    if is_excluded_url_path(url, excludes) {
+        return true;
+    }
+    if excludes.is_empty() {
+        return false;
+    }
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+    let path_lc = parsed.path().to_ascii_lowercase();
+    let path = path_lc.as_str();
+
+    let check_from = if scope_prefix_len > 0 {
+        scope_prefix_len
+    } else {
+        // Root scope: find the first segment boundary (skip one directory level)
+        match path[1..].find('/') {
+            Some(n) => 1 + n,
+            None => return false, // single-segment path, nothing to check below it
+        }
+    };
+
+    let rel = match path.get(check_from..) {
+        Some(r) if !r.is_empty() => r,
+        _ => return false,
+    };
+    is_excluded_url_path(&format!("https://x{rel}"), excludes)
+}
+
 /// The unified result of a `map` operation: URLs discovered via sitemaps, bounded
 /// structure extraction, or full crawl (when `--map-fallback crawl` is set).
 #[derive(Debug, Default)]
@@ -297,9 +342,10 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     // Step 2: if sitemaps were found and parsed, use them directly — no fallback.
     if sitemap_discovery.parsed_sitemap_documents > 0 {
         let urls = merge_map_candidate_urls(Vec::new(), sitemap_discovery.urls, &scope, true);
+        let scope_prefix_len = scope.path_prefix.as_deref().map_or(0, str::len);
         let urls: Vec<String> = urls
             .into_iter()
-            .filter(|url| !is_excluded_url_path(url, &cfg.exclude_path_prefix))
+            .filter(|url| !is_excluded_map_url(url, &cfg.exclude_path_prefix, scope_prefix_len))
             .collect();
         let summary = CrawlSummary {
             elapsed_ms: start.elapsed().as_millis(),
