@@ -152,6 +152,29 @@ impl fmt::Display for RedditTime {
     }
 }
 
+/// Fallback strategy when `axon map` finds no sitemap documents.
+///
+/// `Structure` (default): fetch the root page and extract anchor hrefs (bounded, fast).
+/// `Crawl`: run a full Spider.rs crawl (slow, legacy behaviour — explicit opt-in only).
+#[derive(
+    Debug, Clone, Copy, Default, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum MapFallback {
+    #[default]
+    Structure,
+    Crawl,
+}
+
+impl fmt::Display for MapFallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Structure => "structure",
+            Self::Crawl => "crawl",
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PerformanceProfile {

@@ -74,6 +74,8 @@ fn sitemap_seed_queue(scheme: &str, host: &str) -> VecDeque<String> {
         format!("{scheme}://{host}/sitemap.xml"),
         format!("{scheme}://{host}/sitemap_index.xml"),
         format!("{scheme}://{host}/sitemap-index.xml"),
+        format!("{scheme}://{host}/wp-sitemap.xml"),
+        format!("{scheme}://{host}/sitemap/sitemap-index.xml"),
     ])
 }
 
@@ -272,8 +274,7 @@ pub async fn discover_sitemap_urls(
         .backfill_concurrency_limit
         .unwrap_or(cfg.batch_concurrency)
         .clamp(1, 1024);
-    // TODO: use cfg.max_sitemaps once the field is added to Config
-    let max_sitemaps = 512usize;
+    let max_sitemaps = cfg.max_sitemaps;
     let mut parsed_sitemaps = 0usize;
     let mut failed_fetches = 0usize;
 

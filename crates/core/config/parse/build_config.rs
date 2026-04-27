@@ -2,7 +2,7 @@ use super::super::cli::{
     Cli, CliCommand, ExportSubcommand, RefreshScheduleSubcommand, RefreshSubcommand,
 };
 use super::super::types::{
-    CommandKind, Config, EvaluateResponsesMode, McpTransport, RedditSort, RedditTime,
+    CommandKind, Config, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
 };
 use super::docker::normalize_local_service_url;
 use super::excludes;
@@ -96,6 +96,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut mcp_transport = None;
     let mut export_include_history = false;
     let mut export_verify_input = None;
+    let mut map_fallback = MapFallback::Structure;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
         CliCommand::Crawl(args) => (
@@ -150,10 +151,15 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                 args.positional_urls
             },
         ),
-        CliCommand::Map(args) => (
-            CommandKind::Map,
-            args.value.into_iter().collect::<Vec<String>>(),
-        ),
+        CliCommand::Map(args) => {
+            if let Some(fb) = args.map_fallback {
+                map_fallback = fb;
+            }
+            (
+                CommandKind::Map,
+                args.value.into_iter().collect::<Vec<String>>(),
+            )
+        }
         CliCommand::Extract(args) => (
             CommandKind::Extract,
             if let Some(job) = args.job {
@@ -343,6 +349,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         drop_thin_markdown: global.drop_thin_markdown,
         discover_sitemaps: global.discover_sitemaps,
         sitemap_since_days: global.sitemap_since_days,
+        map_fallback,
+        max_sitemaps: global.max_sitemaps,
         cache: global.cache,
         cache_skip_browser: global.cache_skip_browser,
         format: global.format,

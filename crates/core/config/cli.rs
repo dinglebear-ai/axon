@@ -1,6 +1,6 @@
 mod global_args;
 
-use super::types::{EvaluateResponsesMode, McpTransport, RedditSort, RedditTime};
+use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use global_args::GlobalArgs;
@@ -30,7 +30,7 @@ pub(super) enum CliCommand {
     /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
     /// Discover all URLs on a site without scraping
-    Map(UrlArg),
+    Map(MapArgs),
     /// LLM-powered structured data extraction from URLs
     Extract(ExtractArgs),
     /// Web search via Tavily, auto-queues crawl jobs for results
@@ -234,6 +234,17 @@ pub(super) enum GraphSubcommand {
 pub(super) struct UrlArg {
     #[arg(value_name = "URL")]
     pub(super) value: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct MapArgs {
+    #[arg(value_name = "URL")]
+    pub(super) value: Option<String>,
+    /// Fallback strategy when no sitemap documents are found.
+    /// `structure`: fetch root page and extract anchor hrefs (default, fast).
+    /// `crawl`: run a full Spider.rs crawl (slow, legacy — explicit opt-in).
+    #[arg(long, value_enum)]
+    pub(super) map_fallback: Option<MapFallback>,
 }
 
 #[derive(Debug, Args)]

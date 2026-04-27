@@ -1,6 +1,6 @@
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort, RedditTime,
-    RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use std::path::PathBuf;
 
@@ -99,6 +99,12 @@ pub struct Config {
 
     /// Only backfill sitemap URLs with `<lastmod>` within the last N days (0 = no filter). Flag: `--sitemap-since-days`.
     pub sitemap_since_days: u32,
+
+    /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
+    pub map_fallback: MapFallback,
+
+    /// Maximum number of sitemap URLs to process per map/backfill operation. Flag: `--max-sitemaps`.
+    pub max_sitemaps: usize,
 
     /// Enable Spider's built-in crawl-result caching. Flag: `--cache`.
     pub cache: bool,

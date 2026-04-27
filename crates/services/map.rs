@@ -54,13 +54,20 @@ pub async fn discover(
     )
     .await;
 
+    // pages_seen is 0 in sitemap/bounded-structure modes (no pages were crawled).
+    // In crawl mode, summary.pages_seen carries the actual crawl count.
+    let pages_seen = result.summary.pages_seen;
+    let thin_pages = result.summary.thin_pages;
+
     let payload = serde_json::json!({
         "url": url,
         "mapped_urls": mapped_count,
         "sitemap_urls": result.sitemap_urls,
-        "pages_seen": result.summary.pages_seen,
-        "thin_pages": result.summary.thin_pages,
+        "pages_seen": pages_seen,
+        "thin_pages": thin_pages,
         "elapsed_ms": result.summary.elapsed_ms,
+        "map_source": result.map_source,
+        "warning": result.warning,
         "urls": urls,
     });
 

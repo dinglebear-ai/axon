@@ -333,22 +333,6 @@ fn test_fallback_custom_min_pages() {
 }
 
 #[test]
-fn test_map_retry_gate_low_coverage() {
-    assert!(should_retry_map_with_chrome(&summary(0, 0, 0)));
-    assert!(should_retry_map_with_chrome(&summary(1, 0, 1)));
-    assert!(should_retry_map_with_chrome(&summary(2, 0, 2)));
-    assert!(!should_retry_map_with_chrome(&summary(3, 0, 3)));
-}
-
-#[test]
-fn test_should_retry_map_with_html_fallback_for_two_or_fewer_urls() {
-    assert!(should_retry_map_with_html_fallback(0));
-    assert!(should_retry_map_with_html_fallback(1));
-    assert!(should_retry_map_with_html_fallback(2));
-    assert!(!should_retry_map_with_html_fallback(3));
-}
-
-#[test]
 fn test_merge_map_candidate_urls_adds_only_new_scoped_urls() {
     let scope = MapScope {
         host: "example.github.io".to_string(),

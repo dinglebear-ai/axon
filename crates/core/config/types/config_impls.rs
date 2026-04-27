@@ -1,7 +1,7 @@
 use super::config::Config;
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort, RedditTime,
-    RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use std::env;
 use std::fmt;
@@ -41,6 +41,8 @@ impl Default for Config {
             drop_thin_markdown: true,
             discover_sitemaps: true,
             sitemap_since_days: 0,
+            map_fallback: MapFallback::Structure,
+            max_sitemaps: 512,
             cache: true,
             cache_skip_browser: false,
             format: ScrapeFormat::Markdown,
