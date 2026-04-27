@@ -79,10 +79,7 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
 /// Used by the post-crawl batch fallback path when we don't have the HTML bytes.
 async fn fetch_url_with_chrome(cfg: &Config, url: &str, min_chars: usize) -> Option<String> {
     let mut website = build_single_page_website(cfg, url);
-    let Ok(mut rx) = website.subscribe(16).ok_or(()) else {
-        log_warn(&format!("thin_refetch: failed to subscribe for {url}"));
-        return None;
-    };
+    let mut rx = website.subscribe(16);
 
     let collect: tokio::task::JoinHandle<Option<Page>> =
         tokio::spawn(async move { rx.recv().await.ok() });

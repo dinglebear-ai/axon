@@ -128,9 +128,7 @@ pub async fn run_crawl_once(
     // under high-throughput crawls (extreme/max profiles). Clamp to 16 384 so
     // a large --max-pages value can't allocate an unbounded broadcast ring buffer.
     let subscribe_buf = (cfg.max_pages as usize).clamp(4096, 16_384);
-    let rx = website.subscribe(subscribe_buf).ok_or_else(|| {
-        format!("failed to subscribe to spider broadcast channel for {start_url}")
-    })?;
+    let rx = website.subscribe(subscribe_buf);
     let markdown_dir = output_dir.join("markdown");
     let manifest_path = output_dir.join("manifest.jsonl");
 
@@ -235,9 +233,7 @@ pub async fn run_sitemap_only(
     website.with_ignore_sitemap(false);
 
     let subscribe_buf = (cfg.max_pages as usize).clamp(4096, 16_384);
-    let rx = website.subscribe(subscribe_buf).ok_or_else(|| {
-        format!("failed to subscribe to spider broadcast for sitemap crawl of {start_url}")
-    })?;
+    let rx = website.subscribe(subscribe_buf);
     let manifest_path = output_dir.join("manifest.jsonl");
     let markdown_dir = output_dir.join("markdown");
     let transform_cfg = build_transform_config();

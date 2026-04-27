@@ -103,16 +103,14 @@ pub(crate) async fn spider_screenshot_with_options(
         .build()
         .map_err(|_| format!("failed to build Spider website config for screenshot of {url}"))?;
 
-    let mut rx = website
-        .subscribe(16)
-        .ok_or_else(|| format!("failed to subscribe to spider screenshot channel for {url}"))?;
+    let mut rx = website.subscribe(16);
     let collect = tokio::spawn(async move { rx.recv().await.ok() });
 
     website.crawl().await;
     website.unsubscribe();
 
     let screenshot_bytes = match collect.await {
-        Ok(Some(page)) => page.screenshot_bytes,
+        Ok(Some(page)) => page.screenshot_bytes.clone(),
         Ok(None) | Err(_) => Some(
             website
                 .get_pages()

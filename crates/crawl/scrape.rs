@@ -247,9 +247,7 @@ pub(crate) async fn fetch_single_page(
     website: &mut Website,
     requested_url: &str,
 ) -> Result<ScrapedPage, Box<dyn Error>> {
-    let mut rx = website.subscribe(16).ok_or_else(|| {
-        format!("failed to subscribe to spider broadcast for scrape of {requested_url}")
-    })?;
+    let mut rx = website.subscribe(16);
     // Spawn the collector BEFORE the crawl so it is ready to receive the broadcast.
     let collect: tokio::task::JoinHandle<Vec<ScrapedPage>> = tokio::spawn(async move {
         let mut pages = Vec::new();

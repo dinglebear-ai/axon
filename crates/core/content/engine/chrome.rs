@@ -146,7 +146,7 @@ pub(super) async fn run_single_url_extract_chrome(
         .await;
     };
 
-    let mut rx = website.subscribe(16).ok_or("subscribe failed")?;
+    let mut rx = website.subscribe(16);
 
     // Spider's canonical single-page Chrome fetch pattern:
     // tokio::join! runs crawl and collection concurrently on the same thread

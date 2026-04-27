@@ -347,10 +347,10 @@ pub async fn run_http_server(
         StreamableHttpService::new(
             move || Ok(AxonMcpServer::new((*cfg_arc).clone())),
             Default::default(),
-            StreamableHttpServerConfig {
-                stateful_mode: true,
-                sse_keep_alive: None,
-                ..Default::default()
+            {
+                let mut cfg = StreamableHttpServerConfig::default();
+                cfg.stateful_mode = true;
+                cfg
             },
         );
 

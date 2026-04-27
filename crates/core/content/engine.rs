@@ -380,7 +380,7 @@ pub async fn run_extract_with_engine(
     }
     let mut website = website.build().map_err(|_| "build website")?;
 
-    let rx = website.subscribe(16).ok_or("subscribe failed")?;
+    let rx = website.subscribe(16);
     let collect = tokio::spawn(collect_page_results(
         rx,
         http_client()?.clone(),

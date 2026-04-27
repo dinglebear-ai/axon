@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 use std::path::PathBuf;
 
 fn find_dotenv_from_launch_context() -> Option<PathBuf> {
