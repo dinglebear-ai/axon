@@ -300,7 +300,7 @@ pub(super) fn fingerprint_mcp_servers(
     use sha2::{Digest, Sha256};
     let json = serde_json::to_string(mcp_servers).unwrap_or_default();
     let hash = Sha256::digest(json.as_bytes());
-    format!("{hash:x}")
+    hex::encode(hash)
 }
 
 #[cfg(test)]

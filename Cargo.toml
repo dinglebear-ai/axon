@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "0.35.1"
+version = "0.35.2"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -55,17 +55,17 @@ spider_agent = { version = "2.47.89", default-features = false, features = ["sea
 spider_transformations = "2"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "sqlite", "uuid", "chrono"] }
 subtle = "2"
-text-splitter = { version = "0.29", features = ["code", "markdown"] }
-tree-sitter-bash = "0.23"
-tree-sitter-go = "0.23"
-tree-sitter-javascript = "0.23"
+text-splitter = { version = "0.30", features = ["code", "markdown"] }
+tree-sitter-bash = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-javascript = "0.25"
 tree-sitter-language = "0.1"
-tree-sitter-python = "0.23"
+tree-sitter-python = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-typescript = "0.23"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "process", "signal", "sync", "time"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-executor-trait = "3"
 tokio-reactor-trait = "4"
@@ -74,13 +74,13 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 regex = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"
 dotenvy = "0.15"
 rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server", "schemars", "elicitation"] }
 html5gum = "0.8"
-agent-client-protocol = { version = "0.10.2", features = ["unstable"] }
+agent-client-protocol = { version = "0.10.4", features = ["unstable"] }
 
 [profile.release]
 opt-level = 3
