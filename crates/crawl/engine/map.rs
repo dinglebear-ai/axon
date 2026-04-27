@@ -262,10 +262,29 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     );
 
     let crawl_start_url = seed_result.unwrap_or_else(|_| normalize_url(start_url).into_owned());
-    let scope =
-        derive_map_scope(start_url, &crawl_start_url).ok_or("failed to derive map scope")?;
-    let scope_start_url = derive_map_scope_url(start_url, &crawl_start_url)
-        .unwrap_or_else(|| crawl_start_url.clone());
+
+    // When the seed URL resolves to a different host (cross-host redirect), anchor the
+    // map scope to the original start URL. Sitemap discovery already ran against
+    // start_url, so its URLs carry start_url's host — using the redirect target host
+    // as the scope would filter everything out.
+    // The crawl fallback still uses crawl_start_url so --map-fallback crawl works.
+    let scope_base = {
+        let start_host = Url::parse(&normalize_url(start_url))
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+        let resolved_host = Url::parse(&crawl_start_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+        if start_host != resolved_host {
+            normalize_url(start_url).into_owned()
+        } else {
+            crawl_start_url.clone()
+        }
+    };
+
+    let scope = derive_map_scope(start_url, &scope_base).ok_or("failed to derive map scope")?;
+    let scope_start_url =
+        derive_map_scope_url(start_url, &scope_base).unwrap_or_else(|| crawl_start_url.clone());
 
     let sitemap_discovery: SitemapDiscovery = sitemap_result.unwrap_or_default();
     let raw_sitemap_count = sitemap_discovery.discovered_urls;
