@@ -5,6 +5,8 @@ use std::error::Error;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
+use crate::crates::core::content::canonicalize_url;
+use crate::crates::core::http::validate_url;
 use crate::crates::jobs::backend::JobPayload;
 use crate::crates::jobs::lite::store::open_sqlite_pool;
 
@@ -34,12 +36,17 @@ pub async fn count_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
 }
 
 /// Enqueue a new crawl job in SQLite. Returns the new job UUID.
+///
+/// Validates the URL against the SSRF blocklist and canonicalizes it
+/// (strips fragments, normalizes scheme) before persisting.
 pub async fn start_crawl_job(cfg: &Config, url: &str) -> Result<Uuid, Box<dyn Error>> {
+    validate_url(url)?;
+    let canonical = canonicalize_url(url).ok_or("invalid crawl start URL")?;
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
     Ok(crate::crates::jobs::lite::ops::enqueue_job(
         &pool,
         &JobPayload::Crawl {
-            url: url.to_string(),
+            url: canonical,
             config_json: "{}".to_string(),
         },
     )
