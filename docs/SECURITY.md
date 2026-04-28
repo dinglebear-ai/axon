@@ -164,9 +164,6 @@ Do not:
 
 Most infra services bind to loopback (`127.0.0.1`) in compose:
 
-- Postgres
-- Redis
-- RabbitMQ
 - Qdrant
 - Chrome management/CDP endpoints
 

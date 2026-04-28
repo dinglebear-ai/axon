@@ -329,8 +329,8 @@ pub async fn ingest_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
-    use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
@@ -418,7 +418,7 @@ mod tests {
 
     #[tokio::test]
     async fn ingest_start_with_context_enqueues_sessions_jobs_in_lite_mode() {
-        let mut cfg = test_config("postgresql://axon:postgres@127.0.0.1:53432/axon");
+        let mut cfg = Config::test_default();
         cfg.lite_mode = true;
         cfg.sessions_claude = true;
         cfg.sessions_codex = false;

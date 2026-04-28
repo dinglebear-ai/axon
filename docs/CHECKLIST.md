@@ -35,11 +35,9 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 ## Infrastructure
 
-- [ ] `docker-compose.services.yaml` starts cleanly
-- [ ] `docker-compose.yaml` builds and starts cleanly
-- [ ] All 6 worker types start (crawl, embed, extract, ingest, refresh, graph)
-- [ ] PostgreSQL schema auto-creates via `ensure_schema()`
-- [ ] RabbitMQ queues are created on first worker start
+- [ ] `docker-compose.services.yaml` starts cleanly (Qdrant, TEI, Chrome)
+- [ ] All worker types start (crawl, embed, extract, ingest)
+- [ ] SQLite schema auto-creates via `ensure_schema()`
 
 ## Documentation
 

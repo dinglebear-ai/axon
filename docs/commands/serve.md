@@ -31,19 +31,11 @@ Host binding is controlled by `AXON_SERVE_HOST` (default `127.0.0.1`).
 
 `axon serve` fails fast if required infrastructure containers are not running and healthy.
 
-Full mode (`AXON_LITE != 1`) requires:
-
-- `axon-postgres`
-- `axon-redis`
-- `axon-rabbitmq`
-- `axon-qdrant`
-- `axon-tei`
-- `axon-chrome`
-
-Lite mode (`AXON_LITE=1`) requires only:
+Required infrastructure:
 
 - `axon-qdrant`
 - `axon-tei`
+- `axon-chrome` (for Chrome render mode)
 
 ## Bridge Endpoints
 

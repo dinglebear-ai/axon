@@ -1,10 +1,8 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
-use crate::crates::jobs::common::make_pool;
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -38,88 +36,22 @@ pub(crate) fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
+/// Session dedup tracking. Pool is always None in lite mode (Postgres removed).
+/// The struct is retained so call sites compile; all methods are no-ops.
 pub(crate) struct SessionStateTracker {
-    pool: Option<PgPool>,
+    _disabled: (),
 }
 
 impl SessionStateTracker {
-    pub(crate) async fn new(cfg: &Config) -> Self {
-        match make_pool(cfg).await {
-            Ok(pool) => {
-                if let Err(e) = sqlx::query(
-                    r#"
-                    CREATE TABLE IF NOT EXISTS axon_session_ingest_state (
-                        file_path TEXT PRIMARY KEY,
-                        last_modified TIMESTAMPTZ NOT NULL,
-                        file_size BIGINT NOT NULL,
-                        indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    "#,
-                )
-                .execute(&pool)
-                .await
-                {
-                    log_warn(&format!("failed to ensure session state table: {e}"));
-                    return Self { pool: None };
-                }
-                Self { pool: Some(pool) }
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "database connection failed, state tracking disabled: {e}"
-                ));
-                Self { pool: None }
-            }
-        }
+    pub(crate) async fn new(_cfg: &Config) -> Self {
+        Self { _disabled: () }
     }
 
-    pub(crate) async fn should_skip(&self, path: &Path, mtime: SystemTime, size: u64) -> bool {
-        let Some(pool) = &self.pool else {
-            return false;
-        };
-        let path_str = path.to_string_lossy().to_string();
-
-        let row = sqlx::query(
-            "SELECT last_modified, file_size FROM axon_session_ingest_state WHERE file_path = $1",
-        )
-        .bind(path_str)
-        .fetch_optional(pool)
-        .await;
-
-        match row {
-            Ok(Some(r)) => {
-                let db_mtime: chrono::DateTime<chrono::Utc> = r.get(0);
-                let db_size: i64 = r.get(1);
-                let current_mtime: chrono::DateTime<chrono::Utc> = mtime.into();
-                (db_mtime - current_mtime).num_seconds().abs() < 1 && db_size == (size as i64)
-            }
-            _ => false,
-        }
+    pub(crate) async fn should_skip(&self, _path: &Path, _mtime: SystemTime, _size: u64) -> bool {
+        false
     }
 
-    pub(crate) async fn mark_indexed(&self, path: &Path, mtime: SystemTime, size: u64) {
-        let Some(pool) = &self.pool else {
-            return;
-        };
-        let path_str = path.to_string_lossy().to_string();
-        let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
-
-        let _ = sqlx::query(
-            r#"
-            INSERT INTO axon_session_ingest_state (file_path, last_modified, file_size, indexed_at)
-            VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (file_path) DO UPDATE
-            SET last_modified = EXCLUDED.last_modified,
-                file_size = EXCLUDED.file_size,
-                indexed_at = NOW()
-            "#,
-        )
-        .bind(path_str)
-        .bind(mtime_chrono)
-        .bind(size as i64)
-        .execute(pool)
-        .await;
-    }
+    pub(crate) async fn mark_indexed(&self, _path: &Path, _mtime: SystemTime, _size: u64) {}
 }
 
 pub async fn ingest_sessions(

@@ -1,9 +1,0 @@
-ignoredBuiltDependencies:
-  - cpu-features
-  - protobufjs
-  - sharp
-  - ssh2
-  - unrs-resolver
-
-onlyBuiltDependencies:
-  - node-pty

@@ -1,7 +1,7 @@
 name: axon
 
-# App containers (workers + web).
-# Infrastructure (postgres, redis, rabbitmq, qdrant, chrome) lives in
+# App containers (workers).
+# Infrastructure (qdrant, tei, chrome, ollama) lives in
 # docker-compose.services.yaml — start it first.
 
 x-common-service: &common-service
@@ -60,7 +60,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && ( [ -z \"${AXON_NEO4J_URL:-}\" ] || /command/s6-svstat -u /run/service/graph-worker >/dev/null ) && /command/s6-svstat -u /run/service/web-server >/dev/null",
+          "[ ! -f /run/sha-guard-failed ] && /command/s6-svstat -u /run/service/crawl-worker >/dev/null && /command/s6-svstat -u /run/service/extract-worker >/dev/null && /command/s6-svstat -u /run/service/embed-worker >/dev/null && /command/s6-svstat -u /run/service/ingest-worker >/dev/null && ( [ -z \"${AXON_NEO4J_URL:-}\" ] || /command/s6-svstat -u /run/service/graph-worker >/dev/null )",
         ]
       interval: 30s
       timeout: 10s
@@ -86,69 +86,6 @@ services:
       - ${HOST_HOME:-${HOME}}/.codex/auth.json:/run/host-codex/auth.json:ro
       - ${HOST_HOME:-${HOME}}/.codex/config.toml:/run/host-codex/config.toml:ro
       - ${HOST_HOME:-${HOME}}/.codex/models_cache.json:/run/host-codex/models_cache.json:ro
-
-  axon-web:
-    <<: *common-service
-    container_name: axon-web
-    build:
-      context: apps/web
-      dockerfile: ../../docker/web/Dockerfile
-      args:
-        AXON_GIT_SHA: ${AXON_GIT_SHA:-dev}
-      additional_contexts:
-        web-s6: docker/web/s6-rc.d
-        web-cont-init: docker/web/cont-init.d
-    ports:
-      - "49010:49010"
-    environment:
-      HOST: "0.0.0.0"
-      HOME: /home/node
-      PORT: "49010"
-      AXON_WEB_APP_MODE: ${AXON_WEB_APP_MODE:-dev}
-      AXON_ENFORCE_IMAGE_SHA: ${AXON_ENFORCE_IMAGE_SHA:-false}
-      AXON_BACKEND_URL: "http://axon-workers:49000"
-      NEXT_PUBLIC_AXON_PORT: "49000"
-      AXON_WORKSPACE: /workspace
-      AXON_DATA_DIR: /data
-      AXON_OUTPUT_DIR: /data/axon/output
-      AXON_WEB_ENABLE_DOCKER_SOCKET_LOGS: "false"  # opt-in: set to "true" to enable docker log streaming
-      AXON_WEB_DOCKER_SOCKET_PATH: /var/run/docker.sock
-      AXON_BIN: ${AXON_BIN:-}        # override binary path for /api/cortex/* routes (see .env.example)
-      # Set WATCHPACK_POLLING=true in .env if file-watch events don't propagate
-    volumes:
-      - ./:/repo:ro
-      - ./apps/web:/app               # bind-mount source for hot reload
-      - /app/node_modules             # anonymous vol: preserves container's node_modules
-      - /app/.next                    # anonymous vol: preserves Next.js build cache
-      - ${AXON_DATA_DIR:-./data}/axon/output:/data/axon/output:ro
-      - ${AXON_DATA_DIR:-./data}/axon/claude:/home/node/.claude
-      - ${HOST_HOME:-${HOME}}/.claude.json:/home/node/.claude.json  # auth file — separate from config dir
-      # ACP adapter credential staging — mounted read-only at staging paths;
-      # 16-materialize-agent-credentials copies them into /home/node/{.claude,.codex}/
-      # owned by node so `claude agents` and codex CLI can read/refresh OAuth tokens.
-      - ${HOST_HOME:-${HOME}}/.claude/.credentials.json:/run/host-claude/.credentials.json:ro
-      - ${HOST_HOME:-${HOME}}/.codex/auth.json:/run/host-codex/auth.json:ro
-      - ${HOST_HOME:-${HOME}}/.codex/config.toml:/run/host-codex/config.toml:ro
-      - ${HOST_HOME:-${HOME}}/.codex/models_cache.json:/run/host-codex/models_cache.json:ro
-      # Uncomment to mount host SSH keys (opt-in — exposes keys to the container):
-      # - ${HOST_HOME:-${HOME}}/.ssh:/home/node/.ssh:ro
-      - ${AXON_WORKSPACE:-${HOME}/workspace}:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    group_add:
-      - "981"  # host docker group GID — grants node user access to /var/run/docker.sock
-    depends_on:
-      axon-workers:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "[ ! -f /run/sha-guard-failed ] && curl -fsSL --max-time 4 http://127.0.0.1:49010/evaluate > /dev/null",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
 networks:
   axon:

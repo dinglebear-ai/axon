@@ -222,42 +222,6 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::crates::core::config) retry_backoff_ms: Option<u64>,
 
-    /// Share one queue across supported jobs. Disable with `--shared-queue false`.
-    #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
-    pub(in crate::crates::core::config) shared_queue: bool,
-
-    /// PostgreSQL connection URL (overrides AXON_PG_URL)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) pg_url: Option<String>,
-
-    /// Redis connection URL (overrides AXON_REDIS_URL)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) redis_url: Option<String>,
-
-    /// RabbitMQ AMQP URL (overrides AXON_AMQP_URL)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) amqp_url: Option<String>,
-
-    /// Crawl job queue name (overrides AXON_CRAWL_QUEUE)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) crawl_queue: Option<String>,
-
-    /// Refresh job queue name (overrides AXON_REFRESH_QUEUE)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) refresh_queue: Option<String>,
-
-    /// Extract job queue name (overrides AXON_EXTRACT_QUEUE)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) extract_queue: Option<String>,
-
-    /// Embed job queue name (overrides AXON_EMBED_QUEUE)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) embed_queue: Option<String>,
-
-    /// Ingest job queue name (overrides AXON_INGEST_QUEUE)
-    #[arg(global = true, long)]
-    pub(in crate::crates::core::config) ingest_queue: Option<String>,
-
     /// Text Embeddings Inference server URL (overrides TEI_URL)
     #[arg(global = true, long)]
     pub(in crate::crates::core::config) tei_url: Option<String>,

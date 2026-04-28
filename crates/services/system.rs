@@ -4,9 +4,7 @@ use crate::crates::jobs::backend::JobKind;
 use crate::crates::jobs::crawl::count_jobs;
 use crate::crates::jobs::embed::count_embed_jobs;
 use crate::crates::jobs::extract::count_extract_jobs;
-use crate::crates::jobs::graph::count_graph_jobs;
 use crate::crates::jobs::ingest::count_ingest_jobs;
-use crate::crates::jobs::refresh::count_refresh_jobs;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -263,8 +261,6 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         format!("extract jobs: {} total", totals.extract),
         format!("embed jobs:   {} total", totals.embed),
         format!("ingest jobs:  {} total", totals.ingest),
-        format!("refresh jobs: {} total", totals.refresh),
-        format!("graph jobs:   {} total", totals.graph),
     ]
     .join("\n");
     Ok(StatusResult {
@@ -311,14 +307,10 @@ pub(crate) async fn load_status_jobs(
         extract_raw,
         embed_raw,
         ingest_raw,
-        refresh_raw,
-        graph_raw,
         crawl_total,
         extract_total,
         embed_total,
         ingest_total,
-        refresh_total,
-        graph_total,
     ) = tokio::join!(
         async {
             job_service::list_jobs(service_context, JobKind::Crawl, 20, 0)
@@ -340,22 +332,10 @@ pub(crate) async fn load_status_jobs(
                 .await
                 .map_err(|e| format!("ingest: {e}"))
         },
-        async {
-            job_service::list_jobs(service_context, JobKind::Refresh, 20, 0)
-                .await
-                .map_err(|e| format!("refresh: {e}"))
-        },
-        async {
-            job_service::list_jobs(service_context, JobKind::Graph, 20, 0)
-                .await
-                .map_err(|e| format!("graph: {e}"))
-        },
         async { count_jobs(cfg).await.unwrap_or(0) },
         async { count_extract_jobs(cfg).await.unwrap_or(0) },
         async { count_embed_jobs(cfg).await.unwrap_or(0) },
         async { count_ingest_jobs(cfg).await.unwrap_or(0) },
-        async { count_refresh_jobs(cfg).await.unwrap_or(0) },
-        async { count_graph_jobs(cfg).await.unwrap_or(0) },
     );
 
     let jobs = StatusJobs {
@@ -368,21 +348,16 @@ pub(crate) async fn load_status_jobs(
         ),
         embed: filter_and_view(cfg, embed_raw?, |j| &j.status, |j| j.error_text.as_deref()),
         ingest: filter_and_view(cfg, ingest_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-        refresh: filter_and_view(
-            cfg,
-            refresh_raw?,
-            |j| &j.status,
-            |j| j.error_text.as_deref(),
-        ),
-        graph: filter_and_view(cfg, graph_raw?, |j| &j.status, |j| j.error_text.as_deref()),
+        refresh: vec![],
+        graph: vec![],
     };
     let totals = StatusTotals {
         crawl: crawl_total,
         extract: extract_total,
         embed: embed_total,
         ingest: ingest_total,
-        refresh: refresh_total,
-        graph: graph_total,
+        refresh: 0,
+        graph: 0,
     };
     Ok((jobs, totals))
 }
@@ -408,8 +383,6 @@ pub(crate) fn build_status_payload(
             "extract": totals.extract,
             "embed": totals.embed,
             "ingest": totals.ingest,
-            "refresh": totals.refresh,
-            "graph": totals.graph,
         },
     })
 }

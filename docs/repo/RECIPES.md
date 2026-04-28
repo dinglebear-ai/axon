@@ -34,7 +34,7 @@ Run `just --list` to see all available recipes.
 | Recipe | Purpose |
 |--------|---------|
 | `just docker-build` | Build workers Docker image (`axon:local`) |
-| `just services-up` | Start infrastructure (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome) |
+| `just services-up` | Start infrastructure (Qdrant, TEI, Chrome) |
 | `just services-down` | Stop infrastructure |
 | `just up` | Build and start app containers (workers + web) |
 | `just down` | Stop app containers |

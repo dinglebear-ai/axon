@@ -1,5 +1,11 @@
 use super::*;
 
+fn resolve_test_qdrant_url() -> Option<String> {
+    std::env::var("AXON_TEST_QDRANT_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+}
+
 // -- detect_vector_mode (pure parsing logic) --
 
 #[test]
@@ -111,11 +117,10 @@ fn validate_dim_missing_is_ok() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "integration test -- requires running Qdrant; run with cargo test -- --ignored"]
 async fn ensure_collection_new_collection_returns_named_mode() -> Result<(), Box<dyn Error>> {
-    use crate::crates::jobs::common::resolve_test_qdrant_url;
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = crate::crates::jobs::common::test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url.clone();
     cfg.collection = format!("test_{}", uuid::Uuid::new_v4().simple());
 
@@ -137,7 +142,6 @@ async fn ensure_collection_new_collection_returns_named_mode() -> Result<(), Box
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "integration test -- requires running Qdrant; run with cargo test -- --ignored"]
 async fn ensure_collection_existing_unnamed_returns_unnamed_mode() -> Result<(), Box<dyn Error>> {
-    use crate::crates::jobs::common::resolve_test_qdrant_url;
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
@@ -152,7 +156,7 @@ async fn ensure_collection_existing_unnamed_returns_unnamed_mode() -> Result<(),
         .await?
         .error_for_status()?;
 
-    let mut cfg = crate::crates::jobs::common::test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = collection.clone();
 
@@ -174,11 +178,10 @@ async fn ensure_collection_existing_unnamed_returns_unnamed_mode() -> Result<(),
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[ignore = "integration test -- requires running Qdrant; run with cargo test -- --ignored"]
 async fn ensure_collection_is_idempotent() -> Result<(), Box<dyn Error>> {
-    use crate::crates::jobs::common::resolve_test_qdrant_url;
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = crate::crates::jobs::common::test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", uuid::Uuid::new_v4().simple());
 
@@ -197,7 +200,6 @@ async fn ensure_collection_is_idempotent() -> Result<(), Box<dyn Error>> {
 
 #[tokio::test]
 async fn get_or_fetch_mode_auth_failure_is_not_cached() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -210,7 +212,7 @@ async fn get_or_fetch_mode_auth_failure_is_not_cached() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_401".to_string();
 
@@ -231,7 +233,6 @@ async fn get_or_fetch_mode_auth_failure_is_not_cached() {
 
 #[tokio::test]
 async fn get_or_fetch_mode_403_is_not_cached() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -244,7 +245,7 @@ async fn get_or_fetch_mode_403_is_not_cached() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_403".to_string();
 
@@ -264,7 +265,6 @@ async fn get_or_fetch_mode_403_is_not_cached() {
 
 #[tokio::test]
 async fn get_or_fetch_mode_500_is_not_cached() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -277,7 +277,7 @@ async fn get_or_fetch_mode_500_is_not_cached() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_500".to_string();
 
@@ -299,7 +299,6 @@ async fn get_or_fetch_mode_500_is_not_cached() {
 
 #[tokio::test]
 async fn get_or_fetch_mode_404_returns_error_and_is_not_cached() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -312,7 +311,7 @@ async fn get_or_fetch_mode_404_returns_error_and_is_not_cached() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "auth_test_col_404".to_string();
 
@@ -337,7 +336,6 @@ async fn get_or_fetch_mode_404_returns_error_and_is_not_cached() {
 
 #[tokio::test]
 async fn get_or_fetch_mode_500_retries_three_times() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -350,7 +348,7 @@ async fn get_or_fetch_mode_500_retries_three_times() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "retry_test_col_500".to_string();
 
@@ -371,7 +369,6 @@ async fn get_or_fetch_mode_500_retries_three_times() {
 
 #[tokio::test]
 async fn get_or_fetch_mode_429_retries_three_times() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::MockServer;
 
     let server = MockServer::start_async().await;
@@ -384,7 +381,7 @@ async fn get_or_fetch_mode_429_retries_three_times() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "retry_test_col_429".to_string();
 
@@ -407,7 +404,6 @@ async fn get_or_fetch_mode_429_retries_three_times() {
 
 #[tokio::test]
 async fn ensure_collection_sends_hnsw_config_on_create() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::prelude::*;
 
     let server = MockServer::start_async().await;
@@ -441,7 +437,7 @@ async fn ensure_collection_sends_hnsw_config_on_create() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "hnsw_test_col".to_string();
 
@@ -457,7 +453,6 @@ async fn ensure_collection_sends_hnsw_config_on_create() {
 
 #[tokio::test]
 async fn ensure_collection_does_not_put_on_existing_named_collection() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::prelude::*;
 
     let server = MockServer::start_async().await;
@@ -501,7 +496,7 @@ async fn ensure_collection_does_not_put_on_existing_named_collection() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "existing_named_col".to_string();
 
@@ -523,7 +518,6 @@ async fn ensure_collection_does_not_put_on_existing_named_collection() {
 
 #[tokio::test]
 async fn ensure_collection_sends_quantization_config_on_create() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::prelude::*;
 
     let server = MockServer::start_async().await;
@@ -554,7 +548,7 @@ async fn ensure_collection_sends_quantization_config_on_create() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "quant_test_col".to_string();
 
@@ -570,7 +564,6 @@ async fn ensure_collection_sends_quantization_config_on_create() {
 
 #[tokio::test]
 async fn ensure_collection_sends_full_create_body_with_hnsw_and_quantization() {
-    use crate::crates::jobs::common::test_config;
     use httpmock::prelude::*;
 
     let server = MockServer::start_async().await;
@@ -603,7 +596,7 @@ async fn ensure_collection_sends_full_create_body_with_hnsw_and_quantization() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = server.base_url();
     cfg.collection = "full_body_col".to_string();
 

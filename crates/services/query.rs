@@ -271,7 +271,6 @@ mod tests {
 
     #[tokio::test]
     async fn query_reports_typed_diagnostics_payload_when_enabled() {
-        use crate::crates::jobs::common::test_config;
         use httpmock::Method::POST;
         use httpmock::MockServer;
 
@@ -294,7 +293,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.tei_url = tei.base_url();
         cfg.qdrant_url = qdrant.base_url();
         cfg.collection = "diag_test_collection".to_string();

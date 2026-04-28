@@ -111,7 +111,7 @@ pub async fn extract_start_with_prompt(
     )
     .await;
 
-    let job_id = start_extract_job(cfg, urls, prompt).await?;
+    let job_id = start_extract_job(cfg, urls.to_vec(), prompt).await?;
 
     emit(
         &tx,

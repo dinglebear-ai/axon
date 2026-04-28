@@ -54,7 +54,6 @@ install:
 lint-all:
     just fmt-check
     just clippy
-    cd apps/web && pnpm lint
 
 verify:
     ./scripts/check_dockerignore_guards.sh
@@ -81,7 +80,6 @@ fix:
 
 fix-all:
     just fix
-    cd apps/web && pnpm format
 
 llvm-cov-install:
     {{rust_dev_env}}; cargo install cargo-llvm-cov --locked
@@ -165,27 +163,11 @@ serve port="49000":
 serve-release port="49000":
     {{rust_dev_env}}; AXON_SERVE_HOST=0.0.0.0 cargo run --release --locked --bin axon -- serve --port {{port}}
 
-# ── Web UI (Next.js dashboard) ────────────────────────────────────
-
-web-dev:
-    cd apps/web && pnpm dev
-
-web-build:
-    cd apps/web && pnpm build
-
-web-lint:
-    cd apps/web && pnpm lint
-
-web-format:
-    cd apps/web && pnpm format
-
 # ── Full stack ────────────────────────────────────────────────────
 
-# Kill any running axon serve, mcp, workers, or Next.js dev processes
+# Kill any running axon serve, mcp, or workers
 stop:
     -pkill -f 'axon.*(serve|mcp|crawl worker|embed worker|extract worker|ingest worker|refresh worker|graph worker)' 2>/dev/null || true
-    -pkill -f 'next dev' 2>/dev/null || true
-    -pkill -f 'shell-server.mjs' 2>/dev/null || true
     @echo "Stopped running servers and workers"
 
 # Start workers only (crawl, embed, extract, ingest, refresh, graph)
@@ -210,7 +192,7 @@ workers:
     exit "$EXIT"
 
 # Start infra, then hand off to the Rust supervisor.
-# `axon serve` now owns the backend bridge, MCP HTTP server, workers, shell server, and Next.js.
+# `axon serve` owns the backend bridge, MCP HTTP server, workers, and shell server.
 dev:
     #!/usr/bin/env bash
     set -euo pipefail

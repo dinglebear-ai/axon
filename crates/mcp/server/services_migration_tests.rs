@@ -16,11 +16,6 @@ fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
             &["crate::crates::jobs::crawl", "crate::crates::jobs::extract"][..],
         ),
         (
-            "handlers_refresh_status.rs",
-            include_str!("handlers_refresh_status.rs"),
-            &["crate::crates::jobs::refresh"][..],
-        ),
-        (
             "handlers_system.rs",
             include_str!("handlers_system.rs"),
             &["crawl::screenshot::spider_screenshot_with_options"][..],
@@ -38,52 +33,11 @@ fn migrated_mcp_handlers_do_not_import_jobs_layers_directly() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Handler dispatch tests (comments #15 and #17).
+// Handler dispatch tests (comment #17).
 //
 // These run inside the `server.rs` #[cfg(test)] module, which grants access to
 // the pub(super) handler methods on AxonMcpServer.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Comment #15 — refresh/schedule with an unknown schedule_subaction returns INVALID_PARAMS.
-///
-/// Calls the real handle_refresh dispatch with RefreshSubaction::Schedule and an
-/// unrecognised schedule_subaction value, then verifies the returned error code.
-#[tokio::test]
-async fn refresh_schedule_unknown_subaction_returns_invalid_params() {
-    use crate::crates::core::config::Config;
-    use crate::crates::mcp::schema::{RefreshRequest, RefreshSubaction};
-
-    let server = super::AxonMcpServer::new(Config::default());
-    let req = RefreshRequest {
-        subaction: Some(RefreshSubaction::Schedule),
-        url: None,
-        urls: None,
-        job_id: None,
-        schedule_subaction: Some("launch_rockets".to_string()),
-        schedule_name: None,
-        limit: None,
-        offset: None,
-        response_mode: None,
-    };
-    let result = server.handle_refresh(req).await;
-    assert!(
-        result.is_err(),
-        "unknown schedule_subaction must return an error"
-    );
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.code,
-        rmcp::model::ErrorCode::INVALID_PARAMS,
-        "unknown schedule_subaction must return INVALID_PARAMS, got: {:?}",
-        err.code
-    );
-    // Verify the error message names the unknown value.
-    let msg = err.message.to_lowercase();
-    assert!(
-        msg.contains("launch_rockets") || msg.contains("unknown"),
-        "error message should identify the unknown subaction; got: {msg}"
-    );
-}
 
 /// Comment #17 — ingest/start without source_type returns INVALID_PARAMS.
 ///

@@ -59,13 +59,9 @@ It is idempotent — safe to re-run. What it does:
 6. Checks Node.js ≥ v24 and pnpm ≥ v10; installs if missing.
 7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
 8. Creates `.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
-9. **Auto-generates secrets** for Postgres, Redis, RabbitMQ, and the web API token — never prompts for these.
-10. **Prompts for `AXON_DATA_DIR`** (default `~/.local/share/axon`) and pre-creates all container volume directories under it.
-11. Backfills test infrastructure URLs (`AXON_TEST_PG_URL`, `AXON_TEST_AMQP_URL`, `AXON_TEST_REDIS_URL`, `AXON_TEST_QDRANT_URL`).
-12. Starts production infrastructure (`docker compose up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome`).
-13. Starts test infrastructure (`just test-infra-up` — separate `docker-compose.test.yaml`).
-14. Waits for both Postgres instances to pass `pg_isready`.
-15. Installs git hooks via `scripts/install-git-hooks.sh`.
+9. **Prompts for `AXON_DATA_DIR`** (default `~/.local/share/axon`) and pre-creates all container volume directories under it.
+10. Starts production infrastructure (`docker compose -f docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
+11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
 
@@ -83,7 +79,7 @@ Populate `.env` before first deploy. `dev-setup.sh` handles secrets and service 
 ### Required for all features
 
 - `AXON_DATA_DIR` — root for all persistent volume data
-- `AXON_PG_URL`, `AXON_REDIS_URL`, `AXON_AMQP_URL`, `QDRANT_URL` — infrastructure service URLs
+- `QDRANT_URL` — Qdrant vector store URL
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.services.yaml`)
 - `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` — LLM endpoint
 
@@ -189,17 +185,15 @@ docker compose ps
 
 6. Observe workers:
 
-Workers run in the foreground locally — output is in the terminal directly. For infra logs:
+Workers run in-process locally — output is in the terminal directly. For infra logs:
 
 ```bash
-docker compose logs --tail=200 axon-postgres axon-redis axon-rabbitmq axon-qdrant
+docker compose -f docker-compose.services.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
 ```
 
 ## Validation Checklist
 
-- All infra containers report healthy (postgres, redis, rabbitmq, qdrant, chrome).
-- `axon serve` is running and supervising the local child processes.
-- Web frontend is reachable at http://localhost:49010.
+- All infra containers report healthy (qdrant, tei, chrome).
 - `doctor` passes critical services.
 - At least one sync command succeeds (`scrape`).
 - At least one async command enqueues and reaches terminal state.

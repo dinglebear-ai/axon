@@ -38,26 +38,15 @@ Runs with SQLite for job storage. Requires Qdrant and TEI for embedding/search. 
 ### Infrastructure + app containers
 
 ```bash
-# Start infrastructure (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome)
+# Start infrastructure (Qdrant, TEI, Chrome)
 just services-up
-
-# Build and start app containers (workers + web)
-just up
 ```
-
-The `axon-workers` container exposes:
-- Port 49000: backend bridge + WebSocket
-- Port 8001: MCP HTTP server
-
-The `axon-web` container exposes:
-- Port 49010: Next.js dashboard
 
 ### Docker Compose split
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.services.yaml` | Infrastructure (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome) | `services.env` |
-| `docker-compose.yaml` | App containers (workers, web) | `.env` |
+| `docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | `services.env` |
 | `docker-compose.gpu.yaml` | GPU override for TEI and Ollama | -- |
 
 Both compose files share the `axon` bridge network and read `.env` for `${VAR}` interpolation.
@@ -127,9 +116,7 @@ All persistent data uses `${AXON_DATA_DIR:-./data}/axon/...`:
 
 | Volume | Content |
 |--------|---------|
-| `$AXON_DATA_DIR/axon/postgres` | PostgreSQL data |
-| `$AXON_DATA_DIR/axon/redis` | Redis persistence |
-| `$AXON_DATA_DIR/axon/rabbitmq` | RabbitMQ data |
+| `$AXON_DATA_DIR/axon/jobs.db` | SQLite job database |
 | `$AXON_DATA_DIR/axon/qdrant` | Qdrant vector storage |
 | `$AXON_DATA_DIR/axon/tei-data` | TEI model cache |
 | `$AXON_DATA_DIR/axon/artifacts` | MCP response artifacts |

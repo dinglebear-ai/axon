@@ -37,10 +37,7 @@ pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         if !cfg.wait {
             let result = enqueue_embed_job(cfg, &input, service_context).await;
             if result.is_ok() {
-                log_info(&format!(
-                    "job_enqueued command=embed queue={}",
-                    cfg.embed_queue
-                ));
+                log_info("job_enqueued command=embed");
             }
             return result;
         }

@@ -1,5 +1,0 @@
-#!/command/with-contenv bash
-# shellcheck shell=bash
-# WebSocket PTY shell server — gives the terminal page a shell inside axon-web.
-cd /app
-exec s6-setuidgid node node /app/shell-server.mjs

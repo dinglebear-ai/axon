@@ -30,11 +30,6 @@ fn migrated_cli_commands_do_not_import_raw_business_logic_layers() {
             ][..],
         ),
         (
-            "refresh.rs",
-            include_str!("refresh.rs"),
-            &["jobs::refresh::{"][..],
-        ),
-        (
             "debug.rs",
             include_str!("debug.rs"),
             &["build_doctor_report", "http_client()"][..],

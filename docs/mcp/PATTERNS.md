@@ -144,7 +144,7 @@ pub struct ServiceContext {
 
 ```rust
 pub struct ServiceCapabilities {
-    pub jobs: CapabilityGate,      // Requires Postgres + RabbitMQ
+    pub jobs: CapabilityGate,      // SQLite-backed (lite mode, always available)
     pub graph: CapabilityGate,     // Requires Neo4j
     pub search: CapabilityGate,    // Requires Tavily API key
     // ...
@@ -155,7 +155,7 @@ MCP handlers check capabilities before executing:
 
 ```rust
 if !ctx.capabilities.jobs.supported {
-    return Err(McpError::new("Operation requires full mode"));
+    return Err(McpError::new("Operation not available in this configuration"));
 }
 ```
 

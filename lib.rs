@@ -4,76 +4,16 @@ pub mod crates;
 
 use self::crates::cli::commands::{
     run_ask, run_completions, run_crawl, run_debug, run_dedupe, run_doctor, run_domains, run_embed,
-    run_evaluate, run_export, run_extract, run_graph, run_ingest, run_map, run_mcp, run_migrate,
-    run_query, run_refresh, run_research, run_retrieve, run_scrape, run_screenshot, run_search,
-    run_serve, run_sessions, run_sources, run_stats, run_status, run_suggest, run_watch,
-    start_url_from_cfg,
+    run_evaluate, run_extract, run_ingest, run_map, run_mcp, run_migrate, run_query, run_research,
+    run_retrieve, run_scrape, run_screenshot, run_search, run_sessions, run_sources, run_stats,
+    run_status, run_suggest, run_watch, start_url_from_cfg,
 };
 use self::crates::core::config::{CommandKind, Config, parse_args};
 use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
 use self::crates::services::context::ServiceContext;
-use sqlx::PgPool;
-use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
 use std::sync::Arc;
-use std::sync::OnceLock;
 use std::time::Duration;
-
-/// Cached telemetry pool — initialized once per process and reused across
-/// cron iterations. A single max_connections(1) pool is sufficient for the
-/// lightweight INSERT telemetry fires.
-static TELEMETRY_POOL: OnceLock<PgPool> = OnceLock::new();
-
-/// Guard: DDL for `axon_command_runs` runs at most once per process.
-/// Skips the CREATE TABLE round-trip on every subsequent invocation.
-static COMMAND_RUNS_SCHEMA: OnceLock<()> = OnceLock::new();
-
-pub async fn get_or_init_telemetry_pool(pg_url: &str) -> Result<&'static PgPool, sqlx::Error> {
-    if let Some(pool) = TELEMETRY_POOL.get() {
-        return Ok(pool);
-    }
-    let pool = PgPoolOptions::new()
-        .max_connections(1)
-        .connect(pg_url)
-        .await?;
-    // Race-safe: if another task initialized first, we drop our pool and use theirs.
-    Ok(TELEMETRY_POOL.get_or_init(|| pool))
-}
-
-/// Record a CLI command invocation for telemetry. Accepts only the two fields
-/// needed to avoid cloning the entire Config struct (~100 fields, 2-5KB heap).
-async fn record_command_run(pg_url: String, command: String) {
-    if pg_url.is_empty() {
-        return;
-    }
-    let attempt = async {
-        let pool = get_or_init_telemetry_pool(&pg_url).await?;
-
-        // DDL guarded by OnceLock — only the first call per process issues the
-        // CREATE TABLE round-trip. Subsequent calls skip straight to INSERT.
-        if COMMAND_RUNS_SCHEMA.get().is_none() {
-            sqlx::query(
-                r#"
-                CREATE TABLE IF NOT EXISTS axon_command_runs (
-                    id BIGSERIAL PRIMARY KEY,
-                    command TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                "#,
-            )
-            .execute(pool)
-            .await?;
-            let _ = COMMAND_RUNS_SCHEMA.set(());
-        }
-
-        sqlx::query("INSERT INTO axon_command_runs (command) VALUES ($1)")
-            .bind(&command)
-            .execute(pool)
-            .await?;
-        Ok::<(), sqlx::Error>(())
-    };
-    let _ = tokio::time::timeout(Duration::from_secs(2), attempt).await;
-}
 
 async fn run_once(
     cfg: &Config,
@@ -84,7 +24,6 @@ async fn run_once(
         CommandKind::Scrape => run_scrape(cfg).await?,
         CommandKind::Map => run_map(cfg, start_url).await?,
         CommandKind::Crawl => run_crawl(cfg, service_context).await?,
-        CommandKind::Refresh => run_refresh(cfg, service_context).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
         CommandKind::Search => run_search(cfg).await?,
@@ -105,12 +44,18 @@ async fn run_once(
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
         CommandKind::Research => run_research(cfg).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
-        CommandKind::Graph => run_graph(cfg, service_context).await?,
+        CommandKind::Graph => {
+            return Err("graph command is not available in this build".into());
+        }
+        CommandKind::Refresh => {
+            return Err("refresh command is not available in this build".into());
+        }
+        CommandKind::Export => {
+            return Err("export command is not available in this build".into());
+        }
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
-        CommandKind::Serve => run_serve(cfg).await?,
         CommandKind::Migrate => run_migrate(cfg).await?,
-        CommandKind::Export => run_export(cfg).await?,
     }
     Ok(())
 }
@@ -135,11 +80,7 @@ fn is_async_enqueue_mode(cfg: &Config) -> bool {
     !cfg.wait
         && matches!(
             cfg.command,
-            CommandKind::Crawl
-                | CommandKind::Refresh
-                | CommandKind::Extract
-                | CommandKind::Embed
-                | CommandKind::Ingest
+            CommandKind::Crawl | CommandKind::Extract | CommandKind::Embed | CommandKind::Ingest
         )
         && !is_job_subcommand(cfg)
 }
@@ -173,26 +114,18 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    // Spawn in-process workers only when the CLI needs to wait for job completion
-    // in lite mode. Fire-and-forget commands enqueue to SQLite and exit — `axon serve`
-    // runs the workers. Serve/MCP/web create their own ServiceContext with workers.
+    // CLI commands use ServiceContext::for_cli() (enqueue-only).
+    // Fire-and-forget jobs (without --wait) require `axon mcp` to be running as a
+    // daemon. `axon mcp` uses ServiceContext::for_mcp() which spawns in-process workers.
+    // Exception: lite mode with --wait spawns workers inline so the job can complete.
     let needs_workers = cfg_arc.lite_mode && cfg_arc.wait;
     let service_context = if needs_workers {
-        ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
+        ServiceContext::for_mcp(Arc::clone(&cfg_arc)).await
     } else {
-        ServiceContext::new(Arc::clone(&cfg_arc)).await
+        ServiceContext::for_cli(Arc::clone(&cfg_arc)).await
     }
     .map_err(|e| -> Box<dyn Error> { e })?;
     let cfg = cfg_arc.as_ref();
-
-    // Skip Postgres telemetry in lite mode (no Postgres connection required).
-    if !cfg.lite_mode {
-        let pg_url = cfg.pg_url.clone();
-        let command = cfg.command.as_str().to_string();
-        tokio::spawn(async move {
-            record_command_run(pg_url, command).await;
-        });
-    }
 
     if let Some(every_seconds) = cfg.cron_every_seconds {
         if is_job_subcommand(cfg) {

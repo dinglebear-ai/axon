@@ -6,7 +6,6 @@ use crate::crates::services::types::{
     ResearchResult, SearchOptions, SearchResult, ServiceTimeRange,
 };
 use spider_agent::{Agent, SearchOptions as SpiderSearchOptions, TimeRange, TokenUsage};
-use sqlx::postgres::PgPoolOptions;
 use std::error::Error;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -37,16 +36,6 @@ pub async fn search_results(
     if cfg.tavily_api_key.is_empty() {
         return Err("search requires TAVILY_API_KEY — set it in .env".into());
     }
-    tokio::spawn(record_query_history(
-        cfg.clone(),
-        "search",
-        query.to_string(),
-        serde_json::json!({
-            "limit": limit,
-            "offset": offset,
-            "time_range": time_range.as_ref().map(|tr| format!("{tr:?}").to_lowercase()),
-        }),
-    ));
     let mut search_opts = SpiderSearchOptions::new().with_limit((limit + offset).clamp(1, 100));
     if let Some(tr) = time_range {
         search_opts = search_opts.with_time_range(tr);
@@ -97,18 +86,6 @@ pub async fn research_payload(
     {
         return Err("research requires AXON_ACP_ADAPTER_CMD — set it in .env".into());
     }
-    tokio::spawn(record_query_history(
-        cfg.clone(),
-        "research",
-        query.to_string(),
-        serde_json::json!({
-            "limit": limit,
-            "offset": offset,
-            "time_range": time_range.as_ref().map(|tr| format!("{tr:?}").to_lowercase()),
-            "model": cfg.openai_model,
-        }),
-    ));
-
     // Start warming the ACP adapter session in the background so its cold-start
     // (subprocess spawn → init → session setup) overlaps with the Tavily search.
     // A warm-session failure is treated as degraded — search results are still
@@ -202,75 +179,6 @@ pub async fn research_payload(
             "total": started.elapsed().as_millis(),
         },
     }))
-}
-
-async fn record_query_history(
-    cfg: Config,
-    kind: &'static str,
-    query: String,
-    options: serde_json::Value,
-) {
-    if cfg.pg_url.trim().is_empty() {
-        return;
-    }
-    let pool = match PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&cfg.pg_url)
-        .await
-    {
-        Ok(p) => p,
-        Err(e) => {
-            log_warn(&format!("query history db connect failed: {e}"));
-            return;
-        }
-    };
-
-    // Run DDL once — outside the retry loop to avoid repeated schema lock round-trips.
-    for stmt in [
-        r#"
-        CREATE TABLE IF NOT EXISTS axon_query_history (
-            id BIGSERIAL PRIMARY KEY,
-            kind TEXT NOT NULL,
-            query_text TEXT NOT NULL,
-            options_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        "#,
-        "CREATE INDEX IF NOT EXISTS idx_axon_query_history_kind_created_desc ON axon_query_history(kind, created_at DESC)",
-    ] {
-        if let Err(e) = sqlx::query(stmt).execute(&pool).await {
-            log_warn(&format!("query history schema setup failed: {e}"));
-            return;
-        }
-    }
-
-    for attempt in 1..=3 {
-        let record = async {
-            sqlx::query(
-                r#"INSERT INTO axon_query_history (kind, query_text, options_json) VALUES ($1, $2, $3)"#,
-            )
-            .bind(kind)
-            .bind(query.clone())
-            .bind(options.clone())
-            .execute(&pool)
-            .await?;
-            Ok::<(), sqlx::Error>(())
-        };
-        match tokio::time::timeout(std::time::Duration::from_secs(5), record).await {
-            Ok(Ok(())) => return,
-            Ok(Err(err)) => {
-                log_warn(&format!(
-                    "query history record attempt {attempt}/3 failed: {err}"
-                ));
-            }
-            Err(_) => {
-                log_warn(&format!(
-                    "query history record attempt {attempt}/3 timed out after 5s"
-                ));
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis((200 * attempt) as u64)).await;
-    }
 }
 
 /// Synthesize extracted content via a pre-warmed ACP session, streaming tokens

@@ -63,15 +63,6 @@ impl Default for Config {
             request_timeout_ms: None,
             fetch_retries: 2,
             retry_backoff_ms: 250,
-            shared_queue: true,
-            pg_url: String::new(),
-            redis_url: String::new(),
-            amqp_url: String::new(),
-            crawl_queue: "axon.crawl.jobs".to_string(),
-            refresh_queue: "axon.refresh.jobs".to_string(),
-            extract_queue: "axon.extract.jobs".to_string(),
-            embed_queue: "axon.embed.jobs".to_string(),
-            ingest_queue: "axon.ingest.jobs".to_string(),
             sessions_claude: false,
             sessions_codex: false,
             sessions_gemini: false,
@@ -99,19 +90,7 @@ impl Default for Config {
             acp_ws_url: None,
             acp_ws_token: None,
             tavily_api_key: String::new(),
-            neo4j_url: String::new(),
-            neo4j_user: "neo4j".to_string(),
-            neo4j_password: String::new(),
-            graph_queue: "axon.graph.jobs".to_string(),
-            graph_concurrency: 4,
-            graph_llm_url: "http://localhost:11434".to_string(),
-            graph_llm_model: "qwen3.5:4b".to_string(),
-            graph_similarity_threshold: 0.75,
-            graph_similarity_limit: 20,
-            graph_context_max_chars: 2_000,
-            graph_taxonomy_path: String::new(),
-            web_allowed_origins: vec![],
-            shell_allowed_origins: vec![],
+            mcp_allowed_origins: vec![],
             ask_diagnostics: false,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
@@ -167,12 +146,9 @@ impl Default for Config {
             screenshot_full_page: true,
             viewport_width: 1920,
             viewport_height: 1080,
-            serve_port: 49000,
             mcp_transport: McpTransport::Http,
             mcp_http_host: "0.0.0.0".to_string(),
             mcp_http_port: 8001,
-            web_dev_port: 49010,
-            shell_server_port: 49011,
             custom_headers: vec![],
             quiet: false,
         }
@@ -262,15 +238,6 @@ impl fmt::Debug for Config {
             .field("request_timeout_ms", &self.request_timeout_ms)
             .field("fetch_retries", &self.fetch_retries)
             .field("retry_backoff_ms", &self.retry_backoff_ms)
-            .field("shared_queue", &self.shared_queue)
-            .field("pg_url", &"[REDACTED]")
-            .field("redis_url", &"[REDACTED]")
-            .field("amqp_url", &"[REDACTED]")
-            .field("crawl_queue", &self.crawl_queue)
-            .field("refresh_queue", &self.refresh_queue)
-            .field("extract_queue", &self.extract_queue)
-            .field("embed_queue", &self.embed_queue)
-            .field("ingest_queue", &self.ingest_queue)
             .field("sessions_claude", &self.sessions_claude)
             .field("sessions_codex", &self.sessions_codex)
             .field("sessions_gemini", &self.sessions_gemini)
@@ -298,22 +265,7 @@ impl fmt::Debug for Config {
             .field("acp_ws_url", &self.acp_ws_url)
             .field("acp_ws_token", &"[REDACTED]")
             .field("tavily_api_key", &"[REDACTED]")
-            .field("neo4j_url", &"[REDACTED]")
-            .field("neo4j_user", &self.neo4j_user)
-            .field("neo4j_password", &"[REDACTED]")
-            .field("graph_queue", &self.graph_queue)
-            .field("graph_concurrency", &self.graph_concurrency)
-            .field("graph_llm_url", &self.graph_llm_url)
-            .field("graph_llm_model", &self.graph_llm_model)
-            .field(
-                "graph_similarity_threshold",
-                &self.graph_similarity_threshold,
-            )
-            .field("graph_similarity_limit", &self.graph_similarity_limit)
-            .field("graph_context_max_chars", &self.graph_context_max_chars)
-            .field("graph_taxonomy_path", &self.graph_taxonomy_path)
-            .field("web_allowed_origins", &self.web_allowed_origins)
-            .field("shell_allowed_origins", &self.shell_allowed_origins)
+            .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
@@ -381,12 +333,9 @@ impl fmt::Debug for Config {
             .field("screenshot_full_page", &self.screenshot_full_page)
             .field("viewport_width", &self.viewport_width)
             .field("viewport_height", &self.viewport_height)
-            .field("serve_port", &self.serve_port)
             .field("mcp_transport", &self.mcp_transport)
             .field("mcp_http_host", &self.mcp_http_host)
             .field("mcp_http_port", &self.mcp_http_port)
-            .field("web_dev_port", &self.web_dev_port)
-            .field("shell_server_port", &self.shell_server_port)
             .field(
                 "custom_headers",
                 &self

@@ -60,9 +60,6 @@ Infrastructure runs via Docker Compose. No manual installation needed:
 
 | Service | Docker image | Host port | Purpose |
 |---------|-------------|-----------|---------|
-| PostgreSQL | postgres:17-alpine | 53432 | Job persistence |
-| Redis | redis:8.2-alpine | 53379 | Queue state, caching |
-| RabbitMQ | rabbitmq:4.0-management | 45535 | AMQP job queue |
 | Qdrant | qdrant/qdrant:v1.13.1 | 53333 | Vector store |
 | TEI | ghcr.io/huggingface/text-embeddings-inference | 52000 | Embedding generation |
 | Chrome | Custom (docker/chrome/) | 6000 | Headless browser |

@@ -10,7 +10,7 @@ use super::types::Config;
 use crate::crates::core::ui::report_error;
 use clap::{Command, CommandFactory, Parser};
 
-pub(crate) use docker::{is_docker_service_host, normalize_local_service_url};
+pub(crate) use docker::is_docker_service_host;
 
 pub fn build_cli_command() -> Command {
     Cli::command()
@@ -305,46 +305,6 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_graph_defaults_to_installed_ollama_model() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        const GRAPH_MODEL: &str = "AXON_GRAPH_LLM_MODEL";
-
-        let prev_graph_model = env::var(GRAPH_MODEL).ok();
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-            env::remove_var(GRAPH_MODEL);
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "graph",
-            "status",
-        ]);
-        let cfg = super::build_config::into_config(cli).expect("graph status should parse");
-        assert_eq!(cfg.graph_llm_model, "qwen3.5:4b");
-
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-            match prev_graph_model {
-                Some(val) => env::set_var(GRAPH_MODEL, val),
-                None => env::remove_var(GRAPH_MODEL),
-            }
         }
     }
 

@@ -1,6 +1,6 @@
 # MCP Environment Variables -- Axon
 
-Environment variables specific to the Axon MCP server. The MCP server inherits all Axon stack variables (Postgres, Redis, RabbitMQ, Qdrant, TEI, LLM). This page covers MCP-specific configuration.
+Environment variables specific to the Axon MCP server. The MCP server inherits all Axon stack variables (Qdrant, TEI, LLM). This page covers MCP-specific configuration.
 
 ## MCP server
 
@@ -37,28 +37,24 @@ The MCP server reads existing Axon stack variables at startup:
 
 | Variable | Purpose |
 |----------|---------|
-| `AXON_PG_URL` | Job persistence (full mode) |
-| `AXON_REDIS_URL` | Queue state and cancel flags (full mode) |
-| `AXON_AMQP_URL` | Job queue dispatch (full mode) |
 | `QDRANT_URL` | Vector search and retrieval |
 | `TEI_URL` | Embedding generation |
 | `OPENAI_BASE_URL` | LLM provider (legacy path) |
 | `OPENAI_API_KEY` | LLM auth |
 | `OPENAI_MODEL` | Model override for ACP completions |
 | `TAVILY_API_KEY` | Web search and research |
-| `AXON_LITE` | Run without Postgres/Redis/RabbitMQ |
+| `AXON_LITE` | Enable lite mode (SQLite-backed, default) |
 | `AXON_COLLECTION` | Default Qdrant collection |
 
 ## Lite mode
 
-When `AXON_LITE=1`, the MCP server runs without Postgres, Redis, or RabbitMQ. Jobs use SQLite and run in-process. Some operations are unavailable:
+The MCP server runs in lite mode by default. Jobs use SQLite and run in-process.
 
-| Operation | Available in lite |
-|-----------|-------------------|
+| Operation | Available |
+|-----------|-----------|
 | scrape, query, ask, search | Yes |
 | crawl (sync), embed, ingest | Yes |
-| graph, refresh, watch | No |
-| export | No |
+| watch scheduler | No |
 
 ## Precedence
 

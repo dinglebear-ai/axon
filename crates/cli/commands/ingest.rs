@@ -32,10 +32,7 @@ pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> C
         if !cfg.wait {
             let result = enqueue_ingest_job(cfg, source, service_context).await;
             if result.is_ok() {
-                log_info(&format!(
-                    "job_enqueued command=ingest queue={}",
-                    cfg.ingest_queue
-                ));
+                log_info("job_enqueued command=ingest");
             }
             return result;
         }
@@ -74,9 +71,8 @@ async fn enqueue_ingest_job(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::core::config::CommandKind;
+    use crate::crates::core::config::{CommandKind, Config};
     use crate::crates::jobs::backend::JobKind;
-    use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use async_trait::async_trait;
@@ -163,7 +159,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_ingest_requires_target() -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut cfg = test_config("");
+        let mut cfg = Config::test_default();
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec![];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
@@ -182,7 +178,7 @@ mod tests {
     #[tokio::test]
     async fn run_ingest_unknown_target_gives_helpful_error()
     -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut cfg = test_config("");
+        let mut cfg = Config::test_default();
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec!["not-a-target".to_string()];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))

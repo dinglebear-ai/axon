@@ -1,12 +1,53 @@
 use crate::crates::core::config::Config;
 use crate::crates::jobs::lite::query::ms_to_dt;
 use crate::crates::jobs::lite::store::{now_ms, open_config_pool};
-use crate::crates::jobs::watch::{
-    WATCH_RUN_STATUS_COMPLETED, WATCH_RUN_STATUS_FAILED, WATCH_RUN_STATUS_RUNNING, WatchDef,
-    WatchDefCreate, WatchRun,
-};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use uuid::Uuid;
+
+pub const WATCH_RUN_STATUS_RUNNING: &str = "running";
+pub const WATCH_RUN_STATUS_COMPLETED: &str = "completed";
+pub const WATCH_RUN_STATUS_FAILED: &str = "failed";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchDef {
+    pub id: Uuid,
+    pub name: String,
+    pub task_type: String,
+    pub task_payload: serde_json::Value,
+    pub every_seconds: i64,
+    pub enabled: bool,
+    pub next_run_at: DateTime<Utc>,
+    pub lease_expires_at: Option<DateTime<Utc>>,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchDefCreate {
+    pub name: String,
+    pub task_type: String,
+    pub task_payload: serde_json::Value,
+    pub every_seconds: i64,
+    pub enabled: bool,
+    pub next_run_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchRun {
+    pub id: Uuid,
+    pub watch_id: Uuid,
+    pub status: String,
+    pub dispatched_job_id: Option<Uuid>,
+    pub error_text: Option<String>,
+    pub result_json: Option<serde_json::Value>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
 
 type WatchDefRow = (
     String,

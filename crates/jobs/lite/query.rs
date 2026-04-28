@@ -29,6 +29,14 @@ pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     })
 }
 
+/// Count all jobs in a table.
+pub async fn count_jobs(pool: &SqlitePool, table: &str) -> Result<i64, sqlx::Error> {
+    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {}", table))
+        .fetch_one(pool)
+        .await?;
+    Ok(count)
+}
+
 /// List all jobs in a table as summary rows (most recent first).
 /// Returns at most 500 rows.
 pub async fn list_jobs(pool: &SqlitePool, table: &str) -> Result<Vec<JobSummary>, sqlx::Error> {

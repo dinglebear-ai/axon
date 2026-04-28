@@ -203,50 +203,6 @@ impl From<crate::crates::jobs::ingest::IngestJob> for ServiceJob {
     }
 }
 
-impl From<crate::crates::jobs::refresh::RefreshJob> for ServiceJob {
-    fn from(job: crate::crates::jobs::refresh::RefreshJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status,
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text,
-            url: None,
-            source_type: None,
-            target: None,
-            urls_json: Some(job.urls_json),
-            result_json: job.result_json,
-            config_json: Some(job.config_json),
-        }
-    }
-}
-
-impl From<crate::crates::jobs::graph::GraphJob> for ServiceJob {
-    fn from(job: crate::crates::jobs::graph::GraphJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status,
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text,
-            url: Some(job.url),
-            source_type: None,
-            target: None,
-            urls_json: None,
-            result_json: Some(serde_json::json!({
-                "chunk_count": job.chunk_count,
-                "entity_count": job.entity_count,
-                "relation_count": job.relation_count,
-            })),
-            config_json: None,
-        }
-    }
-}
-
 // ── Named constructors ────────────────────────────────────────────────────────
 
 impl ServiceJob {
@@ -414,28 +370,6 @@ pub struct ExtractSyncResult {
     pub duration_ms: u128,
 }
 
-// ── Graph ────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct GraphBuildResult {
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct GraphStatusResult {
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct GraphExploreResult {
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct GraphStatsResult {
-    pub payload: serde_json::Value,
-}
-
 // ── Migrate ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -460,22 +394,6 @@ pub struct IngestStartResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IngestJobResult {
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RefreshStartResult {
-    pub job_id: String,
-    pub urls: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RefreshJobResult {
-    pub job: Option<crate::crates::jobs::refresh::RefreshJob>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RefreshRunResult {
     pub payload: serde_json::Value,
 }
 

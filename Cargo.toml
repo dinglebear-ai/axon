@@ -27,11 +27,9 @@ clap_complete = "4"
 console = "0.16"
 dialoguer = "0.12"
 indicatif = "0.18"
-lapin = "4"
 log = "0.4"
 octocrab = "0.49"
 portable-pty = "0"
-redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
 futures-util = "0.3"
 futures = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
@@ -53,7 +51,7 @@ spider = { version = "2", default-features = false, features = [
 ] }
 spider_agent = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
 spider_transformations = "2"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "sqlite", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
 subtle = "2"
 text-splitter = { version = "0.30", features = ["code", "markdown"] }
 tree-sitter-bash = "0.25"

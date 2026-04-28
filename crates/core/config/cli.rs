@@ -76,8 +76,6 @@ pub(super) enum CliCommand {
     Completions(CompletionArgs),
     /// Start MCP server (stdio, HTTP, or both)
     Mcp(McpArgs),
-    /// Start web UI server (axum + WebSocket + Docker stats)
-    Serve(ServeArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
     /// Export indexed data manifest to JSON
@@ -102,13 +100,6 @@ pub(super) struct McpArgs {
     /// MCP transport: stdio, http, or both.
     #[arg(long, value_enum)]
     pub(super) transport: Option<McpTransport>,
-}
-
-#[derive(Debug, Args)]
-pub(super) struct ServeArgs {
-    /// Port to bind the web UI server on
-    #[arg(long, env = "AXON_SERVE_PORT", default_value_t = 49000)]
-    pub(super) port: u16,
 }
 
 #[derive(Debug, Args)]

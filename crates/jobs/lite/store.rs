@@ -34,6 +34,16 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .connect_with(opts)
         .await?;
 
+    #[cfg(unix)]
+    if path != ":memory:" {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o600);
+            let _ = std::fs::set_permissions(path, perms);
+        }
+    }
+
     sqlx::migrate!("crates/jobs/lite/migrations")
         .run(&pool)
         .await

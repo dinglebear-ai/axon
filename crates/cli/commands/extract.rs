@@ -37,10 +37,7 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
         if !cfg.wait {
             let result = enqueue_extract_job(cfg, &urls, prompt, service_context).await;
             if result.is_ok() {
-                log_info(&format!(
-                    "job_enqueued command=extract queue={}",
-                    cfg.extract_queue
-                ));
+                log_info("job_enqueued command=extract");
             }
             return result;
         }

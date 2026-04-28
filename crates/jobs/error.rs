@@ -9,9 +9,6 @@ pub enum JobError {
     /// Database query or connection failure.
     #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
-    /// AMQP publish or channel failure.
-    #[error("AMQP error: {0}")]
-    Amqp(#[from] lapin::Error),
     /// Job with the given ID was not found.
     #[error("job not found: {id}")]
     JobNotFound { id: Uuid },

@@ -39,14 +39,7 @@ impl JobKind {
     }
 
     pub fn all() -> &'static [JobKind] {
-        &[
-            Self::Crawl,
-            Self::Embed,
-            Self::Extract,
-            Self::Ingest,
-            Self::Refresh,
-            Self::Graph,
-        ]
+        &[Self::Crawl, Self::Embed, Self::Extract, Self::Ingest]
     }
 }
 
@@ -70,13 +63,6 @@ pub enum JobPayload {
         source_type: String,
         config_json: String,
     },
-    Refresh {
-        url: String,
-        config_json: String,
-    },
-    Graph {
-        config_json: String,
-    },
 }
 
 impl JobPayload {
@@ -86,8 +72,6 @@ impl JobPayload {
             Self::Embed { .. } => JobKind::Embed,
             Self::Extract { .. } => JobKind::Extract,
             Self::Ingest { .. } => JobKind::Ingest,
-            Self::Refresh { .. } => JobKind::Refresh,
-            Self::Graph { .. } => JobKind::Graph,
         }
     }
 }

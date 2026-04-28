@@ -2,7 +2,6 @@ use crate::crates::jobs::crawl::CrawlJob;
 use crate::crates::jobs::embed::EmbedJob;
 use crate::crates::jobs::extract::ExtractJob;
 use crate::crates::jobs::ingest::IngestJob;
-use crate::crates::jobs::refresh::RefreshJob;
 use crate::crates::services::types::ServiceJob;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -105,24 +104,6 @@ impl SharedJobRecord {
         }
     }
 
-    fn refresh(job: &RefreshJob) -> Self {
-        Self {
-            id: job.id,
-            status: job.status.clone(),
-            created_at: job.created_at,
-            updated_at: job.updated_at,
-            started_at: job.started_at,
-            finished_at: job.finished_at,
-            error_text: job.error_text.clone(),
-            url: None,
-            source_type: None,
-            target: None,
-            urls: Some(job.urls_json.clone()),
-            result_json: job.result_json.clone(),
-            config_json: Some(job.config_json.clone()),
-        }
-    }
-
     fn service(job: &ServiceJob) -> Self {
         Self {
             id: job.id,
@@ -190,10 +171,6 @@ impl JobStatusResponse {
 
     pub fn from_embed(job: &EmbedJob) -> Self {
         SharedJobRecord::embed(job).into()
-    }
-
-    pub fn from_refresh(job: &RefreshJob) -> Self {
-        SharedJobRecord::refresh(job).into()
     }
 
     pub fn from_service_job(job: &ServiceJob) -> Self {
@@ -281,10 +258,6 @@ impl JobSummaryEntry {
         SharedJobRecord::embed(job).into()
     }
 
-    pub fn from_refresh(job: &RefreshJob) -> Self {
-        SharedJobRecord::refresh(job).into()
-    }
-
     pub fn from_service_job(job: &ServiceJob) -> Self {
         SharedJobRecord::service(job).into()
     }
@@ -348,7 +321,6 @@ impl From<SharedJobRecord> for JobSummaryEntry {
 mod tests {
     use super::*;
     use crate::crates::jobs::embed::EmbedJob;
-    use crate::crates::jobs::refresh::RefreshJob;
     use chrono::TimeZone;
 
     fn test_ts() -> DateTime<Utc> {
@@ -368,6 +340,7 @@ mod tests {
             finished_at: None,
             error_text: None,
             result_json: Some(serde_json::json!({"pages_crawled": 3})),
+            config_json: serde_json::json!({}),
         }
     }
 
@@ -413,21 +386,6 @@ mod tests {
             input_text: "/tmp/embed-input".to_string(),
             result_json: Some(serde_json::json!({"chunks_embedded": 7, "source": "rust"})),
             config_json: serde_json::json!({"collection": "cortex"}),
-        }
-    }
-
-    fn test_refresh_job() -> RefreshJob {
-        RefreshJob {
-            id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").expect("valid uuid"),
-            status: "completed".to_string(),
-            created_at: test_ts(),
-            updated_at: test_ts(),
-            started_at: Some(test_ts()),
-            finished_at: Some(test_ts()),
-            error_text: None,
-            urls_json: serde_json::json!(["https://example.com/a", "https://example.com/b"]),
-            result_json: Some(serde_json::json!({"checked": 2, "changed": 1})),
-            config_json: serde_json::json!({"embed": true}),
         }
     }
 
@@ -524,24 +482,6 @@ mod tests {
         assert_eq!(
             json["result_json"],
             serde_json::json!({"chunks_embedded": 7, "source": "rust"})
-        );
-    }
-
-    #[test]
-    fn refresh_summary_contract_includes_urls_and_result_metrics() {
-        let payload = serialize_list(vec![JobSummaryEntry::from_refresh(&test_refresh_job())]);
-        let item = &payload[0];
-        assert_eq!(
-            item["urls"],
-            serde_json::json!(["https://example.com/a", "https://example.com/b"])
-        );
-        assert_eq!(
-            item["metrics"],
-            serde_json::json!({"checked": 2, "changed": 1})
-        );
-        assert_eq!(
-            item["result_json"],
-            serde_json::json!({"checked": 2, "changed": 1})
         );
     }
 

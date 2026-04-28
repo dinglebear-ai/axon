@@ -1,48 +1,44 @@
 # Architecture Overview -- Axon
 
-## Trimodal design
+## Dual-mode design
 
-Axon is a single Rust binary that operates in three modes:
+Axon is a single Rust binary that operates in two modes:
 
 ```
                     +-----------+
                     |  axon.rs  |  (single binary)
                     +-----+-----+
                           |
-          +---------------+---------------+
-          |               |               |
-    +-----+-----+  +-----+-----+  +------+------+
-    |  CLI mode  |  | MCP mode  |  |  Serve mode |
-    | axon <cmd> |  | axon mcp  |  | axon serve  |
-    +-----+-----+  +-----+-----+  +------+------+
-          |               |               |
-          +-------+-------+       +-------+-------+
-                  |               |               |
-            +-----+-----+  +-----+-----+  +------+------+
-            |  Services  |  |  Backend  |  |   Next.js   |
-            |   Layer    |  |  Bridge   |  |   Web UI    |
-            +-----+-----+  | (port     |  | (port       |
-                  |         |  49000)   |  |  49010)     |
-                  |         +-----+-----+  +------+------+
-                  |               |               |
-          +-------+-------+------+               |
-          |               |                       |
-    +-----+-----+  +-----+-----+                 |
-    |   Jobs    |  |   Vector  |  +-----------+   |
-    | Framework |  |    Ops    |  |   MCP     |   |
-    |           |  |           |  |   HTTP    |   |
-    +-----+-----+  +-----+-----+  | (port    |  |
-          |               |         |  8001)  |  |
-          |               |         +----+----+  |
-          |               |              |       |
-    +-----+-----+  +-----+-----+        |       |
-    | Postgres  |  |  Qdrant   |  +------+------+
-    | Redis     |  |  (vector  |  | Workers     |
-    | RabbitMQ  |  |   store)  |  | (6 types)   |
-    +-----------+  +-----------+  +-------------+
+          +---------------+
+          |               |
+    +-----+-----+  +-----+-----+
+    |  CLI mode  |  | MCP mode  |
+    | axon <cmd> |  | axon mcp  |
+    +-----+-----+  +-----+-----+
+          |               |
+          +-------+-------+
+                  |
+            +-----+-----+
+            |  Services  |
+            |   Layer    |
+            +-----+-----+
+                  |
+          +-------+-------+
+          |               |
+    +-----+-----+  +-----+-----+
+    |   Jobs    |  |   Vector  |
+    | Framework |  |    Ops    |
+    | (SQLite)  |  |           |
+    +-----------+  +-----+-----+
+                         |
+                   +-----+-----+
+                   |  Qdrant   |
+                   |  (vector  |
+                   |   store)  |
+                   +-----------+
 ```
 
-All three modes share the same services layer (`crates/services/`), ensuring consistent behavior across CLI, MCP, and web interfaces.
+All modes share the same services layer (`crates/services/`), ensuring consistent behavior across CLI and MCP interfaces.
 
 ## Services layer
 
@@ -62,16 +58,14 @@ Each service function:
 
 ## Worker topology
 
-Six worker types process jobs from RabbitMQ queues:
+Worker types run in-process, processing SQLite-backed jobs:
 
-| Worker | Queue | Processing |
-|--------|-------|------------|
-| Crawl | `axon.crawl.jobs` | Spider-based site crawling with render mode switching |
-| Extract | `axon.extract.jobs` | LLM-powered structured data extraction |
-| Embed | `axon.embed.jobs` | TEI embedding + Qdrant upsert |
-| Ingest | `axon.ingest.jobs` | Source ingestion (GitHub, Reddit, YouTube) |
-| Refresh | `axon.refresh.jobs` | Periodic URL re-indexing with schedule support |
-| Graph | `axon.graph.jobs` | Neo4j entity extraction and graph building |
+| Worker | Processing |
+|--------|------------|
+| Crawl | Spider-based site crawling with render mode switching |
+| Extract | LLM-powered structured data extraction |
+| Embed | TEI embedding + Qdrant upsert |
+| Ingest | Source ingestion (GitHub, Reddit, YouTube) |
 
 ### Worker deployment
 
@@ -91,13 +85,13 @@ Submitted ─> Pending ─> Running ─> Completed
                  └─> Stale (watchdog reclaim)
 ```
 
-Jobs are persisted in PostgreSQL (full mode) or SQLite (lite mode). The `JobBackend` trait abstracts the storage backend.
+Jobs are persisted in SQLite. The `JobBackend` trait abstracts the storage backend.
 
 Key behaviors:
 - `--wait false` (default): fire-and-forget, returns job ID immediately
 - `--wait true`: blocks until completion
 - Stale detection: `AXON_JOB_STALE_TIMEOUT_SECS` (300s) + confirmation grace period
-- Cancel: sets flag in Redis, worker checks on next iteration
+- Cancel: sets cancellation flag in SQLite, worker checks on next iteration
 
 ## Data flow: crawl to RAG
 

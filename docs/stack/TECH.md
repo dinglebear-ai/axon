@@ -20,9 +20,7 @@
 | `rmcp` | 1.1+ | MCP server framework (stdio + streamable-http) |
 | `axum` | 0.8 | HTTP server + WebSocket for backend bridge |
 | `tokio` | 1.x | Async runtime (multi-threaded) |
-| `sqlx` | 0.8 | PostgreSQL + SQLite async driver |
-| `lapin` | 4.x | RabbitMQ AMQP client |
-| `redis` | 1.0 | Redis client (tokio-comp) |
+| `sqlx` | 0.8 | SQLite async driver (lite mode) |
 | `reqwest` | 0.13 | HTTP client (rustls, streaming) |
 | `clap` | 4.x | CLI argument parsing |
 | `serde` / `serde_json` | 1.x | Serialization |
@@ -36,9 +34,7 @@
 
 | Service | Image/Version | Purpose |
 |---------|--------------|---------|
-| PostgreSQL | 17-alpine | Job persistence, metadata storage |
-| Redis | 8.2-alpine | Queue state, cancel flags, caching |
-| RabbitMQ | 4.0-management | AMQP job queue with 6 queues |
+| SQLite | (embedded) | Job persistence, metadata storage |
 | Qdrant | v1.13.1 | Vector database (dense + sparse search) |
 | TEI | HuggingFace latest | Text embedding generation |
 | Chrome | Custom Dockerfile | Headless browser for JavaScript rendering |

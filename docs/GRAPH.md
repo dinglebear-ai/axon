@@ -46,9 +46,8 @@ Graph features are opt-in and gated by `AXON_NEO4J_URL`.
 ```mermaid
 flowchart TD
   A[Qdrant chunks] --> B[graph build enqueue]
-  B --> C[Postgres axon_graph_jobs pending]
-  C --> D[RabbitMQ queue axon.graph.jobs]
-  D --> E[graph worker]
+  B --> C[SQLite axon_graph_jobs pending]
+  C --> E[graph worker]
 
   E --> F[Taxonomy extraction]
   E --> G[LLM extraction for ambiguous entities]

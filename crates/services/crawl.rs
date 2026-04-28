@@ -1,14 +1,13 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_domain;
 use crate::crates::jobs::backend::JobKind;
-use crate::crates::jobs::crawl;
 use crate::crates::services::context::ServiceContext;
-use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
+use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::runtime::ServiceJobRuntime;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
-    CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode, JobListResult, JobStartOutcome,
+    CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode, JobStartOutcome,
     StartDisposition,
 };
 use spider::url::Url;
@@ -99,62 +98,14 @@ pub fn map_crawl_job_result(payload: serde_json::Value) -> CrawlJobResult {
 
 // --- Service functions ---
 
-/// Enqueue one or more crawl jobs and return their job IDs immediately.
-/// Fire-and-forget: jobs are inserted into the queue and this function returns
-/// without waiting for the crawl to complete.
-#[must_use = "crawl_start returns a Result that should be handled"]
-pub async fn crawl_start(
-    cfg: &Config,
-    urls: &[String],
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<CrawlStartResult, Box<dyn Error>> {
-    if urls.is_empty() {
-        return Err("crawl_start: no URLs provided".into());
-    }
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueueing crawl jobs for {} URL(s)", urls.len()),
-        },
-    )
-    .await;
-
-    let url_refs: Vec<&str> = urls.iter().map(String::as_str).collect();
-    let jobs = crawl::start_crawl_jobs_batch(cfg, &url_refs).await?;
-
-    let jobs: Vec<(String, String)> = jobs
-        .into_iter()
-        .map(|(url, id)| (url, id.to_string()))
-        .collect();
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueued {} crawl job(s)", jobs.len()),
-        },
-    )
-    .await;
-
-    Ok(map_crawl_start_result(&cfg.output_dir, &jobs))
-}
-
 pub async fn crawl_start_with_context(
     cfg: &Config,
     urls: &[String],
     service_context: &ServiceContext,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<JobStartOutcome<CrawlStartResult>, Box<dyn Error>> {
-    if !cfg.lite_mode {
-        let result = crawl_start(cfg, urls, tx).await?;
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::Enqueued,
-            result,
-        });
-    }
+    // tx is accepted for API compatibility but not used in the lite-only path
+    let _ = tx;
     if urls.is_empty() {
         return Err("No URLs provided for crawl".into());
     }
@@ -260,24 +211,6 @@ pub async fn crawl_recover(service_context: &ServiceContext) -> Result<u64, Box<
     job_service::recover_jobs(service_context, JobKind::Crawl).await
 }
 
-pub async fn crawl_status_raw(
-    cfg: &Config,
-    job_id: Uuid,
-) -> Result<Option<CrawlJob>, Box<dyn Error>> {
-    crawl::get_job(cfg, job_id).await
-}
-
-pub async fn crawl_list_raw(
-    cfg: &Config,
-    limit: i64,
-    offset: i64,
-) -> Result<JobListResult<CrawlJob>, Box<dyn Error>> {
-    let (jobs, total) = tokio::join!(crawl::list_jobs(cfg, limit, offset), crawl::count_jobs(cfg),);
-    let jobs = jobs?;
-    let total = total.unwrap_or(jobs.len() as i64);
-    Ok(JobListResult::new(jobs, total, limit, offset))
-}
-
 pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Crawl).await? {
         WorkerMode::Started | WorkerMode::InProcess => Ok(()),
@@ -310,8 +243,8 @@ async fn wait_for_pending_embed_jobs(runtime: &dyn ServiceJobRuntime) {
 #[cfg(test)]
 mod tests {
     use super::{crawl_start_with_context, map_crawl_start_result, predict_crawl_output_dir};
+    use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
-    use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
@@ -319,6 +252,12 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    fn test_config(start_url: &str) -> Config {
+        let mut cfg = Config::default_lite();
+        cfg.start_url = start_url.to_string();
+        cfg
+    }
 
     struct CompletedLiteRuntime;
     struct CanceledLiteRuntime;

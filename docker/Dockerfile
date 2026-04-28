@@ -211,10 +211,9 @@ RUN groupadd -r axon && useradd -r -g axon -u 1001 -d /home/axon -m axon \
 
 ENV AXON_ENV_FILE=/app/.env
 
-# Healthcheck: verify workers are running AND can reach Postgres (liveness + connectivity)
+# Healthcheck: verify workers are running (liveness check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD /usr/local/bin/healthcheck-workers.sh \
-        && bash -c "echo >/dev/tcp/${AXON_PG_HOST:-axon-postgres}/${AXON_PG_PORT:-5432}" 2>/dev/null
+    CMD /usr/local/bin/healthcheck-workers.sh
 
 # ===========================================================================
 # OPERATIONAL RUNBOOKS

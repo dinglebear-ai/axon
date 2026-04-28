@@ -98,11 +98,6 @@ impl_job_status!(
     JobSummaryEntry::from_embed
 );
 impl_job_status!(
-    crate::crates::jobs::refresh::RefreshJob,
-    JobStatusResponse::from_refresh,
-    JobSummaryEntry::from_refresh
-);
-impl_job_status!(
     crate::crates::services::types::ServiceJob,
     JobStatusResponse::from_service_job,
     JobSummaryEntry::from_service_job
@@ -345,7 +340,6 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
 mod tests {
     use super::JobStatus;
     use crate::crates::jobs::embed::EmbedJob;
-    use crate::crates::jobs::refresh::RefreshJob;
     use chrono::{DateTime, TimeZone, Utc};
     use std::error::Error;
     use uuid::Uuid;
@@ -381,23 +375,5 @@ mod tests {
         };
 
         assert_job_status_trait(&job, "running")
-    }
-
-    #[test]
-    fn refresh_job_implements_shared_job_status_trait() -> Result<(), Box<dyn Error>> {
-        let job = RefreshJob {
-            id: Uuid::parse_str("77777777-7777-7777-7777-777777777777")?,
-            status: "completed".to_string(),
-            created_at: test_ts()?,
-            updated_at: test_ts()?,
-            started_at: Some(test_ts()?),
-            finished_at: Some(test_ts()?),
-            error_text: None,
-            urls_json: serde_json::json!(["https://example.com"]),
-            result_json: Some(serde_json::json!({"checked": 1})),
-            config_json: serde_json::json!({"embed": true}),
-        };
-
-        assert_job_status_trait(&job, "completed")
     }
 }

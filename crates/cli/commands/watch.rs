@@ -198,8 +198,6 @@ async fn handle_watch_run_now(cfg: &Config, raw_id: &str) -> Result<(), Box<dyn 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::jobs::common::resolve_test_pg_url;
-    use crate::crates::jobs::watch::list_watch_defs_with_pool;
     use crate::crates::services::context::ServiceContext;
     use std::sync::Arc;
 
@@ -275,78 +273,6 @@ mod tests {
     #[tokio::test]
     async fn run_watch_lists_in_lite_mode() -> Result<(), Box<dyn Error>> {
         let cfg = Config::default_lite();
-        let service_context = test_service_context(&cfg).await;
-        run_watch(&cfg, &service_context).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
-    async fn cli_watch_create_emits_json_with_id() -> Result<(), Box<dyn Error>> {
-        let pg_url = resolve_test_pg_url()
-            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
-        let mut cfg = Config::test_default();
-        cfg.pg_url = pg_url.clone();
-        cfg.json_output = true;
-        cfg.positional = vec![
-            "create".to_string(),
-            format!("watch-cli-{}", Uuid::new_v4()),
-            "--task-type".to_string(),
-            "refresh".to_string(),
-            "--every-seconds".to_string(),
-            "300".to_string(),
-            "--task-payload".to_string(),
-            "{\"urls\":[\"https://example.com\"]}".to_string(),
-        ];
-        let service_context = test_service_context(&cfg).await;
-        run_watch(&cfg, &service_context).await?;
-        let pool = sqlx::PgPool::connect(&pg_url).await?;
-        let defs = list_watch_defs_with_pool(&pool, 500).await?;
-        assert!(defs.iter().any(|d| d.task_type == "refresh"));
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
-    async fn cli_watch_list_returns_definitions() -> Result<(), Box<dyn Error>> {
-        let pg_url = resolve_test_pg_url()
-            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
-        let mut cfg = Config::test_default();
-        cfg.pg_url = pg_url;
-        cfg.positional = vec!["list".to_string()];
-        let service_context = test_service_context(&cfg).await;
-        run_watch(&cfg, &service_context).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Postgres infra; run with cargo test cli_watch_ -- --ignored"]
-    async fn cli_watch_run_now_dispatches_task_and_returns_run_id() -> Result<(), Box<dyn Error>> {
-        let pg_url = resolve_test_pg_url()
-            .ok_or("AXON_TEST_PG_URL must be set for ignored CLI infra tests")?;
-        let mut cfg = Config::test_default();
-        cfg.pg_url = pg_url.clone();
-        cfg.positional = vec![
-            "create".to_string(),
-            format!("watch-run-now-{}", Uuid::new_v4()),
-            "--task-type".to_string(),
-            "refresh".to_string(),
-            "--every-seconds".to_string(),
-            "300".to_string(),
-            "--task-payload".to_string(),
-            "{\"urls\":[\"https://example.com\"]}".to_string(),
-        ];
-        let service_context = test_service_context(&cfg).await;
-        run_watch(&cfg, &service_context).await?;
-
-        let pool = sqlx::PgPool::connect(&pg_url).await?;
-        let defs = list_watch_defs_with_pool(&pool, 500).await?;
-        let watch_id = defs
-            .into_iter()
-            .find(|d| d.name.starts_with("watch-run-now-"))
-            .map(|d| d.id)
-            .ok_or("missing watch definition")?;
-        cfg.positional = vec!["run-now".to_string(), watch_id.to_string()];
         let service_context = test_service_context(&cfg).await;
         run_watch(&cfg, &service_context).await?;
         Ok(())
