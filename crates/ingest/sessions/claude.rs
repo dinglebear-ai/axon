@@ -1,6 +1,6 @@
 use super::{
-    IngestResult, SessionDoc, SessionMeta, SessionStateTracker, expand_home,
-    flatten_session_result, matches_project_filter, resolve_collection,
+    IngestResult, SessionDoc, SessionMeta, expand_home, flatten_session_result,
+    matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text};
@@ -26,7 +26,6 @@ pub(crate) struct ParsedClaudeSession {
 
 pub(super) async fn collect_claude_docs(
     cfg: &Config,
-    state: &SessionStateTracker,
     multi: &MultiProgress,
 ) -> IngestResult<Vec<SessionDoc>> {
     let root = expand_home("~/.claude/projects");
@@ -77,12 +76,8 @@ pub(super) async fn collect_claude_docs(
             }
             let meta = fs::metadata(&sub_path).await?;
             let mtime = meta.modified()?;
-            if state.should_skip(&sub_path, mtime, meta.len()).await {
-                continue;
-            }
 
             let coll_clone = collection.clone();
-            let size = meta.len();
             let session_meta = SessionMeta {
                 agent: "claude",
                 project_name: clean_name.clone(),
@@ -90,7 +85,7 @@ pub(super) async fn collect_claude_docs(
                 gh_repo: gh_repo.clone(),
             };
             futures.push(tokio::spawn(async move {
-                parse_claude_file(sub_path, coll_clone, mtime, size, session_meta).await
+                parse_claude_file(sub_path, coll_clone, mtime, session_meta).await
             }));
 
             // drain backpressure to avoid unbounded future accumulation
@@ -117,7 +112,6 @@ async fn parse_claude_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
-    size: u64,
     session_meta: SessionMeta,
 ) -> IngestResult<Option<SessionDoc>> {
     let content = fs::read_to_string(&path).await?;
@@ -163,13 +157,7 @@ async fn parse_claude_file(
         title,
         extra: Some(extra),
     };
-    Ok(Some(SessionDoc {
-        doc,
-        collection,
-        path,
-        mtime,
-        size,
-    }))
+    Ok(Some(SessionDoc { doc, collection }))
 }
 
 fn clean_claude_project_name(dir_name: &str) -> String {

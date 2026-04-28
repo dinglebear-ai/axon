@@ -25,8 +25,6 @@ pub(super) enum CliCommand {
     Scrape(ScrapeArgs),
     /// Full site crawl for one or more start URLs
     Crawl(CrawlArgs),
-    /// Periodic URL re-indexing (schedule, status, cancel, list)
-    Refresh(RefreshArgs),
     /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
     /// Discover all URLs on a site without scraping
@@ -69,8 +67,6 @@ pub(super) enum CliCommand {
     Sessions(SessionsArgs),
     /// Capture a full-page screenshot of one or more URLs
     Screenshot(ScrapeArgs),
-    /// Knowledge graph operations
-    Graph(GraphArgs),
     #[command(alias = "completion")]
     /// Generate shell completions (bash, zsh, fish)
     Completions(CompletionArgs),
@@ -78,8 +74,6 @@ pub(super) enum CliCommand {
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
-    /// Export indexed data manifest to JSON
-    Export(ExportArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -110,28 +104,6 @@ pub(super) struct MigrateArgs {
     /// Destination collection to create with named dense + bm42 sparse vectors
     #[arg(long)]
     pub(super) to: String,
-}
-
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct ExportArgs {
-    /// Include full job history sections (`crawls`, `scrapes`, `extractions`, `embeds`, `ingests`, `refreshes`, `watches`).
-    /// By default, export is seed-only for compact backup/rebuild payloads.
-    #[arg(long, default_value_t = false)]
-    pub(super) include_history: bool,
-
-    #[command(subcommand)]
-    pub(super) action: Option<ExportSubcommand>,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum ExportSubcommand {
-    /// Verify an existing export file against the current index.
-    Verify {
-        /// Path to the export JSON file to verify.
-        #[arg(value_name = "FILE")]
-        file: std::path::PathBuf,
-    },
 }
 
 #[derive(Debug, Args)]
@@ -193,35 +165,6 @@ pub(super) enum WatchSubcommand {
 }
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct GraphArgs {
-    #[command(subcommand)]
-    pub(super) action: Option<GraphSubcommand>,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum GraphSubcommand {
-    Build {
-        /// Target URL (positional form: `axon graph build <url>`)
-        #[arg(value_name = "URL")]
-        positional_url: Option<String>,
-        /// Target URL (flag form: `axon graph build --url <url>`)
-        #[arg(long = "url", conflicts_with = "positional_url")]
-        url_flag: Option<String>,
-        #[arg(long)]
-        domain: Option<String>,
-        #[arg(long, action = ArgAction::SetTrue)]
-        all: bool,
-    },
-    Status,
-    Explore {
-        entity: String,
-    },
-    Stats,
-    Worker,
-}
-
-#[derive(Debug, Args)]
 pub(super) struct UrlArg {
     #[arg(value_name = "URL")]
     pub(super) value: Option<String>,
@@ -277,67 +220,6 @@ pub(super) struct CrawlArgs {
     pub(super) job: Option<JobSubcommand>,
     #[arg(value_name = "URL")]
     pub(super) positional_urls: Vec<String>,
-}
-
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
-pub(super) struct RefreshArgs {
-    #[command(subcommand)]
-    pub(super) action: Option<RefreshSubcommand>,
-    #[arg(value_name = "URL")]
-    pub(super) positional_urls: Vec<String>,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum RefreshSubcommand {
-    Status {
-        job_id: String,
-    },
-    Cancel {
-        job_id: String,
-    },
-    Errors {
-        job_id: String,
-    },
-    List,
-    Cleanup,
-    Clear,
-    Worker,
-    Recover,
-    Schedule {
-        #[command(subcommand)]
-        action: RefreshScheduleSubcommand,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum RefreshScheduleSubcommand {
-    Add {
-        name: String,
-        seed_url: Option<String>,
-        #[arg(long = "every-seconds")]
-        every_seconds: Option<i64>,
-        #[arg(long, value_parser = ["high", "medium", "low"])]
-        tier: Option<String>,
-        #[arg(long)]
-        urls: Option<String>,
-    },
-    List,
-    Enable {
-        name: String,
-    },
-    Disable {
-        name: String,
-    },
-    Delete {
-        name: String,
-    },
-    Worker,
-    #[command(name = "run-due")]
-    RunDue {
-        #[arg(long, default_value_t = 25)]
-        batch: usize,
-    },
 }
 
 #[derive(Debug, Args)]
@@ -437,7 +319,7 @@ pub(super) enum JobSubcommand {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, CliCommand, ExportSubcommand};
+    use super::Cli;
     use clap::{Parser, error::ErrorKind};
 
     #[test]
@@ -466,21 +348,6 @@ mod tests {
             result.is_ok(),
             "migrate --from --to should parse: {result:?}"
         );
-    }
-
-    #[test]
-    fn parse_export_verify_subcommand() {
-        let cli = Cli::try_parse_from(["axon", "export", "verify", "backup.json"])
-            .expect("export verify should parse");
-        match cli.command {
-            CliCommand::Export(args) => match args.action {
-                Some(ExportSubcommand::Verify { file }) => {
-                    assert_eq!(file, std::path::PathBuf::from("backup.json"));
-                }
-                _ => panic!("expected export verify subcommand"),
-            },
-            other => panic!("expected export command, got {other:?}"),
-        }
     }
 
     #[test]

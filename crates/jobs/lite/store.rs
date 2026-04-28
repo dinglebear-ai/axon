@@ -22,6 +22,23 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         format!("sqlite://{}?mode=rwc", path)
     };
 
+    // Pre-create the file at 0o600 before SQLite connects to eliminate the TOCTOU
+    // window where the DB is world-readable (default umask is typically 0644).
+    // SQLite opens the existing file rather than creating a new one when the path exists.
+    #[cfg(unix)]
+    if path != ":memory:" {
+        use std::os::unix::fs::OpenOptionsExt;
+        if let Err(e) = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(path)
+        {
+            tracing::warn!(path = %path, error = %e, "lite: failed to pre-create SQLite file at 0o600; DB may be world-readable until chmod runs");
+        }
+    }
+
     let opts: SqliteConnectOptions = connect_str.parse()?;
     let opts = opts
         .pragma("journal_mode", "WAL")
@@ -33,16 +50,6 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .acquire_timeout(std::time::Duration::from_secs(30))
         .connect_with(opts)
         .await?;
-
-    #[cfg(unix)]
-    if path != ":memory:" {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(0o600);
-            let _ = std::fs::set_permissions(path, perms);
-        }
-    }
 
     sqlx::migrate!("crates/jobs/lite/migrations")
         .run(&pool)

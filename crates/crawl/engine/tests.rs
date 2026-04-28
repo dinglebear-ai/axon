@@ -624,7 +624,7 @@ fn test_docker_service_host_only_rewrites_known_names() {
     use crate::crates::core::config::parse::is_docker_service_host;
     // Known Docker service names must be detected.
     assert!(is_docker_service_host("axon-chrome"));
-    assert!(is_docker_service_host("axon-postgres"));
+    assert!(is_docker_service_host("axon-qdrant"));
     // Hyphenated hosts NOT in the allowlist must NOT be rewritten.
     assert!(!is_docker_service_host("my-home-server"));
     assert!(!is_docker_service_host("custom-chrome-proxy"));

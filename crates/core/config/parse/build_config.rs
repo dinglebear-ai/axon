@@ -1,14 +1,11 @@
-use super::super::cli::{
-    Cli, CliCommand, ExportSubcommand, RefreshScheduleSubcommand, RefreshSubcommand,
-};
+use super::super::cli::{Cli, CliCommand};
 use super::super::types::{
     CommandKind, Config, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
 };
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    env_bool, parse_viewport, positional_from_graph_subcommand, positional_from_job,
-    positional_from_refresh_subcommand, positional_from_watch_subcommand,
+    env_bool, parse_viewport, positional_from_job, positional_from_watch_subcommand,
 };
 use super::performance;
 use clap::ValueEnum;
@@ -72,8 +69,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_gemini = false;
     let mut sessions_project = None;
     let mut mcp_transport = None;
-    let mut export_include_history = false;
-    let mut export_verify_input = None;
     let mut map_fallback = MapFallback::Structure;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
@@ -91,42 +86,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                 positional_from_watch_subcommand(action)
             } else {
                 vec!["list".to_string()]
-            },
-        ),
-        CliCommand::Refresh(args) => (
-            CommandKind::Refresh,
-            if let Some(action) = args.action {
-                match action {
-                    RefreshSubcommand::Schedule {
-                        action:
-                            RefreshScheduleSubcommand::Add {
-                                name,
-                                seed_url,
-                                every_seconds,
-                                tier,
-                                urls,
-                            },
-                    } => {
-                        if seed_url.is_none() && urls.is_none() {
-                            return Err(
-                                "refresh schedule add requires either [seed_url] or --urls <csv>"
-                                    .to_string(),
-                            );
-                        }
-                        positional_from_refresh_subcommand(RefreshSubcommand::Schedule {
-                            action: RefreshScheduleSubcommand::Add {
-                                name,
-                                seed_url,
-                                every_seconds,
-                                tier,
-                                urls,
-                            },
-                        })
-                    }
-                    other => positional_from_refresh_subcommand(other),
-                }
-            } else {
-                args.positional_urls
             },
         ),
         CliCommand::Map(args) => {
@@ -218,14 +177,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             )
         }
         CliCommand::Screenshot(args) => (CommandKind::Screenshot, args.positional_urls),
-        CliCommand::Graph(args) => (
-            CommandKind::Graph,
-            if let Some(action) = args.action {
-                positional_from_graph_subcommand(action)
-            } else {
-                Vec::new()
-            },
-        ),
         CliCommand::Completions(args) => (
             CommandKind::Completions,
             vec![
@@ -241,13 +192,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             (CommandKind::Mcp, Vec::new())
         }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
-        CliCommand::Export(args) => {
-            export_include_history = args.include_history;
-            if let Some(ExportSubcommand::Verify { file }) = args.action {
-                export_verify_input = Some(file);
-            }
-            (CommandKind::Export, Vec::new())
-        }
     };
 
     if matches!(command, CommandKind::Completions) {
@@ -294,8 +238,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         exclude_path_prefix: normalized_excludes.prefixes,
         output_dir: global.output_dir,
         output_path: global.output,
-        export_include_history,
-        export_verify_input,
         render_mode: global.render_mode,
         chrome_remote_url: global
             .chrome_remote_url
@@ -403,7 +345,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .filter(|v: &String| !v.is_empty()),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
         mcp_allowed_origins: env::var("AXON_MCP_ALLOWED_ORIGINS")
-            .or_else(|_| env::var("AXON_WEB_ALLOWED_ORIGINS"))
             .ok()
             .map(|raw| parse_origin_allowlist(&raw))
             .unwrap_or_default(),

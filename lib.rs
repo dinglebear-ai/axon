@@ -44,15 +44,6 @@ async fn run_once(
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
         CommandKind::Research => run_research(cfg).await?,
         CommandKind::Screenshot => run_screenshot(cfg).await?,
-        CommandKind::Graph => {
-            return Err("graph command is not available in this build".into());
-        }
-        CommandKind::Refresh => {
-            return Err("refresh command is not available in this build".into());
-        }
-        CommandKind::Export => {
-            return Err("export command is not available in this build".into());
-        }
         CommandKind::Completions => run_completions(cfg).await?,
         CommandKind::Mcp => run_mcp(cfg).await?,
         CommandKind::Migrate => run_migrate(cfg).await?,
@@ -114,15 +105,15 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    // CLI commands use ServiceContext::for_cli() (enqueue-only).
+    // CLI commands use ServiceContext::new() (enqueue-only).
     // Fire-and-forget jobs (without --wait) require `axon mcp` to be running as a
-    // daemon. `axon mcp` uses ServiceContext::for_mcp() which spawns in-process workers.
-    // Exception: lite mode with --wait spawns workers inline so the job can complete.
-    let needs_workers = cfg_arc.lite_mode && cfg_arc.wait;
+    // daemon. `axon mcp` uses ServiceContext::new_with_workers() which spawns in-process workers.
+    // When --wait is set, spawn workers inline so the job can complete before exit.
+    let needs_workers = cfg_arc.wait;
     let service_context = if needs_workers {
-        ServiceContext::for_mcp(Arc::clone(&cfg_arc)).await
+        ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
     } else {
-        ServiceContext::for_cli(Arc::clone(&cfg_arc)).await
+        ServiceContext::new(Arc::clone(&cfg_arc)).await
     }
     .map_err(|e| -> Box<dyn Error> { e })?;
     let cfg = cfg_arc.as_ref();

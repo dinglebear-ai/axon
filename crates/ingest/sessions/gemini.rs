@@ -1,6 +1,5 @@
 use super::{
-    IngestResult, SessionDoc, SessionStateTracker, flatten_session_result, matches_project_filter,
-    resolve_collection,
+    IngestResult, SessionDoc, flatten_session_result, matches_project_filter, resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
@@ -16,7 +15,6 @@ use tokio::fs;
 
 pub(super) async fn collect_gemini_docs(
     cfg: &Config,
-    state: &SessionStateTracker,
     multi: &MultiProgress,
 ) -> IngestResult<Vec<SessionDoc>> {
     let gemini_root = super::expand_home("~/.gemini");
@@ -37,7 +35,7 @@ pub(super) async fn collect_gemini_docs(
         if !fs::try_exists(&root).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_dir(cfg, state, &projects_map, root, &mut futures, &mut docs).await?;
+        enqueue_gemini_dir(cfg, &projects_map, root, &mut futures, &mut docs).await?;
     }
 
     while let Some(res) = futures.next().await {
@@ -54,7 +52,6 @@ type GeminiFutures = FuturesUnordered<tokio::task::JoinHandle<IngestResult<Optio
 
 async fn enqueue_gemini_dir(
     cfg: &Config,
-    state: &SessionStateTracker,
     projects_map: &HashMap<String, String>,
     root: PathBuf,
     futures: &mut GeminiFutures,
@@ -90,7 +87,7 @@ async fn enqueue_gemini_dir(
         if !fs::try_exists(&chats_dir).await.unwrap_or(false) {
             continue;
         }
-        enqueue_gemini_chat_files(state, chats_dir, collection, futures, docs).await?;
+        enqueue_gemini_chat_files(chats_dir, collection, futures, docs).await?;
     }
     Ok(())
 }
@@ -113,7 +110,6 @@ async fn resolve_project_name(
 }
 
 async fn enqueue_gemini_chat_files(
-    state: &SessionStateTracker,
     chats_dir: PathBuf,
     collection: String,
     futures: &mut GeminiFutures,
@@ -136,14 +132,10 @@ async fn enqueue_gemini_chat_files(
                 continue;
             }
         };
-        if state.should_skip(&chat_path, mtime, meta.len()).await {
-            continue;
-        }
 
         let coll_clone = collection.clone();
-        let size = meta.len();
         futures.push(tokio::spawn(async move {
-            process_gemini_file(chat_path, coll_clone, mtime, size).await
+            process_gemini_file(chat_path, coll_clone, mtime).await
         }));
 
         if futures.len() >= 32
@@ -179,7 +171,6 @@ async fn process_gemini_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
-    size: u64,
 ) -> IngestResult<Option<SessionDoc>> {
     let content = fs::read_to_string(&path).await?;
     let session_text = parse_gemini_json(&content)?;
@@ -214,13 +205,7 @@ async fn process_gemini_file(
         title,
         extra: Some(extra),
     };
-    Ok(Some(SessionDoc {
-        doc,
-        collection,
-        path,
-        mtime,
-        size,
-    }))
+    Ok(Some(SessionDoc { doc, collection }))
 }
 
 /// Parse Gemini chat JSON into session text (pure, no I/O).

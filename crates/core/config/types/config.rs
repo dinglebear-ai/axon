@@ -45,13 +45,6 @@ pub struct Config {
     /// Explicit single-file output path (overrides `output_dir` for single-URL commands). Flag: `--output`.
     pub output_path: Option<PathBuf>,
 
-    /// Include full historical sections in export output. Flag: `export --include-history`.
-    /// Default is seed-only output for compact rebuild backups.
-    pub export_include_history: bool,
-
-    /// Optional export file path for `export verify <file>`.
-    pub export_verify_input: Option<PathBuf>,
-
     /// Browser rendering strategy: `http`, `chrome`, or `auto-switch`. Flag: `--render-mode`.
     pub render_mode: RenderMode,
 

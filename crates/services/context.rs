@@ -35,26 +35,7 @@ impl ServiceContext {
         Self::build(cfg, true).await
     }
 
-    /// Factory for CLI command handlers — enqueue-only, no worker spawning.
-    ///
-    /// Fire-and-forget jobs (without --wait) require `axon mcp` to be running as a
-    /// daemon. `axon mcp` uses `for_mcp()` which spawns in-process workers.
-    pub async fn for_cli(
-        cfg: Arc<Config>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::new(cfg).await
-    }
-
-    /// Factory for MCP server and long-running daemons — spawns in-process workers.
-    ///
-    /// `axon mcp` is the worker daemon. Fire-and-forget CLI jobs (without --wait)
-    /// require `axon mcp` running to be processed.
-    pub async fn for_mcp(
-        cfg: Arc<Config>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::new_with_workers(cfg).await
-    }
-
+    /// Factory for test helpers — inject a mock `ServiceJobRuntime`.
     pub fn from_runtime(cfg: Arc<Config>, jobs: Arc<dyn ServiceJobRuntime>) -> Self {
         Self { cfg, jobs }
     }

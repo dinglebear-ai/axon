@@ -188,7 +188,6 @@ pub fn start_url_from_cfg(cfg: &Config) -> String {
         CommandKind::Scrape
             | CommandKind::Map
             | CommandKind::Crawl
-            | CommandKind::Refresh
             | CommandKind::Extract
             | CommandKind::Embed
             | CommandKind::Screenshot
@@ -218,18 +217,6 @@ fn is_guarded_start_url_subcommand(command: CommandKind, token: &str) -> bool {
                 | "recover"
                 | "audit"
                 | "diff"
-        ),
-        CommandKind::Refresh => matches!(
-            token,
-            "schedule"
-                | "status"
-                | "cancel"
-                | "errors"
-                | "list"
-                | "cleanup"
-                | "clear"
-                | "worker"
-                | "recover"
         ),
         CommandKind::Extract | CommandKind::Embed => matches!(
             token,
@@ -314,18 +301,6 @@ mod tests {
             command: CommandKind::Crawl,
             start_url: "https://fallback.example".to_string(),
             positional: vec!["audit".to_string(), "https://target.example".to_string()],
-            ..Config::default()
-        };
-
-        assert_eq!(start_url_from_cfg(&cfg), "https://fallback.example");
-    }
-
-    #[test]
-    fn start_url_from_cfg_guards_refresh_schedule_tokens() {
-        let cfg = Config {
-            command: CommandKind::Refresh,
-            start_url: "https://fallback.example".to_string(),
-            positional: vec!["schedule".to_string(), "list".to_string()],
             ..Config::default()
         };
 

@@ -155,44 +155,15 @@ rebuild:
     just test
     just docker-build
 
-# ── Local stack supervisor ────────────────────────────────────────
+# ── Local dev ────────────────────────────────────────────────────
 
-serve port="49000":
-    {{rust_dev_env}}; AXON_SERVE_HOST=0.0.0.0 cargo run --locked --bin axon -- serve --port {{port}}
-
-serve-release port="49000":
-    {{rust_dev_env}}; AXON_SERVE_HOST=0.0.0.0 cargo run --release --locked --bin axon -- serve --port {{port}}
-
-# ── Full stack ────────────────────────────────────────────────────
-
-# Kill any running axon serve, mcp, or workers
+# Kill any running axon mcp or workers
 stop:
-    -pkill -f 'axon.*(serve|mcp|crawl worker|embed worker|extract worker|ingest worker|refresh worker|graph worker)' 2>/dev/null || true
+    -pkill -f 'axon.*(mcp|crawl worker|embed worker|extract worker|ingest worker)' 2>/dev/null || true
     @echo "Stopped running servers and workers"
 
-# Start workers only (crawl, embed, extract, ingest, refresh, graph)
-workers:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi
-    if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
-    cargo build --locked --bin axon
-    AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    PIDS=()
-    cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
-    trap cleanup INT TERM EXIT
-    "$AXON_BIN" crawl worker & PIDS+=($!)
-    "$AXON_BIN" embed worker & PIDS+=($!)
-    "$AXON_BIN" extract worker & PIDS+=($!)
-    "$AXON_BIN" ingest worker & PIDS+=($!)
-    "$AXON_BIN" refresh worker & PIDS+=($!)
-    "$AXON_BIN" graph worker & PIDS+=($!)
-    EXIT=0
-    for pid in "${PIDS[@]}"; do wait "$pid" || EXIT=$?; done
-    exit "$EXIT"
-
-# Start infra, then hand off to the Rust supervisor.
-# `axon serve` owns the backend bridge, MCP HTTP server, workers, and shell server.
+# Start infra (Qdrant, TEI, Chrome), then run axon mcp as the worker daemon.
+# Fire-and-forget CLI jobs require axon mcp running to be processed.
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -203,5 +174,5 @@ dev:
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    docker compose -f docker-compose.services.yaml up -d --wait axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-tei axon-chrome
-    AXON_SERVE_HOST=0.0.0.0 "$AXON_BIN" serve --port 49000
+    docker compose -f docker-compose.services.yaml up -d --wait axon-qdrant axon-tei axon-chrome
+    "$AXON_BIN" mcp

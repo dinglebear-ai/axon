@@ -26,11 +26,6 @@ mod tests {
     }
 
     #[test]
-    fn test_command_kind_graph_as_str() {
-        assert_eq!(CommandKind::Graph.as_str(), "graph");
-    }
-
-    #[test]
     fn test_command_kind_mcp_as_str() {
         assert_eq!(CommandKind::Mcp.as_str(), "mcp");
     }

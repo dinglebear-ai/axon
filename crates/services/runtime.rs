@@ -90,6 +90,13 @@ pub trait ServiceJobRuntime: Send + Sync {
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>>;
     async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>>;
+
+    /// Count all jobs of a given kind using the shared pool.
+    ///
+    /// Uses the backend's shared SQLite pool directly — avoids calling
+    /// `open_sqlite_pool()` (which re-runs migrations on every call) and avoids
+    /// bypassing `notify()` on enqueue.
+    async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>>;
 }
 
 pub async fn resolve_runtime(
@@ -221,5 +228,9 @@ impl ServiceJobRuntime for LiteServiceRuntime {
 
     async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
         Ok(WorkerMode::InProcess)
+    }
+
+    async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        Ok(lite_query::count_jobs(self.backend.pool(), kind.table_name()).await?)
     }
 }

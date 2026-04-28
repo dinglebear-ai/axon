@@ -344,6 +344,13 @@ mod tests {
                     Ok(WorkerMode::InProcess)
                 }
 
+                async fn count_jobs(
+                    &self,
+                    _kind: JobKind,
+                ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+                    Ok(0)
+                }
+
                 async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
                     $wait_result
                 }

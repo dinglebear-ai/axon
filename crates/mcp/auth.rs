@@ -58,10 +58,10 @@ pub async fn mcp_auth_middleware(request: Request<Body>, next: Next) -> Response
         Some(expected) => {
             let provided = extract_token(&request).unwrap_or("").trim();
             if provided.is_empty() {
-                return (StatusCode::UNAUTHORIZED, "missing token").into_response();
+                return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
             }
             if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
-                return (StatusCode::UNAUTHORIZED, "invalid token").into_response();
+                return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
             }
             next.run(request).await
         }

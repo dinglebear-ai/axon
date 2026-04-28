@@ -7,8 +7,8 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 
 ```
 services/
-├── context.rs              # ServiceContext + ServiceCapabilities — canonical handler entry point
-├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime() + FullServiceRuntime + LiteServiceRuntime
+├── context.rs              # ServiceContext — canonical handler entry point
+├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime() + LiteServiceRuntime
 ├── acp/                    # ACP adapter orchestration (Claude/Codex/Gemini subprocess)
 │   ├── adapters.rs         # Adapter subprocess wrappers (spawn, stdin/stdout)
 │   ├── bridge.rs           # Shared turn finalization: logging, EditorWrite, TurnResult dispatch
@@ -41,11 +41,11 @@ services/
 ├── embed.rs                # embed start/status/cancel/list
 ├── extract.rs              # extract start/status/cancel/list
 ├── ingest.rs               # ingest start/status/cancel/list
-├── refresh.rs              # refresh start/status/cancel/list/schedule
-├── graph.rs                # graph build/status/explore/stats
+├── jobs.rs                 # shared job status helpers
+├── migrate.rs              # collection migration (unnamed → named mode)
 ├── watch.rs                # watch definition + run management
 ├── debug.rs                # doctor + LLM-assisted debug
-└── events.rs               # ServiceEvent channel + emit()
+└── error.rs                # service error types
 ```
 
 ## `ServiceContext` — The Entry Point
@@ -61,31 +61,17 @@ Fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `cfg` | `Arc<Config>` | Runtime config |
-| `capabilities` | `ServiceCapabilities` | Feature gate (lite mode restrictions) |
 | `jobs` | `Arc<dyn ServiceJobRuntime>` | Backend-agnostic job operations |
 
 **Never construct `ServiceContext` in tests** — use `ServiceContext::from_runtime(cfg, jobs)` with a mock `ServiceJobRuntime` instead.
 
-## `ServiceCapabilities` — Lite Mode Gating
-
-`ServiceCapabilities` (in `context.rs`) is derived from `cfg.lite_mode` and gates features unavailable in lite mode:
-
-| Capability | Full mode | Lite mode |
-|------------|-----------|-----------|
-| `export` | supported | unsupported — requires Postgres history |
-| `graph` | supported | unsupported — requires Postgres graph storage |
-| `refresh_schedule` | supported | unsupported |
-| `watch_scheduler` | supported | unsupported |
-
-Check before using: `if !ctx.capabilities.graph.supported { return Err(...) }`. MCP handlers return `invalid_params` for unsupported capabilities.
-
 ## `ServiceJobRuntime` Trait (`runtime.rs`)
 
-**This is the canonical job abstraction.** All callers (CLI, MCP, web) interact with jobs exclusively through `ServiceJobRuntime` via `ServiceContext.jobs` — never through `JobBackend` directly.
+**This is the canonical job abstraction.** All callers (CLI, MCP) interact with jobs exclusively through `ServiceJobRuntime` via `ServiceContext.jobs` — never through `JobBackend` directly.
 
-`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. The two service runtime implementations (`FullServiceRuntime`, `LiteServiceRuntime`) delegate only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call backend-specific query functions directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
+`ServiceJobRuntime` is a strict superset of [`JobBackend`](../jobs/backend.rs): it adds `has_active_jobs`, `recover_jobs`, `run_worker`, pagination (`limit`/`offset` on `list_jobs`), and returns the richer `ServiceJob` type everywhere instead of `JobStatusRow`/`JobSummary`. `LiteServiceRuntime` delegates only `enqueue`, `wait_for_job`, and `job_errors` through `JobBackend`; all other operations call `lite_query::*` directly to avoid lossy type mapping. See the module-level doc comment in `runtime.rs` for the full rationale.
 
-The backend-agnostic job operations interface consumed by `ServiceContext.jobs`:
+The job operations interface consumed by `ServiceContext.jobs`:
 
 - `enqueue(payload)` → `Uuid`
 - `job_status(kind, id)` → `Option<ServiceJob>`
@@ -95,7 +81,7 @@ The backend-agnostic job operations interface consumed by `ServiceContext.jobs`:
 - `run_worker(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
 - `wait_for_job(id, kind)` → `String` (final status)
 
-`resolve_runtime(cfg)` in `runtime.rs` constructs either `LiteServiceRuntime` (wraps `LiteBackend`) or `FullServiceRuntime` (wraps `FullBackend`) based on `cfg.lite_mode`.
+`resolve_runtime(cfg)` in `runtime.rs` constructs `LiteServiceRuntime` (wraps `LiteBackend`).
 
 ## Architecture Contract
 
@@ -142,7 +128,6 @@ Key result types in `types/service.rs`:
 | `ScrapeResult` | `scrape::scrape` |
 | `SearchResult` | `search::search` |
 | `ResearchResult` | `search::research` |
-| `GraphBuildResult` | `graph::build_graph` |
 
 ## ServiceEvent — Async Progress Channel
 
@@ -235,7 +220,7 @@ Pure mapping tests (`map_*` functions) and channel tests run without live servic
 2. Add a typed result struct to `crates/services/types/service.rs`
 3. Call from the CLI handler in `crates/cli/commands/<name>.rs` — receives `&ServiceContext`
 4. Call from the MCP handler in `crates/mcp/server/handlers_*.rs` — receives `&ServiceContext`
-5. If the feature is unavailable in lite mode, check `ctx.capabilities.<cap>.supported` and return an error
+5. If the feature is unavailable in the current runtime, return an appropriate error
 6. Add mapping helpers and unit tests for pure logic (no live services needed)
 7. Never print, log, or serialize inside the service function — return the typed result
 

@@ -93,8 +93,6 @@ pub struct StatusTotals {
     pub extract: i64,
     pub embed: i64,
     pub ingest: i64,
-    pub refresh: i64,
-    pub graph: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

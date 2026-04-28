@@ -155,6 +155,9 @@ mod tests {
         ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
+        async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+            unimplemented!()
+        }
     }
 
     #[tokio::test]

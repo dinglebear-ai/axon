@@ -200,16 +200,6 @@ fn service_select_from(kind: crate::crates::jobs::backend::JobKind) -> &'static 
              NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
              FROM axon_ingest_jobs"
         }
-        crate::crates::jobs::backend::JobKind::Refresh => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
-             FROM axon_refresh_jobs"
-        }
-        crate::crates::jobs::backend::JobKind::Graph => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_graph_jobs"
-        }
     }
 }
 

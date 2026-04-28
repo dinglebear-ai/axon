@@ -13,9 +13,6 @@ static IN_DOCKER: LazyLock<bool> = LazyLock::new(|| std::path::Path::new("/.dock
 /// (i.e. when `/.dockerenv` does not exist) each entry is rewritten to the
 /// corresponding `localhost:PORT` so the host CLI can reach the service.
 const HOST_MAP: &[(&str, &str, u16)] = &[
-    ("axon-postgres", "127.0.0.1", 53432),
-    ("axon-redis", "127.0.0.1", 53379),
-    ("axon-rabbitmq", "127.0.0.1", 45535),
     ("axon-qdrant", "127.0.0.1", 53333),
     ("axon-tei", "127.0.0.1", 52000),
     ("axon-ollama", "127.0.0.1", 11434),

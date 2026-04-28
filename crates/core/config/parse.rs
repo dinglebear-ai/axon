@@ -42,57 +42,6 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn parse_refresh_schedule_add_maps_positional_tokens() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        // SAFETY: guarded by ENV_LOCK; no concurrent env mutation in this module.
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "refresh",
-            "schedule",
-            "add",
-            "docs-medium",
-            "https://docs.rs",
-            "--every-seconds",
-            "21600",
-        ]);
-
-        let cfg = super::build_config::into_config(cli).expect("refresh schedule add should parse");
-        assert!(matches!(cfg.command, CommandKind::Refresh));
-        assert_eq!(
-            cfg.positional,
-            vec![
-                "schedule".to_string(),
-                "add".to_string(),
-                "docs-medium".to_string(),
-                "--every-seconds".to_string(),
-                "21600".to_string(),
-                "https://docs.rs".to_string(),
-            ]
-        );
-
-        // SAFETY: guarded by ENV_LOCK; no concurrent env mutation in this module.
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
     fn parse_watch_create_with_every_and_type() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";
@@ -225,235 +174,6 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn parse_graph_build_maps_positional_tokens() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "graph",
-            "build",
-            "--url",
-            "https://example.com",
-            "--domain",
-            "example.com",
-            "--all",
-        ]);
-        let cfg = super::build_config::into_config(cli).expect("graph build should parse");
-        assert!(matches!(cfg.command, CommandKind::Graph));
-        assert_eq!(
-            cfg.positional,
-            vec![
-                "build".to_string(),
-                "--url".to_string(),
-                "https://example.com".to_string(),
-                "--domain".to_string(),
-                "example.com".to_string(),
-                "--all".to_string(),
-            ]
-        );
-
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_graph_explore_maps_positional_tokens() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "graph",
-            "explore",
-            "rust",
-        ]);
-        let cfg = super::build_config::into_config(cli).expect("graph explore should parse");
-        assert!(matches!(cfg.command, CommandKind::Graph));
-        assert_eq!(
-            cfg.positional,
-            vec!["explore".to_string(), "rust".to_string()]
-        );
-
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_refresh_schedule_add_rejects_missing_seed_url_and_urls() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "refresh",
-            "schedule",
-            "add",
-            "docs-medium",
-            "--every-seconds",
-            "21600",
-        ]);
-
-        let err =
-            super::build_config::into_config(cli).expect_err("missing seed_url/urls should fail");
-        assert!(err.contains("requires either [seed_url] or --urls <csv>"));
-
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_refresh_schedule_add_accepts_urls_list() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "refresh",
-            "schedule",
-            "add",
-            "docs-medium",
-            "--every-seconds",
-            "21600",
-            "--urls",
-            "https://docs.rs,https://crates.io",
-        ]);
-
-        let cfg = super::build_config::into_config(cli)
-            .expect("refresh schedule add with --urls should parse");
-        assert!(matches!(cfg.command, CommandKind::Refresh));
-        assert_eq!(
-            cfg.positional,
-            vec![
-                "schedule".to_string(),
-                "add".to_string(),
-                "docs-medium".to_string(),
-                "--every-seconds".to_string(),
-                "21600".to_string(),
-                "--urls".to_string(),
-                "https://docs.rs,https://crates.io".to_string(),
-            ]
-        );
-
-        unsafe {
-            env::remove_var(PG);
-            env::remove_var(REDIS);
-            env::remove_var(AMQP);
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_refresh_schedule_run_due_routes_without_errors() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const PG: &str = "AXON_PG_URL";
-        const REDIS: &str = "AXON_REDIS_URL";
-        const AMQP: &str = "AXON_AMQP_URL";
-        let prev_pg = env::var(PG).ok();
-        let prev_redis = env::var(REDIS).ok();
-        let prev_amqp = env::var(AMQP).ok();
-
-        unsafe {
-            env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
-            env::set_var(REDIS, "redis://127.0.0.1:53379");
-            env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "refresh",
-            "schedule",
-            "run-due",
-        ]);
-        let cfg =
-            super::build_config::into_config(cli).expect("refresh schedule run-due should parse");
-        assert!(matches!(cfg.command, CommandKind::Refresh));
-        assert_eq!(
-            cfg.positional,
-            vec![
-                "schedule".to_string(),
-                "run-due".to_string(),
-                "--batch".to_string(),
-                "25".to_string(),
-            ]
-        );
-
-        match prev_pg {
-            Some(v) => unsafe { env::set_var(PG, v) },
-            None => unsafe { env::remove_var(PG) },
-        }
-        match prev_redis {
-            Some(v) => unsafe { env::set_var(REDIS, v) },
-            None => unsafe { env::remove_var(REDIS) },
-        }
-        match prev_amqp {
-            Some(v) => unsafe { env::set_var(AMQP, v) },
-            None => unsafe { env::remove_var(AMQP) },
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
     fn parse_completions_bash_does_not_require_service_envs() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";
@@ -499,10 +219,9 @@ mod tests {
 
     #[test]
     fn test_is_docker_service_host_recognizes_all_known_services() {
-        assert!(is_docker_service_host("axon-postgres"));
-        assert!(is_docker_service_host("axon-redis"));
-        assert!(is_docker_service_host("axon-rabbitmq"));
         assert!(is_docker_service_host("axon-qdrant"));
+        assert!(is_docker_service_host("axon-tei"));
+        assert!(is_docker_service_host("axon-ollama"));
         assert!(is_docker_service_host("axon-chrome"));
     }
 
@@ -649,45 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_url_postgres_rewrites_when_not_in_docker() {
-        if std::path::Path::new("/.dockerenv").exists() {
-            return; // no-op inside a container
-        }
-        use spider::url::Url;
-        let url = "postgresql://axon:pass@axon-postgres:5432/axon".to_string();
-        let result = super::docker::normalize_local_service_url(url);
-        let parsed = Url::parse(&result).unwrap();
-        assert_eq!(parsed.host_str(), Some("127.0.0.1"));
-        assert_eq!(parsed.port(), Some(53432));
-    }
-
-    #[test]
-    fn test_normalize_url_redis_rewrites_when_not_in_docker() {
-        if std::path::Path::new("/.dockerenv").exists() {
-            return;
-        }
-        use spider::url::Url;
-        let url = "redis://:secret@axon-redis:6379".to_string();
-        let result = super::docker::normalize_local_service_url(url);
-        let parsed = Url::parse(&result).unwrap();
-        assert_eq!(parsed.host_str(), Some("127.0.0.1"));
-        assert_eq!(parsed.port(), Some(53379));
-    }
-
-    #[test]
-    fn test_normalize_url_rabbitmq_rewrites_when_not_in_docker() {
-        if std::path::Path::new("/.dockerenv").exists() {
-            return;
-        }
-        use spider::url::Url;
-        let url = "amqp://axon:pw@axon-rabbitmq:5672/vhost".to_string();
-        let result = super::docker::normalize_local_service_url(url);
-        let parsed = Url::parse(&result).unwrap();
-        assert_eq!(parsed.host_str(), Some("127.0.0.1"));
-        assert_eq!(parsed.port(), Some(45535));
-    }
-
-    #[test]
     fn test_normalize_url_qdrant_rewrites_when_not_in_docker() {
         if std::path::Path::new("/.dockerenv").exists() {
             return;
@@ -719,14 +399,14 @@ mod tests {
             return;
         }
         use spider::url::Url;
-        let url = "postgresql://myuser:mypassword@axon-postgres:5432/mydb".to_string();
+        let url = "http://user:pass@axon-qdrant:6333/collections".to_string();
         let result = super::docker::normalize_local_service_url(url);
         let parsed = Url::parse(&result).unwrap();
         assert_eq!(parsed.host_str(), Some("127.0.0.1"));
-        assert_eq!(parsed.port(), Some(53432));
-        assert_eq!(parsed.username(), "myuser");
-        assert_eq!(parsed.password(), Some("mypassword"));
-        assert_eq!(parsed.path(), "/mydb");
+        assert_eq!(parsed.port(), Some(53333));
+        assert_eq!(parsed.username(), "user");
+        assert_eq!(parsed.password(), Some("pass"));
+        assert_eq!(parsed.path(), "/collections");
     }
 
     #[test]

@@ -37,8 +37,6 @@ pub async fn status_snapshot(
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
-        &jobs.refresh,
-        &jobs.graph,
         &totals,
     ))
 }
@@ -54,8 +52,6 @@ pub async fn status_text(
     lines.push(format!("extract jobs: {} total", totals.extract));
     lines.push(format!("embed jobs:   {} total", totals.embed));
     lines.push(format!("ingest jobs:  {} total", totals.ingest));
-    lines.push(format!("refresh jobs: {} total", totals.refresh));
-    lines.push(format!("graph jobs:   {} total", totals.graph));
     Ok(lines.join("\n"))
 }
 
@@ -82,15 +78,6 @@ async fn run_status_impl(
             (_, Some(target)) => target.clone(),
             _ => job.id.to_string(),
         }
-    });
-    print_status_section("Refresh", &jobs.refresh, |job| {
-        job.target
-            .clone()
-            .or_else(|| job.url.clone())
-            .unwrap_or_else(|| job.id.to_string())
-    });
-    print_status_section("Graph", &jobs.graph, |job| {
-        job.url.clone().unwrap_or_else(|| job.id.to_string())
     });
     Ok(())
 }

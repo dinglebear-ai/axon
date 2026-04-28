@@ -51,8 +51,6 @@ impl WorkerHandles {
             JobKind::Embed => self.embed.notify_one(),
             JobKind::Extract => self.extract.notify_one(),
             JobKind::Ingest => self.ingest.notify_one(),
-            // Refresh and Graph are not supported in lite mode; no worker to notify.
-            JobKind::Refresh | JobKind::Graph => {}
         }
     }
 }

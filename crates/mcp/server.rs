@@ -77,7 +77,7 @@ impl AxonMcpServer {
     ) -> Result<Arc<ServiceContext>, Box<dyn std::error::Error + Send + Sync>> {
         self.service_context
             .get_or_try_init(|| async {
-                ServiceContext::for_mcp(Arc::clone(&self.cfg))
+                ServiceContext::new_with_workers(Arc::clone(&self.cfg))
                     .await
                     .map(Arc::new)
             })
@@ -358,6 +358,17 @@ pub async fn run_http_server(
             mcp_http_cors_middleware,
         ));
 
+    // Warn at startup (not lazily) if the MCP HTTP server is unauthenticated.
+    if std::env::var("AXON_MCP_HTTP_TOKEN")
+        .ok()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
+        tracing::warn!(
+            context = "mcp_http_startup",
+            "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
+        );
+    }
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     axum::serve(listener, app).await?;
     Ok(())
