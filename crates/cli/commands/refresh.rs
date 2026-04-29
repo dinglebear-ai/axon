@@ -9,7 +9,7 @@ use crate::crates::cli::commands::common_urls::{parse_urls, start_url_from_cfg};
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::confirm_destructive;
 use crate::crates::core::ui::{accent, muted, primary, symbol_for_status};
-use crate::crates::jobs::backend::JobKind;
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::refresh as refresh_service;
@@ -33,6 +33,15 @@ pub async fn run_refresh(
             "refresh requires at least one URL or a crawl manifest seed URL"
         )
         .into());
+    }
+
+    if cfg.lite_mode {
+        let job_ids = enqueue_lite_refresh_jobs(service_context, &urls).await?;
+        if cfg.wait {
+            wait_for_lite_refresh_jobs(service_context, &job_ids).await?;
+        }
+        print_refresh_job_start(cfg, &urls, &job_ids)?;
+        return Ok(());
     }
 
     if cfg.wait {
@@ -62,12 +71,77 @@ pub async fn run_refresh(
         return Ok(());
     }
 
-    let job_id = refresh_service::refresh_start(cfg, &urls).await?.job_id;
+    let job_ids = vec![refresh_service::refresh_start(cfg, &urls).await?.job_id];
+    print_refresh_job_start(cfg, &urls, &job_ids)
+}
+
+async fn enqueue_lite_refresh_jobs(
+    service_context: &ServiceContext,
+    urls: &[String],
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut ids = Vec::with_capacity(urls.len());
+    for url in urls {
+        let id = service_context
+            .jobs
+            .enqueue(JobPayload::Refresh {
+                url: url.clone(),
+                config_json: "{}".to_string(),
+            })
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+        ids.push(id.to_string());
+    }
+    Ok(ids)
+}
+
+async fn wait_for_lite_refresh_jobs(
+    service_context: &ServiceContext,
+    job_ids: &[String],
+) -> Result<(), Box<dyn Error>> {
+    for job_id in job_ids {
+        let id = Uuid::parse_str(job_id)?;
+        let final_status = service_context
+            .jobs
+            .wait_for_job(id, JobKind::Refresh)
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+        match final_status.as_str() {
+            "completed" => {}
+            "failed" => {
+                if let Ok(Some(err)) = service_context.jobs.job_errors(id, JobKind::Refresh).await {
+                    return Err(format!("refresh job {id} failed: {err}").into());
+                }
+                return Err(format!("refresh job {id} failed").into());
+            }
+            "canceled" => {
+                if let Ok(Some(err)) = service_context.jobs.job_errors(id, JobKind::Refresh).await {
+                    return Err(format!("refresh job {id} canceled: {err}").into());
+                }
+                return Err(format!("refresh job {id} canceled").into());
+            }
+            other => {
+                return Err(format!("refresh job {id} ended in unexpected state {other}").into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_refresh_job_start(
+    cfg: &Config,
+    urls: &[String],
+    job_ids: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let job_id = job_ids
+        .first()
+        .cloned()
+        .ok_or("refresh did not enqueue any jobs")?;
     if cfg.json_output {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "job_id": job_id,
+                "job_ids": job_ids,
                 "status": "pending",
                 "urls": urls,
             }))?
@@ -79,6 +153,9 @@ pub async fn run_refresh(
             accent(&job_id.to_string())
         );
         println!("  {} {}", muted("Targets:"), urls.len());
+        if job_ids.len() > 1 {
+            println!("  {} {}", muted("Jobs:"), job_ids.len());
+        }
         println!("Job ID: {job_id}");
     }
     Ok(())
@@ -194,8 +271,12 @@ async fn handle_refresh_recover(
 
 #[cfg(test)]
 mod tests {
+    use super::run_refresh;
     use super::schedule::tier_to_seconds;
+    use crate::crates::core::config::CommandKind;
+    use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
     use crate::crates::jobs::common::{make_pool, test_config};
+    use crate::crates::services::context::ServiceContext;
     use crate::crates::services::refresh::{
         RefreshScheduleCreate, create_refresh_schedule, delete_refresh_schedule,
         schedule_list_jobs as list_refresh_jobs,
@@ -203,11 +284,93 @@ mod tests {
     use crate::crates::services::refresh::{
         refresh_schedule_run_due, refresh_schedule_tick_secs_default,
     };
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::types::ServiceJob;
+    use async_trait::async_trait;
     use chrono::{Duration, Utc};
     use std::env;
     use std::error::Error;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
     use uuid::Uuid;
+
+    struct CaptureRuntime {
+        payloads: Mutex<Vec<JobPayload>>,
+        wait_calls: Mutex<Vec<Uuid>>,
+    }
+
+    #[async_trait]
+    impl ServiceJobRuntime for CaptureRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, payload: JobPayload) -> BackendResult<Uuid> {
+            self.payloads.lock().expect("lock").push(payload);
+            Ok(Uuid::new_v4())
+        }
+
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            self.wait_calls.lock().expect("lock").push(_id);
+            Ok("completed".to_string())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+            Ok(Vec::new())
+        }
+
+        async fn job_status(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+            Ok(None)
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+            Ok(WorkerMode::InProcess)
+        }
+    }
 
     #[test]
     fn refresh_tier_maps_to_expected_seconds() {
@@ -219,6 +382,65 @@ mod tests {
     #[test]
     fn refresh_schedule_worker_default_tick_is_30_seconds() {
         assert_eq!(refresh_schedule_tick_secs_default(), 30);
+    }
+
+    #[tokio::test]
+    async fn cli_refresh_lite_enqueues_refresh_jobs_via_service_context()
+    -> Result<(), Box<dyn Error>> {
+        let mut cfg = crate::crates::core::config::Config::test_default();
+        cfg.command = CommandKind::Refresh;
+        cfg.lite_mode = true;
+        cfg.wait = false;
+        cfg.json_output = true;
+        cfg.start_url = "https://example.com/a".to_string();
+        cfg.positional = vec![
+            "https://example.com/a".to_string(),
+            "https://example.com/b".to_string(),
+        ];
+
+        let runtime = Arc::new(CaptureRuntime {
+            payloads: Mutex::new(Vec::new()),
+            wait_calls: Mutex::new(Vec::new()),
+        });
+        let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+
+        run_refresh(&cfg, &service_context).await?;
+
+        let payloads = runtime.payloads.lock().expect("lock");
+        assert_eq!(payloads.len(), 2);
+        assert!(matches!(
+            &payloads[0],
+            JobPayload::Refresh { url, .. } if url == "https://example.com/a"
+        ));
+        assert!(matches!(
+            &payloads[1],
+            JobPayload::Refresh { url, .. } if url == "https://example.com/b"
+        ));
+        assert!(runtime.wait_calls.lock().expect("lock").is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cli_refresh_lite_waits_for_sqlite_refresh_jobs() -> Result<(), Box<dyn Error>> {
+        let mut cfg = crate::crates::core::config::Config::test_default();
+        cfg.command = CommandKind::Refresh;
+        cfg.lite_mode = true;
+        cfg.wait = true;
+        cfg.json_output = true;
+        cfg.start_url = "https://example.com/a".to_string();
+        cfg.positional = vec!["https://example.com/a".to_string()];
+
+        let runtime = Arc::new(CaptureRuntime {
+            payloads: Mutex::new(Vec::new()),
+            wait_calls: Mutex::new(Vec::new()),
+        });
+        let service_context = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+
+        run_refresh(&cfg, &service_context).await?;
+
+        assert_eq!(runtime.payloads.lock().expect("lock").len(), 1);
+        assert_eq!(runtime.wait_calls.lock().expect("lock").len(), 1);
+        Ok(())
     }
 
     fn pg_url() -> String {

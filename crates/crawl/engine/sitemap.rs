@@ -262,7 +262,11 @@ pub async fn discover_sitemap_urls(
     let mut seen_sitemaps = HashSet::new();
     let mut out = HashSet::new();
     let start_path = parsed.path().trim_end_matches('/').to_string();
-    let scoped_to_root = start_path.is_empty();
+    // Single-segment paths (e.g. /home, /about) are top-level pages, not directory
+    // roots. Scoping sitemap discovery to /home would filter out all peer URLs.
+    // Mirrors derive_auto_whitelist_pattern's rule for crawl scoping.
+    let segment_count = start_path.split('/').filter(|s| !s.is_empty()).count();
+    let scoped_to_root = start_path.is_empty() || segment_count <= 1;
     // Use bare hostname for scope checks — host_str() on discovered URLs
     // never includes port, so scope comparison must use bare host too.
     let scope = SitemapScope {

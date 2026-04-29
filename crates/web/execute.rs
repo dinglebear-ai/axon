@@ -258,6 +258,7 @@ async fn acquire_acp_permit(
             Ok(Ok(permit)) => Ok(Some(permit)),
             Ok(Err(_)) => {
                 // Semaphore closed — should never happen with a static semaphore.
+                tracing::error!(exec_id = %ws_ctx.exec_id, "execute: ACP semaphore closed — server state corrupted");
                 send_error_dual(
                     tx,
                     ws_ctx,
@@ -268,6 +269,7 @@ async fn acquire_acp_permit(
                 Err(())
             }
             Err(_) => {
+                tracing::warn!(exec_id = %ws_ctx.exec_id, timeout_secs = 30, "execute: ACP semaphore exhausted — request rejected");
                 send_error_dual(
                     tx,
                     ws_ctx,

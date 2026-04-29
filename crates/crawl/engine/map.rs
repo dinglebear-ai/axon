@@ -169,9 +169,13 @@ pub(crate) fn derive_map_scope(requested_url: &str, resolved_url: &str) -> Optio
     let parsed = Url::parse(&scope_url).ok()?;
     let path = parsed.path().trim_end_matches('/');
 
+    // Single-segment paths (e.g. /home, /about) are top-level pages, not directory
+    // prefixes — don't scope to them. Mirrors derive_auto_whitelist_pattern's rule.
+    let segment_count = path.split('/').filter(|s| !s.is_empty()).count();
+
     Some(MapScope {
         host: parsed.host_str()?.to_string(),
-        path_prefix: if path.is_empty() {
+        path_prefix: if path.is_empty() || segment_count <= 1 {
             None
         } else {
             Some(path.to_string())

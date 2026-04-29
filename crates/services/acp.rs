@@ -210,6 +210,13 @@ impl AcpClientScaffold {
         // stored API keys for authentication.
         // CLAUDECODE is excluded to prevent nested-session detection.
         apply_env_allowlist(&mut command);
+        // Prevent axon → claude-agent-acp → lab serve mcp --stdio → axon → ... infinite recursion.
+        // Any `lab serve mcp --stdio` that observes LAB_SPAWN_DEPTH >= 1 will refuse to start.
+        command.env("LAB_SPAWN_DEPTH", "1");
+        tracing::debug!(
+            program = %self.adapter.program,
+            "acp: LAB_SPAWN_DEPTH=1 injected — recursion guard active",
+        );
         command.stdin(std::process::Stdio::piped());
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());

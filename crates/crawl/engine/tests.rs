@@ -169,14 +169,30 @@ fn test_canonicalize_url_root_and_default_port() {
 }
 
 #[test]
-fn test_map_seed_scope_uses_resolved_project_prefix() {
+fn test_map_seed_single_segment_path_uses_root_scope() {
+    // Single-segment paths (e.g. /project, /home) are treated as pages, not
+    // directory roots — same exemption as derive_auto_whitelist_pattern for crawl.
+    // This ensures `map https://agentskills.io/home` returns all site URLs, not
+    // only those starting with /home.
     let seed = "https://example.github.io/project";
     let resolved = "https://example.github.io/project/";
 
     let scope = derive_map_scope(seed, resolved).expect("scope");
 
     assert_eq!(scope.host, "example.github.io");
-    assert_eq!(scope.path_prefix.as_deref(), Some("/project"));
+    assert_eq!(scope.path_prefix, None);
+}
+
+#[test]
+fn test_map_seed_multi_segment_path_scopes_to_prefix() {
+    // Multi-segment paths (e.g. /docs/python) do scope — user is in a subsection.
+    let seed = "https://docs.example.com/docs/python";
+    let resolved = "https://docs.example.com/docs/python";
+
+    let scope = derive_map_scope(seed, resolved).expect("scope");
+
+    assert_eq!(scope.host, "docs.example.com");
+    assert_eq!(scope.path_prefix.as_deref(), Some("/docs/python"));
 }
 
 #[test]

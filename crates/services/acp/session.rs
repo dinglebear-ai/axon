@@ -57,11 +57,14 @@ pub(super) fn spawn_adapter_with_io(
     adapter: AcpAdapterCommand,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<SpawnedAdapter, String> {
+    let adapter_program = adapter.program.clone();
     let scaffold = AcpClientScaffold::new(adapter);
     let child = scaffold
         .spawn_adapter()
         .map_err(|err| format!("failed to spawn ACP adapter: {err}"))?;
     let mut guard = AdapterGuard::new(child);
+    let child_pid = guard.0.as_ref().and_then(|c| c.id()).unwrap_or(0);
+    tracing::info!(pid = child_pid, program = %adapter_program, "acp: adapter subprocess spawned");
 
     let inner = guard.0.as_mut().ok_or("adapter guard empty")?;
     let child_stdin = inner
@@ -130,6 +133,7 @@ pub(super) fn spawn_adapter_with_io(
     tokio::task::spawn_local(async move {
         match child.wait().await {
             Ok(status) if !status.success() => {
+                tracing::error!(exit_status = %status, pid = child_pid, "acp: adapter exited with failure");
                 let _ = exit_tx.send(format!("ACP adapter exited with {status}"));
             }
             Err(err) => {

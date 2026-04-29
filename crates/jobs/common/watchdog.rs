@@ -181,6 +181,7 @@ pub async fn reclaim_stale_running_jobs(
     marker: &str,
 ) -> Result<WatchdogSweepStats> {
     let table_name = table.as_str();
+    tracing::debug!(table = %table_name, job_kind = %job_kind, "watchdog: sweep start");
     let select_query = format!(
         r#"
         SELECT id, updated_at, result_json
@@ -249,8 +250,18 @@ pub async fn reclaim_stale_running_jobs(
         stats.marked_candidates = batch_mark_candidates(pool, table_name, mark_batch).await?;
     }
 
+    tracing::info!(
+        table = %table_name,
+        job_kind = %job_kind,
+        stale_candidates = %stats.stale_candidates,
+        reclaimed = %stats.reclaimed_jobs,
+        exhausted = %stats.exhausted_jobs,
+        marked = %stats.marked_candidates,
+        "watchdog: sweep complete",
+    );
     Ok(stats)
 }
+
 
 /// Reset retryable jobs to `pending` via a single batched unnest() UPDATE.
 /// Returns (count, ids) of actually reclaimed rows.
@@ -313,6 +324,15 @@ async fn batch_fail_exhausted_jobs(
         .await
         .with_context(|| format!("watchdog: fail exhausted jobs in {table_name}"))?;
     let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    for id in &ids {
+        tracing::error!(
+            job_id = %id,
+            table = %table_name,
+            job_kind = %job_kind,
+            max_attempts = MAX_WATCHDOG_RECLAIM_ATTEMPTS,
+            "watchdog: job permanently failed after exhausting reclaim attempts",
+        );
+    }
     Ok((ids.len() as u64, ids))
 }
 

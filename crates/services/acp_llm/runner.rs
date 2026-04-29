@@ -47,6 +47,7 @@ impl AcpRuntimeCompletionRunner {
         let scaffold = self.scaffold.clone();
         let timeout = Duration::from_secs(ACP_COMPLETION_TIMEOUT_SECS);
 
+        tracing::debug!(model = ?req.model, streaming = delta_tx.is_some(), "acp_llm: completion started");
         let join = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -64,15 +65,19 @@ impl AcpRuntimeCompletionRunner {
                     .await
                 {
                     Ok(result) => result.map_err(|e| e.to_string()),
-                    Err(_) => Err(format!(
-                        "ACP completion timed out after {} seconds",
-                        ACP_COMPLETION_TIMEOUT_SECS
-                    )),
+                    Err(_) => {
+                        tracing::warn!(timeout_secs = ACP_COMPLETION_TIMEOUT_SECS, "acp_llm: completion timed out");
+                        Err(format!(
+                            "ACP completion timed out after {} seconds",
+                            ACP_COMPLETION_TIMEOUT_SECS
+                        ))
+                    }
                 }
             })
         })
         .await
         .map_err(|err| -> Box<dyn StdError> {
+            tracing::error!(error = %err, "acp_llm: blocking thread panicked or was cancelled");
             format!("failed to join ACP completion worker: {err}").into()
         })?;
 

@@ -11,6 +11,7 @@ use self::crates::cli::commands::{
 };
 use self::crates::core::config::{CommandKind, Config, parse_args};
 use self::crates::core::logging::{init_tracing, log_done, log_info, log_warn};
+use self::crates::jobs::backend::JobKind;
 use self::crates::services::context::ServiceContext;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -144,6 +145,34 @@ fn is_async_enqueue_mode(cfg: &Config) -> bool {
         && !is_job_subcommand(cfg)
 }
 
+fn command_to_job_kind(cmd: CommandKind) -> Option<JobKind> {
+    match cmd {
+        CommandKind::Crawl => Some(JobKind::Crawl),
+        CommandKind::Extract => Some(JobKind::Extract),
+        CommandKind::Embed => Some(JobKind::Embed),
+        CommandKind::Ingest => Some(JobKind::Ingest),
+        CommandKind::Refresh => Some(JobKind::Refresh),
+        _ => None,
+    }
+}
+
+async fn drain_lite_async_enqueue(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.lite_mode
+        && is_async_enqueue_mode(cfg)
+        && let Some(kind) = command_to_job_kind(cfg.command)
+    {
+        service_context
+            .jobs
+            .run_worker(kind)
+            .await
+            .map_err(|e| -> Box<dyn Error> { e })?;
+    }
+    Ok(())
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
     init_tracing();
     tracing::info!(
@@ -173,10 +202,22 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    // Spawn in-process workers only when the CLI needs to wait for job completion
-    // in lite mode. Fire-and-forget commands enqueue to SQLite and exit — `axon serve`
-    // runs the workers. Serve/MCP/web create their own ServiceContext with workers.
-    let needs_workers = cfg_arc.lite_mode && cfg_arc.wait;
+    // In lite mode, mirror how the MCP server works: always spawn in-process workers for
+    // async job commands so jobs are processed without needing `axon serve`.
+    // Read-only management subcommands (status/cancel/list/etc.) don't need workers.
+    let needs_workers = cfg_arc.lite_mode
+        && matches!(
+            cfg_arc.command,
+            CommandKind::Crawl
+                | CommandKind::Extract
+                | CommandKind::Embed
+                | CommandKind::Ingest
+                | CommandKind::Refresh
+        )
+        && !matches!(
+            cfg_arc.positional.first().map(|s| s.as_str()),
+            Some("status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "recover")
+        );
     let service_context = if needs_workers {
         ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
     } else {
@@ -230,7 +271,11 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
     run_once(cfg, &start_url, &service_context).await?;
 
-    if is_async_enqueue_mode(cfg) {
+    // In lite mode, fire-and-forget commands enqueue a job then need to stay alive until
+    // the in-process workers finish. Workers are tokio tasks — they die when the process exits.
+    drain_lite_async_enqueue(cfg, &service_context).await?;
+
+    if is_async_enqueue_mode(cfg) && !cfg.lite_mode {
         log_done(&format!("command={} enqueued", cfg.command.as_str()));
     } else if let Some(sub) = job_subcommand_name(cfg) {
         log_done(&format!("command={} {} done", cfg.command.as_str(), sub));
@@ -238,4 +283,102 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         log_done(&format!("command={} complete", cfg.command.as_str()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::jobs::backend::{BackendResult, JobPayload};
+    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::types::ServiceJob;
+    use async_trait::async_trait;
+    use uuid::Uuid;
+
+    struct DrainErrorRuntime;
+
+    #[async_trait]
+    impl ServiceJobRuntime for DrainErrorRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+            Err("not implemented".into())
+        }
+
+        async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
+            Err("not implemented".into())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<ServiceJob>, Box<dyn Error + Send + Sync>> {
+            Ok(Vec::new())
+        }
+
+        async fn job_status(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<Option<ServiceJob>, Box<dyn Error + Send + Sync>> {
+            Ok(None)
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(&self, _kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+            Err("forced drain failure".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn lite_async_enqueue_drain_errors_are_propagated() {
+        let mut cfg = Config::test_default();
+        cfg.command = CommandKind::Embed;
+        cfg.lite_mode = true;
+        cfg.wait = false;
+        let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(DrainErrorRuntime));
+
+        let err = drain_lite_async_enqueue(&cfg, &ctx)
+            .await
+            .expect_err("drain failure should propagate");
+
+        assert!(err.to_string().contains("forced drain failure"));
+    }
 }

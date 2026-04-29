@@ -204,6 +204,7 @@ pub async fn start_server(port: u16, cfg: Arc<Config>) -> Result<(), Box<dyn Err
         .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], port)));
 
     log_info(&format!("Axon web UI listening on http://{addr}"));
+    tracing::info!(addr = %addr, "web server starting");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(

@@ -33,6 +33,11 @@ impl AcpSessionCache {
     /// Ensure the background reaper task is running (idempotent).
     pub fn ensure_reaper(&self) {
         self.reaper_started.call_once(|| {
+            tracing::info!(
+                session_ttl_secs = super::SESSION_TTL.as_secs(),
+                hung_threshold_secs = SESSION_HUNG_TURN_THRESHOLD.as_secs(),
+                "acp: session cache reaper starting",
+            );
             tokio::spawn(reaper_loop());
         });
     }

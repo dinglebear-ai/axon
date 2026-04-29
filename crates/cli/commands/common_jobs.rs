@@ -333,7 +333,7 @@ pub fn handle_job_recover(
 pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
     match mode {
         WorkerMode::InProcess => {
-            println!("Lite mode: workers run in-process automatically. No separate worker needed.")
+            println!("Lite mode: queue drained.")
         }
         WorkerMode::Started => {}
         WorkerMode::Unsupported(message) => return Err(message.into()),

@@ -70,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .max_blocking_threads(acp_blocking_thread_limit())
+        .thread_stack_size(8 * 1024 * 1024) // ACP session setup future exceeds the 2MB default
         .build()
         .expect("failed to build tokio runtime");
     rt.block_on(async_main())
@@ -98,5 +99,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     load_dotenv();
+
+
     axon::run().await
 }

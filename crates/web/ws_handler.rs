@@ -142,6 +142,9 @@ pub(super) async fn handle_ws(
 
     let mut tasks: JoinSet<()> = JoinSet::new();
 
+    tracing::info!(conn_id = %conn.conn_id, client_ip = %conn.client_ip, "ws: connection opened");
+    let _ws_open_time = Instant::now();
+
     while let Some(Ok(msg)) = ws_rx.next().await {
         if let Message::Text(text) = msg {
             let Ok(client_msg) = serde_json::from_str::<WsClientMsg>(&text) else {
@@ -157,6 +160,12 @@ pub(super) async fn handle_ws(
 
     // P1-1: shut down all spawned tasks before tearing down the connection.
     tasks.shutdown().await;
+    tracing::info!(
+        conn_id = %conn.conn_id,
+        client_ip = %conn.client_ip,
+        duration_ms = %_ws_open_time.elapsed().as_millis(),
+        "ws: connection closed",
+    );
 
     // P1-3: remove session ownership entries for this connection.
     let cid = &conn.conn_id;

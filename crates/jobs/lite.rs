@@ -105,6 +105,18 @@ impl LiteBackend {
     pub fn cancel_store(&self) -> &Arc<CancelStore> {
         &self.cancel_store
     }
+
+    /// Wake the worker for `kind` if workers are running. Returns false if this backend
+    /// is enqueue-only (no workers spawned).
+    pub fn notify_worker(&self, kind: JobKind) -> bool {
+        match &self.workers {
+            Some(w) => {
+                w.notify(kind);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[async_trait]

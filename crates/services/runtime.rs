@@ -263,7 +263,22 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         .await?)
     }
 
-    async fn run_worker(&self, _kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+    async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+        if !self.backend.notify_worker(kind) {
+            return Err("no in-process workers running — use `axon serve` or `--wait true`".into());
+        }
+        eprintln!("draining {} queue...", kind.table_name());
+        let mut secs = 0u64;
+        loop {
+            if !self.has_active_jobs(kind).await? {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            secs += 1;
+            if secs % 10 == 0 {
+                eprintln!("still draining ({secs}s elapsed)...");
+            }
+        }
         Ok(WorkerMode::InProcess)
     }
 }

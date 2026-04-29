@@ -72,9 +72,13 @@ async fn run_ws_completion<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
+    tracing::debug!(ws_url = %ws_url, model = ?req.model, "acp_llm: WS completion connecting");
     let (ws_stream, _) = connect_async(ws_url)
         .await
-        .map_err(|e| format!("ACP WS connect failed ({ws_url}): {e}"))?;
+        .map_err(|e| {
+            tracing::error!(ws_url = %ws_url, error = %e, "acp_llm: WS connect failed");
+            format!("ACP WS connect failed ({ws_url}): {e}")
+        })?;
     let (mut write, mut read) = ws_stream.split();
 
     let req_id = Uuid::new_v4().to_string();
@@ -109,6 +113,7 @@ where
                     // `result_text.ok_or_else(...)` error below.
                     WsIncomingEvent::Done => break,
                     WsIncomingEvent::Error(msg) => {
+                        tracing::warn!(ws_url = %ws_url, server_error = %msg, "acp_llm: WS server returned error");
                         return Err(format!("ACP WS server error: {msg}"));
                     }
                     WsIncomingEvent::Ignore => {}
@@ -123,6 +128,7 @@ where
         Ok(Ok(())) => {}
         Ok(Err(e)) => return Err(e.into()),
         Err(_) => {
+            tracing::warn!(ws_url = %ws_url, timeout_secs = WS_COMPLETION_TIMEOUT_SECS, "acp_llm: WS completion timed out");
             return Err(
                 format!("ACP WS completion timed out after {WS_COMPLETION_TIMEOUT_SECS}s").into(),
             );

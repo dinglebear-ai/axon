@@ -129,12 +129,15 @@ async fn finalize_exit(
         Ok(exit) => {
             let code = exit.code().unwrap_or(-1);
             if code == 0 {
+                tracing::debug!(exec_id = %ws_ctx.exec_id, exit_code = 0, "subprocess: exited ok");
                 send_done_dual(tx, ws_ctx, code, Some(elapsed)).await;
             } else {
+                tracing::warn!(exec_id = %ws_ctx.exec_id, exit_code = code, "subprocess: exited non-zero");
                 send_error_dual(tx, ws_ctx, format!("exit code {code}"), Some(elapsed)).await;
             }
         }
         Err(e) => {
+            tracing::error!(exec_id = %ws_ctx.exec_id, error = %e, "subprocess: wait() failed");
             send_error_dual(tx, ws_ctx, format!("wait failed: {e}"), None).await;
         }
     }
