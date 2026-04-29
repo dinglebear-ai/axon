@@ -393,4 +393,9 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     /// Suppress spinners and progress output (useful in scripts). JSON data is unaffected.
     #[arg(global = true, long, action = ArgAction::SetTrue, default_value_t = false)]
     pub(in crate::crates::core::config) quiet: bool,
+
+    /// Override log level. Accepts tracing filter syntax (e.g. debug, info, warn, error,
+    /// or crate=level). Applied before tracing init; does not override an explicit RUST_LOG.
+    #[arg(global = true, long, env = "AXON_LOG_LEVEL")]
+    pub(in crate::crates::core::config) log_level: Option<String>,
 }

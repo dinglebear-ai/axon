@@ -293,6 +293,13 @@ async fn batch_retry_jobs(
             )
         })?;
     let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    for id in &ids {
+        tracing::warn!(
+            job_id = %id,
+            table = %table_name,
+            "watchdog: job reclaimed and reset to pending"
+        );
+    }
     Ok((ids.len() as u64, ids))
 }
 

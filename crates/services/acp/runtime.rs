@@ -297,8 +297,10 @@ pub(super) async fn run_prompt_turn(
         // no turn result can ever be emitted.
         exit_msg = &mut exit_rx => {
             if let Ok(msg) = exit_msg {
+                tracing::error!(crash_msg = ?msg, "acp: adapter crashed mid-session");
                 return Err(format!("ACP adapter crashed mid-session: {msg}"));
             }
+            tracing::error!("acp: adapter exited without returning a prompt result");
             return Err(
                 "ACP adapter exited before returning a prompt result; \
                  verify AXON_ACP_ADAPTER_CMD points to an ACP adapter binary (for example codex-acp)"

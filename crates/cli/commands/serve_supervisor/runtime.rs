@@ -29,7 +29,12 @@ pub(super) async fn run_supervisor(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let (fatal_tx, mut fatal_rx) = mpsc::unbounded_channel::<String>();
     let mut tasks = Vec::with_capacity(child_specs.len());
 
+    tracing::info!(
+        child_count = %child_specs.len(),
+        "supervisor: starting"
+    );
     for spec in child_specs {
+        tracing::info!(child = %spec.name, "supervisor: registering child");
         let token = shutdown.clone();
         let tx = fatal_tx.clone();
         tasks.push(tokio::spawn(async move {
@@ -129,13 +134,26 @@ async fn supervise_child(
                     return;
                 }
 
-                log_child_event(&spec.name, &format!("restarting in {}s", delay));
+                tracing::warn!(
+                child = %spec.name,
+                attempt = %unstable_restarts,
+                backoff_secs = %delay,
+                "supervisor: child restarting"
+            );
+            log_child_event(&spec.name, &format!("restarting in {}s", delay));
                 tokio::select! {
                     _ = shutdown.cancelled() => return,
                     _ = tokio::time::sleep(Duration::from_secs(delay)) => {}
                 }
             }
             Err(err) => {
+                tracing::error!(
+                    child = %spec.name,
+                    program = ?spec.program,
+                    error = %err,
+                    attempt = %unstable_restarts,
+                    "supervisor: spawn failed"
+                );
                 log_child_event(&spec.name, &format!("spawn failed: {err}"));
                 let delay = next_restart_delay(backoff_secs);
                 backoff_secs = (backoff_secs * 2).min(RESTART_BACKOFF_MAX_SECS);
@@ -231,6 +249,7 @@ async fn terminate_child(name: &str, child: &mut Child) {
 }
 
 pub(super) fn log_supervisor(label: &str, color: &str, message: &str) {
+    tracing::info!(supervisor = %label, message = %message, "supervisor: event");
     eprintln!(
         "{}{}[{}]{} {}",
         ANSI_BOLD, color, label, ANSI_RESET, message
@@ -238,6 +257,7 @@ pub(super) fn log_supervisor(label: &str, color: &str, message: &str) {
 }
 
 pub(super) fn log_child_event(name: &str, message: &str) {
+    tracing::info!(child = %name, message = %message, "supervisor: child event");
     let color = child_color(name);
     eprintln!("{}{}[{}]{} {}", ANSI_BOLD, color, name, ANSI_RESET, message);
 }

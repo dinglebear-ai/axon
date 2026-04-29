@@ -339,6 +339,7 @@ pub(super) async fn initialize_connection(
                 );
             }
             Err(err) => {
+                tracing::error!(error = %err, "acp: adapter authentication failed");
                 let msg = format!("ACP: authentication failed: {err}");
                 emit(
                     tx,

@@ -610,6 +610,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         shell_server_port: env_port("SHELL_SERVER_PORT", 49011)?,
         custom_headers: global.custom_headers,
         quiet: global.quiet,
+        log_level: global.log_level,
     };
 
     // Validate collection name — Qdrant only allows [a-zA-Z0-9_-] (ASCII only, non-empty)

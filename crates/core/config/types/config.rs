@@ -539,6 +539,9 @@ pub struct Config {
 
     /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
     pub quiet: bool,
+
+    /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
+    pub log_level: Option<String>,
 }
 
 #[cfg(test)]

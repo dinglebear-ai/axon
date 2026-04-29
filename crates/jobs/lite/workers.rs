@@ -66,6 +66,7 @@ pub fn spawn_workers(
     let refresh_notify = Arc::new(Notify::new());
     let graph_notify = Arc::new(Notify::new());
 
+    tracing::info!("lite: spawning all in-process workers (crawl, embed, extract, ingest, refresh, graph)");
     let worker_handles = vec![
         tokio::spawn(crawl_worker(
             Arc::clone(&pool),

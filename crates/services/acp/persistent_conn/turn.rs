@@ -33,6 +33,12 @@ pub(super) async fn run_turn_on_conn(
     cancel_token: &CancellationToken,
 ) {
     prepare_turn_runtime_state(runtime_state);
+    let turn_id = runtime_state.current_turn_id.get();
+    tracing::info!(
+        session_id = %session_id.0,
+        turn_id = %turn_id,
+        "acp: starting persistent-connection turn"
+    );
     let mut turn_ctx = build_turn_context(turn, session_id, runtime_state);
 
     if let Err(err) = ensure_turn_session(conn, session_cwd, runtime_state, &mut turn_ctx).await {
@@ -335,11 +341,17 @@ async fn run_prompt(
             {
                 Ok(Ok(resp)) => Ok(resp),
                 Ok(Err(e)) => Err(e.to_string()),
-                Err(_) => Err(
-                    "ACP adapter cancel timed out after 15 s; \
-                     adapter will be killed when the connection handle drops"
-                        .to_string(),
-                ),
+                Err(_) => {
+                    tracing::warn!(
+                        session_id = %turn_ctx.turn_session_id.0,
+                        "acp: turn cancel timed out after 15 s"
+                    );
+                    Err(
+                        "ACP adapter cancel timed out after 15 s; \
+                         adapter will be killed when the connection handle drops"
+                            .to_string(),
+                    )
+                }
             }
         }
         result = &mut prompt_fut => result.map_err(|e| e.to_string()),

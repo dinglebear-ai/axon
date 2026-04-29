@@ -56,7 +56,7 @@ pub(super) async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
             ))
             .await;
         tracing::info!(
-            context = "ws",
+            conn_id = %conn.conn_id,
             session_id,
             "acp_resume: session not found in cache"
         );
@@ -72,7 +72,7 @@ pub(super) async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
         .clone();
     if owner != conn.conn_id {
         tracing::warn!(
-            context = "ws",
+            conn_id = %conn.conn_id,
             session_id,
             "acp_resume denied: session bound to different connection"
         );
@@ -97,7 +97,7 @@ pub(super) async fn handle_acp_resume(conn: &WsConnState, session_id: &str) {
         .send(acp_resume_json(true, session_id, None, Some(replayed)))
         .await;
     tracing::info!(
-        context = "ws",
+        conn_id = %conn.conn_id,
         session_id,
         replayed,
         "acp_resume: replayed buffered events"
@@ -114,13 +114,13 @@ pub(super) fn route_permission_response(
 ) {
     if tool_call_id.is_empty() || option_id.is_empty() {
         tracing::warn!(
-            context = "ws",
+            conn_id = %conn.conn_id,
             "permission_response with empty tool_call_id or option_id — ignoring"
         );
         return;
     }
     tracing::debug!(
-        context = "ws",
+        conn_id = %conn.conn_id,
         session_id,
         tool_call_id,
         "permission_response received"
@@ -141,7 +141,7 @@ pub(super) fn route_permission_response(
 
     if !owned_by_this_conn {
         tracing::warn!(
-            context = "ws",
+            conn_id = %conn.conn_id,
             session_id,
             tool_call_id,
             "permission_response denied: session not owned by this connection",
@@ -159,7 +159,7 @@ pub(super) fn route_permission_response(
     }
 
     tracing::warn!(
-        context = "ws",
+        conn_id = %conn.conn_id,
         session_id,
         tool_call_id,
         "permission_response for unknown key (already responded or wrong session)",

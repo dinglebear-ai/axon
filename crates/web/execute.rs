@@ -169,6 +169,11 @@ pub(crate) async fn handle_command(
     let flags = context.flags.clone();
 
     if !ALLOWED_MODES.contains(&mode.as_str()) {
+        tracing::warn!(
+            exec_id = %ws_ctx.exec_id,
+            mode = %mode,
+            "execute: rejected unknown mode"
+        );
         send_error_dual(&tx, &ws_ctx, format!("unknown mode: {mode}"), None).await;
         return;
     }
@@ -302,12 +307,12 @@ async fn dispatch_subprocess_fallback(
     let exe = match tokio::task::spawn_blocking(resolve_exe).await {
         Ok(Ok(p)) => p,
         Ok(Err(e)) => {
-            tracing::error!(context = "execute", error = %e, "resolve_exe failed");
+            tracing::error!(exec_id = %ws_ctx.exec_id, error = %e, "execute: resolve_exe failed");
             send_error_dual(&tx, &ws_ctx, "cannot find axon binary".to_string(), None).await;
             return;
         }
         Err(join_err) => {
-            tracing::error!(context = "execute", error = %join_err, "resolve_exe join error");
+            tracing::error!(exec_id = %ws_ctx.exec_id, error = %join_err, "execute: resolve_exe join error");
             send_error_dual(&tx, &ws_ctx, "resolve_exe join error".to_string(), None).await;
             return;
         }
@@ -332,5 +337,11 @@ async fn dispatch_subprocess_fallback(
             return;
         }
     };
+    tracing::info!(
+        exec_id = %ws_ctx.exec_id,
+        exe = %exe.display(),
+        pid = child.id().unwrap_or(0),
+        "execute: subprocess spawned"
+    );
     handle_sync_command(child, &context, &tx, start).await;
 }

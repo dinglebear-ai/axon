@@ -5,11 +5,18 @@
 //!
 //! Protocol: connects to `{acp_ws_url}/ws?token={token}`, sends a
 //! `pulse_chat` execute message, reads ACP bridge events until `command.done`.
+//!
+//! Reliability:
+//! - Exponential backoff with ±20% jitter on connect failure (1s → 60s max).
+//! - Client-side ping every 30 s; closes and retries if pong not received in 10 s.
 
 use std::error::Error as StdError;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
+use tokio::sync::Mutex;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
@@ -20,6 +27,16 @@ use super::runner::compose_prompt;
 use super::types::{AcpCompletionRequest, AcpCompletionRunner, AcpCompletionTurnResult};
 
 const WS_COMPLETION_TIMEOUT_SECS: u64 = 300;
+/// Ping interval — send a Ping frame every N seconds.
+const WS_PING_INTERVAL_SECS: u64 = 30;
+/// Pong deadline — if no Pong received within this window after a Ping, close.
+const WS_PONG_TIMEOUT_SECS: u64 = 10;
+/// Initial reconnect backoff in milliseconds.
+const BACKOFF_INITIAL_MS: u64 = 1_000;
+/// Maximum reconnect backoff in milliseconds.
+const BACKOFF_MAX_MS: u64 = 60_000;
+/// Maximum number of connect attempts before propagating the error.
+const BACKOFF_MAX_ATTEMPTS: u32 = 5;
 
 // ── Public runner ─────────────────────────────────────────────────────────────
 
@@ -33,7 +50,10 @@ impl AcpWsCompletionRunner {
             .acp_ws_url
             .as_deref()
             .filter(|s| !s.is_empty())
-            .ok_or("AXON_ACP_WS_URL is required for WS-mode ACP completions")?;
+            .ok_or_else(|| {
+                tracing::error!("acp_llm: AXON_ACP_WS_URL is not configured — WS-mode ACP completions will fail");
+                "AXON_ACP_WS_URL is required for WS-mode ACP completions"
+            })?;
         let token = cfg.acp_ws_token.as_deref();
         Ok(Self {
             ws_url: build_ws_endpoint(base, token),
@@ -47,7 +67,7 @@ impl AcpCompletionRunner for AcpWsCompletionRunner {
         &self,
         req: AcpCompletionRequest,
     ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>> {
-        run_ws_completion(&self.ws_url, req, &mut |_| Ok(())).await
+        run_ws_completion_with_retry(&self.ws_url, req, &mut |_| Ok(())).await
     }
 
     async fn complete_streaming<F>(
@@ -58,7 +78,67 @@ impl AcpCompletionRunner for AcpWsCompletionRunner {
     where
         F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
     {
-        run_ws_completion(&self.ws_url, req, on_delta).await
+        run_ws_completion_with_retry(&self.ws_url, req, on_delta).await
+    }
+}
+
+// ── Exponential backoff retry wrapper ────────────────────────────────────────
+
+/// Run `run_ws_completion` with exponential backoff + ±20% jitter on connect
+/// failures.  Backs off from [`BACKOFF_INITIAL_MS`] up to [`BACKOFF_MAX_MS`],
+/// giving up after [`BACKOFF_MAX_ATTEMPTS`] consecutive failures.
+///
+/// A successful completion after a previous failure is logged at INFO so
+/// operators know the connection was re-established.
+async fn run_ws_completion_with_retry<F>(
+    ws_url: &str,
+    req: AcpCompletionRequest,
+    on_delta: &mut F,
+) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+where
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+{
+    let mut attempt: u32 = 0;
+    let mut backoff_ms: u64 = BACKOFF_INITIAL_MS;
+
+    loop {
+        attempt += 1;
+        match run_ws_completion(ws_url, req.clone(), on_delta).await {
+            Ok(result) => {
+                if attempt > 1 {
+                    tracing::info!(
+                        ws_url = %ws_url,
+                        attempt,
+                        "acp_llm: WS connection re-established after failure",
+                    );
+                }
+                return Ok(result);
+            }
+            Err(e) if attempt >= BACKOFF_MAX_ATTEMPTS => {
+                tracing::error!(
+                    ws_url = %ws_url,
+                    attempt,
+                    max_attempts = BACKOFF_MAX_ATTEMPTS,
+                    error = %e,
+                    "acp_llm: WS connect failed — exhausted retries",
+                );
+                return Err(e);
+            }
+            Err(e) => {
+                // ±20% jitter: multiply backoff by a factor in [0.8, 1.2).
+                let jitter = 0.8 + (rand::random::<f64>() * 0.4);
+                let delay_ms = ((backoff_ms as f64) * jitter) as u64;
+                tracing::info!(
+                    ws_url = %ws_url,
+                    attempt,
+                    backoff_ms = delay_ms,
+                    error = %e,
+                    "reconnecting to master",
+                );
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                backoff_ms = (backoff_ms * 2).min(BACKOFF_MAX_MS);
+            }
+        }
     }
 }
 
@@ -91,53 +171,104 @@ where
 
     let mut result_text: Option<String> = None;
 
-    let loop_result = tokio::time::timeout(
-        tokio::time::Duration::from_secs(WS_COMPLETION_TIMEOUT_SECS),
+    // ── Heartbeat state ──────────────────────────────────────────────────────
+    // `last_pong` tracks the last time we received a Pong (or connection start).
+    // `ping_due` fires every WS_PING_INTERVAL_SECS via a tokio::time::interval.
+    let last_pong: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
+    let mut ping_interval =
+        tokio::time::interval(Duration::from_secs(WS_PING_INTERVAL_SECS));
+    ping_interval.tick().await; // consume the immediate first tick
+
+    let loop_result: Result<(), String> = tokio::time::timeout(
+        Duration::from_secs(WS_COMPLETION_TIMEOUT_SECS),
         async {
-            while let Some(msg) = read.next().await {
-                let text = match msg {
-                    Ok(Message::Text(t)) => t.to_string(),
-                    Ok(Message::Close(_)) => break,
-                    Ok(_) => continue,
-                    Err(e) => return Err(format!("ACP WS read error: {e}")),
-                };
-                match extract_event(&text) {
-                    WsIncomingEvent::Delta(delta) => {
-                        on_delta(&delta).map_err(|e| e.to_string())?;
+            loop {
+                tokio::select! {
+                    biased;
+
+                    // ── Incoming WS frame ────────────────────────────────────
+                    msg_opt = read.next() => {
+                        let text = match msg_opt {
+                            Some(Ok(Message::Text(t))) => t.to_string(),
+                            Some(Ok(Message::Pong(_))) => {
+                                tracing::debug!(action = "ws.pong.received");
+                                *last_pong.lock().await = Instant::now();
+                                continue;
+                            }
+                            Some(Ok(Message::Close(_))) => break,
+                            Some(Ok(_)) => continue,
+                            Some(Err(e)) => {
+                                tracing::warn!(ws_url = %ws_url, error = %e, "acp_llm: WS read error");
+                                return Err(format!("ACP WS read error: {e}"));
+                            }
+                            None => break,
+                        };
+                        match extract_event(&text) {
+                            WsIncomingEvent::Delta(delta) => {
+                                on_delta(&delta).map_err(|e| e.to_string())?;
+                            }
+                            WsIncomingEvent::Result(text) => {
+                                result_text = Some(text);
+                            }
+                            WsIncomingEvent::Done => break,
+                            WsIncomingEvent::Error(msg) => {
+                                tracing::warn!(ws_url = %ws_url, server_error = %msg, "acp_llm: WS server returned error");
+                                return Err(format!("ACP WS server error: {msg}"));
+                            }
+                            WsIncomingEvent::Ignore => {}
+                        }
                     }
-                    WsIncomingEvent::Result(text) => {
-                        result_text = Some(text);
+
+                    // ── Heartbeat tick: send Ping, check previous Pong ───────
+                    _ = ping_interval.tick() => {
+                        // Check if pong came back since the last ping.
+                        let since_pong = last_pong.lock().await.elapsed();
+                        if since_pong > Duration::from_secs(WS_PING_INTERVAL_SECS + WS_PONG_TIMEOUT_SECS) {
+                            tracing::warn!(
+                                ws_url = %ws_url,
+                                action = "ws.pong.timeout",
+                                since_pong_secs = since_pong.as_secs(),
+                                "acp_llm: closing stale connection — pong timeout",
+                            );
+                            return Err("WS pong timeout — stale connection".to_string());
+                        }
+                        tracing::debug!(action = "ws.ping.sent");
+                        if write.send(Message::Ping(Default::default())).await.is_err() {
+                            return Err("ACP WS ping send failed".to_string());
+                        }
                     }
-                    // Server invariant: `result` is always emitted before `done`.
-                    // `Done` without a prior `Result` will fall through to the
-                    // `result_text.ok_or_else(...)` error below.
-                    WsIncomingEvent::Done => break,
-                    WsIncomingEvent::Error(msg) => {
-                        tracing::warn!(ws_url = %ws_url, server_error = %msg, "acp_llm: WS server returned error");
-                        return Err(format!("ACP WS server error: {msg}"));
-                    }
-                    WsIncomingEvent::Ignore => {}
                 }
             }
             Ok(())
         },
     )
-    .await;
+    .await
+    .map_err(|_| {
+        tracing::warn!(
+            ws_url = %ws_url,
+            timeout_secs = WS_COMPLETION_TIMEOUT_SECS,
+            "acp_llm: WS completion timed out",
+        );
+        "timeout".to_string()
+    })
+    .and_then(|r| r);
 
     match loop_result {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => return Err(e.into()),
-        Err(_) => {
-            tracing::warn!(ws_url = %ws_url, timeout_secs = WS_COMPLETION_TIMEOUT_SECS, "acp_llm: WS completion timed out");
+        Ok(()) => {}
+        Err(e) if e == "timeout" => {
             return Err(
                 format!("ACP WS completion timed out after {WS_COMPLETION_TIMEOUT_SECS}s").into(),
             );
         }
+        Err(e) => return Err(e.into()),
     }
 
     result_text
         .map(|text| AcpCompletionTurnResult { text, usage: None })
-        .ok_or_else(|| "ACP WS completion finished without a turn result".into())
+        .ok_or_else(|| {
+            tracing::error!(ws_url = %ws_url, "acp_llm: WS server sent Done without Result — protocol violation");
+            "ACP WS completion finished without a turn result".into()
+        })
 }
 
 // ── Wire helpers ──────────────────────────────────────────────────────────────

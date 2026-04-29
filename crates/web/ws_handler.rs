@@ -148,6 +148,10 @@ pub(super) async fn handle_ws(
     while let Some(Ok(msg)) = ws_rx.next().await {
         if let Message::Text(text) = msg {
             let Ok(client_msg) = serde_json::from_str::<WsClientMsg>(&text) else {
+                tracing::warn!(
+                    conn_id = %conn.conn_id,
+                    "ws: invalid JSON frame received"
+                );
                 let _ = conn
                     .exec_tx
                     .send(r#"{"type":"error","message":"invalid JSON"}"#.to_string())
@@ -271,7 +275,12 @@ async fn handle_ws_message(conn: &WsConnState, client_msg: WsClientMsg, tasks: &
         "unsubscribe_stats" => {
             conn.stats_subscribed.store(false, Ordering::Relaxed);
         }
-        _ => {}
+        _ => {
+            tracing::warn!(
+                conn_id = %conn.conn_id,
+                "ws: unknown message type discarded"
+            );
+        }
     }
 }
 
@@ -317,6 +326,12 @@ async fn handle_execute_msg(conn: &WsConnState, client_msg: WsClientMsg, tasks: 
         conn.client_ip,
         RateLimitCategory::Execute,
     ) {
+        tracing::warn!(
+            conn_id = %conn.conn_id,
+            client_ip = %conn.client_ip,
+            category = "execute",
+            "ws: rate limit exceeded"
+        );
         let ctx = CommandContext {
             exec_id: client_msg.id.clone(),
             mode: client_msg.mode.clone(),

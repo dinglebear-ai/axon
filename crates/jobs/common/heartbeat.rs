@@ -188,7 +188,13 @@ pub fn spawn_heartbeat_task(
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
-                    let _ = super::job_ops::touch_running_job(&pool, table, id).await;
+                    if let Err(e) = super::job_ops::touch_running_job(&pool, table, id).await {
+                        tracing::warn!(
+                            job_id = %id,
+                            error = %e,
+                            "heartbeat: touch failed — watchdog may reclaim job"
+                        );
+                    }
                 }
                 changed = stop_rx.changed() => {
                     if changed.is_err() || *stop_rx.borrow() {

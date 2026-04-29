@@ -110,15 +110,15 @@ impl AcpSessionCache {
         let mut to_remove = Vec::new();
         self.sessions.retain(|key, session| {
             if session.is_expired() {
-                tracing::info!(context = "acp_cache", key = %key, "evicting expired session");
+                tracing::warn!(agent_key = %key, reason = "ttl_expired", "acp: session evicted");
                 to_remove.push(key.clone());
                 false
             } else if session.is_turn_hung(hung_threshold) {
                 tracing::warn!(
-                    context = "acp_cache",
-                    key = %key,
+                    agent_key = %key,
+                    reason = "hung_turn",
                     threshold_secs = hung_threshold.as_secs(),
-                    "evicting session with hung turn",
+                    "acp: session evicted (hung turn)",
                 );
                 to_remove.push(key.clone());
                 false

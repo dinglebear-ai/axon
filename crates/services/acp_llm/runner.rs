@@ -131,6 +131,7 @@ pub(super) fn resolve_adapter_command(
 ) -> Result<AcpAdapterCommand, Box<dyn StdError>> {
     let program = cfg.acp_adapter_cmd.as_deref().unwrap_or("").trim();
     if program.is_empty() {
+        tracing::error!("acp_llm: AXON_ACP_ADAPTER_CMD is not set — ACP completions will fail");
         return Err(std::io::Error::other(
             "ACP completion requires AXON_ACP_ADAPTER_CMD to be set",
         )
@@ -199,7 +200,10 @@ async fn run_completion_local(
                         handle_completion_bridge_event(&event, &mut state, &mut on_delta)?;
                     }
                     Some(_) => {}
-                    None => break,
+                    None => {
+                        tracing::debug!("acp_llm: event channel closed — adapter finished");
+                        break;
+                    }
                 }
             }
         }
@@ -212,6 +216,7 @@ async fn run_completion_local(
             usage: state.usage,
         })
         .ok_or_else(|| {
+            tracing::error!("acp_llm: completion finished without a turn result");
             std::io::Error::other("ACP completion runner did not emit a turn result").into()
         })
 }

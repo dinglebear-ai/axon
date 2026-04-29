@@ -164,15 +164,24 @@ where
         local.block_on(&rt, async {
             match tokio::time::timeout(timeout, fut()).await {
                 Ok(result) => result,
-                Err(_) => Err(format!(
-                    "ACP adapter timed out after {} seconds",
-                    timeout.as_secs()
-                )),
+                Err(_) => {
+                    tracing::error!(
+                        timeout_secs = timeout.as_secs(),
+                        "acp: adapter timed out"
+                    );
+                    Err(format!(
+                        "ACP adapter timed out after {} seconds",
+                        timeout.as_secs()
+                    ))
+                }
             }
         })
     })
     .await
-    .map_err(|err| format!("failed to join ACP runtime worker: {err}"))?;
+    .map_err(|err| {
+        tracing::error!(error = %err, "acp: runtime worker join failed — possible panic");
+        format!("failed to join ACP runtime worker: {err}")
+    })?;
 
     join.map_err(|err| err.to_string())?;
     Ok(())
@@ -199,6 +208,11 @@ impl AcpClientScaffold {
     /// `env_clear()` only affects the *subprocess* environment — the parent
     /// (Axon) process environment is never touched.
     fn build_adapter_command(&self) -> tokio::process::Command {
+        tracing::debug!(
+            program = %self.adapter.program,
+            cwd = ?self.adapter.cwd,
+            "acp: building adapter command"
+        );
         let mut command = tokio::process::Command::new(&self.adapter.program);
         command.args(&self.adapter.args);
         if let Some(cwd) = &self.adapter.cwd {
@@ -256,6 +270,11 @@ impl AcpClientScaffold {
             }
         }
         let child = self.build_adapter_command().spawn()?;
+        tracing::info!(
+            program = %self.adapter.program,
+            pid = child.id().unwrap_or(0),
+            "acp: adapter spawned"
+        );
         Ok(child)
     }
 

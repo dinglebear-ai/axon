@@ -173,7 +173,55 @@ async fn drain_lite_async_enqueue(
     Ok(())
 }
 
+/// Scan argv/env for --log-level before tracing is initialised.
+/// Writes RUST_LOG so EnvFilter picks it up in init_tracing().
+fn early_scan_log_level() {
+    // Prefer explicit RUST_LOG — don't clobber it.
+    if std::env::var("RUST_LOG").is_ok() {
+        return;
+    }
+    let args: Vec<String> = std::env::args().collect();
+    let mut level: Option<String> = None;
+    for i in 0..args.len() {
+        if args[i] == "--log-level" {
+            level = args.get(i + 1).cloned();
+            break;
+        }
+        if let Some(v) = args[i].strip_prefix("--log-level=") {
+            level = Some(v.to_string());
+            break;
+        }
+    }
+    if level.is_none() {
+        level = std::env::var("AXON_LOG_LEVEL").ok().filter(|v| !v.is_empty());
+    }
+    if let Some(l) = level {
+        // Safety: single-threaded at this point (before tokio runtime).
+        #[allow(unsafe_code)]
+        unsafe { std::env::set_var("RUST_LOG", l); }
+    }
+}
+
+/// Send sd_notify READY=1 via the socket advertised by systemd.
+/// No-ops gracefully when not running under systemd.
+fn sd_notify_ready() {
+    use std::os::unix::net::UnixDatagram;
+    if let Ok(path) = std::env::var("NOTIFY_SOCKET") {
+        // Abstract sockets start with '@'; replace with null byte for the API.
+        let path = if path.starts_with('@') {
+            format!("\0{}", &path[1..])
+        } else {
+            path
+        };
+        if let Ok(sock) = UnixDatagram::unbound() {
+            let _ = sock.send_to(b"READY=1\n", path);
+            tracing::debug!(action = "sd_notify", "sent READY=1 to systemd");
+        }
+    }
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
+    early_scan_log_level();
     init_tracing();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -226,6 +274,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     .map_err(|e| -> Box<dyn Error> { e })?;
     let cfg = cfg_arc.as_ref();
 
+    // Notify systemd that we are fully initialised and ready to accept traffic.
+    sd_notify_ready();
+
     // Skip Postgres telemetry in lite mode (no Postgres connection required).
     if !cfg.lite_mode {
         let pg_url = cfg.pg_url.clone();
@@ -269,6 +320,23 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         ));
         return Ok(());
     }
+    // Periodic health tick — logs uptime every 60 s for ops monitoring.
+    let _health_tick = {
+        let start = std::time::Instant::now();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(60));
+            ticker.tick().await; // skip immediate first tick
+            loop {
+                ticker.tick().await;
+                tracing::info!(
+                    action = "health.tick",
+                    uptime_s = start.elapsed().as_secs(),
+                    "process alive"
+                );
+            }
+        })
+    };
+
     run_once(cfg, &start_url, &service_context).await?;
 
     // In lite mode, fire-and-forget commands enqueue a job then need to stay alive until

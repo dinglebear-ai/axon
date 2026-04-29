@@ -175,6 +175,7 @@ impl Default for Config {
             shell_server_port: 49011,
             custom_headers: vec![],
             quiet: false,
+            log_level: None,
         }
     }
 }

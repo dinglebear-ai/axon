@@ -117,6 +117,11 @@ pub async fn finalize_successful_turn(
     session_id_str: &str,
 ) -> Result<(), String> {
     let stop_reason_str = stop_reason_to_str(stop_reason);
+    tracing::info!(
+        session_id = %session_id_str,
+        stop_reason = %stop_reason_str,
+        "acp: turn finalized"
+    );
     let log_level = match stop_reason {
         StopReason::EndTurn => LogLevel::Info,
         StopReason::MaxTokens | StopReason::Refusal | StopReason::Cancelled => LogLevel::Warn,
