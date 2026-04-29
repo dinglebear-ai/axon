@@ -188,11 +188,6 @@ fn print_top_level_help() {
     println!("  {:<28} {}", cmd("status"), dim("Show queued job status"));
     println!(
         "  {:<28} {}",
-        cmd("graph <subcommand>"),
-        dim("Build/status/explore graph extraction and Neo4j stats")
-    );
-    println!(
-        "  {:<28} {}",
         cmd("ingest <subcommand>"),
         dim("Manage shared ingest worker/jobs")
     );
