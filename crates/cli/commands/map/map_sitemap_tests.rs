@@ -648,3 +648,113 @@ async fn test_warning_when_bounded_structure_too_few_urls() {
         "warning should suggest using --map-fallback crawl: {warning_text}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 11: --discover-sitemaps false skips sitemap fetch entirely
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[serial]
+async fn test_discover_sitemaps_false_skips_sitemap_fetch() {
+    let _guard = LoopbackGuard::new();
+    let server = MockServer::start();
+    let base = server.base_url();
+
+    // robots.txt + every sitemap path is mocked. If the gate works, none of
+    // these should be hit — we assert calls() == 0 below.
+    let robots_mock = server.mock(|when, then| {
+        when.method(GET).path("/robots.txt");
+        then.status(200)
+            .header("content-type", "text/plain")
+            .body(format!(
+                "User-agent: *\nDisallow:\nSitemap: {base}/sitemap.xml\n"
+            ));
+    });
+    let sitemap_mock = server.mock(|when, then| {
+        when.method(GET).path("/sitemap.xml");
+        then.status(200)
+            .header("content-type", "application/xml")
+            .body(sitemap_xml(&[
+                &format!("{base}/from-sitemap-1"),
+                &format!("{base}/from-sitemap-2"),
+            ]));
+    });
+    let other_sitemap_mocks: Vec<_> = [
+        "/sitemap_index.xml",
+        "/sitemap-index.xml",
+        "/wp-sitemap.xml",
+        "/sitemap/sitemap-index.xml",
+    ]
+    .iter()
+    .map(|path| {
+        server.mock(|when, then| {
+            when.method(GET).path(*path);
+            then.status(404);
+        })
+    })
+    .collect();
+
+    // Root page: bounded-structure fallback should fetch this and extract anchors.
+    server.mock(|when, then| {
+        when.method(GET).path("/");
+        then.status(200)
+            .header("content-type", "text/html")
+            .body(format!(
+                r#"<html><body>
+                    <a href="{base}/from-anchor-1">A1</a>
+                    <a href="{base}/from-anchor-2">A2</a>
+                    <a href="{base}/from-anchor-3">A3</a>
+                    <a href="{base}/from-anchor-4">A4</a>
+                    <a href="{base}/from-anchor-5">A5</a>
+                </body></html>"#
+            ));
+    });
+
+    let cfg = Config {
+        discover_sitemaps: false,
+        ..base_config()
+    };
+    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
+
+    // Sitemap discovery must be skipped entirely — no fetches to robots.txt or
+    // any sitemap path.
+    assert_eq!(
+        robots_mock.calls(),
+        0,
+        "robots.txt must NOT be fetched when --discover-sitemaps false"
+    );
+    assert_eq!(
+        sitemap_mock.calls(),
+        0,
+        "sitemap.xml must NOT be fetched when --discover-sitemaps false"
+    );
+    for m in &other_sitemap_mocks {
+        assert_eq!(
+            m.calls(),
+            0,
+            "no sitemap path should be fetched when --discover-sitemaps false"
+        );
+    }
+
+    // Bounded-structure fallback must take over.
+    assert_eq!(
+        result["map_source"].as_str(),
+        Some("bounded-structure"),
+        "expected bounded-structure when --discover-sitemaps false"
+    );
+    let urls = result["urls"].as_array().expect("urls must be array");
+    assert!(
+        !urls.is_empty(),
+        "bounded-structure should have produced anchor URLs, got empty"
+    );
+    // Sanity: URLs come from anchor extraction, not sitemap.
+    let url_strs: Vec<&str> = urls.iter().filter_map(|v| v.as_str()).collect();
+    assert!(
+        url_strs.iter().any(|u| u.contains("from-anchor-")),
+        "expected anchor-derived URLs, got: {url_strs:?}"
+    );
+    assert!(
+        !url_strs.iter().any(|u| u.contains("from-sitemap-")),
+        "sitemap URLs must NOT appear when discovery is disabled: {url_strs:?}"
+    );
+}

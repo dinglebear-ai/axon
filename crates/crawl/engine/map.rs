@@ -299,8 +299,11 @@ async fn bounded_structure_fallback(
 pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult, Box<dyn Error>> {
     let start = Instant::now();
 
-    // Step 1: resolve seed URL and discover sitemaps in parallel.
+    // Step 1: resolve seed URL and (when enabled) discover sitemaps in parallel.
     // Errors are converted to String before the join point so both futures are Send.
+    // When --discover-sitemaps false, skip the discovery future entirely so
+    // sitemap.xml is never fetched — the fallback chain takes over with an
+    // empty SitemapDiscovery (zero parsed documents).
     let (seed_result, sitemap_result) = tokio::join!(
         async {
             resolve_map_seed_url(start_url)
@@ -308,9 +311,13 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
                 .map_err(|e| e.to_string())
         },
         async {
-            discover_sitemap_urls(cfg, start_url)
-                .await
-                .map_err(|e| e.to_string())
+            if cfg.discover_sitemaps {
+                discover_sitemap_urls(cfg, start_url)
+                    .await
+                    .map_err(|e| e.to_string())
+            } else {
+                Ok(SitemapDiscovery::default())
+            }
         }
     );
 
