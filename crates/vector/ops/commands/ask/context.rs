@@ -31,11 +31,13 @@ pub(crate) struct AskContext {
 
 pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskContext> {
     let retrieval = retrieve_ask_candidates(cfg, query).await?;
+    let query_tokens = crate::crates::vector::ops::ranking::tokenize_query(query);
     let built = build_context_from_candidates(
         cfg,
         &retrieval.reranked,
         &retrieval.top_chunk_indices,
         &retrieval.top_full_doc_indices,
+        &query_tokens,
     )
     .await?;
 

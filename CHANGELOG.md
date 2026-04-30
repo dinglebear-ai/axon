@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-04-30
+
+### Added
+- **`render_full_doc_filtered`**: optional `(query_tokens, top_k)` parameters score each chunk by query-token overlap, keep top-K, then re-sort by `chunk_index` for narrative coherence. Used by ask context build with `FULL_DOC_RENDER_TOP_K=24`.
+
+### Changed
+- **Ask context flattening**: `context_entries: Vec<(f64, String)>` and a final sort by `rerank_score` descending so the highest-scoring chunks appear first regardless of which bucket (top-chunks / full-docs / supplemental) they came from. Mitigates LLM proximity bias against the most relevant content.
+
 ## [1.0.6] - 2026-04-30
 
 ### Added

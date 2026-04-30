@@ -14,7 +14,7 @@ pub use commands::{dedupe_payload, domains_payload, retrieve_result, sources_pay
 pub use types::{QdrantPayload, QdrantPoint, QdrantSearchHit};
 pub use utils::{
     base_url, payload_text_typed, payload_url_typed, qdrant_base, query_snippet,
-    render_full_doc_from_points,
+    render_full_doc_filtered, render_full_doc_from_points,
 };
 
 pub(crate) use client::{

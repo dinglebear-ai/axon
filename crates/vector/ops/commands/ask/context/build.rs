@@ -24,13 +24,14 @@ pub(super) async fn build_context_from_candidates(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
     top_full_doc_indices: &[usize],
+    query_tokens: &[String],
 ) -> Result<BuiltAskContext> {
     let max_context_chars = cfg.ask_max_context_chars;
     let backfill_limit = cfg.ask_backfill_chunks;
     let doc_fetch_concurrency = cfg.ask_doc_fetch_concurrency;
     let doc_chunk_limit = cfg.ask_doc_chunk_limit;
     let context_started = std::time::Instant::now();
-    let mut context_entries: Vec<String> = Vec::new();
+    let mut context_entries: Vec<(f64, String)> = Vec::new();
     let mut context_char_count = 0usize;
     let separator = "\n\n---\n\n";
     let mut source_idx = 1usize;
@@ -60,6 +61,11 @@ pub(super) async fn build_context_from_candidates(
         doc_fetch_concurrency,
     )
     .await?;
+    // Map URL → rerank_score for sort-by-score in the flattened context.
+    let url_to_score: std::collections::HashMap<String, f64> = top_full_doc_indices
+        .iter()
+        .filter_map(|&idx| reranked.get(idx).map(|c| (c.url.clone(), c.rerank_score)))
+        .collect();
     let (full_docs_selected, next_source_idx) = append_full_docs_to_context(
         &mut context_entries,
         &mut context_char_count,
@@ -68,6 +74,8 @@ pub(super) async fn build_context_from_candidates(
         separator,
         max_context_chars,
         fetched_docs,
+        query_tokens,
+        &url_to_score,
     );
     source_idx = next_source_idx;
 
@@ -107,7 +115,12 @@ pub(super) async fn build_context_from_candidates(
         return Err(anyhow!("Failed to retrieve any context sources for ask"));
     }
 
-    let context = format!("Sources:\n{}", context_entries.join(separator));
+    // Flatten by rerank_score across all buckets (top-chunks/full-docs/supplemental):
+    // LLMs have proximity bias — highest-scoring chunks should appear first
+    // regardless of which bucket they came from. (bd axon_rust-az9)
+    context_entries.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let joined: Vec<String> = context_entries.into_iter().map(|(_, s)| s).collect();
+    let context = format!("Sources:\n{}", joined.join(separator));
     let context_elapsed_ms = context_started.elapsed().as_millis();
 
     let diagnostic_sources = build_diagnostic_sources(
@@ -135,7 +148,7 @@ fn append_top_chunks_to_context(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
     planned_full_doc_urls: &HashSet<String>,
-    context_entries: &mut Vec<String>,
+    context_entries: &mut Vec<(f64, String)>,
     context_char_count: &mut usize,
     source_idx: &mut usize,
     separator: &str,
@@ -155,6 +168,7 @@ fn append_top_chunks_to_context(
         if !push_context_entry(
             context_entries,
             context_char_count,
+            chunk.rerank_score,
             entry,
             separator,
             max_context_chars,
@@ -227,18 +241,30 @@ async fn fetch_full_docs(
     Ok(fetched_docs)
 }
 
+/// Number of chunks per fetched full-doc that survive the query-relevance
+/// filter before being concatenated. Tradeoff: small enough to drop irrelevant
+/// chunks, large enough to preserve narrative context. (bd axon_rust-0fz)
+const FULL_DOC_RENDER_TOP_K: usize = 24;
+
+#[allow(clippy::too_many_arguments)]
 fn append_full_docs_to_context(
-    context_entries: &mut Vec<String>,
+    context_entries: &mut Vec<(f64, String)>,
     context_char_count: &mut usize,
     inserted_full_doc_urls: &mut HashSet<String>,
     mut source_idx: usize,
     separator: &str,
     max_context_chars: usize,
     fetched_docs: Vec<(usize, String, Vec<qdrant::QdrantPoint>)>,
+    query_tokens: &[String],
+    url_to_score: &std::collections::HashMap<String, f64>,
 ) -> (usize, usize) {
     let mut full_docs_selected = 0usize;
     for (_idx, url, points) in fetched_docs {
-        let text = qdrant::render_full_doc_from_points(points);
+        let text = qdrant::render_full_doc_filtered(
+            points,
+            Some(query_tokens),
+            Some(FULL_DOC_RENDER_TOP_K),
+        );
         if text.is_empty() {
             continue;
         }
@@ -247,9 +273,11 @@ fn append_full_docs_to_context(
             "## Source Document [S{}]: {}\n\n{}",
             source_idx, source, text
         );
+        let score = url_to_score.get(&url).copied().unwrap_or(0.0);
         if !push_context_entry(
             context_entries,
             context_char_count,
+            score,
             entry,
             separator,
             max_context_chars,
@@ -266,7 +294,7 @@ fn append_full_docs_to_context(
 fn append_supplemental_chunks(
     reranked: &[ranking::AskCandidate],
     supplemental: &[usize],
-    context_entries: &mut Vec<String>,
+    context_entries: &mut Vec<(f64, String)>,
     context_char_count: &mut usize,
     source_idx: &mut usize,
     separator: &str,
@@ -283,6 +311,7 @@ fn append_supplemental_chunks(
         if !push_context_entry(
             context_entries,
             context_char_count,
+            chunk.rerank_score,
             entry,
             separator,
             max_context_chars,

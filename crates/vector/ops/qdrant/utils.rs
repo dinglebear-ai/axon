@@ -66,7 +66,52 @@ pub fn base_url(url: &str) -> Option<String> {
     Some(out)
 }
 
-pub fn render_full_doc_from_points(mut points: Vec<QdrantPoint>) -> String {
+pub fn render_full_doc_from_points(points: Vec<QdrantPoint>) -> String {
+    render_full_doc_filtered(points, None, None)
+}
+
+/// Render full-doc context with optional query-relevance filtering.
+///
+/// When `query_tokens` is provided, each chunk is scored by lowercase token
+/// hit count and only the top `top_k` chunks are kept. The kept chunks are
+/// re-sorted by `chunk_index` for narrative coherence so the LLM still reads
+/// the document in document order — just without the irrelevant interludes.
+///
+/// When `query_tokens` is `None`, behaves as before: all chunks concatenated
+/// in `chunk_index` order. (bd axon_rust-0fz)
+pub fn render_full_doc_filtered(
+    mut points: Vec<QdrantPoint>,
+    query_tokens: Option<&[String]>,
+    top_k: Option<usize>,
+) -> String {
+    if let (Some(tokens), Some(k)) = (query_tokens, top_k)
+        && !tokens.is_empty()
+        && k > 0
+        && points.len() > k
+    {
+        let mut scored: Vec<(usize, f64)> = points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                (
+                    i,
+                    score_chunk_against_tokens(payload_text_typed(&p.payload), tokens),
+                )
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(k);
+        let kept: std::collections::HashSet<usize> =
+            scored.into_iter().map(|(idx, _)| idx).collect();
+        let mut filtered = Vec::with_capacity(kept.len());
+        for (i, p) in points.into_iter().enumerate() {
+            if kept.contains(&i) {
+                filtered.push(p);
+            }
+        }
+        points = filtered;
+    }
+
     points.sort_by_key(|p| p.payload.chunk_index.unwrap_or(i64::MAX));
     let capacity = points
         .iter()
@@ -89,6 +134,26 @@ pub fn render_full_doc_from_points(mut points: Vec<QdrantPoint>) -> String {
     }
     text.truncate(text.trim_end().len());
     text
+}
+
+/// Cheap query-overlap score: sum of token occurrences in the chunk's
+/// lowercased text. Stable, no allocations beyond the lowercase pass.
+fn score_chunk_against_tokens(chunk: &str, tokens: &[String]) -> f64 {
+    let lower = chunk.to_ascii_lowercase();
+    let mut score = 0.0_f64;
+    for token in tokens {
+        if token.is_empty() {
+            continue;
+        }
+        let mut count = 0;
+        let mut start = 0;
+        while let Some(pos) = lower[start..].find(token.as_str()) {
+            count += 1;
+            start += pos + token.len();
+        }
+        score += count as f64;
+    }
+    score
 }
 
 pub fn query_snippet(payload: &QdrantPayload) -> String {
@@ -115,7 +180,7 @@ mod tests {
     use super::super::types::{QdrantPayload, QdrantPoint};
     use super::{
         RETRIEVE_MAX_POINTS_CEILING, base_url, env_usize_clamped, query_snippet,
-        render_full_doc_from_points, retrieve_max_points,
+        render_full_doc_filtered, render_full_doc_from_points, retrieve_max_points,
     };
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -357,5 +422,66 @@ mod tests {
         let val = env_usize_clamped("TEST_AXON_UTILS_CLAMP_5", 7, 1, 100);
         unsafe { std::env::remove_var("TEST_AXON_UTILS_CLAMP_5") };
         assert_eq!(val, 7);
+    }
+
+    // ── render_full_doc_filtered ──────────────────────────────────────────────
+
+    #[test]
+    fn render_filtered_keeps_top_k_by_query_overlap() {
+        // 3 chunks, top_k=2. Chunks 0 + 2 contain query tokens; chunk 1 has none.
+        // Expect chunks 0 and 2 only, in chunk_index order. (bd axon_rust-0fz)
+        let points = vec![
+            make_point("alpha bravo charlie", "", Some(0)),
+            make_point("nothing useful here", "", Some(1)),
+            make_point("alpha foxtrot golf", "", Some(2)),
+        ];
+        let tokens = vec!["alpha".to_string()];
+        let result = render_full_doc_filtered(points, Some(&tokens), Some(2));
+        assert!(result.contains("alpha bravo charlie"));
+        assert!(result.contains("alpha foxtrot golf"));
+        assert!(!result.contains("nothing useful"));
+    }
+
+    #[test]
+    fn render_filtered_no_query_keeps_all_chunks() {
+        // query_tokens=None → behaves like the legacy render (no filtering).
+        let points = vec![
+            make_point("first chunk", "", Some(0)),
+            make_point("second chunk", "", Some(1)),
+        ];
+        let result = render_full_doc_filtered(points, None, Some(1));
+        assert!(result.contains("first chunk"));
+        assert!(result.contains("second chunk"));
+    }
+
+    #[test]
+    fn render_filtered_re_sorts_kept_by_chunk_index() {
+        // Even though the query-score order is chunk 2 > chunk 0, the rendered
+        // text must appear in chunk_index order so the LLM reads document flow.
+        let points = vec![
+            make_point("alpha appears once here", "", Some(0)),
+            make_point("alpha alpha alpha hits", "", Some(2)),
+            make_point("noise", "", Some(1)),
+        ];
+        let tokens = vec!["alpha".to_string()];
+        let result = render_full_doc_filtered(points, Some(&tokens), Some(2));
+        let pos_once = result.find("once here").unwrap();
+        let pos_hits = result.find("hits").unwrap();
+        assert!(
+            pos_once < pos_hits,
+            "kept chunks must be re-sorted by chunk_index ascending"
+        );
+    }
+
+    #[test]
+    fn render_filtered_top_k_larger_than_input_keeps_all() {
+        let points = vec![
+            make_point("alpha", "", Some(0)),
+            make_point("beta", "", Some(1)),
+        ];
+        let tokens = vec!["zzz".to_string()]; // no matches — but k > len, so no filter applied
+        let result = render_full_doc_filtered(points, Some(&tokens), Some(10));
+        assert!(result.contains("alpha"));
+        assert!(result.contains("beta"));
     }
 }
