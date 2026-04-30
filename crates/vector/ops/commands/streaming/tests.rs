@@ -89,6 +89,7 @@ fn rag_and_judge_prompts_mark_sources_untrusted() {
             baseline_elapsed_ms: 1,
             source_count: 1,
             context_chars: 1,
+            retrieval_ab: false,
         })
         .contains("untrusted independent retrieval")
     );
@@ -244,7 +245,33 @@ async fn judge_llm_non_streaming_with_runner_builds_acp_request() {
         baseline_elapsed_ms: 7,
         source_count: 1,
         context_chars: 42,
+        retrieval_ab: false,
     };
+
+    {
+        let ab_ctx = JudgeContext {
+            query: "q",
+            rag_answer: "hyb",
+            baseline_answer: "dense",
+            reference_chunks: "refs",
+            rag_sources_list: "src",
+            ref_quality_note: "",
+            rag_elapsed_ms: 1,
+            baseline_elapsed_ms: 1,
+            source_count: 1,
+            context_chars: 1,
+            retrieval_ab: true,
+        };
+        let msg = judge_user_msg(&ab_ctx);
+        assert!(
+            msg.contains("RETRIEVAL A/B MODE"),
+            "ab-mode prompt must include the mode note: {msg}"
+        );
+        assert!(
+            msg.contains("HYBRID DISABLED"),
+            "ab-mode baseline label must say HYBRID DISABLED: {msg}"
+        );
+    }
 
     let answer = judge_llm_non_streaming_with_runner(&runner, &cfg, &judge_ctx)
         .await

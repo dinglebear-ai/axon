@@ -229,6 +229,52 @@ pub(super) async fn crawl_and_collect_map(
     Ok((summary, urls))
 }
 
+/// HTTP-first crawl with optional Chrome retry on low URL coverage.
+///
+/// Implements the auto-switch contract for `--map-fallback crawl --render-mode
+/// auto-switch`: try HTTP first, then upgrade to Chrome if the URL count is
+/// below `cfg.auto_switch_min_pages` and a Chrome endpoint is configured.
+/// Chrome retry is skipped (and the HTTP result kept) when:
+///   - no Chrome endpoint is configured, or
+///   - Chrome retry errors out, or
+///   - Chrome retry returns no more URLs than the HTTP result.
+///
+/// Lives in its own `async fn` so the parent state machine in `map_with_sitemap`
+/// stays small enough to avoid debug-build stack overflows.
+async fn crawl_with_auto_switch(
+    cfg: &Config,
+    crawl_start_url: &str,
+    scope: &MapScope,
+) -> Result<(CrawlSummary, Vec<String>), Box<dyn Error>> {
+    let (summary, urls) =
+        crawl_and_collect_map(cfg, crawl_start_url, RenderMode::Http, scope).await?;
+    let coverage_floor = cfg.auto_switch_min_pages.max(1);
+    let chrome_available = cfg
+        .chrome_remote_url
+        .as_ref()
+        .is_some_and(|s| !s.is_empty());
+    if urls.len() >= coverage_floor || !chrome_available {
+        return Ok((summary, urls));
+    }
+    log_info(&format!(
+        "map: HTTP crawl returned {} URLs (< {} threshold), retrying with Chrome",
+        urls.len(),
+        coverage_floor
+    ));
+    match crawl_and_collect_map(cfg, crawl_start_url, RenderMode::Chrome, scope).await {
+        Ok((chrome_summary, chrome_urls)) if chrome_urls.len() > urls.len() => {
+            Ok((chrome_summary, chrome_urls))
+        }
+        Ok(_) => Ok((summary, urls)),
+        Err(err) => {
+            log_info(&format!(
+                "map: Chrome retry failed ({err}); keeping HTTP result"
+            ));
+            Ok((summary, urls))
+        }
+    }
+}
+
 /// Fetch root HTML and extract anchor hrefs as a bounded fallback.
 /// Returns (urls, warning) — warning is non-None when fewer than 5 URLs found.
 async fn bounded_structure_fallback(
@@ -379,12 +425,22 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     match cfg.map_fallback {
         MapFallback::Crawl => {
             // Explicit opt-in: run full Spider.rs crawl (legacy behaviour).
-            let initial_mode = match cfg.render_mode {
-                RenderMode::AutoSwitch => RenderMode::Http,
-                m => m,
+            // AutoSwitch logic is in a separate async fn so the parent future's
+            // state machine stays small. Box::pin is required on top of that —
+            // crawl_and_collect_map's future is large enough on debug builds
+            // that even a single inline call here can overflow the stack when
+            // combined with the rest of map_with_sitemap.
+            let (mut summary, urls) = match cfg.render_mode {
+                RenderMode::AutoSwitch => {
+                    Box::pin(crawl_with_auto_switch(cfg, &crawl_start_url, &scope)).await?
+                }
+                m => Box::pin(crawl_and_collect_map(cfg, &crawl_start_url, m, &scope)).await?,
             };
-            let (summary, urls) =
-                crawl_and_collect_map(cfg, &crawl_start_url, initial_mode, &scope).await?;
+            // elapsed_ms is measured against the outer `start` so all branches
+            // (sitemap, bounded-structure, crawl) report the total wall-clock
+            // duration including seed resolution and sitemap discovery — not
+            // just the crawl phase.
+            summary.elapsed_ms = start.elapsed().as_millis();
             Ok(MapResult {
                 summary,
                 sitemap_urls: raw_sitemap_count,
