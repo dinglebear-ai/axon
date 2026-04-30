@@ -272,8 +272,14 @@ pub struct EvaluateResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Suggestion {
+    pub url: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SuggestResult {
-    pub urls: Vec<String>,
+    pub suggestions: Vec<Suggestion>,
 }
 
 // ── Scrape / map / search / research ─────────────────────────────────────────

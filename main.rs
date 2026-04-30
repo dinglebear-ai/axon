@@ -100,6 +100,5 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
 
     load_dotenv();
 
-
     axon::run().await
 }

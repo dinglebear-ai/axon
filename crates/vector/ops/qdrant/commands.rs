@@ -42,7 +42,8 @@ pub(crate) async fn dispatch_vector_search(
     limit: usize,
 ) -> Result<Vec<QdrantSearchHit>, Box<dyn Error>> {
     let filter =
-        super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref());
+        super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref())
+            .map_err(|e| -> Box<dyn Error> { e.into() })?;
     let filter_ref = filter.as_ref();
     let mode = get_or_fetch_vector_mode(cfg)
         .await

@@ -238,7 +238,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             secs += 1;
-            if secs % 10 == 0 {
+            if secs.is_multiple_of(10) {
                 eprintln!("still draining ({secs}s elapsed)...");
             }
         }

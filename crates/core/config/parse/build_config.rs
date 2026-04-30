@@ -187,6 +187,12 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                     .to_string(),
             ],
         ),
+        CliCommand::Serve(args) => match args.target {
+            super::super::cli::ServeSubcommand::Mcp(args) => {
+                mcp_transport = args.transport;
+                (CommandKind::Mcp, Vec::new())
+            }
+        },
         CliCommand::Mcp(args) => {
             mcp_transport = args.transport;
             (CommandKind::Mcp, Vec::new())

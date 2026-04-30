@@ -11,12 +11,15 @@ pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "suggestions": result.urls
+                "suggestions": result.suggestions.iter().map(|s| serde_json::json!({
+                    "url": &s.url,
+                    "reason": &s.reason,
+                })).collect::<Vec<_>>()
             }))?
         );
     } else {
-        for url in &result.urls {
-            println!("{url}");
+        for suggestion in &result.suggestions {
+            println!("{}\t{}", suggestion.url, suggestion.reason);
         }
     }
     Ok(())

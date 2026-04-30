@@ -238,6 +238,20 @@ async fn qdrant_retrieve_by_url_returns_only_matching_points() -> Result<(), Box
     Ok(())
 }
 
+#[tokio::test]
+async fn qdrant_retrieve_by_url_rejects_invalid_date_filter_before_scroll() {
+    let mut cfg = Config::test_default();
+    cfg.since = Some("not-a-date".to_string());
+
+    let err = qdrant_retrieve_by_url(&cfg, "https://retrieve-a.example", None)
+        .await
+        .expect_err("invalid since must fail before unfiltered retrieval");
+    assert!(
+        err.to_string().contains("--since parse error"),
+        "error should mention invalid since, got: {err}"
+    );
+}
+
 /// `qdrant_delete_by_url_filter` must remove all points with the target url and leave others intact.
 #[tokio::test]
 async fn qdrant_delete_by_url_filter_removes_matching_points() -> Result<(), Box<dyn Error>> {

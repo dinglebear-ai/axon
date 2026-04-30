@@ -64,5 +64,7 @@ axon research "Spider.rs rendering tradeoffs" --openai-base-url http://localhost
 
 - Both `TAVILY_API_KEY` and `AXON_ACP_ADAPTER_CMD` are validated at startup; the command errors immediately if either is missing or empty.
 - `--search-time-range` is applied to the Tavily search step before synthesis.
-- With `--json`, output is strict JSON on stdout.
+- The synthesis prompt asks for plain text, not JSON. The service still accepts legacy `{"summary":"..."}` model responses and unwraps the `summary` field for compatibility.
+- With `--json`, stdout is strict command JSON. The `summary` field inside that payload is a string containing the plain-text synthesis.
 - `research` does not enqueue jobs and does not auto-embed results into Qdrant.
+- Progress logs redact the full user query by default and identify it by length/hash. Set `AXON_LOG_FULL_QUERIES=1` or `--log-level debug` only when full-query logging is intentional.

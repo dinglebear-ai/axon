@@ -85,15 +85,16 @@ fn smoke_map_suggest_payload_extracts_urls() {
         ]
     });
     let result: SuggestResult = map_suggest_payload(&payload).expect("valid suggest payload");
-    assert_eq!(result.urls.len(), 2);
-    assert_eq!(result.urls[0], "https://docs.example.com/guide");
+    assert_eq!(result.suggestions.len(), 2);
+    assert_eq!(result.suggestions[0].url, "https://docs.example.com/guide");
+    assert_eq!(result.suggestions[0].reason, "Core guide");
 }
 
 #[test]
 fn smoke_map_suggest_payload_empty_yields_empty() {
     let payload = serde_json::json!({"suggestions": []});
     let result: SuggestResult = map_suggest_payload(&payload).expect("empty payload");
-    assert!(result.urls.is_empty());
+    assert!(result.suggestions.is_empty());
 }
 
 #[test]

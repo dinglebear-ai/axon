@@ -459,18 +459,20 @@ pub(crate) async fn qdrant_retrieve_by_url(
         qdrant_base(cfg),
         cfg.collection
     );
+    let url_filter = super::filter::url_filter(url_match);
+    let filter =
+        match super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref()) {
+            Ok(Some(date_filter)) => {
+                super::filter::combine_must_filters(&[url_filter, date_filter])
+            }
+            Ok(None) => url_filter,
+            Err(err) => return Err(anyhow!(err)),
+        };
     let body = serde_json::json!({
         "limit": 256,
         "with_payload": true,
         "with_vector": false,
-        "filter": {
-            "must": [
-                {
-                    "key": "url",
-                    "match": {"value": url_match}
-                }
-            ]
-        }
+        "filter": filter
     });
     let max_points = retrieve_max_points(max_points);
     let mut out = Vec::new();

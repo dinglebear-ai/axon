@@ -30,8 +30,8 @@ services:
     image: qdrant/qdrant:v1.13.1
     container_name: axon-qdrant
     ports:
-      - "127.0.0.1:53333:6333"
-      - "127.0.0.1:53334:6334"  # gRPC
+      - "53333:6333"
+      - "53334:6334"  # gRPC
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
       - ./docker/qdrant/production.yaml:/qdrant/config/production.yaml:ro
@@ -61,7 +61,7 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
     container_name: axon-tei
     ports:
-      - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
+      - "${TEI_HTTP_PORT:-52000}:80"
     volumes:
       - ${AXON_DATA_DIR:-./data}/tei:/data
     command:
@@ -120,9 +120,9 @@ services:
     env_file: []  # no app secrets needed in the browser container
     shm_size: "2gb"
     ports:
-      - "127.0.0.1:9222:9222"  # CDP proxy
-      - "127.0.0.1:9223:9223"  # raw Chrome DevTools
-      - "127.0.0.1:6000:6000"  # management API
+      - "9222:9222"  # CDP proxy
+      - "9223:9223"  # raw Chrome DevTools
+      - "6000:6000"  # management API
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
     networks:
@@ -142,33 +142,6 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
-
-  axon-ollama:
-    <<: *common-service
-    image: ollama/ollama:latest
-    container_name: axon-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ${AXON_DATA_DIR:-./data}/axon/ollama:/root/.ollama
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
-      NVIDIA_REQUIRE_CUDA: "cuda>=12.2"
-      CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-0}"
-      OLLAMA_NUM_CTX: "65536"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 40s
 
 networks:
   axon:

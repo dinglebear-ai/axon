@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
+use tokio::sync::Notify;
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{JobPayload, lift_err};
@@ -14,6 +15,7 @@ pub(super) async fn run_crawl_job_lite(
     pool: &SqlitePool,
     cfg: &Config,
     id: uuid::Uuid,
+    embed_notify: Option<Arc<Notify>>,
 ) -> JobResult {
     let row: Option<(String,)> = sqlx::query_as("SELECT url FROM axon_crawl_jobs WHERE id=?")
         .bind(id.to_string())
@@ -61,7 +63,12 @@ pub(super) async fn run_crawl_job_lite(
         )
         .await
         {
-            Ok(eid) => Some(eid.to_string()),
+            Ok(eid) => {
+                if let Some(notify) = &embed_notify {
+                    notify.notify_one();
+                }
+                Some(eid.to_string())
+            }
             Err(e) => {
                 tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
                 None

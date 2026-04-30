@@ -495,4 +495,20 @@ mod tests {
             env::remove_var(TRANSPORT);
         }
     }
+
+    #[test]
+    fn parse_serve_mcp_maps_to_mcp_http_transport() {
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "serve",
+            "mcp",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("serve mcp config should parse");
+        assert!(matches!(cfg.command, CommandKind::Mcp));
+        assert_eq!(cfg.mcp_transport, McpTransport::Http);
+    }
 }

@@ -1,6 +1,6 @@
 use crate::crates::cli::commands::common::truncate_chars;
 use crate::crates::cli::commands::resolve_input_text;
-use crate::crates::core::config::Config;
+use crate::crates::core::config::{Config, EvaluateResponsesMode};
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{muted, primary};
 use crate::crates::services::query as query_service;
@@ -20,8 +20,82 @@ pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    print_human_evaluate_output(&result.payload, &question);
+    print_evaluate_output(cfg, &result.payload, &question)?;
     Ok(())
+}
+
+fn print_evaluate_output(
+    cfg: &Config,
+    payload: &serde_json::Value,
+    question: &str,
+) -> Result<(), Box<dyn Error>> {
+    match cfg.evaluate_responses_mode {
+        EvaluateResponsesMode::Events => {
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "type": "evaluate_complete",
+                    "payload": payload,
+                }))?
+            );
+        }
+        EvaluateResponsesMode::SideBySide => {
+            print_side_by_side_answers(payload);
+            print_human_evaluate_output(payload, question);
+        }
+        EvaluateResponsesMode::Inline => print_human_evaluate_output(payload, question),
+    }
+    Ok(())
+}
+
+fn print_side_by_side_answers(payload: &serde_json::Value) {
+    let rag = payload["rag_answer"].as_str().unwrap_or("");
+    let baseline = payload["baseline_answer"].as_str().unwrap_or("");
+    if rag.is_empty() && baseline.is_empty() {
+        return;
+    }
+    println!("  WITH CONTEXT                              │ WITHOUT CONTEXT");
+    println!(
+        "  ──────────────────────────────────────────┼──────────────────────────────────────────"
+    );
+    for line in build_side_by_side_rows(rag, baseline, 42) {
+        println!("{line}");
+    }
+    println!();
+}
+
+fn build_side_by_side_rows(left: &str, right: &str, width: usize) -> Vec<String> {
+    let left_lines = wrap_fixed_width(left, width);
+    let right_lines = wrap_fixed_width(right, width);
+    let rows = left_lines.len().max(right_lines.len());
+    (0..rows)
+        .map(|idx| {
+            format!(
+                "  {:width$} │ {:width$}",
+                left_lines.get(idx).map(String::as_str).unwrap_or(""),
+                right_lines.get(idx).map(String::as_str).unwrap_or(""),
+                width = width
+            )
+        })
+        .collect()
+}
+
+fn wrap_fixed_width(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for raw in text.lines() {
+        if raw.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let chars = raw.chars().collect::<Vec<_>>();
+        for chunk in chars.chunks(width.max(1)) {
+            lines.push(chunk.iter().collect());
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }
 
 fn print_human_evaluate_output(payload: &serde_json::Value, question: &str) {
@@ -185,5 +259,15 @@ mod tests {
     #[test]
     fn derive_verdict_unknown_no_scores() {
         assert_eq!(derive_verdict("no scores here"), "UNKNOWN");
+    }
+
+    #[test]
+    fn side_by_side_rows_include_both_answers() {
+        let rows = build_side_by_side_rows("abcdef", "uvwxyz", 3);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].contains("abc"));
+        assert!(rows[0].contains("uvw"));
+        assert!(rows[1].contains("def"));
+        assert!(rows[1].contains("xyz"));
     }
 }

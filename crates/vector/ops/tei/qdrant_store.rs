@@ -29,28 +29,46 @@ pub(crate) enum VectorMode {
 /// read-only -- `RwLock` allows unlimited concurrent readers.
 static COLLECTION_MODES: OnceLock<RwLock<HashMap<String, VectorMode>>> = OnceLock::new();
 
+fn collection_mode_cache_key(cfg: &Config) -> String {
+    format!(
+        "{}\x1f{}",
+        qdrant_base(cfg).trim_end_matches('/'),
+        cfg.collection
+    )
+}
+
 /// Return the cached `VectorMode` for `name`, or `None` if not yet initialized.
-fn cached_vector_mode(name: &str) -> Option<VectorMode> {
+fn cached_vector_mode_key(key: &str) -> Option<VectorMode> {
     COLLECTION_MODES
         .get()
         .and_then(|m| m.read().ok())
-        .and_then(|map| map.get(name).copied())
+        .and_then(|map| map.get(key).copied())
+}
+
+#[cfg(test)]
+fn cached_vector_mode(name: &str) -> Option<VectorMode> {
+    cached_vector_mode_key(name)
 }
 
 /// Store `mode` in the collection-mode cache for `name`.
-fn cache_vector_mode(name: &str, mode: VectorMode) {
+fn cache_vector_mode_key(key: &str, mode: VectorMode) {
     let map = COLLECTION_MODES.get_or_init(|| RwLock::new(HashMap::new()));
     match map.write() {
         Ok(mut m) => {
-            m.insert(name.to_owned(), mode);
+            m.insert(key.to_owned(), mode);
         }
         Err(e) => {
             log_warn(&format!(
                 "COLLECTION_MODES RwLock poisoned, cache write skipped for '{}': {e}",
-                name
+                key
             ));
         }
     }
+}
+
+#[cfg(test)]
+fn cache_vector_mode(name: &str, mode: VectorMode) {
+    cache_vector_mode_key(name, mode);
 }
 
 /// Clear a specific entry from the collection mode cache.
@@ -62,6 +80,8 @@ pub(crate) fn clear_collection_mode_cache(name: &str) {
         && let Ok(mut m) = map.write()
     {
         m.remove(name);
+        let suffix = format!("\x1f{name}");
+        m.retain(|key, _| !key.ends_with(&suffix));
     }
 }
 
@@ -79,11 +99,12 @@ pub(super) async fn collection_init_or_cached(
     cfg: &Config,
     dim: usize,
 ) -> Result<VectorMode, Box<dyn Error>> {
-    if let Some(mode) = cached_vector_mode(&cfg.collection) {
+    let cache_key = collection_mode_cache_key(cfg);
+    if let Some(mode) = cached_vector_mode_key(&cache_key) {
         return Ok(mode);
     }
     let mode = ensure_collection(cfg, dim).await?;
-    cache_vector_mode(&cfg.collection, mode);
+    cache_vector_mode_key(&cache_key, mode);
     Ok(mode)
 }
 
@@ -98,7 +119,8 @@ pub(super) async fn collection_init_or_cached(
 /// on probe failures can misroute Named collections to `/points/search`, which
 /// Qdrant rejects.
 pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode, Box<dyn Error>> {
-    if let Some(mode) = cached_vector_mode(&cfg.collection) {
+    let cache_key = collection_mode_cache_key(cfg);
+    if let Some(mode) = cached_vector_mode_key(&cache_key) {
         return Ok(mode);
     }
     let client = http_client()?;
@@ -180,7 +202,7 @@ pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode,
             .into());
         }
     };
-    cache_vector_mode(&cfg.collection, mode);
+    cache_vector_mode_key(&cache_key, mode);
     Ok(mode)
 }
 

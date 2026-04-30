@@ -100,9 +100,14 @@ fn map_suggest_payload_extracts_urls() {
         "rejected_existing": []
     });
     let result = map_suggest_payload(&payload).expect("valid suggest payload");
-    assert_eq!(result.urls.len(), 2);
-    assert_eq!(result.urls[0], "https://docs.example.com/guide");
-    assert_eq!(result.urls[1], "https://api.example.com/reference");
+    assert_eq!(result.suggestions.len(), 2);
+    assert_eq!(result.suggestions[0].url, "https://docs.example.com/guide");
+    assert_eq!(result.suggestions[0].reason, "Core guide");
+    assert_eq!(
+        result.suggestions[1].url,
+        "https://api.example.com/reference"
+    );
+    assert_eq!(result.suggestions[1].reason, "API reference");
 }
 
 #[test]
@@ -112,7 +117,7 @@ fn map_suggest_payload_empty_suggestions_yields_empty_urls() {
         "rejected_existing": []
     });
     let result = map_suggest_payload(&payload).expect("valid empty payload");
-    assert!(result.urls.is_empty());
+    assert!(result.suggestions.is_empty());
 }
 
 #[test]

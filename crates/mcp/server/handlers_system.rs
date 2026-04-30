@@ -286,8 +286,6 @@ impl AxonMcpServer {
                     "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "embed": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "ingest": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-                    "refresh": ["start", "status", "cancel", "list", "cleanup", "clear", "recover", "schedule"],
-                    "graph": ["build", "status", "explore", "stats"],
                     "query": ["query"],
                     "retrieve": ["retrieve"],
                     "search": ["search"],
@@ -296,7 +294,6 @@ impl AxonMcpServer {
                     "domains": ["domains"],
                     "sources": ["sources"],
                     "stats": ["stats"],
-                    "export": ["export"],
                     "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
                     "elicit_demo": []
                 },

@@ -9,6 +9,7 @@ mod output;
 mod tests;
 
 pub(crate) use context::{AskContext, build_ask_context};
+pub(crate) use normalize::normalize_ask_answer;
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     anyhow::ensure!(
@@ -48,7 +49,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let (raw_answer, llm_elapsed_ms, _) = output::ask_llm_answer(cfg, query, &ctx.context, warm)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
-    let answer = normalize::normalize_ask_answer(cfg, query, &raw_answer, &ctx.context);
+    let answer = normalize_ask_answer(cfg, query, &raw_answer, &ctx.context);
     let total_elapsed_ms = ask_started.elapsed().as_millis();
 
     Ok(serde_json::json!({

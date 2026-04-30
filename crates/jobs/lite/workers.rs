@@ -90,6 +90,7 @@ pub fn spawn_workers(
         Arc::clone(&cfg),
         Arc::clone(&cancel_store),
         Arc::clone(&crawl_notify),
+        Arc::clone(&embed_notify),
     )));
 
     // Embed: multi-lane
@@ -188,10 +189,12 @@ async fn crawl_worker(
     cfg: Arc<Config>,
     _cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
+    embed_notify: Arc<Notify>,
 ) {
     worker_loop(pool, "axon_crawl_jobs", notify, move |pool, id| {
         let cfg = Arc::clone(&cfg);
-        async move { run_crawl_job_lite(&pool, &cfg, id).await }
+        let embed_notify = Arc::clone(&embed_notify);
+        async move { run_crawl_job_lite(&pool, &cfg, id, Some(embed_notify)).await }
     })
     .await;
 }

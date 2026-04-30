@@ -2,7 +2,8 @@ use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
     map_scrape_format, paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options,
-    to_pagination, to_retrieve_options, to_search_options, validate_mcp_url,
+    to_pagination, to_retrieve_options, to_search_options, validate_mcp_collection,
+    validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -28,7 +29,7 @@ impl AxonMcpServer {
 
         let mut cfg = self.cfg.as_ref().clone();
         if let Some(collection) = req.collection {
-            cfg.collection = collection;
+            cfg.collection = validate_mcp_collection(&collection)?;
         }
         if let Some(since) = req.since {
             cfg.since = Some(since);
@@ -278,7 +279,7 @@ impl AxonMcpServer {
             cfg.ask_diagnostics = diagnostics;
         }
         if let Some(collection) = req.collection {
-            cfg.collection = collection;
+            cfg.collection = validate_mcp_collection(&collection)?;
         }
         if let Some(since) = req.since {
             cfg.since = Some(since);

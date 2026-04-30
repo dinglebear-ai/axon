@@ -4,7 +4,6 @@ use crate::crates::jobs::backend::JobKind;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::jobs as job_service;
-use crate::crates::services::runtime::ServiceJobRuntime;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
     CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode, JobStartOutcome,
@@ -163,7 +162,7 @@ pub async fn crawl_start_with_context(
             }
             _ => {}
         }
-        wait_for_pending_embed_jobs(service_context.jobs.as_ref()).await;
+        wait_for_crawl_embed_dependency(service_context, job_id).await?;
     }
 
     Ok(JobStartOutcome {
@@ -218,25 +217,57 @@ pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dy
     }
 }
 
-async fn wait_for_pending_embed_jobs(runtime: &dyn ServiceJobRuntime) {
-    let timeout_secs: u64 = std::env::var("AXON_JOB_WAIT_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300);
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
-    loop {
-        match runtime.has_active_jobs(JobKind::Embed).await {
-            Ok(false) => break,
-            Ok(true) => {}
-            Err(_) => break,
+async fn wait_for_crawl_embed_dependency(
+    service_context: &ServiceContext,
+    crawl_job_id: Uuid,
+) -> Result<(), Box<dyn Error>> {
+    let Some(job) = service_context
+        .jobs
+        .job_status(JobKind::Crawl, crawl_job_id)
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?
+    else {
+        return Ok(());
+    };
+
+    let Some(embed_job_id) = job
+        .result_json
+        .as_ref()
+        .and_then(|result| result.get("embed_job_id"))
+        .and_then(|value| value.as_str())
+        .and_then(|value| Uuid::parse_str(value).ok())
+    else {
+        return Ok(());
+    };
+
+    let final_status = service_context
+        .jobs
+        .wait_for_job(embed_job_id, JobKind::Embed)
+        .await
+        .map_err(|e| -> Box<dyn Error> { e })?;
+
+    match final_status.as_str() {
+        "failed" => {
+            if let Ok(Some(err)) = service_context
+                .jobs
+                .job_errors(embed_job_id, JobKind::Embed)
+                .await
+            {
+                return Err(format!("crawl embed job {embed_job_id} failed: {err}").into());
+            }
+            Err(format!("crawl embed job {embed_job_id} failed").into())
         }
-        if tokio::time::Instant::now() >= deadline {
-            tracing::warn!(
-                "wait_for_pending_embed_jobs: timed out after {timeout_secs}s waiting for embed jobs to complete"
-            );
-            break;
+        "canceled" => {
+            if let Ok(Some(err)) = service_context
+                .jobs
+                .job_errors(embed_job_id, JobKind::Embed)
+                .await
+            {
+                return Err(format!("crawl embed job {embed_job_id} canceled: {err}").into());
+            }
+            Err(format!("crawl embed job {embed_job_id} canceled").into())
         }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        _ => Ok(()),
     }
 }
 
@@ -247,10 +278,13 @@ mod tests {
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::types::ServiceJob;
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
     use async_trait::async_trait;
+    use chrono::Utc;
     use std::path::Path;
     use std::sync::Arc;
+    use std::sync::Mutex;
     use uuid::Uuid;
 
     fn test_config(start_url: &str) -> Config {
@@ -261,6 +295,11 @@ mod tests {
 
     struct CompletedLiteRuntime;
     struct CanceledLiteRuntime;
+    struct CrawlWithDependentEmbedRuntime {
+        crawl_job_id: Uuid,
+        embed_job_id: Uuid,
+        wait_calls: Mutex<Vec<(Uuid, JobKind)>>,
+    }
 
     /// Generate a complete `#[async_trait] impl ServiceJobRuntime for $t` with all
     /// no-op shared methods plus caller-supplied `wait_for_job` and `job_errors` bodies.
@@ -373,6 +412,111 @@ mod tests {
         Ok(Some("user canceled".to_string()))
     );
 
+    #[async_trait]
+    impl ServiceJobRuntime for CrawlWithDependentEmbedRuntime {
+        fn mode_name(&self) -> &'static str {
+            "test"
+        }
+
+        async fn enqueue(&self, _payload: JobPayload) -> BackendResult<Uuid> {
+            Ok(self.crawl_job_id)
+        }
+
+        async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String> {
+            self.wait_calls.lock().unwrap().push((id, kind));
+            Ok("completed".to_string())
+        }
+
+        async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
+            Ok(None)
+        }
+
+        async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
+            panic!("crawl completion must not globally drain unrelated active jobs")
+        }
+
+        async fn list_jobs(
+            &self,
+            _kind: JobKind,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<ServiceJob>, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(vec![])
+        }
+
+        async fn job_status(
+            &self,
+            kind: JobKind,
+            id: Uuid,
+        ) -> Result<Option<ServiceJob>, Box<dyn std::error::Error + Send + Sync>> {
+            if kind != JobKind::Crawl || id != self.crawl_job_id {
+                return Ok(None);
+            }
+            let now = Utc::now();
+            Ok(Some(ServiceJob {
+                id,
+                status: "completed".to_string(),
+                created_at: now,
+                updated_at: now,
+                started_at: Some(now),
+                finished_at: Some(now),
+                error_text: None,
+                url: Some("https://docs.rs".to_string()),
+                source_type: None,
+                target: None,
+                urls_json: None,
+                result_json: Some(serde_json::json!({
+                    "embed_job_id": self.embed_job_id.to_string()
+                })),
+                config_json: None,
+            }))
+        }
+
+        async fn cancel_job(
+            &self,
+            _kind: JobKind,
+            _id: Uuid,
+        ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(false)
+        }
+
+        async fn cleanup_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn clear_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn recover_jobs(
+            &self,
+            _kind: JobKind,
+            _stale_threshold_ms: i64,
+        ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(0)
+        }
+
+        async fn run_worker(
+            &self,
+            _kind: JobKind,
+        ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(WorkerMode::InProcess)
+        }
+
+        async fn count_jobs(
+            &self,
+            _kind: JobKind,
+        ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(0)
+        }
+    }
+
     #[test]
     fn map_crawl_start_result_includes_predicted_output_paths() {
         let result = map_crawl_start_result(
@@ -446,6 +590,36 @@ mod tests {
         assert_eq!(outcome.execution_mode, ExecutionMode::InProcess);
         assert_eq!(outcome.result.jobs.len(), 1);
         assert_eq!(outcome.result.jobs[0].url, cfg.start_url);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn crawl_start_waits_for_only_its_dependent_embed_job()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut cfg = test_config("https://docs.rs");
+        cfg.lite_mode = true;
+        cfg.wait = true;
+        let crawl_job_id = Uuid::new_v4();
+        let embed_job_id = Uuid::new_v4();
+        let runtime = Arc::new(CrawlWithDependentEmbedRuntime {
+            crawl_job_id,
+            embed_job_id,
+            wait_calls: Mutex::new(Vec::new()),
+        });
+        let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), runtime.clone());
+
+        let outcome = crawl_start_with_context(&cfg, &[cfg.start_url.clone()], &ctx, None)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        assert_eq!(outcome.disposition, StartDisposition::Completed);
+        assert_eq!(
+            *runtime.wait_calls.lock().unwrap(),
+            vec![
+                (crawl_job_id, JobKind::Crawl),
+                (embed_job_id, JobKind::Embed)
+            ]
+        );
         Ok(())
     }
 

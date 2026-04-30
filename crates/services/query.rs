@@ -3,7 +3,7 @@ use crate::crates::services::error::{ServiceError, diagnostics_from_error};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{
     AskResult, EvaluateResult, Pagination, QueryResult, RetrieveOptions, RetrieveResult,
-    SuggestResult,
+    SuggestResult, Suggestion,
 };
 use crate::crates::vector::ops::commands::ask::ask_payload;
 use crate::crates::vector::ops::commands::discover_crawl_suggestions;
@@ -55,17 +55,26 @@ pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult,
         .get("suggestions")
         .and_then(serde_json::Value::as_array)
         .ok_or("missing suggestions array")?;
-    let urls = suggestions
+    let suggestions = suggestions
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            item.get("url")
+            let url = item
+                .get("url")
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string)
-                .ok_or_else(|| format!("suggestions[{i}]: missing url").into())
+                .ok_or_else(|| -> Box<dyn Error> {
+                    format!("suggestions[{i}]: missing url").into()
+                })?;
+            let reason = item
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Suggested by model")
+                .to_string();
+            Ok(Suggestion { url, reason })
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    Ok(SuggestResult { urls })
+    Ok(SuggestResult { suggestions })
 }
 
 // ── Service functions (call-through wrappers) ────────────────────────────────
@@ -162,7 +171,7 @@ pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Bo
 
 /// Suggest new URLs to crawl based on the current Qdrant index and an optional focus.
 ///
-/// Returns the accepted suggestion URLs directly (no stdout side effects).
+/// Returns accepted suggestions directly (no stdout side effects).
 #[must_use = "suggest returns a Result that should be handled"]
 pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult, Box<dyn Error>> {
     let mut derived = cfg.clone();
@@ -175,8 +184,11 @@ pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult,
         .map_err(|e| -> Box<dyn Error> {
             format!("crawl suggestion discovery failed: {e}").into()
         })?;
-    let urls = pairs.into_iter().map(|(url, _reason)| url).collect();
-    Ok(SuggestResult { urls })
+    let suggestions = pairs
+        .into_iter()
+        .map(|(url, reason)| Suggestion { url, reason })
+        .collect();
+    Ok(SuggestResult { suggestions })
 }
 
 #[cfg(test)]
@@ -209,14 +221,16 @@ mod tests {
     fn map_suggest_valid() {
         let payload = json!({
             "suggestions": [
-                { "url": "https://example.com/a" },
+                { "url": "https://example.com/a", "reason": "A docs gap" },
                 { "url": "https://example.com/b" }
             ]
         });
         let result = map_suggest_payload(&payload).unwrap();
-        assert_eq!(result.urls.len(), 2);
-        assert_eq!(result.urls[0], "https://example.com/a");
-        assert_eq!(result.urls[1], "https://example.com/b");
+        assert_eq!(result.suggestions.len(), 2);
+        assert_eq!(result.suggestions[0].url, "https://example.com/a");
+        assert_eq!(result.suggestions[0].reason, "A docs gap");
+        assert_eq!(result.suggestions[1].url, "https://example.com/b");
+        assert_eq!(result.suggestions[1].reason, "Suggested by model");
     }
 
     #[test]
@@ -246,7 +260,7 @@ mod tests {
     fn map_suggest_empty_suggestions() {
         let payload = json!({ "suggestions": [] });
         let result = map_suggest_payload(&payload).unwrap();
-        assert!(result.urls.is_empty());
+        assert!(result.suggestions.is_empty());
     }
 
     // ── map_query_results ─────────────────────────────────────────────────────

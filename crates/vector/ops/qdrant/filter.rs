@@ -45,30 +45,31 @@ pub(crate) fn parse_time_filter(s: &str) -> Result<DateTime<Utc>, String> {
 
 /// Build a Qdrant filter value constraining `scraped_at` to [since, before].
 ///
-/// Returns `None` when both arguments are `None` (no filter applied).
-/// On parse error the bad argument is ignored and a warning is logged.
+/// Returns `Ok(None)` when both arguments are `None` (no filter applied).
+/// Invalid date values are returned as errors so callers never silently widen
+/// retrieval by dropping a bad bound.
 pub(crate) fn build_scraped_at_filter(
     since: Option<&str>,
     before: Option<&str>,
-) -> Option<serde_json::Value> {
-    use crate::crates::core::logging::log_warn;
+) -> Result<Option<serde_json::Value>, String> {
+    let gte = since
+        .map(|s| {
+            parse_time_filter(s)
+                .map(|dt| dt.to_rfc3339())
+                .map_err(|e| format!("--since parse error: {e}"))
+        })
+        .transpose()?;
 
-    let gte = since.and_then(|s| {
-        parse_time_filter(s)
-            .map_err(|e| log_warn(&format!("--since parse error: {e}")))
-            .ok()
-            .map(|dt| dt.to_rfc3339())
-    });
-
-    let lte = before.and_then(|s| {
-        parse_time_filter(s)
-            .map_err(|e| log_warn(&format!("--before parse error: {e}")))
-            .ok()
-            .map(|dt| dt.to_rfc3339())
-    });
+    let lte = before
+        .map(|s| {
+            parse_time_filter(s)
+                .map(|dt| dt.to_rfc3339())
+                .map_err(|e| format!("--before parse error: {e}"))
+        })
+        .transpose()?;
 
     if gte.is_none() && lte.is_none() {
-        return None;
+        return Ok(None);
     }
 
     let mut range = serde_json::Map::new();
@@ -79,12 +80,31 @@ pub(crate) fn build_scraped_at_filter(
         range.insert("lte".to_string(), serde_json::Value::String(v));
     }
 
-    Some(serde_json::json!({
+    Ok(Some(serde_json::json!({
         "must": [{
             "key": "scraped_at",
             "range": range
         }]
-    }))
+    })))
+}
+
+pub(crate) fn url_filter(url_match: &str) -> serde_json::Value {
+    serde_json::json!({
+        "must": [{
+            "key": "url",
+            "match": {"value": url_match}
+        }]
+    })
+}
+
+pub(crate) fn combine_must_filters(filters: &[serde_json::Value]) -> serde_json::Value {
+    let mut must = Vec::new();
+    for filter in filters {
+        if let Some(values) = filter.get("must").and_then(|v| v.as_array()) {
+            must.extend(values.iter().cloned());
+        }
+    }
+    serde_json::json!({ "must": must })
 }
 
 #[cfg(test)]
@@ -149,12 +169,12 @@ mod tests {
 
     #[test]
     fn both_none_returns_none() {
-        assert!(build_scraped_at_filter(None, None).is_none());
+        assert!(build_scraped_at_filter(None, None).unwrap().is_none());
     }
 
     #[test]
     fn since_only_builds_gte_range() {
-        let f = build_scraped_at_filter(Some("2026-01-01"), None);
+        let f = build_scraped_at_filter(Some("2026-01-01"), None).unwrap();
         assert!(f.is_some());
         let f = f.unwrap();
         let range = &f["must"][0]["range"];
@@ -165,7 +185,7 @@ mod tests {
 
     #[test]
     fn before_only_builds_lte_range() {
-        let f = build_scraped_at_filter(None, Some("2026-03-01"));
+        let f = build_scraped_at_filter(None, Some("2026-03-01")).unwrap();
         assert!(f.is_some());
         let f = f.unwrap();
         let range = &f["must"][0]["range"];
@@ -178,7 +198,7 @@ mod tests {
 
     #[test]
     fn both_bounds_set_correctly() {
-        let f = build_scraped_at_filter(Some("2026-01-01"), Some("2026-03-01"));
+        let f = build_scraped_at_filter(Some("2026-01-01"), Some("2026-03-01")).unwrap();
         assert!(f.is_some());
         let f = f.unwrap();
         let range = &f["must"][0]["range"];
@@ -187,18 +207,43 @@ mod tests {
     }
 
     #[test]
-    fn invalid_since_returns_none_when_no_valid_bounds() {
-        // If since is invalid and before is None, result should be None
-        let f = build_scraped_at_filter(Some("not-a-date"), None);
-        assert!(f.is_none(), "invalid-only filter must return None");
+    fn invalid_since_returns_error() {
+        let err = build_scraped_at_filter(Some("not-a-date"), None).unwrap_err();
+        assert!(
+            err.contains("--since parse error"),
+            "invalid since must return an error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn invalid_before_returns_error_even_with_valid_since() {
+        let err = build_scraped_at_filter(Some("2026-01-01"), Some("not-a-date")).unwrap_err();
+        assert!(
+            err.contains("--before parse error"),
+            "invalid before must return an error, got: {err}"
+        );
     }
 
     #[test]
     fn shorthand_since_produces_valid_rfc3339_in_filter() {
-        let f = build_scraped_at_filter(Some("7d"), None).unwrap();
+        let f = build_scraped_at_filter(Some("7d"), None).unwrap().unwrap();
         let gte = f["must"][0]["range"]["gte"].as_str().unwrap();
         // Must be parseable as RFC3339
         let parsed = DateTime::parse_from_rfc3339(gte);
         assert!(parsed.is_ok(), "gte must be valid RFC3339: {gte}");
+    }
+
+    #[test]
+    fn combine_must_filters_concatenates_conditions() {
+        let combined = combine_must_filters(&[
+            url_filter("https://example.com/a"),
+            build_scraped_at_filter(Some("2026-01-01"), None)
+                .unwrap()
+                .unwrap(),
+        ]);
+        let must = combined["must"].as_array().unwrap();
+        assert_eq!(must.len(), 2);
+        assert_eq!(must[0]["key"].as_str(), Some("url"));
+        assert_eq!(must[1]["key"].as_str(), Some("scraped_at"));
     }
 }

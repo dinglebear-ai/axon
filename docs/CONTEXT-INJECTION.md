@@ -10,7 +10,7 @@ Every `ask` and `evaluate` command goes through the same five-stage pipeline bef
 
 ```
 Query
-  └─► 1. Embed          — TEI converts query text to a dense vector
+  └─► 1. Embed          — TEI converts query text to one or two dense vectors
   └─► 2. Retrieve       — Qdrant ANN search returns up to N candidate chunks
   └─► 3. Filter         — Low-signal and allowlist guards narrow the pool
   └─► 4. Rerank         — Lexical + domain boosts re-order by combined score
@@ -33,10 +33,20 @@ Context:
 
 `retrieval.rs → retrieve_ask_candidates`
 
-The raw query string is sent to TEI (Text Embeddings Inference) via `tei::tei_embed`. TEI returns a single dense float vector. This vector is the semantic representation of the question and is used as the search key against Qdrant.
+Query vectors are encoded with `QUERY_INSTRUCTION` from `crates/vector/ops/tei/tei_client.rs`:
+
+```
+Instruct: Given a web search query, retrieve relevant passages that answer the query
+Query: {query}
+```
+
+This prefix is applied only to query-side embeddings. Document chunks are embedded as raw text.
+
+`retrieve_ask_candidates` embeds the full user query and, when keyword extraction produces a distinct keyword query, embeds that keyword query too. Both inputs use `tei::prepend_query_instruction(...)`. The additional keyword vector improves recall for exact terms, identifiers, API names, and short domain phrases.
 
 ```
 "how does axon crawl work?"
+        ↓ prepend QUERY_INSTRUCTION
         ↓ TEI
 [0.023, -0.441, 0.118, ...]   (1024-dim or model-dependent)
 ```
@@ -47,7 +57,9 @@ The raw query string is sent to TEI (Text Embeddings Inference) via `tei::tei_em
 
 `retrieval.rs → retrieve_ask_candidates`
 
-`qdrant::qdrant_search` performs an approximate nearest-neighbour search using the query vector. The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default varies).
+`qdrant::dispatch_vector_search` searches Qdrant using the dense query vector. Named hybrid collections use the dense vector plus BM42 sparse search with RRF fusion; legacy unnamed collections fall back to dense-only search. When a keyword query vector exists, Axon runs a second search and merges/deduplicates the candidate pool.
+
+The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `150` in `Config::default` and `64` when built from CLI/env in `parse/build_config.rs`).
 
 Each result comes back with:
 - `score` — cosine similarity (0–1) from the vector search
@@ -210,7 +222,7 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 - **Concurrent streaming**: both arms (`with_context` and `without_context`) stream simultaneously via a shared `mpsc::unbounded_channel::<TaggedToken>`, dispatched with `tokio::select!`.
 - **Judge reference**: a second independent retrieval runs after both answers complete (`build_judge_reference`), fetching up to 8 diverse chunks for the judge LLM to use as ground truth. This is separate from the RAG context so the judge has an unbiased reference.
 - **Judge prompt**: the judge receives both answers, timing info, source list, and the reference chunks. It scores each answer on Accuracy, Relevance, Completeness, and Specificity (each X/5), then issues a verdict.
-- **Auto-suggest**: if RAG scores below baseline, `discover_crawl_suggestions` is called automatically and the suggested URLs are enqueued as crawl jobs.
+- **Auto-suggest**: if RAG scores below baseline, `discover_crawl_suggestions` is called automatically and the suggested URLs plus reasons are returned as data. Evaluate does not enqueue crawl jobs by default.
 
 ---
 
@@ -218,17 +230,21 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 
 | Env var | What it controls | Typical default |
 |---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant ANN search result count | 60 |
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.1 |
-| `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 8 |
-| `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 2 |
-| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 20 |
+| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 64 from CLI/env, 150 in `Config::default` |
+| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 150 |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
+| `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 10 |
+| `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 4 |
+| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 192 |
 | `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
-| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 6 |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 48000 |
+| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 3 |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 120000 |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
-| `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.05 |
+| `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
 | `AXON_ASK_AUTHORITATIVE_ALLOWLIST` | Restrict candidates to these domains only | (empty) |
+| `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |
+
+Defaults in this table are owned by `crates/core/config/parse/build_config.rs` and `crates/core/config/types/config_impls.rs`. Re-check both when changing defaults because tests and direct `Config::default()` callers can differ from CLI/env construction.
 
 ---
 

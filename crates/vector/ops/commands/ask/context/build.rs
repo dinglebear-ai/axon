@@ -34,9 +34,14 @@ pub(super) async fn build_context_from_candidates(
     let mut context_char_count = 0usize;
     let separator = "\n\n---\n\n";
     let mut source_idx = 1usize;
+    let planned_full_doc_urls = top_full_doc_indices
+        .iter()
+        .filter_map(|&idx| reranked.get(idx).map(|candidate| candidate.url.clone()))
+        .collect::<HashSet<_>>();
     let top_chunks_selected = append_top_chunks_to_context(
         reranked,
         top_chunk_indices,
+        &planned_full_doc_urls,
         &mut context_entries,
         &mut context_char_count,
         &mut source_idx,
@@ -109,6 +114,7 @@ pub(super) async fn build_context_from_candidates(
         reranked,
         top_chunk_indices,
         top_chunks_selected,
+        &planned_full_doc_urls,
         top_full_doc_indices,
         &supplemental,
         supplemental_count,
@@ -124,9 +130,11 @@ pub(super) async fn build_context_from_candidates(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_top_chunks_to_context(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
+    planned_full_doc_urls: &HashSet<String>,
     context_entries: &mut Vec<String>,
     context_char_count: &mut usize,
     source_idx: &mut usize,
@@ -136,6 +144,9 @@ fn append_top_chunks_to_context(
     let mut top_chunks_selected = 0usize;
     for &chunk_idx in top_chunk_indices {
         let chunk = &reranked[chunk_idx];
+        if planned_full_doc_urls.contains(&chunk.url) {
+            continue;
+        }
         let source = display_source(&chunk.url);
         let entry = format!(
             "## Top Chunk [S{}]: {}\n\n{}",
@@ -288,6 +299,7 @@ fn build_diagnostic_sources(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
     top_chunks_selected: usize,
+    planned_full_doc_urls: &HashSet<String>,
     top_full_doc_indices: &[usize],
     supplemental: &[usize],
     supplemental_count: usize,
@@ -296,8 +308,9 @@ fn build_diagnostic_sources(
     diagnostic_sources.extend(
         top_chunk_indices
             .iter()
-            .take(top_chunks_selected)
             .map(|&idx| &reranked[idx])
+            .filter(|candidate| !planned_full_doc_urls.contains(&candidate.url))
+            .take(top_chunks_selected)
             .map(|c| format!("chunk score={:.3} url={}", c.score, display_source(&c.url))),
     );
     diagnostic_sources.extend(

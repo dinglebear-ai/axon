@@ -70,6 +70,8 @@ pub(super) enum CliCommand {
     #[command(alias = "completion")]
     /// Generate shell completions (bash, zsh, fish)
     Completions(CompletionArgs),
+    /// Start service runtimes
+    Serve(ServeArgs),
     /// Start MCP server (stdio, HTTP, or both)
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
@@ -94,6 +96,18 @@ pub(super) struct McpArgs {
     /// MCP transport: stdio, http, or both.
     #[arg(long, value_enum)]
     pub(super) transport: Option<McpTransport>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ServeArgs {
+    #[command(subcommand)]
+    pub(super) target: ServeSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ServeSubcommand {
+    /// Start the MCP HTTP server runtime
+    Mcp(McpArgs),
 }
 
 #[derive(Debug, Args)]

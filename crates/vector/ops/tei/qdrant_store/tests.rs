@@ -50,6 +50,25 @@ fn cache_and_retrieve_unnamed_mode() {
     );
 }
 
+#[test]
+fn endpoint_collection_cache_keys_keep_same_collection_separate() {
+    let mut cfg_a = Config::test_default();
+    cfg_a.qdrant_url = "http://127.0.0.1:6333".to_string();
+    cfg_a.collection = "shared_collection_name".to_string();
+    let mut cfg_b = cfg_a.clone();
+    cfg_b.qdrant_url = "http://127.0.0.1:7333/".to_string();
+
+    let key_a = collection_mode_cache_key(&cfg_a);
+    let key_b = collection_mode_cache_key(&cfg_b);
+    assert_ne!(key_a, key_b);
+
+    cache_vector_mode_key(&key_a, VectorMode::Named);
+    cache_vector_mode_key(&key_b, VectorMode::Unnamed);
+
+    assert_eq!(cached_vector_mode_key(&key_a), Some(VectorMode::Named));
+    assert_eq!(cached_vector_mode_key(&key_b), Some(VectorMode::Unnamed));
+}
+
 // -- clear_collection_mode_cache --
 
 #[test]

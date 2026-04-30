@@ -11,6 +11,8 @@ use tokio::fs;
 
 const PHASE_SCANNING: &str = "scanning_sessions";
 const PHASE_EMBEDDING: &str = "embedding_sessions";
+const SESSION_INGEST_MAX_BYTES_ENV: &str = "AXON_SESSION_INGEST_MAX_BYTES";
+const DEFAULT_SESSION_INGEST_MAX_BYTES: u64 = 20 * 1024 * 1024;
 
 mod claude;
 mod codex;
@@ -31,6 +33,56 @@ pub(crate) fn expand_home(path: &str) -> PathBuf {
         return PathBuf::from(home).join(rest);
     }
     PathBuf::from(path)
+}
+
+pub(crate) async fn read_session_file_limited(path: &Path) -> IngestResult<String> {
+    let max_bytes = session_ingest_max_bytes();
+    let meta = fs::metadata(path).await?;
+    if meta.len() > max_bytes {
+        anyhow::bail!(
+            "session file exceeds AXON_SESSION_INGEST_MAX_BYTES limit: {} > {} bytes ({})",
+            meta.len(),
+            max_bytes,
+            path.display()
+        );
+    }
+    Ok(fs::read_to_string(path).await?)
+}
+
+fn session_ingest_max_bytes() -> u64 {
+    std::env::var(SESSION_INGEST_MAX_BYTES_ENV)
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_SESSION_INGEST_MAX_BYTES)
+}
+
+pub(crate) fn redact_session_text(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(redact_session_token)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn redact_session_token(token: &str) -> String {
+    let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-');
+    let lower = trimmed.to_ascii_lowercase();
+    let secret_like = lower.starts_with("sk-")
+        || lower.starts_with("ghp_")
+        || lower.starts_with("github_pat_")
+        || lower.starts_with("atk_")
+        || lower.contains("api_key")
+        || lower.contains("apikey")
+        || lower.contains("access_token")
+        || (trimmed.len() >= 24
+            && trimmed.chars().any(|c| c.is_ascii_alphabetic())
+            && trimmed.chars().any(|c| c.is_ascii_digit()));
+    if secret_like {
+        token.replace(trimmed, "[redacted-secret]")
+    } else {
+        token.to_string()
+    }
 }
 
 pub async fn ingest_sessions(
@@ -152,6 +204,21 @@ pub(crate) fn matches_project_filter(cfg: &Config, name: &str) -> bool {
         name.to_lowercase().contains(&filter.to_lowercase())
     } else {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_session_text;
+
+    #[test]
+    fn session_text_redacts_common_secret_tokens() {
+        let redacted = redact_session_text(
+            "OPENAI key sk-testsecret1234567890 and token github_pat_1234567890abcdef",
+        );
+        assert!(redacted.contains("[redacted-secret]"));
+        assert!(!redacted.contains("sk-testsecret1234567890"));
+        assert!(!redacted.contains("github_pat_1234567890abcdef"));
     }
 }
 

@@ -214,10 +214,14 @@ fn ask_result_exposes_payload_value() {
 #[test]
 fn suggest_result_exposes_url_vec() {
     let r = SuggestResult {
-        urls: vec!["https://rust-lang.org".to_string()],
+        suggestions: vec![axon::crates::services::types::Suggestion {
+            url: "https://rust-lang.org".to_string(),
+            reason: "Rust docs".to_string(),
+        }],
     };
-    assert_eq!(r.urls.len(), 1);
-    assert_eq!(r.urls[0], "https://rust-lang.org");
+    assert_eq!(r.suggestions.len(), 1);
+    assert_eq!(r.suggestions[0].url, "https://rust-lang.org");
+    assert_eq!(r.suggestions[0].reason, "Rust docs");
 }
 
 #[test]
