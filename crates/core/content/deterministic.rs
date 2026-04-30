@@ -302,7 +302,9 @@ pub(crate) async fn extract_items_fallback(
         "URL: {page_url}\n\nContent (markdown):\n{trimmed_markdown}"
     ))
     .system_prompt(format!(
-        "{prompt} Return JSON with a top-level key \"results\" containing an array of extracted items."
+        "{prompt} Return ONLY a single JSON object — no prose, no explanations, no greetings, no markdown code fences. \
+         The JSON must have a top-level key \"results\" containing an array of extracted items. \
+         Output the bare JSON object starting with `{{` and nothing before or after it."
     ));
     if !openai_model.trim().is_empty() {
         request = request.model(openai_model.to_string());
@@ -337,7 +339,7 @@ pub(crate) async fn extract_items_fallback(
         .map(|usage| usage.total_tokens)
         .unwrap_or(prompt_tokens + completion_tokens);
 
-    let parsed = match serde_json::from_str::<serde_json::Value>(&response.text) {
+    let parsed = match parse_acp_fallback_json(&response.text) {
         Ok(v) => v,
         Err(err) => {
             log_warn(&format!(
@@ -358,6 +360,39 @@ pub(crate) async fn extract_items_fallback(
         total_tokens,
         estimated_cost_usd: estimate_llm_cost_usd(openai_model, prompt_tokens, completion_tokens),
     })
+}
+
+/// Parse the ACP fallback response as JSON, tolerating common ACP adapter
+/// envelopes the model wraps around the JSON: triple-backtick fences (with or
+/// without a `json` language tag), and leading conversational/session-greeting
+/// text before the first `{` or `[`.
+fn parse_acp_fallback_json(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
+    let stripped = strip_acp_fallback_envelope(raw);
+    serde_json::from_str(stripped)
+}
+
+/// Strip ```json fences and leading prose from an ACP-fallback completion
+/// before JSON-parsing. Leaves the input alone if no envelope is detected.
+fn strip_acp_fallback_envelope(raw: &str) -> &str {
+    let trimmed = raw.trim();
+
+    // Strip code fences: ```json ... ``` or ``` ... ```
+    if let Some(rest) = trimmed.strip_prefix("```") {
+        let after_lang = rest.find('\n').map(|i| &rest[i + 1..]).unwrap_or(rest);
+        let body = after_lang
+            .rsplit_once("```")
+            .map(|(b, _)| b)
+            .unwrap_or(after_lang);
+        return body.trim();
+    }
+
+    // Otherwise: skip leading prose to the first `{` or `[`.
+    let first = trimmed.find(['{', '[']).unwrap_or(0);
+    if first > 0 {
+        return trimmed[first..].trim_end();
+    }
+
+    trimmed
 }
 
 pub(crate) fn estimate_llm_cost_usd(
@@ -391,7 +426,7 @@ pub(crate) fn estimate_llm_cost_usd(
 
 #[cfg(test)]
 mod tests {
-    use super::flatten_results;
+    use super::{flatten_results, parse_acp_fallback_json, strip_acp_fallback_envelope};
 
     #[test]
     fn extract_items_fallback_parses_results_from_acp_json_text() {
@@ -404,5 +439,40 @@ mod tests {
         let mut out = Vec::new();
         flatten_results(&parsed, &mut out);
         assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn strip_envelope_handles_json_code_fence() {
+        let raw = "```json\n{\"results\":[{\"a\":1}]}\n```";
+        assert_eq!(
+            strip_acp_fallback_envelope(raw),
+            "{\"results\":[{\"a\":1}]}"
+        );
+    }
+
+    #[test]
+    fn strip_envelope_handles_bare_code_fence() {
+        let raw = "```\n[1, 2, 3]\n```";
+        assert_eq!(strip_acp_fallback_envelope(raw), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn strip_envelope_skips_leading_prose() {
+        let raw = "Model switched to claude-sonnet-4-6. Ready to help.\n{\"results\":[]}";
+        assert_eq!(strip_acp_fallback_envelope(raw), "{\"results\":[]}");
+    }
+
+    #[test]
+    fn parse_acp_fallback_recovers_fenced_json() {
+        let raw = "```json\n{\"results\":[{\"title\":\"x\"}]}\n```";
+        let v = parse_acp_fallback_json(raw).expect("must parse fenced JSON");
+        assert_eq!(v["results"][0]["title"], "x");
+    }
+
+    #[test]
+    fn parse_acp_fallback_recovers_prose_prefixed_json() {
+        let raw = "Greetings — extracted items below:\n[{\"title\":\"y\"}]";
+        let v = parse_acp_fallback_json(raw).expect("must parse prose-prefixed JSON");
+        assert_eq!(v[0]["title"], "y");
     }
 }

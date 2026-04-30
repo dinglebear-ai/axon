@@ -75,7 +75,7 @@ pub async fn extract_recover(service_context: &ServiceContext) -> Result<u64, Bo
 
 pub async fn extract_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Extract).await? {
-        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }

@@ -84,7 +84,14 @@ pub fn spawn_workers(
 
     let mut worker_handles = Vec::new();
 
+    tracing::info!(
+        embed_lanes,
+        ingest_lanes,
+        "lite: spawning in-process job workers"
+    );
+
     // Crawl: single lane (spider futures are !Send — must stay single-task)
+    tracing::info!(worker = "crawl", lanes = 1, "lite: spawning worker");
     worker_handles.push(tokio::spawn(crawl_worker(
         Arc::clone(&pool),
         Arc::clone(&cfg),
@@ -94,7 +101,13 @@ pub fn spawn_workers(
     )));
 
     // Embed: multi-lane
-    for _ in 0..embed_lanes {
+    tracing::info!(
+        worker = "embed",
+        lanes = embed_lanes,
+        "lite: spawning workers"
+    );
+    for lane in 0..embed_lanes {
+        tracing::debug!(worker = "embed", lane, "lite: spawning embed lane");
         worker_handles.push(tokio::spawn(embed_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
@@ -103,6 +116,7 @@ pub fn spawn_workers(
     }
 
     // Extract: single lane
+    tracing::info!(worker = "extract", lanes = 1, "lite: spawning worker");
     worker_handles.push(tokio::spawn(extract_worker(
         Arc::clone(&pool),
         Arc::clone(&cfg),
@@ -110,7 +124,13 @@ pub fn spawn_workers(
     )));
 
     // Ingest: multi-lane
-    for _ in 0..ingest_lanes {
+    tracing::info!(
+        worker = "ingest",
+        lanes = ingest_lanes,
+        "lite: spawning workers"
+    );
+    for lane in 0..ingest_lanes {
+        tracing::debug!(worker = "ingest", lane, "lite: spawning ingest lane");
         worker_handles.push(tokio::spawn(ingest_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),

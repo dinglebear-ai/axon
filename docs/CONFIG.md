@@ -88,6 +88,13 @@ The `axon.json` file provides structured configuration with schema validation (`
 | `AXON_LITE` | -- | Set to `1` to enable lite mode (default; uses SQLite) |
 | `AXON_SQLITE_PATH` | `~/.local/share/axon/jobs.db` | SQLite path for lite mode |
 
+**Worker spawn is conditional**, not unconditional, in lite mode. The `LiteBackend` has two construction modes:
+
+- `LiteBackend::new(cfg)` — **enqueue-only**. No workers spawn. Used by `ServiceContext::new()` for short-lived CLI commands (status/list/cancel/fire-and-forget submit).
+- `LiteBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
+
+Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
+
 ### TEI embedding
 
 | Variable | Default | Description |

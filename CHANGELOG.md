@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-30
+
+### Added
+- **Observability**: Tracing logs across lite worker spawn, watchdog sweep, ACP session lifecycle, persistent-conn turn, replay buffer cap, MCP capability filter, AdapterGuard kill, ACP CWD validation, AXON_ACP_AUTH_TOKEN missing path, dispatch arm + per-arm latency in `dispatch_vector_search`.
+- **Doctor**: Lite doctor probes Qdrant collection vector mode and warns when `unnamed` collection is paired with `hybrid_search_enabled=true` (silent dense-only fallback).
+- **Stats**: SQLite-backed metrics (counts/durations/freshness/totals/longest crawl/most chunks) replace the no-op placeholder so `axon stats` populates Pipeline Stats / Freshness in lite mode.
+- **Queue summary**: `spawn_queue_summary_logger` emits a periodic queue-depth event (env-gated `AXON_QUEUE_SUMMARY_SECS`, default 60s) from `new_with_workers` contexts.
+- **SQLite retry**: `retry_busy()` helper retries `claim_next_pending`, `mark_completed`, `mark_failed` on transient lock contention with bounded exponential backoff.
+- **Drain visibility**: `WorkerMode::InProcess` now carries `pending_at_start` + `elapsed_secs`; CLI prints both on completion.
+- **Collection name guard**: `validate_collection_name()` rejects path-traversal / URL-injection in `cfg.collection` at dispatch entry.
+
+### Changed
+- **Lite crawl runner**: `result_json` now includes the field names the CLI status display reads (`pages_crawled`, `md_created`, `pages_discovered`, `thin_md`, `error_pages`, `waf_blocked_pages`).
+- **ACP unsupported model warning**: Deduped per-process via `LazyLock<Mutex<HashSet>>`; warning now lists the adapter's available model options.
+- **ACP fallback JSON parse**: Strips ```json fences and leading prose before `serde_json::from_str`; system prompt tightened to demand bare JSON output.
+- **`extract --wait true`**: Returns non-zero exit when 0 items extracted across all URLs.
+- **`suggest`**: Filters out malformed URLs (rejects single-label hosts like `https://next.js/`).
+- **`load_status_jobs`**: Replaced `unwrap_or(0)` on `count_jobs` with `unwrap_or_else` that logs a tracing::warn! per JobKind.
+
+### Docs
+- Documented `LiteBackend::new()` (enqueue-only) vs `new_with_workers()` (spawns workers) in `crates/services/CLAUDE.md` and `docs/CONFIG.md`.
+- Removed stale `refresh` references from `crates/cli/CLAUDE.md` and `crates/mcp/CLAUDE.md` (refresh was deleted in commit 05da3b44).
+- Added an inline rationale block to `main.rs` for the 8 MB Tokio worker stack.
+
 ## [0.35.1] - 2026-04-04
 
 ### Changed

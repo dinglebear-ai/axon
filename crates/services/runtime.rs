@@ -23,7 +23,13 @@ use crate::crates::services::types::ServiceJob;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkerMode {
     Started,
-    InProcess,
+    /// In-process worker drained the queue. `pending_at_start` records the
+    /// number of pending+running jobs observed at the start of the drain;
+    /// `elapsed_secs` is wall-clock seconds spent waiting.
+    InProcess {
+        pending_at_start: i64,
+        elapsed_secs: u64,
+    },
     Unsupported(&'static str),
 }
 
@@ -230,7 +236,12 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         if !self.backend.notify_worker(kind) {
             return Err("no in-process workers running — use `axon serve` or `--wait true`".into());
         }
-        eprintln!("draining {} queue...", kind.table_name());
+        let pending_at_start = self.count_jobs(kind).await.unwrap_or(0);
+        eprintln!(
+            "draining {} queue ({pending_at_start} pending)...",
+            kind.table_name()
+        );
+        let started = std::time::Instant::now();
         let mut secs = 0u64;
         loop {
             if !self.has_active_jobs(kind).await? {
@@ -242,7 +253,10 @@ impl ServiceJobRuntime for LiteServiceRuntime {
                 eprintln!("still draining ({secs}s elapsed)...");
             }
         }
-        Ok(WorkerMode::InProcess)
+        Ok(WorkerMode::InProcess {
+            pending_at_start,
+            elapsed_secs: started.elapsed().as_secs(),
+        })
     }
 
     async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {

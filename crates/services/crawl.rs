@@ -212,7 +212,7 @@ pub async fn crawl_recover(service_context: &ServiceContext) -> Result<u64, Box<
 
 pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Crawl).await? {
-        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }
@@ -380,7 +380,10 @@ mod tests {
                     &self,
                     _kind: JobKind,
                 ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
-                    Ok(WorkerMode::InProcess)
+                    Ok(WorkerMode::InProcess {
+                        pending_at_start: 0,
+                        elapsed_secs: 0,
+                    })
                 }
 
                 async fn count_jobs(
@@ -506,7 +509,10 @@ mod tests {
             &self,
             _kind: JobKind,
         ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
-            Ok(WorkerMode::InProcess)
+            Ok(WorkerMode::InProcess {
+                pending_at_start: 0,
+                elapsed_secs: 0,
+            })
         }
 
         async fn count_jobs(

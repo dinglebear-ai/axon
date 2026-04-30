@@ -1,8 +1,57 @@
 use super::store::now_ms;
 use crate::crates::jobs::backend::JobPayload;
 use sqlx::SqlitePool;
+use std::future::Future;
+use std::time::Duration;
 use tracing;
 use uuid::Uuid;
+
+/// Bounded retry/backoff for transient SQLite "database is locked" errors.
+///
+/// SQLite's WAL mode + `busy_timeout` handles most read/write contention, but
+/// `BEGIN IMMEDIATE` and other write paths can still surface `SQLITE_BUSY`
+/// when multiple workers race or under burst load. This helper retries the
+/// closure up to `MAX_ATTEMPTS` times with exponential backoff before giving up.
+///
+/// Other error variants (decode, configuration, row-not-found) propagate
+/// immediately — only lock contention is retried.
+const MAX_ATTEMPTS: u32 = 5;
+const BASE_BACKOFF_MS: u64 = 25;
+
+async fn retry_busy<F, Fut, T>(label: &'static str, mut op: F) -> Result<T, sqlx::Error>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, sqlx::Error>>,
+{
+    let mut attempt: u32 = 0;
+    loop {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(err) if is_lock_busy(&err) && attempt + 1 < MAX_ATTEMPTS => {
+                let backoff = BASE_BACKOFF_MS << attempt;
+                tracing::debug!(
+                    op = label,
+                    attempt = attempt + 1,
+                    backoff_ms = backoff,
+                    error = %err,
+                    "lite ops: SQLite busy, retrying"
+                );
+                tokio::time::sleep(Duration::from_millis(backoff)).await;
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn is_lock_busy(err: &sqlx::Error) -> bool {
+    if let sqlx::Error::Database(db_err) = err {
+        let msg = db_err.message();
+        msg.contains("database is locked") || msg.contains("database table is locked")
+    } else {
+        false
+    }
+}
 
 /// Check whether the pending crawl job count is at or above the configured cap.
 ///
@@ -85,7 +134,21 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
 
 /// Atomically claim the oldest pending job in `table`.
 /// Returns None if no pending jobs exist.
+///
+/// Wrapped in `retry_busy` so transient SQLite lock contention between
+/// concurrent workers (BEGIN IMMEDIATE collisions) backs off and retries
+/// before surfacing the error.
 pub async fn claim_next_pending(
+    pool: &SqlitePool,
+    table: &str,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    retry_busy("claim_next_pending", || {
+        claim_next_pending_inner(pool, table)
+    })
+    .await
+}
+
+async fn claim_next_pending_inner(
     pool: &SqlitePool,
     table: &str,
 ) -> Result<Option<Uuid>, sqlx::Error> {
@@ -150,7 +213,22 @@ pub async fn claim_next_pending(
 }
 
 /// Mark a running job as completed. No-op if job is not in 'running' state.
+///
+/// Wrapped in `retry_busy` so transient SQLite lock contention does not
+/// orphan a job in `running` state on the way to `completed`.
 pub async fn mark_completed(
+    pool: &SqlitePool,
+    table: &str,
+    id: Uuid,
+    result_json: Option<&serde_json::Value>,
+) -> Result<(), sqlx::Error> {
+    retry_busy("mark_completed", || {
+        mark_completed_inner(pool, table, id, result_json)
+    })
+    .await
+}
+
+async fn mark_completed_inner(
     pool: &SqlitePool,
     table: &str,
     id: Uuid,
@@ -195,7 +273,19 @@ pub async fn mark_completed(
 }
 
 /// Mark a running job as failed with an error message.
+///
+/// Wrapped in `retry_busy` so transient SQLite lock contention does not
+/// orphan a job in `running` state on the way to `failed`.
 pub async fn mark_failed(
+    pool: &SqlitePool,
+    table: &str,
+    id: Uuid,
+    error: &str,
+) -> Result<(), sqlx::Error> {
+    retry_busy("mark_failed", || mark_failed_inner(pool, table, id, error)).await
+}
+
+async fn mark_failed_inner(
     pool: &SqlitePool,
     table: &str,
     id: Uuid,
@@ -509,7 +599,7 @@ mod tests {
                     Err(sqlx::Error::Database(db_err))
                         if db_err.message().contains("database is locked") =>
                     {
-                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                        tokio::time::sleep(Duration::from_millis(25)).await;
                     }
                     Err(err) => return Err(err),
                 }

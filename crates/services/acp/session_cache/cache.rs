@@ -78,7 +78,24 @@ impl AcpSessionCache {
         permission_responders: PermissionResponderMap,
     ) -> Arc<CachedSession> {
         let session = Arc::new(CachedSession::new(handle, permission_responders));
-        self.sessions.insert(agent_key, Arc::clone(&session));
+        let replaced = self
+            .sessions
+            .insert(agent_key.clone(), Arc::clone(&session))
+            .is_some();
+        let cache_size = self.sessions.len();
+        if replaced {
+            tracing::info!(
+                agent_key = %agent_key,
+                cache_size,
+                "acp: session inserted (replaced existing handle)"
+            );
+        } else {
+            tracing::info!(
+                agent_key = %agent_key,
+                cache_size,
+                "acp: session inserted"
+            );
+        }
         self.ensure_reaper();
         session
     }
@@ -96,6 +113,11 @@ impl AcpSessionCache {
         if let Some((_, _session)) = self.sessions.remove(agent_key) {
             // Clean up session_id_index entries pointing to this agent_key.
             self.session_id_index.retain(|_, v| v.as_str() != agent_key);
+            tracing::info!(
+                agent_key = %agent_key,
+                cache_size = self.sessions.len(),
+                "acp: session removed"
+            );
         }
     }
 

@@ -186,9 +186,42 @@ pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult,
         })?;
     let suggestions = pairs
         .into_iter()
-        .map(|(url, reason)| Suggestion { url, reason })
+        .filter_map(|(url, reason)| {
+            if !is_well_formed_suggest_url(&url) {
+                tracing::warn!(
+                    %url,
+                    "suggest: dropped malformed suggestion URL"
+                );
+                return None;
+            }
+            Some(Suggestion { url, reason })
+        })
         .collect();
     Ok(SuggestResult { suggestions })
+}
+
+/// Validate that a suggested URL is well-formed: parses as http/https with a
+/// host that contains at least one dot (rules out single-label hosts like
+/// `next.js` parsed as scheme=next, host=js).
+///
+/// This is intentionally stricter than `validate_url` (which only blocks SSRF
+/// targets) — bare hostnames without TLD pass the SSRF guard but are useless
+/// crawl seeds.
+fn is_well_formed_suggest_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    // Bare IPs are fine; otherwise require at least one dot for a real TLD.
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    host.contains('.') && !host.starts_with('.') && !host.ends_with('.')
 }
 
 #[cfg(test)]

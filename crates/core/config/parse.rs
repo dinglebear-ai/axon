@@ -496,8 +496,17 @@ mod tests {
         }
     }
 
+    #[allow(unsafe_code)]
     #[test]
     fn parse_serve_mcp_maps_to_mcp_http_transport() {
+        // ENV_LOCK serializes against parse_mcp_transport_flag_overrides_env,
+        // which mutates AXON_MCP_TRANSPORT during its test body. Without the
+        // lock, this test races and intermittently sees the polluted value.
+        let _guard = ENV_LOCK.lock().unwrap();
+        const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
+        unsafe {
+            env::remove_var(TRANSPORT);
+        }
         let cli = super::Cli::parse_from([
             "axon",
             "--tei-url",

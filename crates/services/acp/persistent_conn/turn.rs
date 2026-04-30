@@ -42,6 +42,12 @@ pub(super) async fn run_turn_on_conn(
     let mut turn_ctx = build_turn_context(turn, session_id, runtime_state);
 
     if let Err(err) = ensure_turn_session(conn, session_cwd, runtime_state, &mut turn_ctx).await {
+        tracing::warn!(
+            session_id = %session_id.0,
+            turn_id = %turn_id,
+            error = %err,
+            "acp: ensure_turn_session failed — aborting turn"
+        );
         let _ = turn_ctx.result_tx.send(Err(err));
         return;
     }

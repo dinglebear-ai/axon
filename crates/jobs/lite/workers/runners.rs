@@ -80,8 +80,19 @@ pub(super) async fn run_crawl_job_lite(
 
     Ok(Some(serde_json::json!({
         "url": url,
+        // CLI/MCP `crawl status` reads these field names (see
+        // crates/cli/commands/crawl/subcommands.rs:print_status_metrics).
+        // Keep both legacy names (`pages_seen`, `markdown_files`) and the
+        // canonical names (`pages_crawled`, `md_created`) so older consumers
+        // still work.
+        "pages_crawled": summary.pages_seen,
         "pages_seen": summary.pages_seen,
+        "md_created": summary.markdown_files,
         "markdown_files": summary.markdown_files,
+        "pages_discovered": summary.pages_discovered,
+        "thin_md": summary.thin_pages,
+        "error_pages": summary.error_pages,
+        "waf_blocked_pages": summary.waf_blocked_pages,
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
     })))

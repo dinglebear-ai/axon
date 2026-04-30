@@ -329,28 +329,40 @@ pub(crate) async fn load_status_jobs(
                 .jobs
                 .count_jobs(JobKind::Crawl)
                 .await
-                .unwrap_or(0)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(kind = "crawl", error = %e, "status: count_jobs failed, defaulting to 0");
+                    0
+                })
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Extract)
                 .await
-                .unwrap_or(0)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(kind = "extract", error = %e, "status: count_jobs failed, defaulting to 0");
+                    0
+                })
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Embed)
                 .await
-                .unwrap_or(0)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(kind = "embed", error = %e, "status: count_jobs failed, defaulting to 0");
+                    0
+                })
         },
         async {
             service_context
                 .jobs
                 .count_jobs(JobKind::Ingest)
                 .await
-                .unwrap_or(0)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(kind = "ingest", error = %e, "status: count_jobs failed, defaulting to 0");
+                    0
+                })
         },
     );
 

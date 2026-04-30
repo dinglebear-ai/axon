@@ -68,6 +68,15 @@ impl CachedSession {
         {
             buf.total_bytes += msg_bytes;
             buf.messages.push(json);
+        } else {
+            tracing::warn!(
+                buffered_msgs = buf.messages.len(),
+                buffered_bytes = buf.total_bytes,
+                dropped_msg_bytes = msg_bytes,
+                max_msgs = MAX_REPLAY_BUFFER,
+                max_bytes = MAX_REPLAY_BUFFER_BYTES,
+                "acp: replay buffer cap reached — dropping event (reconnecting client will see truncated replay)"
+            );
         }
     }
 

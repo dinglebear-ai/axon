@@ -28,7 +28,6 @@ cli/
     ├── mcp.rs                    # MCP HTTP server entry point
     ├── probe.rs                  # HTTP probing utilities used by doctor command
     ├── query.rs                  # Semantic/vector query command
-    ├── refresh.rs                # Refresh command entry point
     ├── research.rs               # Tavily AI research + LLM synthesis
     ├── retrieve.rs               # Retrieve stored document chunks
     ├── scrape.rs                 # Scrape URLs to markdown/html/json
@@ -50,13 +49,6 @@ cli/
     │       ├── audit_diff.rs     # Diff computation (added/removed/changed URLs)
     │       ├── manifest_audit.rs # Snapshot persistence to disk
     │       └── sitemap.rs        # Sitemap + robots.txt URL discovery (adapter over engine)
-    ├── refresh/
-    │   ├── resolve.rs            # URL resolution from manifest or CLI args
-    │   ├── schedule.rs           # Scheduled refresh job management dispatcher
-    │   └── schedule/             # Refresh schedule subcommands
-    │       ├── add.rs            # Create/update refresh schedules
-    │       ├── run_due.rs        # Run due schedules immediately
-    │       └── worker.rs         # Refresh schedule worker loop
     ├── screenshot/
     │   ├── screenshot_migration_tests.rs  # Migration tests for screenshot command refactor
     │   └── util.rs               # Filename generation, require_chrome()
@@ -95,7 +87,7 @@ pub async fn run_<command>(cfg: &Config) -> Result<(), Box<dyn Error>>
 
 ## Critical Pattern: `maybe_handle_subcommand()`
 
-Commands with job lifecycle operations (crawl, extract, embed, ingest, refresh) use this pattern:
+Commands with job lifecycle operations (crawl, extract, embed, ingest) use this pattern:
 
 ```rust
 pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -108,7 +100,6 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 `maybe_handle_subcommand()` inspects `cfg.positional.first()`:
 - Crawl matches `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`, `"audit"`, `"diff"` → executes, returns `Ok(true)`
-- Refresh has its own handler and also reserves `"schedule"` plus the standard job lifecycle tokens
 - Anything else → returns `Ok(false)` (caller proceeds)
 
 **Gotcha:** If a user tries to crawl a URL whose path happens to match a subcommand name (e.g., `axon crawl https://example.com/status`), it will be intercepted as a subcommand. This is a known, accepted limitation.
@@ -125,7 +116,6 @@ This function guards against subcommand names leaking into URL extraction. It re
 
 Current guard list:
 - Crawl: `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`, `"audit"`, `"diff"`
-- Refresh: `"schedule"`, `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`
 - Extract/Embed: `"status"`, `"cancel"`, `"errors"`, `"list"`, `"cleanup"`, `"clear"`, `"worker"`, `"recover"`
 
 `"doctor"` is not part of the `start_url_from_cfg()` guard list.

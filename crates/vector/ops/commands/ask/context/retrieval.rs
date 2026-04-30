@@ -83,6 +83,27 @@ fn merge_candidates(
     primary
 }
 
+/// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
+/// attaching `ask_diagnostics` JSON when enabled so operators can see the
+/// collection / Qdrant URL / query-length context that produced the failure.
+fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> anyhow::Error {
+    if cfg.ask_diagnostics {
+        let diagnostics = serde_json::json!({
+            "stage": "ask_vector_search_dispatch",
+            "collection": cfg.collection,
+            "qdrant_url": cfg.qdrant_url,
+            "query_len": query.len(),
+            "error": err.to_string(),
+        });
+        anyhow::Error::new(ServiceError::with_diagnostics(
+            format!("vector search dispatch: {err}"),
+            diagnostics,
+        ))
+    } else {
+        anyhow::Error::new(ServiceError::new(format!("vector search dispatch: {err}")))
+    }
+}
+
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let query_tokens = ranking::tokenize_query(query);
@@ -95,9 +116,14 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     let use_dual =
         query_tokens.len() >= 3 && keyword_query.to_lowercase() != query.trim().to_lowercase();
 
+    // Per Qwen3-Embedding asymmetric spec: queries get the instruction prefix, documents
+    // do not. The keyword form is essentially document-shaped text (e.g. "PreToolUse hook
+    // fields"), so it is embedded WITHOUT the query instruction. Prefixing it would push
+    // the keyword vector into query space and defeat the purpose of the dual-embedding
+    // pass — see bd axon_rust-d71.5 (H1).
     let mut embed_inputs = vec![tei::prepend_query_instruction(query)];
     if use_dual {
-        embed_inputs.push(tei::prepend_query_instruction(&keyword_query));
+        embed_inputs.push(keyword_query.clone());
     }
 
     let mut ask_vectors = tei::tei_embed(cfg, &embed_inputs)
@@ -123,25 +149,26 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         cfg
     };
 
-    let hits = qdrant::dispatch_vector_search(search_cfg, &vecq, query, cfg.ask_candidate_limit)
-        .await
-        .map_err(|e| {
-            if cfg.ask_diagnostics {
-                let diagnostics = serde_json::json!({
-                    "stage": "ask_vector_search_dispatch",
-                    "collection": cfg.collection,
-                    "qdrant_url": cfg.qdrant_url,
-                    "query_len": query.len(),
-                    "error": e.to_string(),
-                });
-                anyhow::Error::new(ServiceError::with_diagnostics(
-                    format!("vector search dispatch: {e}"),
-                    diagnostics,
-                ))
-            } else {
-                anyhow::Error::new(ServiceError::new(format!("vector search dispatch: {e}")))
-            }
-        })?;
+    // Run primary (NL) and secondary (keyword) dispatches in parallel when dual-embedding
+    // is active. They are independent Qdrant queries; awaiting them sequentially burned
+    // ~2-3s per ask (bd axon_rust-d71.3 / C3).
+    let primary_fut =
+        qdrant::dispatch_vector_search(search_cfg, &vecq, query, cfg.ask_candidate_limit);
+    let (primary_res, secondary_res) = if use_dual && !ask_vectors.is_empty() {
+        let vecq_kw = ask_vectors.remove(0);
+        let secondary_fut = qdrant::dispatch_vector_search(
+            search_cfg,
+            &vecq_kw,
+            &keyword_query,
+            cfg.ask_candidate_limit,
+        );
+        let (p, s) = tokio::join!(primary_fut, secondary_fut);
+        (p, Some(s))
+    } else {
+        (primary_fut.await, None)
+    };
+
+    let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
 
     let mut dropped_by_allowlist = 0usize;
     let mut candidates = build_candidates_from_hits(
@@ -151,17 +178,10 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         &mut dropped_by_allowlist,
     );
 
-    // Secondary search with keyword embedding — swallowed on error since primary succeeded.
-    if use_dual && !ask_vectors.is_empty() {
-        let vecq_kw = ask_vectors.remove(0);
-        match qdrant::dispatch_vector_search(
-            search_cfg,
-            &vecq_kw,
-            &keyword_query,
-            cfg.ask_candidate_limit,
-        )
-        .await
-        {
+    // Secondary keyword-form search: errors are swallowed since primary already
+    // succeeded.
+    if let Some(secondary_res) = secondary_res {
+        match secondary_res {
             Ok(kw_hits) => {
                 let secondary = build_candidates_from_hits(
                     kw_hits,

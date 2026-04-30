@@ -64,10 +64,25 @@ pub async fn reclaim_stale_running_jobs(
     pool: &SqlitePool,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
+    tracing::debug!(
+        stale_threshold_ms,
+        "watchdog: starting stale-running-job sweep across all tables"
+    );
     let mut total: u64 = 0;
     for kind in JobKind::all() {
-        total += reclaim_stale_running_jobs_for_table(pool, kind.table_name(), stale_threshold_ms)
-            .await?;
+        let table = kind.table_name();
+        match reclaim_stale_running_jobs_for_table(pool, table, stale_threshold_ms).await {
+            Ok(n) => total += n,
+            Err(e) => {
+                tracing::error!(table, error = %e, "watchdog: per-table sweep failed");
+                return Err(e);
+            }
+        }
+    }
+    if total > 0 {
+        tracing::info!(reclaimed = total, "watchdog: sweep complete");
+    } else {
+        tracing::debug!("watchdog: sweep complete, no stale jobs");
     }
     Ok(total)
 }
@@ -82,6 +97,7 @@ pub async fn reclaim_stale_running_jobs_for_table(
             format!("reclaim_stale_running_jobs_for_table: unknown table '{table}'").into(),
         ));
     }
+    tracing::debug!(table, stale_threshold_ms, "watchdog: sweep table start");
     let threshold = now_ms() - stale_threshold_ms;
     let result = sqlx::query(&format!(
         "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
@@ -92,7 +108,15 @@ pub async fn reclaim_stale_running_jobs_for_table(
     .bind(threshold)
     .execute(pool)
     .await?;
-    Ok(result.rows_affected())
+    let n = result.rows_affected();
+    if n > 0 {
+        tracing::info!(
+            table,
+            reclaimed = n,
+            "watchdog: reclaimed stale running jobs"
+        );
+    }
+    Ok(n)
 }
 
 /// Reclaim stale watch leases from a previous crashed process.

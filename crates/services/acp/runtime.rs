@@ -44,6 +44,10 @@ impl AdapterGuard {
 impl Drop for AdapterGuard {
     fn drop(&mut self) {
         if let Some(ref mut child) = self.0 {
+            tracing::warn!(
+                pid = ?child.id(),
+                "acp: AdapterGuard dropped with live child — sending kill (RAII cleanup on error path)"
+            );
             let _ = child.start_kill();
         }
     }
@@ -362,11 +366,35 @@ fn apply_mcp_capability_filter(
     use super::mapping::filter_sdk_mcp_servers;
     match setup {
         AcpSessionSetupRequest::New(mut req) => {
+            let before = req.mcp_servers.len();
             req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            let dropped = before.saturating_sub(req.mcp_servers.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    setup = "new",
+                    dropped,
+                    kept = req.mcp_servers.len(),
+                    http,
+                    sse,
+                    "acp: filtered MCP servers due to adapter transport capability mismatch"
+                );
+            }
             AcpSessionSetupRequest::New(req)
         }
         AcpSessionSetupRequest::Load(mut req) => {
+            let before = req.mcp_servers.len();
             req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            let dropped = before.saturating_sub(req.mcp_servers.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    setup = "load",
+                    dropped,
+                    kept = req.mcp_servers.len(),
+                    http,
+                    sse,
+                    "acp: filtered MCP servers due to adapter transport capability mismatch"
+                );
+            }
             AcpSessionSetupRequest::Load(req)
         }
     }

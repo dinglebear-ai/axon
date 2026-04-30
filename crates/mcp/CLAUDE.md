@@ -22,8 +22,9 @@ mcp/
     ├── handlers_crawl_extract.rs   # crawl + extract action handlers
     ├── handlers_embed_ingest.rs    # embed + ingest action handlers
     ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research, screenshot
-    ├── handlers_refresh_status.rs  # refresh + status action handlers
-    ├── handlers_system.rs          # doctor, domains, sources, stats, artifacts, help
+    ├── handlers_acp.rs             # acp action handlers
+    ├── handlers_elicit.rs          # elicitation prompts
+    ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
 ```
 
 ## Source-of-Truth References
@@ -54,7 +55,6 @@ Domains (`action`):
 - `extract`
 - `embed`
 - `ingest`
-- `refresh`
 - `query`
 - `retrieve`
 - `search`
@@ -88,10 +88,6 @@ This pattern is mandatory. Do not add separate MCP tools for each operation.
 ### `ingest`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
 - Integration: `crates/jobs/ingest.rs`
-
-### `refresh`
-- `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/jobs/refresh/`
 
 ### `ask`
 - Direct action (no subaction)
@@ -178,10 +174,9 @@ self.handle_crawl(request).await
 
 | Unsupported action | Guard |
 |--------------------|-------|
-| `graph` | `ctx.capabilities.graph` |
-| `refresh` schedule ops | `ctx.capabilities.refresh_schedule` |
-| `export` | `ctx.capabilities.export` |
 | `watch` scheduler | `ctx.capabilities.watch_scheduler` |
+
+(`graph`, `refresh`, and `export` actions were removed in the lite-mode simplification — see commit 05da3b44.)
 
 Return `ErrorData::invalid_params("not supported in lite mode")` when `!capability.supported`.
 
@@ -220,10 +215,9 @@ Smoke calls:
 mcporter --config config/mcporter.json call axon.axon action:doctor --output json
 mcporter --config config/mcporter.json call axon.axon action:sources limit:5 --output json
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
-mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 --output json
 ```
 
-The smoke harness runs both full (`AXON_LITE=0`) and lite (`AXON_LITE=1`) suites. When adding a new action or subaction, add at least one smoke case and keep both mode expectations explicit.
+Lite mode is the only mode. The smoke harness runs against `AXON_LITE=1`; when adding a new action or subaction, add at least one smoke case.
 
 ## Change Checklist (Mandatory)
 - [ ] `schema.rs` updated

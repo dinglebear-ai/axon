@@ -67,7 +67,7 @@ pub async fn embed_recover(service_context: &ServiceContext) -> Result<u64, Box<
 
 pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Embed).await? {
-        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }

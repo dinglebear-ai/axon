@@ -42,6 +42,36 @@ fn default_sqlite_path() -> std::path::PathBuf {
         .join("jobs.db")
 }
 
+/// Reject collection names that would corrupt Qdrant URL paths when interpolated via
+/// `format!()`. Allows letters, digits, underscore, dash, and dot; bounded to 1–255 chars.
+/// Dot is permitted because some live collections use `axon_v2` etc. and dotted names
+/// appear in Qdrant docs.
+fn validate_collection_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("collection name must not be empty".to_string());
+    }
+    if name.len() > 255 {
+        return Err(format!(
+            "collection name too long ({} chars, max 255)",
+            name.len()
+        ));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        return Err(format!(
+            "collection name '{name}' contains invalid characters; \
+             only [A-Za-z0-9_.-] are allowed"
+        ));
+    }
+    // Defence-in-depth against path traversal even within the allowed charset.
+    if name == "." || name == ".." || name.starts_with("..") {
+        return Err(format!("collection name '{name}' is reserved"));
+    }
+    Ok(())
+}
+
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let global = cli.global;
     let fetch_retries_was_set = global.fetch_retries.is_some();
@@ -209,6 +239,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             ..Config::default()
         });
     }
+
+    // Validate collection name: it gets interpolated into Qdrant URL paths via format!()
+    // with no percent-encoding. Reject anything that could break out of the path or
+    // collide with reserved characters (CWE-22 — bd axon_rust-d71.6 / H2).
+    validate_collection_name(&global.collection)?;
 
     let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
@@ -616,6 +651,44 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn validate_collection_name_accepts_normal_names() {
+        for ok in ["cortex", "axon", "axon_v2", "axon-test", "Mem0.v1", "a"] {
+            assert!(
+                validate_collection_name(ok).is_ok(),
+                "expected '{ok}' to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_path_traversal() {
+        for bad in ["..", "../foo", "..foo", ""] {
+            assert!(
+                validate_collection_name(bad).is_err(),
+                "expected '{bad}' to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_url_metacharacters() {
+        for bad in [
+            "foo/bar", "foo?x=1", "foo#frag", "foo bar", "foo\nbar", "foo%20",
+        ] {
+            assert!(
+                validate_collection_name(bad).is_err(),
+                "expected '{bad}' to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_overlong() {
+        let huge = "a".repeat(256);
+        assert!(validate_collection_name(&huge).is_err());
+    }
 
     #[allow(unsafe_code)]
     #[test]

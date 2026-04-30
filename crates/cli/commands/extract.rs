@@ -44,6 +44,14 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
 
         let result = extract_service::extract_sync(cfg, &urls, &prompt).await?;
         emit_extract_output(cfg, &result)?;
+        if result.total_items == 0 {
+            return Err(anyhow::anyhow!(
+                "extract produced 0 items from {} URL(s); see {} for per-URL summary",
+                urls.len(),
+                result.summary_path,
+            )
+            .into());
+        }
         Ok(())
     })
 }

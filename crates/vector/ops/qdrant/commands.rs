@@ -28,6 +28,41 @@ use super::utils::{
     env_usize_clamped, payload_url, render_full_doc_from_points, retrieve_max_points,
 };
 
+/// Hard cap on retrieval-query length. `compute_sparse_vector` and `tei_embed` are
+/// otherwise unbounded; a multi-MB query would reach both Qdrant and TEI.
+/// Bounded to ~64 KiB which is well above any reasonable NL or keyword query
+/// (CWE-770, bd axon_rust-d71.7 / H3).
+const MAX_QUERY_LEN_BYTES: usize = 64 * 1024;
+
+/// Validate a Qdrant collection name against URL-injection / path-traversal.
+///
+/// Allows alphanumerics, underscore, hyphen, and dot; rejects path separators,
+/// query/fragment delimiters, leading/trailing dots, and `..`. Length capped
+/// at 255. Called at every dispatch entry — see crates/vector/ops/qdrant/hybrid.rs
+/// and crates/vector/ops/qdrant/commands.rs which interpolate the name into URLs
+/// without percent-encoding (CWE-22, bd axon_rust-d71.6 / H2).
+fn validate_collection_name(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        return Err("empty");
+    }
+    if name.len() > 255 {
+        return Err("exceeds 255 characters");
+    }
+    if name == "." || name == ".." || name.starts_with('.') || name.ends_with('.') {
+        return Err("leading/trailing dot or path component");
+    }
+    if name.contains("..") {
+        return Err("contains '..'");
+    }
+    for c in name.chars() {
+        let ok = c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.');
+        if !ok {
+            return Err("contains a character outside [A-Za-z0-9_.-]");
+        }
+    }
+    Ok(())
+}
+
 /// Dispatch vector search based on collection mode and hybrid config.
 ///
 /// Named + hybrid enabled + non-empty sparse -> hybrid search (dense + BM42 + RRF)
@@ -40,59 +75,111 @@ pub(crate) async fn dispatch_vector_search(
     vector: &[f32],
     query: &str,
     limit: usize,
-) -> Result<Vec<QdrantSearchHit>, Box<dyn Error>> {
+) -> Result<Vec<QdrantSearchHit>, Box<dyn Error + Send + Sync>> {
+    if let Err(reason) = validate_collection_name(&cfg.collection) {
+        return Err(format!(
+            "invalid collection name {:?}: {reason} (CWE-22 path injection guard)",
+            cfg.collection
+        )
+        .into());
+    }
+    if query.len() > MAX_QUERY_LEN_BYTES {
+        return Err(format!(
+            "query exceeds {MAX_QUERY_LEN_BYTES}-byte cap (got {} bytes); \
+             retrieval queries must be reasonably-sized natural-language or keyword input",
+            query.len()
+        )
+        .into());
+    }
     let filter =
         super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref())
-            .map_err(|e| -> Box<dyn Error> { e.into() })?;
+            .map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
     let filter_ref = filter.as_ref();
-    let mode = get_or_fetch_vector_mode(cfg)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            format!(
-                "vector mode probe failed for collection '{}' at '{}': {e}. \
+    let mode =
+        get_or_fetch_vector_mode(cfg)
+            .await
+            .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                format!(
+                    "vector mode probe failed for collection '{}' at '{}': {e}. \
              verify Qdrant is reachable and the collection exists",
-                cfg.collection, cfg.qdrant_url
-            )
-            .into()
-        })?;
-    match mode {
+                    cfg.collection, cfg.qdrant_url
+                )
+                .into()
+            })?;
+    let started = std::time::Instant::now();
+    let (arm, result): (
+        &'static str,
+        Result<Vec<QdrantSearchHit>, Box<dyn Error + Send + Sync>>,
+    ) = match mode {
         VectorMode::Named => {
             if cfg.hybrid_search_enabled {
                 let sv = crate::crates::vector::ops::sparse::compute_sparse_vector(query);
                 if !sv.is_empty() {
-                    qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
-                        .await
-                        .map_err(|e| -> Box<dyn Error> {
-                            format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
-                        })
+                    (
+                        "hybrid_rrf",
+                        qdrant_hybrid_search(cfg, vector, &sv, limit, filter_ref)
+                            .await
+                            .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                                format!("hybrid search on '{}' failed: {e}", cfg.collection).into()
+                            }),
+                    )
                 } else {
-                    qdrant_named_dense_search(cfg, vector, limit, filter_ref)
-                        .await
-                        .map_err(|e| -> Box<dyn Error> {
-                            format!("named dense search on '{}' failed: {e}", cfg.collection).into()
-                        })
+                    (
+                        "named_dense_empty_sparse",
+                        qdrant_named_dense_search(cfg, vector, limit, filter_ref)
+                            .await
+                            .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                                format!("named dense search on '{}' failed: {e}", cfg.collection)
+                                    .into()
+                            }),
+                    )
                 }
             } else {
-                qdrant_named_dense_search(cfg, vector, limit, filter_ref)
-                    .await
-                    .map_err(|e| -> Box<dyn Error> {
-                        format!("named dense search on '{}' failed: {e}", cfg.collection).into()
-                    })
+                (
+                    "named_dense",
+                    qdrant_named_dense_search(cfg, vector, limit, filter_ref)
+                        .await
+                        .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                            format!("named dense search on '{}' failed: {e}", cfg.collection).into()
+                        }),
+                )
             }
         }
-        VectorMode::Unnamed => super::search::qdrant_search(cfg, vector, limit, filter_ref)
-            .await
-            .map_err(|e| -> Box<dyn Error> {
-                format!("vector search on '{}' failed: {e}", cfg.collection).into()
-            }),
+        VectorMode::Unnamed => (
+            "unnamed_dense",
+            super::search::qdrant_search(cfg, vector, limit, filter_ref)
+                .await
+                .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                    format!("vector search on '{}' failed: {e}", cfg.collection).into()
+                }),
+        ),
+    };
+    let latency_ms = started.elapsed().as_millis();
+    match &result {
+        Ok(hits) => tracing::debug!(
+            arm,
+            collection = %cfg.collection,
+            latency_ms,
+            hits = hits.len(),
+            limit,
+            "vector dispatch ok"
+        ),
+        Err(err) => tracing::warn!(
+            arm,
+            collection = %cfg.collection,
+            latency_ms,
+            error = %err,
+            "vector dispatch failed"
+        ),
     }
+    result
 }
 
 pub async fn retrieve_result(
     cfg: &Config,
     target: &str,
     max_points: Option<usize>,
-) -> Result<(usize, String), Box<dyn Error>> {
+) -> Result<(usize, String), Box<dyn Error + Send + Sync>> {
     let max_points = retrieve_max_points(max_points);
     let candidates = crate::crates::vector::ops::input::url_lookup_candidates(target);
 
@@ -142,7 +229,7 @@ pub async fn sources_payload(
     cfg: &Config,
     limit: usize,
     offset: usize,
-) -> Result<serde_json::Value, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
     let facet_cap = env_usize_clamped("AXON_SOURCES_FACET_LIMIT", 100_000, 1, 1_000_000);
     let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
     let sources = qdrant_url_facets(cfg, fetch).await?;
@@ -165,7 +252,7 @@ pub async fn domains_payload(
     cfg: &Config,
     limit: usize,
     offset: usize,
-) -> Result<serde_json::Value, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
     let facet_cap = env_usize_clamped("AXON_DOMAINS_FACET_LIMIT", 100_000, 1, 1_000_000);
     let fetch = limit.saturating_add(offset).max(1).min(facet_cap);
     let domains = qdrant_domain_facets(cfg, fetch).await?;
@@ -192,7 +279,9 @@ struct DedupeRecord {
 /// **Performance**: O(n) full collection scroll -- on large collections (millions of
 /// points) this can take 60-120+ seconds. This is inherent to deduplication and
 /// cannot be replaced with a facet query.
-pub async fn dedupe_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
+pub async fn dedupe_payload(
+    cfg: &Config,
+) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
     // Prevent concurrent deduplication runs — two simultaneous full-collection
     // scrolls race on deletes and produce misleading duplicate counts.
     if DEDUPE_IN_PROGRESS
@@ -264,4 +353,95 @@ pub async fn dedupe_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn E
         "deleted": deleted,
         "collection": cfg.collection,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::core::config::Config;
+
+    #[test]
+    fn collection_name_accepts_legal_values() {
+        assert!(validate_collection_name("cortex").is_ok());
+        assert!(validate_collection_name("axon_v2").is_ok());
+        assert!(validate_collection_name("my-collection").is_ok());
+        assert!(validate_collection_name("a.b.c").is_ok());
+        assert!(validate_collection_name("a").is_ok());
+    }
+
+    #[test]
+    fn collection_name_rejects_path_traversal() {
+        assert!(validate_collection_name("..").is_err());
+        assert!(validate_collection_name("../etc/passwd").is_err());
+        assert!(validate_collection_name("a/b").is_err());
+        assert!(validate_collection_name("a..b").is_err());
+        assert!(validate_collection_name(".hidden").is_err());
+        assert!(validate_collection_name("trailing.").is_err());
+    }
+
+    #[test]
+    fn collection_name_rejects_url_delimiters() {
+        assert!(validate_collection_name("a?x=1").is_err());
+        assert!(validate_collection_name("a#frag").is_err());
+        assert!(validate_collection_name("a b").is_err());
+        assert!(validate_collection_name("a%2e%2e").is_err());
+    }
+
+    #[test]
+    fn collection_name_rejects_empty_and_oversize() {
+        assert!(validate_collection_name("").is_err());
+        let huge = "a".repeat(256);
+        assert!(validate_collection_name(&huge).is_err());
+    }
+
+    #[tokio::test]
+    async fn dispatch_rejects_invalid_collection_name() {
+        let mut cfg = Config::test_default();
+        cfg.collection = "../etc/passwd".to_string();
+        let vec = vec![0.0f32; 4];
+        let err = dispatch_vector_search(&cfg, &vec, "ok", 5)
+            .await
+            .expect_err("path-traversal collection name must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid collection name"),
+            "error should mention invalid collection: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_rejects_query_over_max_len() {
+        let cfg = Config::test_default();
+        let huge = "a".repeat(MAX_QUERY_LEN_BYTES + 1);
+        let vec = vec![0.0f32; 4];
+        let err = dispatch_vector_search(&cfg, &vec, &huge, 5)
+            .await
+            .expect_err("query over cap must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("64-byte cap")
+                || msg.contains("cap")
+                || msg.contains(&MAX_QUERY_LEN_BYTES.to_string()),
+            "error should mention the cap: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_accepts_query_at_max_len() {
+        // We can't actually run the search without a Qdrant mock, but we can confirm
+        // the length guard does not trip at the boundary.
+        let cfg = Config::test_default();
+        let at_cap = "a".repeat(MAX_QUERY_LEN_BYTES);
+        let vec = vec![0.0f32; 4];
+        let res = dispatch_vector_search(&cfg, &vec, &at_cap, 5).await;
+        // Either succeeds (impossible without a mock) or fails for a downstream reason
+        // (vector mode probe / network) — but the failure must NOT be the length cap.
+        if let Err(e) = res {
+            let msg = e.to_string();
+            assert!(
+                !msg.contains("cap"),
+                "boundary-length query must not trip the length cap: {msg}"
+            );
+        }
+    }
 }

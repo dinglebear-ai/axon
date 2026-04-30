@@ -327,8 +327,13 @@ pub fn handle_job_recover(
 /// block that appears in every command's `"worker"` subcommand handler.
 pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
     match mode {
-        WorkerMode::InProcess => {
-            println!("Lite mode: queue drained.")
+        WorkerMode::InProcess {
+            pending_at_start,
+            elapsed_secs,
+        } => {
+            println!(
+                "Lite mode: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
+            );
         }
         WorkerMode::Started => {}
         WorkerMode::Unsupported(message) => return Err(message.into()),

@@ -10,6 +10,7 @@ use crate::crates::core::health::doctor::{
 use crate::crates::core::http::build_client;
 use serde_json::Value;
 use std::error::Error;
+use std::time::Duration;
 
 /// Lite-mode doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
@@ -60,6 +61,25 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let qdrant_ok = qdrant_probe.0;
     let browser_runtime = build_browser_runtime(&diagnostics);
 
+    // Vector mode mismatch probe: when Qdrant is reachable, look at the active
+    // collection's vectors block and compare to cfg.hybrid_search_enabled. If
+    // the collection is unnamed (legacy) but hybrid_search_enabled is on,
+    // hybrid search will silently fall back to dense-only — operators need to
+    // see this. (bd axon_rust-d71.4)
+    let vector_mode = if qdrant_ok && probe_client_result.is_ok() {
+        probe_vector_mode(&cfg.qdrant_url, &cfg.collection).await
+    } else {
+        None
+    };
+    let vector_mode_str = vector_mode.as_deref();
+    let vector_mode_mismatch = match vector_mode_str {
+        Some("unnamed") if cfg.hybrid_search_enabled => Some(
+            "collection is in legacy unnamed-vector mode but hybrid_search_enabled=true; \
+             hybrid RRF search will fall back to dense-only — run `axon migrate` to upgrade",
+        ),
+        _ => None,
+    };
+
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
         "lite_mode": true,
@@ -81,6 +101,10 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
                 "ok": qdrant_ok,
                 "url": cfg.qdrant_url,
                 "detail": qdrant_probe.1,
+                "collection": cfg.collection,
+                "vector_mode": vector_mode_str,
+                "hybrid_search_enabled": cfg.hybrid_search_enabled,
+                "mode_mismatch_warning": vector_mode_mismatch,
             },
             "chrome": {
                 "ok": chrome_ok,
@@ -108,6 +132,41 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "browser_runtime": browser_runtime,
         "stale_jobs": 0_i64,
         "pending_jobs": 0_i64,
-        "all_ok": tei_ok && qdrant_ok,
+        "all_ok": tei_ok && qdrant_ok && vector_mode_mismatch.is_none(),
     }))
+}
+
+/// GET `/collections/{name}` and classify the vectors block as named/unnamed.
+///
+/// Returns `Some("named")` when `result.config.params.vectors` contains a
+/// `dense` (or `bm42`) entry, `Some("unnamed")` when it has a bare `size`
+/// field, and `None` if the collection is missing or the response shape is
+/// unexpected. Best-effort — never fails the doctor probe.
+async fn probe_vector_mode(qdrant_url: &str, collection: &str) -> Option<String> {
+    let url = format!(
+        "{}/collections/{}",
+        qdrant_url.trim_end_matches('/'),
+        collection
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .ok()?;
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: Value = resp.json().await.ok()?;
+    let vectors = body
+        .get("result")?
+        .get("config")?
+        .get("params")?
+        .get("vectors")?;
+    if vectors.get("size").is_some() {
+        Some("unnamed".to_string())
+    } else if vectors.is_object() {
+        Some("named".to_string())
+    } else {
+        None
+    }
 }

@@ -140,7 +140,7 @@ pub async fn ingest_list_raw(
 
 pub async fn ingest_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Ingest).await? {
-        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+        WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }
@@ -408,7 +408,10 @@ mod tests {
             &self,
             _kind: JobKind,
         ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
-            Ok(WorkerMode::InProcess)
+            Ok(WorkerMode::InProcess {
+                pending_at_start: 0,
+                elapsed_secs: 0,
+            })
         }
 
         async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
