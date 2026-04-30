@@ -59,8 +59,36 @@ pub fn tokenize_path_set(path_or_url: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Score candidates without cloning, returning `(index, rerank_score)` pairs
+/// sorted by score descending. Caller can filter by threshold before
+/// materializing the selected candidates — avoids cloning ~150 candidates
+/// (~5-10 KiB each) just to throw most of them away. (bd axon_rust-d71.22)
+pub fn score_ask_candidates(
+    candidates: &[AskCandidate],
+    query_tokens: &[String],
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> Vec<(usize, f64)> {
+    if query_tokens.is_empty() {
+        return candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, c.score))
+            .collect();
+    }
+    compute_scored_indices(
+        candidates,
+        query_tokens,
+        authoritative_domains,
+        authoritative_boost,
+    )
+}
+
 /// Rerank candidates in place and return sorted. Takes ownership to avoid cloning
 /// all candidate structs (each contains ~2KB chunk_text + HashSets).
+///
+/// Prefer `score_ask_candidates` + selective materialization when the caller
+/// will threshold-filter most candidates out.
 pub fn rerank_ask_candidates(
     candidates: &[AskCandidate],
     query_tokens: &[String],
@@ -71,6 +99,34 @@ pub fn rerank_ask_candidates(
         return candidates.to_vec();
     }
 
+    let scored = compute_scored_indices(
+        candidates,
+        query_tokens,
+        authoritative_domains,
+        authoritative_boost,
+    );
+
+    scored
+        .into_iter()
+        .map(|(idx, score)| {
+            let mut c = candidates[idx].clone();
+            c.rerank_score = score;
+            c
+        })
+        .collect()
+}
+
+/// Inner scoring loop shared between `score_ask_candidates` and `rerank_ask_candidates`.
+///
+/// Returns `(index, rerank_score)` pairs sorted by score descending. Pure
+/// computation over `&[AskCandidate]` — no allocations beyond the result Vec
+/// and the pre-normalized domain list.
+fn compute_scored_indices(
+    candidates: &[AskCandidate],
+    query_tokens: &[String],
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> Vec<(usize, f64)> {
     // Reconstruct joined phrase for verbatim phrase-match boost.
     // Tokens are already lowercased so this matches case-insensitively.
     let phrase = query_tokens.join(" ");
@@ -83,8 +139,6 @@ pub fn rerank_ask_candidates(
         .filter(|d| !d.is_empty())
         .collect();
 
-    // Compute rerank scores on a parallel Vec<(usize, f64)> to avoid cloning all
-    // candidates (HIGH-1). Only the final sorted output clones the selected ones.
     let mut scored: Vec<(usize, f64)> = candidates
         .iter()
         .enumerate()
@@ -133,15 +187,7 @@ pub fn rerank_ask_candidates(
         .collect();
 
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
     scored
-        .into_iter()
-        .map(|(idx, score)| {
-            let mut c = candidates[idx].clone();
-            c.rerank_score = score;
-            c
-        })
-        .collect()
 }
 
 /// Case-insensitive ASCII substring check without allocating a lowercased copy.

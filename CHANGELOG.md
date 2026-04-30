@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-04-30
+
+### Added
+- **Score-distribution telemetry**: `vector.dispatch` tracing event now carries `top1_score` and `top10_avg_score` per arm so operators can detect threshold no-op (top-1 below `ask_min_relevance_score`) and arm-scale divergence (cosine vs RRF magnitudes).
+- **`score_ask_candidates`**: ranks candidates without cloning, returning `(idx, score)` pairs sorted descending. Caller filters by threshold first; only survivors are cloned.
+
+### Changed
+- **`retrieve_ask_candidates`**: now scores → filters → clones (was clone-all → filter), avoiding ~1 MB of throwaway clones per ask. `compute_scored_indices` extracted as the shared inner loop between `score_` and `rerank_`.
+
 ## [1.0.4] - 2026-04-30
 
 ### Added

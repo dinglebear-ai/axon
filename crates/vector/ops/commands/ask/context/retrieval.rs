@@ -216,18 +216,27 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         return Err(anyhow!("No relevant documents found for ask query"));
     }
 
-    let reranked = ranking::rerank_ask_candidates(
+    // Score first (no clone), filter by threshold + topical overlap, THEN
+    // materialize only the surviving candidates. Pre-d71.22 this cloned all
+    // ~150 candidates (~1 MB) only to immediately drop most of them.
+    let scored = ranking::score_ask_candidates(
         &candidates,
         &query_tokens,
         &cfg.ask_authoritative_domains,
         cfg.ask_authoritative_boost,
-    )
-    .into_iter()
-    .filter(|candidate| {
-        candidate.rerank_score >= cfg.ask_min_relevance_score
-            && candidate_has_topical_overlap(candidate, &query_tokens)
-    })
-    .collect::<Vec<_>>();
+    );
+    let reranked: Vec<ranking::AskCandidate> = scored
+        .into_iter()
+        .filter(|(idx, score)| {
+            *score >= cfg.ask_min_relevance_score
+                && candidate_has_topical_overlap(&candidates[*idx], &query_tokens)
+        })
+        .map(|(idx, score)| {
+            let mut c = candidates[idx].clone();
+            c.rerank_score = score;
+            c
+        })
+        .collect();
     if reranked.is_empty() {
         return Err(anyhow!(
             "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",

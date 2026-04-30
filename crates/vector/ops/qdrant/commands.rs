@@ -161,14 +161,31 @@ pub(crate) async fn dispatch_vector_search(
     };
     let latency_ms = started.elapsed().as_millis();
     match &result {
-        Ok(hits) => tracing::debug!(
-            arm,
-            collection = %cfg.collection,
-            latency_ms,
-            hits = hits.len(),
-            limit,
-            "vector dispatch ok"
-        ),
+        Ok(hits) => {
+            // Score-distribution telemetry — operators can grep these to detect
+            // threshold no-op (top-1 score way below `ask_min_relevance_score`)
+            // and arm-divergence (RRF vs cosine score scales differ). The
+            // numbers are inherently arm-dependent: cosine sits in [0, 1],
+            // RRF fusion tends to land in much smaller magnitudes.
+            // (bd axon_rust-d71.31 / M-OBS-2)
+            let top1 = hits.first().map(|h| h.score);
+            let top10_avg = if hits.is_empty() {
+                None
+            } else {
+                let n = hits.len().min(10);
+                Some(hits.iter().take(n).map(|h| h.score).sum::<f64>() / n as f64)
+            };
+            tracing::debug!(
+                arm,
+                collection = %cfg.collection,
+                latency_ms,
+                hits = hits.len(),
+                limit,
+                top1_score = top1,
+                top10_avg_score = top10_avg,
+                "vector dispatch ok"
+            );
+        }
         Err(err) => tracing::warn!(
             arm,
             collection = %cfg.collection,
