@@ -49,6 +49,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
 
     let mut ask_diagnostics = false;
     let mut evaluate_responses_mode = EvaluateResponsesMode::Inline;
+    let mut evaluate_retrieval_ab = false;
     let mut github_include_source = true;
     let mut github_max_issues: usize = env::var("GITHUB_MAX_ISSUES")
         .ok()
@@ -132,6 +133,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         CliCommand::Evaluate(args) => {
             ask_diagnostics = args.diagnostics;
             evaluate_responses_mode = args.responses_mode;
+            evaluate_retrieval_ab = args.retrieval_ab;
             (CommandKind::Evaluate, args.value)
         }
         CliCommand::Suggest(args) => (CommandKind::Suggest, args.value),
@@ -357,6 +359,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ask_diagnostics,
         ask_graph: global.graph,
         evaluate_responses_mode,
+        evaluate_retrieval_ab,
         ask_max_context_chars: performance::env_usize_clamped(
             "AXON_ASK_MAX_CONTEXT_CHARS",
             120_000,
@@ -410,7 +413,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             1,
             5,
         ),
-        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true),
+        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true) && !global.no_hybrid_search,
         hybrid_search_candidates: performance::env_usize_clamped(
             "AXON_HYBRID_CANDIDATES",
             100,

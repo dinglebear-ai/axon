@@ -223,6 +223,10 @@ pub(super) struct EvaluateArgs {
     pub(super) diagnostics: bool,
     #[arg(long = "responses-mode", value_enum, default_value_t = EvaluateResponsesMode::SideBySide)]
     pub(super) responses_mode: EvaluateResponsesMode,
+    /// Replace the no-context baseline with a second RAG run that has hybrid retrieval
+    /// disabled. The judge then compares hybrid-RAG vs dense-only-RAG.
+    #[arg(long = "retrieval-ab", action = ArgAction::SetTrue)]
+    pub(super) retrieval_ab: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }

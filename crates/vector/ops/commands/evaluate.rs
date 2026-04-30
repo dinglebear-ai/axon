@@ -104,10 +104,31 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
 
     let ctx = build_ask_context(&derived, &query).await?;
     let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
-    let baseline_future = run_baseline_answer(&derived, client, &query, warm2);
-    let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
-    let (rag_answer, rag_elapsed_ms) = rag;
-    let (baseline_answer, baseline_elapsed_ms) = baseline;
+    let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) = if derived
+        .evaluate_retrieval_ab
+    {
+        // Retrieval A/B: replace the no-context baseline with a second RAG run that has
+        // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
+        let mut dense_cfg = derived.clone();
+        dense_cfg.hybrid_search_enabled = false;
+        let dense_ctx = build_ask_context(&dense_cfg, &query).await?;
+        let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context, warm2);
+        let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
+        let (rag_answer, rag_elapsed_ms) = rag;
+        let (dense_answer, dense_elapsed_ms) = dense;
+        (rag_answer, rag_elapsed_ms, dense_answer, dense_elapsed_ms)
+    } else {
+        let baseline_future = run_baseline_answer(&derived, client, &query, warm2);
+        let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
+        let (rag_answer, rag_elapsed_ms) = rag;
+        let (baseline_answer, baseline_elapsed_ms) = baseline;
+        (
+            rag_answer,
+            rag_elapsed_ms,
+            baseline_answer,
+            baseline_elapsed_ms,
+        )
+    };
     let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);
     let research_started = Instant::now();
     let warm3 = make_warm("judge");
@@ -139,6 +160,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         baseline_elapsed_ms,
         source_count,
         context_chars,
+        retrieval_ab: derived.evaluate_retrieval_ab,
     };
     let (analysis_answer, analysis_elapsed_ms) =
         run_analysis(&derived, client, &judge_ctx, warm3).await;

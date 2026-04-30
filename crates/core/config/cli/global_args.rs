@@ -355,6 +355,11 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long = "header", value_name = "HEADER")]
     pub(in crate::crates::core::config) custom_headers: Vec<String>,
 
+    /// Disable hybrid (dense + BM42 sparse + RRF) search; force dense-only retrieval.
+    /// Overrides `AXON_HYBRID_SEARCH=true`. Useful for A/B comparing retrieval quality.
+    #[arg(global = true, long = "no-hybrid-search", action = ArgAction::SetTrue, default_value_t = false)]
+    pub(in crate::crates::core::config) no_hybrid_search: bool,
+
     /// Suppress spinners and progress output (useful in scripts). JSON data is unaffected.
     #[arg(global = true, long, action = ArgAction::SetTrue, default_value_t = false)]
     pub(in crate::crates::core::config) quiet: bool,

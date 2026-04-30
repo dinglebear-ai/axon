@@ -312,6 +312,11 @@ pub struct Config {
     /// Env: `AXON_HYBRID_SEARCH` (true/false/1/0). Default: true.
     pub hybrid_search_enabled: bool,
 
+    /// `evaluate` flag: replace the no-context baseline lane with a second RAG run that has
+    /// hybrid retrieval disabled (dense-only). The judge then compares hybrid-RAG vs dense-RAG.
+    /// CLI: `--retrieval-ab`. Default: false.
+    pub evaluate_retrieval_ab: bool,
+
     /// Candidates fetched per prefetch arm (dense + sparse) before RRF fusion.
     /// Env: `AXON_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
     pub hybrid_search_candidates: usize,

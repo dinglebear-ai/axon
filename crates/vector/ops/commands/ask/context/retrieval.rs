@@ -61,12 +61,21 @@ fn merge_candidates(
     mut primary: Vec<ranking::AskCandidate>,
     secondary: Vec<ranking::AskCandidate>,
 ) -> Vec<ranking::AskCandidate> {
+    fn prefix_key(url: &str, chunk_text: &str) -> String {
+        // Truncate at 80 *bytes* but step back to a UTF-8 char boundary so multibyte
+        // characters (e.g. Japanese) don't trigger a byte-slice panic.
+        let mut end = chunk_text.len().min(80);
+        while end > 0 && !chunk_text.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}|{}", url, &chunk_text[..end])
+    }
     let mut seen: std::collections::HashSet<String> = primary
         .iter()
-        .map(|c| format!("{}|{}", c.url, &c.chunk_text[..c.chunk_text.len().min(80)]))
+        .map(|c| prefix_key(&c.url, &c.chunk_text))
         .collect();
     for c in secondary {
-        let key = format!("{}|{}", c.url, &c.chunk_text[..c.chunk_text.len().min(80)]);
+        let key = prefix_key(&c.url, &c.chunk_text);
         if seen.insert(key) {
             primary.push(c);
         }
