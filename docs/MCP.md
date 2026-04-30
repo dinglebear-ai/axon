@@ -31,8 +31,7 @@ Core stack env vars are reused:
 - `OPENAI_MODEL`
 - `TAVILY_API_KEY`
 
-MCP transport env vars:
-- `AXON_MCP_TRANSPORT` (`http` default; `stdio|http|both`)
+MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 
@@ -46,17 +45,11 @@ happens at the ingress layer.
 `axon mcp` supports three transport modes:
 
 - `axon mcp`
-  Starts HTTP transport only. This remains the default for backward compatibility.
-- `axon mcp --transport stdio`
   Starts stdio transport only. Use this for local MCP clients such as Claude Desktop.
+- `axon serve mcp`
+  Starts HTTP transport only.
 - `axon mcp --transport both`
   Starts stdio and HTTP concurrently.
-
-Equivalent env override:
-
-```bash
-AXON_MCP_TRANSPORT=stdio   # or http / both
-```
 
 HTTP transport uses:
 - `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)

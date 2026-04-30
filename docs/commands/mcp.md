@@ -13,16 +13,17 @@ axon mcp [--transport stdio|http|both]
 
 `axon mcp` supports three transport modes:
 
-- `http` (default): starts the HTTP MCP server on `/mcp`
-- `stdio`: starts stdio transport only
+- `stdio` (default): starts stdio transport only
+- `http`: starts the HTTP MCP server on `/mcp`
 - `both`: starts stdio and HTTP concurrently
 
 Transport selection:
 
 | Selector | Default | Description |
 |----------|---------|-------------|
-| `--transport` | `http` | CLI transport selector |
-| `AXON_MCP_TRANSPORT` | `http` | Env override: `stdio`, `http`, or `both` |
+| `axon mcp` | `stdio` | Local MCP client entrypoint |
+| `axon serve mcp` | `http` | HTTP MCP server entrypoint |
+| `--transport` | command default | Explicit CLI transport selector |
 
 ## HTTP Runtime Binding
 
@@ -46,20 +47,17 @@ Supported top-level action families include: `status`, `help`, `crawl`, `extract
 ## Examples
 
 ```bash
-# Default HTTP bind 0.0.0.0:8001
+# Stdio only
 axon mcp
 
-# Stdio only
-axon mcp --transport stdio
+# HTTP bind 0.0.0.0:8001
+axon serve mcp
 
 # HTTP + stdio together
 axon mcp --transport both
 
 # Custom HTTP bind
-AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8900 axon mcp
-
-# Env-driven stdio
-AXON_MCP_TRANSPORT=stdio axon mcp
+AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8900 axon serve mcp
 ```
 
 ## Notes

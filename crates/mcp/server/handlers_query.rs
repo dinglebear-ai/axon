@@ -37,6 +37,9 @@ impl AxonMcpServer {
         if let Some(before) = req.before {
             cfg.before = Some(before);
         }
+        if let Some(enabled) = req.hybrid_search {
+            cfg.hybrid_search_enabled = enabled;
+        }
 
         let result = query_svc::query(&cfg, &query, pagination)
             .await
@@ -286,6 +289,9 @@ impl AxonMcpServer {
         }
         if let Some(before) = req.before {
             cfg.before = Some(before);
+        }
+        if let Some(enabled) = req.hybrid_search {
+            cfg.hybrid_search_enabled = enabled;
         }
 
         let result = query_svc::ask(&cfg, &query, None)

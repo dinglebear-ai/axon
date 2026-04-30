@@ -449,7 +449,8 @@ pub struct Config {
     /// Viewport height in pixels for screenshot capture. Default: 1080. Flag: `--viewport`.
     pub viewport_height: u32,
 
-    /// MCP transport mode. Env: `AXON_MCP_TRANSPORT`. Flag: `axon mcp --transport`.
+    /// MCP transport mode. Defaults by entrypoint: `axon mcp` uses stdio,
+    /// `axon serve mcp` uses HTTP. Flag: `--transport`.
     pub mcp_transport: McpTransport,
 
     /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `0.0.0.0`.

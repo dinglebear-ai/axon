@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-04-30
+
+### Added
+- **MCP per-request `hybrid_search` override**: `QueryRequest` and `AskRequest` now accept `hybrid_search: Option<bool>` to override `cfg.hybrid_search_enabled` per call (A/B comparison without restart).
+- **Lite drain tests**: 3 tests covering `has_active_jobs` per-kind isolation, terminal-state transition, and bounded-time drain in the presence of unrelated pending rows.
+
+### Changed
+- **`build_scraped_at_filter`**: process-level `LazyLock<RwLock<HashMap>>` memoizes parsed `--since`/`--before` strings so dual-embed asks no longer re-parse chrono twice per question.
+- **Hybrid search hot-path bodies**: replaced `serde_json::json!{...}` with typed `Serialize` structs (`HybridQueryBody`, `NamedDenseQueryBody`, `PrefetchArm`, `DenseParams`, `QuantizationParams`, `FusionSpec`). Eliminates per-request Map allocations.
+
 ## [1.0.5] - 2026-04-30
 
 ### Added

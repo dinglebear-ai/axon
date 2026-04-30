@@ -8,10 +8,70 @@ use crate::crates::core::http::http_client;
 use crate::crates::core::logging::{log_debug, log_warn};
 use crate::crates::vector::ops::sparse::SparseVector;
 use anyhow::Result;
+use serde::Serialize;
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
 use super::utils::{HNSW_EF_SEARCH, qdrant_base};
+
+// Typed request bodies for Qdrant `/points/query`. Replaces serde_json::json!{...}
+// macro allocations on the retrieval hot path. (bd axon_rust-d71.25)
+
+#[derive(Serialize)]
+struct HybridQueryBody<'a> {
+    prefetch: [PrefetchArm<'a>; 2],
+    query: FusionSpec,
+    limit: usize,
+    with_payload: bool,
+    with_vector: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<&'a serde_json::Value>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum PrefetchArm<'a> {
+    Dense {
+        query: &'a [f32],
+        using: &'static str,
+        limit: usize,
+        params: DenseParams,
+    },
+    Sparse {
+        query: &'a SparseVector,
+        using: &'static str,
+        limit: usize,
+    },
+}
+
+#[derive(Serialize)]
+struct DenseParams {
+    hnsw_ef: usize,
+    quantization: QuantizationParams,
+}
+
+#[derive(Serialize)]
+struct QuantizationParams {
+    rescore: bool,
+    oversampling: f32,
+}
+
+#[derive(Serialize)]
+struct FusionSpec {
+    fusion: &'static str,
+}
+
+#[derive(Serialize)]
+struct NamedDenseQueryBody<'a> {
+    query: &'a [f32],
+    using: &'static str,
+    limit: usize,
+    with_payload: bool,
+    with_vector: bool,
+    params: DenseParams,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<&'a serde_json::Value>,
+}
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.
 ///
@@ -47,34 +107,32 @@ pub(crate) async fn qdrant_hybrid_search(
     let candidates = cfg.hybrid_search_candidates.max(limit);
     let hnsw_ef = *HNSW_EF_SEARCH;
 
-    let mut body = serde_json::json!({
-        "prefetch": [
-            {
-                "query": dense_vector,
-                "using": "dense",
-                "limit": candidates,
-                "params": {
-                    "hnsw_ef": hnsw_ef,
-                    "quantization": {
-                        "rescore": true,
-                        "oversampling": 1.5
-                    }
-                }
+    let body = HybridQueryBody {
+        prefetch: [
+            PrefetchArm::Dense {
+                query: dense_vector,
+                using: "dense",
+                limit: candidates,
+                params: DenseParams {
+                    hnsw_ef,
+                    quantization: QuantizationParams {
+                        rescore: true,
+                        oversampling: 1.5,
+                    },
+                },
             },
-            {
-                "query": sparse_vector,
-                "using": "bm42",
-                "limit": candidates
-            }
+            PrefetchArm::Sparse {
+                query: sparse_vector,
+                using: "bm42",
+                limit: candidates,
+            },
         ],
-        "query": {"fusion": "rrf"},
-        "limit": limit,
-        "with_payload": true,
-        "with_vector": false
-    });
-    if let Some(f) = filter {
-        body["filter"] = f.clone();
-    }
+        query: FusionSpec { fusion: "rrf" },
+        limit,
+        with_payload: true,
+        with_vector: false,
+        filter,
+    };
 
     let search_start = Instant::now();
     let resp = client
@@ -137,23 +195,21 @@ pub(crate) async fn qdrant_named_dense_search(
     );
 
     let hnsw_ef = *HNSW_EF_SEARCH;
-    let mut body = serde_json::json!({
-        "query": dense_vector,
-        "using": "dense",
-        "limit": limit,
-        "with_payload": true,
-        "with_vector": false,
-        "params": {
-            "hnsw_ef": hnsw_ef,
-            "quantization": {
-                "rescore": true,
-                "oversampling": 1.5
-            }
-        }
-    });
-    if let Some(f) = filter {
-        body["filter"] = f.clone();
-    }
+    let body = NamedDenseQueryBody {
+        query: dense_vector,
+        using: "dense",
+        limit,
+        with_payload: true,
+        with_vector: false,
+        params: DenseParams {
+            hnsw_ef,
+            quantization: QuantizationParams {
+                rescore: true,
+                oversampling: 1.5,
+            },
+        },
+        filter,
+    };
 
     let search_start = Instant::now();
     let resp = client

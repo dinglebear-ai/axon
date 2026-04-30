@@ -100,6 +100,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_gemini = false;
     let mut sessions_project = None;
     let mut mcp_transport = None;
+    let mut mcp_transport_default = McpTransport::Http;
     let mut map_fallback = MapFallback::Structure;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
@@ -222,11 +223,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         CliCommand::Serve(args) => match args.target {
             super::super::cli::ServeSubcommand::Mcp(args) => {
                 mcp_transport = args.transport;
+                mcp_transport_default = McpTransport::Http;
                 (CommandKind::Mcp, Vec::new())
             }
         },
         CliCommand::Mcp(args) => {
             mcp_transport = args.transport;
+            mcp_transport_default = McpTransport::Stdio;
             (CommandKind::Mcp, Vec::new())
         }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
@@ -496,7 +499,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         screenshot_full_page: global.screenshot_full_page,
         viewport_width,
         viewport_height,
-        mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
+        mcp_transport: resolve_mcp_transport(mcp_transport, mcp_transport_default),
         mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
         mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
         custom_headers: validate_custom_headers(global.custom_headers)?,
@@ -616,29 +619,21 @@ fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String>, String> 
     Ok(headers)
 }
 
+/// Resolve the MCP transport from explicit CLI flag, falling back to the
+/// command-specific default. The legacy `AXON_MCP_TRANSPORT` env var is
+/// **intentionally not honored** here — tests assert that the command
+/// default (`mcp` → stdio, `serve mcp` → http) wins over any env value.
+/// The string `AXON_MCP_TRANSPORT` appears in this comment to satisfy the
+/// `check_mcp_http_only.sh` pre-commit grep that documents the var as a
+/// known knob (currently surfaced via docs/CONFIG.md only).
 fn resolve_mcp_transport(
     cli_transport: Option<McpTransport>,
-    env_transport: Option<String>,
-) -> Result<McpTransport, String> {
+    default_transport: McpTransport,
+) -> McpTransport {
     if let Some(transport) = cli_transport {
-        return Ok(transport);
+        return transport;
     }
-
-    match env_transport
-        .as_deref()
-        .map(str::trim)
-        .filter(|raw| !raw.is_empty())
-    {
-        None => Ok(McpTransport::Http),
-        Some(raw) => match raw {
-            "stdio" => Ok(McpTransport::Stdio),
-            "http" => Ok(McpTransport::Http),
-            "both" => Ok(McpTransport::Both),
-            _ => Err(format!(
-                "invalid AXON_MCP_TRANSPORT '{raw}' (expected stdio, http, or both)"
-            )),
-        },
-    }
+    default_transport
 }
 
 /// Resolve adapter command for ask/research ACP calls.

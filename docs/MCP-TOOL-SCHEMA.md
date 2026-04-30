@@ -57,10 +57,10 @@ These actions do not require `subaction`:
 
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
-| `ask` | -- | `query`, `graph`, `diagnostics`, `collection`, `since`, `before`, `response_mode` |
+| `ask` | -- | `query`, `graph`, `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
 | `map` | -- | `url`, `limit`, `offset`, `response_mode` |
-| `query` | -- | `query`, `limit`, `offset`, `collection`, `since`, `before`, `response_mode` |
+| `query` | -- | `query`, `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `research` | -- | `query`, `limit`, `offset`, `search_time_range`, `response_mode` |
 | `retrieve` | -- | `url`, `max_points`, `response_mode` |
 | `scrape` | -- | `url`, `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector` |

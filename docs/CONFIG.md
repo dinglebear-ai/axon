@@ -79,7 +79,6 @@ The `axon.json` file provides structured configuration with schema validation (`
 | `SHELL_SERVER_PORT` | `49011` | Shell WebSocket server port |
 | `AXON_MCP_HTTP_PORT` | `8001` | MCP HTTP server port |
 | `AXON_MCP_HTTP_HOST` | `0.0.0.0` | MCP HTTP server bind address |
-| `AXON_MCP_TRANSPORT` | `http` | MCP transport: `http`, `stdio`, or `both` |
 
 ### Lite mode
 

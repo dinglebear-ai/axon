@@ -1,4 +1,6 @@
 use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
 
 /// Parse a human-friendly date string into a UTC `DateTime`.
 ///
@@ -43,6 +45,40 @@ pub(crate) fn parse_time_filter(s: &str) -> Result<DateTime<Utc>, String> {
         .map_err(|e| format!("invalid RFC3339 date '{s}': {e}"))
 }
 
+/// Process-level memoization for parsed `--since`/`--before` strings.
+///
+/// `dispatch_vector_search` calls `build_scraped_at_filter` on every retrieval,
+/// and the dual-embedding ask path calls it twice per question. The same
+/// `cfg.since`/`cfg.before` strings recur for the entire process lifetime, so
+/// caching the parsed RFC3339 result avoids re-parsing on the hot path.
+///
+/// **Relative shorthand caveat:** `7d` / `1w` resolve relative to `Utc::now()`.
+/// Once cached, subsequent calls return the timestamp anchored to the *first*
+/// resolution time. For typical CLI/MCP runs this is intended (one query per
+/// invocation; relative bounds shouldn't drift mid-run); for very long-running
+/// processes this means relative bounds freeze at first use rather than rolling
+/// forward. Acceptable trade-off for the perf gain. (bd axon_rust-d71.23)
+type FilterCacheKey = (Option<String>, Option<String>);
+type FilterCacheMap = HashMap<FilterCacheKey, CachedFilter>;
+
+static FILTER_CACHE: LazyLock<RwLock<FilterCacheMap>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+#[derive(Clone)]
+struct CachedFilter {
+    gte: Option<String>,
+    lte: Option<String>,
+}
+
+fn parse_one(label: &str, s: Option<&str>) -> Result<Option<String>, String> {
+    s.map(|raw| {
+        parse_time_filter(raw)
+            .map(|dt| dt.to_rfc3339())
+            .map_err(|e| format!("{label} parse error: {e}"))
+    })
+    .transpose()
+}
+
 /// Build a Qdrant filter value constraining `scraped_at` to [since, before].
 ///
 /// Returns `Ok(None)` when both arguments are `None` (no filter applied).
@@ -52,26 +88,31 @@ pub(crate) fn build_scraped_at_filter(
     since: Option<&str>,
     before: Option<&str>,
 ) -> Result<Option<serde_json::Value>, String> {
-    let gte = since
-        .map(|s| {
-            parse_time_filter(s)
-                .map(|dt| dt.to_rfc3339())
-                .map_err(|e| format!("--since parse error: {e}"))
-        })
-        .transpose()?;
-
-    let lte = before
-        .map(|s| {
-            parse_time_filter(s)
-                .map(|dt| dt.to_rfc3339())
-                .map_err(|e| format!("--before parse error: {e}"))
-        })
-        .transpose()?;
-
-    if gte.is_none() && lte.is_none() {
-        return Ok(None);
+    let key = (since.map(str::to_string), before.map(str::to_string));
+    if let Some(cached) = FILTER_CACHE.read().ok().and_then(|m| m.get(&key).cloned()) {
+        return Ok(build_filter_value(cached.gte, cached.lte));
     }
 
+    let gte = parse_one("--since", since)?;
+    let lte = parse_one("--before", before)?;
+
+    if let Ok(mut m) = FILTER_CACHE.write() {
+        m.insert(
+            key,
+            CachedFilter {
+                gte: gte.clone(),
+                lte: lte.clone(),
+            },
+        );
+    }
+
+    Ok(build_filter_value(gte, lte))
+}
+
+fn build_filter_value(gte: Option<String>, lte: Option<String>) -> Option<serde_json::Value> {
+    if gte.is_none() && lte.is_none() {
+        return None;
+    }
     let mut range = serde_json::Map::new();
     if let Some(v) = gte {
         range.insert("gte".to_string(), serde_json::Value::String(v));
@@ -79,13 +120,12 @@ pub(crate) fn build_scraped_at_filter(
     if let Some(v) = lte {
         range.insert("lte".to_string(), serde_json::Value::String(v));
     }
-
-    Ok(Some(serde_json::json!({
+    Some(serde_json::json!({
         "must": [{
             "key": "scraped_at",
             "range": range
         }]
-    })))
+    }))
 }
 
 pub(crate) fn url_filter(url_match: &str) -> serde_json::Value {

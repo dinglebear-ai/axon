@@ -8,7 +8,6 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 |----------|----------|---------|-------------|-----------|
 | `AXON_MCP_HTTP_HOST` | no | `0.0.0.0` | Bind address for HTTP transport | no |
 | `AXON_MCP_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
-| `AXON_MCP_TRANSPORT` | no | `http` | Transport mode: `http`, `stdio`, or `both` | no |
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/axon/artifacts` | Directory for response artifacts | no |
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes) | no |
 

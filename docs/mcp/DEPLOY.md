@@ -22,7 +22,7 @@ just services-up
 axon mcp
 
 # Or HTTP transport
-AXON_MCP_TRANSPORT=http axon mcp
+axon serve mcp
 ```
 
 ### Lite mode (zero infrastructure)

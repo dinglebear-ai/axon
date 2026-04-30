@@ -254,6 +254,10 @@ pub struct QueryRequest {
     /// Upper bound for temporal filter. Same formats as `since`.
     /// Restricts results to content indexed on or before this date.
     pub before: Option<String>,
+    /// Per-request hybrid search override. `false` forces dense-only retrieval
+    /// (skips BM42 sparse + RRF). When unset, falls back to server config
+    /// (`AXON_HYBRID_SEARCH`, default true). Useful for A/B comparison.
+    pub hybrid_search: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 
@@ -365,6 +369,9 @@ pub struct AskRequest {
     /// Upper bound for temporal filter. Same formats as `since`.
     /// Restricts results to content indexed on or before this date.
     pub before: Option<String>,
+    /// Per-request hybrid search override. `false` forces dense-only retrieval
+    /// (skips BM42 sparse + RRF). When unset, falls back to server config.
+    pub hybrid_search: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 

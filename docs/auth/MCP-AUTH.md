@@ -101,13 +101,10 @@ AXON_MCP_HTTP_PORT=8001
 
 ```bash
 # From project root — binary reads .env automatically
-AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- mcp
-
-# Explicit HTTP mode (equivalent)
-AXON_MCP_TRANSPORT=http AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- mcp
+AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- serve mcp
 
 # Dual mode also exposes the same OAuth-protected HTTP endpoint
-AXON_MCP_TRANSPORT=both AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- mcp
+AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- mcp --transport both
 
 # Or via just dev (starts everything including MCP server at port 8001)
 just dev
@@ -185,7 +182,6 @@ When Redis is unavailable, the in-memory fallback is used. Tokens are lost when 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_TRANSPORT` | `http` | MCP transport mode (`stdio`, `http`, `both`) |
 | `AXON_MCP_HTTP_HOST` | `0.0.0.0` | MCP server bind address |
 | `AXON_MCP_HTTP_PORT` | `8001` | MCP server port |
 | `GOOGLE_OAUTH_AUTH_URL` | Google default | Override Google authorization URL |

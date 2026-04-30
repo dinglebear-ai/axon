@@ -425,7 +425,7 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn parse_mcp_transport_from_env() {
+    fn parse_mcp_defaults_to_stdio_transport() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
@@ -436,7 +436,7 @@ mod tests {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-            env::set_var(TRANSPORT, "stdio");
+            env::set_var(TRANSPORT, "http");
         }
 
         let cli = super::Cli::parse_from([
@@ -461,7 +461,7 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn parse_mcp_transport_flag_overrides_env() {
+    fn parse_mcp_transport_flag_overrides_command_default() {
         let _guard = ENV_LOCK.lock().unwrap();
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
@@ -472,7 +472,7 @@ mod tests {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-            env::set_var(TRANSPORT, "http");
+            env::set_var(TRANSPORT, "stdio");
         }
 
         let cli = super::Cli::parse_from([
@@ -499,13 +499,12 @@ mod tests {
     #[allow(unsafe_code)]
     #[test]
     fn parse_serve_mcp_maps_to_mcp_http_transport() {
-        // ENV_LOCK serializes against parse_mcp_transport_flag_overrides_env,
-        // which mutates AXON_MCP_TRANSPORT during its test body. Without the
-        // lock, this test races and intermittently sees the polluted value.
+        // ENV_LOCK serializes against the other MCP transport tests so they
+        // can't race on the shared env var.
         let _guard = ENV_LOCK.lock().unwrap();
         const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
         unsafe {
-            env::remove_var(TRANSPORT);
+            env::set_var(TRANSPORT, "stdio");
         }
         let cli = super::Cli::parse_from([
             "axon",
@@ -519,5 +518,9 @@ mod tests {
         let cfg = super::build_config::into_config(cli).expect("serve mcp config should parse");
         assert!(matches!(cfg.command, CommandKind::Mcp));
         assert_eq!(cfg.mcp_transport, McpTransport::Http);
+
+        unsafe {
+            env::remove_var(TRANSPORT);
+        }
     }
 }

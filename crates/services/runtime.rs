@@ -263,3 +263,175 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         Ok(lite_query::count_jobs(self.backend.pool(), kind.table_name()).await?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crates::jobs::backend::JobPayload;
+    use crate::crates::jobs::lite::ops::{enqueue_job, mark_completed, mark_failed};
+    use crate::crates::jobs::lite::store::open_sqlite_pool;
+    use sqlx::SqlitePool;
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    async fn fresh_pool() -> SqlitePool {
+        open_sqlite_pool(":memory:").await.expect("pool")
+    }
+
+    /// has_active_jobs is per-kind: a pending row in another table must NOT make
+    /// us think the queried kind has active jobs. (bd axon_rust-cr5.14)
+    #[tokio::test]
+    async fn has_active_jobs_is_isolated_per_kind() {
+        let pool = fresh_pool().await;
+        // Seed a pending crawl job.
+        enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue crawl");
+
+        // Seed a pending embed job.
+        enqueue_job(
+            &pool,
+            &JobPayload::Embed {
+                input: "doc".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue embed");
+
+        let active_crawl = has_active_for_kind(&pool, JobKind::Crawl).await;
+        let active_embed = has_active_for_kind(&pool, JobKind::Embed).await;
+        let active_extract = has_active_for_kind(&pool, JobKind::Extract).await;
+
+        assert!(active_crawl, "crawl table has pending row");
+        assert!(active_embed, "embed table has pending row");
+        assert!(
+            !active_extract,
+            "extract table is empty — must not be considered active"
+        );
+    }
+
+    /// Once all jobs for a kind reach a terminal state (completed/failed/canceled),
+    /// has_active_jobs returns false even if other kinds still have pending rows.
+    #[tokio::test]
+    async fn has_active_jobs_false_after_terminal_states() {
+        let pool = fresh_pool().await;
+        let crawl_id = enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue crawl");
+        // Seed an unrelated pending embed row that should NOT block the crawl drain.
+        let _ = enqueue_job(
+            &pool,
+            &JobPayload::Embed {
+                input: "doc".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue embed");
+
+        // Move crawl to running, then completed.
+        super::super::super::jobs::lite::ops::claim_next_pending(&pool, "axon_crawl_jobs")
+            .await
+            .expect("claim crawl");
+        mark_completed(&pool, "axon_crawl_jobs", crawl_id, None)
+            .await
+            .expect("complete crawl");
+
+        let active_crawl = has_active_for_kind(&pool, JobKind::Crawl).await;
+        let active_embed = has_active_for_kind(&pool, JobKind::Embed).await;
+        assert!(
+            !active_crawl,
+            "crawl drain should see no active rows once completed"
+        );
+        assert!(active_embed, "embed remains pending — unrelated kind");
+    }
+
+    /// Bounded-time drain: once the queried kind has no pending/running rows,
+    /// the wait loop returns within ~1s even if other kinds still have rows.
+    #[tokio::test]
+    async fn drain_terminates_quickly_on_terminal_state() {
+        let pool = fresh_pool().await;
+        let id = enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "https://example.com".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue");
+        // Seed unrelated pending embed row that must not stall the crawl drain.
+        let _ = enqueue_job(
+            &pool,
+            &JobPayload::Embed {
+                input: "x".into(),
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue embed");
+
+        // Mark crawl failed (terminal).
+        super::super::super::jobs::lite::ops::claim_next_pending(&pool, "axon_crawl_jobs")
+            .await
+            .expect("claim");
+        mark_failed(&pool, "axon_crawl_jobs", id, "test")
+            .await
+            .expect("fail");
+
+        // Simulate the run_worker drain wait: should return immediately for crawl.
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
+            let mut iters = 0;
+            loop {
+                if !has_active_for_kind(&pool, JobKind::Crawl).await {
+                    break iters;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                iters += 1;
+                if iters > 40 {
+                    break iters;
+                }
+            }
+        })
+        .await
+        .expect("drain wait must not hang past 2s");
+        assert!(
+            result < 5,
+            "drain should exit immediately for terminal-state crawl, got {result} iters"
+        );
+    }
+
+    /// Mirror of LiteServiceRuntime::has_active_jobs that operates on a raw
+    /// pool — lets tests exercise the same predicate without constructing a
+    /// full LiteBackend.
+    async fn has_active_for_kind(pool: &SqlitePool, kind: JobKind) -> bool {
+        let table = kind.table_name();
+        let sql = format!(
+            "SELECT EXISTS(SELECT 1 FROM {} WHERE status IN ('pending','running') LIMIT 1)",
+            table
+        );
+        sqlx::query_scalar::<_, bool>(&sql)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false)
+    }
+
+    // Silence "unused" lints when only the helper is built without the tests.
+    #[allow(dead_code)]
+    fn _force_uuid_use() {
+        let _ = Uuid::new_v4();
+    }
+}

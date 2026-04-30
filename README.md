@@ -833,10 +833,11 @@ just serve
 
 ### mcp
 
-Start the MCP server. Default transport is HTTP (`--transport http`). See [MCP Server](#mcp-server) for full details.
+Start the stdio MCP server. See [MCP Server](#mcp-server) for full details.
 
 ```bash
 axon mcp [--transport stdio|http|both]
+axon serve mcp
 ```
 
 ---
@@ -867,18 +868,17 @@ Job state machine: `pending` → `running` → `completed` | `failed` | `cancele
 ### Transport Modes
 
 ```bash
-axon mcp                           # HTTP only (default)
-axon mcp --transport stdio         # stdio only (for Claude Desktop)
+axon mcp                           # stdio only (default, for local MCP clients)
+axon serve mcp                     # HTTP only (default for serving /mcp)
 axon mcp --transport http          # HTTP only
 axon mcp --transport both          # stdio + HTTP concurrently
 ```
 
 HTTP endpoint: `http://<AXON_MCP_HTTP_HOST>:<AXON_MCP_HTTP_PORT>/mcp`
 
-Environment equivalents:
+HTTP bind environment:
 
 ```bash
-AXON_MCP_TRANSPORT=stdio           # or http / both
 AXON_MCP_HTTP_HOST=0.0.0.0        # default
 AXON_MCP_HTTP_PORT=8001            # default
 ```
@@ -1146,7 +1146,6 @@ Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AXON_MCP_TRANSPORT` | `http` | Transport mode: `stdio`, `http`, `both` |
 | `AXON_MCP_HTTP_HOST` | `0.0.0.0` | HTTP bind host |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP bind port |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline is triggered (0 = disable) |
