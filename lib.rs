@@ -222,7 +222,8 @@ fn sd_notify_ready() {
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
     early_scan_log_level();
-    init_tracing();
+    // _log_guard MUST live for run() duration — dropping it stops file logging.
+    let _log_guard = init_tracing();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         pid = std::process::id(),

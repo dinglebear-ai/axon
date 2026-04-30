@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::writer::MakeWriter;
 use tracing_subscriber::fmt::{
     FmtContext, FormatEvent, FormatFields, FormattedFields, format::Writer,
@@ -151,55 +152,6 @@ impl Write for SizeRotateWriterGuard {
         inner.file.flush()
     }
 }
-
-/// Outcome of attempting to open the rotating log file with optional fallback.
-enum RotatingOutcome {
-    Opened(SizeRotatingFile),
-    BothFailed {
-        primary_path: PathBuf,
-        primary_err: io::Error,
-        fallback_path: PathBuf,
-        fallback_err: io::Error,
-    },
-    SamePathFailed {
-        path: PathBuf,
-        err: io::Error,
-    },
-}
-
-/// Try to open `log_path` for rotating writes; fall back to `logs/axon.log`
-/// if that fails with a different path. Reports which errors came from which
-/// paths so both failures are visible when debugging.
-fn open_rotating_file(log_path: &Path, max_bytes: u64, max_files_total: usize) -> RotatingOutcome {
-    match SizeRotatingFile::new(log_path.to_path_buf(), max_bytes, max_files_total) {
-        Ok(r) => RotatingOutcome::Opened(r),
-        Err(primary_err) => {
-            let fallback = PathBuf::from("logs/axon.log");
-            if fallback == log_path {
-                return RotatingOutcome::SamePathFailed {
-                    path: log_path.to_path_buf(),
-                    err: primary_err,
-                };
-            }
-            eprintln!(
-                "warning: cannot open log file {}: {} — falling back to {}",
-                log_path.display(),
-                primary_err,
-                fallback.display(),
-            );
-            match SizeRotatingFile::new(fallback.clone(), max_bytes, max_files_total) {
-                Ok(r) => RotatingOutcome::Opened(r),
-                Err(fallback_err) => RotatingOutcome::BothFailed {
-                    primary_path: log_path.to_path_buf(),
-                    primary_err,
-                    fallback_path: fallback,
-                    fallback_err,
-                },
-            }
-        }
-    }
-}
-
 // ── Console event formatter ──────────────────────────────────────────────────
 //
 // Renders log lines on stderr as:
@@ -373,30 +325,7 @@ where
     }
 }
 
-fn resolve_json_log_file() -> String {
-    std::env::var("AXON_LOG_FILE")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            super::paths::axon_data_dir().map(|d| format!("{}/axon/logs/axon.log", d.display()))
-        })
-        .unwrap_or_else(|| "logs/axon.log".to_string())
-}
 
-fn resolve_rotation_limits() -> (u64, usize) {
-    let max_bytes = std::env::var("AXON_LOG_MAX_BYTES")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(10 * 1024 * 1024)
-        .max(1024);
-    let max_files_total = std::env::var("AXON_LOG_MAX_FILES")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(3)
-        .max(1);
-    (max_bytes, max_files_total)
-}
 
 fn build_filter_with_noise(
     default_level: &str,
@@ -420,88 +349,56 @@ fn build_filter_with_noise(
         })
 }
 
-pub fn init_tracing() {
+pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     use tracing_subscriber::prelude::*;
 
-    // Note: tracing-subscriber's .init() (SubscriberInitExt::try_init) automatically
-    // calls tracing_log::LogTracer::init() when its "tracing-log" feature is enabled
-    // (the default). Calling it explicitly here before .init() causes a double-init
-    // SetLoggerError panic. The bridge is set up by .init() below.
-
-    let json_log_file = resolve_json_log_file();
-    let (max_bytes, max_files_total) = resolve_rotation_limits();
-
-    // Browserless (CDP proxy) sends non-standard session management frames over
-    // the same WebSocket as standard CDP traffic. chromiumoxide's Message<T> is
-    // an untagged enum with only two variants — Response (needs `id`) and Event
-    // (needs `method`) — so any Browserless-specific frame fails serde and the
-    // chromey library logs it at ERROR. The frames are gracefully dropped and
-    // crawling succeeds; the error level is a library misclassification.
-    // Suppress by default. Because this directive is added in code, same-target
-    // RUST_LOG overrides are not guaranteed to win under tracing-subscriber 0.3.
-    // To force-enable this target, change/remove this directive in code.
+    // CDP proxy sends non-standard frames that chromiumoxide logs at ERROR;
+    // they are gracefully dropped, suppress the noise.
     const SUPPRESS_CDP_NOISE: &str = "chromiumoxide::conn::raw_ws::parse_errors=off";
-
-    // agent-client-protocol 0.10.0 doesn't recognise `usage_update` session
-    // updates that Claude Code sends. The deserialization error is logged at ERROR
-    // but is non-fatal — the session continues normally. Suppress until the crate
-    // adds the variant upstream.
+    // agent-client-protocol does not recognise usage_update frames from
+    // Claude Code; non-fatal, suppress until upstream adds the variant.
     const SUPPRESS_ACP_DECODE_NOISE: &str = "agent_client_protocol::rpc=off";
 
     let noise_directives = [SUPPRESS_CDP_NOISE, SUPPRESS_ACP_DECODE_NOISE];
 
     let console_filter = build_filter_with_noise("warn", &noise_directives);
-    let file_filter = build_filter_with_noise("info", &noise_directives);
-
-    let log_path = PathBuf::from(&json_log_file);
+    let file_filter    = build_filter_with_noise("info", &noise_directives);
 
     let console_layer = tracing_subscriber::fmt::layer()
         .event_format(CliFormat)
         .with_writer(io::stderr)
         .with_filter(console_filter);
 
-    match open_rotating_file(&log_path, max_bytes, max_files_total) {
-        RotatingOutcome::Opened(rotating) => {
-            let file_writer = SizeRotateMakeWriter {
-                inner: Arc::new(Mutex::new(rotating)),
-            };
-            let json_layer = tracing_subscriber::fmt::layer()
-                .json()
-                .with_ansi(false)
-                .with_writer(file_writer)
-                .with_filter(file_filter);
-            tracing_subscriber::registry()
-                .with(console_layer)
-                .with(json_layer)
-                .init();
-        }
-        RotatingOutcome::BothFailed {
-            primary_path,
-            primary_err,
-            fallback_path,
-            fallback_err,
-        } => {
-            eprintln!(
-                "warning: failed to initialize file logging — \
-                 primary path '{}' failed: {}; \
-                 fallback path '{}' also failed: {} \
-                 (continuing with console logs only)",
-                primary_path.display(),
-                primary_err,
-                fallback_path.display(),
-                fallback_err,
-            );
-            tracing_subscriber::registry().with(console_layer).init();
-        }
-        RotatingOutcome::SamePathFailed { path, err } => {
-            eprintln!(
-                "warning: failed to initialize file logging at {}: {} (continuing with console logs only)",
-                path.display(),
-                err
-            );
-            tracing_subscriber::registry().with(console_layer).init();
-        }
-    }
+    // ── Rolling file appender (guard MUST be held for the process lifetime) ──
+    let log_dir = std::env::var("AXON_LOG_DIR").unwrap_or_else(|_| {
+        super::paths::axon_data_dir()
+            .map(|d| format!("{}/axon/logs", d.display()))
+            .unwrap_or_else(|| "logs".to_string())
+    });
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("axon")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&log_dir)
+        .expect("failed to create axon log file appender");
+
+    let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
+
+    let json_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_ansi(false)
+        .with_writer(non_blocking_file)
+        .with_filter(file_filter);
+
+    tracing_subscriber::registry()
+        .with(console_layer)
+        .with(json_layer)
+        .init();
+
+    guard
 }
 
 // TODO(QUALITY): These wrapper functions lose the caller's `target` metadata -- tracing records
