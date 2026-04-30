@@ -233,6 +233,10 @@ mod tests {
         ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             Ok(WorkerMode::Unsupported("test"))
         }
+
+        async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
     }
 
     #[tokio::test]

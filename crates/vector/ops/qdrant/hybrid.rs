@@ -175,7 +175,7 @@ pub(crate) async fn qdrant_named_dense_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::jobs::common::test_config;
+    use crate::crates::core::config::Config;
     use crate::crates::vector::ops::sparse::compute_sparse_vector;
     use httpmock::prelude::*;
 
@@ -206,7 +206,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -240,7 +240,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -268,7 +268,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -286,7 +286,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -307,7 +307,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -337,7 +337,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -368,7 +368,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -397,7 +397,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -427,7 +427,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
         cfg.hybrid_search_candidates = 77;
@@ -473,7 +473,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 

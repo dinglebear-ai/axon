@@ -32,7 +32,7 @@ Run `scripts/dev-setup.sh` once. It handles all of steps 1–4 automatically:
 ./scripts/dev-setup.sh
 ```
 
-What the script does: installs system tools and Rust toolchain, installs `just` and `lefthook`, sets up Node.js and pnpm, creates `.env` from `.env.example`, auto-generates secrets (Postgres, Redis, RabbitMQ, web API token), prompts for `AXON_DATA_DIR` (default `~/.local/share/axon`), pre-creates all volume-mount directories, backfills test infrastructure URLs, and starts both production and test Docker infrastructure.
+What the script does: installs system tools and Rust toolchain, installs `just` and `lefthook`, sets up Node.js and pnpm, creates `.env` from `.env.example`, prompts for `AXON_DATA_DIR` (default `~/.local/share/axon`), pre-creates all volume-mount directories, and starts Docker infrastructure (Qdrant, TEI, Chrome).
 
 After the script completes, edit `.env` and fill in any remaining `CHANGE_ME` values:
 
@@ -52,9 +52,6 @@ cp .env.example .env
 
 2. Populate required values in `.env`:
 
-- Postgres credentials and `AXON_PG_URL`
-- Redis password and `AXON_REDIS_URL`
-- RabbitMQ credentials and `AXON_AMQP_URL`
 - `QDRANT_URL`
 - `TEI_URL`
 - `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`
@@ -75,7 +72,7 @@ mkdir -p ~/.local/share/axon/axon/{postgres,redis,rabbitmq,qdrant,output,artifac
 ### Infrastructure (Docker)
 
 ```bash
-docker compose -f docker-compose.services.yaml up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome
+docker compose -f docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome
 docker compose -f docker-compose.services.yaml ps
 ```
 
@@ -126,20 +123,18 @@ Current `just dev` behavior:
 
 ### Tail worker output
 
-Workers run in the foreground locally — output goes to the terminal directly. For infra containers:
+Workers run in-process locally — output goes to the terminal directly. For infra containers:
 
 ```bash
-docker compose -f docker-compose.services.yaml logs -f axon-postgres axon-redis axon-rabbitmq axon-qdrant
+docker compose -f docker-compose.services.yaml logs -f axon-qdrant axon-tei axon-chrome
 ```
 
 ## Health Checks
 
 Expected healthy Docker containers (infra only):
 
-- `axon-postgres`
-- `axon-redis`
-- `axon-rabbitmq`
 - `axon-qdrant`
+- `axon-tei`
 - `axon-chrome`
 
 Workers and web frontend are local processes — verify they are running in their respective terminals (or via `just workers`).
@@ -272,9 +267,7 @@ Same pattern applies to `extract`, `embed`, and `ingest`.
 
 Persistent data roots are under `${AXON_DATA_DIR}/axon/...`:
 
-- Postgres data
-- Redis appendonly data
-- RabbitMQ data
+- SQLite jobs database
 - Qdrant storage
 - Worker output and logs
 - MCP artifacts (`${AXON_DATA_DIR}/axon/artifacts` when `AXON_MCP_ARTIFACT_DIR` is set)

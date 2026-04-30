@@ -29,6 +29,14 @@ pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
     })
 }
 
+/// Count all jobs in a table.
+pub async fn count_jobs(pool: &SqlitePool, table: &str) -> Result<i64, sqlx::Error> {
+    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {}", table))
+        .fetch_one(pool)
+        .await?;
+    Ok(count)
+}
+
 /// List all jobs in a table as summary rows (most recent first).
 /// Returns at most 500 rows.
 pub async fn list_jobs(pool: &SqlitePool, table: &str) -> Result<Vec<JobSummary>, sqlx::Error> {
@@ -191,16 +199,6 @@ fn service_select_from(kind: crate::crates::jobs::backend::JobKind) -> &'static 
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
              NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
              FROM axon_ingest_jobs"
-        }
-        crate::crates::jobs::backend::JobKind::Refresh => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, url as target, NULL as urls_json, result_json, config_json \
-             FROM axon_refresh_jobs"
-        }
-        crate::crates::jobs::backend::JobKind::Graph => {
-            "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
-             FROM axon_graph_jobs"
         }
     }
 }

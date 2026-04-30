@@ -57,7 +57,7 @@ axon_rust/
 │   │   ├── Dockerfile
 │   │   ├── cont-init.d/            # Container init scripts
 │   │   └── s6-rc.d/                # s6 service definitions
-│   ├── rabbitmq/                    # Preconfigured RabbitMQ
+│   ├── rabbitmq/                    # (legacy — no longer used)
 │   ├── s6/                          # Worker s6 service definitions
 │   │   ├── cont-init.d/
 │   │   └── s6-rc.d/
@@ -148,7 +148,5 @@ Enforced by `scripts/check_no_mod_rs.sh`.
 
 | File | Contents | Network |
 |------|----------|---------|
-| `docker-compose.services.yaml` | PostgreSQL, Redis, RabbitMQ, Qdrant, TEI, Chrome | `axon` bridge |
-| `docker-compose.yaml` | axon-workers, axon-web | `axon` bridge |
+| `docker-compose.services.yaml` | Qdrant, TEI, Chrome | `axon` bridge |
 | `docker-compose.gpu.yaml` | NVIDIA GPU reservations overlay | -- |
-| `docker-compose.test.yaml` | Test infrastructure | -- |

@@ -1,41 +1,20 @@
-//! Two-layer job abstraction architecture.
+//! Job abstraction for lite mode.
 //!
 //! This module defines [`ServiceJobRuntime`], the **canonical** backend-agnostic
 //! job operations trait consumed by all callers: CLI handlers, MCP handlers, and
 //! web routes via [`ServiceContext.jobs`](super::context::ServiceContext).
 //!
-//! ## Why two layers?
-//!
-//! [`JobBackend`](crate::crates::jobs::backend::JobBackend) (in `crates/jobs/backend.rs`)
-//! is the low-level persistence trait returning `JobStatusRow` and `JobSummary` — types
-//! tied to the raw database schema. Callers need the richer [`ServiceJob`] type with
-//! pagination, source metadata, and normalized fields.
-//!
-//! Rather than force a lossy `JobSummary → ServiceJob` conversion through the trait
-//! boundary, the service runtimes bypass `JobBackend` for most operations:
-//!
-//! - **Delegated through `JobBackend`:** `enqueue`, `wait_for_job`, `job_errors` — these
-//!   return simple types (`Uuid`, `String`, `Option<String>`) that need no mapping.
-//! - **Called directly on backend-specific functions:** `list_jobs`, `job_status`,
-//!   `cancel_job`, `cleanup_jobs`, `clear_jobs`, `recover_jobs` — `FullServiceRuntime`
-//!   calls raw Postgres query functions; `LiteServiceRuntime` calls `lite_query::*`.
-//!
-//! `ServiceJobRuntime` is a strict superset of `JobBackend`: it adds `has_active_jobs`,
-//! `recover_jobs`, `run_worker`, pagination (`limit`/`offset`), and returns `ServiceJob`
-//! everywhere instead of `JobStatusRow`/`JobSummary`.
-
-mod full;
+//! Only `LiteServiceRuntime` (SQLite + in-process workers) is supported. The
+//! Postgres + RabbitMQ full backend has been removed.
 
 use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{BackendResult, JobBackend, JobKind, JobPayload};
-use crate::crates::jobs::full::FullBackend;
 use crate::crates::jobs::lite::LiteBackend;
 use crate::crates::jobs::lite::query as lite_query;
 use crate::crates::jobs::lite::store::reclaim_stale_running_jobs_for_table;
@@ -74,8 +53,7 @@ pub trait ServiceJobRuntime: Send + Sync {
     /// matching rows number fewer than `limit` — the caller will receive fewer
     /// rows than expected even if more matching rows exist.
     ///
-    /// **Both concrete impls override this** (`LiteServiceRuntime` pushes the
-    /// filter into SQLite; `FullServiceRuntime` passes it to the Postgres query).
+    /// **Override this** in any concrete impl to push the filter into the database.
     /// If a future impl forgets to override, results will be silently wrong for
     /// filtered queries on large tables.
     async fn list_ingest_jobs(
@@ -112,11 +90,14 @@ pub trait ServiceJobRuntime: Send + Sync {
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>>;
     async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>>;
-}
 
-// Re-export the shared error-lifting helper defined in jobs/backend.rs.
-// Named `lift_ss` here for backward compatibility with the runtime/full.rs sub-module.
-use crate::crates::jobs::backend::lift_err as lift_ss;
+    /// Count all jobs of a given kind using the shared pool.
+    ///
+    /// Uses the backend's shared SQLite pool directly — avoids calling
+    /// `open_sqlite_pool()` (which re-runs migrations on every call) and avoids
+    /// bypassing `notify()` on enqueue.
+    async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>>;
+}
 
 pub async fn resolve_runtime(
     cfg: Arc<Config>,
@@ -124,7 +105,7 @@ pub async fn resolve_runtime(
     resolve_runtime_with_workers(cfg, false).await
 }
 
-/// Resolve the job runtime, optionally spawning in-process workers (lite mode only).
+/// Resolve the job runtime, optionally spawning in-process workers.
 ///
 /// `spawn_workers = true` should be used by long-lived processes (`axon serve`,
 /// MCP server, web server) or CLI commands that block until completion (`--wait`).
@@ -134,34 +115,16 @@ pub async fn resolve_runtime_with_workers(
     cfg: Arc<Config>,
     spawn_workers: bool,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
-    if cfg.lite_mode {
-        let backend = if spawn_workers {
-            LiteBackend::new_with_workers(Arc::clone(&cfg)).await
-        } else {
-            LiteBackend::new(Arc::clone(&cfg)).await
-        }
-        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
-        return Ok(Arc::new(LiteServiceRuntime {
-            _cfg: cfg,
-            backend: Arc::new(backend),
-        }));
+    let backend = if spawn_workers {
+        LiteBackend::new_with_workers(Arc::clone(&cfg)).await
+    } else {
+        LiteBackend::new(Arc::clone(&cfg)).await
     }
-
-    let backend = FullBackend::new(Arc::clone(&cfg));
-    Ok(Arc::new(FullServiceRuntime {
-        cfg,
+    .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+    Ok(Arc::new(LiteServiceRuntime {
+        _cfg: cfg,
         backend: Arc::new(backend),
-        // Pool is initialized lazily on first call to has_active_jobs().
-        // This avoids eagerly connecting to Postgres at struct construction time,
-        // which would break tests that use Config::default() (empty pg_url).
-        pool: OnceCell::new(),
     }))
-}
-
-pub struct FullServiceRuntime {
-    cfg: Arc<Config>,
-    backend: Arc<FullBackend>,
-    pool: OnceCell<sqlx::PgPool>,
 }
 
 pub struct LiteServiceRuntime {
@@ -280,5 +243,9 @@ impl ServiceJobRuntime for LiteServiceRuntime {
             }
         }
         Ok(WorkerMode::InProcess)
+    }
+
+    async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        Ok(lite_query::count_jobs(self.backend.pool(), kind.table_name()).await?)
     }
 }

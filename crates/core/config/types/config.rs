@@ -45,13 +45,6 @@ pub struct Config {
     /// Explicit single-file output path (overrides `output_dir` for single-URL commands). Flag: `--output`.
     pub output_path: Option<PathBuf>,
 
-    /// Include full historical sections in export output. Flag: `export --include-history`.
-    /// Default is seed-only output for compact rebuild backups.
-    pub export_include_history: bool,
-
-    /// Optional export file path for `export verify <file>`.
-    pub export_verify_input: Option<PathBuf>,
-
     /// Browser rendering strategy: `http`, `chrome`, or `auto-switch`. Flag: `--render-mode`.
     pub render_mode: RenderMode,
 
@@ -159,33 +152,6 @@ pub struct Config {
     /// Backoff in milliseconds between retries. Flag: `--retry-backoff-ms`.
     pub retry_backoff_ms: u64,
 
-    /// Route all job types through a single shared AMQP queue. Flag: `--shared-queue`.
-    pub shared_queue: bool,
-
-    /// PostgreSQL connection URL. Env: `AXON_PG_URL`. Flag: `--pg-url`. **Secret.**
-    pub pg_url: String,
-
-    /// Redis connection URL. Env: `AXON_REDIS_URL`. Flag: `--redis-url`. **Secret.**
-    pub redis_url: String,
-
-    /// RabbitMQ AMQP connection URL. Env: `AXON_AMQP_URL`. Flag: `--amqp-url`. **Secret.**
-    pub amqp_url: String,
-
-    /// AMQP queue name for crawl jobs. Env: `AXON_CRAWL_QUEUE`. Flag: `--crawl-queue`.
-    pub crawl_queue: String,
-
-    /// AMQP queue name for refresh jobs. Env: `AXON_REFRESH_QUEUE`. Flag: `--refresh-queue`.
-    pub refresh_queue: String,
-
-    /// AMQP queue name for extract jobs. Env: `AXON_EXTRACT_QUEUE`. Flag: `--extract-queue`.
-    pub extract_queue: String,
-
-    /// AMQP queue name for embed jobs. Env: `AXON_EMBED_QUEUE`. Flag: `--embed-queue`.
-    pub embed_queue: String,
-
-    /// AMQP queue name for ingest jobs. Env: `AXON_INGEST_QUEUE`. Flag: `--ingest-queue`.
-    pub ingest_queue: String,
-
     /// Index Claude Code session files when running the `sessions` command. Flag: `--claude`.
     pub sessions_claude: bool,
 
@@ -279,48 +245,9 @@ pub struct Config {
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 
-    /// Neo4j HTTP base URL for graph extraction and retrieval.
-    /// Env: `AXON_NEO4J_URL`.
-    pub neo4j_url: String,
-
-    /// Neo4j username for the transactional Cypher API.
-    /// Env: `AXON_NEO4J_USER`.
-    pub neo4j_user: String,
-
-    /// Neo4j password for the transactional Cypher API. Env: `AXON_NEO4J_PASSWORD`. **Secret.**
-    pub neo4j_password: String,
-
-    /// AMQP queue name for graph extraction jobs. Env: `AXON_GRAPH_QUEUE`.
-    pub graph_queue: String,
-
-    /// Parallelism for graph extraction workers. Env: `AXON_GRAPH_CONCURRENCY`.
-    pub graph_concurrency: usize,
-
-    /// Base URL for the graph extraction LLM endpoint. Env: `AXON_GRAPH_LLM_URL`.
-    pub graph_llm_url: String,
-
-    /// Model name used for graph extraction. Env: `AXON_GRAPH_LLM_MODEL`.
-    pub graph_llm_model: String,
-
-    /// Minimum similarity score for graph candidate edges. Env: `AXON_GRAPH_SIMILARITY_THRESHOLD`.
-    pub graph_similarity_threshold: f64,
-
-    /// Maximum similar candidates considered during graph extraction. Env: `AXON_GRAPH_SIMILARITY_LIMIT`.
-    pub graph_similarity_limit: usize,
-
-    /// Maximum characters of graph context injected into `ask`. Env: `AXON_GRAPH_CONTEXT_MAX_CHARS`.
-    pub graph_context_max_chars: usize,
-
-    /// Optional override path for the graph taxonomy file. Env: `AXON_GRAPH_TAXONOMY_PATH`.
-    pub graph_taxonomy_path: String,
-
-    /// Allowed cross-origin browser origins for web and MCP HTTP surfaces.
-    /// Env: `AXON_WEB_ALLOWED_ORIGINS` (comma-separated).
-    pub web_allowed_origins: Vec<String>,
-
-    /// Shell WebSocket-specific allowed origins.
-    /// Env: `AXON_SHELL_ALLOWED_ORIGINS` (comma-separated).
-    pub shell_allowed_origins: Vec<String>,
+    /// Allowed cross-origin browser origins for the MCP HTTP surface.
+    /// Env: `AXON_MCP_ALLOWED_ORIGINS` (comma-separated).
+    pub mcp_allowed_origins: Vec<String>,
 
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
     pub ask_diagnostics: bool,
@@ -516,9 +443,6 @@ pub struct Config {
     /// Viewport height in pixels for screenshot capture. Default: 1080. Flag: `--viewport`.
     pub viewport_height: u32,
 
-    /// Port for the `serve` web UI server. Flag: `--port`, env: `AXON_SERVE_PORT`. Default: 49000.
-    pub serve_port: u16,
-
     /// MCP transport mode. Env: `AXON_MCP_TRANSPORT`. Flag: `axon mcp --transport`.
     pub mcp_transport: McpTransport,
 
@@ -527,12 +451,6 @@ pub struct Config {
 
     /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.
     pub mcp_http_port: u16,
-
-    /// Port for the Next.js dev server managed by `axon serve`. Env: `AXON_WEB_DEV_PORT`. Default: `49010`.
-    pub web_dev_port: u16,
-
-    /// Port for `apps/web/shell-server.mjs` managed by `axon serve`. Env: `SHELL_SERVER_PORT`. Default: `49011`.
-    pub shell_server_port: u16,
 
     /// Custom HTTP request headers in `"Key: Value"` format (repeatable). Flag: `--header`.
     pub custom_headers: Vec<String>,

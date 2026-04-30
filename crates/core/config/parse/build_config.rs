@@ -1,14 +1,11 @@
-use super::super::cli::{
-    Cli, CliCommand, ExportSubcommand, RefreshScheduleSubcommand, RefreshSubcommand,
-};
+use super::super::cli::{Cli, CliCommand};
 use super::super::types::{
     CommandKind, Config, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
 };
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    env_bool, parse_viewport, positional_from_graph_subcommand, positional_from_job,
-    positional_from_refresh_subcommand, positional_from_watch_subcommand,
+    env_bool, parse_viewport, positional_from_job, positional_from_watch_subcommand,
 };
 use super::performance;
 use clap::ValueEnum;
@@ -37,27 +34,6 @@ fn read_env(var: &str) -> Option<String> {
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
-}
-
-/// Resolve a required service URL from a CLI flag, env var, or fail with a lite-mode hint.
-fn resolve_service_url(
-    cli_value: Option<String>,
-    env_var: &str,
-    lite_mode: bool,
-) -> Result<String, String> {
-    if lite_mode {
-        return Ok(String::new());
-    }
-    Ok(normalize_local_service_url(
-        cli_value
-            .or_else(|| env::var(env_var).ok())
-            .ok_or_else(|| {
-                format!(
-                    "{env_var} is required (or set AXON_LITE=1 for lite mode). \
-                     Copy .env.example to .env and fill in credentials."
-                )
-            })?,
-    ))
 }
 
 fn default_sqlite_path() -> std::path::PathBuf {
@@ -92,10 +68,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_codex = false;
     let mut sessions_gemini = false;
     let mut sessions_project = None;
-    let mut serve_port = 49000u16;
     let mut mcp_transport = None;
-    let mut export_include_history = false;
-    let mut export_verify_input = None;
     let mut map_fallback = MapFallback::Structure;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
@@ -113,42 +86,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                 positional_from_watch_subcommand(action)
             } else {
                 vec!["list".to_string()]
-            },
-        ),
-        CliCommand::Refresh(args) => (
-            CommandKind::Refresh,
-            if let Some(action) = args.action {
-                match action {
-                    RefreshSubcommand::Schedule {
-                        action:
-                            RefreshScheduleSubcommand::Add {
-                                name,
-                                seed_url,
-                                every_seconds,
-                                tier,
-                                urls,
-                            },
-                    } => {
-                        if seed_url.is_none() && urls.is_none() {
-                            return Err(
-                                "refresh schedule add requires either [seed_url] or --urls <csv>"
-                                    .to_string(),
-                            );
-                        }
-                        positional_from_refresh_subcommand(RefreshSubcommand::Schedule {
-                            action: RefreshScheduleSubcommand::Add {
-                                name,
-                                seed_url,
-                                every_seconds,
-                                tier,
-                                urls,
-                            },
-                        })
-                    }
-                    other => positional_from_refresh_subcommand(other),
-                }
-            } else {
-                args.positional_urls
             },
         ),
         CliCommand::Map(args) => {
@@ -240,14 +177,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             )
         }
         CliCommand::Screenshot(args) => (CommandKind::Screenshot, args.positional_urls),
-        CliCommand::Graph(args) => (
-            CommandKind::Graph,
-            if let Some(action) = args.action {
-                positional_from_graph_subcommand(action)
-            } else {
-                Vec::new()
-            },
-        ),
         CliCommand::Completions(args) => (
             CommandKind::Completions,
             vec![
@@ -262,18 +191,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             mcp_transport = args.transport;
             (CommandKind::Mcp, Vec::new())
         }
-        CliCommand::Serve(args) => {
-            serve_port = args.port;
-            (CommandKind::Serve, Vec::new())
-        }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
-        CliCommand::Export(args) => {
-            export_include_history = args.include_history;
-            if let Some(ExportSubcommand::Verify { file }) = args.action {
-                export_verify_input = Some(file);
-            }
-            (CommandKind::Export, Vec::new())
-        }
     };
 
     if matches!(command, CommandKind::Completions) {
@@ -294,10 +212,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                 .map(std::path::PathBuf::from)
         })
         .unwrap_or_else(default_sqlite_path);
-
-    let pg_url = resolve_service_url(global.pg_url, "AXON_PG_URL", lite_mode)?;
-    let redis_url = resolve_service_url(global.redis_url, "AXON_REDIS_URL", lite_mode)?;
-    let amqp_url = resolve_service_url(global.amqp_url, "AXON_AMQP_URL", lite_mode)?;
 
     let mut crawl_concurrency_limit = global.crawl_concurrency_limit;
     let mut backfill_concurrency_limit = global.backfill_concurrency_limit;
@@ -324,8 +238,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         exclude_path_prefix: normalized_excludes.prefixes,
         output_dir: global.output_dir,
         output_path: global.output,
-        export_include_history,
-        export_verify_input,
         render_mode: global.render_mode,
         chrome_remote_url: global
             .chrome_remote_url
@@ -369,30 +281,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         request_timeout_ms: global.request_timeout_ms,
         fetch_retries: global.fetch_retries.unwrap_or(0),
         retry_backoff_ms: global.retry_backoff_ms.unwrap_or(0),
-        shared_queue: global.shared_queue,
-        pg_url,
-        redis_url,
-        amqp_url,
-        crawl_queue: global
-            .crawl_queue
-            .or_else(|| env::var("AXON_CRAWL_QUEUE").ok())
-            .unwrap_or_else(|| "axon.crawl.jobs".to_string()),
-        refresh_queue: global
-            .refresh_queue
-            .or_else(|| env::var("AXON_REFRESH_QUEUE").ok())
-            .unwrap_or_else(|| "axon.refresh.jobs".to_string()),
-        extract_queue: global
-            .extract_queue
-            .or_else(|| env::var("AXON_EXTRACT_QUEUE").ok())
-            .unwrap_or_else(|| "axon.extract.jobs".to_string()),
-        embed_queue: global
-            .embed_queue
-            .or_else(|| env::var("AXON_EMBED_QUEUE").ok())
-            .unwrap_or_else(|| "axon.embed.jobs".to_string()),
-        ingest_queue: global
-            .ingest_queue
-            .or_else(|| env::var("AXON_INGEST_QUEUE").ok())
-            .unwrap_or_else(|| "axon.ingest.jobs".to_string()),
         sessions_claude,
         sessions_codex,
         sessions_gemini,
@@ -456,45 +344,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .map(|v| v.trim().to_string())
             .filter(|v: &String| !v.is_empty()),
         tavily_api_key: env::var("TAVILY_API_KEY").ok().unwrap_or_default(),
-        neo4j_url: env::var("AXON_NEO4J_URL").ok().unwrap_or_default(),
-        neo4j_user: env::var("AXON_NEO4J_USER")
-            .ok()
-            .unwrap_or_else(|| "neo4j".to_string()),
-        neo4j_password: env::var("AXON_NEO4J_PASSWORD").ok().unwrap_or_default(),
-        graph_queue: env::var("AXON_GRAPH_QUEUE")
-            .ok()
-            .unwrap_or_else(|| "axon.graph.jobs".to_string()),
-        graph_concurrency: env::var("AXON_GRAPH_CONCURRENCY")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(4),
-        graph_llm_url: env::var("AXON_GRAPH_LLM_URL")
-            .ok()
-            .map(normalize_local_service_url)
-            .unwrap_or_else(|| "http://localhost:11434".to_string()),
-        graph_llm_model: env::var("AXON_GRAPH_LLM_MODEL")
-            .ok()
-            .unwrap_or_else(|| "qwen3.5:4b".to_string()),
-        graph_similarity_threshold: env::var("AXON_GRAPH_SIMILARITY_THRESHOLD")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.75),
-        graph_similarity_limit: env::var("AXON_GRAPH_SIMILARITY_LIMIT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(20),
-        graph_context_max_chars: env::var("AXON_GRAPH_CONTEXT_MAX_CHARS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(2_000),
-        graph_taxonomy_path: env::var("AXON_GRAPH_TAXONOMY_PATH")
-            .ok()
-            .unwrap_or_default(),
-        web_allowed_origins: env::var("AXON_WEB_ALLOWED_ORIGINS")
-            .ok()
-            .map(|raw| parse_origin_allowlist(&raw))
-            .unwrap_or_default(),
-        shell_allowed_origins: env::var("AXON_SHELL_ALLOWED_ORIGINS")
+        mcp_allowed_origins: env::var("AXON_MCP_ALLOWED_ORIGINS")
             .ok()
             .map(|raw| parse_origin_allowlist(&raw))
             .unwrap_or_default(),
@@ -602,12 +452,9 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         screenshot_full_page: global.screenshot_full_page,
         viewport_width,
         viewport_height,
-        serve_port,
         mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
         mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
         mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
-        web_dev_port: env_port("AXON_WEB_DEV_PORT", 49010)?,
-        shell_server_port: env_port("SHELL_SERVER_PORT", 49011)?,
         custom_headers: global.custom_headers,
         quiet: global.quiet,
         log_level: global.log_level,
@@ -786,24 +633,16 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn into_config_parses_web_origin_allowlists_from_env() {
+    fn into_config_parses_mcp_origin_allowlist_from_env() {
         let _guard = ENV_LOCK.lock().unwrap();
-        const WEB: &str = "AXON_WEB_ALLOWED_ORIGINS";
-        const SHELL: &str = "AXON_SHELL_ALLOWED_ORIGINS";
+        const MCP: &str = "AXON_MCP_ALLOWED_ORIGINS";
 
         unsafe {
-            env::set_var(WEB, " https://axon.example.com , http://localhost:49010 ");
-            env::set_var(SHELL, " http://localhost:49011 ");
+            env::set_var(MCP, " https://axon.example.com , http://localhost:49010 ");
         }
 
         let cli = Cli::parse_from([
             "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
             "--tei-url",
@@ -813,20 +652,15 @@ mod tests {
         let cfg = into_config(cli).expect("status config should parse");
 
         assert_eq!(
-            cfg.web_allowed_origins,
+            cfg.mcp_allowed_origins,
             vec![
                 "https://axon.example.com".to_string(),
                 "http://localhost:49010".to_string(),
             ]
         );
-        assert_eq!(
-            cfg.shell_allowed_origins,
-            vec!["http://localhost:49011".to_string()]
-        );
 
         unsafe {
-            env::remove_var(WEB);
-            env::remove_var(SHELL);
+            env::remove_var(MCP);
         }
     }
 
@@ -835,12 +669,6 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         let cli = Cli::parse_from([
             "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
             "--tei-url",
@@ -931,61 +759,12 @@ mod tests {
             env::remove_var("QDRANT_URL");
         }
 
-        let cli = Cli::parse_from([
-            "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "status",
-        ]);
+        let cli = Cli::parse_from(["axon", "--tei-url", "http://127.0.0.1:52000", "status"]);
         let err = into_config(cli).unwrap_err();
         assert!(
             err.contains("QDRANT_URL"),
             "expected QDRANT_URL error, got: {err}"
         );
-    }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn into_config_normalizes_graph_llm_url_like_other_services() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        const GRAPH_LLM_URL: &str = "AXON_GRAPH_LLM_URL";
-
-        unsafe {
-            env::set_var(GRAPH_LLM_URL, "http://axon-ollama:11434");
-        }
-
-        let cli = Cli::parse_from([
-            "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "--tei-url",
-            "http://127.0.0.1:52000",
-            "status",
-        ]);
-        let cfg = into_config(cli).expect("status config should parse");
-        if std::path::Path::new("/.dockerenv").exists() {
-            assert_eq!(cfg.graph_llm_url, "http://axon-ollama:11434/");
-        } else {
-            let parsed = spider::url::Url::parse(&cfg.graph_llm_url).expect("valid graph llm url");
-            assert_eq!(parsed.host_str(), Some("127.0.0.1"));
-            assert_eq!(parsed.port(), Some(11434));
-        }
-
-        unsafe {
-            env::remove_var(GRAPH_LLM_URL);
-        }
     }
 
     #[allow(unsafe_code)]
@@ -999,18 +778,7 @@ mod tests {
             env::remove_var("TEI_URL");
         }
 
-        let cli = Cli::parse_from([
-            "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
-            "--qdrant-url",
-            "http://127.0.0.1:53333",
-            "status",
-        ]);
+        let cli = Cli::parse_from(["axon", "--qdrant-url", "http://127.0.0.1:53333", "status"]);
         let err = into_config(cli).unwrap_err();
         assert!(
             err.contains("TEI_URL"),
@@ -1033,12 +801,6 @@ mod tests {
         }
         let cli = Cli::parse_from([
             "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
             "--tei-url",
@@ -1065,12 +827,6 @@ mod tests {
         }
         let cli = Cli::parse_from([
             "axon",
-            "--pg-url",
-            "postgresql://axon:postgres@127.0.0.1:53432/axon",
-            "--redis-url",
-            "redis://127.0.0.1:53379",
-            "--amqp-url",
-            "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
             "--qdrant-url",
             "http://127.0.0.1:53333",
             "--tei-url",

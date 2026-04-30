@@ -6,8 +6,7 @@
 ///   2. The JSON response keys that MCP handlers emit match the schema contract.
 ///   3. Handler input parameters are forwarded to service calls correctly.
 use axon::crates::mcp::schema::{
-    AxonRequest, AxonToolResponse, IngestSubaction, RefreshSubaction, SearchTimeRange,
-    parse_axon_request,
+    AxonRequest, AxonToolResponse, IngestSubaction, SearchTimeRange, parse_axon_request,
 };
 use axon::crates::mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
@@ -340,55 +339,6 @@ fn mcp_ingest_start_requires_source_type() {
         err.code,
         rmcp::model::ErrorCode::INVALID_PARAMS,
         "missing source_type must produce INVALID_PARAMS"
-    );
-}
-
-/// Comment #15 — mcp_refresh_schedule_unknown_subaction_returns_invalid_params
-///
-/// RefreshRequest.schedule_subaction is a free-form Option<String>, so an unknown
-/// value passes schema-level parse and reaches handle_refresh_schedule, which
-/// returns invalid_params for anything other than list/create/delete/enable/disable.
-/// Verify the schema parse succeeds, the subaction field passes through as-is,
-/// and the resulting error uses INVALID_PARAMS.
-#[test]
-fn mcp_refresh_schedule_unknown_subaction_returns_invalid_params() {
-    // Schema parse must succeed — schedule_subaction is Option<String>, not an enum.
-    let raw = serde_json::json!({
-        "action": "refresh",
-        "subaction": "schedule",
-        "schedule_subaction": "launch_rockets"
-    });
-    let parsed = parse_axon_request(raw.as_object().unwrap().clone());
-    assert!(
-        parsed.is_ok(),
-        "refresh/schedule with unknown schedule_subaction must parse at schema level; \
-         handle_refresh_schedule rejects it at dispatch time"
-    );
-    // Verify the parsed struct carries the unknown value, which is what the
-    // handler's match arm `other => Err(invalid_params(...))` will receive.
-    if let Ok(AxonRequest::Refresh(req)) = parsed {
-        assert!(
-            matches!(req.subaction, Some(RefreshSubaction::Schedule)),
-            "subaction must be Schedule"
-        );
-        assert_eq!(
-            req.schedule_subaction.as_deref(),
-            Some("launch_rockets"),
-            "schedule_subaction must pass through unmodified for handler validation"
-        );
-    } else {
-        panic!("expected AxonRequest::Refresh");
-    }
-    // Confirm the error kind that handle_refresh_schedule returns for unknown values.
-    let err = rmcp::ErrorData::invalid_params(
-        "unknown schedule_subaction: launch_rockets; \
-         expected list, create, delete, enable, disable",
-        None,
-    );
-    assert_eq!(
-        err.code,
-        rmcp::model::ErrorCode::INVALID_PARAMS,
-        "unknown schedule_subaction must produce INVALID_PARAMS"
     );
 }
 

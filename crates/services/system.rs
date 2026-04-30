@@ -1,12 +1,6 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::health::build_doctor_report;
 use crate::crates::jobs::backend::JobKind;
-use crate::crates::jobs::crawl::count_jobs;
-use crate::crates::jobs::embed::count_embed_jobs;
-use crate::crates::jobs::extract::count_extract_jobs;
-use crate::crates::jobs::graph::count_graph_jobs;
-use crate::crates::jobs::ingest::count_ingest_jobs;
-use crate::crates::jobs::refresh::count_refresh_jobs;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -253,8 +247,6 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         &jobs.extract,
         &jobs.embed,
         &jobs.ingest,
-        &jobs.refresh,
-        &jobs.graph,
         &totals,
     );
     let text = [
@@ -263,8 +255,6 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         format!("extract jobs: {} total", totals.extract),
         format!("embed jobs:   {} total", totals.embed),
         format!("ingest jobs:  {} total", totals.ingest),
-        format!("refresh jobs: {} total", totals.refresh),
-        format!("graph jobs:   {} total", totals.graph),
     ]
     .join("\n");
     Ok(StatusResult {
@@ -281,8 +271,6 @@ pub(crate) struct StatusJobs {
     pub extract: Vec<ServiceJob>,
     pub embed: Vec<ServiceJob>,
     pub ingest: Vec<ServiceJob>,
-    pub refresh: Vec<ServiceJob>,
-    pub graph: Vec<ServiceJob>,
 }
 
 /// Filter + view-mode in one pass: drop reclaimed/non-reclaimed jobs, then
@@ -311,14 +299,10 @@ pub(crate) async fn load_status_jobs(
         extract_raw,
         embed_raw,
         ingest_raw,
-        refresh_raw,
-        graph_raw,
         crawl_total,
         extract_total,
         embed_total,
         ingest_total,
-        refresh_total,
-        graph_total,
     ) = tokio::join!(
         async {
             job_service::list_jobs(service_context, JobKind::Crawl, 20, 0)
@@ -341,21 +325,33 @@ pub(crate) async fn load_status_jobs(
                 .map_err(|e| format!("ingest: {e}"))
         },
         async {
-            job_service::list_jobs(service_context, JobKind::Refresh, 20, 0)
+            service_context
+                .jobs
+                .count_jobs(JobKind::Crawl)
                 .await
-                .map_err(|e| format!("refresh: {e}"))
+                .unwrap_or(0)
         },
         async {
-            job_service::list_jobs(service_context, JobKind::Graph, 20, 0)
+            service_context
+                .jobs
+                .count_jobs(JobKind::Extract)
                 .await
-                .map_err(|e| format!("graph: {e}"))
+                .unwrap_or(0)
         },
-        async { count_jobs(cfg).await.unwrap_or(0) },
-        async { count_extract_jobs(cfg).await.unwrap_or(0) },
-        async { count_embed_jobs(cfg).await.unwrap_or(0) },
-        async { count_ingest_jobs(cfg).await.unwrap_or(0) },
-        async { count_refresh_jobs(cfg).await.unwrap_or(0) },
-        async { count_graph_jobs(cfg).await.unwrap_or(0) },
+        async {
+            service_context
+                .jobs
+                .count_jobs(JobKind::Embed)
+                .await
+                .unwrap_or(0)
+        },
+        async {
+            service_context
+                .jobs
+                .count_jobs(JobKind::Ingest)
+                .await
+                .unwrap_or(0)
+        },
     );
 
     let jobs = StatusJobs {
@@ -368,21 +364,12 @@ pub(crate) async fn load_status_jobs(
         ),
         embed: filter_and_view(cfg, embed_raw?, |j| &j.status, |j| j.error_text.as_deref()),
         ingest: filter_and_view(cfg, ingest_raw?, |j| &j.status, |j| j.error_text.as_deref()),
-        refresh: filter_and_view(
-            cfg,
-            refresh_raw?,
-            |j| &j.status,
-            |j| j.error_text.as_deref(),
-        ),
-        graph: filter_and_view(cfg, graph_raw?, |j| &j.status, |j| j.error_text.as_deref()),
     };
     let totals = StatusTotals {
         crawl: crawl_total,
         extract: extract_total,
         embed: embed_total,
         ingest: ingest_total,
-        refresh: refresh_total,
-        graph: graph_total,
     };
     Ok((jobs, totals))
 }
@@ -392,8 +379,6 @@ pub(crate) fn build_status_payload(
     extract_jobs: &[ServiceJob],
     embed_jobs: &[ServiceJob],
     ingest_jobs: &[ServiceJob],
-    refresh_jobs: &[ServiceJob],
-    graph_jobs: &[ServiceJob],
     totals: &StatusTotals,
 ) -> serde_json::Value {
     serde_json::json!({
@@ -401,15 +386,11 @@ pub(crate) fn build_status_payload(
         "local_extract_jobs": extract_jobs,
         "local_embed_jobs": embed_jobs,
         "local_ingest_jobs": ingest_jobs,
-        "local_refresh_jobs": refresh_jobs,
-        "local_graph_jobs": graph_jobs,
         "totals": {
             "crawl": totals.crawl,
             "extract": totals.extract,
             "embed": totals.embed,
             "ingest": totals.ingest,
-            "refresh": totals.refresh,
-            "graph": totals.graph,
         },
     })
 }
@@ -691,10 +672,10 @@ mod tests {
     }
 
     #[test]
-    fn status_payload_includes_refresh_jobs_key() {
-        let payload = build_status_payload(&[], &[], &[], &[], &[], &[], &StatusTotals::default());
-        assert!(payload.get("local_refresh_jobs").is_some());
-        assert!(payload.get("local_graph_jobs").is_some());
+    fn status_payload_includes_expected_keys() {
+        let payload = build_status_payload(&[], &[], &[], &[], &StatusTotals::default());
+        assert!(payload.get("local_crawl_jobs").is_some());
+        assert!(payload.get("local_ingest_jobs").is_some());
         assert!(payload.get("totals").is_some());
     }
 

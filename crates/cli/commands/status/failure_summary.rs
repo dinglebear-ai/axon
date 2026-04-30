@@ -3,9 +3,7 @@ use crate::crates::core::ui::{error, muted};
 use crate::crates::jobs::crawl::CrawlJob;
 use crate::crates::jobs::embed::EmbedJob;
 use crate::crates::jobs::extract::ExtractJob;
-use crate::crates::jobs::graph::GraphJob;
 use crate::crates::jobs::ingest::IngestJob;
-use crate::crates::jobs::refresh::RefreshJob;
 
 #[allow(dead_code)]
 fn classify_error(text: &str) -> &'static str {
@@ -37,8 +35,6 @@ pub fn print_failure_summary(
     extract_jobs: &[ExtractJob],
     embed_jobs: &[EmbedJob],
     ingest_jobs: &[IngestJob],
-    refresh_jobs: &[RefreshJob],
-    graph_jobs: &[GraphJob],
 ) {
     let error_texts: Vec<&str> = crawl_jobs
         .iter()
@@ -58,18 +54,6 @@ pub fn print_failure_summary(
         )
         .chain(
             ingest_jobs
-                .iter()
-                .filter(|j| j.status == "failed")
-                .filter_map(|j| j.error_text.as_deref()),
-        )
-        .chain(
-            refresh_jobs
-                .iter()
-                .filter(|j| j.status == "failed")
-                .filter_map(|j| j.error_text.as_deref()),
-        )
-        .chain(
-            graph_jobs
                 .iter()
                 .filter(|j| j.status == "failed")
                 .filter_map(|j| j.error_text.as_deref()),

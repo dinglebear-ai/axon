@@ -56,22 +56,8 @@ The `axon.json` file provides structured configuration with schema validation (`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_PG_URL` | -- | PostgreSQL connection DSN |
-| `AXON_REDIS_URL` | -- | Redis connection DSN |
-| `AXON_AMQP_URL` | -- | RabbitMQ AMQP connection DSN |
 | `QDRANT_URL` | -- | Qdrant vector database URL |
 | `TEI_URL` | -- | Text Embeddings Inference URL |
-
-### Docker Compose credentials (required for local stack)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_USER` | `axon` | PostgreSQL username |
-| `POSTGRES_PASSWORD` | -- | PostgreSQL password |
-| `POSTGRES_DB` | `axon` | PostgreSQL database name |
-| `REDIS_PASSWORD` | -- | Redis auth password |
-| `RABBITMQ_USER` | `axon` | RabbitMQ username |
-| `RABBITMQ_PASS` | -- | RabbitMQ password |
 
 ### Host paths
 
@@ -99,7 +85,7 @@ The `axon.json` file provides structured configuration with schema validation (`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_LITE` | -- | Set to `1` to enable lite mode (no Postgres/Redis/RabbitMQ) |
+| `AXON_LITE` | -- | Set to `1` to enable lite mode (default; uses SQLite) |
 | `AXON_SQLITE_PATH` | `~/.local/share/axon/jobs.db` | SQLite path for lite mode |
 
 ### TEI embedding
@@ -244,7 +230,7 @@ The `axon.json` file provides structured configuration with schema validation (`
 
 The CLI auto-detects its runtime environment:
 
-- **Inside Docker** (`/.dockerenv` exists): uses container DNS (`axon-postgres:5432`)
-- **Outside Docker** (local dev): rewrites to localhost with mapped ports (`127.0.0.1:53432`)
+- **Inside Docker** (`/.dockerenv` exists): uses container DNS for Qdrant/TEI
+- **Outside Docker** (local dev): rewrites to localhost with mapped ports
 
 This means `.env` can use container DNS names -- `normalize_local_service_url()` in `config.rs` handles translation transparently.

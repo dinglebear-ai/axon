@@ -111,7 +111,7 @@ pub async fn extract_start_with_prompt(
     )
     .await;
 
-    let job_id = start_extract_job(cfg, urls, prompt).await?;
+    let job_id = start_extract_job(cfg, urls.to_vec(), prompt).await?;
 
     emit(
         &tx,
@@ -130,22 +130,30 @@ pub async fn extract_start_with_context(
     urls: &[String],
     prompt: Option<String>,
     service_context: &ServiceContext,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
+    _tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<JobStartOutcome<ExtractStartResult>, Box<dyn Error>> {
-    if !cfg.lite_mode {
-        let result = extract_start_with_prompt(cfg, urls, prompt, tx).await?;
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::Enqueued,
-            result,
-        });
+    if urls.is_empty() {
+        return Err("extract_start requires at least one URL".into());
     }
 
+    // Always route through service_context.jobs.enqueue() so that notify()
+    // fires immediately and workers wake without 0-5 second polling delay.
+    // The previous `if !cfg.lite_mode` branch called start_extract_job() which
+    // opened a fresh SQLite pool per call (re-running migrations) and never
+    // called notify().
+    let config_json = prompt
+        .map(|p| serde_json::json!({ "prompt": p }).to_string())
+        .unwrap_or_else(|| {
+            cfg.query
+                .as_ref()
+                .map(|p| serde_json::json!({ "prompt": p }).to_string())
+                .unwrap_or_else(|| "{}".to_string())
+        });
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Extract {
             urls: urls.to_vec(),
-            config_json: "{}".to_string(),
+            config_json,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;

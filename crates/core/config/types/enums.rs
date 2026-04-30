@@ -5,7 +5,6 @@ use std::fmt;
 pub enum CommandKind {
     Scrape,
     Crawl,
-    Refresh,
     Watch,
     Map,
     Extract,
@@ -27,12 +26,9 @@ pub enum CommandKind {
     Sessions,
     Research,
     Screenshot,
-    Graph,
     Completions,
     Mcp,
-    Serve,
     Migrate,
-    Export,
 }
 
 impl CommandKind {
@@ -40,7 +36,6 @@ impl CommandKind {
         match self {
             Self::Scrape => "scrape",
             Self::Crawl => "crawl",
-            Self::Refresh => "refresh",
             Self::Watch => "watch",
             Self::Map => "map",
             Self::Extract => "extract",
@@ -62,12 +57,9 @@ impl CommandKind {
             Self::Sessions => "sessions",
             Self::Research => "research",
             Self::Screenshot => "screenshot",
-            Self::Graph => "graph",
             Self::Completions => "completions",
             Self::Mcp => "mcp",
-            Self::Serve => "serve",
             Self::Migrate => "migrate",
-            Self::Export => "export",
         }
     }
 }

@@ -15,15 +15,6 @@ fn run_help(args: &[&str]) -> String {
 }
 
 #[test]
-fn refresh_schedule_help_exposes_worker_subcommand() {
-    let stdout = run_help(&["refresh", "schedule", "--help"]);
-    assert!(
-        stdout.contains("worker"),
-        "expected refresh schedule help to include worker subcommand, got:\n{stdout}"
-    );
-}
-
-#[test]
 fn ingest_help_describes_target_argument() {
     let stdout = run_help(&["ingest", "--help"]);
     assert!(

@@ -41,44 +41,20 @@ It supersedes the previous omnibox-only architecture note.
 flowchart LR
   U[User or API client]
   CLI[axon CLI binary]
-  WEB[Axum /ws + /ws/shell + output/download bridge]
-  NX[Next.js apps/web]
 
-  PG[(Postgres)]
-  RQ[(RabbitMQ)]
-  RD[(Redis)]
   QD[(Qdrant)]
   TEI[TEI embeddings]
   LLM[OpenAI-compatible API]
   CHR[Chrome/CDP]
+  SQ[(SQLite jobs)]
 
   U --> CLI
-  U --> NX
-  U --> WEB
 
-  CLI --> PG
-  CLI --> RQ
-  CLI --> RD
   CLI --> QD
   CLI --> TEI
   CLI --> LLM
   CLI --> CHR
-
-  WEB --> CLI
-  WEB --> PG
-  WEB --> QD
-  WEB --> TEI
-  WEB --> LLM
-  WEB --> CHR
-
-  NX --> WEB
-  NX --> PG
-  NX --> QD
-  NX --> TEI
-  NX --> LLM
-
-  RQ --> CLI
-  PG --> CLI
+  CLI --> SQ
 ```
 
 ## Runtime Components
@@ -89,12 +65,10 @@ flowchart LR
 | `crates/cli/*` | Command handlers and subcommand routing |
 | `crates/core/*` | Config parsing, HTTP safety, content transforms, logging |
 | `crates/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
-| `crates/jobs/*` | Queue-backed worker runtime + job state transitions |
+| `crates/jobs/*` | SQLite-backed worker runtime + job state transitions |
 | `crates/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
 | `crates/services/acp/*` | ACP session lifecycle, subprocess bridge, runtime state, permission map |
-| `crates/web.rs` + `crates/web/*` | Axum web server, websocket execution bridge, output/download endpoints |
-| `apps/web/*` | Next.js UI with omnibox, results rendering, pulse workspace |
-| `docker-compose.yaml` | Self-hosted runtime services |
+| `docker-compose.services.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
 
@@ -178,14 +152,13 @@ delegation layer and ensures the output contract is tested at the engine level.
 
 ## Async Job Architecture
 
-Jobs are persisted in Postgres and queued through RabbitMQ. Workers consume from queues but Postgres is the source of truth for state.
+Jobs are persisted in SQLite (lite mode). Workers run in-process within the same tokio runtime.
 
 ```mermaid
 flowchart LR
-  ENQ[enqueue command] --> PG1[(insert pending row)]
-  PG1 --> MQ[publish job_id]
-  MQ --> WK[worker lane]
-  WK --> CLM[claim pending row FOR UPDATE SKIP LOCKED]
+  ENQ[enqueue command] --> SQ[(insert pending row in SQLite)]
+  SQ --> WK[in-process worker]
+  WK --> CLM[claim pending row]
   CLM --> RUN[set running + started_at]
   RUN --> PROC[process job]
   PROC --> DONE[set completed + result_json]
@@ -201,28 +174,26 @@ State model:
 
 Job families:
 
-- Crawl: `crates/jobs/crawl/runtime/worker/loops.rs` (own AMQP consumer loop — see Worker Architecture below)
+- Crawl: `crates/jobs/crawl/runtime/worker/loops.rs` (own polling loop — see Worker Architecture below)
 - Extract: `crates/jobs/extract/worker.rs` (uses `worker_lane.rs`)
 - Embed: `crates/jobs/embed/worker.rs` (uses `worker_lane.rs`)
 - Ingest (unified `axon ingest <target>`): `crates/jobs/ingest/process.rs` (uses `worker_lane.rs`; target auto-detected by `crates/ingest/classify.rs`)
-- Refresh: `crates/jobs/refresh/worker.rs` (uses `worker_lane.rs`; lifecycle details in `docs/JOB-LIFECYCLE.md`)
 
 ### Worker Architecture
 
 #### Generic Worker Lane (worker_lane.rs)
 
-`worker_lane.rs` provides a generic AMQP/polling consumer loop shared by:
+`worker_lane.rs` provides a generic polling consumer loop shared by:
 - Embed worker (`crates/jobs/embed/worker.rs`)
 - Extract worker (`crates/jobs/extract/worker.rs`)
-- Refresh worker (`crates/jobs/refresh/worker.rs`)
 - Ingest worker (`crates/jobs/ingest/process.rs`)
 
 Each worker type creates N lanes (configurable via `AXON_*_LANES` env vars).
-Each lane holds one AMQP consumer channel and processes jobs sequentially.
+Each lane processes jobs sequentially.
 
 #### Why the Crawl Worker Doesn't Use worker_lane.rs
 
-The crawl worker has its own AMQP consumer loop in `crates/jobs/crawl/runtime/worker/loops.rs`.
+The crawl worker has its own loop in `crates/jobs/crawl/runtime/worker/loops.rs`.
 
 **Root cause**: `spider.rs` futures are `!Send`. They cannot be:
 - Spawned with `tokio::spawn()` (requires `Send + 'static`)
@@ -231,10 +202,6 @@ The crawl worker has its own AMQP consumer loop in `crates/jobs/crawl/runtime/wo
 The crawl worker works around this by pinning futures with `tokio::pin!()` and
 polling them inside a `select!` loop on a single task. This preserves the
 1-job-per-lane guarantee while keeping the non-Send future alive on the same thread.
-
-**Consequence**: Any change to the generic lane logic (backoff, QoS, reconnect) must
-also be manually applied to `crawl/runtime/worker/loops.rs`. The two reconnect loops
-also have subtly different backoff reset semantics (see `CLAUDE.md` "AMQP reconnect backoff").
 
 ## Vector and RAG Pipeline
 
@@ -318,51 +285,6 @@ Added in v0.12.0 to manage MCP tool response artifacts:
 | `artifacts/respond.rs` | Build MCP tool response payloads embedding artifact refs |
 | `artifacts/shape.rs` | `ArtifactShape` enum: `Blob`, `Text`, `Json`, `Image` |
 
-## Web Runtime Architecture
-
-The web UI is `apps/web` (Next.js). `crates/web.rs` provides the axum WebSocket bridge it connects to.
-
-### Axum Runtime (`serve`)
-
-```mermaid
-flowchart TD
-  A[/ws client/] --> B[crates/web.rs websocket handler]
-  B --> C[execute::handle_command]
-  C --> D{dispatch}
-  D -->|subprocess mode| E[sync_mode/subprocess.rs]
-  D -->|service call mode| F[sync_mode/service_calls.rs]
-  D -->|ACP mode| G[sync_mode/acp_adapter.rs]
-  E --> H[stdout/stderr stream]
-  F --> H
-  G --> H
-  H --> I[typed WS messages]
-  I --> A
-```
-
-Capabilities:
-
-- Serves websocket bridge endpoints plus output/download artifact routes.
-- Maintains per-connection command/crawl state.
-- Streams command output/events over websocket.
-- Broadcasts Docker stats via `crates/web/docker_stats.rs`.
-
-### sync_mode Submodule (`crates/web/execute/sync_mode/`)
-
-`sync_mode.rs` was split (v0.12.0) into focused files:
-
-| File | Responsibility |
-|---|---|
-| `dispatch.rs` | Top-level mode dispatch (subprocess vs service call vs ACP) |
-| `subprocess.rs` | Spawn axon subprocess, stream stdout/stderr |
-| `service_calls.rs` | Direct in-process service invocations (no subprocess) |
-| `acp_adapter.rs` | ACP session bridging for websocket execute path |
-| `params.rs` | Parameter parsing and validation for incoming WS messages |
-| `types.rs` | Shared types: `SyncModeResult`, `DispatchMode`, output events |
-| `pulse_chat.rs` | Pulse chat streaming adapter |
-| `prewarm.rs` | Adapter prewarming on server startup |
-
-`session_guard.rs` exists but is not yet wired into the production execution path — it contains infrastructure for confirming session file persistence before signalling the frontend (all items marked `allow(dead_code)`).
-
 ### ACP Service (`crates/services/acp/`)
 
 `services/acp.rs` (formerly 2060-line monolith) was split (v0.11.2) into:
@@ -384,53 +306,14 @@ Key runtime patterns:
 - `AdapterGuard` — RAII guard that cleans up the ACP subprocess on `Drop`, preventing zombie processes.
 - `select! { biased; }` — event-drain loop ordering ensures cancellation signals are checked before new input, preventing unbounded queuing on client disconnect.
 
-## Omnibox and Pulse Flows
-
-### Unified UI Data Flow (Next.js)
-
-```mermaid
-flowchart TD
-  U[User] --> O[Omnibox]
-  O --> MT{mode type}
-
-  MT -->|command mode| EX[startExecution -> WS execute]
-  EX --> WS[useAxonWs + useWsMessages]
-  WS --> RP[ResultsPanel]
-
-  MT -->|workspace mode pulse| AW[activateWorkspace]
-  O --> SP[submitWorkspacePrompt]
-  AW --> RP
-  SP --> PW[PulseWorkspace]
-  PW --> API[/api/pulse/chat]
-  API --> PW
-  PW --> RP
-```
-
-### Mention System
-
-`Omnibox` supports mention-driven interaction:
-
-- `@mode` mentions switch mode without mouse interaction.
-- `@file` mentions use `/api/omnibox/files` for local fuzzy file selection.
-- Mentioned files can be inserted as query context.
-
-### Pulse Workspace Behavior
-
-- Workspace state is coordinated by `useWsMessages`.
-- Pulse prompt execution is gated by workspace prompt versioning so repeat prompt submissions still execute.
-- Pulse does not use the websocket `execute` command path; it uses Next.js API routes.
-
 ## Data Model and Persistence
 
-Primary relational tables (see `docs/SCHEMA.md`):
+Primary tables (SQLite, auto-created via `ensure_schema()`):
 
 - `axon_crawl_jobs`
 - `axon_extract_jobs`
 - `axon_embed_jobs`
 - `axon_ingest_jobs`
-- `axon_refresh_jobs`
-- `axon_refresh_targets` (per-URL conditional request state)
-- `axon_refresh_schedules` (recurring refresh definitions)
 
 Common columns:
 
@@ -440,17 +323,9 @@ Ingest-specific discriminator:
 
 - `source_type` + `target` replace URL-based identifiers.
 
-Refresh-specific:
-
-- `urls_json` array of URLs to re-check.
-- `axon_refresh_targets` stores per-URL ETag/hash state across jobs.
-- `axon_refresh_schedules` defines recurring refresh intervals.
-
 Storage responsibilities:
 
-- Postgres: job metadata and lifecycle state
-- RabbitMQ: queue delivery
-- Redis: cancellation/control and health paths
+- SQLite: job metadata and lifecycle state
 - Qdrant: vector points + retrieval corpus
 
 ## Configuration Resolution
@@ -497,14 +372,6 @@ Resilience patterns implemented:
 3. Ranking/context assembly builds prompt context.
 4. LLM endpoint generates final answer.
 
-### 3) Next.js Omnibox Command Execution
-
-1. User focuses omnibox (`/`) and enters command input.
-2. `startExecution` sends websocket `execute` message.
-3. Axum websocket handler spawns CLI command.
-4. Streamed events update `useWsMessages` state.
-5. `ResultsPanel` renders output, crawl files, errors, or artifacts.
-
 ## Key Source Map
 
 Core runtime:
@@ -529,11 +396,6 @@ Crawl/jobs/vector:
 - `crates/jobs/extract/worker.rs`
 - `crates/jobs/embed/worker.rs`
 - `crates/jobs/ingest/process.rs`
-- `crates/jobs/refresh.rs`
-- `crates/jobs/refresh/processor.rs`
-- `crates/jobs/refresh/schedule.rs`
-- `crates/jobs/refresh/state.rs`
-- `crates/jobs/refresh/worker.rs`
 - `crates/vector/ops.rs`
 - `crates/vector/ops/tei.rs`
 
@@ -558,41 +420,18 @@ ACP + MCP:
 - `crates/mcp/server/artifacts.rs`
 - `crates/mcp/server/artifacts/` (lifecycle, path, respond, shape)
 
-Web + UI:
-
-- `crates/web.rs`
-- `crates/web/shell.rs`
-- `crates/web/execute.rs`
-- `crates/web/execute/sync_mode/` (dispatch, subprocess, service_calls, acp_adapter, params, types, pulse_chat, prewarm)
-- `crates/web/docker_stats.rs`
-- `crates/web/download.rs`
-- `apps/web/app/page.tsx`
-- `apps/web/hooks/use-axon-ws.ts`
-- `apps/web/hooks/use-ws-messages.ts`
-- `apps/web/components/omnibox.tsx`
-- `apps/web/components/results-panel.tsx`
-- `apps/web/components/pulse/pulse-workspace.tsx`
-- `apps/web/lib/ws-protocol.ts`
-- `apps/web/app/api/omnibox/files/route.ts`
-- `apps/web/app/api/pulse/chat/route.ts`
-
 ## Security: Destructive Operations
 
-The following CLI operations are **unauthenticated** — any process with network
-access to Postgres/RabbitMQ can invoke them:
+The following CLI operations are **unauthenticated** — any process with access to
+the SQLite database can invoke them:
 
 - `axon crawl clear` — deletes ALL crawl jobs
 - `axon extract clear` — deletes ALL extract jobs
-- `axon refresh clear` — deletes ALL refresh jobs
 - `axon crawl cancel <id>` — cancels a specific job
-- `axon refresh cancel <id>` — cancels a specific refresh job
 
-**Accepted risk**: Axon is a self-hosted single-user tool. All services are bound
-to `127.0.0.1` (or internal Docker network). External exposure is prevented at
-the infrastructure layer (Docker port mappings, Tailscale ACLs).
-
-**Mitigation if needed**: Bind Postgres/RabbitMQ to localhost only (already the
-default in `docker-compose.yaml`). Add network-level ACLs via Tailscale.
+**Accepted risk**: Axon is a self-hosted single-user tool. The SQLite database is a
+local file. Qdrant is bound to `127.0.0.1` (or internal Docker network). External
+exposure is prevented at the infrastructure layer (Docker port mappings, Tailscale ACLs).
 
 ---
 

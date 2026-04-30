@@ -1,4 +1,0 @@
-#!/bin/sh
-# Kill anything holding port 49011 before s6 restarts the service.
-port_pid=$(ss -tlnp 2>/dev/null | sed -n 's/.*:49011.*pid=\([0-9]*\).*/\1/p')
-[ -n "$port_pid" ] && kill -9 "$port_pid" 2>/dev/null || true

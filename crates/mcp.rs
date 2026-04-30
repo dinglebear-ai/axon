@@ -1,3 +1,7 @@
+#[path = "mcp/auth.rs"]
+pub(crate) mod auth;
+#[path = "mcp/cors.rs"]
+mod cors;
 #[path = "mcp/schema.rs"]
 pub mod schema;
 #[path = "mcp/server.rs"]

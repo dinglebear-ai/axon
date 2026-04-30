@@ -47,19 +47,15 @@ pub async fn ingest_start(
 }
 
 pub async fn ingest_start_with_context(
-    cfg: &Config,
+    _cfg: &Config,
     source: IngestSource,
     service_context: &ServiceContext,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
-    if !cfg.lite_mode {
-        let result = ingest_start(cfg, source).await?;
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::Enqueued,
-            result,
-        });
-    }
-
+    // Always route through service_context.jobs.enqueue() so that notify()
+    // fires immediately and workers wake without 0-5 second polling delay.
+    // The previous `if !cfg.lite_mode` branch called start_ingest_job() which
+    // opened a fresh SQLite pool per call (re-running migrations) and never
+    // called notify().
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
     let config_json = serde_json::to_string(&source)?;
@@ -329,8 +325,8 @@ pub async fn ingest_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
-    use crate::crates::jobs::common::test_config;
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
@@ -414,11 +410,15 @@ mod tests {
         ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             Ok(WorkerMode::InProcess)
         }
+
+        async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
+            Ok(0)
+        }
     }
 
     #[tokio::test]
     async fn ingest_start_with_context_enqueues_sessions_jobs_in_lite_mode() {
-        let mut cfg = test_config("postgresql://axon:postgres@127.0.0.1:53432/axon");
+        let mut cfg = Config::test_default();
         cfg.lite_mode = true;
         cfg.sessions_claude = true;
         cfg.sessions_codex = false;

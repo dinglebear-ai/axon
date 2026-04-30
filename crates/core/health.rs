@@ -3,11 +3,8 @@ pub mod doctor;
 pub use doctor::build_doctor_report;
 
 use crate::crates::core::config::parse::helpers::env_bool;
-use crate::crates::core::logging::log_info;
 use crate::crates::core::paths::axon_data_dir;
 use std::env;
-use std::time::Duration;
-use std::time::Instant;
 
 const DIAGNOSTICS_DIR_DEFAULT: &str = ".cache/chrome-diagnostics";
 
@@ -17,48 +14,6 @@ pub struct BrowserDiagnosticsPattern {
     pub screenshot: bool,
     pub events: bool,
     pub output_dir: String,
-}
-
-pub async fn redis_healthy(redis_url: &str) -> bool {
-    let probe_start = Instant::now();
-    let url =
-        crate::crates::core::config::parse::normalize_local_service_url(redis_url.to_string());
-    // Redact credentials — the raw URL may contain a password; log only host:port.
-    let host_label = reqwest::Url::parse(&url)
-        .ok()
-        .and_then(|u: reqwest::Url| {
-            u.host_str()
-                .map(|h| format!("{}:{}", h, u.port().unwrap_or(6379)))
-        })
-        .unwrap_or_else(|| "unknown".to_string());
-    let client = match redis::Client::open(url.as_str()) {
-        Ok(client) => client,
-        Err(_) => {
-            log_info(&format!(
-                "health_probe service=redis host={host_label} result=false duration_ms={}",
-                probe_start.elapsed().as_millis()
-            ));
-            return false;
-        }
-    };
-
-    let ping = async {
-        let mut conn = client.get_multiplexed_async_connection().await?;
-        redis::cmd("PING")
-            .query_async::<String>(&mut conn)
-            .await
-            .map(|_| ())
-    };
-
-    let result = matches!(
-        tokio::time::timeout(Duration::from_secs(5), ping).await,
-        Ok(Ok(()))
-    );
-    log_info(&format!(
-        "health_probe service=redis host={host_label} result={result} duration_ms={}",
-        probe_start.elapsed().as_millis()
-    ));
-    result
 }
 
 pub fn browser_diagnostics_pattern() -> BrowserDiagnosticsPattern {

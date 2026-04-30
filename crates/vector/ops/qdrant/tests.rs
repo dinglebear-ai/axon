@@ -1,7 +1,13 @@
-use crate::crates::jobs::common::{resolve_test_qdrant_url, test_config};
+use crate::crates::core::config::Config;
 use std::collections::HashSet;
 use std::error::Error;
 use uuid::Uuid;
+
+fn resolve_test_qdrant_url() -> Option<String> {
+    std::env::var("AXON_TEST_QDRANT_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+}
 
 use super::client::{
     qdrant_delete_by_url_filter, qdrant_delete_stale_domain_urls, qdrant_domain_facets,
@@ -76,7 +82,7 @@ async fn qdrant_url_facets_returns_correct_shape() -> Result<(), Box<dyn Error>>
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -116,7 +122,7 @@ async fn upsert_and_search_roundtrip() -> Result<(), Box<dyn Error>> {
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -157,7 +163,7 @@ async fn qdrant_scroll_pages_visits_all_inserted_points() -> Result<(), Box<dyn 
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -197,7 +203,7 @@ async fn qdrant_retrieve_by_url_returns_only_matching_points() -> Result<(), Box
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -238,7 +244,7 @@ async fn qdrant_delete_by_url_filter_removes_matching_points() -> Result<(), Box
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -281,7 +287,7 @@ async fn qdrant_domain_facets_returns_domain_counts() -> Result<(), Box<dyn Erro
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -326,7 +332,7 @@ async fn qdrant_delete_stale_domain_urls_removes_only_stale_points() -> Result<(
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 
@@ -387,7 +393,7 @@ async fn qdrant_delete_stale_domain_urls_handles_large_batch_across_chunk_bounda
     let Some(qdrant_url) = resolve_test_qdrant_url() else {
         return Ok(());
     };
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.qdrant_url = qdrant_url;
     cfg.collection = format!("test_{}", Uuid::new_v4().simple());
 

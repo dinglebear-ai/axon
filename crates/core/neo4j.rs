@@ -54,10 +54,6 @@ impl Neo4jClient {
         }))
     }
 
-    pub fn from_config(cfg: &crate::crates::core::config::Config) -> Neo4jResult<Option<Self>> {
-        Self::from_parts(&cfg.neo4j_url, &cfg.neo4j_user, &cfg.neo4j_password)
-    }
-
     pub async fn execute(&self, cypher: &str, params: Value) -> Neo4jResult<()> {
         let _ = self.send(cypher, params).await?;
         Ok(())

@@ -44,7 +44,7 @@ Behavior:
 
 ### Integration suite lane (infra-backed, skip-on-missing)
 
-A separate set of integration tests targets live Redis, RabbitMQ, Postgres, and Qdrant instances.
+A separate set of integration tests targets live Qdrant instances and other external services.
 These tests do **not** use `#[ignore]` — instead each test calls a resolver (`resolve_test_amqp_url()`, etc.)
 that returns `None` and exits cleanly when the corresponding env var is unset.
 This means they run in `just test` without error, but only exercise real I/O when infra is available.
@@ -66,31 +66,20 @@ Integration suites currently covered:
 
 | File | Env var required | What it tests |
 |------|-----------------|---------------|
-| `crates/jobs/common/tests/amqp_integration.rs` | `AXON_TEST_AMQP_URL` | AMQP channel open, queue declare, publish/consume round-trip |
-| `crates/jobs/common/tests/redis_integration.rs` | `AXON_TEST_REDIS_URL` | Redis SET/GET/DEL cancel-key round-trip |
-| `crates/jobs/common/tests/pool_integration.rs` | `AXON_TEST_PG_URL` | PgPool acquire, health, concurrency |
-| `crates/jobs/common/tests/heartbeat.rs` | `AXON_TEST_PG_URL` | Heartbeat update lifecycle against live Postgres |
-| `crates/jobs/refresh/schedule_integration_tests.rs` | `AXON_TEST_PG_URL` | Refresh schedule CRUD and state transitions |
 | `crates/web/execute/tests/ws_protocol_tests.rs` | none | WebSocket protocol frame serialization/deserialization |
 
 ## Test Infrastructure Environment Variables
 
-Set these in `.env` (populated automatically by `./scripts/dev-setup.sh`):
+Set these in `.env`:
 
 | Variable | Default (test containers) | Purpose |
 |----------|--------------------------|---------|
-| `AXON_TEST_PG_URL` | `postgresql://axon:axontest@127.0.0.1:53434/axon_test` | Postgres integration tests |
-| `AXON_TEST_AMQP_URL` | `amqp://axon:axontest@127.0.0.1:45536/%2f` | AMQP/RabbitMQ integration tests |
-| `AXON_TEST_REDIS_URL` | `redis://127.0.0.1:53380` | Redis integration tests |
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Qdrant integration tests |
 
 Test containers (from `docker-compose.test.yaml`) bind on ports that do not conflict with the dev stack:
 
 | Service | Image | Test port |
 |---------|-------|-----------|
-| `axon-postgres-test` | `postgres:17-alpine` | `53434` |
-| `axon-rabbitmq-test` | `rabbitmq:4.0-management` | `45536` (AMQP), `45537` (management) |
-| `axon-redis-test` | `redis:8.2-alpine` | `53380` |
 | `axon-qdrant-test` | `qdrant/qdrant:v1.13.1` | `53335` (HTTP), `53336` (gRPC) |
 
 All test containers use `tmpfs` mounts — data does not persist between `down -v` cycles.
@@ -208,7 +197,7 @@ just verify
 
 ## CI Mapping
 
-- `test` job: standard Rust test lane (`cargo test --all --locked`). Service containers: Redis 8.2-alpine, RabbitMQ 4.0-alpine. `AXON_TEST_REDIS_URL` and `AXON_TEST_AMQP_URL` are set so integration tests that resolve these vars exercise live I/O.
+- `test` job: standard Rust test lane (`cargo test --all --locked`). Service containers: Qdrant (for integration tests that resolve `AXON_TEST_QDRANT_URL`).
 - `test-infra` job: manual-only lane, triggered via `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra` (the `#[ignore]` worker e2e suite).
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
 - `msrv` job: validates declared MSRV separately.
@@ -241,10 +230,8 @@ mcporter --config config/mcporter.json call axon.axon action:crawl subaction:lis
 
 Notes:
 - Script artifacts/logs are written under `.cache/mcporter-test/`.
-- The script generates suite-specific mcporter configs under `.cache/mcporter-test/` and runs:
-  - full mode with `AXON_LITE=0`
-  - lite mode with `AXON_LITE=1`
-- The full suite requires the Postgres/Redis/AMQP-backed stack. The lite suite intentionally asserts that `export` and `graph:*` are unavailable.
+- The script generates suite-specific mcporter configs under `.cache/mcporter-test/` and runs with `AXON_LITE=1`.
+- The suite requires Qdrant and TEI to be running.
 - `screenshot` uses a higher mcporter call timeout than the default because Chrome startup can exceed 60s on some machines.
 - CI parity: the `mcp-smoke` workflow job runs this same script in GitHub Actions.
 - Canonical MCP runtime/testing reference: `docs/MCP.md`.

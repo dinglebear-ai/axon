@@ -87,7 +87,7 @@ pub(crate) async fn qdrant_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::jobs::common::test_config;
+    use crate::crates::core::config::Config;
     use httpmock::prelude::*;
 
     fn make_search_response(hits: Vec<(&str, f64)>) -> serde_json::Value {
@@ -119,7 +119,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -147,7 +147,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -174,7 +174,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -203,7 +203,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
@@ -224,7 +224,7 @@ mod tests {
             })
             .await;
 
-        let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+        let mut cfg = Config::test_default();
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 

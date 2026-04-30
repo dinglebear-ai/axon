@@ -66,14 +66,13 @@ stateDiagram-v2
 ## Enqueue Flow
 
 1. Command validates input and builds `config_json`.
-2. Job row is inserted in Postgres as `pending`.
-3. Job ID is published to RabbitMQ queue.
+2. Job row is inserted in SQLite as `pending`.
+3. In-process worker picks up the job.
 4. Worker claims and executes.
 
 Important rule:
 
 - Database is source of truth for job state.
-- RabbitMQ message carries only job ID pointer.
 
 ## Claim and Execute Flow
 

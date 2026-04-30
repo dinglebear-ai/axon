@@ -1,7 +1,5 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
-use crate::crates::core::neo4j::Neo4jClient;
-use crate::crates::jobs::graph::context::build_graph_context;
 use anyhow::Result;
 
 mod build;
@@ -41,48 +39,15 @@ pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskCo
     )
     .await?;
 
-    let mut graph_context_text = String::new();
-    let mut graph_entities_found = 0usize;
-    let mut graph_elapsed_ms = 0u128;
-    let mut context = built.context;
+    let graph_context_text = String::new();
+    let graph_entities_found = 0usize;
+    let graph_elapsed_ms = 0u128;
+    let context = built.context;
 
-    let neo4j_opt = if cfg.ask_graph && !cfg.neo4j_url.trim().is_empty() {
-        match Neo4jClient::from_parts(&cfg.neo4j_url, &cfg.neo4j_user, &cfg.neo4j_password) {
-            Ok(client) => client,
-            Err(e) => {
-                log_warn(&format!("Failed to init Neo4j client: {}", e));
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    if let Some(neo4j) = neo4j_opt {
-        let graph_started = std::time::Instant::now();
-        let chunk_texts = retrieval
-            .top_chunk_indices
-            .iter()
-            .filter_map(|&idx| retrieval.reranked.get(idx))
-            .map(|candidate| candidate.chunk_text.clone())
-            .collect::<Vec<_>>();
-
-        match build_graph_context(cfg, &neo4j, &chunk_texts).await {
-            Ok(graph_ctx) => {
-                graph_elapsed_ms = graph_started.elapsed().as_millis();
-                graph_entities_found = graph_ctx.entities.len();
-                graph_context_text = graph_ctx.context_text;
-                if !graph_context_text.is_empty() {
-                    context = format!("{}\n\n---\n\n{}", graph_context_text, context);
-                }
-            }
-            Err(err) => {
-                graph_elapsed_ms = graph_started.elapsed().as_millis();
-                log_warn(&format!(
-                    "ask: graph context unavailable, falling back to vector-only retrieval: {err}"
-                ));
-            }
-        }
+    if cfg.ask_graph {
+        log_warn(
+            "ask: --graph flag set but graph feature is not available in this build; using vector-only retrieval",
+        );
     }
 
     Ok(AskContext {

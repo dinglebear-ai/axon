@@ -23,6 +23,9 @@ use spider::url::Url;
 use std::error::Error;
 use std::path::Path;
 
+// Fire-and-forget jobs (without --wait) require `axon mcp` to be running as a daemon.
+// `axon mcp` uses ServiceContext::new_with_workers() which spawns in-process workers.
+// CLI commands use ServiceContext::new() (enqueue-only).
 pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
         if subcommands::maybe_handle_subcommand(cfg, service_context).await? {
@@ -51,10 +54,7 @@ pub fn run_crawl<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> Co
         } else {
             let result = run_async_enqueue_multi(cfg, &urls, service_context).await;
             if result.is_ok() {
-                log_info(&format!(
-                    "job_enqueued command=crawl queue={}",
-                    cfg.crawl_queue
-                ));
+                log_info("job_enqueued command=crawl");
             }
             result
         }

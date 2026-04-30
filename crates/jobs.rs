@@ -1,16 +1,9 @@
 pub mod backend;
-pub mod common;
 pub mod crawl;
 pub mod embed;
 pub mod error;
 pub mod extract;
-pub mod full;
-pub mod graph;
 pub mod ingest;
 pub mod lite;
-pub mod refresh;
 pub mod status;
-pub mod watch;
 pub mod watch_lite;
-pub mod watch_worker;
-pub(crate) mod worker_lane;

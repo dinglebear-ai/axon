@@ -1,6 +1,6 @@
 use super::{
-    IngestResult, SessionDoc, SessionMeta, SessionStateTracker, flatten_session_result,
-    matches_project_filter, resolve_collection,
+    IngestResult, SessionDoc, SessionMeta, flatten_session_result, matches_project_filter,
+    resolve_collection,
 };
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::{PreparedDoc, chunk_text};
@@ -24,7 +24,6 @@ pub(crate) struct ParsedCodexSession {
 
 pub(super) async fn collect_codex_docs(
     cfg: &Config,
-    state: &SessionStateTracker,
     multi: &MultiProgress,
 ) -> IngestResult<Vec<SessionDoc>> {
     let root = super::expand_home("~/.codex/sessions");
@@ -71,12 +70,8 @@ pub(super) async fn collect_codex_docs(
             }
             let meta = fs::metadata(&path).await?;
             let mtime = meta.modified()?;
-            if state.should_skip(&path, mtime, meta.len()).await {
-                continue;
-            }
 
             let collection = resolve_collection(cfg, "codex");
-            let size = meta.len();
             let session_meta = SessionMeta {
                 agent: "codex",
                 project_name: current_project.clone(),
@@ -84,7 +79,7 @@ pub(super) async fn collect_codex_docs(
                 gh_repo: None,
             };
             futures.push(tokio::spawn(async move {
-                parse_codex_file(path, collection, mtime, size, session_meta).await
+                parse_codex_file(path, collection, mtime, session_meta).await
             }));
 
             if futures.len() >= 64
@@ -110,7 +105,6 @@ async fn parse_codex_file(
     path: PathBuf,
     collection: String,
     mtime: SystemTime,
-    size: u64,
     session_meta: SessionMeta,
 ) -> IngestResult<Option<SessionDoc>> {
     let content = fs::read_to_string(&path).await?;
@@ -152,13 +146,7 @@ async fn parse_codex_file(
         title,
         extra: Some(extra),
     };
-    Ok(Some(SessionDoc {
-        doc,
-        collection,
-        path,
-        mtime,
-        size,
-    }))
+    Ok(Some(SessionDoc { doc, collection }))
 }
 
 /// Extract session text and metadata from Codex JSONL (pure, no I/O).

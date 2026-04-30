@@ -91,9 +91,6 @@ All MCP actions are also available as CLI commands:
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
-| `axon-postgres` | postgres:17-alpine | 53432 | Job persistence |
-| `axon-redis` | redis:8.2-alpine | 53379 | Queue state and caching |
-| `axon-rabbitmq` | rabbitmq:4.0-management | 45535 | AMQP job queue |
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | 53333, 53334 (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | 52000 | Embedding generation |
 | `axon-chrome` | docker/chrome/Dockerfile | 6000, 9222 (CDP) | Headless browser |

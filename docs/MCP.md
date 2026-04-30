@@ -24,9 +24,6 @@ Implementation:
 `axon mcp` is expected to run in the same environment as Axon workers.
 
 Core stack env vars are reused:
-- `AXON_PG_URL`
-- `AXON_REDIS_URL`
-- `AXON_AMQP_URL`
 - `QDRANT_URL`
 - `TEI_URL`
 - `OPENAI_BASE_URL`
@@ -116,9 +113,6 @@ HTTP MCP server example:
       "command": "axon",
       "args": ["mcp", "--transport", "stdio"],
       "env": {
-        "AXON_PG_URL": "postgresql://axon:postgres@127.0.0.1:53432/axon",
-        "AXON_REDIS_URL": "redis://127.0.0.1:53379",
-        "AXON_AMQP_URL": "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
         "QDRANT_URL": "http://127.0.0.1:53333",
         "TEI_URL": "http://YOUR_TEI_HOST:52000"
       }
@@ -141,7 +135,7 @@ Lifecycle pattern when needed:
 
 ```json
 {
-  "action": "ingest|extract|embed|crawl|refresh|graph",
+  "action": "ingest|extract|embed|crawl",
   "subaction": "<action-specific subaction>",
   "...": "subaction fields"
 }
@@ -149,13 +143,12 @@ Lifecycle pattern when needed:
 
 ## Preferred Action Names (Top-Level)
 Use CLI-identical action names:
-- `ingest`, `extract`, `embed`, `crawl`, `refresh`
-- `graph` (with subactions `build|status|explore|stats`)
+- `ingest`, `extract`, `embed`, `crawl`
 - `query`, `retrieve`
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
-- `scrape`, `research`, `ask`, `screenshot`, `export`, `help`, `status`, `elicit_demo`
+- `scrape`, `research`, `ask`, `screenshot`, `help`, `status`, `elicit_demo`
 
 Examples:
 - `action: "ingest", subaction: "start"`
@@ -166,7 +159,7 @@ Examples:
 ## Parser Rules
 The server uses strict deserialization:
 - `action` is required and must match canonical schema names exactly
-- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|refresh|graph|artifacts`)
+- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|artifacts`)
 - No fallback fields (`command|op|operation`)
 - No action alias remapping
 - No token normalization (`-`/spaces/case are not rewritten)
@@ -178,7 +171,6 @@ Direct actions:
 - `research`
 - `ask`
 - `screenshot`
-- `export`
 - `elicit_demo`
 
 Lifecycle families:
@@ -186,15 +178,6 @@ Lifecycle families:
 - `extract`: `start|status|cancel|list|cleanup|clear|recover`
 - `embed`: `start|status|cancel|list|cleanup|clear|recover`
 - `ingest`: `start|status|cancel|list|cleanup|clear|recover`
-- `refresh`: `start|status|cancel|list|cleanup|clear|recover|schedule`
-- `graph`: `build|status|explore|stats`
-
-Refresh schedule subactions:
-- `list`
-- `create`
-- `delete`
-- `enable`
-- `disable`
 
 No top-level aliases are supported.
 
@@ -213,9 +196,6 @@ Success responses are normalized:
 ## mcporter Smoke Tests
 ```bash
 # Primary MCP smoke path.
-# Runs both suites:
-# - full mode: AXON_LITE=0
-# - lite mode: AXON_LITE=1
 bash ./scripts/test-mcp-tools-mcporter.sh
 
 # Local introspection against the repo's mcporter config
@@ -225,17 +205,13 @@ mcporter --config config/mcporter.json call axon.axon action:doctor --output jso
 mcporter --config config/mcporter.json call axon.axon action:scrape url:https://www.rust-lang.org/learn/get-started --output json
 mcporter --config config/mcporter.json call axon.axon action:query query:'rust mcp sdk' --output json
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
-mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 offset:0 --output json
-mcporter --config config/mcporter.json call axon.axon action:refresh subaction:schedule schedule_subaction:list --output json
 mcporter --config config/mcporter.json call axon.axon action:artifacts subaction:list --output json
 ```
 
 What the smoke harness enforces:
 - `mcporter list --schema` exposes the `axon` tool and the expected top-level actions.
-- `action:help` exposes the full routed surface, including nested lifecycle and `refresh schedule` subactions.
+- `action:help` exposes the full routed surface, including all lifecycle subactions.
 - Every exposed route has a real smoke case.
-- Full mode requires successful responses for the full MCP surface.
-- Lite mode requires successful responses for lite-supported routes and intentional unavailability for `export` and `graph:*`.
 - Suite logs and generated configs live under `.cache/mcporter-test/`.
 
 ## Artifact Inspection Workflow

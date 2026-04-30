@@ -4,6 +4,34 @@ use sqlx::SqlitePool;
 use tracing;
 use uuid::Uuid;
 
+/// Check whether the pending crawl job count is at or above the configured cap.
+///
+/// Reads `AXON_MAX_PENDING_CRAWL_JOBS` from the environment (default 100, 0 = unlimited).
+/// Returns `Err` with a human-readable message when the queue is full.
+async fn check_pending_cap(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let limit: u64 = std::env::var("AXON_MAX_PENDING_CRAWL_JOBS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    if limit == 0 {
+        return Ok(());
+    }
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await?;
+    if count as u64 >= limit {
+        return Err(sqlx::Error::Configuration(
+            format!(
+                "crawl queue full: {count} pending jobs (limit {limit}); \
+                 wait for workers to drain or raise AXON_MAX_PENDING_CRAWL_JOBS"
+            )
+            .into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Insert a new job row with status='pending'. Returns the new job's UUID.
 pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid, sqlx::Error> {
     let id = Uuid::new_v4();
@@ -12,6 +40,7 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
 
     match payload {
         JobPayload::Crawl { url, config_json } => {
+            check_pending_cap(pool).await?;
             sqlx::query(
                 "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at) \
                  VALUES (?, 'pending', ?, ?, ?, ?)"
@@ -48,26 +77,6 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
             )
             .bind(&id_str).bind(target).bind(source_type).bind(config_json).bind(now).bind(now)
             .execute(pool).await?;
-        }
-        JobPayload::Refresh { url, config_json } => {
-            sqlx::query(
-                "INSERT INTO axon_refresh_jobs (id, status, url, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)"
-            )
-            .bind(&id_str).bind(url).bind(config_json).bind(now).bind(now)
-            .execute(pool).await?;
-        }
-        JobPayload::Graph { config_json } => {
-            sqlx::query(
-                "INSERT INTO axon_graph_jobs (id, status, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?)",
-            )
-            .bind(&id_str)
-            .bind(config_json)
-            .bind(now)
-            .bind(now)
-            .execute(pool)
-            .await?;
         }
     }
 

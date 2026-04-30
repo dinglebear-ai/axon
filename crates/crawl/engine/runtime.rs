@@ -178,9 +178,6 @@ fn apply_limit_and_behavior_settings(cfg: &Config, website: &mut Website, start_
     if cfg.delay_ms > 0 {
         website.with_delay(cfg.delay_ms);
     }
-    if cfg.shared_queue {
-        website.with_shared_queue(true);
-    }
     let mut blacklist_patterns = ssrf_blacklist_compact_strings().to_vec();
     if !cfg.exclude_path_prefix.is_empty() {
         blacklist_patterns.extend(

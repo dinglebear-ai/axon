@@ -118,7 +118,7 @@ claude mcp add --transport http axon http://localhost:8001/mcp
 
 ## Lite mode connection
 
-For zero-infrastructure MCP (no Postgres/Redis/RabbitMQ):
+For lite-mode MCP (SQLite-backed, no external queue broker):
 
 ```json
 {

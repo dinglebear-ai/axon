@@ -10,9 +10,9 @@ use super::common::{
 };
 use crate::crates::mcp::schema::{
     ArtifactsRequest, ArtifactsSubaction, AxonToolResponse, DoctorRequest, DomainsRequest,
-    ExportRequest, HelpRequest, SourcesRequest, StatsRequest,
+    HelpRequest, SourcesRequest, StatsRequest, StatusRequest,
 };
-use crate::crates::services::{export, system};
+use crate::crates::services::system;
 use regex::Regex;
 use rmcp::ErrorData;
 use std::path::Path;
@@ -314,6 +314,29 @@ impl AxonMcpServer {
         .await
     }
 
+    pub(super) async fn handle_status(
+        &self,
+        req: StatusRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let response_mode = req.response_mode;
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("status", e.as_ref()))?;
+        let result = system::full_status(&ctx)
+            .await
+            .map_err(|e| logged_internal_error("status", e.as_ref()))?;
+        respond_with_mode(
+            "status",
+            "status",
+            response_mode,
+            "status",
+            result.payload,
+            InlineHint::Default,
+        )
+        .await
+    }
+
     pub(super) async fn handle_doctor(
         &self,
         req: DoctorRequest,
@@ -402,35 +425,6 @@ impl AxonMcpServer {
             response_mode,
             "stats",
             result.payload,
-            InlineHint::Default,
-        )
-        .await
-    }
-
-    pub(super) async fn handle_export(
-        &self,
-        req: ExportRequest,
-    ) -> Result<AxonToolResponse, ErrorData> {
-        if self.cfg.lite_mode {
-            return Err(invalid_params(
-                "export is not available in lite mode because it requires Postgres-backed history",
-            ));
-        }
-        let options = export::ExportOptions {
-            include_history: req.include_history.unwrap_or(false),
-            statuses: vec![],
-        };
-        let manifest = export::export_manifest_for_config(self.cfg.as_ref(), &options)
-            .await
-            .map_err(|e| logged_internal_error("export", e.as_ref()))?;
-        let payload =
-            serde_json::to_value(manifest).map_err(|e| logged_internal_error("export", &e))?;
-        respond_with_mode(
-            "export",
-            "export",
-            req.response_mode,
-            "export",
-            payload,
             InlineHint::Default,
         )
         .await

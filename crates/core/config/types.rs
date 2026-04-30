@@ -26,11 +26,6 @@ mod tests {
     }
 
     #[test]
-    fn test_command_kind_graph_as_str() {
-        assert_eq!(CommandKind::Graph.as_str(), "graph");
-    }
-
-    #[test]
     fn test_command_kind_mcp_as_str() {
         assert_eq!(CommandKind::Mcp.as_str(), "mcp");
     }
@@ -80,14 +75,6 @@ mod tests {
     }
 
     #[test]
-    fn config_default_queue_settings() {
-        let cfg = Config::default();
-        assert!(cfg.shared_queue);
-        assert_eq!(cfg.crawl_queue, "axon.crawl.jobs");
-        assert_eq!(cfg.embed_queue, "axon.embed.jobs");
-    }
-
-    #[test]
     fn config_default_worker_settings() {
         let cfg = Config::default();
         assert_eq!(cfg.batch_concurrency, 16);
@@ -104,8 +91,6 @@ mod tests {
         assert_eq!(cfg.mcp_transport, McpTransport::Http);
         assert_eq!(cfg.mcp_http_host, "0.0.0.0");
         assert_eq!(cfg.mcp_http_port, 8001);
-        assert_eq!(cfg.web_dev_port, 49010);
-        assert_eq!(cfg.shell_server_port, 49011);
         assert!(!cfg.reclaimed_status_only);
         assert!(!cfg.active_status_only);
         assert!(!cfg.recent_status_only);
@@ -114,9 +99,6 @@ mod tests {
     #[test]
     fn config_default_secrets_are_empty() {
         let cfg = Config::default();
-        assert!(cfg.pg_url.is_empty());
-        assert!(cfg.redis_url.is_empty());
-        assert!(cfg.amqp_url.is_empty());
         assert!(cfg.openai_api_key.is_empty());
         assert!(cfg.tavily_api_key.is_empty());
         assert!(cfg.github_token.is_none());
@@ -136,9 +118,6 @@ mod tests {
     #[test]
     fn config_debug_redacts_secrets() {
         let cfg = Config {
-            pg_url: "postgresql://user:password@host/db".to_string(),
-            redis_url: "redis://:secret@host:6379".to_string(),
-            amqp_url: "amqp://user:password@host/%2f".to_string(),
             openai_api_key: "sk-supersecret".to_string(),
             tavily_api_key: "tvly-supersecret".to_string(),
             github_token: Some("ghp_supersecret".to_string()),
@@ -150,11 +129,6 @@ mod tests {
         let debug_output = format!("{cfg:?}");
 
         // Secrets must NOT appear in Debug output.
-        assert!(
-            !debug_output.contains("user:password@"),
-            "pg_url password leaked"
-        );
-        assert!(!debug_output.contains("secret@"), "redis_url secret leaked");
         assert!(
             !debug_output.contains("supersecret"),
             "openai_api_key, tavily_api_key, or github_token leaked"

@@ -2,24 +2,18 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
-use crate::crates::jobs::embed::{
-    count_embed_jobs, get_embed_job, list_embed_jobs, start_embed_job,
-};
 use crate::crates::services::context::ServiceContext;
-use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
+use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::jobs as job_service;
 use crate::crates::services::runtime::ServiceJobRuntime;
 use crate::crates::services::runtime::WorkerMode;
 use crate::crates::services::types::{
-    EmbedJobResult, EmbedStartResult, ExecutionMode, JobListResult, JobStartOutcome,
-    StartDisposition,
+    EmbedJobResult, EmbedStartResult, ExecutionMode, JobStartOutcome, StartDisposition,
 };
 use crate::crates::vector::ops::{embed_path_native, embed_path_native_with_progress};
 use std::error::Error;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-pub use crate::crates::jobs::embed::EmbedJob;
 
 // --- Pure mapping helpers (no I/O, testable without live services) ---
 
@@ -71,21 +65,6 @@ pub async fn embed_recover(service_context: &ServiceContext) -> Result<u64, Box<
     job_service::recover_jobs(service_context, JobKind::Embed).await
 }
 
-pub async fn embed_status_raw(cfg: &Config, id: Uuid) -> Result<Option<EmbedJob>, Box<dyn Error>> {
-    get_embed_job(cfg, id).await
-}
-
-pub async fn embed_list_raw(
-    cfg: &Config,
-    limit: i64,
-    offset: i64,
-) -> Result<JobListResult<EmbedJob>, Box<dyn Error>> {
-    let (jobs, total) = tokio::join!(list_embed_jobs(cfg, limit, offset), count_embed_jobs(cfg),);
-    let jobs = jobs?;
-    let total = total.unwrap_or(jobs.len() as i64);
-    Ok(JobListResult::new(jobs, total, limit, offset))
-}
-
 pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     match job_service::run_worker(service_context, JobKind::Embed).await? {
         WorkerMode::Started | WorkerMode::InProcess => Ok(()),
@@ -95,51 +74,15 @@ pub async fn embed_worker(service_context: &ServiceContext) -> Result<(), Box<dy
 
 // --- Service functions ---
 
-pub async fn embed_start_with_input(
-    cfg: &Config,
-    input: &str,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-    source_type: Option<&str>,
-) -> Result<EmbedStartResult, Box<dyn Error>> {
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueueing embed job for input: {input}"),
-        },
-    )
-    .await;
-
-    let job_id = start_embed_job(cfg, input, source_type).await?;
-
-    emit(
-        &tx,
-        ServiceEvent::Log {
-            level: LogLevel::Info,
-            message: format!("enqueued embed job: {job_id}"),
-        },
-    )
-    .await;
-
-    Ok(map_embed_start_result(job_id.to_string()))
-}
-
 pub async fn embed_start_with_context(
     cfg: &Config,
     input: &str,
     service_context: &ServiceContext,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-    source_type: Option<&str>,
+    _source_type: Option<&str>,
 ) -> Result<JobStartOutcome<EmbedStartResult>, Box<dyn Error>> {
-    if !cfg.lite_mode {
-        let result = embed_start_with_input(cfg, input, tx, source_type).await?;
-        return Ok(JobStartOutcome {
-            disposition: StartDisposition::Enqueued,
-            execution_mode: ExecutionMode::Enqueued,
-            result,
-        });
-    }
-
+    // tx is accepted for API compatibility
+    let _ = tx;
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Embed {
@@ -170,15 +113,16 @@ pub async fn embed_start_with_context(
 /// following the same logic as the CLI embed command.
 pub async fn embed_start(
     cfg: &Config,
+    service_context: &ServiceContext,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<EmbedStartResult, Box<dyn Error>> {
+) -> Result<JobStartOutcome<EmbedStartResult>, Box<dyn Error>> {
     let input = cfg.positional.first().cloned().unwrap_or_else(|| {
         cfg.output_dir
             .join("markdown")
             .to_string_lossy()
             .to_string()
     });
-    embed_start_with_input(cfg, &input, tx, None).await
+    embed_start_with_context(cfg, &input, service_context, tx, None).await
 }
 
 pub async fn embed_now(cfg: &Config, input: &str) -> Result<EmbedJobResult, Box<dyn Error>> {

@@ -1,23 +1,16 @@
 # axon_cli — Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-03-28
+Last Modified: 2026-04-27
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
 ## Quick Start
 
-> **Local dev mode**: `axon serve` supervises the local app stack (bridge backend, MCP HTTP, workers, shell server, Next.js). Infrastructure (Postgres, Redis, RabbitMQ, Qdrant, Chrome, TEI) runs via a separate Docker Compose file (`docker-compose.services.yaml`).
+> **Lite mode (default)**: axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
 
 ```bash
-# 1. Start infrastructure only
-docker compose -f docker-compose.services.yaml up -d
-# or: just services-up
-
-# 2. Recommended: use the wrapper script (auto-sources .env)
+# Recommended: use the wrapper script (auto-sources .env)
 ./scripts/axon doctor
 ./scripts/axon scrape https://example.com --wait true
-
-# 3. Run the local app stack supervisor
-cargo run --bin axon -- serve    # starts bridge backend, MCP HTTP, workers, shell server, Next.js
 
 # MCP server via CLI subcommand
 ./scripts/axon mcp
@@ -56,10 +49,9 @@ MCP docs:
 | `search <query>` | Web search via Tavily, auto-queues crawl jobs for results | No |
 | `research <query>` | Web research via Tavily AI search with LLM synthesis | No |
 | `embed [input]` | Embed file/dir/URL into Qdrant | Yes (default) |
-| `export` | Export full index manifest (jobs + ingest targets + refresh schedules + Qdrant summary) to JSON | No |
 | `query <text>` | Semantic vector search | No |
 | `retrieve <url>` | Fetch stored document chunks from Qdrant | No |
-| `ask <question>` | RAG: search + LLM answer. Use `--graph` to inject Neo4j graph context when configured. | No |
+| `ask <question>` | RAG: search + LLM answer. | No |
 | `evaluate <question>` | RAG vs baseline + independent LLM judge (accuracy, relevance, completeness, specificity, verdict) | No |
 | `suggest [focus]` | Suggest new docs URLs to crawl | No |
 | `ingest <target>` | Ingest external source (GitHub repo, Reddit subreddit/thread, YouTube video/playlist/channel) — auto-detects source type from target. GitHub: source code indexed by default with tree-sitter AST chunking; use `--no-source` to skip. | Yes (default) |
@@ -71,10 +63,7 @@ MCP docs:
 | `doctor` | Diagnose service connectivity | No |
 | `debug` | Run doctor + LLM-assisted troubleshooting | No |
 | `mcp` | Start MCP stdio server | No |
-| `refresh <url>` | Periodic URL re-indexing (schedule, status, cancel, list). Supports `github:owner/repo` schedules with `pushed_at` gating. | Yes (default) |
-| `graph <sub>` | Knowledge graph operations: `build`, `status`, `explore`, `stats`, `worker`. Requires `AXON_NEO4J_URL`. | Depends |
-| `serve` | Start web UI server (axum + WebSocket + Docker stats) | No |
-| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. Scheduler automation requires full mode (`AXON_LITE=1` disables `watch_scheduler`). | Depends |
+| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
 ### Job Subcommands (for crawl / extract / embed / refresh)
@@ -101,7 +90,6 @@ All flags are `--global` (usable with any subcommand).
 | `--wait <bool>` | bool | `false` | Run synchronously and block until completion. Without this, async commands enqueue and return immediately. |
 | `--yes` | flag | `false` | Skip confirmation prompts (non-interactive mode). |
 | `--json` | flag | `false` | Machine-readable JSON output on stdout. |
-| `--graph` | flag | `false` | Enable graph-enhanced retrieval for `ask` (requires Neo4j). |
 
 #### Crawl & Scrape
 
@@ -156,23 +144,11 @@ All flags are `--global` (usable with any subcommand).
 
 | Flag | Type | Env Var | Fallback |
 |------|------|---------|----------|
-| `--pg-url <url>` | string | `AXON_PG_URL` | `postgresql://axon:postgres@127.0.0.1:53432/axon` |
-| `--redis-url <url>` | string | `AXON_REDIS_URL` | `redis://127.0.0.1:53379` |
-| `--amqp-url <url>` | string | `AXON_AMQP_URL` | `amqp://axon:axonrabbit@127.0.0.1:45535/%2f` |
 | `--qdrant-url <url>` | string | `QDRANT_URL` | `http://127.0.0.1:53333` |
 | `--tei-url <url>` | string | `TEI_URL` | *(empty)* |
 | `--openai-base-url <url>` | string | `OPENAI_BASE_URL` | *(empty)* |
 | `--openai-api-key <key>` | string | `OPENAI_API_KEY` | *(empty)* |
 | `--openai-model <name>` | string | `OPENAI_MODEL` | *(empty)* |
-
-#### Queue Configuration
-
-| Flag | Type | Env Var | Default |
-|------|------|---------|---------|
-| `--shared-queue <bool>` | bool | — | `true` |
-| `--crawl-queue <name>` | string | `AXON_CRAWL_QUEUE` | `axon.crawl.jobs` |
-| `--extract-queue <name>` | string | `AXON_EXTRACT_QUEUE` | `axon.extract.jobs` |
-| `--embed-queue <name>` | string | `AXON_EMBED_QUEUE` | `axon.embed.jobs` |
 
 ## Architecture
 
@@ -207,23 +183,17 @@ High-level subsystem map:
 - MCP server:
   - `crates/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
-- Web runtimes:
-  - WebSocket execution bridge: `crates/web.rs`
-  - Active UI: `apps/web/` (Next.js — omnibox, Pulse workspace, port 49010)
 
 ## Infrastructure
 
-### Docker Compose Split
+### Docker Compose
 
-The stack is split into two compose files sharing a named `axon` bridge network:
+The stack uses a single compose file for infrastructure services shared on the `axon` bridge network:
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.services.yaml` | Infrastructure (postgres, redis, rabbitmq, qdrant, chrome, TEI) | `services.env` |
-| `docker-compose.yaml` | App containers (workers, web) | `.env` |
+| `docker-compose.services.yaml` | Infrastructure (qdrant, chrome, TEI) | `services.env` |
 | `docker-compose.gpu.yaml` | GPU override — NVIDIA reservations for `axon-tei` and `axon-ollama` | *(none)* |
-
-Start infra first, then app containers. Both compose files read `.env` for YAML `${VAR}` interpolation (Docker Compose default). Container environment is injected via `env_file:`.
 
 **GPU acceleration:** On NVIDIA hosts, layer the GPU override on top of the services file:
 ```bash
@@ -235,45 +205,17 @@ CPU-only hosts use `docker-compose.services.yaml` alone — no GPU block, no sta
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
-| `axon-postgres` | postgres:17-alpine | `53432` | Job persistence |
-| `axon-redis` | redis:8.2-alpine | `53379` | Queue state / caching |
-| `axon-rabbitmq` | rabbitmq:4.0-management | `45535` | AMQP job queue |
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | `53333`, `53334` (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference:latest | `52000` | Embedding generation (GPU, NVIDIA) |
 | `axon-chrome` | built from docker/chrome/Dockerfile | `6000` (management), `9222` (CDP proxy) | headless_browser + chrome-headless-shell |
 
-### App Services (`docker-compose.yaml`)
-
-| Service | Image | Exposed Port | Purpose |
-|---------|-------|-------------|---------|
-| `axon-workers` | built from docker/Dockerfile | `49000`, `8001` | Workers + axon serve + MCP HTTP |
-| `axon-web` | built from docker/web/Dockerfile | `49010` | Next.js dashboard |
-
-For local dev, workers and web run as local processes instead:
-
-| Service | Local dev | Command |
-|---------|-----------|---------|
-| `axon-workers` | **local supervisor** | `cargo run --bin axon -- serve` |
-| `axon-web` | **supervised child** | started by `axon serve` (port 49010) |
-
-All services live on the `axon` bridge network. Data volumes use `${AXON_DATA_DIR:-./data}/axon/...` (override with `AXON_DATA_DIR`).
-
 ```bash
-# Start infrastructure (postgres, redis, rabbitmq, qdrant, tei, chrome)
+# Start infrastructure (qdrant, tei, chrome)
 just services-up
 # or: docker compose -f docker-compose.services.yaml up -d
 
-# Run the local app stack supervisor
-cargo run --bin axon -- serve
-
 # Check infra health
 docker compose -f docker-compose.services.yaml ps
-
-# Tail infra logs
-docker compose -f docker-compose.services.yaml logs -f
-
-# Full local dev (infra + axon serve supervisor)
-just dev
 
 # Stop everything
 just down-all
@@ -281,27 +223,11 @@ just down-all
 
 ## Environment Variables
 
-Two env files:
-
-- **`.env`** — App runtime vars for workers/web + shared compose interpolation vars (credentials, `AXON_DATA_DIR`). Docker Compose reads this automatically for `${VAR}` substitution in both compose files.
-- **`services.env`** — Infrastructure credentials injected into service containers via `env_file:`.
-
-Copy `.env.example` → `.env` and `services.env`, then fill in values:
+Copy `.env.example` → `.env`, then fill in values:
 
 ```bash
-# === .env (app runtime + shared interpolation) ===
-
-# Compose persistent data root on host
+# Data root on host
 AXON_DATA_DIR=/home/yourname/appdata
-
-# Postgres
-AXON_PG_URL=postgresql://axon:CHANGE_ME@127.0.0.1:53432/axon
-
-# Redis
-AXON_REDIS_URL=redis://:CHANGE_ME@axon-redis:6379
-
-# RabbitMQ
-AXON_AMQP_URL=amqp://axon:CHANGE_ME@axon-rabbitmq:5672
 
 # Qdrant
 QDRANT_URL=http://axon-qdrant:6333
@@ -321,25 +247,8 @@ OPENAI_MODEL=your-model-name
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
 
-# Optional queue name overrides
-AXON_CRAWL_QUEUE=axon.crawl.jobs
-AXON_EXTRACT_QUEUE=axon.extract.jobs
-AXON_EMBED_QUEUE=axon.embed.jobs
-AXON_INGEST_QUEUE=axon.ingest.jobs
-AXON_GRAPH_QUEUE=axon.graph.jobs
-AXON_COLLECTION=cortex              # Qdrant collection (default: cortex)
-
-# Neo4j / GraphRAG (optional — graph features are disabled when AXON_NEO4J_URL is empty)
-AXON_NEO4J_URL=http://localhost:7474
-AXON_NEO4J_USER=neo4j
-AXON_NEO4J_PASSWORD=
-AXON_GRAPH_CONCURRENCY=4
-AXON_GRAPH_LLM_URL=http://localhost:11434
-AXON_GRAPH_LLM_MODEL=qwen3.5:2b
-AXON_GRAPH_SIMILARITY_THRESHOLD=0.75
-AXON_GRAPH_SIMILARITY_LIMIT=20
-AXON_GRAPH_CONTEXT_MAX_CHARS=2000
-AXON_GRAPH_TAXONOMY_PATH=
+# Qdrant collection (default: cortex)
+AXON_COLLECTION=cortex
 
 # Search and research (required for search/research commands)
 TAVILY_API_KEY=your-tavily-api-key
@@ -357,55 +266,18 @@ AXON_JOB_STALE_TIMEOUT_SECS=300    # seconds before a running job is considered 
 AXON_JOB_STALE_CONFIRM_SECS=60     # additional grace period before stale reclaim
 ```
 
-### Web App Security Env (`apps/web`)
+### MCP Security Env
 
-Three auth tokens cover two surfaces (`/api/*` and `/ws`):
-
-| Token | Scope | Required |
-|-------|-------|----------|
-| `AXON_WEB_API_TOKEN` | Primary token. **Server-only** — do NOT expose to the browser. Gates both `/api/*` (proxy.ts) and `/ws` (Rust WS gate via `?token=`). The `?token=` query param is a necessary limitation: WebSocket upgrade requests cannot carry custom headers. | Yes |
-| `AXON_WEB_BROWSER_API_TOKEN` | Optional second-tier token for `/api/*` routes only. Does **not** gate `/ws`. If unset, `AXON_WEB_API_TOKEN` is used for all `/api/*` routes. Use this to keep the browser-exposed token separate from the primary WS gate token. | No |
-| `NEXT_PUBLIC_AXON_API_TOKEN` | Browser-exposed token. `apiFetch()` sends it as `x-api-key` on `/api/*`; `use-axon-ws.ts` appends it as `?token=` on the WS URL. **Must equal `AXON_WEB_BROWSER_API_TOKEN`** when that is set, or `AXON_WEB_API_TOKEN` otherwise. Do not set this to `AXON_WEB_API_TOKEN` when `AXON_WEB_BROWSER_API_TOKEN` is configured. | Yes (when `AXON_WEB_API_TOKEN` is set) |
-
-MCP OAuth (`atk_` tokens) is a separate auth system for MCP clients only — it does not touch `/ws` or `/api/*`.
+MCP OAuth (`atk_` tokens) is the auth system for MCP clients:
 
 ```bash
-# Primary token — gates both /api/* (proxy.ts) and /ws (Rust WS gate)
-AXON_WEB_API_TOKEN=CHANGE_ME
-
-# Optional second-tier token — gates /api/* only (does NOT gate /ws).
-# If unset, AXON_WEB_API_TOKEN is used for all routes.
-AXON_WEB_BROWSER_API_TOKEN=
-
-# Browser-exposed token — must equal AXON_WEB_BROWSER_API_TOKEN when set, else AXON_WEB_API_TOKEN
-# apiFetch() sends it as x-api-key on /api/*; use-axon-ws.ts sends it as ?token= on /ws
-NEXT_PUBLIC_AXON_API_TOKEN=
-
-AXON_WEB_ALLOWED_ORIGINS=
-AXON_WEB_ALLOW_INSECURE_DEV=false
-
-# Optional shell websocket auth/origin overrides
-AXON_SHELL_WS_TOKEN=
-AXON_SHELL_ALLOWED_ORIGINS=
-
-# Optional client-side shell websocket token
-NEXT_PUBLIC_SHELL_WS_TOKEN=
-
-# Optional allowlist for Pulse chat --betas values
-AXON_ALLOWED_CLAUDE_BETAS=interleaved-thinking
+# MCP allowed origins (comma-separated)
+AXON_MCP_ALLOWED_ORIGINS=
 ```
-
-### Dev vs Container URL Resolution
-
-The CLI auto-detects whether it's running inside Docker:
-- **Inside Docker** (`/.dockerenv` exists): uses container-internal DNS (`axon-postgres:5432`, etc.)
-- **Outside Docker** (local dev): rewrites to localhost with mapped ports (`127.0.0.1:53432`, etc.)
-
-**So `.env` can use container DNS** — `normalize_local_service_url()` in `config.rs` handles translation transparently.
 
 ## Lite Mode (`AXON_LITE=1`)
 
-Lite mode runs axon without Postgres, Redis, or RabbitMQ. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
+Lite mode is the default operating mode. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services.
 
 ```bash
 AXON_LITE=1 axon scrape https://example.com   # no external services needed
@@ -415,7 +287,7 @@ axon --lite scrape https://example.com
 
 **What works in lite mode:** scrape, crawl (sync), map, embed, query, ask, extract, ingest, search, research, sources, stats, doctor, MCP server.
 
-**Unsupported in lite mode:** graph, refresh (including scheduling), watch scheduler, export.
+**Unsupported in lite mode:** watch scheduler.
 
 ```bash
 # Env vars for lite mode
@@ -520,11 +392,6 @@ After an uncapped crawl completes (`--max-pages 0`, the default), if the total p
 ### Auto path-prefix scoping
 When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, the crawl is automatically scoped to the directory subtree of the start URL via a derived whitelist regex. For example, crawling `https://ai.google.dev/api/python/google/generativeai/GenerativeModel` auto-scopes to `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`. Root paths (`/`) and single-segment paths (`/docs`) are not scoped — they're already broad enough. Pass `--url-whitelist <pattern>` to override auto-scoping.
 
-### AMQP reconnect backoff
-When a worker's AMQP channel dies (broker restart, consumer_timeout, network blip), the lane reconnects automatically with exponential backoff: starts at 2s, doubles each attempt, capped at 60s. On successful reconnect, the backoff resets to 2s **only if the connection was alive for >=60 seconds** (`ran_for_secs >= AMQP_RECONNECT_MAX_SECS` in `worker_lane.rs`). Short-lived connections that reconnect quickly retain their current backoff value. This prevents rapid reconnect loops from hammering the broker after a transient failure. The current job is not lost — it holds no AMQP reference and completes normally before the reconnect loop fires.
-
-**Note:** The crawl worker's reconnect loop in `crates/jobs/crawl/runtime/worker/loops.rs` has different semantics: it resets backoff to `RECONNECT_BACKOFF_INITIAL_SECS` (2s) on **every** successful reconnect (i.e., when `run_amqp_worker_lane` returns `Ok(())`), regardless of how long the connection was alive.
-
 ### Adding fields to `Config` struct
 When adding a new non-`Option` field to `Config` in `crates/core/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:
 - `crates/cli/commands/research.rs`
@@ -579,12 +446,9 @@ just fix         # cargo fmt + clippy --fix (auto-repair)
 just precommit   # full pre-commit: monolith check + verify
 just watch-check # cargo watch: check + test-lib on every file save
 just rebuild     # check + test + docker-build (pre-deploy gate)
-just services-up # start infra (postgres, redis, rabbitmq, qdrant, tei, chrome)
+just services-up # start infra (qdrant, tei, chrome)
 just services-down # stop infra
-just up          # build + start app containers (workers + web)
-just down        # stop app containers
-just down-all    # stop everything (app + infra)
-just dev         # full local dev (infra + axon serve supervisor)
+just down-all    # stop everything
 ```
 
 ### Run directly
@@ -617,11 +481,11 @@ Changed `.rs` files are enforced at CI and via lefthook pre-commit:
 axon doctor
 ```
 
-Checks: Postgres, Redis, RabbitMQ, Qdrant, TEI, LLM endpoint reachability.
+Checks: Qdrant, TEI, LLM endpoint reachability.
 
 ## Database Schema
 
-Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Full column detail: [`docs/SCHEMA.md`](docs/SCHEMA.md).
+Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Schema lives in SQLite (lite mode).
 
 | Table | Key columns |
 |-------|-------------|
@@ -630,7 +494,7 @@ Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Full column d
 | `axon_embed_jobs` | `id`, `status`, `input_text`, `config_json`, `result_json` |
 | `axon_ingest_jobs` | `id`, `source_type`, `target`, `status`, `config_json`, `result_json` — partial index on pending |
 
-All tables share: `created_at`, `updated_at`, `started_at`, `finished_at` (TIMESTAMPTZ), `error_text` (TEXT).
+All tables share: `created_at`, `updated_at`, `started_at`, `finished_at`, `error_text`.
 
 `axon_ingest_jobs` differs from the others: it uses `source_type` (`github`/`reddit`/`youtube`) + `target` instead of `url` or `urls_json` to identify the ingest target.
 

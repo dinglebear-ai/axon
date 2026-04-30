@@ -1,8 +1,7 @@
 mod runners;
 
 use runners::{
-    JobResult, run_crawl_job_lite, run_embed_job_lite, run_extract_job_lite, run_graph_job_lite,
-    run_ingest_job_lite, run_refresh_job_lite,
+    JobResult, run_crawl_job_lite, run_embed_job_lite, run_extract_job_lite, run_ingest_job_lite,
 };
 
 use crate::crates::jobs::backend::JobKind;
@@ -16,6 +15,21 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
+/// Resolve the number of worker lanes for a job type from an env var.
+///
+/// Falls back to a CPU-scaled default clamped to `[cpu_min, cpu_max]`.
+pub(crate) fn resolve_lane_count(env_var: &str, cpu_min: usize, cpu_max: usize) -> usize {
+    let cpu_default = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(cpu_min, cpu_max);
+    std::env::var(env_var)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(cpu_default)
+}
+
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Handles to wake specific worker types when new jobs are enqueued.
@@ -24,8 +38,6 @@ pub struct WorkerHandles {
     pub(crate) embed: Arc<Notify>,
     pub(crate) extract: Arc<Notify>,
     pub(crate) ingest: Arc<Notify>,
-    pub(crate) refresh: Arc<Notify>,
-    pub(crate) graph: Arc<Notify>,
     /// Actual worker loops. These must be aborted on drop or lite workers keep
     /// polling after the backend goes away.
     pub(crate) worker_handles: Vec<tokio::task::JoinHandle<()>>,
@@ -39,8 +51,6 @@ impl WorkerHandles {
             JobKind::Embed => self.embed.notify_one(),
             JobKind::Extract => self.extract.notify_one(),
             JobKind::Ingest => self.ingest.notify_one(),
-            JobKind::Refresh => self.refresh.notify_one(),
-            JobKind::Graph => self.graph.notify_one(),
         }
     }
 }
@@ -54,6 +64,11 @@ impl Drop for WorkerHandles {
 }
 
 /// Spawn in-process worker tasks for all 6 job types.
+///
+/// Embed and ingest spawn multiple lanes (controlled by `AXON_EMBED_LANES` /
+/// `AXON_INGEST_LANES`). All lanes share the same `Notify` handle so a single
+/// `notify_one()` wakes one waiting lane. SQLite `BEGIN IMMEDIATE` in
+/// `claim_next_pending()` serializes lane claims atomically — no semaphore needed.
 pub fn spawn_workers(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
@@ -63,51 +78,50 @@ pub fn spawn_workers(
     let embed_notify = Arc::new(Notify::new());
     let extract_notify = Arc::new(Notify::new());
     let ingest_notify = Arc::new(Notify::new());
-    let refresh_notify = Arc::new(Notify::new());
-    let graph_notify = Arc::new(Notify::new());
 
-    tracing::info!("lite: spawning all in-process workers (crawl, embed, extract, ingest, refresh, graph)");
-    let worker_handles = vec![
-        tokio::spawn(crawl_worker(
-            Arc::clone(&pool),
-            Arc::clone(&cfg),
-            Arc::clone(&cancel_store),
-            Arc::clone(&crawl_notify),
-        )),
-        tokio::spawn(embed_worker(
+    let embed_lanes = resolve_lane_count("AXON_EMBED_LANES", 2, 32);
+    let ingest_lanes = resolve_lane_count("AXON_INGEST_LANES", 2, 16);
+
+    let mut worker_handles = Vec::new();
+
+    // Crawl: single lane (spider futures are !Send — must stay single-task)
+    worker_handles.push(tokio::spawn(crawl_worker(
+        Arc::clone(&pool),
+        Arc::clone(&cfg),
+        Arc::clone(&cancel_store),
+        Arc::clone(&crawl_notify),
+    )));
+
+    // Embed: multi-lane
+    for _ in 0..embed_lanes {
+        worker_handles.push(tokio::spawn(embed_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
             Arc::clone(&embed_notify),
-        )),
-        tokio::spawn(extract_worker(
-            Arc::clone(&pool),
-            Arc::clone(&cfg),
-            Arc::clone(&extract_notify),
-        )),
-        tokio::spawn(ingest_worker(
+        )));
+    }
+
+    // Extract: single lane
+    worker_handles.push(tokio::spawn(extract_worker(
+        Arc::clone(&pool),
+        Arc::clone(&cfg),
+        Arc::clone(&extract_notify),
+    )));
+
+    // Ingest: multi-lane
+    for _ in 0..ingest_lanes {
+        worker_handles.push(tokio::spawn(ingest_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
             Arc::clone(&ingest_notify),
-        )),
-        tokio::spawn(refresh_worker(
-            Arc::clone(&pool),
-            Arc::clone(&cfg),
-            Arc::clone(&refresh_notify),
-        )),
-        tokio::spawn(graph_worker(
-            Arc::clone(&pool),
-            Arc::clone(&cfg),
-            Arc::clone(&graph_notify),
-        )),
-    ];
+        )));
+    }
 
     WorkerHandles {
         crawl: crawl_notify,
         embed: embed_notify,
         extract: extract_notify,
         ingest: ingest_notify,
-        refresh: refresh_notify,
-        graph: graph_notify,
         worker_handles,
     }
 }
@@ -202,22 +216,6 @@ async fn ingest_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Noti
     worker_loop(pool, "axon_ingest_jobs", notify, move |pool, id| {
         let cfg = Arc::clone(&cfg);
         async move { run_ingest_job_lite(&pool, &cfg, id).await }
-    })
-    .await;
-}
-
-async fn refresh_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notify>) {
-    worker_loop(pool, "axon_refresh_jobs", notify, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        async move { run_refresh_job_lite(&pool, &cfg, id).await }
-    })
-    .await;
-}
-
-async fn graph_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notify>) {
-    worker_loop(pool, "axon_graph_jobs", notify, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        async move { run_graph_job_lite(&pool, &cfg, id).await }
     })
     .await;
 }

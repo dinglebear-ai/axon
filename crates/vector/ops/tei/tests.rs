@@ -1,4 +1,4 @@
-use crate::crates::jobs::common::test_config;
+use crate::crates::core::config::Config;
 use crate::crates::vector::ops::tei::tei_client::tei_embed;
 use httpmock::{HttpMockResponse, MockServer};
 use std::env;
@@ -40,7 +40,7 @@ impl Drop for EnvGuard {
 #[tokio::test]
 async fn tei_embed_empty_input_returns_empty_vec() {
     // Port 1 is unreachable — any HTTP attempt would cause the test to fail.
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.tei_url = "http://127.0.0.1:1".to_string();
 
     let result = tei_embed(&cfg, &[]).await.unwrap();
@@ -78,7 +78,7 @@ async fn tei_embed_retries_on_429() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["hello world".to_string()];
@@ -118,7 +118,7 @@ async fn tei_embed_splits_batch_on_413() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["input-alpha".to_string(), "input-beta".to_string()];
@@ -162,7 +162,7 @@ async fn tei_embed_retries_on_500() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.tei_url = server.base_url();
 
     // Pin retry-related env vars so ambient overrides can't change test behavior.
@@ -217,7 +217,7 @@ async fn tei_embed_fails_fast_on_404() {
         })
         .await;
 
-    let mut cfg = test_config("postgresql://dummy@127.0.0.1:1/dummy");
+    let mut cfg = Config::test_default();
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["fail-fast-404".to_string()];

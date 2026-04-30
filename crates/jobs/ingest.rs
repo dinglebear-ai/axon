@@ -1,102 +1,120 @@
-//! Ingest job schema uses advisory-lock DDL via `common::schema::begin_schema_migration_tx`.
-//! See `common/schema.rs` for the canonical pattern.
-
-mod ops;
-mod process;
-mod schema;
 pub mod types;
 
 #[cfg(test)]
 mod tests;
 
-use crate::crates::core::config::Config;
-use crate::crates::core::logging::{log_debug, log_info};
-use crate::crates::jobs::common::{JobTable, make_pool, reclaim_stale_running_jobs};
-use crate::crates::jobs::worker_lane::{
-    ProcessFn, WorkerConfig, resolve_lane_count, run_job_worker,
-};
-use std::error::Error;
-use std::sync::Arc;
-
-// Re-export all public types and functions to preserve the existing API.
-pub use self::ops::{
-    cancel_ingest_job, cleanup_ingest_jobs, clear_ingest_jobs, count_ingest_jobs, get_ingest_job,
-    list_ingest_jobs, start_ingest_job,
-};
 pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
 
-use self::process::process_ingest_job;
-use self::schema::ensure_schema;
+use crate::crates::core::config::Config;
+use crate::crates::jobs::backend::JobPayload;
+use crate::crates::jobs::ingest::types::{source_type_label, target_label};
+use crate::crates::jobs::lite::query::ms_to_dt;
+use crate::crates::jobs::lite::store::open_sqlite_pool;
+use std::error::Error;
+use uuid::Uuid;
 
-const TABLE: JobTable = JobTable::Ingest;
-const INGEST_HEARTBEAT_INTERVAL_SECS: u64 = 30;
+// SQLite row tuple for axon_ingest_jobs
+type IngestJobRow = (
+    String,         // id
+    String,         // status
+    String,         // source_type
+    String,         // target
+    i64,            // created_at ms
+    i64,            // updated_at ms
+    Option<i64>,    // started_at ms
+    Option<i64>,    // finished_at ms
+    Option<String>, // error_text
+    Option<String>, // result_json
+    String,         // config_json
+);
 
-#[allow(deprecated)] // open_amqp_channel used for short-lived health check only
-pub async fn ingest_doctor(cfg: &Config) -> Result<serde_json::Value, String> {
-    use crate::crates::core::health::redis_healthy;
-    use crate::crates::jobs::common::open_amqp_channel;
-
-    let (pg_ok, amqp_result, redis_ok) = tokio::join!(
-        async { make_pool(cfg).await.is_ok() },
-        open_amqp_channel(cfg, &cfg.ingest_queue),
-        redis_healthy(&cfg.redis_url),
-    );
-    let amqp_ok = match amqp_result {
-        Ok(ch) => {
-            if let Err(e) = ch.close(0, "probe".into()).await {
-                log_debug(&format!(
-                    "amqp ch_close failed queue={} error={e}",
-                    cfg.ingest_queue
-                ));
-            }
-            true
-        }
-        Err(_) => false,
-    };
-    Ok(serde_json::json!({
-        "postgres_ok": pg_ok,
-        "amqp_ok": amqp_ok,
-        "redis_ok": redis_ok,
-        "queue": cfg.ingest_queue,
-        "all_ok": pg_ok && amqp_ok && redis_ok
-    }))
+fn row_to_ingest_job(row: IngestJobRow) -> IngestJob {
+    let (
+        id,
+        status,
+        source_type,
+        target,
+        created_at,
+        updated_at,
+        started_at,
+        finished_at,
+        error_text,
+        result_json,
+        config_json,
+    ) = row;
+    IngestJob {
+        id: Uuid::parse_str(&id).unwrap_or_else(|_| Uuid::nil()),
+        status,
+        source_type,
+        target,
+        created_at: ms_to_dt(created_at),
+        updated_at: ms_to_dt(updated_at),
+        started_at: started_at.map(ms_to_dt),
+        finished_at: finished_at.map(ms_to_dt),
+        error_text,
+        result_json: result_json.and_then(|s| serde_json::from_str(&s).ok()),
+        config_json: config_json
+            .parse::<serde_json::Value>()
+            .unwrap_or(serde_json::Value::Object(Default::default())),
+    }
 }
 
-pub async fn run_ingest_worker(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    log_info(&format!(
-        "worker_start worker=ingest queue={}",
-        cfg.ingest_queue
-    ));
-
-    let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
-
-    let wc = WorkerConfig {
-        table: TABLE,
-        queue_name: cfg.ingest_queue.clone(),
-        job_kind: "ingest",
-        consumer_tag_prefix: "ingest-worker",
-        lane_count: resolve_lane_count("AXON_INGEST_LANES", 2, 16),
-        heartbeat_interval_secs: INGEST_HEARTBEAT_INTERVAL_SECS,
-    };
-
-    let process_fn: ProcessFn =
-        Arc::new(|cfg, pool, id| Box::pin(process_ingest_job(cfg, pool, id)));
-
-    run_job_worker(cfg, pool, &wc, process_fn).await
+/// Count all ingest jobs in SQLite.
+pub async fn count_ingest_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
+    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, "axon_ingest_jobs").await?)
 }
 
-pub async fn recover_stale_ingest_jobs(cfg: &Config) -> Result<u64, Box<dyn Error>> {
-    let pool = make_pool(cfg).await?;
-    ensure_schema(&pool).await?;
-    let stats = reclaim_stale_running_jobs(
-        &pool,
-        TABLE,
-        "ingest",
-        cfg.watchdog_stale_timeout_secs,
-        cfg.watchdog_confirm_secs,
-        "manual",
+/// Fetch a single ingest job by UUID from SQLite.
+pub async fn get_ingest_job(cfg: &Config, id: Uuid) -> Result<Option<IngestJob>, Box<dyn Error>> {
+    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    let row: Option<IngestJobRow> = sqlx::query_as(
+        "SELECT id, status, source_type, target, created_at, updated_at, started_at, \
+         finished_at, error_text, result_json, config_json \
+         FROM axon_ingest_jobs WHERE id = ?",
     )
+    .bind(id.to_string())
+    .fetch_optional(&pool)
     .await?;
-    Ok(stats.reclaimed_jobs)
+    Ok(row.map(row_to_ingest_job))
+}
+
+/// List ingest jobs from SQLite with optional source_type filter.
+pub async fn list_ingest_jobs(
+    cfg: &Config,
+    source_filter: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<IngestJob>, Box<dyn Error>> {
+    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    let rows: Vec<IngestJobRow> = sqlx::query_as(
+        "SELECT id, status, source_type, target, created_at, updated_at, started_at, \
+         finished_at, error_text, result_json, config_json \
+         FROM axon_ingest_jobs \
+         WHERE (?1 IS NULL OR source_type = ?1) \
+         ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
+    )
+    .bind(source_filter)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&pool)
+    .await?;
+    Ok(rows.into_iter().map(row_to_ingest_job).collect())
+}
+
+/// Enqueue a new ingest job in SQLite. Returns the new job UUID.
+pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid, Box<dyn Error>> {
+    let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
+    let source_type = source_type_label(&source).to_string();
+    let target = target_label(&source);
+    let config_json = serde_json::to_string(&source)?;
+    Ok(crate::crates::jobs::lite::ops::enqueue_job(
+        &pool,
+        &JobPayload::Ingest {
+            target,
+            source_type,
+            config_json,
+        },
+    )
+    .await?)
 }

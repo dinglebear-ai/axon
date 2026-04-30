@@ -4,7 +4,7 @@
 
 ### 1. Crawler (MCP Server — Standalone)
 Minimal deployment: just the crawler, no infrastructure dependencies.
-- No AMQP, Postgres, Redis, RabbitMQ, or Qdrant
+- No external queue broker or relational database required
 - Retains all crawler features: scrape, crawl, map, extract, search, research
 - Output written to local filesystem (`--output-dir`)
 - MCP server interface (`axon mcp`)
@@ -15,7 +15,7 @@ Minimal deployment: just the crawler, no infrastructure dependencies.
 - Job tables mirror the current schema (`config_json`, `result_json` columns — JSON1 built-in)
 - Workers claim jobs atomically via `BEGIN IMMEDIATE` + WAL mode; safe for multiple local workers
 - Cancel tracked via `canceled_at` column (replaces Redis cancel keys)
-- Polling interval replaces RabbitMQ dispatch (typically 500ms–2s)
+- Polling interval (typically 500ms–2s) drives job dispatch
 - Trade-off: single-machine only (all workers share the same file); no distributed fanout
 
 ### 2. RAG Pipeline
@@ -25,7 +25,6 @@ Requires crawler output or direct input. Minimum viable RAG:
 - **Vector DB** — bring your own (Qdrant default, but pluggable)
 
 Full RAG stack adds:
-- **Jobs** — Redis + Postgres + RabbitMQ (async job queue)
 - **Knowledge Graph** — Neo4j
 - **Local Synthesis** — Ollama + local model
 
@@ -48,16 +47,13 @@ Everything: Crawler + RAG (jobs + embeddings + Qdrant + Neo4j + Ollama) + Web UI
 
 ## Deployment Matrix
 
-| Deployment | Crawler | Jobs (SQLite) | Embeddings | Vector DB | Jobs (full) | Graph | Web UI |
-|---|---|---|---|---|---|---|---|
-| Crawler only | ✅ | ✅ built-in | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Crawler + RAG (minimal) | ✅ | ✅ built-in | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Crawler + RAG (full) | ✅ | ✅ built-in | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Web UI (base) | ✅ | ✅ built-in | ❌ | ❌ | ❌ | ❌ | ✅ base |
-| Full package | ✅ | ✅ built-in | ✅ | ✅ | ✅ | ✅ | ✅ all |
+| Deployment | Crawler | Jobs (SQLite) | Embeddings | Vector DB | Graph |
+|---|---|---|---|---|---|
+| Crawler only | ✅ | ✅ built-in | ❌ | ❌ | ❌ |
+| Crawler + RAG (minimal) | ✅ | ✅ built-in | ✅ | ✅ | ❌ |
+| Full package | ✅ | ✅ built-in | ✅ | ✅ | ✅ |
 
-> **Jobs (SQLite)** = lightweight queue built into core crawler (single file, single machine).
-> **Jobs (full)** = Redis + Postgres + RabbitMQ for distributed/high-throughput workloads.
+> **Jobs (SQLite)** = lightweight queue built into the binary (single file, in-process workers).
 
 ---
 
@@ -65,7 +61,7 @@ Everything: Crawler + RAG (jobs + embeddings + Qdrant + Neo4j + Ollama) + Web UI
 
 | Module | Services | Purpose |
 |---|---|---|
-| `jobs` | Redis + Postgres + RabbitMQ | Async job queue for crawl/embed/extract |
+| `jobs` | SQLite (built-in) | Async job queue for crawl/embed/extract |
 | `embeddings` | HF TEI or OpenAI-compatible | Text → vector conversion |
 | `vector-db` | Qdrant (default, pluggable) | Vector storage + semantic search |
 | `graph` | Neo4j | Knowledge graph / GraphRAG |

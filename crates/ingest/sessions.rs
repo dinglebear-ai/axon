@@ -1,14 +1,12 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_done, log_info, log_warn};
 use crate::crates::ingest::progress::PhaseReporter;
-use crate::crates::jobs::common::make_pool;
 use crate::crates::vector::ops::{PreparedDoc, embed_prepared_docs};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tokio::fs;
 
 const PHASE_SCANNING: &str = "scanning_sessions";
@@ -20,13 +18,10 @@ mod gemini;
 
 pub(crate) type IngestResult<T> = Result<T, anyhow::Error>;
 
-/// A parsed session document ready for embedding, with state-tracking metadata.
+/// A parsed session document ready for embedding.
 pub(crate) struct SessionDoc {
     pub(crate) doc: PreparedDoc,
     pub(crate) collection: String,
-    pub(crate) path: PathBuf,
-    pub(crate) mtime: SystemTime,
-    pub(crate) size: u64,
 }
 
 pub(crate) fn expand_home(path: &str) -> PathBuf {
@@ -38,90 +33,6 @@ pub(crate) fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-pub(crate) struct SessionStateTracker {
-    pool: Option<PgPool>,
-}
-
-impl SessionStateTracker {
-    pub(crate) async fn new(cfg: &Config) -> Self {
-        match make_pool(cfg).await {
-            Ok(pool) => {
-                if let Err(e) = sqlx::query(
-                    r#"
-                    CREATE TABLE IF NOT EXISTS axon_session_ingest_state (
-                        file_path TEXT PRIMARY KEY,
-                        last_modified TIMESTAMPTZ NOT NULL,
-                        file_size BIGINT NOT NULL,
-                        indexed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                    "#,
-                )
-                .execute(&pool)
-                .await
-                {
-                    log_warn(&format!("failed to ensure session state table: {e}"));
-                    return Self { pool: None };
-                }
-                Self { pool: Some(pool) }
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "database connection failed, state tracking disabled: {e}"
-                ));
-                Self { pool: None }
-            }
-        }
-    }
-
-    pub(crate) async fn should_skip(&self, path: &Path, mtime: SystemTime, size: u64) -> bool {
-        let Some(pool) = &self.pool else {
-            return false;
-        };
-        let path_str = path.to_string_lossy().to_string();
-
-        let row = sqlx::query(
-            "SELECT last_modified, file_size FROM axon_session_ingest_state WHERE file_path = $1",
-        )
-        .bind(path_str)
-        .fetch_optional(pool)
-        .await;
-
-        match row {
-            Ok(Some(r)) => {
-                let db_mtime: chrono::DateTime<chrono::Utc> = r.get(0);
-                let db_size: i64 = r.get(1);
-                let current_mtime: chrono::DateTime<chrono::Utc> = mtime.into();
-                (db_mtime - current_mtime).num_seconds().abs() < 1 && db_size == (size as i64)
-            }
-            _ => false,
-        }
-    }
-
-    pub(crate) async fn mark_indexed(&self, path: &Path, mtime: SystemTime, size: u64) {
-        let Some(pool) = &self.pool else {
-            return;
-        };
-        let path_str = path.to_string_lossy().to_string();
-        let mtime_chrono: chrono::DateTime<chrono::Utc> = mtime.into();
-
-        let _ = sqlx::query(
-            r#"
-            INSERT INTO axon_session_ingest_state (file_path, last_modified, file_size, indexed_at)
-            VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (file_path) DO UPDATE
-            SET last_modified = EXCLUDED.last_modified,
-                file_size = EXCLUDED.file_size,
-                indexed_at = NOW()
-            "#,
-        )
-        .bind(path_str)
-        .bind(mtime_chrono)
-        .bind(size as i64)
-        .execute(pool)
-        .await;
-    }
-}
-
 pub async fn ingest_sessions(
     cfg: &Config,
     reporter: &PhaseReporter,
@@ -129,7 +40,6 @@ pub async fn ingest_sessions(
     log_info("command=ingest source=sessions");
     reporter.report_phase(PHASE_SCANNING).await;
 
-    let state = SessionStateTracker::new(cfg).await;
     let multi = MultiProgress::new();
     let main_pb = multi.add(ProgressBar::new_spinner());
     main_pb.set_style(
@@ -144,21 +54,21 @@ pub async fn ingest_sessions(
     let mut all_docs: Vec<SessionDoc> = Vec::new();
 
     if cfg.sessions_claude || all_platforms {
-        let docs = claude::collect_claude_docs(cfg, &state, &multi)
+        let docs = claude::collect_claude_docs(cfg, &multi)
             .await
             .unwrap_or_default();
         log_info(&format!("sessions platform=claude files={}", docs.len()));
         all_docs.extend(docs);
     }
     if cfg.sessions_codex || all_platforms {
-        let docs = codex::collect_codex_docs(cfg, &state, &multi)
+        let docs = codex::collect_codex_docs(cfg, &multi)
             .await
             .unwrap_or_default();
         log_info(&format!("sessions platform=codex files={}", docs.len()));
         all_docs.extend(docs);
     }
     if cfg.sessions_gemini || all_platforms {
-        let docs = gemini::collect_gemini_docs(cfg, &state, &multi)
+        let docs = gemini::collect_gemini_docs(cfg, &multi)
             .await
             .unwrap_or_default();
         log_info(&format!("sessions platform=gemini files={}", docs.len()));
@@ -168,7 +78,7 @@ pub async fn ingest_sessions(
     reporter.report_phase(PHASE_EMBEDDING).await;
     main_pb.set_message(format!("Embedding {} session files...", all_docs.len()));
 
-    let total_chunks = embed_all_session_docs(cfg, all_docs, &state).await;
+    let total_chunks = embed_all_session_docs(cfg, all_docs).await;
 
     main_pb.finish_with_message(format!("Done: {} chunks embedded", total_chunks));
     log_done(&format!(
@@ -177,38 +87,19 @@ pub async fn ingest_sessions(
     Ok(total_chunks)
 }
 
-/// Groups collected docs by collection, calls `embed_prepared_docs` once per
-/// collection, then marks all successfully embedded files as indexed.
-async fn embed_all_session_docs(
-    cfg: &Config,
-    docs: Vec<SessionDoc>,
-    state: &SessionStateTracker,
-) -> usize {
-    let mut by_collection: HashMap<String, Vec<SessionDoc>> = HashMap::new();
-    for doc in docs {
-        by_collection
-            .entry(doc.collection.clone())
-            .or_default()
-            .push(doc);
+/// Groups collected docs by collection and calls `embed_prepared_docs` once per collection.
+async fn embed_all_session_docs(cfg: &Config, docs: Vec<SessionDoc>) -> usize {
+    let mut by_collection: HashMap<String, Vec<PreparedDoc>> = HashMap::new();
+    for sd in docs {
+        by_collection.entry(sd.collection).or_default().push(sd.doc);
     }
 
     let mut total = 0;
-    for (collection, session_docs) in by_collection {
+    for (collection, prepared) in by_collection {
         let mut session_cfg = cfg.clone();
         session_cfg.collection = collection;
 
-        let (state_meta, prepared): (Vec<_>, Vec<_>) = session_docs
-            .into_iter()
-            .map(|sd| ((sd.path, sd.mtime, sd.size), sd.doc))
-            .unzip();
-        // Consume the Result fully before any subsequent .await so Box<dyn Error>
-        // (which is !Send) does not live across an await point.
-        //
-        // A partial failure (docs_failed > 0) means some docs were not embedded. We
-        // cannot identify which specific files failed, so we skip mark_indexed entirely
-        // when any docs failed — those files will be retried on the next run. Only mark
-        // all docs as indexed when every doc succeeded (docs_failed == 0).
-        let all_embedded = match embed_prepared_docs(&session_cfg, prepared, None).await {
+        match embed_prepared_docs(&session_cfg, prepared, None).await {
             Ok(summary) => {
                 total += summary.chunks_embedded;
                 if summary.docs_failed > 0 {
@@ -216,9 +107,6 @@ async fn embed_all_session_docs(
                         "sessions embed partial failure collection={} docs_failed={} docs_embedded={}",
                         session_cfg.collection, summary.docs_failed, summary.docs_embedded
                     ));
-                    false
-                } else {
-                    true
                 }
             }
             Err(e) => {
@@ -226,12 +114,6 @@ async fn embed_all_session_docs(
                     "sessions embed failed collection={} error={e}",
                     session_cfg.collection
                 ));
-                false
-            }
-        };
-        if all_embedded {
-            for (path, mtime, size) in &state_meta {
-                state.mark_indexed(path, *mtime, *size).await;
             }
         }
     }

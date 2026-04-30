@@ -159,11 +159,11 @@ cat .cache/axon-mcp/latest-response.json | jq .
 
 ### Service context
 
-The `ServiceContext` in `crates/services/context.rs` carries a `ServiceCapabilities` struct that gates operations based on the runtime mode (full vs lite). Check capabilities before executing:
+The `ServiceContext` in `crates/services/context.rs` carries a `ServiceCapabilities` struct that gates operations based on available capabilities. Check capabilities before executing:
 
 ```rust
 if !ctx.capabilities.jobs.supported {
-    return Err("Operation requires full mode (Postgres + RabbitMQ)".into());
+    return Err("Operation not available in this configuration".into());
 }
 ```
 

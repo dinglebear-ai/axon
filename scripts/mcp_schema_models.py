@@ -119,9 +119,6 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Research": "research",
     "Ask": "ask",
     "Screenshot": "screenshot",
-    "Refresh": "refresh",
-    "Graph": "graph",
-    "Export": "export",
     "ElicitDemo": "elicit_demo",
 }
 
@@ -130,7 +127,7 @@ STRUCT_TO_ACTION: dict[str, str] = {
 }
 
 # Lifecycle families get special documentation treatment.
-LIFECYCLE_FAMILIES: set[str] = {"crawl", "extract", "embed", "ingest", "refresh"}
+LIFECYCLE_FAMILIES: set[str] = {"crawl", "extract", "embed", "ingest"}
 
 # Crawl-specific field descriptions (hardcoded -- not derivable from types).
 CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {

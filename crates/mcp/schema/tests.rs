@@ -279,40 +279,6 @@ fn parse_query_action_with_auto_inline_alias() {
 }
 
 #[test]
-fn parse_graph_build_action() {
-    let raw = obj(json!({
-        "action": "graph",
-        "subaction": "build",
-        "domain": "tanstack.com"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "graph build should parse successfully");
-    if let Ok(AxonRequest::Graph(g)) = result {
-        assert!(matches!(g.subaction, GraphSubaction::Build));
-        assert_eq!(g.domain.as_deref(), Some("tanstack.com"));
-    } else {
-        panic!("expected Graph variant");
-    }
-}
-
-#[test]
-fn parse_graph_explore_action() {
-    let raw = obj(json!({
-        "action": "graph",
-        "subaction": "explore",
-        "entity": "Neo4j"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "graph explore should parse successfully");
-    if let Ok(AxonRequest::Graph(g)) = result {
-        assert!(matches!(g.subaction, GraphSubaction::Explore));
-        assert_eq!(g.entity.as_deref(), Some("Neo4j"));
-    } else {
-        panic!("expected Graph variant");
-    }
-}
-
-#[test]
 fn parse_ingest_start_github() {
     let raw = obj(json!({
         "action": "ingest",
@@ -328,23 +294,6 @@ fn parse_ingest_start_github() {
         assert_eq!(i.target.as_deref(), Some("owner/repo"));
     } else {
         panic!("expected Ingest variant");
-    }
-}
-
-#[test]
-fn parse_refresh_start_with_url() {
-    let raw = obj(json!({
-        "action": "refresh",
-        "subaction": "start",
-        "url": "https://example.com/docs"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "refresh start with url should parse");
-    if let Ok(AxonRequest::Refresh(r)) = result {
-        assert!(matches!(r.subaction, Some(RefreshSubaction::Start)));
-        assert_eq!(r.url.as_deref(), Some("https://example.com/docs"));
-    } else {
-        panic!("expected Refresh variant");
     }
 }
 

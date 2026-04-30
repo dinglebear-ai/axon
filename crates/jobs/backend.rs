@@ -22,8 +22,6 @@ pub enum JobKind {
     Embed,
     Extract,
     Ingest,
-    Refresh,
-    Graph,
 }
 
 impl JobKind {
@@ -33,20 +31,11 @@ impl JobKind {
             Self::Embed => "axon_embed_jobs",
             Self::Extract => "axon_extract_jobs",
             Self::Ingest => "axon_ingest_jobs",
-            Self::Refresh => "axon_refresh_jobs",
-            Self::Graph => "axon_graph_jobs",
         }
     }
 
     pub fn all() -> &'static [JobKind] {
-        &[
-            Self::Crawl,
-            Self::Embed,
-            Self::Extract,
-            Self::Ingest,
-            Self::Refresh,
-            Self::Graph,
-        ]
+        &[Self::Crawl, Self::Embed, Self::Extract, Self::Ingest]
     }
 }
 
@@ -70,13 +59,6 @@ pub enum JobPayload {
         source_type: String,
         config_json: String,
     },
-    Refresh {
-        url: String,
-        config_json: String,
-    },
-    Graph {
-        config_json: String,
-    },
 }
 
 impl JobPayload {
@@ -86,8 +68,6 @@ impl JobPayload {
             Self::Embed { .. } => JobKind::Embed,
             Self::Extract { .. } => JobKind::Extract,
             Self::Ingest { .. } => JobKind::Ingest,
-            Self::Refresh { .. } => JobKind::Refresh,
-            Self::Graph { .. } => JobKind::Graph,
         }
     }
 }
@@ -116,7 +96,7 @@ pub struct JobSummary {
 
 pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Low-level job persistence interface implemented by [`FullBackend`] and [`LiteBackend`].
+/// Low-level job persistence interface implemented by [`LiteBackend`].
 ///
 /// **Note:** The canonical abstraction consumed by all callers (CLI, MCP, web) is
 /// [`ServiceJobRuntime`](crate::crates::services::runtime::ServiceJobRuntime), which
@@ -124,7 +104,6 @@ pub type BackendResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 /// In practice, only `enqueue`, `wait_for_job`, and `job_errors` are delegated through
 /// this trait by the service runtime layer; the remaining methods (`list_jobs`,
 /// `job_status`, `cancel_job`, `cleanup_jobs`, `clear_jobs`) are bypassed —
-/// `FullServiceRuntime` calls raw Postgres query functions directly, and
 /// `LiteServiceRuntime` calls `lite_query::*` directly, to avoid lossy type mapping
 /// from `JobStatusRow`/`JobSummary` to `ServiceJob`.
 #[async_trait]

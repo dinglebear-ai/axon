@@ -50,19 +50,12 @@ chmod 600 services.env
 Edit `.env` and set required values:
 
 ```bash
-# Postgres, Redis, RabbitMQ credentials
-POSTGRES_PASSWORD=your_secure_password
-REDIS_PASSWORD=your_secure_password
-RABBITMQ_PASS=your_secure_password
-
-# Connection URLs (update passwords to match)
-AXON_PG_URL=postgresql://axon:your_secure_password@axon-postgres:5432/axon
-AXON_REDIS_URL=redis://:your_secure_password@axon-redis:6379
-AXON_AMQP_URL=amqp://axon:your_secure_password@axon-rabbitmq:5672
-
 # Host paths
 AXON_DATA_DIR=/path/to/persistent/data
-HOST_HOME=/home/yourname
+
+# Qdrant and TEI
+QDRANT_URL=http://axon-qdrant:6333
+TEI_URL=http://axon-tei:80
 ```
 
 See [CONFIG.md](CONFIG.md) for the full variable reference.
@@ -73,7 +66,7 @@ See [CONFIG.md](CONFIG.md) for the full variable reference.
 just services-up
 ```
 
-This starts PostgreSQL, Redis, RabbitMQ, Qdrant, TEI, and Chrome via `docker-compose.services.yaml`.
+This starts Qdrant, TEI, and Chrome via `docker-compose.services.yaml`.
 
 For GPU-accelerated embeddings (NVIDIA):
 
@@ -81,18 +74,13 @@ For GPU-accelerated embeddings (NVIDIA):
 docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
 ```
 
-## 5. Run the local app stack
+## 5. Run axon
 
 ```bash
-just dev
+./scripts/axon --lite scrape https://example.com --wait true
 ```
 
-This builds the binary, starts infrastructure (if not already running), and launches `axon serve` which supervises:
-- Backend bridge (port 49000)
-- MCP HTTP server (port 8001)
-- All 6 worker types (crawl, embed, extract, ingest, refresh, graph)
-- Shell WebSocket server
-- Next.js dev server (port 49010)
+Axon runs in lite mode by default — workers run in-process, no external queue broker required. Qdrant and TEI are the only external services needed.
 
 ## 6. Verify
 
@@ -107,15 +95,9 @@ This builds the binary, starts infrastructure (if not already running), and laun
 # Open http://localhost:49010
 ```
 
-## Lite mode (zero infrastructure)
+## Lite mode (default)
 
-For quick testing without Postgres, Redis, or RabbitMQ:
-
-```bash
-AXON_LITE=1 ./scripts/axon scrape https://example.com --wait true
-```
-
-Lite mode uses SQLite for job storage and runs workers in-process. Qdrant and TEI are still required for embeddings. See the `AXON_LITE` section in [CONFIG.md](CONFIG.md).
+Axon uses SQLite for job storage and runs workers in-process by default. Qdrant and TEI are required for embeddings. See the `AXON_LITE` section in [CONFIG.md](CONFIG.md).
 
 ## Docker deployment
 
@@ -137,7 +119,7 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 
 - Confirm infrastructure is running: `docker compose -f docker-compose.services.yaml ps`
 - Check that `.env` credentials match `services.env`
-- For local dev, URLs auto-normalize to localhost ports (e.g., `axon-postgres:5432` becomes `127.0.0.1:53432`)
+- For local dev, Qdrant URLs auto-normalize to localhost ports
 
 ### Build fails with spider_agent path error
 

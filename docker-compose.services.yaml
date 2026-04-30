@@ -1,6 +1,6 @@
 name: axon-services
 
-# Infrastructure services: postgres, redis, rabbitmq, qdrant, tei, chrome.
+# Infrastructure services: qdrant, tei, chrome, ollama.
 # Start these before app containers in docker-compose.yaml:
 #   docker compose -f docker-compose.services.yaml up -d
 #   docker compose up -d
@@ -25,60 +25,6 @@ x-common-service: &common-service
       compress: "true"
 
 services:
-  axon-postgres:
-    <<: *common-service
-    image: postgres:17-alpine
-    container_name: axon-postgres
-    ports:
-      - "127.0.0.1:53432:5432"
-    volumes:
-      - ${AXON_DATA_DIR:-./data}/axon/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 90s
-
-  axon-redis:
-    <<: *common-service
-    image: redis:8.2-alpine
-    container_name: axon-redis
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-changeme}"]
-    ports:
-      - "127.0.0.1:53379:6379"
-    volumes:
-      - ${AXON_DATA_DIR:-./data}/axon/redis:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6379", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
-  axon-rabbitmq:
-    <<: *common-service
-    image: rabbitmq:4.0-management
-    container_name: axon-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-axon}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-axonrabbit}
-    ports:
-      - "127.0.0.1:45535:5672"
-    volumes:
-      - ${AXON_DATA_DIR:-./data}/axon/rabbitmq:/var/lib/rabbitmq
-      - ./docker/rabbitmq/20-axon.conf:/etc/rabbitmq/conf.d/20-axon.conf:ro
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
   axon-qdrant:
     <<: *common-service
     image: qdrant/qdrant:v1.13.1

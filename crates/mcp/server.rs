@@ -10,12 +10,8 @@ mod handlers_crawl_extract;
 mod handlers_elicit;
 #[path = "server/handlers_embed_ingest.rs"]
 mod handlers_embed_ingest;
-#[path = "server/handlers_graph.rs"]
-mod handlers_graph;
 #[path = "server/handlers_query.rs"]
 mod handlers_query;
-#[path = "server/handlers_refresh_status.rs"]
-mod handlers_refresh_status;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
 #[cfg(test)]
@@ -24,8 +20,9 @@ mod services_migration_tests;
 
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::crates::core::config::Config;
+use crate::crates::mcp::auth::mcp_auth_middleware;
+use crate::crates::mcp::cors::cors_middleware;
 use crate::crates::services::context::ServiceContext;
-use crate::crates::web::cors::cors_middleware;
 use axum::{Router, body::Body, extract::State, middleware, middleware::Next, response::Response};
 use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
 use rmcp::{
@@ -104,7 +101,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, refresh, graph, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, export, elicit_demo.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -151,9 +148,6 @@ impl AxonMcpServer {
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
-            AxonRequest::Refresh(req) => self.handle_refresh(req).await?,
-            AxonRequest::Graph(req) => self.handle_graph(req).await?,
-            AxonRequest::Export(req) => self.handle_export(req).await?,
             AxonRequest::Acp(req) => self.handle_acp(req).await?,
         };
         serde_json::to_string(&response)
@@ -354,14 +348,27 @@ pub async fn run_http_server(
             },
         );
 
-    let app =
-        Router::new()
-            .nest_service("/mcp", mcp_service)
-            .layer(middleware::from_fn_with_state(
-                cors_cfg,
-                mcp_http_cors_middleware,
-            ));
+    // Middleware order: layers are applied in reverse — the last `.layer()` call runs first.
+    // auth runs before CORS so preflight OPTIONS and actual requests are both gated.
+    let app = Router::new()
+        .nest_service("/mcp", mcp_service)
+        .layer(middleware::from_fn(mcp_auth_middleware))
+        .layer(middleware::from_fn_with_state(
+            cors_cfg,
+            mcp_http_cors_middleware,
+        ));
 
+    // Warn at startup (not lazily) if the MCP HTTP server is unauthenticated.
+    if std::env::var("AXON_MCP_HTTP_TOKEN")
+        .ok()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
+        tracing::warn!(
+            context = "mcp_http_startup",
+            "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
+        );
+    }
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
     axum::serve(listener, app).await?;
     Ok(())
@@ -372,5 +379,5 @@ async fn mcp_http_cors_middleware(
     request: axum::http::Request<Body>,
     next: Next,
 ) -> Response {
-    cors_middleware(request, next, &cfg.web_allowed_origins).await
+    cors_middleware(request, next, &cfg.mcp_allowed_origins).await
 }
