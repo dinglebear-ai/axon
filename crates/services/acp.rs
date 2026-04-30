@@ -165,10 +165,7 @@ where
             match tokio::time::timeout(timeout, fut()).await {
                 Ok(result) => result,
                 Err(_) => {
-                    tracing::error!(
-                        timeout_secs = timeout.as_secs(),
-                        "acp: adapter timed out"
-                    );
+                    tracing::error!(timeout_secs = timeout.as_secs(), "acp: adapter timed out");
                     Err(format!(
                         "ACP adapter timed out after {} seconds",
                         timeout.as_secs()

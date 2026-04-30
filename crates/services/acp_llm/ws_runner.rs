@@ -51,7 +51,9 @@ impl AcpWsCompletionRunner {
             .as_deref()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                tracing::error!("acp_llm: AXON_ACP_WS_URL is not configured — WS-mode ACP completions will fail");
+                tracing::error!(
+                    "acp_llm: AXON_ACP_WS_URL is not configured — WS-mode ACP completions will fail"
+                );
                 "AXON_ACP_WS_URL is required for WS-mode ACP completions"
             })?;
         let token = cfg.acp_ws_token.as_deref();
@@ -153,12 +155,10 @@ where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
     tracing::debug!(ws_url = %ws_url, model = ?req.model, "acp_llm: WS completion connecting");
-    let (ws_stream, _) = connect_async(ws_url)
-        .await
-        .map_err(|e| {
-            tracing::error!(ws_url = %ws_url, error = %e, "acp_llm: WS connect failed");
-            format!("ACP WS connect failed ({ws_url}): {e}")
-        })?;
+    let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| {
+        tracing::error!(ws_url = %ws_url, error = %e, "acp_llm: WS connect failed");
+        format!("ACP WS connect failed ({ws_url}): {e}")
+    })?;
     let (mut write, mut read) = ws_stream.split();
 
     let req_id = Uuid::new_v4().to_string();
@@ -175,8 +175,7 @@ where
     // `last_pong` tracks the last time we received a Pong (or connection start).
     // `ping_due` fires every WS_PING_INTERVAL_SECS via a tokio::time::interval.
     let last_pong: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
-    let mut ping_interval =
-        tokio::time::interval(Duration::from_secs(WS_PING_INTERVAL_SECS));
+    let mut ping_interval = tokio::time::interval(Duration::from_secs(WS_PING_INTERVAL_SECS));
     ping_interval.tick().await; // consume the immediate first tick
 
     let loop_result: Result<(), String> = tokio::time::timeout(

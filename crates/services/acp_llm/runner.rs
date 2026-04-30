@@ -66,7 +66,10 @@ impl AcpRuntimeCompletionRunner {
                 {
                     Ok(result) => result.map_err(|e| e.to_string()),
                     Err(_) => {
-                        tracing::warn!(timeout_secs = ACP_COMPLETION_TIMEOUT_SECS, "acp_llm: completion timed out");
+                        tracing::warn!(
+                            timeout_secs = ACP_COMPLETION_TIMEOUT_SECS,
+                            "acp_llm: completion timed out"
+                        );
                         Err(format!(
                             "ACP completion timed out after {} seconds",
                             ACP_COMPLETION_TIMEOUT_SECS

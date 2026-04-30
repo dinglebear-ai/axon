@@ -77,7 +77,9 @@ fn is_async_enqueue_mode(cfg: &Config) -> bool {
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
-    init_tracing();
+    // Hold the tracing-appender guard for the lifetime of run(): dropping it stops the
+    // background flush thread and tail buffers can be lost from the rolling log file.
+    let _log_guard = init_tracing();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         pid = std::process::id(),
