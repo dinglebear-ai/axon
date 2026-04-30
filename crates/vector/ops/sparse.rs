@@ -19,7 +19,6 @@
 //! half the collision rate of the original 30,522-bucket configuration.
 //! No memory overhead: sparse vectors store only non-zero (index, value) pairs.
 
-use crate::crates::core::logging::log_debug;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -117,10 +116,34 @@ pub fn compute_sparse_vector(text: &str) -> SparseVector {
         *bucket_tf.entry(idx).or_insert(0) += 1;
     }
     if bucket_tf.is_empty() {
-        log_debug(&format!(
-            "compute_sparse_vector: no indexable terms (len={}) — hybrid search will use dense-only",
-            text.len()
-        ));
+        // Promoted from log_debug → tracing::warn! so default-INFO operators
+        // see when hybrid search silently falls back to dense-only (typically
+        // when the query is non-ASCII, all-stopwords, or every term is < 3
+        // chars). Includes a coarse character profile so operators can spot
+        // patterns. (bd axon_rust-d71.9 / H5)
+        let mut ascii_alnum = 0usize;
+        let mut non_ascii = 0usize;
+        let mut whitespace = 0usize;
+        let mut other = 0usize;
+        for c in text.chars() {
+            if c.is_ascii_alphanumeric() {
+                ascii_alnum += 1;
+            } else if !c.is_ascii() {
+                non_ascii += 1;
+            } else if c.is_whitespace() {
+                whitespace += 1;
+            } else {
+                other += 1;
+            }
+        }
+        tracing::warn!(
+            len = text.len(),
+            ascii_alnum,
+            non_ascii,
+            whitespace,
+            other,
+            "compute_sparse_vector: no indexable terms — hybrid search will use dense-only"
+        );
         return SparseVector::default();
     }
     let mut indices = Vec::with_capacity(bucket_tf.len());

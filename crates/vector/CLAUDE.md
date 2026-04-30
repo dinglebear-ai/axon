@@ -92,6 +92,8 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 ### Ranking Pipeline
 `ranking.rs` applies BM25-style scoring on top of Qdrant cosine/hybrid results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
 
+> **Score-scale caveat (D-C1):** The reranker's `cfg.ask_min_relevance_score` threshold and `cfg.ask_authoritative_boost` are calibrated against **cosine similarity** scores in the `[0, 1]` range. On `VectorMode::Named` collections, hybrid RRF fusion outputs a **rank-fusion score** in a different (typically much smaller) range — applying the same threshold to RRF output is not meaningful. The current code applies it anyway; tune via `AXON_ASK_MIN_RELEVANCE_SCORE` per deployment, or run `axon evaluate --no-hybrid-search` to compare against dense-only behavior. (See bd axon_rust-d71.1 / C1 + d71.12 / H8.)
+
 ### Collection Naming
 Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
 
@@ -139,7 +141,8 @@ TEI_URL=http://steamy-wsl:52000
 `--default-prompt` has been **removed** from the TEI Docker config. The instruction is now applied in Rust at query time only.
 
 - **`QUERY_INSTRUCTION`** constant in `crates/vector/ops/tei/tei_client.rs` — single source of truth
-- Prepended by `query.rs`, `ask/context/retrieval.rs`, and `evaluate/scoring.rs` before calling `tei_embed`
+- Prepended by `query.rs`, `ask/context/retrieval.rs` (NL question only), and `evaluate/scoring.rs` before calling `tei_embed`
+- Dual-embedding for ask: when the keyword form differs from the NL form, both are embedded in a single TEI batch. The **NL form gets `QUERY_INSTRUCTION`; the keyword form does not** — keyword tokens are document-shaped, so prefixing them would push the vector into query space and defeat the dual-embedding pass (D-C2 / bd axon_rust-d71.5).
 - Document embeds (`pipeline.rs`) do **not** get the prefix — raw text only
 - This is correct per the Qwen3-Embedding spec: queries need the instruction, documents must not have it
 

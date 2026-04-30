@@ -57,8 +57,13 @@ fn build_candidates_from_hits(
 
 /// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).
 /// Primary candidates win; secondary only added if the chunk is not already present.
+///
+/// Primary itself is deduped first — a single chunk can return at slightly
+/// different RRF positions across prefetch arms (dense + sparse), so without
+/// a dedupe pass the primary list can contain (url, chunk-prefix) duplicates
+/// that pass through merge unchanged. (bd axon_rust-d71.10 / H6)
 fn merge_candidates(
-    mut primary: Vec<ranking::AskCandidate>,
+    primary: Vec<ranking::AskCandidate>,
     secondary: Vec<ranking::AskCandidate>,
 ) -> Vec<ranking::AskCandidate> {
     fn prefix_key(url: &str, chunk_text: &str) -> String {
@@ -70,17 +75,21 @@ fn merge_candidates(
         }
         format!("{}|{}", url, &chunk_text[..end])
     }
-    let mut seen: std::collections::HashSet<String> = primary
-        .iter()
-        .map(|c| prefix_key(&c.url, &c.chunk_text))
-        .collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut deduped: Vec<ranking::AskCandidate> = Vec::with_capacity(primary.len());
+    for c in primary {
+        let key = prefix_key(&c.url, &c.chunk_text);
+        if seen.insert(key) {
+            deduped.push(c);
+        }
+    }
     for c in secondary {
         let key = prefix_key(&c.url, &c.chunk_text);
         if seen.insert(key) {
-            primary.push(c);
+            deduped.push(c);
         }
     }
-    primary
+    deduped
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,

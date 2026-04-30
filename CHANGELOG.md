@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-30
+
+### Changed
+- **`merge_candidates`**: Dedupes primary internally before merging secondary; a single chunk landing at slightly different RRF positions across prefetch arms no longer leaks duplicates into the ask context.
+- **`compute_sparse_vector`**: Empty-result log promoted from `log_debug` → `tracing::warn!` with query character profile (`len`, `ascii_alnum`, `non_ascii`, `whitespace`, `other`); operators now see hybrid → dense-only fallback at default INFO.
+
+### Docs
+- **vector/CLAUDE.md Ranking Pipeline**: documented the score-scale mismatch — `ask_min_relevance_score` and `ask_authoritative_boost` are cosine-calibrated and don't transfer cleanly to RRF output.
+- **vector/CLAUDE.md Query Instruction**: documented dual-embedding asymmetry (NL form gets `QUERY_INSTRUCTION`, keyword form does not).
+
 ## [1.0.1] - 2026-04-30
 
 ### Added
