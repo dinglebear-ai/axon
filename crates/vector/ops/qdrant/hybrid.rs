@@ -19,6 +19,17 @@ use super::utils::{HNSW_EF_SEARCH, qdrant_base};
 /// (one dense, one sparse) and `"query": {"fusion": "rrf"}` to combine them.
 /// `limit` is the final number of results after fusion. Each prefetch arm fetches
 /// `cfg.hybrid_search_candidates` candidates before RRF fusion. Requires a Named-mode collection.
+#[tracing::instrument(
+    name = "vector.hybrid",
+    skip(cfg, dense_vector, sparse_vector, filter),
+    fields(
+        collection = %cfg.collection,
+        sparse_terms = sparse_vector.indices.len(),
+        candidates = cfg.hybrid_search_candidates,
+        limit,
+        filtered = filter.is_some(),
+    )
+)]
 pub(crate) async fn qdrant_hybrid_search(
     cfg: &Config,
     dense_vector: &[f32],
@@ -51,7 +62,7 @@ pub(crate) async fn qdrant_hybrid_search(
                 }
             },
             {
-                "query": sparse_vector.to_json(),
+                "query": sparse_vector,
                 "using": "bm42",
                 "limit": candidates
             }
@@ -107,6 +118,11 @@ pub(crate) async fn qdrant_hybrid_search(
 /// retrieval when sparse vectors are unavailable (empty query, hybrid disabled).
 ///
 /// Use `qdrant_hybrid_search` when a sparse vector is available for RRF fusion.
+#[tracing::instrument(
+    name = "vector.named_dense",
+    skip(cfg, dense_vector, filter),
+    fields(collection = %cfg.collection, limit, filtered = filter.is_some())
+)]
 pub(crate) async fn qdrant_named_dense_search(
     cfg: &Config,
     dense_vector: &[f32],

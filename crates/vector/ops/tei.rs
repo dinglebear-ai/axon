@@ -64,7 +64,7 @@ pub(super) fn build_point(
                 "id": point_id.to_string(),
                 "vector": {
                     "dense": vecv,
-                    "bm42": sv.to_json()
+                    "bm42": sv
                 },
                 "payload": payload,
             })

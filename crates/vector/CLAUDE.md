@@ -77,7 +77,7 @@ New collections are created with **named vectors** (`dense` + `bm42` sparse). Fo
 ```rust
 // sparse.rs — compute sparse vector for a text
 let sv: SparseVector = compute_sparse_vector(text);
-// sv.to_json() → { "indices": [...], "values": [...] }
+// SparseVector implements Serialize: serde_json emits { "indices": [...], "values": [...] }
 
 // qdrant/hybrid.rs — issue hybrid query
 qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
@@ -96,6 +96,28 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 
 ### Collection Naming
 Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
+
+The dispatch entry validates `cfg.collection` against `[A-Za-z0-9_.-]{1,255}` with no leading/trailing dot and no `..`. The validator is a path-injection guard — Qdrant URLs interpolate the collection name without percent-encoding, so a malicious value like `../etc/passwd` would otherwise escape the path.
+
+### Dual-Embedding for Ask
+
+The `ask` retrieval path embeds the question in two forms when they differ meaningfully:
+
+1. **NL form** — the raw question, with `QUERY_INSTRUCTION` prepended (asymmetric encoding).
+2. **Keyword form** — the question reduced to its non-stopword tokens joined with spaces. Document-shaped, so it does **not** get the query instruction (see Query Instruction section).
+
+Both vectors are produced in a **single TEI batch call**, then dispatched to Qdrant **in parallel** via `tokio::join!` (sequential dispatch burned ~2-3s/ask before bd axon_rust-d71.3). Results are merged by `(url, chunk-prefix)` deduplication.
+
+This is opt-in by query shape: only kicks in when the keyword form has 3+ tokens and differs from the trimmed NL question. Short / single-keyword / already-keyword-shaped queries skip the secondary dispatch entirely.
+
+### Operational Caveats
+
+A few sharp edges worth knowing before debugging retrieval:
+
+- **VectorMode cache is process-local.** `OnceLock<RwLock<HashMap>>` in `tei/qdrant_store.rs` is populated on first embed/query. After running `axon migrate cortex cortex_v2`, **other running worker processes** (serve, mcp, web) keep their stale `Unnamed` mode cache and silently fall back to dense-only on `cortex_v2` until restart. **Restart all worker processes after a migrate.** (bd axon_rust-d71.2)
+- **Empty sparse vector → silent dense-only fallback.** `compute_sparse_vector` returns empty for non-ASCII / all-stopword / very-short queries (every term < 3 chars). `dispatch_vector_search` routes to named-dense in that case. The fallback now logs a `tracing::warn!` with a query character profile, so it's visible at default INFO level (bd axon_rust-d71.9).
+- **`ask_min_relevance_score` is calibrated to cosine.** On Named (hybrid RRF) collections, applying the same threshold to RRF rank-fusion output is not meaningful — the score lives in a different range. Tune per deployment via `AXON_ASK_MIN_RELEVANCE_SCORE`, or run `axon evaluate --no-hybrid-search` for A/B comparison against dense-only behavior (bd axon_rust-d71.1 / d71.12).
+- **`compute_sparse_vector` returns `SparseVector::default()` (empty `indices`/`values`) for empty/non-indexable input.** Callers must check `sv.is_empty()` before issuing a hybrid query — Qdrant rejects empty sparse arms.
 
 ## Testing
 
@@ -117,10 +139,15 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | Var | Default | Effect |
 |-----|---------|--------|
 | `TEI_MAX_CLIENT_BATCH_SIZE` | 64 (max 128) | Batch size before auto-split on 413 |
-| `AXON_COLLECTION` | `cortex` | Qdrant collection name |
+| `AXON_COLLECTION` | `cortex` | Qdrant collection name. Validated at dispatch: `[A-Za-z0-9_.-]`, 1–255 chars, no leading/trailing dot, no `..`. |
+| `AXON_HYBRID_SEARCH` | `true` | Master switch for hybrid RRF search on Named collections. `false` forces dense-only on every query (used by `axon evaluate --no-hybrid-search` for A/B comparison). |
+| `AXON_HYBRID_CANDIDATES` | `100` | Prefetch window per arm (dense + sparse) before RRF fusion for `query`. Maps to `cfg.hybrid_search_candidates`. |
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |
 | `AXON_SUGGEST_INDEX_LIMIT` | 50,000 | Max URLs fetched for dedup in `suggest` command |
-| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Prefetch window per arm before RRF fusion for `ask`; maps to `cfg.hybrid_search_candidates` |
+| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Prefetch window per arm before RRF fusion for `ask`; overrides `cfg.hybrid_search_candidates` for the ask path only. |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum reranker score to include a candidate. Calibrated against cosine — see Ranking Pipeline caveat above for behavior on Named (RRF) collections. |
+
+**Retrieval input caps:** `dispatch_vector_search` rejects queries longer than 64 KiB (CWE-770). Queries are validated before reaching `compute_sparse_vector` or TEI.
 
 ## TEI Service (External — steamy-wsl)
 

@@ -58,7 +58,11 @@ pub(crate) static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(||
 ///
 /// - `indices`: unique bucket indices in range `0..SPARSE_DIM`
 /// - `values`: log-normalized TF weight `ln(1 + raw_count)` for each index (always positive; Qdrant applies IDF)
-#[derive(Debug, Clone, Default)]
+///
+/// `Serialize` emits the Qdrant wire shape directly (`{indices: [...], values: [...]}`),
+/// so call sites can embed `&sparse_vector` straight inside `serde_json::json!{...}`
+/// without round-tripping through an intermediate `serde_json::Value`.
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct SparseVector {
     pub indices: Vec<u32>,
     pub values: Vec<f32>,
@@ -67,14 +71,6 @@ pub struct SparseVector {
 impl SparseVector {
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
-    }
-
-    /// Serialize to the Qdrant wire format expected in `"vector"` and `"query"` fields.
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "indices": self.indices,
-            "values": self.values,
-        })
     }
 }
 
@@ -103,14 +99,32 @@ pub fn term_to_index(term: &str) -> u32 {
 ///
 /// TF weight = `ln(1 + raw_count)` — log normalization prevents high-repetition documents
 /// from dominating BM42 scoring regardless of term content.
+/// Hard cap on terms scanned per call. Defends against pathological inputs
+/// where a multi-MB chunk slips past the dispatch query cap (chunks during
+/// indexing are not query-capped) or where the query cap is raised without
+/// re-evaluating sparse-vector cost. With ~150 unique terms typical, 65,536
+/// is well above any real chunk and well below any DoS shape. (bd
+/// axon_rust-d71.34 / M-SEC)
+const MAX_TERMS_PER_VECTOR: usize = 65_536;
+
 pub fn compute_sparse_vector(text: &str) -> SparseVector {
     // Pre-allocate for typical chunk sizes (~150 unique terms) to avoid 3-4 resizes.
     let estimated_capacity = if text.len() > 200 { 128 } else { 16 };
     let mut bucket_tf: HashMap<u32, u32> = HashMap::with_capacity(estimated_capacity);
+    let mut scanned: usize = 0;
     for term in text.split(|c: char| !c.is_ascii_alphanumeric()) {
         let lower = term.to_ascii_lowercase();
         if lower.len() < 3 || STOP_WORDS.contains(lower.as_str()) {
             continue;
+        }
+        scanned += 1;
+        if scanned > MAX_TERMS_PER_VECTOR {
+            tracing::warn!(
+                len = text.len(),
+                cap = MAX_TERMS_PER_VECTOR,
+                "compute_sparse_vector: term cap reached — truncating"
+            );
+            break;
         }
         let idx = term_to_index(&lower);
         *bucket_tf.entry(idx).or_insert(0) += 1;

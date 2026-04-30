@@ -159,7 +159,7 @@ fn rebuild_points_as_named(
                 "id": id,
                 "vector": {
                     "dense": dense,
-                    "bm42": sv.to_json()
+                    "bm42": sv
                 },
                 "payload": payload,
             }))

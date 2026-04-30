@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
 use std::future::Future;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{LazyLock, RwLock};
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +27,8 @@ pub(crate) enum VectorMode {
 /// to pick up collection schema changes (e.g., migration from Unnamed to Named).
 /// Uses `RwLock` (not `Mutex`) because after initial population all accesses are
 /// read-only -- `RwLock` allows unlimited concurrent readers.
-static COLLECTION_MODES: OnceLock<RwLock<HashMap<String, VectorMode>>> = OnceLock::new();
+static COLLECTION_MODES: LazyLock<RwLock<HashMap<String, VectorMode>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 fn collection_mode_cache_key(cfg: &Config) -> String {
     format!(
@@ -40,8 +41,8 @@ fn collection_mode_cache_key(cfg: &Config) -> String {
 /// Return the cached `VectorMode` for `name`, or `None` if not yet initialized.
 fn cached_vector_mode_key(key: &str) -> Option<VectorMode> {
     COLLECTION_MODES
-        .get()
-        .and_then(|m| m.read().ok())
+        .read()
+        .ok()
         .and_then(|map| map.get(key).copied())
 }
 
@@ -52,8 +53,7 @@ fn cached_vector_mode(name: &str) -> Option<VectorMode> {
 
 /// Store `mode` in the collection-mode cache for `name`.
 fn cache_vector_mode_key(key: &str, mode: VectorMode) {
-    let map = COLLECTION_MODES.get_or_init(|| RwLock::new(HashMap::new()));
-    match map.write() {
+    match COLLECTION_MODES.write() {
         Ok(mut m) => {
             m.insert(key.to_owned(), mode);
         }
@@ -76,9 +76,7 @@ fn cache_vector_mode(name: &str, mode: VectorMode) {
 /// Useful for long-running workers that need to re-detect collection schema
 /// after a migration (e.g., Unnamed -> Named via `axon migrate`).
 pub(crate) fn clear_collection_mode_cache(name: &str) {
-    if let Some(map) = COLLECTION_MODES.get()
-        && let Ok(mut m) = map.write()
-    {
+    if let Ok(mut m) = COLLECTION_MODES.write() {
         m.remove(name);
         let suffix = format!("\x1f{name}");
         m.retain(|key, _| !key.ends_with(&suffix));

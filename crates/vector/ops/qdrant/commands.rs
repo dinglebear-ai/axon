@@ -70,6 +70,11 @@ fn validate_collection_name(name: &str) -> Result<(), &'static str> {
 /// Unnamed                                   -> legacy `/points/search`
 ///
 /// Shared by both `query` and `ask` command paths to avoid duplicated routing logic.
+#[tracing::instrument(
+    name = "vector.dispatch",
+    skip(cfg, vector, query),
+    fields(collection = %cfg.collection, query_len = query.len(), limit)
+)]
 pub(crate) async fn dispatch_vector_search(
     cfg: &Config,
     vector: &[f32],

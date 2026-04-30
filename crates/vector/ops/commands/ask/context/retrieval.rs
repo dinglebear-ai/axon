@@ -113,6 +113,11 @@ fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> any
     }
 }
 
+#[tracing::instrument(
+    name = "ask.retrieve",
+    skip(cfg, query),
+    fields(collection = %cfg.collection, query_len = query.len())
+)]
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let query_tokens = ranking::tokenize_query(query);
@@ -245,4 +250,68 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn make_candidate(url: &str, chunk: &str) -> ranking::AskCandidate {
+        ranking::AskCandidate {
+            score: 0.8,
+            url: url.to_string(),
+            path: "/p".to_string(),
+            chunk_text: chunk.to_string(),
+            url_tokens: HashSet::new(),
+            chunk_tokens: HashSet::new(),
+            rerank_score: 0.5,
+        }
+    }
+
+    #[test]
+    fn merge_candidates_dedupes_within_primary() {
+        // Single chunk landing twice in the primary list (e.g. via dense + sparse
+        // arms inside one prefetch result). bd axon_rust-d71.10 / H6.
+        let primary = vec![
+            make_candidate("https://a.test/p", "alpha bravo charlie"),
+            make_candidate("https://a.test/p", "alpha bravo charlie"),
+            make_candidate("https://b.test/p", "delta echo foxtrot"),
+        ];
+        let merged = merge_candidates(primary, vec![]);
+        assert_eq!(merged.len(), 2, "primary duplicates must be deduped");
+    }
+
+    #[test]
+    fn merge_candidates_keeps_distinct_urls_with_same_chunk() {
+        let primary = vec![make_candidate("https://a.test/p", "shared body")];
+        let secondary = vec![make_candidate("https://b.test/p", "shared body")];
+        let merged = merge_candidates(primary, secondary);
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn merge_candidates_skips_secondary_when_present_in_primary() {
+        let primary = vec![make_candidate("https://a.test/p", "same chunk text")];
+        let secondary = vec![make_candidate("https://a.test/p", "same chunk text")];
+        let merged = merge_candidates(primary, secondary);
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
+    fn merge_candidates_handles_multibyte_chunk_prefix() {
+        // A multibyte char straddling the 80-byte truncation boundary must not
+        // panic (regression for streaming UTF-8 boundary panic class).
+        let prefix = "あ".repeat(40); // 120 bytes UTF-8, ~80 bytes is mid-char
+        let primary = vec![make_candidate("https://a.test/p", &prefix)];
+        let secondary = vec![make_candidate("https://a.test/p", &prefix)];
+        let merged = merge_candidates(primary, secondary);
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
+    fn merge_candidates_empty_inputs_return_empty() {
+        let merged = merge_candidates(vec![], vec![]);
+        assert!(merged.is_empty());
+    }
 }

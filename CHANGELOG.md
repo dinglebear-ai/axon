@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-30
+
+### Added
+- **`#[tracing::instrument]`** on retrieval hot path: `dispatch_vector_search`, `qdrant_hybrid_search`, `qdrant_named_dense_search`, `retrieve_ask_candidates`. Spans carry collection name, query length, sparse term count, candidate window, and filter presence.
+- **Sparse term cap**: `MAX_TERMS_PER_VECTOR = 65,536` in `compute_sparse_vector` defends against pathological inputs.
+- **Tests**: 5 unit tests for `merge_candidates` covering primary dedupe, cross-URL chunk parity, multibyte chunk-prefix boundary, empty inputs.
+- **Vector docs**: env vars table (`AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_MIN_RELEVANCE_SCORE`), Dual-Embedding for Ask section, Operational Caveats section (cache staleness, sparse fallback, threshold no-op, empty-return contract).
+
+### Changed
+- **`SparseVector`**: derives `serde::Serialize` and emits the Qdrant wire shape directly. Removed `to_json()`. Updated 4 call sites (`hybrid.rs`, `tei.rs`, `tei/pipeline.rs`, `services/migrate.rs`).
+- **`COLLECTION_MODES` cache**: `OnceLock<RwLock<HashMap>>` → `LazyLock<RwLock<HashMap>>`. One fewer `Option` layer on every cache hit; `cache_vector_mode_key` no longer needs `get_or_init`.
+
 ## [1.0.2] - 2026-04-30
 
 ### Changed
