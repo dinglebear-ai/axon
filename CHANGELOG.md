@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-04-30
+
+### Added
+- **`validate_custom_headers`**: rejects malformed `--header K: V` entries (missing separator, empty name, RFC 7230 illegal token chars in name, CR/LF in value).
+
+### Changed
+- **Ask error-path diagnostics**: `dispatch_error` now always attaches `{stage, collection, qdrant_url, query_len, error}` JSON to failed retrieval errors. `cfg.ask_diagnostics` still gates verbose **success-path** payloads.
+
 ## [1.0.3] - 2026-04-30
 
 ### Added

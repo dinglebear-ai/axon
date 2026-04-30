@@ -499,7 +499,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
         mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
         mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
-        custom_headers: global.custom_headers,
+        custom_headers: validate_custom_headers(global.custom_headers)?,
         quiet: global.quiet,
         log_level: global.log_level,
     };
@@ -562,6 +562,58 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     }
 
     Ok(cfg)
+}
+
+/// Validate `--header "K: V"` entries before they reach the request layer.
+///
+/// Defense in depth — these are forwarded into HTTP requests issued by the
+/// crawl/scrape paths. Since the user supplies them on a trusted plane (CLI
+/// args), this isn't a hard security boundary, but rejecting obviously
+/// malformed entries gives a clearer error than letting `reqwest::header`
+/// panic mid-crawl. (bd axon_rust-d71.33 / M-SEC-1)
+fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String>, String> {
+    for h in &headers {
+        let Some((name, value)) = h.split_once(':') else {
+            return Err(format!("--header missing ':' separator: {h:?}"));
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.is_empty() {
+            return Err(format!("--header has empty name: {h:?}"));
+        }
+        // RFC 7230 token chars for header name.
+        let name_ok = name.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    '!' | '#'
+                        | '$'
+                        | '%'
+                        | '&'
+                        | '\''
+                        | '*'
+                        | '+'
+                        | '-'
+                        | '.'
+                        | '^'
+                        | '_'
+                        | '`'
+                        | '|'
+                        | '~'
+                )
+        });
+        if !name_ok {
+            return Err(format!(
+                "--header name contains illegal character: {name:?} (RFC 7230 token chars only)"
+            ));
+        }
+        if value.contains('\r') || value.contains('\n') {
+            return Err(format!(
+                "--header value contains CR or LF (CWE-93 header injection guard): {h:?}"
+            ));
+        }
+    }
+    Ok(headers)
 }
 
 fn resolve_mcp_transport(

@@ -93,24 +93,25 @@ fn merge_candidates(
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
-/// attaching `ask_diagnostics` JSON when enabled so operators can see the
-/// collection / Qdrant URL / query-length context that produced the failure.
+/// attaching context JSON unconditionally on the error path so operators can
+/// see the collection / Qdrant URL / query-length context that produced the
+/// failure. The cost is one small JSON object per failure, and every failure
+/// already costs at least a Qdrant round-trip — the marginal cost is
+/// negligible. The legacy `cfg.ask_diagnostics` flag still gates verbose
+/// **success-path** payloads elsewhere (see `ask.rs` and
+/// `evaluate/display.rs`). (bd axon_rust-d71.35)
 fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> anyhow::Error {
-    if cfg.ask_diagnostics {
-        let diagnostics = serde_json::json!({
-            "stage": "ask_vector_search_dispatch",
-            "collection": cfg.collection,
-            "qdrant_url": cfg.qdrant_url,
-            "query_len": query.len(),
-            "error": err.to_string(),
-        });
-        anyhow::Error::new(ServiceError::with_diagnostics(
-            format!("vector search dispatch: {err}"),
-            diagnostics,
-        ))
-    } else {
-        anyhow::Error::new(ServiceError::new(format!("vector search dispatch: {err}")))
-    }
+    let diagnostics = serde_json::json!({
+        "stage": "ask_vector_search_dispatch",
+        "collection": cfg.collection,
+        "qdrant_url": cfg.qdrant_url,
+        "query_len": query.len(),
+        "error": err.to_string(),
+    });
+    anyhow::Error::new(ServiceError::with_diagnostics(
+        format!("vector search dispatch: {err}"),
+        diagnostics,
+    ))
 }
 
 #[tracing::instrument(
