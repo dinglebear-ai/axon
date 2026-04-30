@@ -22,8 +22,8 @@ All global flags apply. Key flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--map-fallback <structure\|crawl>` | `structure` | Fallback when no sitemap is found. `structure`: extract anchors from root page (fast). `crawl`: full Spider.rs crawl (slow, legacy — explicit opt-in). |
-| `--max-sitemaps <n>` | `512` | Maximum sitemap documents to process per map operation. |
+| `--map-fallback <structure\|crawl>` | `structure` | Fallback when no sitemap is parsed. `structure`: extract anchors from the scope root page (fast). `crawl`: full Spider.rs crawl (slow, legacy — explicit opt-in). |
+| `--max-sitemaps <n>` | `512` | Maximum sitemap documents to parse per map operation (`0` = unlimited). |
 | `--discover-sitemaps <bool>` | `true` | Enable sitemap discovery (primary URL source). |
 | `--sitemap-since-days <n>` | `0` | Only include sitemap URLs with `<lastmod>` within the last N days (0 = no filter). |
 | `--include-subdomains <bool>` | `false` | Include subdomains under same parent domain. |
@@ -34,10 +34,10 @@ All global flags apply. Key flags:
 `axon map` uses a **sitemap-first** strategy:
 
 1. **Sitemap discovery** (primary): fetches `robots.txt` and default sitemap paths in parallel with seed URL resolution. Checks: `sitemap.xml`, `sitemap_index.xml`, `sitemap-index.xml`, `wp-sitemap.xml`, `sitemap/sitemap-index.xml`.
-2. **Bounded structure fallback** (default, when no sitemap parsed): fetches the root page once and extracts anchor hrefs (up to 500 URLs). Fast, no full crawl. Triggered when `parsed_sitemap_documents == 0`.
+2. **Bounded structure fallback** (default, when no sitemap is parsed): fetches the scope root page once and extracts anchor hrefs (up to 500 URLs). Fast, no full crawl. The "scope root" is the path-anchored root for the requested URL — `axon map https://site/docs` fetches `https://site/docs`, not `https://site/`.
 3. **Full crawl** (opt-in only): set `--map-fallback crawl` to use Spider.rs. This is the legacy behaviour — slower but handles SPAs and complex navigation.
 
-> **Important:** the fallback from sitemap to structure is triggered by `parsed_sitemap_documents == 0`, not by an empty URL list. If a sitemap was found but all URLs were out of scope, `map_source` will be `"sitemap"` and the URL list will be empty — no anchor fallback is applied in this case.
+> **Important:** the fallback from sitemap to structure is triggered by whether any sitemap was successfully parsed, not by the URL count. If a sitemap was found but all URLs were out of scope, `map_source` will be `"sitemap"` and the URL list will be empty — no anchor fallback is applied in this case.
 
 ## Examples
 
@@ -66,12 +66,12 @@ JSON mode returns:
 |-------|------|-------------|
 | `url` | string | The start URL |
 | `mapped_urls` | number | Count of discovered URLs in the output |
-| `sitemap_urls` | number | Raw `<loc>` count from sitemaps (before dedup/scope filter) |
+| `sitemap_urls` | number | Count of sitemap-discovered URLs after deduplication and in-scope filtering |
 | `pages_seen` | number | Pages fetched during crawl (`0` in sitemap/structure modes) |
 | `thin_pages` | number | Pages below `--min-markdown-chars` (`0` in non-crawl modes) |
 | `elapsed_ms` | number | Time taken in milliseconds |
 | `map_source` | string | How URLs were discovered: `"sitemap"`, `"bounded-structure"`, or `"crawl"` |
-| `warning` | string or null | Non-null when bounded-structure returns fewer than 5 URLs (suggests using `--map-fallback crawl`) |
+| `warning` | string or null | Non-null when bounded-structure returns fewer than 5 URLs or fails to fetch the scope root (suggests using `--map-fallback crawl`) |
 | `urls` | array | All discovered URLs, sorted and deduplicated |
 
 ## Behavior Notes

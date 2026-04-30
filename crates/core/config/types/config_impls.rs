@@ -214,6 +214,8 @@ impl fmt::Debug for Config {
             .field("drop_thin_markdown", &self.drop_thin_markdown)
             .field("discover_sitemaps", &self.discover_sitemaps)
             .field("sitemap_since_days", &self.sitemap_since_days)
+            .field("map_fallback", &self.map_fallback)
+            .field("max_sitemaps", &self.max_sitemaps)
             .field("cache", &self.cache)
             .field("cache_skip_browser", &self.cache_skip_browser)
             .field("format", &self.format)

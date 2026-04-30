@@ -278,7 +278,12 @@ pub async fn discover_sitemap_urls(
         .backfill_concurrency_limit
         .unwrap_or(cfg.batch_concurrency)
         .clamp(1, 1024);
-    let max_sitemaps = cfg.max_sitemaps;
+    // Treat 0 as unlimited (consistent with --max-pages and --sitemap-since-days).
+    let max_sitemaps = if cfg.max_sitemaps == 0 {
+        usize::MAX
+    } else {
+        cfg.max_sitemaps
+    };
     let mut parsed_sitemaps = 0usize;
     let mut failed_fetches = 0usize;
 

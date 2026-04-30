@@ -101,7 +101,8 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long, default_value_t = 0)]
     pub(in crate::crates::core::config) sitemap_since_days: u32,
 
-    /// Maximum number of sitemap URLs to process per map/backfill operation (default: 512)
+    /// Maximum number of sitemap documents to parse per map/backfill operation
+    /// (0 = unlimited, default: 512)
     #[arg(global = true, long, default_value_t = 512)]
     pub(in crate::crates::core::config) max_sitemaps: usize,
 

@@ -63,7 +63,9 @@ pub struct MapResult {
     pub summary: CrawlSummary,
     /// All discovered URLs, sorted and deduplicated.
     pub urls: Vec<String>,
-    /// Raw number of `<loc>` entries found in sitemaps before dedup.
+    /// Count of sitemap-discovered URLs after deduplication and in-scope filtering
+    /// (matches `urls.len()` in the sitemap branch; reported as the same value across
+    /// branches for consistency).
     pub sitemap_urls: usize,
     /// How URLs were discovered: "sitemap", "bounded-structure", or "crawl".
     pub map_source: String,
@@ -223,6 +225,7 @@ pub(super) async fn crawl_and_collect_map(
     }
 
     summary.elapsed_ms = start.elapsed().as_millis();
+    urls.sort();
     Ok((summary, urls))
 }
 
@@ -262,10 +265,11 @@ async fn bounded_structure_fallback(
 
     let anchor_urls = extract_anchor_hrefs(scope_start_url, &html, fallback_limit);
     let urls = merge_map_candidate_urls(Vec::new(), anchor_urls, scope, true);
-    let urls: Vec<String> = urls
+    let mut urls: Vec<String> = urls
         .into_iter()
         .filter(|url| !is_excluded_url_path(url, &cfg.exclude_path_prefix))
         .collect();
+    urls.sort();
 
     let warning = if urls.len() < 5 {
         Some(format!(

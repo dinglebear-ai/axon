@@ -96,7 +96,8 @@ pub struct Config {
     /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
     pub map_fallback: MapFallback,
 
-    /// Maximum number of sitemap URLs to process per map/backfill operation. Flag: `--max-sitemaps`.
+    /// Maximum number of sitemap documents to parse per map/backfill operation
+    /// (0 = unlimited). Flag: `--max-sitemaps`.
     pub max_sitemaps: usize,
 
     /// Enable Spider's built-in crawl-result caching. Flag: `--cache`.
