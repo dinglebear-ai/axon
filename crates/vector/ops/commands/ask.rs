@@ -69,7 +69,6 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
                 "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
                 "top_domains": ctx.top_domains,
                 "authority_ratio": ctx.authoritative_ratio,
-                "dropped_by_allowlist": ctx.dropped_by_allowlist,
             })
         } else {
             serde_json::Value::Null

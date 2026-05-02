@@ -287,7 +287,6 @@ pub struct AskDiagnostics {
     pub doc_fetch_concurrency: usize,
     pub top_domains: Vec<String>,
     pub authority_ratio: f64,
-    pub dropped_by_allowlist: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

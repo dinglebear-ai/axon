@@ -1140,7 +1140,6 @@ Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | — | Comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
-| `AXON_ASK_AUTHORITATIVE_ALLOWLIST` | — | Strict domain allowlist for retrieval candidates |
 
 #### MCP Transport
 

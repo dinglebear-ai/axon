@@ -154,7 +154,7 @@ fn context_built_log_format_is_valid() {
 }
 
 #[test]
-fn authoritative_allowlist_matches_exact_and_suffix_hosts() {
+fn authoritative_domains_match_exact_and_suffix_hosts() {
     let allow = vec!["docs.claude.com".to_string(), "openai.com".to_string()];
     assert!(url_matches_domain_list(
         "https://docs.claude.com/en/docs/claude-code/overview",

@@ -102,7 +102,6 @@ impl Default for Config {
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
-            ask_authoritative_allowlist: vec![],
             ask_min_citations_nontrivial: 2,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
@@ -279,10 +278,6 @@ impl fmt::Debug for Config {
             .field("ask_min_relevance_score", &self.ask_min_relevance_score)
             .field("ask_authoritative_domains", &self.ask_authoritative_domains)
             .field("ask_authoritative_boost", &self.ask_authoritative_boost)
-            .field(
-                "ask_authoritative_allowlist",
-                &self.ask_authoritative_allowlist,
-            )
             .field(
                 "ask_min_citations_nontrivial",
                 &self.ask_min_citations_nontrivial,

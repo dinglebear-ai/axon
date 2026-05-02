@@ -57,7 +57,7 @@ fn print_diagnostics(diag: &Option<crate::crates::services::types::AskDiagnostic
     };
 
     println!(
-        "  {} candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} authority_ratio={:.2} dropped_by_allowlist={}",
+        "  {} candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} authority_ratio={:.2}",
         muted("Diagnostics:"),
         diag.candidate_pool,
         diag.reranked_pool,
@@ -66,7 +66,6 @@ fn print_diagnostics(diag: &Option<crate::crates::services::types::AskDiagnostic
         diag.supplemental_selected,
         diag.context_chars,
         diag.authority_ratio,
-        diag.dropped_by_allowlist,
     );
 
     if !diag.top_domains.is_empty() {

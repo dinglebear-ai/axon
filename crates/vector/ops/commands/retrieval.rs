@@ -10,12 +10,10 @@ pub(crate) struct RetrievedCandidate {
 
 pub(crate) struct CandidateBuildResult {
     pub(crate) candidates: Vec<RetrievedCandidate>,
-    pub(crate) dropped_by_allowlist: usize,
 }
 
-pub(crate) struct CandidateBuildPolicy<'a> {
+pub(crate) struct CandidateBuildPolicy {
     pub(crate) allow_low_signal: bool,
-    pub(crate) authoritative_allowlist: &'a [String],
 }
 
 pub(crate) struct CandidateScorePolicy<'a> {
@@ -27,10 +25,9 @@ pub(crate) struct CandidateScorePolicy<'a> {
 
 pub(crate) fn build_candidates_from_hits(
     hits: Vec<qdrant::QdrantSearchHit>,
-    policy: &CandidateBuildPolicy<'_>,
+    policy: &CandidateBuildPolicy,
 ) -> CandidateBuildResult {
     let mut candidates = Vec::new();
-    let mut dropped_by_allowlist = 0usize;
     for hit in hits {
         let url = qdrant::payload_url_typed(&hit.payload).to_string();
         let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
@@ -38,10 +35,6 @@ pub(crate) fn build_candidates_from_hits(
             continue;
         }
         if !policy.allow_low_signal && ranking::is_low_signal_url(&url) {
-            continue;
-        }
-        if !url_matches_domain_list(&url, policy.authoritative_allowlist) {
-            dropped_by_allowlist += 1;
             continue;
         }
         let path = ranking::extract_path_from_url(&url);
@@ -60,10 +53,7 @@ pub(crate) fn build_candidates_from_hits(
             chunk_index: hit.payload.chunk_index,
         });
     }
-    CandidateBuildResult {
-        candidates,
-        dropped_by_allowlist,
-    }
+    CandidateBuildResult { candidates }
 }
 
 /// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).

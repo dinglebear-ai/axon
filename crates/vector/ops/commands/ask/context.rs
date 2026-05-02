@@ -26,7 +26,6 @@ pub(crate) struct AskContext {
     pub diagnostic_sources: Vec<String>,
     pub top_domains: Vec<String>,
     pub authoritative_ratio: f64,
-    pub dropped_by_allowlist: usize,
 }
 
 pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskContext> {
@@ -67,6 +66,5 @@ pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskCo
         diagnostic_sources: built.diagnostic_sources,
         top_domains: retrieval.top_domains,
         authoritative_ratio: retrieval.authoritative_ratio,
-        dropped_by_allowlist: retrieval.dropped_by_allowlist,
     })
 }

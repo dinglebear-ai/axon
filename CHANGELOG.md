@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-05-02
+
+### Removed
+- **Ask authoritative allowlist**: removed the `AXON_ASK_AUTHORITATIVE_ALLOWLIST` configuration knob and strict retrieval/citation allowlist behavior. Authoritative domains and boost remain as reranking signals only, so `ask` and `query` no longer drop candidates through an ask-only allowlist.
+
 ## [1.0.8] - 2026-05-02
 
 ### Changed

@@ -45,7 +45,6 @@ pub async fn query_results(
     let query_tokens = ranking::tokenize_query(query);
     let build_policy = CandidateBuildPolicy {
         allow_low_signal: query_allows_low_signal(&query_tokens, query),
-        authoritative_allowlist: &cfg.ask_authoritative_allowlist,
     };
     let built = build_candidates_from_hits(hits, &build_policy);
     if built.candidates.is_empty() {

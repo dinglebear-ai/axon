@@ -299,11 +299,6 @@ pub struct Config {
     /// Env: `AXON_ASK_AUTHORITATIVE_BOOST` (clamped 0.0–0.5). Default: 0.0.
     pub ask_authoritative_boost: f64,
 
-    /// Optional strict allowlist for ask retrieval candidate domains.
-    /// When non-empty, candidates outside this list are excluded.
-    /// Env: `AXON_ASK_AUTHORITATIVE_ALLOWLIST` (comma-separated). Default: empty.
-    pub ask_authoritative_allowlist: Vec<String>,
-
     /// Minimum unique citations required for non-trivial ask responses.
     /// Env: `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` (clamped 1–5). Default: 2.
     pub ask_min_citations_nontrivial: usize,

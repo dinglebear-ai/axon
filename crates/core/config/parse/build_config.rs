@@ -441,10 +441,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             0.0,
             0.5,
         ),
-        ask_authoritative_allowlist: env::var("AXON_ASK_AUTHORITATIVE_ALLOWLIST")
-            .ok()
-            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
-            .unwrap_or_default(),
         ask_min_citations_nontrivial: performance::env_usize_clamped(
             "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
             2,

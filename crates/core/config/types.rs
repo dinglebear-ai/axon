@@ -70,7 +70,6 @@ mod tests {
         assert!((cfg.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert!(cfg.ask_authoritative_domains.is_empty());
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);
-        assert!(cfg.ask_authoritative_allowlist.is_empty());
         assert_eq!(cfg.ask_min_citations_nontrivial, 2);
     }
 

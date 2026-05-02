@@ -17,7 +17,6 @@ pub(super) struct AskRetrieval {
     pub(super) retrieval_elapsed_ms: u128,
     pub(super) top_domains: Vec<String>,
     pub(super) authoritative_ratio: f64,
-    pub(super) dropped_by_allowlist: usize,
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
@@ -113,12 +112,8 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
 
-    let build_policy = CandidateBuildPolicy {
-        allow_low_signal,
-        authoritative_allowlist: &cfg.ask_authoritative_allowlist,
-    };
+    let build_policy = CandidateBuildPolicy { allow_low_signal };
     let primary = build_candidates_from_hits(hits, &build_policy);
-    let mut dropped_by_allowlist = primary.dropped_by_allowlist;
     let mut retrieved_candidates = primary.candidates;
 
     // Secondary keyword-form search: errors are swallowed since primary already
@@ -127,7 +122,6 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         match secondary_res {
             Ok(kw_hits) => {
                 let secondary = build_candidates_from_hits(kw_hits, &build_policy);
-                dropped_by_allowlist += secondary.dropped_by_allowlist;
                 retrieved_candidates = merge_candidates(retrieved_candidates, secondary.candidates);
             }
             Err(e) => log_debug(&format!(
@@ -167,7 +161,6 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         top_full_doc_indices: ranking::select_diverse_candidates(&reranked, cfg.ask_full_docs, 1),
         top_domains: top_domains(&reranked, 5),
         authoritative_ratio: authoritative_ratio(&reranked, &cfg.ask_authoritative_domains),
-        dropped_by_allowlist,
         candidates: candidates_only(&retrieved_candidates),
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
