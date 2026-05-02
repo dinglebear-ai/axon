@@ -55,27 +55,19 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     for result in &results {
         if cfg.json_output {
-            println!("{result}");
+            println!("{}", serde_json::to_string(result)?);
         } else {
             println!(
                 "  \u{2022} {}. {} [{:.3}] {}",
-                result["rank"].as_u64().unwrap_or(0),
+                result.rank,
                 status_text("completed"),
-                result["rerank_score"].as_f64().unwrap_or(0.0),
-                accent(result["source"].as_str().unwrap_or(""))
+                result.rerank_score,
+                accent(&result.source)
             );
-            println!("    {}", result["snippet"].as_str().unwrap_or(""));
+            println!("    {}", result.snippet);
             if cfg.ask_diagnostics {
-                println!(
-                    "    {} vector_score={:.3}",
-                    muted("diag"),
-                    result["score"].as_f64().unwrap_or(0.0)
-                );
-                println!(
-                    "    {} {}",
-                    muted("url"),
-                    result["url"].as_str().unwrap_or("")
-                );
+                println!("    {} vector_score={:.3}", muted("diag"), result.score);
+                println!("    {} {}", muted("url"), result.url);
             }
         }
     }

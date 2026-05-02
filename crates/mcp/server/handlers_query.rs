@@ -54,7 +54,7 @@ impl AxonMcpServer {
                 "query": query,
                 "limit": limit,
                 "offset": offset,
-                "results": result.results,
+                "results": serde_json::to_value(&result.results).map_err(|e| internal_error(format!("serialize query results: {e}")))?,
             }),
             InlineHint::Default,
         )
@@ -73,22 +73,6 @@ impl AxonMcpServer {
         let result = query_svc::retrieve(self.cfg.as_ref(), &target, opts)
             .await
             .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
-        // chunks is a Vec<Value> of 0 or 1 items; the actual Qdrant point count
-        // lives inside result.chunks[0]["chunk_count"], not in Vec::len().
-        let chunk_count = result
-            .chunks
-            .first()
-            .and_then(|c| c.get("chunk_count"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
-        let content = result
-            .chunks
-            .first()
-            .and_then(|c| c.get("content"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
         respond_with_mode(
             "retrieve",
             "retrieve",
@@ -96,8 +80,8 @@ impl AxonMcpServer {
             &format!("retrieve-{}", slugify(&target, 56)),
             serde_json::json!({
                 "url": target,
-                "chunks": chunk_count,
-                "content": content,
+                "chunks": result.chunk_count,
+                "content": result.content,
             }),
             InlineHint::AlwaysPath,
         )
@@ -303,7 +287,8 @@ impl AxonMcpServer {
             "ask",
             response_mode,
             &format!("ask-{}", slugify(&query, 56)),
-            result.payload,
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize ask result: {e}")))?,
             InlineHint::Fields(&["answer"]),
         )
         .await

@@ -111,15 +111,17 @@ pub(super) fn emit_empty_embed(
 
 pub(super) fn emit_embed_summary(
     cfg: &crate::crates::core::config::Config,
+    docs_embedded: usize,
     chunks_embedded: usize,
 ) {
     if cfg.json_output {
         return;
     }
     eprintln!(
-        "{} embedded {} chunks into {}",
+        "{} embedded {} chunks from {} docs into {}",
         symbol_for_status("completed"),
         chunks_embedded,
+        docs_embedded,
         accent(&cfg.collection)
     );
 }

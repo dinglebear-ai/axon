@@ -1,5 +1,9 @@
 use crate::crates::core::config::Config;
 use crate::crates::services::error::ServiceError;
+use crate::crates::vector::ops::commands::retrieval::{
+    CandidateBuildPolicy, CandidateScorePolicy, RetrievedCandidate, build_candidates_from_hits,
+    candidates_only, query_allows_low_signal, score_and_filter_candidates,
+};
 use crate::crates::vector::ops::source_display::display_source;
 use crate::crates::vector::ops::{qdrant, ranking, tei};
 use std::error::Error;
@@ -39,49 +43,21 @@ pub async fn query_results(
             }
         })?;
     let query_tokens = ranking::tokenize_query(query);
-    // Allow low-signal sources (session logs, file:// exports) only when the
-    // query explicitly requests them. Otherwise they pollute results with
-    // high-BM42-scoring noise (e.g. JSONL session exports full of mcp__ tool names).
-    let allow_low_signal = ranking::query_wants_low_signal_sources(&query_tokens, query);
-    let candidates_with_chunk_index: Vec<(ranking::AskCandidate, Option<i64>)> = hits
-        .into_iter()
-        .filter_map(|h| {
-            let url = qdrant::payload_url_typed(&h.payload).to_string();
-            let chunk_text = qdrant::payload_text_typed(&h.payload).to_string();
-            if url.is_empty() || (!allow_low_signal && ranking::is_low_signal_url(&url)) {
-                return None;
-            }
-            let path = ranking::extract_path_from_url(&url);
-            let url_tokens = ranking::tokenize_path_set(&path);
-            let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
-            let chunk_index = h.payload.chunk_index;
-            Some((
-                ranking::AskCandidate {
-                    score: h.score,
-                    url,
-                    path,
-                    chunk_text,
-                    url_tokens,
-                    chunk_tokens,
-                    rerank_score: h.score,
-                },
-                chunk_index,
-            ))
-        })
-        .collect();
-    let candidates = candidates_with_chunk_index
-        .iter()
-        .map(|(candidate, _)| candidate.clone())
-        .collect::<Vec<_>>();
-    if candidates.is_empty() {
+    let build_policy = CandidateBuildPolicy {
+        allow_low_signal: query_allows_low_signal(&query_tokens, query),
+        authoritative_allowlist: &cfg.ask_authoritative_allowlist,
+    };
+    let built = build_candidates_from_hits(hits, &build_policy);
+    if built.candidates.is_empty() {
         return Ok(Vec::new());
     }
-    let reranked = ranking::rerank_ask_candidates(
-        &candidates,
-        &query_tokens,
-        &cfg.ask_authoritative_domains,
-        cfg.ask_authoritative_boost,
-    );
+    let score_policy = query_score_policy(cfg);
+    let reranked_with_metadata =
+        score_and_filter_candidates(&built.candidates, &query_tokens, &score_policy);
+    if reranked_with_metadata.is_empty() {
+        return Ok(Vec::new());
+    }
+    let reranked = candidates_only(&reranked_with_metadata);
     let selected_indices =
         ranking::select_diverse_candidates(&reranked, (limit + offset).max(1), 2);
 
@@ -91,7 +67,8 @@ pub async fn query_results(
         .take(limit)
         .enumerate()
         .map(|(i, hit_idx)| {
-            let h = &reranked[hit_idx];
+            let selected = &reranked_with_metadata[hit_idx];
+            let h = &selected.candidate;
             let url = &h.url;
             let source = display_source(url);
             let preview_idx =
@@ -105,31 +82,34 @@ pub async fn query_results(
                 "url": url,
                 "source": source,
                 "snippet": snippet,
-                "chunk_index": chunk_index_for_candidate(&candidates_with_chunk_index, h)
+                "chunk_index": chunk_index_for_candidate(selected)
             })
         })
         .collect::<Vec<_>>())
 }
 
-fn chunk_index_for_candidate(
-    candidates: &[(ranking::AskCandidate, Option<i64>)],
-    selected: &ranking::AskCandidate,
-) -> serde_json::Value {
-    candidates
-        .iter()
-        .find(|(candidate, _)| {
-            candidate.url == selected.url && candidate.chunk_text == selected.chunk_text
-        })
-        .and_then(|(_, chunk_index)| *chunk_index)
+fn query_score_policy(cfg: &Config) -> CandidateScorePolicy<'_> {
+    CandidateScorePolicy {
+        authoritative_domains: &cfg.ask_authoritative_domains,
+        authoritative_boost: cfg.ask_authoritative_boost,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    }
+}
+
+fn chunk_index_for_candidate(selected: &RetrievedCandidate) -> serde_json::Value {
+    selected
+        .chunk_index
         .map_or(serde_json::Value::Null, serde_json::Value::from)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::chunk_index_for_candidate;
-    use crate::crates::vector::ops::ranking::AskCandidate;
+    use super::{chunk_index_for_candidate, query_score_policy};
+    use crate::crates::core::config::Config;
+    use crate::crates::vector::ops::commands::retrieval::RetrievedCandidate;
+    use crate::crates::vector::ops::ranking;
     use crate::crates::vector::ops::tei::{QUERY_INSTRUCTION, prepend_query_instruction};
-    use std::collections::HashSet;
 
     #[test]
     fn query_instruction_is_nonempty_and_ends_with_query_colon() {
@@ -164,21 +144,20 @@ mod tests {
 
     #[test]
     fn chunk_index_for_candidate_returns_payload_index() {
-        let candidate = AskCandidate {
-            score: 0.9,
-            url: "https://example.com/a".to_string(),
-            path: "/a".to_string(),
-            chunk_text: "chunk body".to_string(),
-            url_tokens: HashSet::new(),
-            chunk_tokens: HashSet::new(),
-            rerank_score: 0.9,
+        let selected = RetrievedCandidate {
+            candidate: ranking::AskCandidate {
+                score: 0.9,
+                url: "https://example.com/a".to_string(),
+                path: "/a".to_string(),
+                chunk_text: "chunk body".to_string(),
+                url_tokens: std::collections::HashSet::new(),
+                chunk_tokens: std::collections::HashSet::new(),
+                rerank_score: 0.9,
+            },
+            chunk_index: Some(42),
         };
-        let candidates = vec![(candidate.clone(), Some(42))];
 
-        assert_eq!(
-            chunk_index_for_candidate(&candidates, &candidate),
-            serde_json::json!(42)
-        );
+        assert_eq!(chunk_index_for_candidate(&selected), serde_json::json!(42));
     }
 
     #[test]
@@ -186,5 +165,20 @@ mod tests {
         let offset = 20usize;
         let ranks = (0..3).map(|i| offset + i + 1).collect::<Vec<_>>();
         assert_eq!(ranks, vec![21, 22, 23]);
+    }
+
+    #[test]
+    fn query_score_policy_does_not_apply_ask_threshold() {
+        let mut cfg = Config {
+            ask_min_relevance_score: 0.45,
+            ..Config::default()
+        };
+        cfg.ask_authoritative_boost = 0.25;
+
+        let policy = query_score_policy(&cfg);
+
+        assert_eq!(policy.min_relevance_score, None);
+        assert!(policy.require_topical_overlap);
+        assert_eq!(policy.authoritative_boost, 0.25);
     }
 }

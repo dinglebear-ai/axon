@@ -1,4 +1,5 @@
 pub mod cancel;
+pub mod config_snapshot;
 pub mod ops;
 pub mod query;
 pub mod store;

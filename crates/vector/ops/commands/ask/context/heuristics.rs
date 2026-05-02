@@ -1,5 +1,8 @@
+#[cfg(test)]
 use crate::crates::vector::ops::ranking;
+#[cfg(test)]
 use spider::url::Url;
+#[cfg(test)]
 use std::collections::HashMap;
 
 pub(super) const SUPPLEMENTAL_CONTEXT_BUDGET_PCT: usize = 85;
@@ -43,10 +46,12 @@ pub(super) fn should_inject_supplemental(
     within_budget && coverage_needs_backfill
 }
 
+#[cfg(test)]
 pub(super) fn query_requests_low_signal_sources(query_tokens: &[String], raw_query: &str) -> bool {
     ranking::query_wants_low_signal_sources(query_tokens, raw_query)
 }
 
+#[cfg(test)]
 pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {
     if domains.is_empty() {
         return true;
@@ -63,12 +68,14 @@ pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {
     })
 }
 
+#[cfg(test)]
 fn host_from_url(url: &str) -> Option<String> {
     Url::parse(url)
         .ok()
         .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
 }
 
+#[cfg(test)]
 pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) -> Vec<String> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for candidate in candidates {
@@ -87,6 +94,7 @@ pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) ->
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains: &[String]) -> f64 {
     if candidates.is_empty() || domains.is_empty() {
         return 0.0;
@@ -98,6 +106,7 @@ pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains:
     authoritative as f64 / candidates.len() as f64
 }
 
+#[cfg(test)]
 fn candidate_topical_overlap_count(
     candidate: &ranking::AskCandidate,
     query_tokens: &[String],
@@ -111,6 +120,7 @@ fn candidate_topical_overlap_count(
         .count()
 }
 
+#[cfg(test)]
 pub(super) fn candidate_has_topical_overlap(
     candidate: &ranking::AskCandidate,
     query_tokens: &[String],

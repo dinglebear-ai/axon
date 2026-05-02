@@ -7,6 +7,7 @@ use crate::crates::core::content::{
 use crate::crates::core::logging::log_done;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::extract::start_extract_job;
+use crate::crates::jobs::lite::config_snapshot::extract_config_json;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -141,14 +142,7 @@ pub async fn extract_start_with_context(
     // The previous `if !cfg.lite_mode` branch called start_extract_job() which
     // opened a fresh SQLite pool per call (re-running migrations) and never
     // called notify().
-    let config_json = prompt
-        .map(|p| serde_json::json!({ "prompt": p }).to_string())
-        .unwrap_or_else(|| {
-            cfg.query
-                .as_ref()
-                .map(|p| serde_json::json!({ "prompt": p }).to_string())
-                .unwrap_or_else(|| "{}".to_string())
-        });
+    let config_json = extract_config_json(cfg, prompt.or_else(|| cfg.query.clone()))?;
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Extract {

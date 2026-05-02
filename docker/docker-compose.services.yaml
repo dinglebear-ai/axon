@@ -34,7 +34,7 @@ services:
       - "53334:6334"  # gRPC
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
-      - ./docker/qdrant/production.yaml:/qdrant/config/production.yaml:ro
+      - ./qdrant/production.yaml:/qdrant/config/production.yaml:ro
     deploy:
       resources:
         limits:

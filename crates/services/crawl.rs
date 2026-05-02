@@ -1,6 +1,7 @@
 use crate::crates::core::config::Config;
 use crate::crates::core::content::url_to_domain;
 use crate::crates::jobs::backend::JobKind;
+use crate::crates::jobs::lite::config_snapshot::lite_config_snapshot_json;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::jobs as job_service;
@@ -115,7 +116,7 @@ pub async fn crawl_start_with_context(
             .jobs
             .enqueue(crate::crates::jobs::backend::JobPayload::Crawl {
                 url: url.clone(),
-                config_json: "{}".to_string(),
+                config_json: lite_config_snapshot_json(cfg)?,
             })
             .await
             .map_err(|e| -> Box<dyn Error> { e })?;

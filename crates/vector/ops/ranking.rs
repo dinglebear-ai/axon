@@ -77,7 +77,30 @@ pub fn score_ask_candidates(
             .collect();
     }
     compute_scored_indices(
-        candidates,
+        candidates.iter().enumerate(),
+        query_tokens,
+        authoritative_domains,
+        authoritative_boost,
+    )
+}
+
+/// Score borrowed candidates without cloning, returning `(index, rerank_score)`
+/// pairs sorted by score descending.
+pub fn score_ask_candidate_refs(
+    candidates: &[&AskCandidate],
+    query_tokens: &[String],
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> Vec<(usize, f64)> {
+    if query_tokens.is_empty() {
+        return candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, c.score))
+            .collect();
+    }
+    compute_scored_indices(
+        candidates.iter().enumerate().map(|(i, c)| (i, *c)),
         query_tokens,
         authoritative_domains,
         authoritative_boost,
@@ -100,7 +123,7 @@ pub fn rerank_ask_candidates(
     }
 
     let scored = compute_scored_indices(
-        candidates,
+        candidates.iter().enumerate(),
         query_tokens,
         authoritative_domains,
         authoritative_boost,
@@ -121,8 +144,8 @@ pub fn rerank_ask_candidates(
 /// Returns `(index, rerank_score)` pairs sorted by score descending. Pure
 /// computation over `&[AskCandidate]` — no allocations beyond the result Vec
 /// and the pre-normalized domain list.
-fn compute_scored_indices(
-    candidates: &[AskCandidate],
+fn compute_scored_indices<'a>(
+    candidates: impl IntoIterator<Item = (usize, &'a AskCandidate)>,
     query_tokens: &[String],
     authoritative_domains: &[String],
     authoritative_boost: f64,
@@ -140,8 +163,7 @@ fn compute_scored_indices(
         .collect();
 
     let mut scored: Vec<(usize, f64)> = candidates
-        .iter()
-        .enumerate()
+        .into_iter()
         .map(|(i, candidate)| {
             let mut lexical_boost = 0.0f64;
             for token in query_tokens {

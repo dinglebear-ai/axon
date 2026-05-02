@@ -16,11 +16,12 @@ pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = query_service::evaluate(cfg, &question).await?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result.payload)?);
+        println!("{}", serde_json::to_string_pretty(&result)?);
         return Ok(());
     }
 
-    print_evaluate_output(cfg, &result.payload, &question)?;
+    let payload = serde_json::to_value(&result)?;
+    print_evaluate_output(cfg, &payload, &question)?;
     Ok(())
 }
 

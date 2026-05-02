@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-05-02
+
+### Changed
+- **RAG service contracts**: query, retrieve, ask, and evaluate service results now use typed structs at service boundaries with JSON serialization deferred to CLI/MCP entrypoints.
+- **Shared RAG retrieval**: query and ask now share candidate construction, dedupe, scoring, and filtering helpers while preserving query-specific threshold behavior.
+- **Lite job replay**: persisted lite job rows now carry non-secret config snapshots, and workers reconstruct effective crawl/embed/extract/ingest config from row data instead of relying on process defaults.
+
 ## [1.0.7] - 2026-04-30
 
 ### Added

@@ -1,6 +1,7 @@
 pub(crate) mod ask;
 mod evaluate;
 mod query;
+mod retrieval;
 pub(crate) mod streaming;
 mod suggest;
 

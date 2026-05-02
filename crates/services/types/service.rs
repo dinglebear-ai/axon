@@ -251,33 +251,113 @@ pub struct DedupeResult {
 
 // ── Query / retrieve / ask / evaluate / suggest ──────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct QueryHit {
+    pub rank: u64,
+    pub score: f64,
+    pub rerank_score: f64,
+    pub url: String,
+    pub source: String,
+    pub snippet: String,
+    pub chunk_index: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QueryResult {
-    pub results: Vec<serde_json::Value>,
+    pub results: Vec<QueryHit>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RetrieveResult {
-    pub chunks: Vec<serde_json::Value>,
+    pub chunk_count: usize,
+    pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskDiagnostics {
+    pub candidate_pool: usize,
+    pub reranked_pool: usize,
+    pub chunks_selected: usize,
+    pub full_docs_selected: usize,
+    pub supplemental_selected: usize,
+    pub context_chars: usize,
+    pub graph_entities: usize,
+    pub graph_context_chars: usize,
+    pub min_relevance_score: f64,
+    pub doc_fetch_concurrency: usize,
+    pub top_domains: Vec<String>,
+    pub authority_ratio: f64,
+    pub dropped_by_allowlist: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskTiming {
+    pub retrieval: u128,
+    pub context_build: u128,
+    pub graph: u128,
+    pub llm: u128,
+    pub total: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AskResult {
-    pub payload: serde_json::Value,
+    pub query: String,
+    pub answer: String,
+    pub diagnostics: Option<AskDiagnostics>,
+    pub timing_ms: AskTiming,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EvaluateDiagnostics {
+    pub candidate_pool: usize,
+    pub reranked_pool: usize,
+    pub chunks_selected: usize,
+    pub full_docs_selected: usize,
+    pub supplemental_selected: usize,
+    pub context_chars: usize,
+    pub min_relevance_score: f64,
+    pub doc_fetch_concurrency: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EvaluateTiming {
+    pub retrieval: u128,
+    pub context_build: u128,
+    pub rag_llm: u128,
+    pub baseline_llm: u128,
+    pub research_elapsed_ms: u128,
+    pub analysis_llm_ms: u128,
+    pub total: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct EvaluateCrawlEnqueueOutcome {
+    pub url: String,
+    pub job_id: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvaluateResult {
-    pub payload: serde_json::Value,
+    pub query: String,
+    pub rag_answer: String,
+    pub baseline_answer: String,
+    pub analysis_answer: String,
+    pub source_urls: Vec<String>,
+    pub crawl_suggestions: Vec<Suggestion>,
+    pub crawl_enqueue_outcomes: Vec<EvaluateCrawlEnqueueOutcome>,
+    pub ref_chunk_count: usize,
+    pub diagnostics: Option<EvaluateDiagnostics>,
+    pub timing_ms: EvaluateTiming,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Suggestion {
     pub url: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SuggestResult {
     pub suggestions: Vec<Suggestion>,
 }

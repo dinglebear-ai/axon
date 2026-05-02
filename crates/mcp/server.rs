@@ -72,6 +72,16 @@ impl AxonMcpServer {
         }
     }
 
+    fn new_with_service_context_cell(
+        cfg: Config,
+        service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    ) -> Self {
+        Self {
+            cfg: Arc::new(cfg),
+            service_context,
+        }
+    }
+
     pub(super) async fn base_service_context(
         &self,
     ) -> Result<Arc<ServiceContext>, Box<dyn std::error::Error + Send + Sync>> {
@@ -324,7 +334,12 @@ impl ServerHandler for AxonMcpServer {
 }
 
 pub async fn run_stdio_server(cfg: Config) -> Result<(), Box<dyn std::error::Error>> {
-    let service = AxonMcpServer::new(cfg).serve(stdio()).await?;
+    let server = AxonMcpServer::new(cfg);
+    server
+        .base_service_context()
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
+    let service = server.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }
@@ -336,10 +351,20 @@ pub async fn run_http_server(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cors_cfg = Arc::new(cfg.clone());
     let cfg_arc = Arc::new(cfg);
+    let service_context = Arc::new(OnceCell::new());
+    AxonMcpServer::new_with_service_context_cell((*cfg_arc).clone(), Arc::clone(&service_context))
+        .base_service_context()
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
 
     let mcp_service: StreamableHttpService<AxonMcpServer, LocalSessionManager> =
         StreamableHttpService::new(
-            move || Ok(AxonMcpServer::new((*cfg_arc).clone())),
+            move || {
+                Ok(AxonMcpServer::new_with_service_context_cell(
+                    (*cfg_arc).clone(),
+                    Arc::clone(&service_context),
+                ))
+            },
             Default::default(),
             {
                 let mut cfg = StreamableHttpServerConfig::default();

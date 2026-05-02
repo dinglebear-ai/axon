@@ -7,6 +7,7 @@ pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{
     count_ingest_jobs, get_ingest_job, list_ingest_jobs, start_ingest_job,
 };
+use crate::crates::jobs::lite::config_snapshot::ingest_config_json;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -47,7 +48,7 @@ pub async fn ingest_start(
 }
 
 pub async fn ingest_start_with_context(
-    _cfg: &Config,
+    cfg: &Config,
     source: IngestSource,
     service_context: &ServiceContext,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
@@ -58,7 +59,7 @@ pub async fn ingest_start_with_context(
     // called notify().
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
-    let config_json = serde_json::to_string(&source)?;
+    let config_json = ingest_config_json(cfg, &source)?;
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Ingest {
@@ -327,6 +328,7 @@ mod tests {
     use super::*;
     use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
+    use crate::crates::jobs::lite::config_snapshot::decode_ingest_job_config;
     use crate::crates::services::context::ServiceContext;
     use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
@@ -459,8 +461,8 @@ mod tests {
 
         assert_eq!(source_type, "sessions");
         assert_eq!(target, "claude,gemini:axon-rust");
-        let decoded: IngestSource =
-            serde_json::from_str(config_json).expect("decode source config");
+        let (decoded, effective_cfg) =
+            decode_ingest_job_config(&cfg, config_json).expect("decode source config");
         assert!(matches!(
             decoded,
             IngestSource::Sessions {
@@ -470,5 +472,10 @@ mod tests {
                 sessions_project: Some(ref project),
             } if project == "axon-rust"
         ));
+        assert_eq!(effective_cfg.collection, cfg.collection);
+        assert!(effective_cfg.sessions_claude);
+        assert!(!effective_cfg.sessions_codex);
+        assert!(effective_cfg.sessions_gemini);
+        assert_eq!(effective_cfg.sessions_project.as_deref(), Some("axon-rust"));
     }
 }

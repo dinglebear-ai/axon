@@ -1,10 +1,11 @@
-use super::heuristics::{
-    authoritative_ratio, candidate_has_topical_overlap, query_requests_low_signal_sources,
-    top_domains, url_matches_domain_list,
-};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_debug;
 use crate::crates::services::error::ServiceError;
+use crate::crates::vector::ops::commands::retrieval::{
+    CandidateBuildPolicy, CandidateScorePolicy, authoritative_ratio, build_candidates_from_hits,
+    candidates_only, merge_candidates, query_allows_low_signal, score_and_filter_candidates,
+    top_domains,
+};
 use crate::crates::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
@@ -17,79 +18,6 @@ pub(super) struct AskRetrieval {
     pub(super) top_domains: Vec<String>,
     pub(super) authoritative_ratio: f64,
     pub(super) dropped_by_allowlist: usize,
-}
-
-fn build_candidates_from_hits(
-    hits: Vec<qdrant::QdrantSearchHit>,
-    allow_low_signal: bool,
-    allowlist: &[String],
-    dropped: &mut usize,
-) -> Vec<ranking::AskCandidate> {
-    let mut candidates = Vec::new();
-    for hit in hits {
-        let url = qdrant::payload_url_typed(&hit.payload).to_string();
-        let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
-        if url.is_empty() || chunk_text.len() < 40 {
-            continue;
-        }
-        if !allow_low_signal && ranking::is_low_signal_url(&url) {
-            continue;
-        }
-        if !allowlist.is_empty() && !url_matches_domain_list(&url, allowlist) {
-            *dropped += 1;
-            continue;
-        }
-        let path = ranking::extract_path_from_url(&url);
-        let url_tokens = ranking::tokenize_path_set(&path);
-        let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
-        candidates.push(ranking::AskCandidate {
-            score: hit.score,
-            url,
-            path,
-            chunk_text,
-            url_tokens,
-            chunk_tokens,
-            rerank_score: hit.score,
-        });
-    }
-    candidates
-}
-
-/// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).
-/// Primary candidates win; secondary only added if the chunk is not already present.
-///
-/// Primary itself is deduped first — a single chunk can return at slightly
-/// different RRF positions across prefetch arms (dense + sparse), so without
-/// a dedupe pass the primary list can contain (url, chunk-prefix) duplicates
-/// that pass through merge unchanged. (bd axon_rust-d71.10 / H6)
-fn merge_candidates(
-    primary: Vec<ranking::AskCandidate>,
-    secondary: Vec<ranking::AskCandidate>,
-) -> Vec<ranking::AskCandidate> {
-    fn prefix_key(url: &str, chunk_text: &str) -> String {
-        // Truncate at 80 *bytes* but step back to a UTF-8 char boundary so multibyte
-        // characters (e.g. Japanese) don't trigger a byte-slice panic.
-        let mut end = chunk_text.len().min(80);
-        while end > 0 && !chunk_text.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}|{}", url, &chunk_text[..end])
-    }
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut deduped: Vec<ranking::AskCandidate> = Vec::with_capacity(primary.len());
-    for c in primary {
-        let key = prefix_key(&c.url, &c.chunk_text);
-        if seen.insert(key) {
-            deduped.push(c);
-        }
-    }
-    for c in secondary {
-        let key = prefix_key(&c.url, &c.chunk_text);
-        if seen.insert(key) {
-            deduped.push(c);
-        }
-    }
-    deduped
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
@@ -122,7 +50,7 @@ fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> any
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let query_tokens = ranking::tokenize_query(query);
-    let allow_low_signal = query_requests_low_signal_sources(&query_tokens, query);
+    let allow_low_signal = query_allows_low_signal(&query_tokens, query);
 
     // Dual-embedding: embed both the NL question and a keyword form in a single TEI
     // batch call. This improves recall for NL queries whose embedding drifts from
@@ -185,26 +113,22 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
 
-    let mut dropped_by_allowlist = 0usize;
-    let mut candidates = build_candidates_from_hits(
-        hits,
+    let build_policy = CandidateBuildPolicy {
         allow_low_signal,
-        &cfg.ask_authoritative_allowlist,
-        &mut dropped_by_allowlist,
-    );
+        authoritative_allowlist: &cfg.ask_authoritative_allowlist,
+    };
+    let primary = build_candidates_from_hits(hits, &build_policy);
+    let mut dropped_by_allowlist = primary.dropped_by_allowlist;
+    let mut retrieved_candidates = primary.candidates;
 
     // Secondary keyword-form search: errors are swallowed since primary already
     // succeeded.
     if let Some(secondary_res) = secondary_res {
         match secondary_res {
             Ok(kw_hits) => {
-                let secondary = build_candidates_from_hits(
-                    kw_hits,
-                    allow_low_signal,
-                    &cfg.ask_authoritative_allowlist,
-                    &mut dropped_by_allowlist,
-                );
-                candidates = merge_candidates(candidates, secondary);
+                let secondary = build_candidates_from_hits(kw_hits, &build_policy);
+                dropped_by_allowlist += secondary.dropped_by_allowlist;
+                retrieved_candidates = merge_candidates(retrieved_candidates, secondary.candidates);
             }
             Err(e) => log_debug(&format!(
                 "ask: keyword search failed (continuing with NL only): {e}"
@@ -212,31 +136,19 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         }
     }
 
-    if candidates.is_empty() {
+    if retrieved_candidates.is_empty() {
         return Err(anyhow!("No relevant documents found for ask query"));
     }
 
-    // Score first (no clone), filter by threshold + topical overlap, THEN
-    // materialize only the surviving candidates. Pre-d71.22 this cloned all
-    // ~150 candidates (~1 MB) only to immediately drop most of them.
-    let scored = ranking::score_ask_candidates(
-        &candidates,
-        &query_tokens,
-        &cfg.ask_authoritative_domains,
-        cfg.ask_authoritative_boost,
-    );
-    let reranked: Vec<ranking::AskCandidate> = scored
-        .into_iter()
-        .filter(|(idx, score)| {
-            *score >= cfg.ask_min_relevance_score
-                && candidate_has_topical_overlap(&candidates[*idx], &query_tokens)
-        })
-        .map(|(idx, score)| {
-            let mut c = candidates[idx].clone();
-            c.rerank_score = score;
-            c
-        })
-        .collect();
+    let score_policy = CandidateScorePolicy {
+        authoritative_domains: &cfg.ask_authoritative_domains,
+        authoritative_boost: cfg.ask_authoritative_boost,
+        min_relevance_score: Some(cfg.ask_min_relevance_score),
+        require_topical_overlap: true,
+    };
+    let reranked_candidates =
+        score_and_filter_candidates(&retrieved_candidates, &query_tokens, &score_policy);
+    let reranked = candidates_only(&reranked_candidates);
     if reranked.is_empty() {
         return Err(anyhow!(
             "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
@@ -246,7 +158,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
 
     log_debug(&format!(
         "ask context_built candidates_retrieved={} candidates_after_score_filter={} candidates_selected={}",
-        candidates.len(),
+        retrieved_candidates.len(),
         reranked.len(),
         reranked.len().min(cfg.ask_chunk_limit),
     ));
@@ -256,72 +168,8 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         top_domains: top_domains(&reranked, 5),
         authoritative_ratio: authoritative_ratio(&reranked, &cfg.ask_authoritative_domains),
         dropped_by_allowlist,
-        candidates,
+        candidates: candidates_only(&retrieved_candidates),
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::HashSet;
-
-    fn make_candidate(url: &str, chunk: &str) -> ranking::AskCandidate {
-        ranking::AskCandidate {
-            score: 0.8,
-            url: url.to_string(),
-            path: "/p".to_string(),
-            chunk_text: chunk.to_string(),
-            url_tokens: HashSet::new(),
-            chunk_tokens: HashSet::new(),
-            rerank_score: 0.5,
-        }
-    }
-
-    #[test]
-    fn merge_candidates_dedupes_within_primary() {
-        // Single chunk landing twice in the primary list (e.g. via dense + sparse
-        // arms inside one prefetch result). bd axon_rust-d71.10 / H6.
-        let primary = vec![
-            make_candidate("https://a.test/p", "alpha bravo charlie"),
-            make_candidate("https://a.test/p", "alpha bravo charlie"),
-            make_candidate("https://b.test/p", "delta echo foxtrot"),
-        ];
-        let merged = merge_candidates(primary, vec![]);
-        assert_eq!(merged.len(), 2, "primary duplicates must be deduped");
-    }
-
-    #[test]
-    fn merge_candidates_keeps_distinct_urls_with_same_chunk() {
-        let primary = vec![make_candidate("https://a.test/p", "shared body")];
-        let secondary = vec![make_candidate("https://b.test/p", "shared body")];
-        let merged = merge_candidates(primary, secondary);
-        assert_eq!(merged.len(), 2);
-    }
-
-    #[test]
-    fn merge_candidates_skips_secondary_when_present_in_primary() {
-        let primary = vec![make_candidate("https://a.test/p", "same chunk text")];
-        let secondary = vec![make_candidate("https://a.test/p", "same chunk text")];
-        let merged = merge_candidates(primary, secondary);
-        assert_eq!(merged.len(), 1);
-    }
-
-    #[test]
-    fn merge_candidates_handles_multibyte_chunk_prefix() {
-        // A multibyte char straddling the 80-byte truncation boundary must not
-        // panic (regression for streaming UTF-8 boundary panic class).
-        let prefix = "あ".repeat(40); // 120 bytes UTF-8, ~80 bytes is mid-char
-        let primary = vec![make_candidate("https://a.test/p", &prefix)];
-        let secondary = vec![make_candidate("https://a.test/p", &prefix)];
-        let merged = merge_candidates(primary, secondary);
-        assert_eq!(merged.len(), 1);
-    }
-
-    #[test]
-    fn merge_candidates_empty_inputs_return_empty() {
-        let merged = merge_candidates(vec![], vec![]);
-        assert!(merged.is_empty());
-    }
 }

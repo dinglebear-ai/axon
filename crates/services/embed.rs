@@ -2,6 +2,7 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{JobKind, JobPayload};
+use crate::crates::jobs::lite::config_snapshot::lite_config_snapshot_json;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::ServiceEvent;
 use crate::crates::services::jobs as job_service;
@@ -87,7 +88,7 @@ pub async fn embed_start_with_context(
         .jobs
         .enqueue(JobPayload::Embed {
             input: input.to_string(),
-            config_json: "{}".to_string(),
+            config_json: lite_config_snapshot_json(cfg)?,
         })
         .await
         .map_err(|e| -> Box<dyn Error> { e })?;

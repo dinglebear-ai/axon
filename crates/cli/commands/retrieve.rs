@@ -15,15 +15,7 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let opts = RetrieveOptions { max_points: None };
     let result = query_svc::retrieve(cfg, target, opts).await?;
 
-    let first_chunk = result.chunks.first();
-    let chunk_count = first_chunk
-        .and_then(|c| c["chunk_count"].as_u64())
-        .unwrap_or(0) as usize;
-    let content = first_chunk
-        .and_then(|c| c["content"].as_str())
-        .unwrap_or("");
-
-    if chunk_count == 0 {
+    if result.chunk_count == 0 {
         return Err(format!(
             "no content found for URL: {target} — run 'axon sources' to list indexed URLs"
         )
@@ -35,14 +27,14 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "url": target,
-                "chunks": chunk_count,
-                "content": content.trim()
+                "chunks": result.chunk_count,
+                "content": result.content.trim()
             }))?
         );
     } else {
         println!("{}", primary(&format!("Retrieve Result for {target}")));
-        println!("{} {}\n", muted("Chunks:"), chunk_count);
-        println!("{}", content.trim());
+        println!("{} {}\n", muted("Chunks:"), result.chunk_count);
+        println!("{}", result.content.trim());
     }
 
     Ok(())

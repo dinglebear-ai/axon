@@ -25,61 +25,55 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
             return Err(err);
         }
     };
-    let payload = &result.payload;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(payload)?);
+        println!("{}", serde_json::to_string_pretty(&result)?);
         return Ok(());
     }
 
     println!("{}", primary("Conversation"));
     println!("  {} {}", primary("You:"), query);
+    println!("  {} {}", primary("Assistant:"), result.answer);
+
     println!(
-        "  {} {}",
-        primary("Assistant:"),
-        payload["answer"].as_str().unwrap_or("")
+        "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
+        muted("Timing:"),
+        result.timing_ms.retrieval,
+        result.timing_ms.context_build,
+        result.timing_ms.llm,
+        result.timing_ms.total,
     );
 
-    if let Some(timing) = payload.get("timing_ms") {
-        println!(
-            "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
-            muted("Timing:"),
-            timing["retrieval"].as_u64().unwrap_or(0),
-            timing["context_build"].as_u64().unwrap_or(0),
-            timing["llm"].as_u64().unwrap_or(0),
-            timing["total"].as_u64().unwrap_or(0),
-        );
-    }
-
     if cfg.ask_diagnostics {
-        print_diagnostics(payload);
+        print_diagnostics(&result.diagnostics);
     }
 
     Ok(())
 }
 
-fn print_diagnostics(payload: &serde_json::Value) {
-    let Some(diag) = payload.get("diagnostics").filter(|d| !d.is_null()) else {
+fn print_diagnostics(diag: &Option<crate::crates::services::types::AskDiagnostics>) {
+    let Some(diag) = diag else {
         return;
     };
 
     println!(
         "  {} candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} authority_ratio={:.2} dropped_by_allowlist={}",
         muted("Diagnostics:"),
-        diag["candidate_pool"].as_u64().unwrap_or(0),
-        diag["reranked_pool"].as_u64().unwrap_or(0),
-        diag["chunks_selected"].as_u64().unwrap_or(0),
-        diag["full_docs_selected"].as_u64().unwrap_or(0),
-        diag["supplemental_selected"].as_u64().unwrap_or(0),
-        diag["context_chars"].as_u64().unwrap_or(0),
-        diag["authority_ratio"].as_f64().unwrap_or(0.0),
-        diag["dropped_by_allowlist"].as_u64().unwrap_or(0),
+        diag.candidate_pool,
+        diag.reranked_pool,
+        diag.chunks_selected,
+        diag.full_docs_selected,
+        diag.supplemental_selected,
+        diag.context_chars,
+        diag.authority_ratio,
+        diag.dropped_by_allowlist,
     );
 
-    if let Some(domains) = diag["top_domains"].as_array() {
-        let domain_list: Vec<&str> = domains.iter().filter_map(|d| d.as_str()).collect();
-        if !domain_list.is_empty() {
-            println!("  {} {}", muted("Top domains:"), domain_list.join(", "));
-        }
+    if !diag.top_domains.is_empty() {
+        println!(
+            "  {} {}",
+            muted("Top domains:"),
+            diag.top_domains.join(", ")
+        );
     }
 }
