@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-05-02
+
+### Fixed
+- **Lite job replay review fixes**: versioned lite job snapshots now exactly replay submitted `None` option fields, preserve job-critical custom headers, Chrome proxy, and ACP adapter args, and omit credential-bearing endpoint URLs from public `config_json` while falling back to process config for those endpoints.
+- **Monolith allowlist tracking**: the current extraction-sprint allowlist extension now references its review follow-up bead so the policy waiver remains auditable.
+
 ## [1.0.9] - 2026-05-02
 
 ### Removed

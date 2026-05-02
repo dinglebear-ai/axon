@@ -10,7 +10,7 @@
 #   crates/core/massive_module.rs  # expires: 2026-03-09
 
 # Pulse shell redesign -- split pending, needs extraction sprint (extended 2026-03-23)
-# Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30 due to scope)
+# Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30; tracked by axon_rust-cr5.7.6)
 apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-06-09 | owner: jmagar | split: job-detail/{header,timeline,artifacts}.tsx
 apps/web/components/shell/axon-shell-state.ts  # expires: 2026-06-09 | owner: jmagar | split: shell-state/{pane,mobile,actions}.ts
 crates/cli/commands/common.rs  # expires: 2026-06-09 | owner: jmagar | split: common/{args,output,progress}.rs
@@ -18,7 +18,7 @@ crates/jobs/refresh/url_processor.rs  # expires: 2026-06-09 | owner: jmagar | sp
 apps/web/hooks/ws-messages/provider.ts  # expires: 2026-06-09 | owner: jmagar | split: ws-messages/{provider,reducer,types}.ts
 
 # Oversized Rust files pending extraction sprint -- added 2026-03-23
-# Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30 due to scope)
+# Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30; tracked by axon_rust-cr5.7.6)
 crates/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
 crates/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
 crates/core/config/parse/build_config.rs  # expires: 2026-06-09 | owner: jmagar | split: build_config/{crawl,embed,jobs}.rs

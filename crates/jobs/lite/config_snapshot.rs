@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use spider::url::Url;
 
 use crate::crates::core::config::{Config, RenderMode, ScrapeFormat};
 use crate::crates::jobs::ingest::IngestSource;
@@ -8,6 +9,7 @@ use crate::crates::jobs::ingest::IngestSource;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct LiteConfigEnvelope {
+    version: u8,
     config: LiteConfigSnapshot,
     prompt: Option<String>,
 }
@@ -15,6 +17,7 @@ struct LiteConfigEnvelope {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct LiteIngestConfigEnvelope {
+    version: u8,
     source: Option<IngestSource>,
     config: LiteConfigSnapshot,
 }
@@ -33,6 +36,7 @@ struct LiteConfigSnapshot {
     exclude_path_prefix: Option<Vec<String>>,
     render_mode: Option<RenderMode>,
     chrome_remote_url: Option<String>,
+    chrome_proxy: Option<String>,
     chrome_user_agent: Option<String>,
     chrome_headless: Option<bool>,
     chrome_anti_bot: Option<bool>,
@@ -78,6 +82,7 @@ struct LiteConfigSnapshot {
     openai_base_url: Option<String>,
     openai_model: Option<String>,
     acp_adapter_cmd: Option<String>,
+    acp_adapter_args: Option<String>,
     acp_ws_url: Option<String>,
     ask_diagnostics: Option<bool>,
     ask_graph: Option<bool>,
@@ -119,11 +124,14 @@ struct LiteConfigSnapshot {
     screenshot_full_page: Option<bool>,
     viewport_width: Option<u32>,
     viewport_height: Option<u32>,
+    custom_headers: Option<Vec<String>>,
     quiet: Option<bool>,
+    process_fallback_fields: Vec<String>,
 }
 
 impl LiteConfigSnapshot {
     fn from_config(cfg: &Config) -> Self {
+        let mut process_fallback_fields = Vec::new();
         Self {
             collection: Some(cfg.collection.clone()),
             output_dir: Some(cfg.output_dir.clone()),
@@ -136,6 +144,7 @@ impl LiteConfigSnapshot {
             exclude_path_prefix: Some(cfg.exclude_path_prefix.clone()),
             render_mode: Some(cfg.render_mode),
             chrome_remote_url: cfg.chrome_remote_url.clone(),
+            chrome_proxy: cfg.chrome_proxy.clone(),
             chrome_user_agent: cfg.chrome_user_agent.clone(),
             chrome_headless: Some(cfg.chrome_headless),
             chrome_anti_bot: Some(cfg.chrome_anti_bot),
@@ -176,12 +185,24 @@ impl LiteConfigSnapshot {
             reddit_min_score: Some(cfg.reddit_min_score),
             reddit_depth: Some(cfg.reddit_depth),
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
-            tei_url: Some(cfg.tei_url.clone()),
-            qdrant_url: Some(cfg.qdrant_url.clone()),
-            openai_base_url: Some(cfg.openai_base_url.clone()),
+            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields),
+            qdrant_url: endpoint_snapshot(
+                "qdrant_url",
+                &cfg.qdrant_url,
+                &mut process_fallback_fields,
+            ),
+            openai_base_url: endpoint_snapshot(
+                "openai_base_url",
+                &cfg.openai_base_url,
+                &mut process_fallback_fields,
+            ),
             openai_model: Some(cfg.openai_model.clone()),
             acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
-            acp_ws_url: cfg.acp_ws_url.clone(),
+            acp_adapter_args: cfg.acp_adapter_args.clone(),
+            acp_ws_url: cfg
+                .acp_ws_url
+                .as_deref()
+                .and_then(|url| endpoint_snapshot("acp_ws_url", url, &mut process_fallback_fields)),
             ask_diagnostics: Some(cfg.ask_diagnostics),
             ask_graph: Some(cfg.ask_graph),
             ask_max_context_chars: Some(cfg.ask_max_context_chars),
@@ -222,22 +243,25 @@ impl LiteConfigSnapshot {
             screenshot_full_page: Some(cfg.screenshot_full_page),
             viewport_width: Some(cfg.viewport_width),
             viewport_height: Some(cfg.viewport_height),
+            custom_headers: Some(cfg.custom_headers.clone()),
             quiet: Some(cfg.quiet),
+            process_fallback_fields,
         }
     }
 
-    fn apply_to(self, cfg: &mut Config) {
+    fn apply_to(self, cfg: &mut Config, exact_options: bool) {
+        let mut snapshot = self;
+        let fallback_fields = std::mem::take(&mut snapshot.process_fallback_fields);
+        snapshot.apply_regular_fields(cfg);
+        snapshot.apply_option_fields(cfg, exact_options, &fallback_fields);
+    }
+
+    fn apply_regular_fields(&mut self, cfg: &mut Config) {
         macro_rules! set {
             ($($field:ident),+ $(,)?) => {
-                $(if let Some(value) = self.$field { cfg.$field = value; })+
+                $(if let Some(value) = self.$field.take() { cfg.$field = value; })+
             };
         }
-        macro_rules! set_some {
-            ($($field:ident),+ $(,)?) => {
-                $(if let Some(value) = self.$field { cfg.$field = Some(value); })+
-            };
-        }
-
         set!(
             collection,
             output_dir,
@@ -247,6 +271,7 @@ impl LiteConfigSnapshot {
             include_subdomains,
             exclude_path_prefix,
             render_mode,
+            custom_headers,
             chrome_headless,
             chrome_anti_bot,
             chrome_intercept,
@@ -320,16 +345,35 @@ impl LiteConfigSnapshot {
             viewport_height,
             quiet,
         );
-        set_some!(
+    }
+
+    fn apply_option_fields(
+        &mut self,
+        cfg: &mut Config,
+        exact_options: bool,
+        fallback_fields: &[String],
+    ) {
+        macro_rules! set_option_exact {
+            ($($field:ident),+ $(,)?) => {
+                $(if exact_options && !fallback_fields.iter().any(|name| name == stringify!($field)) {
+                    cfg.$field = self.$field.take();
+                } else if let Some(value) = self.$field.take() {
+                    cfg.$field = Some(value);
+                })+
+            };
+        }
+        set_option_exact!(
             output_path,
             query,
             chrome_remote_url,
+            chrome_proxy,
             chrome_user_agent,
             crawl_concurrency_limit,
             backfill_concurrency_limit,
             request_timeout_ms,
             sessions_project,
             acp_adapter_cmd,
+            acp_adapter_args,
             acp_ws_url,
             max_page_bytes,
             chrome_wait_for_selector,
@@ -345,6 +389,7 @@ impl LiteConfigSnapshot {
 
 pub(crate) fn lite_config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {
     serde_json::to_string(&LiteConfigEnvelope {
+        version: 2,
         config: LiteConfigSnapshot::from_config(cfg),
         prompt: None,
     })
@@ -359,6 +404,7 @@ pub(crate) fn extract_config_json(
         effective.query = Some(prompt.clone());
     }
     serde_json::to_string(&LiteConfigEnvelope {
+        version: 2,
         config: LiteConfigSnapshot::from_config(&effective),
         prompt,
     })
@@ -373,7 +419,8 @@ pub(crate) fn apply_lite_config_snapshot(
         return Ok(cfg);
     }
     let envelope = decode_config_envelope(config_json)?;
-    envelope.config.apply_to(&mut cfg);
+    let exact_options = envelope.version >= 2;
+    envelope.config.apply_to(&mut cfg, exact_options);
     if let Some(prompt) = envelope.prompt {
         cfg.query = Some(prompt);
     }
@@ -385,6 +432,7 @@ pub(crate) fn ingest_config_json(
     source: &IngestSource,
 ) -> Result<String, serde_json::Error> {
     serde_json::to_string(&LiteIngestConfigEnvelope {
+        version: 2,
         source: Some(source.clone()),
         config: LiteConfigSnapshot::from_config(cfg),
     })
@@ -398,7 +446,8 @@ pub(crate) fn decode_ingest_job_config(
         && let Some(source) = envelope.source
     {
         let mut cfg = process_cfg.clone();
-        envelope.config.apply_to(&mut cfg);
+        let exact_options = envelope.version >= 2;
+        envelope.config.apply_to(&mut cfg, exact_options);
         return Ok((source, cfg));
     }
 
@@ -416,7 +465,34 @@ fn decode_config_envelope(
 
     let snapshot = serde_json::from_value(value)?;
     Ok(LiteConfigEnvelope {
+        version: 0,
         config: snapshot,
         prompt: None,
     })
+}
+
+fn endpoint_snapshot(
+    name: &str,
+    url: &str,
+    process_fallback_fields: &mut Vec<String>,
+) -> Option<String> {
+    if endpoint_url_is_public(url) {
+        Some(url.to_string())
+    } else {
+        process_fallback_fields.push(name.to_string());
+        None
+    }
+}
+
+fn endpoint_url_is_public(url: &str) -> bool {
+    if url.trim().is_empty() {
+        return true;
+    }
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+    parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.query().is_none()
+        && parsed.fragment().is_none()
 }
