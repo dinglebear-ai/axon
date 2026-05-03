@@ -95,6 +95,7 @@ pub(crate) async fn qdrant_hybrid_search(
     dense_vector: &[f32],
     sparse_vector: &SparseVector,
     limit: usize,
+    candidates_override: Option<usize>,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
@@ -104,7 +105,9 @@ pub(crate) async fn qdrant_hybrid_search(
         cfg.collection
     );
 
-    let candidates = cfg.hybrid_search_candidates.max(limit);
+    let candidates = candidates_override
+        .unwrap_or(cfg.hybrid_search_candidates)
+        .max(limit);
     let hnsw_ef = *HNSW_EF_SEARCH;
 
     let body = HybridQueryBody {
@@ -284,7 +287,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid search test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -362,7 +365,8 @@ mod tests {
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
-        let result = qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None).await;
+        let result =
+            qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None, None).await;
         assert!(result.is_err(), "HTTP 500 must propagate as Err");
     }
 
@@ -388,7 +392,7 @@ mod tests {
         let filter = serde_json::json!({
             "must": [{"key": "scraped_at", "range": {"gte": "2026-01-01T00:00:00+00:00"}}]
         });
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, Some(&filter)).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, Some(&filter)).await;
 
         mock.assert_async().await;
         assert!(result.is_ok());
@@ -415,7 +419,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid hnsw ef test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -506,7 +510,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid search test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(

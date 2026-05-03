@@ -4,6 +4,7 @@ use anyhow::Result;
 
 mod build;
 mod heuristics;
+mod query_rewrite;
 mod retrieval;
 #[cfg(test)]
 mod tests;

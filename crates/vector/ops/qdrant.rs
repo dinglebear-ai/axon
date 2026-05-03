@@ -9,7 +9,7 @@ mod types;
 mod utils;
 
 pub use client::{qdrant_delete_stale_domain_urls, qdrant_indexed_urls, qdrant_urls_for_domain};
-pub(crate) use commands::dispatch_vector_search;
+pub(crate) use commands::{VectorSearchRequest, dispatch_vector_search_request};
 pub use commands::{dedupe_payload, domains_payload, retrieve_result, sources_payload};
 pub use types::{QdrantPayload, QdrantPoint, QdrantSearchHit};
 pub use utils::{

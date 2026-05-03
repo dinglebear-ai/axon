@@ -14,16 +14,21 @@ pub async fn query_results(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    let query_with_instruction = tei::prepend_query_instruction(query);
-    let mut query_vectors =
-        tei::tei_embed(cfg, std::slice::from_ref(&query_with_instruction)).await?;
+    let mut query_vectors = tei::tei_embed_kind(
+        cfg,
+        tei::EmbedKind::Query,
+        std::slice::from_ref(&query.to_string()),
+    )
+    .await?;
     if query_vectors.is_empty() {
         return Err("TEI returned no vector for query".into());
     }
     let vector = query_vectors.remove(0);
 
     let fetch_limit = ((limit + offset).max(1) * 16).max(limit + offset).min(1000);
-    let hits = qdrant::dispatch_vector_search(cfg, &vector, query, fetch_limit)
+    let request = qdrant::VectorSearchRequest::from_query(cfg, &vector, query, fetch_limit)
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+    let hits = qdrant::dispatch_vector_search_request(cfg, &request)
         .await
         .map_err(|e| -> Box<dyn Error> {
             if cfg.ask_diagnostics {

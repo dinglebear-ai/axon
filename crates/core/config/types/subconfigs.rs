@@ -106,6 +106,7 @@ pub struct AskConfig {
     pub ask_authoritative_boost: f64,
     pub ask_min_citations_nontrivial: usize,
     pub ask_diagnostics: bool,
+    pub ask_hybrid_candidates: usize,
 }
 
 impl Default for AskConfig {
@@ -123,6 +124,7 @@ impl Default for AskConfig {
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
             ask_diagnostics: false,
+            ask_hybrid_candidates: 150,
         }
     }
 }

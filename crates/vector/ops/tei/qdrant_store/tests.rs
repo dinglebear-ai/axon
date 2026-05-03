@@ -1,9 +1,16 @@
 use super::*;
 
 fn resolve_test_qdrant_url() -> Option<String> {
-    std::env::var("AXON_TEST_QDRANT_URL")
+    let url = std::env::var("AXON_TEST_QDRANT_URL")
         .ok()
-        .filter(|v| !v.trim().is_empty())
+        .filter(|v| !v.trim().is_empty());
+    if url.is_none() {
+        if cfg!(feature = "live-qdrant") {
+            panic!("AXON_TEST_QDRANT_URL must be set when running with feature=live-qdrant");
+        }
+        eprintln!("skipping live Qdrant test: AXON_TEST_QDRANT_URL is not set");
+    }
+    url
 }
 
 // -- detect_vector_mode (pure parsing logic) --

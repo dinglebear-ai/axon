@@ -28,6 +28,65 @@ pub(crate) fn prepend_query_instruction(query: &str) -> String {
     format!("{QUERY_INSTRUCTION}{query}")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EmbedKind {
+    Query,
+    Document,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EmbedInput {
+    pub(crate) kind: EmbedKind,
+    pub(crate) text: String,
+}
+
+impl EmbedInput {
+    pub(crate) fn query(text: impl Into<String>) -> Self {
+        Self {
+            kind: EmbedKind::Query,
+            text: text.into(),
+        }
+    }
+
+    pub(crate) fn document(text: impl Into<String>) -> Self {
+        Self {
+            kind: EmbedKind::Document,
+            text: text.into(),
+        }
+    }
+}
+
+fn materialize_embed_input(input: &EmbedInput) -> String {
+    match input.kind {
+        EmbedKind::Query => prepend_query_instruction(&input.text),
+        EmbedKind::Document => input.text.clone(),
+    }
+}
+
+pub(crate) async fn tei_embed_typed(
+    cfg: &Config,
+    inputs: &[EmbedInput],
+) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+    let materialized = inputs
+        .iter()
+        .map(materialize_embed_input)
+        .collect::<Vec<_>>();
+    tei_embed_raw(cfg, &materialized).await
+}
+
+pub(crate) async fn tei_embed_kind(
+    cfg: &Config,
+    kind: EmbedKind,
+    inputs: &[String],
+) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+    let typed = inputs
+        .iter()
+        .cloned()
+        .map(|text| EmbedInput { kind, text })
+        .collect::<Vec<_>>();
+    tei_embed_typed(cfg, &typed).await
+}
+
 const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;
@@ -210,10 +269,7 @@ async fn send_chunk_with_retries(
     .into())
 }
 
-pub(crate) async fn tei_embed(
-    cfg: &Config,
-    inputs: &[String],
-) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
     if inputs.is_empty() {
         return Ok(Vec::new());
     }

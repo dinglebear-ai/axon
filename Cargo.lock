@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "1.0.12"
+version = "1.0.13"
 dependencies = [
  "agent-client-protocol",
  "anyhow",

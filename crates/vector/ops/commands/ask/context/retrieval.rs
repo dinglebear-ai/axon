@@ -7,7 +7,7 @@ use crate::crates::vector::ops::commands::retrieval::{
     score_and_filter_candidates, top_domains,
 };
 use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
-use crate::crates::vector::ops::{qdrant, ranking, sparse, tei};
+use crate::crates::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
 pub(super) struct AskRetrieval {
@@ -91,27 +91,21 @@ fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> any
 )]
 pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
-    let query_tokens = ranking::tokenize_query(query);
+    let ask_tuning = cfg.ask_config();
+    let query_forms = super::query_rewrite::build_query_forms(query);
+    let query_tokens = query_forms.query_tokens;
     let allow_low_signal = query_allows_low_signal(&query_tokens, query);
 
-    // Dual-embedding: embed both the NL question and a keyword form in a single TEI
-    // batch call. This improves recall for NL queries whose embedding drifts from
-    // the document space (e.g. "how do hooks work?" vs "hooks lifecycle events").
-    let keyword_query = query_tokens.join(" ");
-    let use_dual =
-        query_tokens.len() >= 3 && keyword_query.to_lowercase() != query.trim().to_lowercase();
-
-    // Per Qwen3-Embedding asymmetric spec: queries get the instruction prefix, documents
-    // do not. The keyword form is essentially document-shaped text (e.g. "PreToolUse hook
-    // fields"), so it is embedded WITHOUT the query instruction. Prefixing it would push
-    // the keyword vector into query space and defeat the purpose of the dual-embedding
-    // pass — see bd axon_rust-d71.5 (H1).
-    let mut embed_inputs = vec![tei::prepend_query_instruction(query)];
-    if use_dual {
-        embed_inputs.push(keyword_query.clone());
+    // Per Qwen3-Embedding asymmetric spec: queries get the instruction prefix,
+    // documents do not. The typed embed API enforces that distinction at the call site.
+    let mut embed_inputs = vec![tei::EmbedInput::query(query)];
+    if query_forms.use_dual {
+        // The keyword form is essentially document-shaped text (e.g. "PreToolUse
+        // hook fields"), so it is embedded WITHOUT the query instruction.
+        embed_inputs.push(tei::EmbedInput::document(query_forms.keyword_query.clone()));
     }
 
-    let mut ask_vectors = tei::tei_embed(cfg, &embed_inputs)
+    let mut ask_vectors = tei::tei_embed_typed(cfg, &embed_inputs)
         .await
         .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
     if ask_vectors.is_empty() {
@@ -119,34 +113,25 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     }
     let vecq = ask_vectors.remove(0);
 
-    // Ask reranks candidates before context selection, so use a wider prefetch window
-    // than query (which skips reranking). cfg.ask_hybrid_candidates (default: 150)
-    // overrides cfg.hybrid_search_candidates (default: 100) for this path only.
-    let ask_cfg_override;
-    let search_cfg = if cfg.ask_hybrid_candidates != cfg.hybrid_search_candidates {
-        ask_cfg_override = {
-            let mut c = cfg.clone();
-            c.hybrid_search_candidates = cfg.ask_hybrid_candidates;
-            c
-        };
-        &ask_cfg_override
-    } else {
-        cfg
-    };
-
     // Run primary (NL) and secondary (keyword) dispatches in parallel when dual-embedding
     // is active. They are independent Qdrant queries; awaiting them sequentially burned
     // ~2-3s per ask (bd axon_rust-d71.3 / C3).
-    let primary_fut =
-        qdrant::dispatch_vector_search(search_cfg, &vecq, query, cfg.ask_candidate_limit);
-    let (primary_res, secondary_res) = if use_dual && !ask_vectors.is_empty() {
+    let primary_request =
+        qdrant::VectorSearchRequest::from_query(cfg, &vecq, query, ask_tuning.ask_candidate_limit)
+            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
+            .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
+    let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
+    let (primary_res, secondary_res) = if query_forms.use_dual && !ask_vectors.is_empty() {
         let vecq_kw = ask_vectors.remove(0);
-        let secondary_fut = qdrant::dispatch_vector_search(
-            search_cfg,
+        let secondary_request = qdrant::VectorSearchRequest::from_query(
+            cfg,
             &vecq_kw,
-            &keyword_query,
-            cfg.ask_candidate_limit,
-        );
+            &query_forms.keyword_query,
+            ask_tuning.ask_candidate_limit,
+        )
+        .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
+        .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
+        let secondary_fut = qdrant::dispatch_vector_search_request(cfg, &secondary_request);
         let (p, s) = tokio::join!(primary_fut, secondary_fut);
         (p, Some(s))
     } else {
@@ -154,15 +139,14 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     };
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
-    let vector_mode = get_or_fetch_vector_mode(search_cfg)
+    let vector_mode = get_or_fetch_vector_mode(cfg)
         .await
         .map_err(|e| anyhow!("vector mode probe after ask dispatch: {e}"))?;
-    let sparse_was_empty = sparse::compute_sparse_vector(query).is_empty();
-    let rrf_mode = is_rrf_mode(
-        vector_mode,
-        search_cfg.hybrid_search_enabled,
-        sparse_was_empty,
-    );
+    let sparse_was_empty = primary_request
+        .sparse
+        .as_ref()
+        .is_none_or(|sv| sv.is_empty());
+    let rrf_mode = is_rrf_mode(vector_mode, cfg.hybrid_search_enabled, sparse_was_empty);
 
     let build_policy = CandidateBuildPolicy { allow_low_signal };
     let primary = build_candidates_from_hits(hits, &build_policy);
@@ -187,9 +171,9 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     }
 
     let rerank_params = RerankParams {
-        authoritative_domains: &cfg.ask_authoritative_domains,
-        authoritative_boost: cfg.ask_authoritative_boost,
-        min_relevance_score: cfg.ask_min_relevance_score,
+        authoritative_domains: &ask_tuning.ask_authoritative_domains,
+        authoritative_boost: ask_tuning.ask_authoritative_boost,
+        min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
     let reranked_candidates = apply_mode_aware_rerank(
         rrf_mode,
@@ -204,7 +188,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         }
         return Err(anyhow!(
             "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
-            cfg.ask_min_relevance_score
+            ask_tuning.ask_min_relevance_score
         ));
     }
 
@@ -212,20 +196,29 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         "ask context_built candidates_retrieved={} candidates_after_score_filter={} candidates_selected={}",
         retrieved_candidates.len(),
         reranked.len(),
-        reranked.len().min(cfg.ask_chunk_limit),
+        reranked.len().min(ask_tuning.ask_chunk_limit),
     ));
+    let (top_chunk_indices, top_full_doc_indices) = super::build::select_context_indices(
+        &reranked,
+        ask_tuning.ask_chunk_limit,
+        ask_tuning.ask_full_docs,
+    );
+
     Ok(AskRetrieval {
-        top_chunk_indices: ranking::select_diverse_candidates(&reranked, cfg.ask_chunk_limit, 1),
-        top_full_doc_indices: ranking::select_diverse_candidates(&reranked, cfg.ask_full_docs, 1),
+        top_chunk_indices,
+        top_full_doc_indices,
         top_domains: top_domains(&reranked, 5),
-        authoritative_ratio: authoritative_ratio(&reranked, &cfg.ask_authoritative_domains),
+        authoritative_ratio: authoritative_ratio(&reranked, &ask_tuning.ask_authoritative_domains),
         candidates: candidates_only(&retrieved_candidates),
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
         min_supplemental_score: if rrf_mode {
             None
         } else {
-            Some(cfg.ask_min_relevance_score + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS)
+            Some(
+                ask_tuning.ask_min_relevance_score
+                    + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS,
+            )
         },
     })
 }

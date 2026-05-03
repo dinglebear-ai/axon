@@ -3,6 +3,7 @@ use super::enums::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
     RedditTime, RenderMode, ScrapeFormat,
 };
+use super::subconfigs::AskConfig;
 use std::env;
 use std::fmt;
 use std::path::PathBuf;
@@ -150,6 +151,26 @@ impl Default for Config {
             custom_headers: vec![],
             quiet: false,
             log_level: None,
+        }
+    }
+}
+
+impl Config {
+    pub(crate) fn ask_config(&self) -> AskConfig {
+        AskConfig {
+            ask_max_context_chars: self.ask_max_context_chars,
+            ask_candidate_limit: self.ask_candidate_limit,
+            ask_chunk_limit: self.ask_chunk_limit,
+            ask_full_docs: self.ask_full_docs,
+            ask_backfill_chunks: self.ask_backfill_chunks,
+            ask_doc_fetch_concurrency: self.ask_doc_fetch_concurrency,
+            ask_doc_chunk_limit: self.ask_doc_chunk_limit,
+            ask_min_relevance_score: self.ask_min_relevance_score,
+            ask_authoritative_domains: self.ask_authoritative_domains.clone(),
+            ask_authoritative_boost: self.ask_authoritative_boost,
+            ask_min_citations_nontrivial: self.ask_min_citations_nontrivial,
+            ask_diagnostics: self.ask_diagnostics,
+            ask_hybrid_candidates: self.ask_hybrid_candidates,
         }
     }
 }

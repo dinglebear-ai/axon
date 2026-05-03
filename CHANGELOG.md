@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-05-03
+
+### Changed
+- **Retrieval dispatch contract**: query and ask now build typed `VectorSearchRequest` values, pass ask-specific hybrid candidate overrides without cloning `Config`, and keep dispatch/facet/retrieve/dedupe code in focused modules.
+- **Typed embedding calls**: TEI embedding call sites now declare query vs document embedding intent with `EmbedKind`, preventing query-instruction omissions on new retrieval paths.
+
+### Fixed
+- **Ask context selection**: top chunk and full-document selections now use disjoint URL sets so the two diversity passes cannot select the same source twice.
+- **Live Qdrant testing**: added a `live-qdrant` feature and CI job so live vector integration tests fail loudly when Qdrant configuration is expected but missing.
+
 ## [1.0.12] - 2026-05-03
 
 ### Fixed

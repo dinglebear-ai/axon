@@ -1,4 +1,5 @@
 use super::build::collect_supplemental_candidate_indices;
+use super::build::select_context_indices;
 use super::heuristics::{
     candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
     url_matches_domain_list,
@@ -143,6 +144,31 @@ fn supplemental_candidates_can_skip_score_threshold_on_rrf_path() {
     let excluded = HashSet::new();
     let selected = collect_supplemental_candidate_indices(&candidates, &excluded, None);
     assert_eq!(selected, vec![0, 1]);
+}
+
+#[test]
+fn context_chunk_and_full_doc_selections_are_url_disjoint() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.90),
+        test_candidate("https://a.dev/docs/two", 0.80),
+        test_candidate("https://b.dev/docs/three", 0.70),
+        test_candidate("https://c.dev/docs/four", 0.60),
+    ];
+
+    let (chunk_indices, full_doc_indices) = select_context_indices(&candidates, 2, 2);
+    let chunk_urls = chunk_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<HashSet<_>>();
+
+    assert_eq!(chunk_indices.len(), 2);
+    assert_eq!(full_doc_indices.len(), 2);
+    assert!(
+        full_doc_indices
+            .iter()
+            .all(|&idx| !chunk_urls.contains(candidates[idx].url.as_str())),
+        "full-doc selection must exclude URLs already selected as top chunks"
+    );
 }
 
 #[test]

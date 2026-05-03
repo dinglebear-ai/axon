@@ -17,6 +17,28 @@ pub(super) struct BuiltAskContext {
     pub(super) diagnostic_sources: Vec<String>,
 }
 
+pub(super) fn select_context_indices(
+    reranked: &[ranking::AskCandidate],
+    chunk_limit: usize,
+    full_doc_limit: usize,
+) -> (Vec<usize>, Vec<usize>) {
+    let top_chunk_indices = ranking::select_diverse_candidates(reranked, chunk_limit, 1);
+    let chunk_urls = top_chunk_indices
+        .iter()
+        .filter_map(|&idx| reranked.get(idx).map(|candidate| candidate.url.as_str()))
+        .collect::<HashSet<_>>();
+    let full_doc_candidates = (0..reranked.len())
+        .filter(|&idx| !chunk_urls.contains(reranked[idx].url.as_str()))
+        .collect::<Vec<_>>();
+    let top_full_doc_indices = ranking::select_diverse_candidates_from_indices(
+        reranked,
+        &full_doc_candidates,
+        full_doc_limit,
+        1,
+    );
+    (top_chunk_indices, top_full_doc_indices)
+}
+
 pub(super) async fn build_context_from_candidates(
     cfg: &Config,
     reranked: &[ranking::AskCandidate],
@@ -25,10 +47,11 @@ pub(super) async fn build_context_from_candidates(
     min_supplemental_score: Option<f64>,
     query_tokens: &[String],
 ) -> Result<BuiltAskContext> {
-    let max_context_chars = cfg.ask_max_context_chars;
-    let backfill_limit = cfg.ask_backfill_chunks;
-    let doc_fetch_concurrency = cfg.ask_doc_fetch_concurrency;
-    let doc_chunk_limit = cfg.ask_doc_chunk_limit;
+    let ask_tuning = cfg.ask_config();
+    let max_context_chars = ask_tuning.ask_max_context_chars;
+    let backfill_limit = ask_tuning.ask_backfill_chunks;
+    let doc_fetch_concurrency = ask_tuning.ask_doc_fetch_concurrency;
+    let doc_chunk_limit = ask_tuning.ask_doc_chunk_limit;
     let context_started = std::time::Instant::now();
     let mut context_entries: Vec<(f64, String)> = Vec::new();
     let mut context_char_count = 0usize;
