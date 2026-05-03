@@ -36,6 +36,7 @@ pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskCo
         &retrieval.reranked,
         &retrieval.top_chunk_indices,
         &retrieval.top_full_doc_indices,
+        retrieval.min_supplemental_score,
         &query_tokens,
     )
     .await?;

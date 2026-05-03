@@ -92,7 +92,16 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 ### Ranking Pipeline
 `ranking.rs` applies BM25-style scoring on top of Qdrant cosine/hybrid results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
 
-> **Score-scale caveat (D-C1):** The reranker's `cfg.ask_min_relevance_score` threshold and `cfg.ask_authoritative_boost` are calibrated against **cosine similarity** scores in the `[0, 1]` range. On `VectorMode::Named` collections, hybrid RRF fusion outputs a **rank-fusion score** in a different (typically much smaller) range — applying the same threshold to RRF output is not meaningful. The current code applies it anyway; tune via `AXON_ASK_MIN_RELEVANCE_SCORE` per deployment, or run `axon evaluate --no-hybrid-search` to compare against dense-only behavior. (See bd axon_rust-d71.1 / C1 + d71.12 / H8.)
+The ask reranker has two score-scale contracts:
+
+| Collection vectors | `cfg.hybrid_search_enabled` | Sparse query | Effective scoring | Rerank + threshold |
+|--------------------|-----------------------------|--------------|-------------------|--------------------|
+| Named (`dense` + `bm42`) | `true` | non-empty | RRF rank-fusion score | Skipped |
+| Named (`dense` + `bm42`) | `true` | empty | Cosine via `named_dense` | Applied |
+| Named (`dense` + `bm42`) | `false` | any | Cosine via `named_dense` | Applied |
+| Unnamed legacy vector | any | n/a | Cosine via `/points/search` | Applied |
+
+On RRF mode, Qdrant's fusion order is already the ranking signal. The ask path keeps only the loose topical-overlap gate, sets `rerank_score = candidate.score`, and skips `AXON_ASK_MIN_RELEVANCE_SCORE` because that threshold is calibrated to cosine `[0, 1]`, not rank-fusion output. Run `axon evaluate --no-hybrid-search` to compare RRF against dense-only behavior on Named collections. If evaluation data shows a quality regression, track mode-aware boost tuning in bd `axon_rust-d71.1.4`; the P0 fix intentionally does not add additive lexical/phrase boosts back onto RRF output. (bd axon_rust-d71.1 / C1 + d71.12 / H8.)
 
 ### Collection Naming
 Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
@@ -116,7 +125,7 @@ A few sharp edges worth knowing before debugging retrieval:
 
 - **VectorMode cache is process-local.** `OnceLock<RwLock<HashMap>>` in `tei/qdrant_store.rs` is populated on first embed/query. After running `axon migrate cortex cortex_v2`, **other running worker processes** (serve, mcp, web) keep their stale `Unnamed` mode cache and silently fall back to dense-only on `cortex_v2` until restart. **Restart all worker processes after a migrate.** (bd axon_rust-d71.2)
 - **Empty sparse vector → silent dense-only fallback.** `compute_sparse_vector` returns empty for non-ASCII / all-stopword / very-short queries (every term < 3 chars). `dispatch_vector_search` routes to named-dense in that case. The fallback now logs a `tracing::warn!` with a query character profile, so it's visible at default INFO level (bd axon_rust-d71.9).
-- **`ask_min_relevance_score` is calibrated to cosine.** On Named (hybrid RRF) collections, applying the same threshold to RRF rank-fusion output is not meaningful — the score lives in a different range. Tune per deployment via `AXON_ASK_MIN_RELEVANCE_SCORE`, or run `axon evaluate --no-hybrid-search` for A/B comparison against dense-only behavior (bd axon_rust-d71.1 / d71.12).
+- **`ask_min_relevance_score` is calibrated to cosine.** The threshold is intentionally skipped on the RRF code path — Qdrant's RRF fusion handles ordering, and topical-overlap is the only loose-quality gate that survives. Named collections still apply the threshold when hybrid search is disabled or the sparse query is empty. Run `axon evaluate --no-hybrid-search` for A/B comparison against dense-only behavior (bd axon_rust-d71.1 / d71.12).
 - **`compute_sparse_vector` returns `SparseVector::default()` (empty `indices`/`values`) for empty/non-indexable input.** Callers must check `sv.is_empty()` before issuing a hybrid query — Qdrant rejects empty sparse arms.
 
 ## Testing
@@ -145,7 +154,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |
 | `AXON_SUGGEST_INDEX_LIMIT` | 50,000 | Max URLs fetched for dedup in `suggest` command |
 | `AXON_ASK_HYBRID_CANDIDATES` | `150` | Prefetch window per arm before RRF fusion for `ask`; overrides `cfg.hybrid_search_candidates` for the ask path only. |
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum reranker score to include a candidate. Calibrated against cosine — see Ranking Pipeline caveat above for behavior on Named (RRF) collections. |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum reranker score to include a candidate on cosine paths. Intentionally skipped on the RRF path — see Ranking Pipeline above. |
 
 **Retrieval input caps:** `dispatch_vector_search` rejects queries longer than 64 KiB (CWE-770). Queries are validated before reaching `compute_sparse_vector` or TEI.
 

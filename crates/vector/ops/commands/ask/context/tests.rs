@@ -3,9 +3,12 @@ use super::heuristics::{
     candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
     url_matches_domain_list,
 };
+use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
 use crate::crates::core::config::Config;
+use crate::crates::vector::ops::commands::retrieval::RetrievedCandidate;
 use crate::crates::vector::ops::ranking::AskCandidate;
 use crate::crates::vector::ops::ranking::is_low_signal_url;
+use crate::crates::vector::ops::tei::qdrant_store::VectorMode;
 use std::collections::HashSet;
 
 fn test_candidate(url: &str, rerank_score: f64) -> AskCandidate {
@@ -17,6 +20,29 @@ fn test_candidate(url: &str, rerank_score: f64) -> AskCandidate {
         url_tokens: HashSet::new(),
         chunk_tokens: HashSet::new(),
         rerank_score,
+    }
+}
+
+fn retrieved_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
+    RetrievedCandidate {
+        candidate: AskCandidate {
+            score,
+            url: url.to_string(),
+            path: url.to_string(),
+            chunk_text: chunk.to_string(),
+            url_tokens: crate::crates::vector::ops::ranking::tokenize_path_set(url),
+            chunk_tokens: crate::crates::vector::ops::ranking::tokenize_text_set(chunk),
+            rerank_score: 0.0,
+        },
+        chunk_index: Some(7),
+    }
+}
+
+fn rerank_params<'a>(domains: &'a [String]) -> RerankParams<'a> {
+    RerankParams {
+        authoritative_domains: domains,
+        authoritative_boost: 0.5,
+        min_relevance_score: 0.45,
     }
 }
 
@@ -104,8 +130,117 @@ fn supplemental_candidates_respect_score_threshold_and_full_doc_exclusions() {
     ];
     let mut excluded = HashSet::new();
     excluded.insert("https://a.dev/docs/one".to_string());
-    let selected = collect_supplemental_candidate_indices(&candidates, &excluded, 0.60);
+    let selected = collect_supplemental_candidate_indices(&candidates, &excluded, Some(0.60));
     assert_eq!(selected, vec![2]);
+}
+
+#[test]
+fn supplemental_candidates_can_skip_score_threshold_on_rrf_path() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.03),
+        test_candidate("https://b.dev/docs/two", 0.02),
+    ];
+    let excluded = HashSet::new();
+    let selected = collect_supplemental_candidate_indices(&candidates, &excluded, None);
+    assert_eq!(selected, vec![0, 1]);
+}
+
+#[test]
+fn apply_mode_aware_rerank_cosine_drops_below_threshold() {
+    let candidates = vec![retrieved_candidate(
+        "https://example.com/reference",
+        "rust async runtime details long enough to keep",
+        0.20,
+    )];
+    let selected = apply_mode_aware_rerank(
+        false,
+        &candidates,
+        &["rust".to_string()],
+        &rerank_params(&[]),
+    );
+    assert!(selected.is_empty());
+}
+
+#[test]
+fn is_rrf_mode_requires_named_hybrid_and_non_empty_sparse() {
+    assert!(is_rrf_mode(VectorMode::Named, true, false));
+    assert!(!is_rrf_mode(VectorMode::Named, true, true));
+    assert!(!is_rrf_mode(VectorMode::Named, false, false));
+    assert!(!is_rrf_mode(VectorMode::Unnamed, true, false));
+}
+
+#[test]
+fn apply_mode_aware_rerank_rrf_keeps_low_scores() {
+    let candidates = vec![retrieved_candidate(
+        "https://docs.example.com/rust",
+        "rust async runtime details long enough to keep",
+        0.03,
+    )];
+    let selected = apply_mode_aware_rerank(
+        true,
+        &candidates,
+        &["rust".to_string()],
+        &rerank_params(&[]),
+    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].candidate.rerank_score, 0.03);
+}
+
+#[test]
+fn apply_mode_aware_rerank_rrf_filters_off_topic() {
+    let candidates = vec![retrieved_candidate(
+        "https://docs.example.com/python",
+        "python decorators reference long enough to keep",
+        0.03,
+    )];
+    let selected = apply_mode_aware_rerank(
+        true,
+        &candidates,
+        &["rust".to_string()],
+        &rerank_params(&[]),
+    );
+    assert!(selected.is_empty());
+}
+
+#[test]
+fn apply_mode_aware_rerank_cosine_applies_authority_boost() {
+    let domains = vec!["docs.example.com".to_string()];
+    let candidates = vec![retrieved_candidate(
+        "https://docs.example.com/rust",
+        "rust async runtime details long enough to keep",
+        0.10,
+    )];
+    let selected = apply_mode_aware_rerank(
+        false,
+        &candidates,
+        &["rust".to_string()],
+        &rerank_params(&domains),
+    );
+    assert_eq!(selected.len(), 1);
+    assert!(selected[0].candidate.rerank_score >= 0.45);
+}
+
+#[test]
+fn apply_mode_aware_rerank_empty_input_both_modes() {
+    let params = rerank_params(&[]);
+    assert!(apply_mode_aware_rerank(false, &[], &["rust".to_string()], &params).is_empty());
+    assert!(apply_mode_aware_rerank(true, &[], &["rust".to_string()], &params).is_empty());
+}
+
+#[test]
+fn apply_mode_aware_rerank_named_dense_uses_cosine_path() {
+    let candidates = vec![retrieved_candidate(
+        "https://docs.example.com/rust",
+        "rust async runtime details long enough to keep",
+        0.03,
+    )];
+    let selected = apply_mode_aware_rerank(
+        false,
+        &candidates,
+        &["rust".to_string()],
+        &rerank_params(&[]),
+    );
+    assert!(selected.is_empty());
 }
 
 #[test]

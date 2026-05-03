@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-05-03
+
+### Fixed
+- **Ask RRF rerank scale**: ask retrieval now skips cosine-calibrated rerank thresholds and additive BM25-style boosts only on the effective RRF path, while preserving cosine behavior for legacy, named-dense, and empty-sparse fallback searches.
+- **RRF supplemental context**: supplemental ask candidates now use an optional score floor so RRF context backfill is gated by topical overlap and context budget instead of cosine-scale thresholds.
+
 ## [1.0.10] - 2026-05-02
 
 ### Fixed

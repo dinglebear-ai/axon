@@ -3,10 +3,11 @@ use crate::crates::core::logging::log_debug;
 use crate::crates::services::error::ServiceError;
 use crate::crates::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateScorePolicy, authoritative_ratio, build_candidates_from_hits,
-    candidates_only, merge_candidates, query_allows_low_signal, score_and_filter_candidates,
-    top_domains,
+    candidate_has_topical_overlap, candidates_only, merge_candidates, query_allows_low_signal,
+    score_and_filter_candidates, top_domains,
 };
-use crate::crates::vector::ops::{qdrant, ranking, tei};
+use crate::crates::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
+use crate::crates::vector::ops::{qdrant, ranking, sparse, tei};
 use anyhow::{Result, anyhow};
 
 pub(super) struct AskRetrieval {
@@ -17,6 +18,48 @@ pub(super) struct AskRetrieval {
     pub(super) retrieval_elapsed_ms: u128,
     pub(super) top_domains: Vec<String>,
     pub(super) authoritative_ratio: f64,
+    pub(super) min_supplemental_score: Option<f64>,
+}
+
+pub(super) struct RerankParams<'a> {
+    pub(super) authoritative_domains: &'a [String],
+    pub(super) authoritative_boost: f64,
+    pub(super) min_relevance_score: f64,
+}
+
+pub(super) fn is_rrf_mode(
+    vector_mode: VectorMode,
+    hybrid_search_enabled: bool,
+    sparse_was_empty: bool,
+) -> bool {
+    matches!(vector_mode, VectorMode::Named) && hybrid_search_enabled && !sparse_was_empty
+}
+
+pub(super) fn apply_mode_aware_rerank(
+    is_rrf: bool,
+    candidates: &[crate::crates::vector::ops::commands::retrieval::RetrievedCandidate],
+    query_tokens: &[String],
+    params: &RerankParams<'_>,
+) -> Vec<crate::crates::vector::ops::commands::retrieval::RetrievedCandidate> {
+    if is_rrf {
+        return candidates
+            .iter()
+            .filter(|candidate| candidate_has_topical_overlap(&candidate.candidate, query_tokens))
+            .cloned()
+            .map(|mut candidate| {
+                candidate.candidate.rerank_score = candidate.candidate.score;
+                candidate
+            })
+            .collect();
+    }
+
+    let score_policy = CandidateScorePolicy {
+        authoritative_domains: params.authoritative_domains,
+        authoritative_boost: params.authoritative_boost,
+        min_relevance_score: Some(params.min_relevance_score),
+        require_topical_overlap: true,
+    };
+    score_and_filter_candidates(candidates, query_tokens, &score_policy)
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
@@ -111,6 +154,15 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     };
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
+    let vector_mode = get_or_fetch_vector_mode(search_cfg)
+        .await
+        .map_err(|e| anyhow!("vector mode probe after ask dispatch: {e}"))?;
+    let sparse_was_empty = sparse::compute_sparse_vector(query).is_empty();
+    let rrf_mode = is_rrf_mode(
+        vector_mode,
+        search_cfg.hybrid_search_enabled,
+        sparse_was_empty,
+    );
 
     let build_policy = CandidateBuildPolicy { allow_low_signal };
     let primary = build_candidates_from_hits(hits, &build_policy);
@@ -134,16 +186,22 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         return Err(anyhow!("No relevant documents found for ask query"));
     }
 
-    let score_policy = CandidateScorePolicy {
+    let rerank_params = RerankParams {
         authoritative_domains: &cfg.ask_authoritative_domains,
         authoritative_boost: cfg.ask_authoritative_boost,
-        min_relevance_score: Some(cfg.ask_min_relevance_score),
-        require_topical_overlap: true,
+        min_relevance_score: cfg.ask_min_relevance_score,
     };
-    let reranked_candidates =
-        score_and_filter_candidates(&retrieved_candidates, &query_tokens, &score_policy);
+    let reranked_candidates = apply_mode_aware_rerank(
+        rrf_mode,
+        &retrieved_candidates,
+        &query_tokens,
+        &rerank_params,
+    );
     let reranked = candidates_only(&reranked_candidates);
     if reranked.is_empty() {
+        if rrf_mode {
+            return Err(anyhow!("No candidates passed topical overlap"));
+        }
         return Err(anyhow!(
             "No candidates met relevance threshold {:.3}; lower AXON_ASK_MIN_RELEVANCE_SCORE",
             cfg.ask_min_relevance_score
@@ -164,5 +222,10 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         candidates: candidates_only(&retrieved_candidates),
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
+        min_supplemental_score: if rrf_mode {
+            None
+        } else {
+            Some(cfg.ask_min_relevance_score + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS)
+        },
     })
 }

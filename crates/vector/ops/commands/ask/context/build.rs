@@ -1,6 +1,4 @@
-use super::heuristics::{
-    SUPPLEMENTAL_RELEVANCE_BONUS, push_context_entry, should_inject_supplemental,
-};
+use super::heuristics::{push_context_entry, should_inject_supplemental};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
 use crate::crates::vector::ops::source_display::display_source;
@@ -24,6 +22,7 @@ pub(super) async fn build_context_from_candidates(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
     top_full_doc_indices: &[usize],
+    min_supplemental_score: Option<f64>,
     query_tokens: &[String],
 ) -> Result<BuiltAskContext> {
     let max_context_chars = cfg.ask_max_context_chars;
@@ -87,7 +86,6 @@ pub(super) async fn build_context_from_candidates(
         full_docs_selected,
         top_chunks_selected,
     ) {
-        let min_supplemental_score = cfg.ask_min_relevance_score + SUPPLEMENTAL_RELEVANCE_BONUS;
         let supplemental_candidate_indices = collect_supplemental_candidate_indices(
             reranked,
             &inserted_full_doc_urls,
@@ -184,14 +182,14 @@ fn append_top_chunks_to_context(
 pub(super) fn collect_supplemental_candidate_indices(
     reranked: &[ranking::AskCandidate],
     inserted_full_doc_urls: &HashSet<String>,
-    min_supplemental_score: f64,
+    min_supplemental_score: Option<f64>,
 ) -> Vec<usize> {
     reranked
         .iter()
         .enumerate()
         .filter(|(_, candidate)| {
             !inserted_full_doc_urls.contains(&candidate.url)
-                && candidate.rerank_score >= min_supplemental_score
+                && min_supplemental_score.is_none_or(|floor| candidate.rerank_score >= floor)
         })
         .map(|(idx, _)| idx)
         .collect::<Vec<_>>()
