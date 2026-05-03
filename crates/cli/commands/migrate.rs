@@ -19,7 +19,7 @@ pub async fn run_migrate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     clear_collection_mode_cache(&result.from);
     clear_collection_mode_cache(&result.to);
     log_info(&format!(
-        "migrate cache_cleared from={} to={} — workers in separate processes retain their own cache and require a restart",
+        "migrate cache_cleared from={} to={} — separate worker processes revalidate cached legacy Unnamed mode on their next hybrid embed/query",
         result.from, result.to
     ));
 

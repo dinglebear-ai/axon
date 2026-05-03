@@ -23,9 +23,12 @@ pub(crate) enum VectorMode {
     Named,
 }
 
-/// Process-lifetime cache: entries are never evicted. A process restart is required
-/// to pick up collection schema changes (e.g., migration from Unnamed to Named).
-/// Uses `RwLock` (not `Mutex`) because after initial population all accesses are
+/// Process-lifetime cache for collection vector schema.
+///
+/// `Named` hits are authoritative for the current process. `Unnamed` hits are
+/// revalidated when hybrid search is enabled so long-running workers self-heal
+/// after a collection migrates from legacy dense-only mode to named hybrid mode.
+/// Uses `RwLock` (not `Mutex`) because after initial population most accesses are
 /// read-only -- `RwLock` allows unlimited concurrent readers.
 static COLLECTION_MODES: LazyLock<RwLock<HashMap<String, VectorMode>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
@@ -44,6 +47,10 @@ fn cached_vector_mode_key(key: &str) -> Option<VectorMode> {
         .read()
         .ok()
         .and_then(|map| map.get(key).copied())
+}
+
+fn cached_vector_mode_is_authoritative(cfg: &Config, mode: VectorMode) -> bool {
+    !(cfg.hybrid_search_enabled && matches!(mode, VectorMode::Unnamed))
 }
 
 #[cfg(test)]
@@ -99,7 +106,13 @@ pub(super) async fn collection_init_or_cached(
 ) -> Result<VectorMode, Box<dyn Error>> {
     let cache_key = collection_mode_cache_key(cfg);
     if let Some(mode) = cached_vector_mode_key(&cache_key) {
-        return Ok(mode);
+        if cached_vector_mode_is_authoritative(cfg, mode) {
+            return Ok(mode);
+        }
+        log_info(&format!(
+            "qdrant collection_mode_cache_revalidate collection={} cached_mode={:?} reason=hybrid_enabled",
+            cfg.collection, mode
+        ));
     }
     let mode = ensure_collection(cfg, dim).await?;
     cache_vector_mode_key(&cache_key, mode);
@@ -119,7 +132,13 @@ pub(super) async fn collection_init_or_cached(
 pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode, Box<dyn Error>> {
     let cache_key = collection_mode_cache_key(cfg);
     if let Some(mode) = cached_vector_mode_key(&cache_key) {
-        return Ok(mode);
+        if cached_vector_mode_is_authoritative(cfg, mode) {
+            return Ok(mode);
+        }
+        log_info(&format!(
+            "qdrant mode_probe_revalidate collection={} cached_mode={:?} reason=hybrid_enabled",
+            cfg.collection, mode
+        ));
     }
     let client = http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.12] - 2026-05-03
+
+### Fixed
+- **VectorMode cache revalidation**: cached legacy `Unnamed` collection modes now re-probe live Qdrant when hybrid search is enabled, so long-running workers self-heal after migration instead of staying on dense-only paths until restart.
+
 ## [1.0.11] - 2026-05-03
 
 ### Fixed
