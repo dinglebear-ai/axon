@@ -78,7 +78,8 @@ The `axon.json` file provides structured configuration with schema validation (`
 | `AXON_WEB_DEV_PORT` | `49010` | Next.js dev server port |
 | `SHELL_SERVER_PORT` | `49011` | Shell WebSocket server port |
 | `AXON_MCP_HTTP_PORT` | `8001` | MCP HTTP server port |
-| `AXON_MCP_HTTP_HOST` | `0.0.0.0` | MCP HTTP server bind address |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP HTTP server bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
+| `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
 
 ### Lite mode
 
@@ -93,6 +94,8 @@ The `axon.json` file provides structured configuration with schema validation (`
 - `LiteBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
 
 Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
+
+`--wait false` is intentionally fire-and-forget for lite crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
 
 ### TEI embedding
 

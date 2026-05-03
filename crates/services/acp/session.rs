@@ -90,7 +90,11 @@ pub(super) fn spawn_adapter_with_io(
         loop {
             line.clear();
             match reader.read_line(&mut line).await {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break,
+                Err(err) => {
+                    tracing::warn!(error = %err, "acp: stderr reader error — stopping capture");
+                    break;
+                }
                 Ok(_) => {
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
@@ -427,6 +431,10 @@ pub(super) async fn setup_session(
                 .new_session(new_session)
                 .await
                 .map_err(|e| e.to_string())?;
+            tracing::info!(
+                session_id = %r.session_id.0,
+                "acp: new session created"
+            );
             // Emit initial mode state immediately so the frontend has it at session
             // start rather than waiting for the first ConfigOptionUpdate stream event.
             if let Some(ref mode_state) = r.modes {
@@ -455,6 +463,10 @@ pub(super) async fn setup_session(
             }
             // If the adapter does not support load_session, skip directly to new_session.
             if !load_session_supported {
+                tracing::warn!(
+                    requested_session_id = %load_session.session_id.0,
+                    "acp: adapter does not support load_session; creating new session"
+                );
                 let msg = "ACP runtime: adapter does not support load_session, falling back to new_session".to_string();
                 crate::crates::core::logging::log_warn(&msg);
                 emit(
@@ -473,6 +485,10 @@ pub(super) async fn setup_session(
                     .new_session(fallback_req)
                     .await
                     .map_err(|e| e.to_string())?;
+                tracing::info!(
+                    session_id = %r.session_id.0,
+                    "acp: fallback session created because load_session is unsupported"
+                );
                 // Emit initial mode state so the frontend has it at session start,
                 // matching the behaviour of the AcpSessionSetupRequest::New path.
                 if let Some(ref mode_state) = r.modes {
@@ -490,6 +506,10 @@ pub(super) async fn setup_session(
                 return Ok((r.session_id, r.config_options));
             }
             let msg = "ACP runtime: loading existing session".to_string();
+            tracing::info!(
+                requested_session_id = %load_session.session_id.0,
+                "acp: loading existing session"
+            );
             crate::crates::core::logging::log_info(&msg);
             emit(
                 tx,
@@ -505,8 +525,19 @@ pub(super) async fn setup_session(
             // (already capability-filtered) MCP servers as the failed Load request.
             let fallback_mcp_servers = load_session.mcp_servers.clone();
             match conn.load_session(load_session).await {
-                Ok(r) => Ok((requested_id, r.config_options)),
+                Ok(r) => {
+                    tracing::info!(
+                        session_id = %requested_id.0,
+                        "acp: existing session loaded"
+                    );
+                    Ok((requested_id, r.config_options))
+                }
                 Err(err) => {
+                    tracing::warn!(
+                        requested_session_id = %requested_id.0,
+                        error = %err,
+                        "acp: load_session failed; creating fallback session"
+                    );
                     let msg = format!("ACP load_session failed, falling back: {err}");
                     crate::crates::core::logging::log_warn(&msg);
                     emit(
@@ -525,6 +556,11 @@ pub(super) async fn setup_session(
                         .new_session(fallback_req)
                         .await
                         .map_err(|e| e.to_string())?;
+                    tracing::info!(
+                        old_session_id = %requested_id.0,
+                        new_session_id = %r.session_id.0,
+                        "acp: fallback session created after load_session failure"
+                    );
                     emit(
                         tx,
                         ServiceEvent::AcpBridge {
@@ -667,7 +703,15 @@ async fn apply_model_config(
                 requested_model.as_str(),
             ))
             .await
-            .map_err(|err| format!("failed to set ACP model config: {err}"))?;
+            .map_err(|err| {
+                tracing::warn!(
+                    session_id = %session_id.0,
+                    requested_model = %requested_model,
+                    error = %err,
+                    "acp: failed to set model config"
+                );
+                format!("failed to set ACP model config: {err}")
+            })?;
         let updated = map_config_options(&set_resp.config_options);
         if !updated.is_empty() {
             emit(

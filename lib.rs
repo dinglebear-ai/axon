@@ -15,6 +15,16 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
+const JOB_SUBCOMMANDS: &[&str] = &[
+    "status", "cancel", "errors", "list", "cleanup", "clear", "worker", "recover",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobCommandMode<'a> {
+    Submit { fire_and_forget: bool },
+    Subcommand { name: &'a str, needs_workers: bool },
+}
+
 async fn run_once(
     cfg: &Config,
     start_url: &str,
@@ -51,29 +61,29 @@ async fn run_once(
     Ok(())
 }
 
-fn is_job_subcommand(cfg: &Config) -> bool {
-    matches!(
-        cfg.positional.first().map(|s| s.as_str()),
-        Some("status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "worker" | "recover")
-    )
-}
+fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
+    if !matches!(
+        cfg.command,
+        CommandKind::Crawl | CommandKind::Extract | CommandKind::Embed | CommandKind::Ingest
+    ) {
+        return None;
+    }
 
-fn job_subcommand_name(cfg: &Config) -> Option<&str> {
-    cfg.positional.first().map(|s| s.as_str()).filter(|s| {
-        matches!(
-            *s,
-            "status" | "cancel" | "errors" | "list" | "cleanup" | "clear" | "worker" | "recover"
-        )
+    if let Some(subcommand) = cfg
+        .positional
+        .first()
+        .map(String::as_str)
+        .filter(|subcommand| JOB_SUBCOMMANDS.contains(subcommand))
+    {
+        return Some(JobCommandMode::Subcommand {
+            name: subcommand,
+            needs_workers: subcommand == "worker",
+        });
+    }
+
+    Some(JobCommandMode::Submit {
+        fire_and_forget: !cfg.wait,
     })
-}
-
-fn is_async_enqueue_mode(cfg: &Config) -> bool {
-    !cfg.wait
-        && matches!(
-            cfg.command,
-            CommandKind::Crawl | CommandKind::Extract | CommandKind::Embed | CommandKind::Ingest
-        )
-        && !is_job_subcommand(cfg)
 }
 
 pub async fn run() -> Result<(), Box<dyn Error>> {
@@ -107,11 +117,18 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     ));
 
     let cfg_arc = Arc::new(cfg);
-    // CLI commands use ServiceContext::new() (enqueue-only).
-    // Fire-and-forget jobs (without --wait) require `axon mcp` to be running as a
-    // daemon. `axon mcp` uses ServiceContext::new_with_workers() which spawns in-process workers.
-    // When --wait is set, spawn workers inline so the job can complete before exit.
-    let needs_workers = cfg_arc.wait;
+    // CLI commands use ServiceContext::new() (enqueue-only) unless the command
+    // intentionally needs in-process workers. Fire-and-forget submits enqueue
+    // and exit; operator `worker` subcommands spawn workers in this process.
+    let command_mode = job_command_mode(&cfg_arc);
+    let needs_workers = cfg_arc.wait
+        || matches!(
+            command_mode,
+            Some(JobCommandMode::Subcommand {
+                needs_workers: true,
+                ..
+            })
+        );
     let service_context = if needs_workers {
         ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await
     } else {
@@ -121,7 +138,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     let cfg = cfg_arc.as_ref();
 
     if let Some(every_seconds) = cfg.cron_every_seconds {
-        if is_job_subcommand(cfg) {
+        if matches!(command_mode, Some(JobCommandMode::Subcommand { .. })) {
             return Err(
                 "--cron-every-seconds is not supported for job subcommands (status/cancel/list/etc)"
                     .into(),
@@ -156,12 +173,87 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
     run_once(cfg, &start_url, &service_context).await?;
 
-    if is_async_enqueue_mode(cfg) {
+    if matches!(
+        command_mode,
+        Some(JobCommandMode::Submit {
+            fire_and_forget: true
+        })
+    ) {
         log_done(&format!("command={} enqueued", cfg.command.as_str()));
-    } else if let Some(sub) = job_subcommand_name(cfg) {
-        log_done(&format!("command={} {} done", cfg.command.as_str(), sub));
+    } else if let Some(JobCommandMode::Subcommand { name, .. }) = command_mode {
+        log_done(&format!("command={} {} done", cfg.command.as_str(), name));
     } else {
         log_done(&format!("command={} complete", cfg.command.as_str()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(command: CommandKind, positional: &[&str], wait: bool) -> Config {
+        let mut cfg = Config::test_default();
+        cfg.command = command;
+        cfg.positional = positional.iter().map(|value| value.to_string()).collect();
+        cfg.wait = wait;
+        cfg
+    }
+
+    #[test]
+    fn job_command_mode_detects_fire_and_forget_submit() {
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Crawl, &["https://example.com"], false)),
+            Some(JobCommandMode::Submit {
+                fire_and_forget: true
+            })
+        );
+    }
+
+    #[test]
+    fn job_command_mode_detects_waiting_submit() {
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Embed, &["./docs"], true)),
+            Some(JobCommandMode::Submit {
+                fire_and_forget: false
+            })
+        );
+    }
+
+    #[test]
+    fn job_command_mode_worker_subcommand_needs_workers() {
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Ingest, &["worker"], false)),
+            Some(JobCommandMode::Subcommand {
+                name: "worker",
+                needs_workers: true,
+            })
+        );
+    }
+
+    #[test]
+    fn job_command_mode_read_only_and_recover_subcommands_do_not_spawn_workers() {
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Extract, &["list"], false)),
+            Some(JobCommandMode::Subcommand {
+                name: "list",
+                needs_workers: false,
+            })
+        );
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Crawl, &["recover"], false)),
+            Some(JobCommandMode::Subcommand {
+                name: "recover",
+                needs_workers: false,
+            })
+        );
+    }
+
+    #[test]
+    fn job_command_mode_ignores_non_job_commands() {
+        assert_eq!(
+            job_command_mode(&cfg(CommandKind::Query, &["worker"], false)),
+            None
+        );
+    }
 }

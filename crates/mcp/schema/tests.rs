@@ -51,6 +51,34 @@ fn parse_query_action_with_all_optional_fields() {
 }
 
 #[test]
+fn parse_retrieve_action_with_collection_and_time_filters() {
+    let raw = obj(json!({
+        "action": "retrieve",
+        "url": "https://docs.example.com/page",
+        "max_points": 42,
+        "collection": "docs_v2",
+        "since": "7d",
+        "before": "2026-05-03T00:00:00Z",
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(
+        result.is_ok(),
+        "retrieve with collection/time filters should parse"
+    );
+    if let Ok(AxonRequest::Retrieve(req)) = result {
+        assert_eq!(req.url.as_deref(), Some("https://docs.example.com/page"));
+        assert_eq!(req.max_points, Some(42));
+        assert_eq!(req.collection.as_deref(), Some("docs_v2"));
+        assert_eq!(req.since.as_deref(), Some("7d"));
+        assert_eq!(req.before.as_deref(), Some("2026-05-03T00:00:00Z"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Retrieve variant");
+    }
+}
+
+#[test]
 fn parse_crawl_start_action() {
     let raw = obj(json!({
         "action": "crawl",

@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc};
+use tokio_util::sync::CancellationToken;
 
+use super::progress::{spawn_crawl_progress_persister, spawn_embed_progress_persister};
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{accent, symbol_for_status};
 use crate::crates::jobs::backend::{JobPayload, lift_err};
@@ -12,7 +14,7 @@ use crate::crates::jobs::lite::config_snapshot::ingest_config_json;
 use crate::crates::jobs::lite::config_snapshot::{
     apply_lite_config_snapshot, decode_ingest_job_config, lite_config_snapshot_json,
 };
-use crate::crates::jobs::lite::ops::enqueue_job;
+use crate::crates::jobs::lite::ops::{enqueue_job, update_result_json};
 
 pub(super) type JobResult =
     Result<Option<serde_json::Value>, Box<dyn std::error::Error + Send + Sync>>;
@@ -43,18 +45,22 @@ pub(super) async fn run_crawl_job_lite(
         &id.to_string(),
     );
 
+    let (progress_tx, progress_task) = spawn_crawl_progress_persister(pool, id);
     let (summary, _) = crate::crates::crawl::engine::run_crawl_once(
         &effective_cfg,
         &url,
         effective_cfg.render_mode,
         &job_output_dir,
-        None,
+        Some(progress_tx),
         effective_cfg.discover_sitemaps,
         Arc::new(HashMap::new()),
         Some(&id.to_string()),
     )
     .await
     .map_err(lift_err)?;
+    if let Err(e) = progress_task.await {
+        tracing::warn!(job_id = %id, error = %e, "crawl progress persister task failed");
+    }
 
     // Auto-enqueue embed job for the crawled output when embedding is enabled.
     let embed_job_id = if effective_cfg.embed && summary.markdown_files > 0 {
@@ -153,9 +159,18 @@ pub(super) async fn run_embed_job_lite(
 
     let mut worker_cfg = apply_lite_config_snapshot(cfg, &config_json).map_err(lift_err)?;
     worker_cfg.json_output = false;
-    let summary = crate::crates::vector::ops::embed_path_native(&worker_cfg, &input)
-        .await
-        .map_err(lift_err)?;
+    let (progress_tx, progress_task) = spawn_embed_progress_persister(pool, id);
+    let summary = crate::crates::vector::ops::embed_path_native_with_progress(
+        &worker_cfg,
+        &input,
+        Some(progress_tx),
+        None,
+    )
+    .await
+    .map_err(lift_err)?;
+    if let Err(e) = progress_task.await {
+        tracing::warn!(job_id = %id, error = %e, "embed progress persister task failed");
+    }
 
     Ok(Some(serde_json::json!({
         "input": input,
@@ -191,7 +206,7 @@ pub(super) async fn run_extract_job_lite(
         crate::crates::core::content::DeterministicExtractionEngine::with_default_parsers(),
     );
     let mut total_items = 0usize;
-    for url in &urls {
+    for (idx, url) in urls.iter().enumerate() {
         let wcfg = crate::crates::core::content::ExtractWebConfig {
             start_url: url.clone(),
             prompt: effective_cfg.query.clone().unwrap_or_default(),
@@ -218,6 +233,21 @@ pub(super) async fn run_extract_job_lite(
             .await
             .map_err(lift_err)?;
         total_items += run.results.len();
+        let urls_done = idx + 1;
+        let progress = serde_json::json!({
+            "urls": urls_done,
+            "total_items": total_items,
+        });
+        if let Err(e) = update_result_json(
+            pool,
+            crate::crates::jobs::backend::JobKind::Extract,
+            id,
+            &progress,
+        )
+        .await
+        {
+            tracing::warn!(job_id = %id, error = %e, "failed to persist extract progress");
+        }
     }
 
     Ok(Some(serde_json::json!({
@@ -230,6 +260,7 @@ pub(super) async fn run_ingest_job_lite(
     pool: &SqlitePool,
     cfg: &Config,
     id: uuid::Uuid,
+    cancel_token: Option<CancellationToken>,
 ) -> JobResult {
     let row: Option<(String,)> =
         sqlx::query_as("SELECT config_json FROM axon_ingest_jobs WHERE id=?")
@@ -246,6 +277,8 @@ pub(super) async fn run_ingest_job_lite(
         format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})")
     })?;
 
+    let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id);
+
     let result = match source {
         crate::crates::jobs::ingest::IngestSource::Github {
             repo,
@@ -257,19 +290,40 @@ pub(super) async fn run_ingest_job_lite(
                 })?;
             let mut github_cfg = effective_cfg.clone();
             github_cfg.github_include_source = include_source;
-            crate::crates::services::ingest::ingest_github(&github_cfg, &owner, &repo_name, None)
-                .await
-                .map_err(lift_err)?
+            crate::crates::services::ingest::ingest_github_with_progress(
+                &github_cfg,
+                &owner,
+                &repo_name,
+                None,
+                Some(progress_tx.clone()),
+            )
+            .await
+            .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Reddit { target } => {
-            crate::crates::services::ingest::ingest_reddit(&effective_cfg, &target, None)
-                .await
-                .map_err(lift_err)?
+            let options = cancel_token
+                .clone()
+                .map(crate::crates::ingest::reddit::RedditIngestOptions::with_cancel_token)
+                .unwrap_or_default();
+            crate::crates::services::ingest::ingest_reddit_with_progress_and_options(
+                &effective_cfg,
+                &target,
+                None,
+                Some(progress_tx.clone()),
+                &options,
+            )
+            .await
+            .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Youtube { target } => {
-            crate::crates::services::ingest::ingest_youtube(&effective_cfg, &target, None)
-                .await
-                .map_err(lift_err)?
+            crate::crates::services::ingest::ingest_youtube_with_progress(
+                &effective_cfg,
+                &target,
+                None,
+                Some(progress_tx.clone()),
+            )
+            .await
+            .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Sessions {
             sessions_claude,
@@ -282,13 +336,58 @@ pub(super) async fn run_ingest_job_lite(
             sessions_cfg.sessions_codex = sessions_codex;
             sessions_cfg.sessions_gemini = sessions_gemini;
             sessions_cfg.sessions_project = sessions_project;
-            crate::crates::services::ingest::ingest_sessions(&sessions_cfg, None)
-                .await
-                .map_err(lift_err)?
+            crate::crates::services::ingest::ingest_sessions_with_progress(
+                &sessions_cfg,
+                None,
+                Some(progress_tx.clone()),
+            )
+            .await
+            .map_err(lift_err)?
         }
     };
+    drop(progress_tx);
+    if let Err(e) = progress_task.await {
+        tracing::warn!(job_id = %id, error = %e, "ingest progress persister task failed");
+    }
 
     Ok(Some(result.payload))
+}
+
+fn spawn_ingest_progress_persister(
+    pool: &SqlitePool,
+    id: uuid::Uuid,
+) -> (mpsc::Sender<serde_json::Value>, tokio::task::JoinHandle<()>) {
+    let pool = pool.clone();
+    let (tx, mut rx) = mpsc::channel::<serde_json::Value>(128);
+    let task = tokio::spawn(async move {
+        let mut current = serde_json::Value::Object(serde_json::Map::new());
+        while let Some(progress) = rx.recv().await {
+            merge_progress(&mut current, progress);
+            if let Err(e) = update_result_json(
+                &pool,
+                crate::crates::jobs::backend::JobKind::Ingest,
+                id,
+                &current,
+            )
+            .await
+            {
+                tracing::warn!(job_id = %id, error = %e, "failed to persist ingest progress");
+            }
+        }
+    });
+    (tx, task)
+}
+
+fn merge_progress(current: &mut serde_json::Value, progress: serde_json::Value) {
+    if let serde_json::Value::Object(progress) = progress
+        && let Some(current) = current.as_object_mut()
+    {
+        for (key, value) in progress {
+            current.insert(key, value);
+        }
+        return;
+    }
+    *current = serde_json::Value::Object(serde_json::Map::new());
 }
 
 #[cfg(test)]
@@ -452,5 +551,26 @@ mod tests {
             } if repo == "owner/repo"
         ));
         assert_eq!(legacy_effective.collection, "worker_collection");
+    }
+
+    #[test]
+    fn merge_progress_overlays_object_fields() {
+        let mut current = serde_json::json!({
+            "phase": "cloning",
+            "files_done": 1,
+            "chunks_embedded": 0,
+        });
+
+        merge_progress(
+            &mut current,
+            serde_json::json!({
+                "phase": "embedding_batch",
+                "chunks_embedded": 42,
+            }),
+        );
+
+        assert_eq!(current["phase"], "embedding_batch");
+        assert_eq!(current["files_done"], 1);
+        assert_eq!(current["chunks_embedded"], 42);
     }
 }

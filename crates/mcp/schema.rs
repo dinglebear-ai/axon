@@ -266,6 +266,14 @@ pub struct QueryRequest {
 pub struct RetrieveRequest {
     pub url: Option<String>,
     pub max_points: Option<usize>,
+    /// Qdrant collection to read from. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    /// Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.
+    /// Restricts retrieved chunks to content indexed on or after this date.
+    pub since: Option<String>,
+    /// Upper bound for temporal filter. Same formats as `since`.
+    /// Restricts retrieved chunks to content indexed on or before this date.
+    pub before: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

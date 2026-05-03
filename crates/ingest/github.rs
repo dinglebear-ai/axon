@@ -33,6 +33,13 @@ pub(crate) struct GitHubCommonFields {
     pub has_wiki: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitHubTarget {
+    pub owner: String,
+    pub repo: String,
+    pub repo_slug: String,
+}
+
 // ── Pure helper functions (re-exported for tests and cli command) ──────────────
 
 /// Returns true if a file path should be indexed when --include-source is set.
@@ -99,15 +106,24 @@ pub fn is_indexable_doc_path(path: &str) -> bool {
 /// Parse an "owner/repo" string into (owner, repo) parts.
 /// Accepts both "owner/repo" and "https://github.com/owner/repo" forms.
 pub fn parse_github_repo(input: &str) -> Option<(String, String)> {
-    let normalized = if let Some(rest) = input.strip_prefix("https://github.com/") {
-        rest.trim_end_matches('/')
-    } else {
-        input
+    parse_github_target(input).map(|target| (target.owner, target.repo))
+}
+
+/// Parse an "owner/repo" string into a normalized GitHub target.
+/// Accepts both "owner/repo" and "https://github.com/owner/repo" forms.
+pub fn parse_github_target(input: &str) -> Option<GitHubTarget> {
+    let (slug, is_url) = match input.strip_prefix("https://github.com/") {
+        Some(rest) => (rest.trim_end_matches('/'), true),
+        None => (input, false),
     };
 
-    let mut parts = normalized.splitn(2, '/');
+    let mut parts = slug.split('/');
     let owner = parts.next().filter(|s| !s.is_empty())?;
-    let repo = parts.next().filter(|s| !s.is_empty() && !s.contains('/'))?;
+    let repo = parts.next().filter(|s| !s.is_empty())?;
+    // URL form accepts extra path segments (e.g. pasted /tree/main); slug form does not.
+    if !is_url && parts.next().is_some() {
+        return None;
+    }
 
     // Strip .git suffix commonly found in clone URLs
     let repo = repo.strip_suffix(".git").unwrap_or(repo);
@@ -116,7 +132,15 @@ pub fn parse_github_repo(input: &str) -> Option<(String, String)> {
         return None;
     }
 
-    Some((owner.to_string(), repo.to_string()))
+    let owner = owner.to_string();
+    let repo = repo.to_string();
+    let repo_slug = format!("{owner}/{repo}");
+
+    Some(GitHubTarget {
+        owner,
+        repo,
+        repo_slug,
+    })
 }
 
 // ── Octocrab helpers ───────────────────────────────────────────────────────────
@@ -353,11 +377,11 @@ pub async fn ingest_github(
     reporter: PhaseReporter,
 ) -> Result<usize> {
     log_info(&format!("command=ingest source=github repo={repo}"));
-    let (owner, name) =
-        parse_github_repo(repo).ok_or_else(|| anyhow::anyhow!("invalid GitHub repo: {repo}"))?;
+    let target =
+        parse_github_target(repo).ok_or_else(|| anyhow::anyhow!("invalid GitHub repo: {repo}"))?;
 
     let octo = build_octocrab(cfg)?;
-    let repo_info = octo.repos(&owner, &name).get().await?;
+    let repo_info = octo.repos(&target.owner, &target.repo).get().await?;
     let default_branch = repo_info
         .default_branch
         .as_deref()
@@ -365,9 +389,9 @@ pub async fn ingest_github(
         .to_string();
 
     let common = GitHubCommonFields {
-        repo_slug: format!("{owner}/{name}"),
-        owner: owner.clone(),
-        name: name.clone(),
+        repo_slug: target.repo_slug,
+        owner: target.owner.clone(),
+        name: target.repo.clone(),
         default_branch,
         repo_description: repo_info.description.clone(),
         pushed_at: repo_info.pushed_at.map(|dt| dt.to_rfc3339()),

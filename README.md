@@ -879,11 +879,12 @@ HTTP endpoint: `http://<AXON_MCP_HTTP_HOST>:<AXON_MCP_HTTP_PORT>/mcp`
 HTTP bind environment:
 
 ```bash
-AXON_MCP_HTTP_HOST=0.0.0.0        # default
+AXON_MCP_HTTP_HOST=127.0.0.1      # default
 AXON_MCP_HTTP_PORT=8001            # default
+AXON_MCP_HTTP_TOKEN=               # required for non-loopback binds
 ```
 
-Authentication is handled at the ingress layer (OAuth gateway + SWAG reverse proxy). The `/mcp` endpoint is unauthenticated at the application level.
+HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when it is set. Tokenless HTTP is allowed only for loopback binds; non-loopback binds such as `0.0.0.0` are rejected at startup unless `AXON_MCP_HTTP_TOKEN` is configured. Reverse proxies can still add OAuth or other ingress controls in front of the token gate.
 
 ### Tool Contract
 
@@ -1145,8 +1146,9 @@ Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AXON_MCP_HTTP_HOST` | `0.0.0.0` | HTTP bind host |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP bind port |
+| `AXON_MCP_HTTP_TOKEN` | — | Bearer or `x-api-key` token required for non-loopback HTTP binds and enforced on all MCP HTTP requests when set |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline is triggered (0 = disable) |
 
 #### Ports

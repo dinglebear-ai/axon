@@ -7,41 +7,13 @@ use super::super::filter::build_scraped_at_filter;
 use super::super::hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 use super::super::search;
 use super::super::types::QdrantSearchHit;
+use super::super::utils::validate_config_collection;
 
 /// Hard cap on retrieval-query length. `compute_sparse_vector` and `tei_embed` are
 /// otherwise unbounded; a multi-MB query would reach both Qdrant and TEI.
 /// Bounded to ~64 KiB which is well above any reasonable NL or keyword query
 /// (CWE-770, bd axon_rust-d71.7 / H3).
 const MAX_QUERY_LEN_BYTES: usize = 64 * 1024;
-
-/// Validate a Qdrant collection name against URL-injection / path-traversal.
-///
-/// Allows alphanumerics, underscore, hyphen, and dot; rejects path separators,
-/// query/fragment delimiters, leading/trailing dots, and `..`. Length capped
-/// at 255. Called at every dispatch entry — see crates/vector/ops/qdrant/hybrid.rs
-/// and crates/vector/ops/qdrant/commands.rs which interpolate the name into URLs
-/// without percent-encoding (CWE-22, bd axon_rust-d71.6 / H2).
-fn validate_collection_name(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
-        return Err("empty");
-    }
-    if name.len() > 255 {
-        return Err("exceeds 255 characters");
-    }
-    if name == "." || name == ".." || name.starts_with('.') || name.ends_with('.') {
-        return Err("leading/trailing dot or path component");
-    }
-    if name.contains("..") {
-        return Err("contains '..'");
-    }
-    for c in name.chars() {
-        let ok = c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.');
-        if !ok {
-            return Err("contains a character outside [A-Za-z0-9_.-]");
-        }
-    }
-    Ok(())
-}
 
 pub(crate) struct VectorSearchRequest<'a> {
     pub(crate) dense: &'a [f32],
@@ -117,13 +89,7 @@ pub(crate) async fn dispatch_vector_search_request(
     cfg: &Config,
     req: &VectorSearchRequest<'_>,
 ) -> Result<Vec<QdrantSearchHit>, Box<dyn Error + Send + Sync>> {
-    if let Err(reason) = validate_collection_name(&cfg.collection) {
-        return Err(format!(
-            "invalid collection name {:?}: {reason} (CWE-22 path injection guard)",
-            cfg.collection
-        )
-        .into());
-    }
+    validate_config_collection(cfg).map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
     let filter_ref = req.filter.as_ref();
     let mode =
         get_or_fetch_vector_mode(cfg)
@@ -233,6 +199,7 @@ pub(crate) async fn dispatch_vector_search_request(
 mod tests {
     use super::*;
     use crate::crates::core::config::Config;
+    use crate::crates::vector::ops::qdrant::utils::validate_collection_name;
     use httpmock::prelude::*;
 
     fn named_collection_body() -> serde_json::Value {

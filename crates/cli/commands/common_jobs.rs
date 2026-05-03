@@ -320,7 +320,7 @@ pub fn handle_job_recover(
     Ok(())
 }
 
-/// Handle the result of `job_service::run_worker(cfg, kind).await?`.
+/// Handle the result of `job_service::start_worker(cfg, kind).await?`.
 ///
 /// Prints a message in lite mode (workers are in-process) and propagates
 /// any `Unsupported` error. Extracted to eliminate the identical 5-arm match

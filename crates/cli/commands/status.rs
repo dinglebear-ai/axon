@@ -60,32 +60,142 @@ async fn run_status_impl(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let (jobs, _totals) = load_status_jobs(service_context).await?;
-    print_status_section("Crawl", &jobs.crawl, |job| {
-        job.url.clone().unwrap_or_else(|| job.id.to_string())
-    });
-    print_status_section("Extract", &jobs.extract, |job| {
-        job.urls_json
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_else(|| job.id.to_string())
-    });
-    print_status_section("Embed", &jobs.embed, |job| {
-        job.target.clone().unwrap_or_else(|| job.id.to_string())
-    });
-    print_status_section("Ingest", &jobs.ingest, |job| {
-        match (&job.source_type, &job.target) {
+    print_status_section(
+        "Crawl",
+        &jobs.crawl,
+        |job| job.url.clone().unwrap_or_else(|| job.id.to_string()),
+        crawl_progress_summary,
+    );
+    print_status_section(
+        "Extract",
+        &jobs.extract,
+        |job| {
+            job.urls_json
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| job.id.to_string())
+        },
+        extract_progress_summary,
+    );
+    print_status_section(
+        "Embed",
+        &jobs.embed,
+        |job| job.target.clone().unwrap_or_else(|| job.id.to_string()),
+        embed_progress_summary,
+    );
+    print_status_section(
+        "Ingest",
+        &jobs.ingest,
+        |job| match (&job.source_type, &job.target) {
             (Some(source_type), Some(target)) => format!("{source_type}: {target}"),
             (_, Some(target)) => target.clone(),
             _ => job.id.to_string(),
-        }
-    });
+        },
+        ingest_progress_summary,
+    );
     Ok(())
+}
+
+fn crawl_progress_summary(job: &ServiceJob) -> Option<String> {
+    let metrics = job.result_json.as_ref()?;
+    match job.status.as_str() {
+        "running" => {
+            let crawled = metrics
+                .get("pages_crawled")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let docs = metrics
+                .get("md_created")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            if crawled == 0 && docs == 0 {
+                return None;
+            }
+            if docs > 0 {
+                Some(format!("{crawled} crawled · {docs} docs"))
+            } else {
+                Some(format!("{crawled} crawled"))
+            }
+        }
+        "completed" => {
+            let docs = metrics
+                .get("md_created")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let elapsed_ms = metrics
+                .get("elapsed_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let time = if elapsed_ms >= 1000 {
+                format!("{:.1}s", elapsed_ms as f64 / 1000.0)
+            } else {
+                format!("{elapsed_ms}ms")
+            };
+            Some(format!("{docs} docs · {time}"))
+        }
+        _ => None,
+    }
+}
+
+fn embed_progress_summary(job: &ServiceJob) -> Option<String> {
+    let metrics = job.result_json.as_ref()?;
+    if !matches!(job.status.as_str(), "running" | "completed") {
+        return None;
+    }
+    let docs = metrics
+        .get("docs_embedded")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let chunks = metrics
+        .get("chunks_embedded")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if docs == 0 && chunks == 0 {
+        return None;
+    }
+    if docs > 0 {
+        Some(format!("{docs} docs · {chunks} chunks"))
+    } else {
+        Some(format!("{chunks} chunks"))
+    }
+}
+
+fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
+    let metrics = job.result_json.as_ref()?;
+    if !matches!(job.status.as_str(), "running" | "completed") {
+        return None;
+    }
+    let items = metrics
+        .get("total_items")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if items == 0 {
+        return None;
+    }
+    Some(format!("{items} items"))
+}
+
+fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
+    let metrics = job.result_json.as_ref()?;
+    if !matches!(job.status.as_str(), "running" | "completed") {
+        return None;
+    }
+    let chunks = metrics
+        .get("chunks")
+        .or_else(|| metrics.get("chunks_embedded"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if chunks == 0 {
+        return None;
+    }
+    Some(format!("{chunks} chunks"))
 }
 
 fn print_status_section(
     title: &str,
     jobs: &[ServiceJob],
     label_for: impl Fn(&ServiceJob) -> String,
+    progress_for: impl Fn(&ServiceJob) -> Option<String>,
 ) {
     println!("{}", primary(title));
     if jobs.is_empty() {
@@ -95,13 +205,25 @@ fn print_status_section(
     }
 
     for job in jobs.iter().take(10) {
-        println!(
-            "  {} {} {} {}",
-            symbol_for_status(&job.status),
-            human_status_text(&job.status),
-            label_for(job),
-            muted(&job.id.to_string()),
-        );
+        let label = label_for(job);
+        if let Some(p) = progress_for(job) {
+            println!(
+                "  {} {} {} {}  {}",
+                symbol_for_status(&job.status),
+                human_status_text(&job.status),
+                label,
+                muted(&job.id.to_string()),
+                muted(&p),
+            );
+        } else {
+            println!(
+                "  {} {} {} {}",
+                symbol_for_status(&job.status),
+                human_status_text(&job.status),
+                label,
+                muted(&job.id.to_string()),
+            );
+        }
         if let Some(err) = job.error_text.as_deref() {
             println!("    {}", muted(err));
         }

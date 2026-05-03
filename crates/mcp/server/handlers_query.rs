@@ -70,7 +70,18 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("url is required for retrieve"))?;
         let response_mode = req.response_mode;
         let opts = to_retrieve_options(req.max_points);
-        let result = query_svc::retrieve(self.cfg.as_ref(), &target, opts)
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(collection) = req.collection {
+            cfg.collection = validate_mcp_collection(&collection)?;
+        }
+        if let Some(since) = req.since {
+            cfg.since = Some(since);
+        }
+        if let Some(before) = req.before {
+            cfg.before = Some(before);
+        }
+
+        let result = query_svc::retrieve(&cfg, &target, opts)
             .await
             .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
         respond_with_mode(

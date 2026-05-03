@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::crates::core::config::Config;
 use crate::crates::core::content::canonicalize_url;
 use crate::crates::core::http::validate_url;
-use crate::crates::jobs::backend::JobPayload;
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::lite::store::open_sqlite_pool;
 
 pub mod sitemap;
@@ -32,7 +32,7 @@ pub struct CrawlJob {
 /// Count all crawl jobs in SQLite.
 pub async fn count_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, "axon_crawl_jobs").await?)
+    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, JobKind::Crawl).await?)
 }
 
 /// Enqueue a new crawl job in SQLite. Returns the new job UUID.

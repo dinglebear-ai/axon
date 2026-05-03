@@ -1,0 +1,11 @@
+{
+  "name": "axon",
+  "version": "1.1.0",
+  "description": "A Claude Code plugin",
+  "author": "",
+  "commands": [],
+  "agents": [],
+  "skills": [],
+  "hooks": [],
+  "monitors": []
+}

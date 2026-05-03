@@ -70,10 +70,13 @@ axon mcp
 Streamable-HTTP transport with MCP protocol support. Uses the `rmcp` crate with `transport-streamable-http-server` feature.
 
 ```bash
-AXON_MCP_HTTP_HOST=0.0.0.0
+AXON_MCP_HTTP_HOST=127.0.0.1
 AXON_MCP_HTTP_PORT=8001
 axon serve mcp
 ```
+
+Non-loopback binds such as `0.0.0.0` require `AXON_MCP_HTTP_TOKEN`; tokenless
+HTTP startup is limited to loopback hosts.
 
 ### Endpoints
 

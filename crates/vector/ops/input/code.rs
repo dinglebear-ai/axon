@@ -3,6 +3,7 @@
 // Splits source code at structural boundaries (functions, classes, blocks)
 // instead of raw character counts, preserving semantic coherence in each chunk.
 
+use super::CHUNK_OVERLAP;
 use text_splitter::{ChunkConfig, CodeSplitter};
 use tree_sitter_language::LanguageFn;
 
@@ -37,10 +38,9 @@ fn language_for_extension(ext: &str) -> Option<LanguageFn> {
 /// matching the 200-char overlap used by `chunk_text()`.
 pub fn chunk_code(content: &str, file_extension: &str) -> Option<Vec<String>> {
     let lang = language_for_extension(file_extension)?;
-    // 200-char overlap matches chunk_text() — ensures context continuity at boundaries
     let config = ChunkConfig::new(500..2000)
-        .with_overlap(200)
-        .expect("overlap 200 < desired capacity 2000");
+        .with_overlap(CHUNK_OVERLAP)
+        .expect("CHUNK_OVERLAP < max chunk size");
     let splitter = CodeSplitter::new(lang, config).expect("valid language");
 
     let chunks: Vec<String> = splitter

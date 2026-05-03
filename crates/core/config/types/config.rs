@@ -448,7 +448,7 @@ pub struct Config {
     /// `axon serve mcp` uses HTTP. Flag: `--transport`.
     pub mcp_transport: McpTransport,
 
-    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `0.0.0.0`.
+    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `127.0.0.1`.
     pub mcp_http_host: String,
 
     /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.

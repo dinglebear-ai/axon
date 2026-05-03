@@ -31,8 +31,9 @@ When HTTP transport is enabled (`http` or `both`), these environment variables c
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_HTTP_HOST` | `0.0.0.0` | MCP server bind host |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP server bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
 | `AXON_MCP_HTTP_PORT` | `8001` | MCP server bind port |
+| `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
 
 The primary HTTP MCP endpoint is mounted at `/mcp`.
 

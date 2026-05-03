@@ -81,7 +81,7 @@ fn print_top_level_help() {
     println!(
         "  {:<28} {}",
         cmd("--wait <bool>"),
-        dim("run synchronously (default false)")
+        dim("true waits; false enqueues and returns")
     );
     println!(
         "  {:<28} {}",

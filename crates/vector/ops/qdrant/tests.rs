@@ -259,6 +259,33 @@ async fn qdrant_retrieve_by_url_rejects_invalid_date_filter_before_scroll() {
     );
 }
 
+#[tokio::test]
+async fn qdrant_retrieve_by_url_rejects_invalid_collection_before_scroll() {
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = "http://127.0.0.1:1".to_string();
+    let mut bad_collections = vec![
+        "../secrets".to_string(),
+        "docs/v1".to_string(),
+        "docs?token=abc".to_string(),
+        "docs#frag".to_string(),
+        ".hidden".to_string(),
+        "trailing.".to_string(),
+        "a..b".to_string(),
+        "a%2e%2e".to_string(),
+    ];
+    bad_collections.push("a".repeat(256));
+    for collection in bad_collections {
+        cfg.collection = collection.clone();
+        let err = qdrant_retrieve_by_url(&cfg, "https://retrieve-a.example", None)
+            .await
+            .expect_err("invalid collection must fail before scroll request");
+        assert!(
+            err.to_string().contains("invalid collection name"),
+            "error should mention invalid collection for {collection:?}, got: {err}"
+        );
+    }
+}
+
 /// `qdrant_delete_by_url_filter` must remove all points with the target url and leave others intact.
 #[tokio::test]
 async fn qdrant_delete_by_url_filter_removes_matching_points() -> Result<(), Box<dyn Error>> {

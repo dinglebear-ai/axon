@@ -1,9 +1,9 @@
 # GitHub Ingest
-Last Modified: 2026-03-10
+Last Modified: 2026-05-03
 
 > CLI reference (flags, subcommands, examples): [`docs/commands/ingest.md`](../commands/ingest.md)
 
-Ingests a GitHub repository — source code, documentation, issues, pull requests, and wiki pages — into Qdrant via a hybrid approach: raw reqwest for file content, octocrab for metadata/issues/PRs, and `git clone` for wiki pages.
+Ingests a GitHub repository — source code, documentation, issues, pull requests, and wiki pages — into Qdrant via a hybrid approach: shallow `git clone` for repository files, octocrab for metadata/issues/PRs, and a separate shallow `git clone` for wiki pages.
 
 ## What Gets Indexed
 
@@ -49,13 +49,13 @@ Classification is stored in the `gh_file_type` metadata field on each chunk.
 
 ## Prerequisites
 
-A running Qdrant + TEI stack. `GITHUB_TOKEN` is optional but strongly recommended for any repo with more than a handful of files.
+A running Qdrant + TEI stack. `GITHUB_TOKEN` is optional for public repositories and required for private repositories.
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITHUB_TOKEN` | Optional | Personal access token (classic) with `repo` scope, or fine-grained token with `contents:read`. Without this: **60 req/hr**. With this: **5,000 req/hr**. Large repos hit the unauthenticated limit quickly. Required for private repos. |
+| `GITHUB_TOKEN` | Optional | Personal access token (classic) with `repo` scope, or fine-grained token with repository contents access. Required for private repos. For public repos it is used for metadata/issues/PR API calls and authenticated clone first; if that clone fails and the repo is public, axon retries clone without the token. |
 | `AXON_COLLECTION` | Optional | Qdrant collection name (default: `cortex`) |
 | `TEI_URL` | Required | TEI embedding service URL |
 
@@ -75,13 +75,35 @@ The argument accepts:
 
 1. Validates and normalizes `owner/repo` from the input
 2. Fetches repo metadata via `GET /repos/{owner}/{repo}` — builds `GitHubCommonFields` (owner, name, description, default branch, pushed_at, is_private)
-3. Fetches the full file tree via `GET /repos/{owner}/{repo}/git/trees/{sha}?recursive=1`
-4. Filters files through `is_indexable_doc_path()` (always) and `is_indexable_source_path()` (unless `--no-source`)
-5. Fetches file contents in parallel via `GET /repos/{owner}/{repo}/contents/{path}`
-6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. All are embedded via `embed_prepared_docs()` with `PreparedDoc`
+3. Clones the repository with `git clone --depth=1 --branch <default_branch> --single-branch`
+4. Walks the local clone and filters files through `is_indexable_doc_path()` (always) and `is_indexable_source_path()` (unless `--no-source`)
+5. Reads file contents from disk in bounded parallel batches
+6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. Chunks are embedded through `embed_prepared_docs()` in batches
 7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
-8. Clones the wiki via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files
+8. Clones the wiki separately via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files when GitHub reports a wiki exists
 9. All chunk types carry unified `gh_*` metadata payload via `build_github_payload()` in `crates/ingest/github/meta.rs`
+
+### Clone Authentication and Fallback
+
+When `GITHUB_TOKEN` is set, repository file ingest tries an authenticated clone first.
+
+- Private repositories never retry unauthenticated after an authenticated clone failure.
+- Repositories with unknown visibility skip unauthenticated retry when the clone error is an auth or permission failure.
+- Public repositories may retry unauthenticated because stale or over-scoped local credentials should not block public source ingestion.
+
+Clone error messages redact the configured token before returning/logging.
+
+### File Embed Failure Accounting
+
+File embedding flushes `PreparedDoc` batches to the vector pipeline. If a batch fails, axon records:
+
+- `embed_batches_failed`
+- `embed_files_failed`
+- `embed_docs_failed`
+- `embed_chunks_failed`
+- `file_read_failures`
+
+The current threshold is fixed and conservative: any failed embed batch makes the GitHub files sub-task fail after reporting the counters. File read/stat failures are counted and skipped because they usually represent unreadable local paths or files filtered after clone; they do not by themselves fail the sub-task.
 
 ## Qdrant Metadata Fields
 
@@ -136,9 +158,9 @@ All GitHub chunks carry a **unified** set of 31 `gh_*` payload fields built by `
 
 | Limitation | Detail |
 |-----------|--------|
-| **Rate limits without token** | 60 req/hr unauthenticated. Any repo with 60+ files will exhaust this in one run. Set `GITHUB_TOKEN`. |
+| **Rate limits without token** | File content ingestion uses git clone and does not make one API request per file. Metadata, issues, and PRs still use GitHub API calls and are rate-limited without `GITHUB_TOKEN`. |
 | **Private repos** | Require a token with `repo` (classic) or `contents:read` (fine-grained) scope |
-| **Very large repos** | Tree-first + per-file fetching is O(file count). Large repos (thousands of files) take minutes even with a token. |
+| **Very large repos** | Clone + local walk avoids per-file API calls, but large repositories still take time to clone, walk, chunk, and embed. |
 | **Binary files** | Excluded by extension list. The list is hardcoded; PRs welcome for additions. |
 | **Forked repos** | Ingests the fork only, not upstream. |
 | **AST chunking coverage** | Only Rust, Python, JavaScript, TypeScript, Go, and Bash have tree-sitter grammars. Other languages fall back to prose chunking. |
@@ -155,4 +177,4 @@ Repo is private or doesn't exist. Check the owner/repo spelling and token permis
 
 **Slow ingestion on large repos**
 
-Expected — tree walk + per-file API calls for thousands of files is inherently sequential-ish (parallelism is bounded by GitHub's rate limit). Consider skipping source code (`--no-source`) or using a token to maximize rate allowance.
+Expected — clone, local walk, chunking, and TEI embedding can take minutes for large repositories. Consider skipping source code (`--no-source`) when you only need docs/issues/PR metadata.

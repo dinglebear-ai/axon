@@ -55,7 +55,7 @@ pub(super) async fn maybe_handle_subcommand(
             }
         }
         "worker" => {
-            handle_worker_mode(job_service::run_worker(service_context, JobKind::Crawl).await?)?
+            handle_worker_mode(job_service::start_worker(service_context, JobKind::Crawl).await?)?
         }
         "recover" => {
             let reclaimed = job_service::recover_jobs(service_context, JobKind::Crawl).await?;

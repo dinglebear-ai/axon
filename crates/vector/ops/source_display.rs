@@ -134,13 +134,8 @@ mod tests {
     // display_source must fall back to returning the raw path string unchanged.
     #[test]
     fn display_source_falls_back_to_raw_path_when_no_manifest_and_no_git() {
-        let tmp = tempfile::TempDir::new().expect("tmp dir");
-        // Create the file directly under the tempdir root — NOT inside `markdown/`.
-        let file = tmp.path().join("some_doc.md");
-        fs::write(&file, "# hello").expect("write file");
-        let raw = file.to_string_lossy().to_string();
-        let result = display_source(&raw);
-        assert_eq!(result, raw);
+        let raw = "some_doc.md";
+        assert_eq!(display_source(raw), raw);
     }
 
     // Manifest uses "file_path" (absolute path) instead of "relative_path".

@@ -20,7 +20,7 @@ mod services_migration_tests;
 
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::crates::core::config::Config;
-use crate::crates::mcp::auth::mcp_auth_middleware;
+use crate::crates::mcp::auth::{mcp_auth_middleware, mcp_http_token_is_configured};
 use crate::crates::mcp::cors::cors_middleware;
 use crate::crates::services::context::ServiceContext;
 use axum::{Router, body::Body, extract::State, middleware, middleware::Next, response::Response};
@@ -349,6 +349,8 @@ pub async fn run_http_server(
     host: &str,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    enforce_mcp_http_startup_policy(host)?;
+
     let cors_cfg = Arc::new(cfg.clone());
     let cfg_arc = Arc::new(cfg);
     let service_context = Arc::new(OnceCell::new());
@@ -384,19 +386,56 @@ pub async fn run_http_server(
         ));
 
     // Warn at startup (not lazily) if the MCP HTTP server is unauthenticated.
-    if std::env::var("AXON_MCP_HTTP_TOKEN")
-        .ok()
-        .map(|s| s.trim().is_empty())
-        .unwrap_or(true)
-    {
+    if !mcp_http_token_is_configured() {
         tracing::warn!(
             context = "mcp_http_startup",
-            "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
+            host = %host,
+            "AXON_MCP_HTTP_TOKEN not set \u{2014} loopback MCP HTTP server is unauthenticated"
         );
     }
+    tracing::info!(host = %host, port, "mcp_http: server starting");
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
-    axum::serve(listener, app).await?;
+    if let Err(err) = axum::serve(listener, app).await {
+        tracing::error!(error = %err, "mcp_http: server exited with error");
+        return Err(err.into());
+    }
+    tracing::info!("mcp_http: server shut down cleanly");
     Ok(())
+}
+
+fn enforce_mcp_http_startup_policy(host: &str) -> Result<(), Box<dyn std::error::Error>> {
+    enforce_mcp_http_startup_policy_with_token(host, mcp_http_token_is_configured())
+}
+
+fn enforce_mcp_http_startup_policy_with_token(
+    host: &str,
+    token_configured: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if mcp_http_bind_is_loopback(host) || token_configured {
+        return Ok(());
+    }
+
+    Err(format!(
+        "refusing to start unauthenticated MCP HTTP server on non-loopback host '{host}'; \
+         set AXON_MCP_HTTP_TOKEN or bind AXON_MCP_HTTP_HOST to 127.0.0.1/localhost"
+    )
+    .into())
+}
+
+fn mcp_http_bind_is_loopback(host: &str) -> bool {
+    let host = host.trim();
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+
+    host.parse::<std::net::IpAddr>()
+        .map(|addr| addr.is_loopback())
+        .unwrap_or(false)
 }
 
 async fn mcp_http_cors_middleware(
@@ -405,4 +444,51 @@ async fn mcp_http_cors_middleware(
     next: Next,
 ) -> Response {
     cors_middleware(request, next, &cfg.mcp_allowed_origins).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_http_bind_loopback_detection_accepts_loopback_hosts() {
+        assert!(mcp_http_bind_is_loopback("127.0.0.1"));
+        assert!(mcp_http_bind_is_loopback("::1"));
+        assert!(mcp_http_bind_is_loopback("[::1]"));
+        assert!(mcp_http_bind_is_loopback("localhost"));
+    }
+
+    #[test]
+    fn mcp_http_bind_loopback_detection_rejects_wildcard_and_remote_hosts() {
+        assert!(!mcp_http_bind_is_loopback("0.0.0.0"));
+        assert!(!mcp_http_bind_is_loopback("::"));
+        assert!(!mcp_http_bind_is_loopback("192.168.1.10"));
+        assert!(!mcp_http_bind_is_loopback("axon.example.com"));
+    }
+
+    #[test]
+    fn startup_policy_allows_loopback_without_token() {
+        let result = enforce_mcp_http_startup_policy_with_token("127.0.0.1", false);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn startup_policy_rejects_non_loopback_without_token() {
+        let err =
+            enforce_mcp_http_startup_policy_with_token("0.0.0.0", false).expect_err("must reject");
+
+        assert!(
+            err.to_string()
+                .contains("refusing to start unauthenticated"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn startup_policy_allows_non_loopback_with_token() {
+        let result = enforce_mcp_http_startup_policy_with_token("0.0.0.0", true);
+
+        assert!(result.is_ok());
+    }
 }

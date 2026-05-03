@@ -73,7 +73,7 @@ async fn maybe_handle_embed_subcommand(
         "cleanup" => handle_embed_cleanup(cfg, service_context).await?,
         "clear" => handle_embed_clear(cfg, service_context).await?,
         "worker" => {
-            handle_worker_mode(job_service::run_worker(service_context, JobKind::Embed).await?)?
+            handle_worker_mode(job_service::start_worker(service_context, JobKind::Embed).await?)?
         }
         "recover" => handle_embed_recover(cfg, service_context).await?,
         _ => return Ok(false),

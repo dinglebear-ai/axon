@@ -1,3 +1,4 @@
+use crate::crates::jobs::backend::JobKind;
 use crate::crates::jobs::lite::ops::cancel_row;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
@@ -36,9 +37,9 @@ impl CancelStore {
         &self,
         id: Uuid,
         pool: &SqlitePool,
-        table: &str,
+        kind: JobKind,
     ) -> Result<bool, sqlx::Error> {
-        let updated = cancel_row(pool, table, id).await?;
+        let updated = cancel_row(pool, kind, id).await?;
         if let Some(entry) = self.tokens.get(&id) {
             entry.value().cancel();
         }
@@ -76,7 +77,7 @@ mod tests {
         let store = Arc::new(CancelStore::new());
         let token = store.register(id);
 
-        store.cancel(id, &pool, "axon_crawl_jobs").await.unwrap();
+        store.cancel(id, &pool, JobKind::Crawl).await.unwrap();
 
         assert!(token.is_cancelled(), "token should be cancelled");
     }

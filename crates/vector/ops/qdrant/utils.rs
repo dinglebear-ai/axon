@@ -1,11 +1,116 @@
 use super::types::{QdrantPayload, QdrantPoint, RETRIEVE_MAX_POINTS_CEILING};
 use crate::crates::core::config::Config;
+use crate::crates::core::logging::log_warn;
+use anyhow::{Result, anyhow};
+use rand::RngExt as _;
+use reqwest::StatusCode;
+use serde::{Serialize, de::DeserializeOwned};
 use spider::url::Url;
 use std::env;
 use std::sync::LazyLock;
+use std::time::{Duration, Instant};
 
 pub fn qdrant_base(cfg: &Config) -> &str {
     cfg.qdrant_url.trim_end_matches('/')
+}
+
+/// Validate a Qdrant collection name against URL path injection.
+pub(crate) fn validate_collection_name(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        return Err("empty");
+    }
+    if name.len() > 255 {
+        return Err("exceeds 255 characters");
+    }
+    if name == "." || name == ".." || name.starts_with('.') || name.ends_with('.') {
+        return Err("leading/trailing dot or path component");
+    }
+    if name.contains("..") {
+        return Err("contains '..'");
+    }
+    for c in name.chars() {
+        let ok = c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.');
+        if !ok {
+            return Err("contains a character outside [A-Za-z0-9_.-]");
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_config_collection(cfg: &Config) -> Result<()> {
+    validate_collection_name(&cfg.collection).map_err(|reason| {
+        anyhow!(
+            "invalid collection name {:?}: {reason} (CWE-22 path injection guard)",
+            cfg.collection
+        )
+    })
+}
+
+pub(crate) fn qdrant_collection_endpoint(cfg: &Config, suffix: &str) -> Result<String> {
+    validate_config_collection(cfg)?;
+    let suffix = suffix.trim_start_matches('/');
+    Ok(format!(
+        "{}/collections/{}/{}",
+        qdrant_base(cfg),
+        cfg.collection,
+        suffix
+    ))
+}
+
+/// Exponential backoff with jitter for Qdrant retries.
+pub(crate) fn qdrant_retry_delay(attempt: usize) -> Duration {
+    debug_assert!(attempt >= 1, "attempt must be >= 1");
+    let base_ms = 250_u64.saturating_mul(1u64 << attempt.saturating_sub(1));
+    let jitter_ms = rand::rng().random_range(0..100);
+    Duration::from_millis(base_ms + jitter_ms)
+}
+
+pub(crate) async fn qdrant_post_json_with_retry<B, T>(
+    client: &reqwest::Client,
+    endpoint: &str,
+    body: &B,
+    context: &str,
+    collection: &str,
+    started: Instant,
+) -> Result<T>
+where
+    B: Serialize + ?Sized,
+    T: DeserializeOwned,
+{
+    const MAX_ATTEMPTS: usize = 4;
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client.post(endpoint).json(body).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if retryable && attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "{context}: retrying qdrant request collection={collection} status={status} attempt={attempt}/{MAX_ATTEMPTS} duration_ms={}",
+                        started.elapsed().as_millis()
+                    ));
+                    last_err = Some(anyhow!(
+                        "{context}: qdrant status={status} attempt={attempt}"
+                    ));
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                    continue;
+                }
+                let parsed = resp.error_for_status()?.json::<T>().await?;
+                return Ok(parsed);
+            }
+            Err(err) => {
+                if attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "{context}: retrying qdrant request collection={collection} transport_error attempt={attempt}/{MAX_ATTEMPTS} duration_ms={} err={err}",
+                        started.elapsed().as_millis()
+                    ));
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                }
+                last_err = Some(err.into());
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("{context}: unknown qdrant request failure")))
 }
 
 pub(crate) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usize) -> usize {
@@ -177,10 +282,13 @@ pub(crate) fn retrieve_max_points(max_points: Option<usize>) -> usize {
 #[cfg(test)]
 #[allow(unsafe_code)]
 mod tests {
+    use crate::crates::core::config::Config;
+
     use super::super::types::{QdrantPayload, QdrantPoint};
     use super::{
-        RETRIEVE_MAX_POINTS_CEILING, base_url, env_usize_clamped, query_snippet,
-        render_full_doc_filtered, render_full_doc_from_points, retrieve_max_points,
+        RETRIEVE_MAX_POINTS_CEILING, base_url, env_usize_clamped, qdrant_collection_endpoint,
+        query_snippet, render_full_doc_filtered, render_full_doc_from_points, retrieve_max_points,
+        validate_collection_name,
     };
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -224,6 +332,55 @@ mod tests {
     #[test]
     fn retrieve_max_points_preserves_lower_values() {
         assert_eq!(retrieve_max_points(Some(128)), 128);
+    }
+
+    #[test]
+    fn collection_name_accepts_legal_values() {
+        assert!(validate_collection_name("cortex").is_ok());
+        assert!(validate_collection_name("axon_v2").is_ok());
+        assert!(validate_collection_name("my-collection").is_ok());
+        assert!(validate_collection_name("a.b.c").is_ok());
+        assert!(validate_collection_name("a").is_ok());
+    }
+
+    #[test]
+    fn collection_name_rejects_path_traversal() {
+        assert!(validate_collection_name("..").is_err());
+        assert!(validate_collection_name("../etc/passwd").is_err());
+        assert!(validate_collection_name("a/b").is_err());
+        assert!(validate_collection_name("a..b").is_err());
+        assert!(validate_collection_name(".hidden").is_err());
+        assert!(validate_collection_name("trailing.").is_err());
+    }
+
+    #[test]
+    fn collection_name_rejects_url_delimiters() {
+        assert!(validate_collection_name("a?x=1").is_err());
+        assert!(validate_collection_name("a#frag").is_err());
+        assert!(validate_collection_name("a b").is_err());
+        assert!(validate_collection_name("a%2e%2e").is_err());
+    }
+
+    #[test]
+    fn collection_name_rejects_empty_and_oversize() {
+        assert!(validate_collection_name("").is_err());
+        let huge = "a".repeat(256);
+        assert!(validate_collection_name(&huge).is_err());
+    }
+
+    #[test]
+    fn qdrant_collection_endpoint_validates_and_trims_suffix() {
+        let mut cfg = Config::test_default();
+        cfg.qdrant_url = "http://qdrant.local/".to_string();
+        cfg.collection = "docs_v2".to_string();
+
+        assert_eq!(
+            qdrant_collection_endpoint(&cfg, "/points/scroll").unwrap(),
+            "http://qdrant.local/collections/docs_v2/points/scroll"
+        );
+
+        cfg.collection = "docs/v2".to_string();
+        assert!(qdrant_collection_endpoint(&cfg, "points/search").is_err());
     }
 
     // ── render_full_doc_from_points ───────────────────────────────────────────

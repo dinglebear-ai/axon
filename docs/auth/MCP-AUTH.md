@@ -93,8 +93,10 @@ GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
 
 # MCP server host/port (defaults shown)
-AXON_MCP_HTTP_HOST=0.0.0.0
+AXON_MCP_HTTP_HOST=127.0.0.1
 AXON_MCP_HTTP_PORT=8001
+# Required when binding to non-loopback hosts such as 0.0.0.0.
+AXON_MCP_HTTP_TOKEN=your-token
 ```
 
 ### 3. Start the MCP server
@@ -182,8 +184,9 @@ When Redis is unavailable, the in-memory fallback is used. Tokens are lost when 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_HTTP_HOST` | `0.0.0.0` | MCP server bind address |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP server bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
 | `AXON_MCP_HTTP_PORT` | `8001` | MCP server port |
+| `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
 | `GOOGLE_OAUTH_AUTH_URL` | Google default | Override Google authorization URL |
 | `GOOGLE_OAUTH_TOKEN_URL` | Google default | Override Google token URL |
 | `GOOGLE_OAUTH_REDIRECT_PATH` | `/oauth/google/callback` | Override callback path |

@@ -9,9 +9,9 @@ use crate::crates::ingest::subprocess::{
 };
 use crate::crates::vector::ops::PreparedDoc;
 use crate::crates::vector::ops::input::classify::{
-    classify_file_type, is_test_path, language_name,
+    classify_file_type, is_test_path, language_name, path_extension,
 };
-use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
+use crate::crates::vector::ops::input::{CHUNK_OVERLAP, chunk_text, code::chunk_code};
 use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -30,11 +30,61 @@ const PHASE_EMBEDDED_FILES: &str = "embedded_files";
 /// while allowing large-but-legitimate source files (generated impls, large grammar tables, etc.).
 const MAX_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
 
-/// Extract the file extension from a path (lowercase, no dot).
 fn file_extension(path: &str) -> String {
-    path.rsplit_once('.')
-        .map(|(_, ext)| ext.to_ascii_lowercase())
-        .unwrap_or_default()
+    path_extension(path).to_ascii_lowercase()
+}
+
+/// Advance the chunk search cursor past the current chunk, walking back one
+/// character at a time so the next search begins inside the overlap window.
+/// Walking by characters (not bytes) avoids landing mid-codepoint on multibyte
+/// content such as box-drawing or CJK characters.
+fn next_search_start(text: &str, byte_offset: usize, chunk_len: usize) -> usize {
+    let chunk_end = (byte_offset + chunk_len).min(text.len());
+    let mut pos = chunk_end;
+    for _ in 0..CHUNK_OVERLAP {
+        if pos == 0 {
+            break;
+        }
+        pos -= 1;
+        while pos > 0 && !text.is_char_boundary(pos) {
+            pos -= 1;
+        }
+    }
+    pos
+}
+
+fn stderr_has_auth_or_permission_failure(stderr: &str) -> bool {
+    let stderr = stderr.to_ascii_lowercase();
+    [
+        "authentication failed",
+        "permission denied",
+        "denied to",
+        "access denied",
+        "repository not found",
+        "not found",
+        "could not read username",
+        "invalid username or token",
+        "support for password authentication was removed",
+    ]
+    .iter()
+    .any(|needle| stderr.contains(needle))
+}
+
+fn should_retry_unauthenticated_clone(common: &GitHubCommonFields, stderr: &str) -> bool {
+    match common.is_private {
+        Some(true) => false,
+        Some(false) | None => !stderr_has_auth_or_permission_failure(stderr),
+    }
+}
+
+fn sanitized_git_stderr(stderr: &[u8], token: Option<&str>) -> String {
+    let mut stderr = String::from_utf8_lossy(stderr).trim().to_string();
+    if let Some(token) = token
+        && !token.is_empty()
+    {
+        stderr = stderr.replace(token, "[redacted]");
+    }
+    stderr
 }
 
 /// Run `git clone --depth=1` into a temp directory with SSRF validation and timeout.
@@ -85,7 +135,17 @@ async fn clone_repo(
             return Ok(tmp);
         }
 
-        // Auth failed — retry without token (public repos don't need it).
+        let stderr = sanitized_git_stderr(&output.stderr, Some(t));
+        if !should_retry_unauthenticated_clone(common, &stderr) {
+            bail!(
+                "authenticated git clone failed for {} (exit {}): {}",
+                common.repo_slug,
+                output.status,
+                stderr
+            );
+        }
+
+        // Auth failed but the repository is public, so retry without token.
         log_warn(&format!(
             "command=ingest_github auth_clone_failed repo={}/{} retrying_unauthenticated",
             common.owner, common.name
@@ -102,12 +162,8 @@ async fn clone_repo(
     let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!(
-            "git clone failed (exit {}): {}",
-            output.status,
-            stderr.trim()
-        );
+        let stderr = sanitized_git_stderr(&output.stderr, token);
+        bail!("git clone failed (exit {}): {}", output.status, stderr);
     }
 
     Ok(tmp)
@@ -228,31 +284,14 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
     // avoiding the first-match bug when duplicate chunks exist.
     let mut search_start = 0usize;
     let docs = chunks
-        .iter()
+        .into_iter()
         .map(|chunk| {
             let byte_offset = text[search_start..]
                 .find(chunk.as_str())
                 .map(|pos| search_start + pos)
                 .unwrap_or(search_start);
-            // Advance by chunk length minus overlap so the next search starts
-            // within the overlap window. chunk_text() uses a 200-character overlap.
-            // Walk back exactly 200 characters (not bytes) from the end of this chunk
-            // so that multibyte characters (e.g. box-drawing, CJK) don't produce
-            // incorrect GitHub line-range metadata or panic on the next iteration.
-            const CHUNK_OVERLAP: usize = 200;
-            let chunk_end = (byte_offset + chunk.len()).min(text.len());
-            let mut raw_next = chunk_end;
-            for _ in 0..CHUNK_OVERLAP {
-                if raw_next == 0 {
-                    break;
-                }
-                raw_next -= 1;
-                while raw_next > 0 && !text.is_char_boundary(raw_next) {
-                    raw_next -= 1;
-                }
-            }
-            search_start = raw_next;
-            let (line_start, line_end) = line_range_for_chunk(&text, chunk, byte_offset);
+            search_start = next_search_start(&text, byte_offset, chunk.len());
+            let (line_start, line_end) = line_range_for_chunk(&text, &chunk, byte_offset);
 
             let extra = build_github_payload(&GitHubPayloadParams {
                 repo: ctx.name.clone(),
@@ -273,13 +312,12 @@ async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<Prep
                 ..Default::default()
             });
 
-            // Append GitHub line-range fragment for direct linking.
             let url = format!("{base_url}#L{line_start}-L{line_end}");
 
             PreparedDoc {
                 url,
                 domain: "github.com".to_string(),
-                chunks: vec![chunk.clone()],
+                chunks: vec![chunk],
                 source_type: "github".to_string(),
                 content_type: "text",
                 title: Some(path.to_string()),
@@ -348,85 +386,85 @@ pub async fn embed_files(
         is_private: common.is_private,
     });
 
-    let (chunks_embedded, failed) =
-        collect_and_embed_batched(&ctx, file_items, files_total, reporter).await?;
+    let stats = collect_and_embed_batched(&ctx, file_items, files_total, reporter).await?;
 
     reporter
         .report(serde_json::json!({
             "files_done": files_total,
             "files_total": files_total,
-            "chunks_embedded": chunks_embedded,
+            "chunks_embedded": stats.chunks_embedded,
+            "file_read_failures": stats.failed_file_reads,
+            "embed_batches_failed": stats.failed_batches,
+            "embed_files_failed": stats.failed_files,
+            "embed_docs_failed": stats.failed_docs,
+            "embed_chunks_failed": stats.failed_chunks,
             "phase": PHASE_EMBEDDED_FILES,
         }))
         .await;
 
     log_info(&format!(
-        "github files_embedded total={files_total} failed={failed} chunks={chunks_embedded}"
+        "github files_embedded total={files_total} read_failed={} batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks={}",
+        stats.failed_file_reads,
+        stats.failed_batches,
+        stats.failed_files,
+        stats.failed_docs,
+        stats.failed_chunks,
+        stats.chunks_embedded
     ));
-    Ok(chunks_embedded)
+    if stats.has_failed_batches() {
+        bail!(
+            "github file embedding had failed batches: batches_failed={} files_failed={} docs_failed={} chunks_failed={} chunks_embedded={}",
+            stats.failed_batches,
+            stats.failed_files,
+            stats.failed_docs,
+            stats.failed_chunks,
+            stats.chunks_embedded
+        );
+    }
+
+    Ok(stats.chunks_embedded)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::GitHubCommonFields;
+    use super::{next_search_start, should_retry_unauthenticated_clone};
     use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 
-    /// Pre-chunking must produce bounded content per chunk.
-    /// chunk_text uses 2000-char windows with 200-char overlap.
+    fn github_common(is_private: Option<bool>) -> GitHubCommonFields {
+        GitHubCommonFields {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            repo_slug: "owner/repo".to_string(),
+            default_branch: "main".to_string(),
+            repo_description: None,
+            pushed_at: None,
+            is_private,
+            has_wiki: false,
+        }
+    }
+
     #[test]
     fn chunk_text_produces_bounded_content() {
-        let long = "x".repeat(5000);
-        let chunks = chunk_text(&long);
-        for chunk in &chunks {
-            assert!(chunk.len() <= 2200, "chunk too large: {}", chunk.len());
-        }
-        assert!(
-            chunks.len() > 1,
-            "expected multiple chunks for 5000-char input"
-        );
+        let chunks = chunk_text(&"x".repeat(5000));
+        assert!(chunks.iter().all(|chunk| chunk.len() <= 2200));
+        assert!(chunks.len() > 1);
     }
 
-    /// Empty / whitespace-only files must produce no chunks (safe no-op).
-    #[test]
-    fn empty_content_produces_no_panic() {
-        let chunks = chunk_text("   ");
-        // Just verify no panic — caller filters empty results via trim check
-        let _ = chunks;
-    }
-
-    /// search_start advancement must not land mid-char when content has
-    /// multi-byte UTF-8 characters (e.g. box-drawing chars like ─).
-    /// Regression test for the panic: "byte index N is not a char boundary".
     #[test]
     fn search_start_stays_on_char_boundary_with_multibyte_content() {
-        // Build a string with box-drawing chars (3 bytes each in UTF-8) so that
-        // naive byte arithmetic places search_start inside one of them.
         let mut text = String::new();
-        // Fill ~2200 bytes with ASCII then add a multi-byte sequence at the boundary.
         text.push_str(&"a".repeat(2000));
-        text.push_str("─".repeat(200).as_str()); // 200 × 3 = 600 extra bytes
+        text.push_str("─".repeat(200).as_str());
         text.push_str(&"b".repeat(500));
 
-        let chunks = chunk_text(&text);
-        assert!(
-            chunks.len() > 1,
-            "need multiple chunks to exercise search_start"
-        );
-
-        // Simulate the search_start advancement loop that was panicking.
         let mut search_start = 0usize;
-        const CHUNK_OVERLAP: usize = 200;
-        for chunk in &chunks {
+        for chunk in &chunk_text(&text) {
             let byte_offset = text[search_start..]
                 .find(chunk.as_str())
                 .map(|pos| search_start + pos)
                 .unwrap_or(search_start);
-            let mut raw_next = byte_offset + chunk.len().saturating_sub(CHUNK_OVERLAP);
-            raw_next = raw_next.min(text.len());
-            while raw_next > 0 && !text.is_char_boundary(raw_next) {
-                raw_next -= 1;
-            }
-            search_start = raw_next;
-            // Must be a valid boundary — this was the panic site.
+            search_start = next_search_start(&text, byte_offset, chunk.len());
             assert!(
                 text.is_char_boundary(search_start),
                 "search_start {search_start} is not a char boundary"
@@ -434,17 +472,34 @@ mod tests {
         }
     }
 
-    /// chunk_code falls back to chunk_text for unknown extensions.
     #[test]
     fn chunk_code_unknown_ext_falls_back() {
-        let text = "hello world ".repeat(200);
-        let result = chunk_code(&text, "unknownext");
-        // Either None (no grammar) or Some with bounded chunks
-        if let Some(chunks) = result {
-            for chunk in &chunks {
-                assert!(chunk.len() <= 2200, "chunk too large: {}", chunk.len());
-            }
+        if let Some(chunks) = chunk_code(&"hello world ".repeat(200), "unknownext") {
+            assert!(chunks.iter().all(|chunk| chunk.len() <= 2200));
         }
-        // None is also valid — caller uses chunk_text fallback
+    }
+
+    #[test]
+    fn unauthenticated_clone_retry_respects_visibility_and_auth_errors() {
+        // Known-private: never retry regardless of stderr.
+        assert!(!should_retry_unauthenticated_clone(
+            &github_common(Some(true)),
+            "remote: Repository not found.\nfatal: Authentication failed",
+        ));
+        // Known-public + auth error in stderr: don't retry (stale API cache case).
+        assert!(!should_retry_unauthenticated_clone(
+            &github_common(Some(false)),
+            "remote: Invalid username or token.\nfatal: Authentication failed",
+        ));
+        // Known-public + non-auth error: safe to retry.
+        assert!(should_retry_unauthenticated_clone(
+            &github_common(Some(false)),
+            "error: RPC failed; curl 56 GnuTLS recv error",
+        ));
+        // Unknown visibility + auth error: don't retry.
+        assert!(!should_retry_unauthenticated_clone(
+            &github_common(None),
+            "remote: Permission to owner/repo.git denied to user.",
+        ));
     }
 }

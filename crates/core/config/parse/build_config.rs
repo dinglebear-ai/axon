@@ -496,7 +496,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         viewport_width,
         viewport_height,
         mcp_transport: resolve_mcp_transport(mcp_transport, mcp_transport_default),
-        mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
+        mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
         mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
         custom_headers: validate_custom_headers(global.custom_headers)?,
         quiet: global.quiet,

@@ -10,7 +10,8 @@ use crate::crates::services::types::{
     AcpAdapterCommand, AcpPromptTurnRequest, AcpSessionProbeRequest,
 };
 use agent_client_protocol::{
-    Agent, ClientSideConnection, ContentBlock, InitializeRequest, PromptRequest, SessionId,
+    Agent, ClientSideConnection, CloseSessionRequest, ContentBlock, InitializeRequest,
+    PromptRequest, SessionId,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -159,6 +160,33 @@ async fn wait_for_adapter_exit(
     session_id_str: &str,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
 ) {
+    // Match the persistent-connection teardown path: ask the adapter to close
+    // the active session before dropping stdio. Some adapters keep their event
+    // loop alive after a prompt result until they see `session/close`, which
+    // makes pure EOF-based teardown hit the 10 s kill-on-drop path per turn.
+    if runtime_state.close_session_supported.get()
+        && let Err(err) = conn
+            .close_session(CloseSessionRequest::new(SessionId::new(
+                session_id_str.to_string(),
+            )))
+            .await
+    {
+        tracing::warn!(
+            session_id = %session_id_str,
+            error = %err,
+            "acp: close_session failed during one-shot adapter teardown"
+        );
+        let msg = format!("ACP runtime: close_session failed during adapter cleanup: {err}");
+        emit(
+            tx,
+            ServiceEvent::Log {
+                level: LogLevel::Warn,
+                message: msg,
+            },
+        )
+        .await;
+    }
+
     // Drop connection handles → EOF on adapter stdin → adapter flushes + exits.
     drop(conn);
     drop(runtime_state);

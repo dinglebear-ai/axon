@@ -6,8 +6,9 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 
 | Variable | Required | Default | Description | Sensitive |
 |----------|----------|---------|-------------|-----------|
-| `AXON_MCP_HTTP_HOST` | no | `0.0.0.0` | Bind address for HTTP transport | no |
+| `AXON_MCP_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_MCP_HTTP_TOKEN` | no |
 | `AXON_MCP_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
+| `AXON_MCP_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/axon/artifacts` | Directory for response artifacts | no |
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes) | no |
 

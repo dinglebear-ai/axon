@@ -52,21 +52,9 @@ pub(super) fn validate_mcp_urls(urls: &[String]) -> Result<(), ErrorData> {
 
 pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorData> {
     let collection = collection.trim();
-    if collection.is_empty() {
-        return Err(invalid_params("collection must not be empty"));
-    }
-    if collection.len() > 128 {
-        return Err(invalid_params("collection must be 128 characters or fewer"));
-    }
-    if collection
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.'))
-    {
-        return Ok(collection.to_string());
-    }
-    Err(invalid_params(
-        "collection may contain only ASCII letters, digits, '_', '-', and '.'",
-    ))
+    crate::crates::vector::ops::qdrant::validate_collection_name(collection)
+        .map_err(|reason| invalid_params(format!("invalid collection name: {reason}")))?;
+    Ok(collection.to_string())
 }
 
 const MCP_EMBED_ALLOWED_ROOTS_ENV: &str = "AXON_MCP_EMBED_ALLOWED_ROOTS";
@@ -415,6 +403,10 @@ mod tests {
         assert!(validate_mcp_collection("../secrets").is_err());
         assert!(validate_mcp_collection("docs/v1").is_err());
         assert!(validate_mcp_collection("docs?token=abc").is_err());
+        assert!(validate_mcp_collection("docs#frag").is_err());
+        assert!(validate_mcp_collection(".hidden").is_err());
+        assert!(validate_mcp_collection("trailing.").is_err());
+        assert!(validate_mcp_collection("a..b").is_err());
         assert!(validate_mcp_collection("").is_err());
     }
 

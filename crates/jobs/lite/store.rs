@@ -70,11 +70,10 @@ pub async fn reclaim_stale_running_jobs(
     );
     let mut total: u64 = 0;
     for kind in JobKind::all() {
-        let table = kind.table_name();
-        match reclaim_stale_running_jobs_for_table(pool, table, stale_threshold_ms).await {
+        match reclaim_stale_running_jobs_for_table(pool, *kind, stale_threshold_ms).await {
             Ok(n) => total += n,
             Err(e) => {
-                tracing::error!(table, error = %e, "watchdog: per-table sweep failed");
+                tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
                 return Err(e);
             }
         }
@@ -89,16 +88,19 @@ pub async fn reclaim_stale_running_jobs(
 
 pub async fn reclaim_stale_running_jobs_for_table(
     pool: &SqlitePool,
-    table: &str,
+    kind: JobKind,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
-    if !JobKind::all().iter().any(|k| k.table_name() == table) {
-        return Err(sqlx::Error::Configuration(
-            format!("reclaim_stale_running_jobs_for_table: unknown table '{table}'").into(),
-        ));
-    }
+    let table = kind.table_name();
     tracing::debug!(table, stale_threshold_ms, "watchdog: sweep table start");
     let threshold = now_ms() - stale_threshold_ms;
+    let stale_ids = sqlx::query_scalar::<_, String>(&format!(
+        "SELECT id FROM {} WHERE status='running' AND updated_at < ?",
+        table
+    ))
+    .bind(threshold)
+    .fetch_all(pool)
+    .await?;
     let result = sqlx::query(&format!(
         "UPDATE {} SET status='pending', error_text='reclaimed after unexpected shutdown', \
          updated_at=? WHERE status='running' AND updated_at < ?",
@@ -110,6 +112,13 @@ pub async fn reclaim_stale_running_jobs_for_table(
     .await?;
     let n = result.rows_affected();
     if n > 0 {
+        for job_id in stale_ids.iter().take(n as usize) {
+            tracing::warn!(
+                table,
+                job_id = %job_id,
+                "watchdog: reclaimed stale running job and reset it to pending"
+            );
+        }
         tracing::info!(
             table,
             reclaimed = n,
@@ -148,4 +157,67 @@ pub(crate) fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn reclaim_stale_running_jobs_only_reclaims_stale_running_rows() {
+        let pool = open_sqlite_pool(":memory:").await.expect("pool");
+        let stale_id = Uuid::new_v4().to_string();
+        let fresh_id = Uuid::new_v4().to_string();
+        let pending_id = Uuid::new_v4().to_string();
+        let stale_updated_at = now_ms() - 10_000;
+        let fresh_updated_at = now_ms();
+
+        for (id, status, updated_at) in [
+            (&stale_id, "running", stale_updated_at),
+            (&fresh_id, "running", fresh_updated_at),
+            (&pending_id, "pending", stale_updated_at),
+        ] {
+            sqlx::query(
+                "INSERT INTO axon_embed_jobs (id, status, input_text, config_json, created_at, updated_at) \
+                 VALUES (?, ?, ?, '{}', ?, ?)",
+            )
+            .bind(id)
+            .bind(status)
+            .bind("test input")
+            .bind(updated_at)
+            .bind(updated_at)
+            .execute(&pool)
+            .await
+            .expect("insert job");
+        }
+
+        let reclaimed = reclaim_stale_running_jobs_for_table(&pool, JobKind::Embed, 5_000)
+            .await
+            .expect("reclaim");
+
+        assert_eq!(reclaimed, 1);
+        let stale_status: String =
+            sqlx::query_scalar("SELECT status FROM axon_embed_jobs WHERE id = ?")
+                .bind(&stale_id)
+                .fetch_one(&pool)
+                .await
+                .expect("stale status");
+        let fresh_status: String =
+            sqlx::query_scalar("SELECT status FROM axon_embed_jobs WHERE id = ?")
+                .bind(&fresh_id)
+                .fetch_one(&pool)
+                .await
+                .expect("fresh status");
+        let pending_status: String =
+            sqlx::query_scalar("SELECT status FROM axon_embed_jobs WHERE id = ?")
+                .bind(&pending_id)
+                .fetch_one(&pool)
+                .await
+                .expect("pending status");
+
+        assert_eq!(stale_status, "pending");
+        assert_eq!(fresh_status, "running");
+        assert_eq!(pending_status, "pending");
+    }
 }

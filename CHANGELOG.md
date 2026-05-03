@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-03
+
+### Added
+- **Tracing and progress bundle**: lite job workers now persist richer progress snapshots, CLI status prints per-job progress summaries, and ingest/embed flows expose more detailed runtime metrics.
+- **MCP plugin scaffold**: added the Axon Claude plugin package scaffold under `plugins/axon`.
+
+### Changed
+- **Operational docs and config**: updated MCP, command, ingest, and config references for the new observability and transport behavior.
+
+### Fixed
+- **MCP HTTP startup guard**: HTTP server startup now enforces the token policy before binding externally.
+
 ## [1.0.13] - 2026-05-03
 
 ### Changed

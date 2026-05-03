@@ -146,7 +146,7 @@ impl Default for Config {
             viewport_width: 1920,
             viewport_height: 1080,
             mcp_transport: McpTransport::Stdio,
-            mcp_http_host: "0.0.0.0".to_string(),
+            mcp_http_host: "127.0.0.1".to_string(),
             mcp_http_port: 8001,
             custom_headers: vec![],
             quiet: false,

@@ -61,6 +61,8 @@ All global flags apply. Key flags:
 | `--collection <name>` | `cortex` | Target Qdrant collection. |
 | `--json` | `false` | Machine-readable output. |
 
+Lite mode preserves fire-and-forget semantics for `--wait false`: `ingest` enqueues the job and exits without draining unrelated ingest rows. Use `--wait true` to run ingestion synchronously and block until it finishes.
+
 ### GitHub-specific flags
 
 | Flag | Default | Description |
@@ -112,7 +114,10 @@ axon ingest tokio-rs/tokio --no-source --wait true
 # YouTube: video URL (auto-detected)
 axon ingest "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --wait true
 
-# YouTube: channel @handle (auto-expanded to full URL)
+# YouTube: playlist URL (enumerates videos and ingests each transcript)
+axon ingest "https://www.youtube.com/playlist?list=PL1234567890abcdef" --wait true
+
+# YouTube: channel @handle (auto-expanded to full URL, then enumerated)
 axon ingest @SpaceinvaderOne
 
 # YouTube: bare 11-character video ID

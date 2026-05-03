@@ -6,7 +6,7 @@ mod tests;
 pub use self::types::{IngestJob, IngestJobConfig, IngestSource};
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::JobPayload;
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::ingest::types::{source_type_label, target_label};
 use crate::crates::jobs::lite::query::ms_to_dt;
 use crate::crates::jobs::lite::store::open_sqlite_pool;
@@ -62,7 +62,7 @@ fn row_to_ingest_job(row: IngestJobRow) -> IngestJob {
 /// Count all ingest jobs in SQLite.
 pub async fn count_ingest_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, "axon_ingest_jobs").await?)
+    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, JobKind::Ingest).await?)
 }
 
 /// Fetch a single ingest job by UUID from SQLite.

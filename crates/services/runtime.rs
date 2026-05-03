@@ -45,6 +45,10 @@ pub trait ServiceJobRuntime: Send + Sync {
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> BackendResult<String>;
     async fn job_errors(&self, id: Uuid, kind: JobKind) -> BackendResult<Option<String>>;
     async fn has_active_jobs(&self, kind: JobKind) -> BackendResult<bool>;
+    async fn notify_worker(&self, kind: JobKind) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let _ = kind;
+        Err("worker notifications are not supported by this runtime".into())
+    }
 
     async fn list_jobs(
         &self,
@@ -95,7 +99,20 @@ pub trait ServiceJobRuntime: Send + Sync {
         kind: JobKind,
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>>;
-    async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>>;
+    async fn drain_jobs(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+        let _ = kind;
+        Ok(WorkerMode::Unsupported(
+            "queue draining is not supported by this runtime",
+        ))
+    }
+
+    async fn start_worker(
+        &self,
+        kind: JobKind,
+    ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+        self.notify_worker(kind).await?;
+        self.drain_jobs(kind).await
+    }
 
     /// Count all jobs of a given kind using the shared pool.
     ///
@@ -207,16 +224,16 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         Ok(self
             .backend
             .cancel_store()
-            .cancel(id, self.backend.pool(), kind.table_name())
+            .cancel(id, self.backend.pool(), kind)
             .await?)
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::cleanup_jobs(self.backend.pool(), kind.table_name()).await?)
+        Ok(lite_query::cleanup_jobs(self.backend.pool(), kind).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::clear_jobs(self.backend.pool(), kind.table_name()).await?)
+        Ok(lite_query::clear_jobs(self.backend.pool(), kind).await?)
     }
 
     async fn recover_jobs(
@@ -224,18 +241,20 @@ impl ServiceJobRuntime for LiteServiceRuntime {
         kind: JobKind,
         stale_threshold_ms: i64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(reclaim_stale_running_jobs_for_table(
-            self.backend.pool(),
-            kind.table_name(),
-            stale_threshold_ms,
+        Ok(
+            reclaim_stale_running_jobs_for_table(self.backend.pool(), kind, stale_threshold_ms)
+                .await?,
         )
-        .await?)
     }
 
-    async fn run_worker(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
+    async fn notify_worker(&self, kind: JobKind) -> Result<(), Box<dyn Error + Send + Sync>> {
         if !self.backend.notify_worker(kind) {
             return Err("no in-process workers running — use `axon serve` or `--wait true`".into());
         }
+        Ok(())
+    }
+
+    async fn drain_jobs(&self, kind: JobKind) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
         let pending_at_start = self.count_jobs(kind).await.unwrap_or(0);
         eprintln!(
             "draining {} queue ({pending_at_start} pending)...",
@@ -260,7 +279,7 @@ impl ServiceJobRuntime for LiteServiceRuntime {
     }
 
     async fn count_jobs(&self, kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
-        Ok(lite_query::count_jobs(self.backend.pool(), kind.table_name()).await?)
+        Ok(lite_query::count_jobs(self.backend.pool(), kind).await?)
     }
 }
 
@@ -343,10 +362,10 @@ mod tests {
         .expect("enqueue embed");
 
         // Move crawl to running, then completed.
-        super::super::super::jobs::lite::ops::claim_next_pending(&pool, "axon_crawl_jobs")
+        super::super::super::jobs::lite::ops::claim_next_pending(&pool, JobKind::Crawl)
             .await
             .expect("claim crawl");
-        mark_completed(&pool, "axon_crawl_jobs", crawl_id, None)
+        mark_completed(&pool, JobKind::Crawl, crawl_id, None)
             .await
             .expect("complete crawl");
 
@@ -385,10 +404,10 @@ mod tests {
         .expect("enqueue embed");
 
         // Mark crawl failed (terminal).
-        super::super::super::jobs::lite::ops::claim_next_pending(&pool, "axon_crawl_jobs")
+        super::super::super::jobs::lite::ops::claim_next_pending(&pool, JobKind::Crawl)
             .await
             .expect("claim");
-        mark_failed(&pool, "axon_crawl_jobs", id, "test")
+        mark_failed(&pool, JobKind::Crawl, id, "test")
             .await
             .expect("fail");
 
@@ -411,6 +430,28 @@ mod tests {
         assert!(
             result < 5,
             "drain should exit immediately for terminal-state crawl, got {result} iters"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_worker_requires_in_process_workers() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut cfg = Config::test_default();
+        cfg.sqlite_path = tmp.path().join("jobs.db");
+        let cfg = Arc::new(cfg);
+        let backend = LiteBackend::new(Arc::clone(&cfg)).await.expect("backend");
+        let runtime = LiteServiceRuntime {
+            _cfg: cfg,
+            backend: Arc::new(backend),
+        };
+
+        let err = runtime
+            .start_worker(JobKind::Crawl)
+            .await
+            .expect_err("enqueue-only runtime cannot start worker drain");
+        assert!(
+            err.to_string().contains("no in-process workers running"),
+            "unexpected error: {err}"
         );
     }
 

@@ -146,7 +146,7 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long, default_value_t = 16)]
     pub(in crate::crates::core::config) batch_concurrency: usize,
 
-    /// Block until async job completes (default: false)
+    /// Block until async job completes; false enqueues and returns (default: false)
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::crates::core::config) wait: bool,
 

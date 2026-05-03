@@ -14,11 +14,13 @@ use std::error::Error as StdError;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
@@ -37,6 +39,18 @@ const BACKOFF_INITIAL_MS: u64 = 1_000;
 const BACKOFF_MAX_MS: u64 = 60_000;
 /// Maximum number of connect attempts before propagating the error.
 const BACKOFF_MAX_ATTEMPTS: u32 = 5;
+
+type AcpWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type AcpWsRead = SplitStream<AcpWsStream>;
+type AcpWsWrite = SplitSink<AcpWsStream, Message>;
+
+struct WsCompletionLoopState<'a> {
+    result_text: &'a mut Option<String>,
+    last_pong: Arc<Mutex<Instant>>,
+    ping_interval: &'a mut tokio::time::Interval,
+    safe_ws_url: &'a str,
+    req_id: &'a str,
+}
 
 // ── Public runner ─────────────────────────────────────────────────────────────
 
@@ -161,6 +175,7 @@ where
         tracing::error!(ws_url = %safe_ws_url, error = %e, "acp_llm: WS connect failed");
         format!("ACP WS connect failed ({safe_ws_url}): {e}")
     })?;
+    tracing::debug!(ws_url = %safe_ws_url, "acp_llm: WS completion connected");
     let (mut write, mut read) = ws_stream.split();
 
     let req_id = Uuid::new_v4().to_string();
@@ -169,7 +184,16 @@ where
     write
         .send(Message::Text(execute_msg.into()))
         .await
-        .map_err(|e| format!("ACP WS send failed: {e}"))?;
+        .map_err(|e| {
+            tracing::warn!(
+                ws_url = %safe_ws_url,
+                req_id = %req_id,
+                error = %e,
+                "acp_llm: WS send error"
+            );
+            format!("ACP WS send failed: {e}")
+        })?;
+    tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS execute sent");
 
     let mut result_text: Option<String> = None;
 
@@ -182,66 +206,18 @@ where
 
     let loop_result: Result<(), String> = tokio::time::timeout(
         Duration::from_secs(WS_COMPLETION_TIMEOUT_SECS),
-        async {
-            loop {
-                tokio::select! {
-                    biased;
-
-                    // ── Incoming WS frame ────────────────────────────────────
-                    msg_opt = read.next() => {
-                        let text = match msg_opt {
-                            Some(Ok(Message::Text(t))) => t.to_string(),
-                            Some(Ok(Message::Pong(_))) => {
-                                tracing::debug!(action = "ws.pong.received");
-                                *last_pong.lock().await = Instant::now();
-                                continue;
-                            }
-                            Some(Ok(Message::Close(_))) => break,
-                            Some(Ok(_)) => continue,
-                            Some(Err(e)) => {
-                                tracing::warn!(ws_url = %safe_ws_url, error = %e, "acp_llm: WS read error");
-                                return Err(format!("ACP WS read error: {e}"));
-                            }
-                            None => break,
-                        };
-                        match extract_event(&text) {
-                            WsIncomingEvent::Delta(delta) => {
-                                on_delta(&delta).map_err(|e| e.to_string())?;
-                            }
-                            WsIncomingEvent::Result(text) => {
-                                result_text = Some(text);
-                            }
-                            WsIncomingEvent::Done => break,
-                            WsIncomingEvent::Error(msg) => {
-                                tracing::warn!(ws_url = %safe_ws_url, server_error = %msg, "acp_llm: WS server returned error");
-                                return Err(format!("ACP WS server error: {msg}"));
-                            }
-                            WsIncomingEvent::Ignore => {}
-                        }
-                    }
-
-                    // ── Heartbeat tick: send Ping, check previous Pong ───────
-                    _ = ping_interval.tick() => {
-                        // Check if pong came back since the last ping.
-                        let since_pong = last_pong.lock().await.elapsed();
-                        if since_pong > Duration::from_secs(WS_PING_INTERVAL_SECS + WS_PONG_TIMEOUT_SECS) {
-                            tracing::warn!(
-                                ws_url = %safe_ws_url,
-                                action = "ws.pong.timeout",
-                                since_pong_secs = since_pong.as_secs(),
-                                "acp_llm: closing stale connection — pong timeout",
-                            );
-                            return Err("WS pong timeout — stale connection".to_string());
-                        }
-                        tracing::debug!(action = "ws.ping.sent");
-                        if write.send(Message::Ping(Default::default())).await.is_err() {
-                            return Err("ACP WS ping send failed".to_string());
-                        }
-                    }
-                }
-            }
-            Ok(())
-        },
+        drive_ws_completion_loop(
+            &mut read,
+            &mut write,
+            WsCompletionLoopState {
+                result_text: &mut result_text,
+                last_pong: Arc::clone(&last_pong),
+                ping_interval: &mut ping_interval,
+                safe_ws_url: &safe_ws_url,
+                req_id: &req_id,
+            },
+            on_delta,
+        ),
     )
     .await
     .map_err(|_| {
@@ -255,7 +231,9 @@ where
     .and_then(|r| r);
 
     match loop_result {
-        Ok(()) => {}
+        Ok(()) => {
+            tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS completion finished");
+        }
         Err(e) if e == "timeout" => {
             return Err(
                 format!("ACP WS completion timed out after {WS_COMPLETION_TIMEOUT_SECS}s").into(),
@@ -270,6 +248,85 @@ where
             tracing::error!(ws_url = %safe_ws_url, "acp_llm: WS server sent Done without Result — protocol violation");
             "ACP WS completion finished without a turn result".into()
         })
+}
+
+async fn drive_ws_completion_loop<F>(
+    read: &mut AcpWsRead,
+    write: &mut AcpWsWrite,
+    state: WsCompletionLoopState<'_>,
+    on_delta: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+{
+    let WsCompletionLoopState {
+        result_text,
+        last_pong,
+        ping_interval,
+        safe_ws_url,
+        req_id,
+    } = state;
+    loop {
+        tokio::select! {
+            biased;
+
+            msg_opt = read.next() => {
+                let text = match msg_opt {
+                    Some(Ok(Message::Text(t))) => t.to_string(),
+                    Some(Ok(Message::Pong(_))) => {
+                        tracing::debug!(action = "ws.pong.received");
+                        *last_pong.lock().await = Instant::now();
+                        continue;
+                    }
+                    Some(Ok(Message::Close(_))) => break,
+                    Some(Ok(_)) => continue,
+                    Some(Err(e)) => {
+                        tracing::warn!(ws_url = %safe_ws_url, error = %e, "acp_llm: WS read error");
+                        return Err(format!("ACP WS read error: {e}"));
+                    }
+                    None => break,
+                };
+                match extract_event(&text) {
+                    WsIncomingEvent::Delta(delta) => {
+                        on_delta(&delta).map_err(|e| e.to_string())?;
+                    }
+                    WsIncomingEvent::Result(text) => {
+                        tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS result received");
+                        *result_text = Some(text);
+                    }
+                    WsIncomingEvent::Done => break,
+                    WsIncomingEvent::Error(msg) => {
+                        tracing::warn!(ws_url = %safe_ws_url, server_error = %msg, "acp_llm: WS server returned error");
+                        return Err(format!("ACP WS server error: {msg}"));
+                    }
+                    WsIncomingEvent::Ignore => {}
+                }
+            }
+
+            _ = ping_interval.tick() => {
+                let since_pong = last_pong.lock().await.elapsed();
+                if since_pong > Duration::from_secs(WS_PING_INTERVAL_SECS + WS_PONG_TIMEOUT_SECS) {
+                    tracing::warn!(
+                        ws_url = %safe_ws_url,
+                        action = "ws.pong.timeout",
+                        since_pong_secs = since_pong.as_secs(),
+                        "acp_llm: closing stale connection — pong timeout",
+                    );
+                    return Err("WS pong timeout — stale connection".to_string());
+                }
+                tracing::debug!(action = "ws.ping.sent");
+                if let Err(e) = write.send(Message::Ping(Default::default())).await {
+                    tracing::warn!(
+                        ws_url = %safe_ws_url,
+                        error = %e,
+                        "acp_llm: WS ping send error"
+                    );
+                    return Err("ACP WS ping send failed".to_string());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── Wire helpers ──────────────────────────────────────────────────────────────
@@ -368,6 +425,10 @@ pub(super) enum WsIncomingEvent {
 /// Uses `serde_json::Value` to avoid coupling to private server types.
 pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
     let Ok(v) = serde_json::from_str::<Value>(raw) else {
+        tracing::debug!(
+            frame_len = raw.len(),
+            "acp_llm: ignoring non-json WS text frame"
+        );
         return WsIncomingEvent::Ignore;
     };
     match v["type"].as_str() {
@@ -383,7 +444,13 @@ pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
                     .filter(|s| !s.is_empty())
                     .map(|s| WsIncomingEvent::Result(s.to_string()))
                     .unwrap_or(WsIncomingEvent::Ignore),
-                _ => WsIncomingEvent::Ignore,
+                other => {
+                    tracing::debug!(
+                        event_type = ?other,
+                        "acp_llm: ignoring unsupported ACP WS output event"
+                    );
+                    WsIncomingEvent::Ignore
+                }
             }
         }
         Some("command.done") => WsIncomingEvent::Done,
@@ -394,7 +461,13 @@ pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
                 .to_string();
             WsIncomingEvent::Error(msg)
         }
-        _ => WsIncomingEvent::Ignore,
+        other => {
+            tracing::debug!(
+                event_type = ?other,
+                "acp_llm: ignoring unsupported ACP WS event"
+            );
+            WsIncomingEvent::Ignore
+        }
     }
 }
 

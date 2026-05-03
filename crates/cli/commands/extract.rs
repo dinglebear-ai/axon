@@ -101,7 +101,7 @@ async fn maybe_handle_extract_subcommand(
             }
         }
         "worker" => {
-            handle_worker_mode(job_service::run_worker(service_context, JobKind::Extract).await?)?
+            handle_worker_mode(job_service::start_worker(service_context, JobKind::Extract).await?)?
         }
         "recover" => {
             let reclaimed = job_service::recover_jobs(service_context, JobKind::Extract).await?;

@@ -212,7 +212,7 @@ pub async fn crawl_recover(service_context: &ServiceContext) -> Result<u64, Box<
 }
 
 pub async fn crawl_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    match job_service::run_worker(service_context, JobKind::Crawl).await? {
+    match job_service::start_worker(service_context, JobKind::Crawl).await? {
         WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
@@ -278,7 +278,7 @@ mod tests {
     use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
     use crate::crates::services::context::ServiceContext;
-    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::runtime::ServiceJobRuntime;
     use crate::crates::services::types::ServiceJob;
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
     use async_trait::async_trait;
@@ -375,16 +375,6 @@ mod tests {
                     _stale_threshold_ms: i64,
                 ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
                     Ok(0)
-                }
-
-                async fn run_worker(
-                    &self,
-                    _kind: JobKind,
-                ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
-                    Ok(WorkerMode::InProcess {
-                        pending_at_start: 0,
-                        elapsed_secs: 0,
-                    })
                 }
 
                 async fn count_jobs(
@@ -504,16 +494,6 @@ mod tests {
             _stale_threshold_ms: i64,
         ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
             Ok(0)
-        }
-
-        async fn run_worker(
-            &self,
-            _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn std::error::Error + Send + Sync>> {
-            Ok(WorkerMode::InProcess {
-                pending_at_start: 0,
-                elapsed_secs: 0,
-            })
         }
 
         async fn count_jobs(

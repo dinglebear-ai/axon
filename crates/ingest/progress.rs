@@ -8,6 +8,16 @@ use tokio::sync::mpsc;
 ///
 /// **No central phase enum.** Each ingest source defines its own phase
 /// constants as `&str` in its own module. This keeps sources fully decoupled.
+///
+/// Common payload keys consumed by status/list renderers:
+/// - `phase`: current source-defined phase label.
+/// - `chunks_embedded`: cumulative embedded chunk count.
+/// - `files_done` / `files_total`: GitHub-style file progress.
+/// - `videos_done` / `videos_total`: YouTube playlist/channel progress.
+/// - `tasks_done` / `tasks_total`: multi-subtask source progress.
+///
+/// Providers may add source-specific fields, but should preserve these names
+/// for shared CLI/MCP status rendering.
 #[derive(Clone)]
 pub struct PhaseReporter {
     tx: Option<mpsc::Sender<serde_json::Value>>,

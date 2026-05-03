@@ -74,7 +74,7 @@ pub async fn maybe_handle_ingest_subcommand(
             }
         }
         "worker" => {
-            handle_worker_mode(job_service::run_worker(service_context, JobKind::Ingest).await?)?
+            handle_worker_mode(job_service::start_worker(service_context, JobKind::Ingest).await?)?
         }
         "recover" => {
             let reclaimed = job_service::recover_jobs(service_context, JobKind::Ingest).await?;
