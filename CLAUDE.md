@@ -221,7 +221,35 @@ docker compose -f docker-compose.services.yaml ps
 just down-all
 ```
 
+## Configuration (Two-Layer System)
+
+Axon uses two configuration layers:
+
+| Layer | File | Purpose | Secrets? |
+|-------|------|---------|---------|
+| Tuning knobs | `~/.axon/config.toml` | Search params, worker limits, TEI settings | No — safe to commit |
+| URLs + secrets | `.env` | Service URLs, API keys, passwords | Yes — never commit |
+
+**Priority:** CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
+
+```bash
+# Set up config.toml (optional — defaults are sensible)
+mkdir -m 700 ~/.axon
+cp config.example.toml ~/.axon/config.toml
+chmod 600 ~/.axon/config.toml
+
+# Override config path
+AXON_CONFIG_PATH=/path/to/config.toml axon ask "..."
+
+# Malformed config.toml = hard fail with file path + line number
+# Missing config.toml = silent, uses defaults
+```
+
+See `config.example.toml` at the repo root for all supported keys with defaults and docs. See `docs/CONFIG.md` for the full environment variable reference.
+
 ## Environment Variables
+
+`.env` is for **URLs and secrets only** (v0.36+). Tuning params live in `~/.axon/config.toml`.
 
 Copy `.env.example` → `.env`, then fill in values:
 

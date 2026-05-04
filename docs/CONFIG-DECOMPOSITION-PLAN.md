@@ -1,8 +1,14 @@
 # Config Decomposition Plan
 
 **Tracking issue:** A-H-01 (Config god-object decomposition), A-M-02 (Cargo workspace)
-**Status:** Scaffolding complete — migration pending
-**Last updated:** 2026-03-04
+**Status:** Phase 1 (TOML loading) implemented in v0.36 — full subconfig migration pending
+**Last updated:** 2026-05-04
+
+> **Phase 1 complete (v0.36):** `crates/core/config/parse/toml_config.rs` implements
+> `TomlConfig` with `[search]`, `[ask]`, `[tei]`, `[workers]` sections. 6 Config fields
+> wired with CLI > env > TOML > default priority. See `config.example.toml` for all
+> supported keys. Remaining fields (hnsw_ef, collection, TEI/worker fields) require
+> either Config type changes or subsystem-level TOML reads — tracked as follow-up beads.
 
 ---
 
