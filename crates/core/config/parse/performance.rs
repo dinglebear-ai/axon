@@ -59,11 +59,7 @@ pub(super) fn profile_settings(profile: PerformanceProfile) -> ProfileSettings {
 }
 
 pub(super) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usize) -> usize {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(default)
-        .clamp(min, max)
+    env_usize_opt(key, min, max).unwrap_or(default.clamp(min, max))
 }
 
 /// Like `env_usize_clamped` but returns `None` when the var is absent or unparseable,
@@ -76,11 +72,7 @@ pub(super) fn env_usize_opt(key: &str, min: usize, max: usize) -> Option<usize> 
 }
 
 pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f64 {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok())
-        .unwrap_or(default)
-        .clamp(min, max)
+    env_f64_opt(key, min, max).unwrap_or(default.clamp(min, max))
 }
 
 /// Like `env_f64_clamped` but returns `None` when the var is absent or unparseable.

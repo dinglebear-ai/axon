@@ -34,7 +34,8 @@ pub fn axon_data_base_dir() -> PathBuf {
 pub fn axon_home_dir() -> Option<PathBuf> {
     std::env::var("HOME")
         .ok()
-        .filter(|h| !h.trim().is_empty())
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
         .map(|h| PathBuf::from(h).join(".axon"))
 }
 
@@ -58,6 +59,10 @@ pub fn path_basename<'a>(path: &'a str, fallback: &'a str) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serializes tests that mutate HOME — env mutation is process-wide and not thread-safe.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn path_basename_extracts_filename() {
@@ -73,34 +78,43 @@ mod tests {
     #[allow(unsafe_code)]
     #[test]
     fn axon_home_dir_returns_some_when_home_set() {
-        // Safety: test-only; HOME is set to a known value.
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("HOME").ok();
         unsafe { std::env::set_var("HOME", "/home/testuser") };
         let result = axon_home_dir();
-        assert!(result.is_some());
-        let path = result.unwrap();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        let path = result.expect("axon_home_dir should return Some when HOME is set");
         assert!(path.to_string_lossy().ends_with(".axon"));
-        unsafe { std::env::remove_var("HOME") };
     }
 
     #[allow(unsafe_code)]
     #[test]
     fn axon_home_dir_returns_none_when_home_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let saved = std::env::var("HOME").ok();
         unsafe { std::env::remove_var("HOME") };
-        assert_eq!(axon_home_dir(), None);
-        if let Some(v) = saved {
-            unsafe { std::env::set_var("HOME", v) };
+        let result = axon_home_dir();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
         }
+        assert_eq!(result, None);
     }
 
     #[allow(unsafe_code)]
     #[test]
     fn axon_config_path_returns_none_when_home_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let saved = std::env::var("HOME").ok();
         unsafe { std::env::remove_var("HOME") };
-        assert_eq!(axon_config_path(), None);
-        if let Some(v) = saved {
-            unsafe { std::env::set_var("HOME", v) };
+        let result = axon_config_path();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
         }
+        assert_eq!(result, None);
     }
 }

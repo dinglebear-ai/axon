@@ -2,6 +2,32 @@ use super::super::cli::{JobSubcommand, WatchSubcommand};
 use super::super::types::McpTransport;
 use std::env;
 
+/// Like `env_bool` but returns `None` when the env var is absent, empty, or unrecognized.
+///
+/// Recognized truthy values: `"1"`, `"true"`, `"yes"`, `"y"`, `"on"`.
+/// Recognized falsy values: `"0"`, `"false"`, `"no"`, `"n"`, `"off"`.
+///
+/// **Unrecognized values:** warns to stderr and returns `None`, allowing the
+/// TOML layer and hardcoded defaults to be consulted. A warning is emitted
+/// rather than silently falling through so users can diagnose typos.
+/// This runs before `init_tracing()` so `eprintln!` is intentional.
+pub(crate) fn env_bool_opt(key: &str) -> Option<bool> {
+    match env::var(key).ok().as_deref().map(|v| v.trim()) {
+        None | Some("") => None,
+        Some(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "y" | "on" => Some(true),
+            "0" | "false" | "no" | "n" | "off" => Some(false),
+            unrecognized => {
+                eprintln!(
+                    "axon: warning: unrecognized value for {key}={unrecognized:?}; \
+                     expected true/false/1/0/yes/no. Falling through to TOML or default."
+                );
+                None
+            }
+        },
+    }
+}
+
 /// Read an environment variable as a boolean flag with a default fallback.
 ///
 /// Recognized truthy values: `"1"`, `"true"`, `"yes"`, `"y"`, `"on"`.
@@ -10,27 +36,7 @@ use std::env;
 ///
 /// Single source of truth for boolean env-var parsing — do not duplicate.
 pub(crate) fn env_bool(key: &str, default: bool) -> bool {
-    match env::var(key).ok().as_deref().map(|v| v.trim()) {
-        None | Some("") => default,
-        Some(v) => match v.to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" | "y" | "on" => true,
-            "0" | "false" | "no" | "n" | "off" => false,
-            _ => default,
-        },
-    }
-}
-
-/// Like `env_bool` but returns `None` when the env var is absent or empty,
-/// allowing TOML and hardcoded defaults to be consulted.
-pub(crate) fn env_bool_opt(key: &str) -> Option<bool> {
-    match env::var(key).ok().as_deref().map(|v| v.trim()) {
-        None | Some("") => None,
-        Some(v) => match v.to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" | "y" | "on" => Some(true),
-            "0" | "false" | "no" | "n" | "off" => Some(false),
-            _ => None,
-        },
-    }
+    env_bool_opt(key).unwrap_or(default)
 }
 
 /// Parse a comma-separated string, trimming each item and discarding empties.

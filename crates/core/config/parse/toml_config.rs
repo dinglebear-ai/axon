@@ -1,3 +1,8 @@
+// Phase 1: several TomlConfig fields are parsed and validated by serde but not yet
+// wired into Config (they will be connected in follow-up beads as Config fields or
+// subsystem-level env reads are added). Suppress dead_code for the whole module.
+#![allow(dead_code)]
+
 use crate::crates::core::paths::axon_config_path;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -48,6 +53,10 @@ pub(super) struct TomlAskSection {
     pub min_relevance_score: Option<f64>,
 }
 
+// Phase 1: TEI and worker fields are parsed and validated but not yet wired into
+// Phase 1: TEI and worker fields are parsed by serde but not yet wired into Config
+// (those fields are read directly from env by their subsystems). See #![allow(dead_code)]
+// at module level. Per-struct allows are omitted — the module attribute covers them.
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlTeiSection {
@@ -133,7 +142,12 @@ pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, toml::de:
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    // Serializes env-mutating tests to avoid data races on AXON_CONFIG_PATH/HOME.
+    // Uses the same pattern as helpers.rs and build_config.rs ENV_LOCK.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn missing_file_returns_default() {
@@ -199,10 +213,15 @@ mod tests {
     #[allow(unsafe_code)]
     #[test]
     fn axon_config_path_env_var_overrides_home() {
-        // Verify resolve_config_path() respects AXON_CONFIG_PATH.
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("AXON_CONFIG_PATH").ok();
         unsafe { std::env::set_var("AXON_CONFIG_PATH", "/tmp/custom_axon_config.toml") };
         let path = resolve_config_path();
-        unsafe { std::env::remove_var("AXON_CONFIG_PATH") };
+        // Unconditionally restore so a panic can't contaminate other tests.
+        match saved {
+            Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
+            None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
+        }
         assert_eq!(path, Some(PathBuf::from("/tmp/custom_axon_config.toml")));
     }
 }
