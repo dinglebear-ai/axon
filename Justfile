@@ -46,12 +46,12 @@ clippy:
 build:
     {{rust_dev_env}}; cargo build --release --locked
     mkdir -p bin
-    cp target/release/axon bin/axon
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; cp "$AXON_TARGET_DIR/release/axon" bin/axon
 
 install:
     {{rust_dev_env}}; cargo build --release --locked
     mkdir -p ~/.local/bin
-    ln -sf "$(pwd)/target/release/axon" ~/.local/bin/axon
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon
 
 lint-all:
     just fmt-check
@@ -102,6 +102,13 @@ services-up:
 # Stop infrastructure services
 services-down:
     docker compose -f config/docker-compose.services.yaml down
+
+# Backward-compatible aliases used by setup/docs for local infra.
+test-infra-up:
+    just services-up
+
+test-infra-down:
+    just services-down
 
 watch-check:
     cargo watch -x 'check -q --locked' -x 'check -q --tests --locked' -x 'test -q --lib --locked -- --skip worker_e2e'

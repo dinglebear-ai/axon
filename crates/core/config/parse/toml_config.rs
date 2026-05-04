@@ -97,19 +97,24 @@ pub(super) struct TomlWorkersSection {
 /// 3. Neither found → `Ok(TomlConfig::default())` (silent)
 ///
 /// Error policy:
-/// - File absent → `Ok(TomlConfig::default())` (silent)
-/// - File present, permission denied → `Err(...)` (caller hard-fails)
-/// - File present, other I/O error → warn to stderr, `Ok(TomlConfig::default())`
+/// - Default file absent → `Ok(TomlConfig::default())` (silent)
+/// - Explicit `AXON_CONFIG_PATH` absent or unreadable → `Err(...)` (caller hard-fails)
+/// - Default file present but unreadable → `Err(...)` for permission errors, warning + default for other I/O errors
 /// - File present, parse error → `Err(...)` with path + line number (caller hard-fails)
 pub(super) fn load_toml_config() -> Result<TomlConfig, String> {
     let path = resolve_config_path()?;
-    let Some(path) = path else {
+    let Some(resolved) = path else {
         return Ok(TomlConfig::default());
     };
-    load_from_path(&path)
+    load_from_path(&resolved.path, resolved.explicit)
 }
 
-fn resolve_config_path() -> Result<Option<PathBuf>, String> {
+struct ResolvedConfigPath {
+    path: PathBuf,
+    explicit: bool,
+}
+
+fn resolve_config_path() -> Result<Option<ResolvedConfigPath>, String> {
     // Explicit override takes highest priority.
     if let Ok(v) = std::env::var("AXON_CONFIG_PATH") {
         let trimmed = v.trim().to_string();
@@ -126,20 +131,34 @@ fn resolve_config_path() -> Result<Option<PathBuf>, String> {
                     "axon: error: AXON_CONFIG_PATH must point to a .toml file: {trimmed:?}"
                 ));
             }
-            return Ok(Some(path));
+            return Ok(Some(ResolvedConfigPath {
+                path,
+                explicit: true,
+            }));
         }
     }
     // Fall back to ~/.axon/config.toml (None when HOME is unset).
-    Ok(axon_config_path())
+    Ok(axon_config_path().map(|path| ResolvedConfigPath {
+        path,
+        explicit: false,
+    }))
 }
 
-fn load_from_path(path: &Path) -> Result<TomlConfig, String> {
+fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(TomlConfig::default()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
+            return Ok(TomlConfig::default());
+        }
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             // File exists but is unreadable — return Err so the caller can hard-fail.
             // Silent fallback would hide a misconfiguration the user must fix.
+            return Err(format!(
+                "axon: error: cannot read config file '{}': {e}",
+                path.display()
+            ));
+        }
+        Err(e) if explicit => {
             return Err(format!(
                 "axon: error: cannot read config file '{}': {e}",
                 path.display()
@@ -181,7 +200,7 @@ mod tests {
     #[test]
     fn missing_file_returns_default() {
         let path = Path::new("/nonexistent/path/that/should/not/exist/config.toml");
-        let cfg = load_from_path(path).unwrap();
+        let cfg = load_from_path(path, false).unwrap();
         assert!(cfg.search.hybrid_enabled.is_none());
         assert!(cfg.ask.chunk_limit.is_none());
     }
@@ -194,7 +213,7 @@ mod tests {
             "[search]\nhybrid-enabled = false\nhybrid-candidates = 200"
         )
         .unwrap();
-        let cfg = load_from_path(f.path()).unwrap();
+        let cfg = load_from_path(f.path(), false).unwrap();
         assert_eq!(cfg.search.hybrid_enabled, Some(false));
         assert_eq!(cfg.search.hybrid_candidates, Some(200));
     }
@@ -207,7 +226,7 @@ mod tests {
             "[ask]\nchunk-limit = 5\ncandidate-limit = 50\nmin-relevance-score = 0.6"
         )
         .unwrap();
-        let cfg = load_from_path(f.path()).unwrap();
+        let cfg = load_from_path(f.path(), false).unwrap();
         assert_eq!(cfg.ask.chunk_limit, Some(5));
         assert_eq!(cfg.ask.candidate_limit, Some(50));
         assert!(cfg.ask.min_relevance_score.is_some());
@@ -217,7 +236,7 @@ mod tests {
     fn valid_toml_parses_tei_and_workers() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(f, "[tei]\nmax-retries = 3\n[workers]\ningest-lanes = 4").unwrap();
-        let cfg = load_from_path(f.path()).unwrap();
+        let cfg = load_from_path(f.path(), false).unwrap();
         assert_eq!(cfg.tei.max_retries, Some(3));
         assert_eq!(cfg.workers.ingest_lanes, Some(4));
     }
@@ -226,7 +245,7 @@ mod tests {
     fn malformed_toml_returns_err() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(f, "[search\nbadly_broken = !!!").unwrap();
-        let result = load_from_path(f.path());
+        let result = load_from_path(f.path(), false);
         assert!(result.is_err(), "malformed TOML should return Err");
         assert!(
             result.err().unwrap().contains("parse error"),
@@ -247,7 +266,7 @@ mod tests {
     fn empty_file_returns_default() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(f).unwrap();
-        let cfg = load_from_path(f.path()).unwrap();
+        let cfg = load_from_path(f.path(), false).unwrap();
         assert!(cfg.search.hybrid_enabled.is_none());
     }
 
@@ -265,8 +284,9 @@ mod tests {
             None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
         }
         assert_eq!(
-            path.unwrap(),
-            Some(PathBuf::from("/tmp/custom_axon_config.toml"))
+            path.unwrap()
+                .map(|resolved| (resolved.path, resolved.explicit)),
+            Some((PathBuf::from("/tmp/custom_axon_config.toml"), true))
         );
     }
 
@@ -289,6 +309,28 @@ mod tests {
         assert!(
             result.err().unwrap().contains("AXON_CONFIG_PATH"),
             "error should mention AXON_CONFIG_PATH"
+        );
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn explicit_missing_config_path_returns_err() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("AXON_CONFIG_PATH").ok();
+        unsafe { std::env::set_var("AXON_CONFIG_PATH", "/tmp/axon-missing-config.toml") };
+        let result = load_toml_config();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
+            None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
+        }
+        assert!(
+            result.is_err(),
+            "explicit missing AXON_CONFIG_PATH should hard-fail"
+        );
+        assert!(
+            result.err().unwrap().contains("cannot read config file"),
+            "error should explain the config path read failure"
         );
     }
 }

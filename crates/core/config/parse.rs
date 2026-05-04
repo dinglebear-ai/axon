@@ -431,13 +431,11 @@ mod tests {
         const PG: &str = "AXON_PG_URL";
         const REDIS: &str = "AXON_REDIS_URL";
         const AMQP: &str = "AXON_AMQP_URL";
-        const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
 
         unsafe {
             env::set_var(PG, "postgresql://axon:postgres@127.0.0.1:53432/axon");
             env::set_var(REDIS, "redis://127.0.0.1:53379");
             env::set_var(AMQP, "amqp://axon:axonrabbit@127.0.0.1:45535/%2f");
-            env::set_var(TRANSPORT, "http");
         }
 
         let cli = super::Cli::parse_from([
@@ -456,7 +454,6 @@ mod tests {
             env::remove_var(PG);
             env::remove_var(REDIS);
             env::remove_var(AMQP);
-            env::remove_var(TRANSPORT);
         }
     }
 
@@ -500,13 +497,7 @@ mod tests {
     #[allow(unsafe_code)]
     #[test]
     fn parse_serve_mcp_maps_to_mcp_http_transport() {
-        // ENV_LOCK serializes against the other MCP transport tests so they
-        // can't race on the shared env var.
         let _guard = ENV_LOCK.lock().unwrap();
-        const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
-        unsafe {
-            env::set_var(TRANSPORT, "stdio");
-        }
         let cli = super::Cli::parse_from([
             "axon",
             "--tei-url",
@@ -519,10 +510,27 @@ mod tests {
         let cfg = super::build_config::into_config(cli).expect("serve mcp config should parse");
         assert!(matches!(cfg.command, CommandKind::Mcp));
         assert_eq!(cfg.mcp_transport, McpTransport::Http);
+    }
 
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_mcp_transport_env_overrides_command_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        const TRANSPORT: &str = "AXON_MCP_TRANSPORT";
         unsafe {
-            env::remove_var(TRANSPORT);
+            env::set_var(TRANSPORT, "both");
         }
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "mcp",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("mcp config should parse");
+        unsafe { env::remove_var(TRANSPORT) };
+        assert_eq!(cfg.mcp_transport, McpTransport::Both);
     }
 
     #[allow(unsafe_code)]

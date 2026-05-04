@@ -2,6 +2,8 @@ use super::super::cli::{JobSubcommand, WatchSubcommand};
 use super::super::types::McpTransport;
 use std::env;
 
+pub(super) const MCP_TRANSPORT_ENV: &str = "AXON_MCP_TRANSPORT";
+
 /// Like `env_bool` but returns `None` when the env var is absent, empty, or unrecognized.
 ///
 /// Recognized truthy values: `"1"`, `"true"`, `"yes"`, `"y"`, `"on"`.
@@ -122,13 +124,27 @@ pub(super) fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String
 }
 
 /// Resolve the MCP transport from explicit CLI flag, falling back to the
-/// command-specific default.
+/// env override and then the command-specific default.
 pub(super) fn resolve_mcp_transport(
     cli_transport: Option<McpTransport>,
     default_transport: McpTransport,
 ) -> McpTransport {
     if let Some(transport) = cli_transport {
         return transport;
+    }
+    if let Some(raw) = read_env(MCP_TRANSPORT_ENV) {
+        return match raw.to_ascii_lowercase().as_str() {
+            "stdio" => McpTransport::Stdio,
+            "http" => McpTransport::Http,
+            "both" => McpTransport::Both,
+            _ => {
+                eprintln!(
+                    "axon: warning: unrecognized value for {MCP_TRANSPORT_ENV}={raw:?}; \
+                     expected stdio/http/both. Falling back to command default."
+                );
+                default_transport
+            }
+        };
     }
     default_transport
 }

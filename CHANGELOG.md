@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-05-04
+
+### Fixed
+- Carried PR #65 review feedback onto the stacked SSH deployment branch: CI smoke infra starts only services present in the compose file, setup no longer calls removed test-infra compose paths, build/install recipes honor `CARGO_TARGET_DIR`, explicit `AXON_CONFIG_PATH` I/O failures hard-fail, MCP transport guard checks the real resolver wiring, and GPU compose docs no longer reference a removed overlay.
+
 ## [1.3.2] - 2026-05-04
 
 ### Added

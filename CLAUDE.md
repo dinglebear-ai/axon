@@ -193,13 +193,14 @@ The stack uses a single compose file for infrastructure services shared on the `
 | File | Contents | Env file |
 |------|----------|----------|
 | `config/docker-compose.services.yaml` | Infrastructure (qdrant, chrome, TEI) | `services.env` |
-| `docker-compose.gpu.yaml` | GPU override — NVIDIA reservations for `axon-tei` and `axon-ollama` | *(none)* |
 
-**GPU acceleration:** On NVIDIA hosts, layer the GPU override on top of the services file:
+**GPU acceleration:** On NVIDIA hosts, `config/docker-compose.services.yaml` includes NVIDIA reservations for `axon-tei`.
+
 ```bash
-docker compose -f config/docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose -f config/docker-compose.services.yaml up -d
 ```
-CPU-only hosts use `config/docker-compose.services.yaml` alone — no GPU block, no startup failure.
+
+CPU-only hosts should override the TEI image/settings or run an external TEI endpoint.
 
 ### Infrastructure Services (`config/docker-compose.services.yaml`)
 

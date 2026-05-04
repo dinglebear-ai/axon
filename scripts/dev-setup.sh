@@ -379,47 +379,12 @@ fi
 if [[ "$NO_DOCKER" == "false" ]]; then
   sep
   info "Starting Docker infrastructure..."
-  (cd "$REPO" && docker compose -f config/docker-compose.services.yaml up -d \
-    axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome)
-
-  info "Starting test infrastructure..."
-  (cd "$REPO" && just test-infra-up)
-
-  # Wait for Postgres to be ready
-  info "Waiting for Postgres..."
-  for i in $(seq 1 30); do
-    if (cd "$REPO" && docker compose -f config/docker-compose.services.yaml exec -T axon-postgres \
-        pg_isready -U axon >/dev/null 2>&1); then
-      ok "Postgres is ready"
-      break
-    fi
-    if (( i == 30 )); then
-      warn "Postgres did not become ready after 30s — check: docker compose -f config/docker-compose.services.yaml logs axon-postgres"
-    fi
-    sleep 1
-  done
-
-  info "Waiting for test Postgres..."
-  for i in $(seq 1 30); do
-    if (cd "$REPO" && docker compose -f docker-compose.test.yaml exec -T axon-postgres-test \
-        pg_isready -U axon >/dev/null 2>&1); then
-      ok "Test Postgres is ready"
-      break
-    fi
-    if (( i == 30 )); then
-      warn "Test Postgres did not become ready after 30s — check: docker compose -f docker-compose.test.yaml logs axon-postgres-test"
-    fi
-    sleep 1
-  done
+  (cd "$REPO" && just services-up)
 
   ok "Infrastructure containers:"
   (cd "$REPO" && docker compose -f config/docker-compose.services.yaml ps --format "  {{.Name}}: {{.Status}}" \
-    axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome 2>/dev/null \
-    || docker compose -f config/docker-compose.services.yaml ps axon-postgres axon-redis axon-rabbitmq axon-qdrant axon-chrome)
-
-  ok "Test infrastructure containers:"
-  (cd "$REPO" && docker compose -f docker-compose.test.yaml ps --format "  {{.Name}}: {{.Status}}" 2>/dev/null \
-    || docker compose -f docker-compose.test.yaml ps)
+    axon-qdrant axon-tei axon-chrome 2>/dev/null \
+    || docker compose -f config/docker-compose.services.yaml ps axon-qdrant axon-tei axon-chrome)
 fi
 
 # ── Git Hooks ──────────────────────────────────────────────────────────────────
@@ -463,6 +428,6 @@ echo "     Or full dev stack:  just dev"
 echo ""
 echo "  4. Verify services:  ./scripts/axon doctor"
 echo "  5. Run checks:       just verify"
-echo "  6. Test infra:       just test-infra-up   # start"
-echo "                       just test-infra-down  # stop + wipe data"
+echo "  6. Infrastructure:   just services-up     # start"
+echo "                       just services-down   # stop"
 echo ""

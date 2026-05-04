@@ -6,7 +6,8 @@ cd "$ROOT"
 
 TARGET="crates/cli/commands/mcp.rs"
 CLI_CONFIG="crates/core/config/cli.rs"
-BUILD_CONFIG="crates/core/config/parse.rs"
+BUILD_CONFIG="crates/core/config/parse/build_config.rs"
+HELPERS_CONFIG="crates/core/config/parse/helpers.rs"
 
 if [ ! -f "$TARGET" ]; then
   echo "ERROR: missing $TARGET"
@@ -20,6 +21,11 @@ fi
 
 if [ ! -f "$BUILD_CONFIG" ]; then
   echo "ERROR: missing $BUILD_CONFIG"
+  exit 1
+fi
+
+if [ ! -f "$HELPERS_CONFIG" ]; then
+  echo "ERROR: missing $HELPERS_CONFIG"
   exit 1
 fi
 
@@ -43,8 +49,13 @@ if ! grep -q 'transport: Option<McpTransport>' "$CLI_CONFIG"; then
   exit 1
 fi
 
-if ! grep -q 'AXON_MCP_TRANSPORT' "$BUILD_CONFIG"; then
-  echo "ERROR: MCP transport env override missing in $BUILD_CONFIG"
+if ! grep -q 'resolve_mcp_transport(mcp_transport, mcp_transport_default)' "$BUILD_CONFIG"; then
+  echo "ERROR: MCP transport resolver not wired into config build in $BUILD_CONFIG"
+  exit 1
+fi
+
+if ! grep -q 'AXON_MCP_TRANSPORT' "$HELPERS_CONFIG"; then
+  echo "ERROR: MCP transport env override missing in $HELPERS_CONFIG"
   exit 1
 fi
 
