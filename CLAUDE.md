@@ -550,6 +550,12 @@ foo/
 - When splitting an existing `foo/mod.rs`: copy it to `foo.rs`, delete `foo/mod.rs` — the submodule files stay in `foo/` unchanged
 - This applies everywhere: `crates/`, `crates/*/`, nested modules — no exceptions
 
+## Worktrees
+
+- Use `.worktrees/` under the repository root for all future git worktrees for this repo.
+- Do not create sibling worktrees under `/home/jmagar/workspace/` for new Axon work.
+- Before switching branches for PR or stack work, check `git worktree list` and reuse an existing `.worktrees/<branch>` checkout when present.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
 
