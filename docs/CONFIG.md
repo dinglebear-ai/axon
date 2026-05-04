@@ -1,12 +1,12 @@
 # Configuration Reference -- Axon
 
-Axon is configured through three layers: environment variables, the `axon.json` file, and CLI flags.
+Axon is configured through three layers: `~/.axon/config.toml`, environment variables, and CLI flags.
 
 ## Precedence (highest to lowest)
 
 1. CLI flags (`--pg-url`, `--collection`, etc.)
 2. Environment variables (`AXON_PG_URL`, `AXON_COLLECTION`, etc.)
-3. `axon.json` configuration file
+3. `~/.axon/config.toml` — tuning knobs (safe to commit, no secrets)
 4. Built-in defaults
 
 ## Environment files
@@ -25,30 +25,30 @@ cp .env.example services.env
 chmod 600 services.env
 ```
 
-## axon.json
+## ~/.axon/config.toml
 
-The `axon.json` file provides structured configuration with schema validation (`axon.schema.json`). Key sections:
+`~/.axon/config.toml` holds tuning knobs — parameters that are safe to commit to source control because they contain no secrets or security toggles. Copy `config.example.toml` from the repo root and place it at `~/.axon/config.toml` (create `~/.axon/` with `chmod 700` and the file with `chmod 600`).
+
+```bash
+mkdir -m 700 ~/.axon
+cp config.example.toml ~/.axon/config.toml
+chmod 600 ~/.axon/config.toml
+```
+
+To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
+
+**Phase 1 sections (v0.36+):**
 
 | Section | Keys | Purpose |
 |---------|------|---------|
-| `services` | `qdrant_url`, `tei_url`, `chrome_remote_url`, `neo4j_url`, `backend_url` | Service endpoint URLs |
-| `llm` | `base_url`, `model` | LLM provider settings |
-| `tei` | `max_retries`, `request_timeout_ms`, `max_client_batch_size`, `embedding_model`, `pooling` | TEI embedding configuration |
-| `search` | `hybrid_enabled`, `hybrid_candidates`, `hnsw_ef` | Vector search tuning |
-| `ask` | `max_context_chars`, `candidate_limit`, `chunk_limit`, `min_relevance_score` | RAG answer pipeline |
-| `embed` | `collection`, `doc_concurrency`, `doc_timeout_secs`, `strict_predelete` | Embedding pipeline |
-| `queues` | `crawl`, `extract`, `embed`, `ingest`, `refresh`, `graph` | AMQP queue names |
-| `workers` | `ingest_lanes`, `max_pending_crawl_jobs`, `job_stale_timeout_secs` | Worker tuning |
-| `graph` | `concurrency`, `llm_model`, `similarity_threshold` | Neo4j graph RAG |
-| `acp` | `adapter_cmd`, `prewarm`, `auto_approve`, `max_concurrent_sessions` | ACP orchestration |
-| `web` | `allowed_origins`, `allow_insecure_dev`, `docker_socket_path` | Web UI settings |
-| `mcp` | `transport`, `http_host`, `http_port`, `artifact_dir` | MCP server config |
-| `serve` | `host`, `port` | Backend bridge config |
-| `chrome` | `diagnostics`, `proxy`, `user_agent` | Chrome browser settings |
-| `logging` | `file`, `max_bytes`, `max_files`, `no_color` | Log output config |
-| `output` | `dir`, `extract_est_cost_per_1k_tokens` | Output directory config |
-| `ingest` | `github_max_issues`, `github_max_prs`, `download_max_bytes` | Ingest limits |
-| `oauth` | `auth_url`, `token_url`, `redirect_uri`, `scopes` | MCP OAuth broker |
+| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | Vector search tuning |
+| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | RAG answer pipeline |
+| `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | TEI embedding config |
+| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs` | Worker tuning |
+
+URLs, API keys, secrets, and security settings belong in `.env` — not in `config.toml`. See `config.example.toml` for the full annotated example with defaults.
+
+> **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
 ## Environment variables by category
 

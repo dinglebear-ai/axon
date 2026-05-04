@@ -191,7 +191,7 @@ CLI flags (highest precedence)
 Environment variables ($AXON_*)
     │
     ▼
-axon.json (158 keys, schema-validated)
+~/.axon/config.toml (tuning knobs, safe to commit)
     │
     ▼
 Built-in defaults (lowest precedence)

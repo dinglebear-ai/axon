@@ -59,8 +59,8 @@ The MCP server runs in lite mode by default. Jobs use SQLite and run in-process.
 ## Precedence
 
 1. CLI flags override environment variables
-2. Environment variables override `axon.json` settings
-3. `axon.json` overrides built-in defaults
+2. Environment variables override `~/.axon/config.toml` settings
+3. `~/.axon/config.toml` overrides built-in defaults
 
 ## See also
 

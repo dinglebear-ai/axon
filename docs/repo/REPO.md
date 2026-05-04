@@ -76,8 +76,7 @@ axon_rust/
 ├── Cargo.toml                       # Rust package manifest
 ├── Cargo.lock                       # Dependency lock file
 ├── Justfile                         # Task runner recipes
-├── axon.json                        # Runtime configuration (158 keys)
-├── axon.schema.json                 # JSON Schema for axon.json
+├── config.example.toml              # Annotated template — copy to ~/.axon/config.toml
 ├── lefthook.yml                     # Git hooks
 ├── deny.toml                        # cargo-deny config
 ├── renovate.json                    # Dependency update bot
@@ -139,7 +138,7 @@ Enforced by `scripts/check_no_mod_rs.sh`.
 | `CHANGELOG.md` | Yes | Version history |
 | `.env.example` | Yes | Environment template (150+ variables) |
 | `Justfile` | Yes | Task runner (30+ recipes) |
-| `axon.json` | Yes | Runtime configuration (158 keys, schema-validated) |
+| `config.example.toml` | Yes | Annotated config template (copy to `~/.axon/config.toml`) |
 | `Cargo.toml` | Yes | Rust package manifest |
 | `main.rs` | Yes | Binary entry point |
 | `lib.rs` | Yes | Library root with command dispatch |

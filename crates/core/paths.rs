@@ -23,6 +23,29 @@ pub fn axon_data_base_dir() -> PathBuf {
     })
 }
 
+/// Returns `~/.axon/` when HOME is set, otherwise `None`.
+///
+/// Unlike `axon_data_base_dir()`, this returns `None` rather than falling
+/// back to `/tmp` — `/tmp` is world-readable/writable and must not be used
+/// as a config home (e.g. in systemd units, Docker containers, or CI runners
+/// where HOME is unset).
+///
+/// Callers should skip config loading silently when this returns `None`.
+pub fn axon_home_dir() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .map(|h| PathBuf::from(h).join(".axon"))
+}
+
+/// Returns `~/.axon/config.toml` when HOME is set, otherwise `None`.
+///
+/// When this returns `None` (HOME unset), callers must skip config loading
+/// silently — there is no safe fallback path.
+pub fn axon_config_path() -> Option<PathBuf> {
+    axon_home_dir().map(|d| d.join("config.toml"))
+}
+
 /// Extracts the file name from a path string, returning `fallback` if
 /// the path has no file name or contains non-UTF-8 components.
 pub fn path_basename<'a>(path: &'a str, fallback: &'a str) -> &'a str {
@@ -45,5 +68,39 @@ mod tests {
     #[test]
     fn path_basename_uses_fallback_for_empty() {
         assert_eq!(path_basename("", "default"), "default");
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn axon_home_dir_returns_some_when_home_set() {
+        // Safety: test-only; HOME is set to a known value.
+        unsafe { std::env::set_var("HOME", "/home/testuser") };
+        let result = axon_home_dir();
+        assert!(result.is_some());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().ends_with(".axon"));
+        unsafe { std::env::remove_var("HOME") };
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn axon_home_dir_returns_none_when_home_unset() {
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::remove_var("HOME") };
+        assert_eq!(axon_home_dir(), None);
+        if let Some(v) = saved {
+            unsafe { std::env::set_var("HOME", v) };
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn axon_config_path_returns_none_when_home_unset() {
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::remove_var("HOME") };
+        assert_eq!(axon_config_path(), None);
+        if let Some(v) = saved {
+            unsafe { std::env::set_var("HOME", v) };
+        }
     }
 }
