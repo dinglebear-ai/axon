@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
-use super::FileEmbedCtx;
+use super::prepare::{FileEmbedCtx, read_file_embed_docs};
 
 const FILE_PROGRESS_EVERY: usize = 25;
 const PHASE_COLLECTING_FILES: &str = "collecting_files";
@@ -58,7 +58,7 @@ pub(super) async fn collect_and_embed_batched(
     let mut file_stream = stream::iter(file_items)
         .map(|path| {
             let ctx = Arc::clone(ctx);
-            async move { super::read_file_embed_docs(ctx.as_ref(), &path).await }
+            async move { read_file_embed_docs(ctx.as_ref(), &path).await }
         })
         .buffer_unordered(concurrency);
 

@@ -116,10 +116,9 @@ docker/mem0/config.json
 .config/
 .superpowers/
 /data/
-/http-cacache/
+http-cacache/
 /storage/
 .pnpm-store*
-.mcp.json
 specs/.current-spec
 **/.progress.md
 

@@ -1,342 +1,28 @@
 mod batch;
+mod clone;
 mod line_range;
-
-use crate::crates::core::config::Config;
-use crate::crates::core::logging::{log_info, log_warn};
-use crate::crates::ingest::progress::PhaseReporter;
-use crate::crates::ingest::subprocess::{
-    MAX_INGEST_FILE_BYTES, SUBPROCESS_TIMEOUT, run_command_with_timeout,
-};
-use crate::crates::vector::ops::PreparedDoc;
-use crate::crates::vector::ops::input::classify::{
-    classify_file_type, is_test_path, language_name, path_extension,
-};
-use crate::crates::vector::ops::input::{CHUNK_OVERLAP, chunk_text, code::chunk_code};
-use anyhow::{Result, bail};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use super::meta::{GitHubPayloadParams, build_github_payload};
-use super::{GitHubCommonFields, is_indexable_doc_path, is_indexable_source_path};
+mod prepare;
 
 use batch::collect_and_embed_batched;
-use line_range::line_range_for_chunk;
+use clone::clone_repo;
+use prepare::{build_file_embed_ctx, collect_indexable_files};
+
+pub use clone::{sanitized_git_stderr, should_retry_unauthenticated_clone};
+pub use prepare::next_search_start;
+
+use anyhow::{Result, bail};
+
+use crate::crates::core::config::Config;
+use crate::crates::core::logging::log_info;
+use crate::crates::ingest::progress::PhaseReporter;
+
+use super::{GitHubCommonFields, is_indexable_doc_path};
 
 const PHASE_CLONING: &str = "cloning";
 const PHASE_ENUMERATING_FILES: &str = "enumerating_files";
 const PHASE_EMBEDDED_FILES: &str = "embedded_files";
 
-/// Skip files larger than 50 MiB — guards against true binary blobs and multi-GB generated files
-/// while allowing large-but-legitimate source files (generated impls, large grammar tables, etc.).
-const MAX_FILE_BYTES: u64 = MAX_INGEST_FILE_BYTES;
-
-fn file_extension(path: &str) -> String {
-    path_extension(path).to_ascii_lowercase()
-}
-
-/// Advance the chunk search cursor past the current chunk, walking back one
-/// character at a time so the next search begins inside the overlap window.
-/// Walking by characters (not bytes) avoids landing mid-codepoint on multibyte
-/// content such as box-drawing or CJK characters.
-fn next_search_start(text: &str, byte_offset: usize, chunk_len: usize) -> usize {
-    let chunk_end = (byte_offset + chunk_len).min(text.len());
-    let mut pos = chunk_end;
-    for _ in 0..CHUNK_OVERLAP {
-        if pos == 0 {
-            break;
-        }
-        pos -= 1;
-        while pos > 0 && !text.is_char_boundary(pos) {
-            pos -= 1;
-        }
-    }
-    pos
-}
-
-fn stderr_has_auth_or_permission_failure(stderr: &str) -> bool {
-    let stderr = stderr.to_ascii_lowercase();
-    [
-        "authentication failed",
-        "permission denied",
-        "denied to",
-        "access denied",
-        "repository not found",
-        "not found",
-        "could not read username",
-        "invalid username or token",
-        "support for password authentication was removed",
-    ]
-    .iter()
-    .any(|needle| stderr.contains(needle))
-}
-
-fn should_retry_unauthenticated_clone(common: &GitHubCommonFields, stderr: &str) -> bool {
-    match common.is_private {
-        Some(true) => false,
-        Some(false) | None => !stderr_has_auth_or_permission_failure(stderr),
-    }
-}
-
-fn sanitized_git_stderr(stderr: &[u8], token: Option<&str>) -> String {
-    let mut stderr = String::from_utf8_lossy(stderr).trim().to_string();
-    if let Some(token) = token
-        && !token.is_empty()
-    {
-        stderr = stderr.replace(token, "[redacted]");
-    }
-    stderr
-}
-
-/// Run `git clone --depth=1` into a temp directory with SSRF validation and timeout.
-///
-/// Tries authenticated clone first (if token provided), then falls back to
-/// unauthenticated for public repos. Uses `token` prefix (not `Bearer`) for
-/// the Authorization header — works with both classic (`ghp_`) and
-/// fine-grained (`github_pat_`) GitHub PATs.
-async fn clone_repo(
-    common: &GitHubCommonFields,
-    branch: &str,
-    token: Option<&str>,
-) -> Result<tempfile::TempDir> {
-    use crate::crates::core::http::validate_url;
-
-    let tmp = tempfile::tempdir()?;
-    let tmp_path = tmp.path().to_string_lossy().to_string();
-    let clone_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
-
-    // SSRF guard: validate the clone URL against private IP ranges.
-    // Git follows redirects, so a malicious repo name could redirect to an internal host.
-    validate_url(&clone_url)?;
-
-    let base_args = [
-        "clone",
-        "--depth=1",
-        "--branch",
-        branch,
-        "--single-branch",
-        "--",
-        &clone_url,
-        &tmp_path,
-    ];
-
-    let ctx = format!("git clone {}", common.repo_slug);
-
-    // Try authenticated first, fall back to unauthenticated for public repos.
-    if let Some(t) = token {
-        let mut command = tokio::process::Command::new("git");
-        command
-            .args(base_args)
-            .env("GIT_CONFIG_COUNT", "1")
-            .env("GIT_CONFIG_KEY_0", "http.extraHeader")
-            .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"));
-        let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
-
-        if output.status.success() {
-            return Ok(tmp);
-        }
-
-        let stderr = sanitized_git_stderr(&output.stderr, Some(t));
-        if !should_retry_unauthenticated_clone(common, &stderr) {
-            bail!(
-                "authenticated git clone failed for {} (exit {}): {}",
-                common.repo_slug,
-                output.status,
-                stderr
-            );
-        }
-
-        // Auth failed but the repository is public, so retry without token.
-        log_warn(&format!(
-            "command=ingest_github auth_clone_failed repo={}/{} retrying_unauthenticated",
-            common.owner, common.name
-        ));
-        // Clean up the failed partial clone before retrying.
-        let _ = tokio::fs::remove_dir_all(tmp.path()).await;
-        tokio::fs::create_dir_all(tmp.path()).await.map_err(|e| {
-            anyhow::anyhow!("failed to recreate tmp dir for unauthenticated retry: {e}")
-        })?;
-    }
-
-    let mut command = tokio::process::Command::new("git");
-    command.args(base_args);
-    let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
-
-    if !output.status.success() {
-        let stderr = sanitized_git_stderr(&output.stderr, token);
-        bail!("git clone failed (exit {}): {}", output.status, stderr);
-    }
-
-    Ok(tmp)
-}
-
-/// Recursively walk a directory and collect file paths relative to `root`.
-async fn collect_indexable_files(root: &Path, include_source: bool) -> Result<Vec<String>> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-
-    while let Some(dir) = stack.pop() {
-        let mut entries = tokio::fs::read_dir(&dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            // Skip .git and common non-indexable directories
-            if name == ".git" || name == "node_modules" || name == "__pycache__" {
-                continue;
-            }
-
-            if entry.file_type().await?.is_dir() {
-                stack.push(path);
-            } else if let Ok(rel) = path.strip_prefix(root) {
-                let rel_str = rel.to_string_lossy().to_string();
-                let should_index = is_indexable_doc_path(&rel_str)
-                    || (include_source && is_indexable_source_path(&rel_str));
-                if should_index {
-                    files.push(rel_str);
-                }
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-/// Context for per-file embed tasks, built once from the outer scope.
-struct FileEmbedCtx {
-    cfg: Config,
-    repo_root: PathBuf,
-    owner: String,
-    name: String,
-    default_branch: String,
-    repo_description: Option<String>,
-    pushed_at: Option<String>,
-    is_private: Option<bool>,
-}
-
-/// Read a single file from the cloned repo and build one `PreparedDoc` per chunk.
-///
-/// Each doc carries its own `gh_line_start`/`gh_line_end` metadata so the embed
-/// pipeline writes per-chunk line ranges into Qdrant. This enables linking chunks
-/// directly to the GitHub source view (`#L<start>-L<end>`).
-///
-/// Empty or unreadable files return `Ok(vec![])`.
-async fn read_file_embed_docs(ctx: &FileEmbedCtx, path: &str) -> Result<Vec<PreparedDoc>, String> {
-    let full_path = ctx.repo_root.join(path);
-
-    // Guard against huge generated/minified files that would spike memory.
-    match tokio::fs::metadata(&full_path).await {
-        Ok(meta) if meta.len() > MAX_FILE_BYTES => {
-            log_warn(&format!(
-                "command=ingest_github skip_large_file path={path} size_bytes={}",
-                meta.len()
-            ));
-            return Ok(Vec::new());
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "command=ingest_github stat_failed path={path} err={e}"
-            ));
-            return Ok(Vec::new());
-        }
-        _ => {}
-    }
-
-    let text = match tokio::fs::read_to_string(&full_path).await {
-        Ok(t) => t,
-        Err(e) => {
-            log_warn(&format!(
-                "command=ingest_github read_failed path={path} err={e}"
-            ));
-            return Ok(Vec::new());
-        }
-    };
-    if text.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let ext = file_extension(path);
-    // chunk_code (tree-sitter) and chunk_text are CPU-bound. Offload to the
-    // blocking thread pool so they don't starve the async runtime, and so
-    // concurrent buffer_unordered calls can chunk on separate OS threads.
-    let ext_for_chunk = ext.clone();
-    let (chunks, text) = tokio::task::spawn_blocking(move || {
-        let chunks = chunk_code(&text, &ext_for_chunk).unwrap_or_else(|| chunk_text(&text));
-        (chunks, text)
-    })
-    .await
-    .map_err(|e| format!("chunk_code panicked: {e}"))?;
-    if chunks.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let base_url = format!(
-        "https://github.com/{}/{}/blob/{}/{}",
-        ctx.owner, ctx.name, ctx.default_branch, path
-    );
-
-    let lang = language_name(&ext).to_string();
-    let ftype = classify_file_type(path).to_string();
-    let is_test = is_test_path(path);
-    let file_size = text.len();
-
-    // One PreparedDoc per chunk so each carries its own line range metadata.
-    // Track byte offset by searching forward from the last match position,
-    // avoiding the first-match bug when duplicate chunks exist.
-    let mut search_start = 0usize;
-    let docs = chunks
-        .into_iter()
-        .map(|chunk| {
-            let byte_offset = text[search_start..]
-                .find(chunk.as_str())
-                .map(|pos| search_start + pos)
-                .unwrap_or(search_start);
-            search_start = next_search_start(&text, byte_offset, chunk.len());
-            let (line_start, line_end) = line_range_for_chunk(&text, &chunk, byte_offset);
-
-            let extra = build_github_payload(&GitHubPayloadParams {
-                repo: ctx.name.clone(),
-                owner: ctx.owner.clone(),
-                content_kind: "file".into(),
-                branch: Some(ctx.default_branch.clone()),
-                default_branch: Some(ctx.default_branch.clone()),
-                repo_description: ctx.repo_description.clone(),
-                pushed_at: ctx.pushed_at.clone(),
-                is_private: ctx.is_private,
-                file_path: Some(path.to_string()),
-                file_language: Some(lang.clone()),
-                file_type: Some(ftype.clone()),
-                is_test: Some(is_test),
-                file_size_bytes: Some(file_size),
-                gh_line_start: Some(line_start),
-                gh_line_end: Some(line_end),
-                ..Default::default()
-            });
-
-            let url = format!("{base_url}#L{line_start}-L{line_end}");
-
-            PreparedDoc {
-                url,
-                domain: "github.com".to_string(),
-                chunks: vec![chunk],
-                source_type: "github".to_string(),
-                content_type: "text",
-                title: Some(path.to_string()),
-                extra: Some(extra),
-            }
-        })
-        .collect();
-
-    Ok(docs)
-}
-
 /// Clone the repo and embed all indexable files concurrently.
-///
-/// Uses `git clone --depth=1` to get all files in one operation instead of
-/// fetching each file individually via the GitHub API. Files are read from
-/// disk and embedded with AST-aware chunking (tree-sitter) where supported.
-///
-/// If a `PhaseReporter` is wired, sends `{"files_done", "files_total", "chunks_embedded"}`
-/// after every file completes so the worker can persist live progress to the DB.
 pub async fn embed_files(
     cfg: &Config,
     common: &GitHubCommonFields,
@@ -344,7 +30,6 @@ pub async fn embed_files(
     token: Option<&str>,
     reporter: &PhaseReporter,
 ) -> Result<usize> {
-    // Heartbeat: signal activity before git clone (may take minutes on large repos)
     reporter
         .report(serde_json::json!({
             "phase": PHASE_CLONING,
@@ -359,7 +44,6 @@ pub async fn embed_files(
     let tmp = clone_repo(common, &common.default_branch, token).await?;
     let repo_root = tmp.path().to_path_buf();
 
-    // Heartbeat: clone complete, about to enumerate files
     reporter
         .report(serde_json::json!({
             "phase": PHASE_ENUMERATING_FILES,
@@ -375,17 +59,7 @@ pub async fn embed_files(
         common.repo_slug
     ));
 
-    let ctx = Arc::new(FileEmbedCtx {
-        cfg: cfg.clone(),
-        repo_root,
-        owner: common.owner.clone(),
-        name: common.name.clone(),
-        default_branch: common.default_branch.clone(),
-        repo_description: common.repo_description.clone(),
-        pushed_at: common.pushed_at.clone(),
-        is_private: common.is_private,
-    });
-
+    let ctx = build_file_embed_ctx(cfg, common, repo_root);
     let stats = collect_and_embed_batched(&ctx, file_items, files_total, reporter).await?;
 
     reporter
@@ -481,22 +155,18 @@ mod tests {
 
     #[test]
     fn unauthenticated_clone_retry_respects_visibility_and_auth_errors() {
-        // Known-private: never retry regardless of stderr.
         assert!(!should_retry_unauthenticated_clone(
             &github_common(Some(true)),
             "remote: Repository not found.\nfatal: Authentication failed",
         ));
-        // Known-public + auth error in stderr: don't retry (stale API cache case).
         assert!(!should_retry_unauthenticated_clone(
             &github_common(Some(false)),
             "remote: Invalid username or token.\nfatal: Authentication failed",
         ));
-        // Known-public + non-auth error: safe to retry.
         assert!(should_retry_unauthenticated_clone(
             &github_common(Some(false)),
             "error: RPC failed; curl 56 GnuTLS recv error",
         ));
-        // Unknown visibility + auth error: don't retry.
         assert!(!should_retry_unauthenticated_clone(
             &github_common(None),
             "remote: Permission to owner/repo.git denied to user.",

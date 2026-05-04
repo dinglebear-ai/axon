@@ -1,31 +1,30 @@
-use super::sitemap::{SitemapDiscovery, discover_sitemap_urls};
-use super::url_utils::{MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url};
-use super::{CrawlSummary, append_candidate_backfill, is_excluded_url_path};
-use crate::crates::core::config::{Config, MapFallback, RenderMode};
-use crate::crates::core::content::extract_anchor_hrefs;
-use crate::crates::core::http::{fetch_html, http_client, normalize_url, validate_url};
-use crate::crates::core::logging::log_info;
-use spider::url::Url;
+mod strategy;
+
+pub use strategy::map_with_sitemap;
+pub(crate) use strategy::{append_html_anchor_backfill, crawl_and_collect_map};
+
 use std::collections::HashSet;
 use std::error::Error;
-use std::path::Path;
-use std::time::Instant;
+
+use spider::url::Url;
+
+use crate::crates::core::http::{http_client, normalize_url, validate_url};
+
+use super::is_excluded_url_path;
+use super::sitemap::{SitemapDiscovery, discover_sitemap_urls};
+use super::url_utils::{MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url};
+
+/// The unified result of a `map` operation.
+#[derive(Debug, Default)]
+pub struct MapResult {
+    pub summary: super::CrawlSummary,
+    pub urls: Vec<String>,
+    pub sitemap_urls: usize,
+    pub map_source: String,
+    pub warning: Option<String>,
+}
 
 /// Check URL against exclusions, also applying them relative to the effective scope root.
-///
-/// Standard `is_excluded_url_path` only matches from the domain root, so `/de` would
-/// not exclude `/docs/de/overview`. This function checks ONE additional level:
-///
-/// - When `scope_prefix_len > 0` (e.g. scope = `/docs`): checks the sub-path after the
-///   scope prefix. `/docs/de/overview` → `/de/overview` → excluded by `/de` ✓
-///   `/docs/en/settings` → `/en/settings` → not excluded by `/settings` ✓ (no false positive)
-///
-/// - When `scope_prefix_len == 0` (root scope, e.g. cross-host redirect): detects the
-///   first segment boundary in the path and checks the sub-path from there.
-///   `/docs/de/overview` → `/de/overview` → excluded ✓
-///   `/docs/en/settings` → `/en/settings` → not excluded ✓
-///
-/// Lowercases the path before comparison so `/zh-CN` is correctly caught by `/zh-cn`.
 fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) -> bool {
     if is_excluded_url_path(url, excludes) {
         return true;
@@ -42,10 +41,9 @@ fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) 
     let check_from = if scope_prefix_len > 0 {
         scope_prefix_len
     } else {
-        // Root scope: find the first segment boundary (skip one directory level)
         match path[1..].find('/') {
             Some(n) => 1 + n,
-            None => return false, // single-segment path, nothing to check below it
+            None => return false,
         }
     };
 
@@ -54,31 +52,6 @@ fn is_excluded_map_url(url: &str, excludes: &[String], scope_prefix_len: usize) 
         _ => return false,
     };
     is_excluded_url_path(&format!("https://x{rel}"), excludes)
-}
-
-/// The unified result of a `map` operation: URLs discovered via sitemaps, bounded
-/// structure extraction, or full crawl (when `--map-fallback crawl` is set).
-#[derive(Debug, Default)]
-pub struct MapResult {
-    pub summary: CrawlSummary,
-    /// All discovered URLs, sorted and deduplicated.
-    pub urls: Vec<String>,
-    /// Count of sitemap-discovered URLs after deduplication and in-scope filtering
-    /// (matches `urls.len()` in the sitemap branch; reported as the same value across
-    /// branches for consistency).
-    pub sitemap_urls: usize,
-    /// How URLs were discovered: "sitemap", "bounded-structure", or "crawl".
-    pub map_source: String,
-    /// Optional warning, e.g. when bounded-structure fallback returns very few URLs.
-    pub warning: Option<String>,
-}
-
-fn effective_fallback_limit(cfg: &Config) -> usize {
-    if cfg.max_pages == 0 {
-        500
-    } else {
-        cfg.max_pages as usize
-    }
 }
 
 pub(crate) fn merge_map_candidate_urls(
@@ -111,7 +84,6 @@ pub(crate) fn merge_map_candidate_urls(
     merged
 }
 
-/// Resolve the final URL after redirects, used as the crawl/scope seed.
 pub(crate) async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>> {
     let normalized = normalize_url(start_url);
     validate_url(&normalized).map_err(|e| format!("invalid map seed URL {normalized}: {e}"))?;
@@ -171,8 +143,6 @@ pub(crate) fn derive_map_scope(requested_url: &str, resolved_url: &str) -> Optio
     let parsed = Url::parse(&scope_url).ok()?;
     let path = parsed.path().trim_end_matches('/');
 
-    // Single-segment paths (e.g. /home, /about) are top-level pages, not directory
-    // prefixes — don't scope to them. Mirrors derive_auto_whitelist_pattern's rule.
     let segment_count = path.split('/').filter(|s| !s.is_empty()).count();
 
     Some(MapScope {
@@ -183,322 +153,4 @@ pub(crate) fn derive_map_scope(requested_url: &str, resolved_url: &str) -> Optio
             Some(path.to_string())
         },
     })
-}
-
-/// Run a full Spider.rs crawl and collect map-format results.
-/// Only called when `--map-fallback crawl` is set.
-pub(super) async fn crawl_and_collect_map(
-    cfg: &Config,
-    start_url: &str,
-    mode: RenderMode,
-    scope: &MapScope,
-) -> Result<(CrawlSummary, Vec<String>), Box<dyn Error>> {
-    use super::runtime::configure_website;
-    let mut website = configure_website(cfg, start_url, mode)
-        .await
-        .map_err(|e| format!("failed to configure website for map of {start_url}: {e}"))?;
-    let start = Instant::now();
-
-    match mode {
-        RenderMode::Http => website.crawl_raw().await,
-        RenderMode::Chrome | RenderMode::AutoSwitch => website.crawl().await,
-    }
-
-    let mut summary = CrawlSummary::default();
-    let mut urls = Vec::new();
-    let mut seen = HashSet::new();
-    let exclude_path_prefix = cfg.exclude_path_prefix.clone();
-
-    for link in website.get_links() {
-        let page_url = link.as_ref().to_string();
-        if is_excluded_url_path(&page_url, &exclude_path_prefix) {
-            continue;
-        }
-        let Some(canonical_url) = normalize_map_candidate_url(&page_url, scope, true) else {
-            continue;
-        };
-        if !seen.insert(canonical_url.clone()) {
-            continue;
-        }
-        summary.pages_seen += 1;
-        urls.push(canonical_url);
-    }
-
-    summary.elapsed_ms = start.elapsed().as_millis();
-    urls.sort();
-    Ok((summary, urls))
-}
-
-/// HTTP-first crawl with optional Chrome retry on low URL coverage.
-///
-/// Implements the auto-switch contract for `--map-fallback crawl --render-mode
-/// auto-switch`: try HTTP first, then upgrade to Chrome if the URL count is
-/// below `cfg.auto_switch_min_pages` and a Chrome endpoint is configured.
-/// Chrome retry is skipped (and the HTTP result kept) when:
-///   - no Chrome endpoint is configured, or
-///   - Chrome retry errors out, or
-///   - Chrome retry returns no more URLs than the HTTP result.
-///
-/// Lives in its own `async fn` so the parent state machine in `map_with_sitemap`
-/// stays small enough to avoid debug-build stack overflows.
-async fn crawl_with_auto_switch(
-    cfg: &Config,
-    crawl_start_url: &str,
-    scope: &MapScope,
-) -> Result<(CrawlSummary, Vec<String>), Box<dyn Error>> {
-    let (summary, urls) =
-        crawl_and_collect_map(cfg, crawl_start_url, RenderMode::Http, scope).await?;
-    let coverage_floor = cfg.auto_switch_min_pages.max(1);
-    let chrome_available = cfg
-        .chrome_remote_url
-        .as_ref()
-        .is_some_and(|s| !s.is_empty());
-    if urls.len() >= coverage_floor || !chrome_available {
-        return Ok((summary, urls));
-    }
-    log_info(&format!(
-        "map: HTTP crawl returned {} URLs (< {} threshold), retrying with Chrome",
-        urls.len(),
-        coverage_floor
-    ));
-    match crawl_and_collect_map(cfg, crawl_start_url, RenderMode::Chrome, scope).await {
-        Ok((chrome_summary, chrome_urls)) if chrome_urls.len() > urls.len() => {
-            Ok((chrome_summary, chrome_urls))
-        }
-        Ok(_) => Ok((summary, urls)),
-        Err(err) => {
-            log_info(&format!(
-                "map: Chrome retry failed ({err}); keeping HTTP result"
-            ));
-            Ok((summary, urls))
-        }
-    }
-}
-
-/// Fetch root HTML and extract anchor hrefs as a bounded fallback.
-/// Returns (urls, warning) — warning is non-None when fewer than 5 URLs found.
-async fn bounded_structure_fallback(
-    cfg: &Config,
-    scope_start_url: &str,
-    scope: &MapScope,
-) -> (Vec<String>, Option<String>) {
-    let fallback_limit = effective_fallback_limit(cfg);
-    let client = match http_client() {
-        Ok(c) => c,
-        Err(e) => {
-            log_info(&format!("bounded-structure: http_client failed: {e}"));
-            return (
-                vec![],
-                Some("bounded-structure fallback: http client unavailable".to_string()),
-            );
-        }
-    };
-    let html = match fetch_html(client, scope_start_url).await {
-        Ok(h) => h,
-        Err(e) => {
-            log_info(&format!(
-                "bounded-structure: fetch failed for {scope_start_url}: {e}"
-            ));
-            return (
-                vec![],
-                Some(format!(
-                    "bounded-structure fallback failed to fetch {scope_start_url}; \
-                     consider --map-fallback crawl for SPA sites"
-                )),
-            );
-        }
-    };
-
-    let anchor_urls = extract_anchor_hrefs(scope_start_url, &html, fallback_limit);
-    let urls = merge_map_candidate_urls(Vec::new(), anchor_urls, scope, true);
-    let mut urls: Vec<String> = urls
-        .into_iter()
-        .filter(|url| !is_excluded_url_path(url, &cfg.exclude_path_prefix))
-        .collect();
-    urls.sort();
-
-    let warning = if urls.len() < 5 {
-        Some(format!(
-            "bounded-structure fallback returned {} URL(s); \
-             consider --map-fallback crawl for SPA sites",
-            urls.len()
-        ))
-    } else {
-        None
-    };
-
-    (urls, warning)
-}
-
-/// Discover all URLs reachable from `start_url` using a sitemap-first strategy.
-///
-/// Flow:
-/// 1. Resolve seed URL + discover sitemaps in parallel.
-/// 2. If sitemaps were parsed (`parsed_sitemap_documents > 0`): use sitemap URLs, done.
-/// 3. If no sitemaps parsed AND `cfg.map_fallback == Crawl`: run full crawl.
-/// 4. If no sitemaps parsed AND `cfg.map_fallback == Structure` (default):
-///    fetch root HTML and extract anchor hrefs (bounded, fast).
-///
-/// NOTE: sitemap discovery runs against the original `start_url` host (before redirect),
-/// in parallel with seed URL resolution. Out-of-scope URLs from redirected hosts are
-/// filtered by `normalize_map_candidate_url` once the scope is derived.
-pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult, Box<dyn Error>> {
-    let start = Instant::now();
-
-    // Step 1: resolve seed URL and (when enabled) discover sitemaps in parallel.
-    // Errors are converted to String before the join point so both futures are Send.
-    // When --discover-sitemaps false, skip the discovery future entirely so
-    // sitemap.xml is never fetched — the fallback chain takes over with an
-    // empty SitemapDiscovery (zero parsed documents).
-    let (seed_result, sitemap_result) = tokio::join!(
-        async {
-            resolve_map_seed_url(start_url)
-                .await
-                .map_err(|e| e.to_string())
-        },
-        async {
-            if cfg.discover_sitemaps {
-                discover_sitemap_urls(cfg, start_url)
-                    .await
-                    .map_err(|e| e.to_string())
-            } else {
-                Ok(SitemapDiscovery::default())
-            }
-        }
-    );
-
-    let crawl_start_url = seed_result.unwrap_or_else(|_| normalize_url(start_url).into_owned());
-
-    // When the seed URL resolves to a different host (cross-host redirect), anchor the
-    // map scope to the original start URL. Sitemap discovery already ran against
-    // start_url, so its URLs carry start_url's host — using the redirect target host
-    // as the scope would filter everything out.
-    // The crawl fallback still uses crawl_start_url so --map-fallback crawl works.
-    let scope_base = {
-        let start_host = Url::parse(&normalize_url(start_url))
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
-        let resolved_host = Url::parse(&crawl_start_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
-        if start_host != resolved_host {
-            normalize_url(start_url).into_owned()
-        } else {
-            crawl_start_url.clone()
-        }
-    };
-
-    let scope = derive_map_scope(start_url, &scope_base).ok_or("failed to derive map scope")?;
-    let scope_start_url =
-        derive_map_scope_url(start_url, &scope_base).unwrap_or_else(|| crawl_start_url.clone());
-
-    let sitemap_discovery: SitemapDiscovery = sitemap_result.unwrap_or_default();
-    let raw_sitemap_count = sitemap_discovery.discovered_urls;
-
-    log_info(&format!(
-        "map sitemap_docs={} sitemap_urls={} url={}",
-        sitemap_discovery.parsed_sitemap_documents, raw_sitemap_count, start_url
-    ));
-
-    // Step 2: if sitemaps were found and parsed, use them directly — no fallback.
-    if sitemap_discovery.parsed_sitemap_documents > 0 {
-        let urls = merge_map_candidate_urls(Vec::new(), sitemap_discovery.urls, &scope, true);
-        let scope_prefix_len = scope.path_prefix.as_deref().map_or(0, str::len);
-        let urls: Vec<String> = urls
-            .into_iter()
-            .filter(|url| !is_excluded_map_url(url, &cfg.exclude_path_prefix, scope_prefix_len))
-            .collect();
-        let summary = CrawlSummary {
-            elapsed_ms: start.elapsed().as_millis(),
-            ..Default::default()
-        };
-        return Ok(MapResult {
-            summary,
-            sitemap_urls: raw_sitemap_count,
-            urls,
-            map_source: "sitemap".to_string(),
-            warning: None,
-        });
-    }
-
-    // Step 3: no sitemap documents parsed — check fallback mode.
-    match cfg.map_fallback {
-        MapFallback::Crawl => {
-            // Explicit opt-in: run full Spider.rs crawl (legacy behaviour).
-            // AutoSwitch logic is in a separate async fn so the parent future's
-            // state machine stays small. Box::pin is required on top of that —
-            // crawl_and_collect_map's future is large enough on debug builds
-            // that even a single inline call here can overflow the stack when
-            // combined with the rest of map_with_sitemap.
-            let (mut summary, urls) = match cfg.render_mode {
-                RenderMode::AutoSwitch => {
-                    Box::pin(crawl_with_auto_switch(cfg, &crawl_start_url, &scope)).await?
-                }
-                m => Box::pin(crawl_and_collect_map(cfg, &crawl_start_url, m, &scope)).await?,
-            };
-            // elapsed_ms is measured against the outer `start` so all branches
-            // (sitemap, bounded-structure, crawl) report the total wall-clock
-            // duration including seed resolution and sitemap discovery — not
-            // just the crawl phase.
-            summary.elapsed_ms = start.elapsed().as_millis();
-            Ok(MapResult {
-                summary,
-                sitemap_urls: raw_sitemap_count,
-                urls,
-                map_source: "crawl".to_string(),
-                warning: None,
-            })
-        }
-        MapFallback::Structure => {
-            // Default: bounded anchor extraction from homepage (fast, no full crawl).
-            let (urls, warning) = bounded_structure_fallback(cfg, &scope_start_url, &scope).await;
-            let summary = CrawlSummary {
-                elapsed_ms: start.elapsed().as_millis(),
-                ..Default::default()
-            };
-            Ok(MapResult {
-                summary,
-                sitemap_urls: raw_sitemap_count,
-                urls,
-                map_source: "bounded-structure".to_string(),
-                warning,
-            })
-        }
-    }
-}
-
-/// HTML anchor backfill: used by sync-crawl as a post-crawl supplement.
-/// NOT part of the map command's primary flow.
-pub(crate) async fn append_html_anchor_backfill(
-    cfg: &Config,
-    start_url: &str,
-    output_dir: &Path,
-    seen_urls: &HashSet<String>,
-    summary: &mut CrawlSummary,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let crawl_start_url = resolve_map_seed_url(start_url)
-        .await
-        .unwrap_or_else(|_| normalize_url(start_url).into_owned());
-    let scope =
-        derive_map_scope(start_url, &crawl_start_url).ok_or("failed to derive map scope")?;
-    let fallback_limit = effective_fallback_limit(cfg);
-
-    let client = http_client()
-        .map_err(|e| format!("http client init failed for backfill of {start_url}: {e}"))?;
-    let html = fetch_html(client, &crawl_start_url)
-        .await
-        .map_err(|e| format!("fetch failed for backfill of {crawl_start_url}: {e}"))?;
-    let fallback_urls = extract_anchor_hrefs(&crawl_start_url, &html, fallback_limit);
-
-    let merged_urls = merge_map_candidate_urls(Vec::new(), fallback_urls, &scope, true);
-    let candidates: Vec<String> = merged_urls
-        .into_iter()
-        .filter(|url| {
-            !seen_urls.contains(url) && !is_excluded_url_path(url, &cfg.exclude_path_prefix)
-        })
-        .collect();
-
-    let (_, added_urls) =
-        append_candidate_backfill(cfg, output_dir, seen_urls, candidates, summary).await?;
-    Ok(added_urls)
 }

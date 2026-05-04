@@ -1,373 +1,21 @@
-use super::store::now_ms;
-use crate::crates::jobs::backend::{JobKind, JobPayload};
-use sqlx::SqlitePool;
-use std::future::Future;
-use std::time::Duration;
-use tracing;
-use uuid::Uuid;
+mod enqueue;
+mod lifecycle;
+mod retry;
 
-/// Bounded retry/backoff for transient SQLite "database is locked" errors.
-///
-/// SQLite's WAL mode + `busy_timeout` handles most read/write contention, but
-/// `BEGIN IMMEDIATE` and other write paths can still surface `SQLITE_BUSY`
-/// when multiple workers race or under burst load. This helper retries the
-/// closure up to `MAX_ATTEMPTS` times with exponential backoff before giving up.
-///
-/// Other error variants (decode, configuration, row-not-found) propagate
-/// immediately — only lock contention is retried.
-const MAX_ATTEMPTS: u32 = 5;
-const BASE_BACKOFF_MS: u64 = 25;
-
-async fn retry_busy<F, Fut, T>(label: &'static str, mut op: F) -> Result<T, sqlx::Error>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = Result<T, sqlx::Error>>,
-{
-    let mut attempt: u32 = 0;
-    loop {
-        match op().await {
-            Ok(v) => return Ok(v),
-            Err(err) if is_lock_busy(&err) && attempt + 1 < MAX_ATTEMPTS => {
-                let backoff = BASE_BACKOFF_MS << attempt;
-                tracing::debug!(
-                    op = label,
-                    attempt = attempt + 1,
-                    backoff_ms = backoff,
-                    error = %err,
-                    "lite ops: SQLite busy, retrying"
-                );
-                tokio::time::sleep(Duration::from_millis(backoff)).await;
-                attempt += 1;
-            }
-            Err(err) => return Err(err),
-        }
-    }
-}
-
-fn is_lock_busy(err: &sqlx::Error) -> bool {
-    if let sqlx::Error::Database(db_err) = err {
-        let msg = db_err.message();
-        msg.contains("database is locked") || msg.contains("database table is locked")
-    } else {
-        false
-    }
-}
-
-/// Check whether the pending crawl job count is at or above the configured cap.
-///
-/// Reads `AXON_MAX_PENDING_CRAWL_JOBS` from the environment (default 100, 0 = unlimited).
-/// Returns `Err` with a human-readable message when the queue is full.
-async fn check_pending_cap(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    let limit: u64 = std::env::var("AXON_MAX_PENDING_CRAWL_JOBS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(100);
-    if limit == 0 {
-        return Ok(());
-    }
-    let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM axon_crawl_jobs WHERE status = 'pending'")
-            .fetch_one(pool)
-            .await?;
-    if count as u64 >= limit {
-        return Err(sqlx::Error::Configuration(
-            format!(
-                "crawl queue full: {count} pending jobs (limit {limit}); \
-                 wait for workers to drain or raise AXON_MAX_PENDING_CRAWL_JOBS"
-            )
-            .into(),
-        ));
-    }
-    Ok(())
-}
-
-/// Insert a new job row with status='pending'. Returns the new job's UUID.
-pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid, sqlx::Error> {
-    let id = Uuid::new_v4();
-    let now = now_ms();
-    let id_str = id.to_string();
-
-    match payload {
-        JobPayload::Crawl { url, config_json } => {
-            check_pending_cap(pool).await?;
-            sqlx::query(
-                "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)"
-            )
-            .bind(&id_str).bind(url).bind(config_json).bind(now).bind(now)
-            .execute(pool).await?;
-        }
-        JobPayload::Embed { input, config_json } => {
-            sqlx::query(
-                "INSERT INTO axon_embed_jobs (id, status, input_text, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)"
-            )
-            .bind(&id_str).bind(input).bind(config_json).bind(now).bind(now)
-            .execute(pool).await?;
-        }
-        JobPayload::Extract { urls, config_json } => {
-            let urls_json =
-                serde_json::to_string(urls).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-            sqlx::query(
-                "INSERT INTO axon_extract_jobs (id, status, urls_json, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?)"
-            )
-            .bind(&id_str).bind(&urls_json).bind(config_json).bind(now).bind(now)
-            .execute(pool).await?;
-        }
-        JobPayload::Ingest {
-            target,
-            source_type,
-            config_json,
-        } => {
-            sqlx::query(
-                "INSERT INTO axon_ingest_jobs (id, status, target, source_type, config_json, created_at, updated_at) \
-                 VALUES (?, 'pending', ?, ?, ?, ?, ?)"
-            )
-            .bind(&id_str).bind(target).bind(source_type).bind(config_json).bind(now).bind(now)
-            .execute(pool).await?;
-        }
-    }
-
-    Ok(id)
-}
-
-/// Atomically claim the oldest pending job in `table`.
-/// Returns None if no pending jobs exist.
-///
-/// Wrapped in `retry_busy` so transient SQLite lock contention between
-/// concurrent workers (BEGIN IMMEDIATE collisions) backs off and retries
-/// before surfacing the error.
-pub async fn claim_next_pending(
-    pool: &SqlitePool,
-    kind: JobKind,
-) -> Result<Option<Uuid>, sqlx::Error> {
-    retry_busy("claim_next_pending", || {
-        claim_next_pending_inner(pool, kind)
-    })
-    .await
-}
-
-async fn claim_next_pending_inner(
-    pool: &SqlitePool,
-    kind: JobKind,
-) -> Result<Option<Uuid>, sqlx::Error> {
-    let now = now_ms();
-    let table = kind.table_name();
-    let mut conn = pool.acquire().await?;
-
-    // BEGIN IMMEDIATE acquires a write lock upfront under WAL mode, serializing
-    // the SELECT+UPDATE atomically and eliminating TOCTOU contention between
-    // concurrent workers.
-    sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
-
-    let row: Option<(String,)> = match sqlx::query_as(&format!(
-        "SELECT id FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
-        table
-    ))
-    .fetch_optional(&mut *conn)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-            return Err(e);
-        }
-    };
-
-    match row {
-        None => {
-            sqlx::query("ROLLBACK").execute(&mut *conn).await?;
-            Ok(None)
-        }
-        Some((id_str,)) => {
-            let update_result = match sqlx::query(&format!(
-                "UPDATE {} SET status='running', started_at=?, updated_at=? \
-                 WHERE id=? AND status='pending'",
-                table
-            ))
-            .bind(now)
-            .bind(now)
-            .bind(&id_str)
-            .execute(&mut *conn)
-            .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
-                    return Err(e);
-                }
-            };
-
-            if update_result.rows_affected() == 0 {
-                tracing::trace!(table, job_id = id_str, "claim lost to concurrent worker");
-                sqlx::query("ROLLBACK").execute(&mut *conn).await?;
-                return Ok(None);
-            }
-
-            sqlx::query("COMMIT").execute(&mut *conn).await?;
-            Ok(Some(
-                Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
-            ))
-        }
-    }
-}
-
-/// Mark a running job as completed. No-op if job is not in 'running' state.
-///
-/// Wrapped in `retry_busy` so transient SQLite lock contention does not
-/// orphan a job in `running` state on the way to `completed`.
-pub async fn mark_completed(
-    pool: &SqlitePool,
-    kind: JobKind,
-    id: Uuid,
-    result_json: Option<&serde_json::Value>,
-) -> Result<(), sqlx::Error> {
-    retry_busy("mark_completed", || {
-        mark_completed_inner(pool, kind, id, result_json)
-    })
-    .await
-}
-
-async fn mark_completed_inner(
-    pool: &SqlitePool,
-    kind: JobKind,
-    id: Uuid,
-    result_json: Option<&serde_json::Value>,
-) -> Result<(), sqlx::Error> {
-    let now = now_ms();
-    let table = kind.table_name();
-    let result = match result_json {
-        Some(result) => {
-            sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=? \
-                 WHERE id=? AND status='running'",
-                table
-            ))
-            .bind(now)
-            .bind(now)
-            .bind(result.to_string())
-            .bind(id.to_string())
-            .execute(pool)
-            .await?
-        }
-        None => {
-            sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=? \
-                 WHERE id=? AND status='running'",
-                table
-            ))
-            .bind(now)
-            .bind(now)
-            .bind(id.to_string())
-            .execute(pool)
-            .await?
-        }
-    };
-    if result.rows_affected() == 0 {
-        tracing::warn!(
-            id = %id,
-            table = table,
-            "mark_completed: job row not found or not in running state (may have been canceled)"
-        );
-    }
-    Ok(())
-}
-
-/// Persist live job progress/result JSON without changing job status.
-///
-/// Long-running jobs use this before their final `mark_completed()` call so
-/// status/list views can show current progress. If a row was canceled or
-/// cleared, the update is allowed to be a no-op.
-pub async fn update_result_json(
-    pool: &SqlitePool,
-    kind: JobKind,
-    id: Uuid,
-    result_json: &serde_json::Value,
-) -> Result<(), sqlx::Error> {
-    retry_busy("update_result_json", || async {
-        let now = now_ms();
-        let table = kind.table_name();
-        sqlx::query(&format!(
-            "UPDATE {} SET result_json=?, updated_at=? WHERE id=?",
-            table
-        ))
-        .bind(result_json.to_string())
-        .bind(now)
-        .bind(id.to_string())
-        .execute(pool)
-        .await?;
-        Ok(())
-    })
-    .await
-}
-
-/// Mark a running job as failed with an error message.
-///
-/// Wrapped in `retry_busy` so transient SQLite lock contention does not
-/// orphan a job in `running` state on the way to `failed`.
-pub async fn mark_failed(
-    pool: &SqlitePool,
-    kind: JobKind,
-    id: Uuid,
-    error: &str,
-) -> Result<(), sqlx::Error> {
-    retry_busy("mark_failed", || mark_failed_inner(pool, kind, id, error)).await
-}
-
-async fn mark_failed_inner(
-    pool: &SqlitePool,
-    kind: JobKind,
-    id: Uuid,
-    error: &str,
-) -> Result<(), sqlx::Error> {
-    let now = now_ms();
-    let table = kind.table_name();
-    let result = sqlx::query(&format!(
-        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=? \
-         WHERE id=? AND status='running'",
-        table
-    ))
-    .bind(now)
-    .bind(now)
-    .bind(error)
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
-    if result.rows_affected() == 0 {
-        tracing::warn!(
-            id = %id,
-            table = table,
-            "mark_failed: job row not found or not in running state (may have been canceled)"
-        );
-    }
-    Ok(())
-}
-
-/// Set a job's status to 'canceled'. Works on pending or running jobs.
-/// Returns true if a row was updated, false otherwise.
-pub async fn cancel_row(pool: &SqlitePool, kind: JobKind, id: Uuid) -> Result<bool, sqlx::Error> {
-    let now = now_ms();
-    let table = kind.table_name();
-    let result = sqlx::query(&format!(
-        "UPDATE {} SET status='canceled', updated_at=?, finished_at=? \
-         WHERE id=? AND status IN ('pending','running')",
-        table
-    ))
-    .bind(now)
-    .bind(now)
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected() > 0)
-}
+pub use enqueue::enqueue_job;
+pub use lifecycle::{
+    cancel_row, claim_next_pending, mark_completed, mark_failed, update_result_json,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crates::jobs::backend::JobPayload;
+    use crate::crates::jobs::backend::{JobKind, JobPayload};
     use crate::crates::jobs::lite::store::open_sqlite_pool;
+    use sqlx::SqlitePool;
     use std::sync::Arc;
+    use std::time::Duration;
+    use uuid::Uuid;
 
     async fn test_pool() -> SqlitePool {
         open_sqlite_pool(":memory:").await.expect("pool")
@@ -574,8 +222,6 @@ mod tests {
         )
         .await
         .expect("enqueue");
-
-        // Move to running, then completed (terminal state)
         claim_next_pending(&pool, JobKind::Crawl)
             .await
             .expect("claim");
@@ -583,7 +229,6 @@ mod tests {
             .await
             .expect("complete");
 
-        // Cancel should return false — job is already in a terminal state
         let canceled = cancel_row(&pool, JobKind::Crawl, id).await.expect("cancel");
         assert!(
             !canceled,
@@ -603,19 +248,15 @@ mod tests {
         )
         .await
         .expect("enqueue");
-
-        // Claim then cancel (simulates race: worker holds id, but job gets canceled)
         claim_next_pending(&pool, JobKind::Crawl)
             .await
             .expect("claim");
         cancel_row(&pool, JobKind::Crawl, id).await.expect("cancel");
 
-        // mark_completed should not panic or error — it just logs and returns Ok
         mark_completed(&pool, JobKind::Crawl, id, None)
             .await
             .expect("mark_completed should not error on canceled job");
 
-        // Job should still be canceled, not completed
         let status: (String,) = sqlx::query_as("SELECT status FROM axon_crawl_jobs WHERE id = ?")
             .bind(id.to_string())
             .fetch_one(&pool)
@@ -658,7 +299,6 @@ mod tests {
                     Err(err) => return Err(err),
                 }
             }
-
             claim_next_pending(pool, kind).await
         }
 

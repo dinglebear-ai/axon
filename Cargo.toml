@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -33,7 +33,9 @@ portable-pty = "0"
 futures-util = "0.3"
 futures = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
-rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
+rustls = { version = "0.23", features = [
+  "aws-lc-rs",
+], default-features = false }
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -42,16 +44,37 @@ thiserror = "2"
 # NOTE: In spider v2.45.x these are valid optional features and are required
 # for our crawl/render pipeline.
 spider = { version = "2", default-features = false, features = [
-    "basic", "chrome", "regex", "sitemap", "adblock",
-    "chrome_stealth", "chrome_screenshot", "chrome_store_page",
-    "chrome_headless_new", "chrome_simd",
-    "simd", "inline-more", "cache_mem",
-    "ua_generator", "headers", "time", "control",
-    "firewall", "hedge",
+  "basic",
+  "chrome",
+  "regex",
+  "sitemap",
+  "adblock",
+  "chrome_stealth",
+  "chrome_screenshot",
+  "chrome_store_page",
+  "chrome_headless_new",
+  "chrome_simd",
+  "simd",
+  "inline-more",
+  "cache_mem",
+  "ua_generator",
+  "headers",
+  "time",
+  "control",
+  "firewall",
+  "hedge",
 ] }
-spider_agent = { version = "2.47.89", default-features = false, features = ["search_tavily", "openai"] }
+spider_agent = { version = "2.47.89", default-features = false, features = [
+  "search_tavily",
+  "openai",
+] }
 spider_transformations = "2"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = [
+  "runtime-tokio-rustls",
+  "sqlite",
+  "uuid",
+  "chrono",
+] }
 subtle = "2"
 text-splitter = { version = "0.30", features = ["code", "markdown"] }
 tree-sitter-bash = "0.25"
@@ -61,9 +84,22 @@ tree-sitter-language = "0.1"
 tree-sitter-python = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-typescript = "0.23"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "process", "signal", "sync", "time"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
-toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
+toml = { version = "1.1", default-features = false, features = [
+  "parse",
+  "serde",
+] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-executor-trait = "3"
 tokio-reactor-trait = "4"
@@ -77,7 +113,14 @@ sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"
 dotenvy = "0.15"
-rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server", "schemars", "elicitation"] }
+rmcp = { version = "1.1.0", features = [
+  "server",
+  "macros",
+  "transport-io",
+  "transport-streamable-http-server",
+  "schemars",
+  "elicitation",
+] }
 html5gum = "0.8"
 agent-client-protocol = { version = "0.10.4", features = ["unstable"] }
 
@@ -96,7 +139,17 @@ strip = true
 opt-level = 2
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "net", "process", "signal", "sync", "time"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "fs",
+  "io-util",
+  "net",
+  "process",
+  "signal",
+  "sync",
+  "time",
+] }
 # httpmock enables mock HTTP servers in unit tests, unlocking coverage for
 # tei_embed 413-retry logic, ensure_collection idempotency, and API clients
 # without requiring live services.
@@ -112,4 +165,4 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
-module_inception = "allow"     # crates/crawl.rs: acceptable module name
+module_inception = "allow"              # crates/crawl.rs: acceptable module name

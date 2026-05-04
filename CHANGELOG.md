@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-04
+
+### Added
+- **Plugin skills**: 15 Claude Code skills under `plugins/axon/skills/` covering scrape, crawl, map, extract, embed, ingest, query, ask, search, retrieve, sources, domains, stats, status, and the top-level axon skill with full action reference.
+- **Plugin agents**: researcher agent scaffold under `plugins/axon/agents/`.
+- **Plugin MCP config**: `.mcp.json` added to `plugins/axon/` for MCP server wiring.
+
+### Changed
+- **Plugin manifest relocated**: `.claude-plugin/plugin.json` moved from `plugins/axon/` to the repo root `.claude-plugin/`.
+- **Monolith splits**: `job_contracts`, `status/metrics`, `crawl/collector`, `crawl/map`, `ingest/github/files`, `jobs/lite/ops`, and `jobs/lite/workers/runners` each split into focused submodule files to comply with the 500-line file policy.
+
 ## [1.1.0] - 2026-05-03
 
 ### Added
