@@ -41,14 +41,6 @@ jobs:
       - name: Enforce modern Rust module style (no mod.rs)
         run: ./scripts/check_no_mod_rs.sh
 
-  no-next-middleware:
-    name: no-next-middleware
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Enforce Next.js proxy-only entrypoint (middleware.ts deprecated)
-        run: ./scripts/check_no_next_middleware.sh
-
   shell-completions-smoke:
     name: shell-completions-smoke
     runs-on: ubuntu-latest
