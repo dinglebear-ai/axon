@@ -1,6 +1,6 @@
 //! Shared path-resolution utilities used across crates.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Returns the trimmed `AXON_DATA_DIR` value if set and non-empty.
 pub fn axon_data_dir() -> Option<PathBuf> {
@@ -30,8 +30,9 @@ pub fn axon_data_base_dir() -> PathBuf {
 /// as a config home (e.g. in systemd units, Docker containers, or CI runners
 /// where HOME is unset).
 ///
-/// A non-absolute HOME (e.g. `../somewhere`) would produce a relative config
-/// path, enabling path traversal. We reject it with a warning and return `None`.
+/// A non-absolute HOME (e.g. `../somewhere`) or an absolute HOME containing
+/// `..` components (e.g. `/tmp/../etc`) can enable path traversal. We reject
+/// these values with a warning and return `None`.
 ///
 /// Callers should skip config loading silently when this returns `None`.
 pub fn axon_home_dir() -> Option<PathBuf> {
@@ -43,6 +44,15 @@ pub fn axon_home_dir() -> Option<PathBuf> {
     let home_path = PathBuf::from(&home);
     if !home_path.is_absolute() {
         eprintln!("axon: warning: HOME is not an absolute path ({home:?}); skipping config home");
+        return None;
+    }
+    if home_path
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
+        eprintln!(
+            "axon: warning: HOME contains parent-directory components ({home:?}); skipping config home"
+        );
         return None;
     }
 
@@ -146,6 +156,24 @@ mod tests {
         assert_eq!(
             result, None,
             "relative HOME should return None to prevent path traversal"
+        );
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_home_dir_returns_none_when_home_contains_dotdot() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", "/tmp/../etc") };
+        let result = axon_home_dir();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        assert_eq!(
+            result, None,
+            "HOME containing .. should return None to prevent path traversal"
         );
     }
 }

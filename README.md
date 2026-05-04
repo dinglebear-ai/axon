@@ -4,7 +4,7 @@
 
 Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
 
-Version: 1.2.2 | License: MIT
+Version: 1.2.3 | License: MIT
 
 ---
 
