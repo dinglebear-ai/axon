@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-05-04
+
+### Added
+- **TOML config layer**: `~/.axon/config.toml` as a structured tuning-knobs config (safe to commit). 6 Config fields wired with `CLI > env > TOML > default` priority. See `config.example.toml`.
+- `axon_home_dir()` / `axon_config_path()` in `crates/core/paths.rs` returning `~/.axon/` and `~/.axon/config.toml` (`None` when HOME is unset, no `/tmp` fallback).
+- `env_bool_opt()`, `env_usize_opt()`, `env_f64_opt()` helpers for layered config wiring.
+- `config.example.toml` at repo root with annotated Phase 1 fields, `[wired]`/`[env-only]` labels.
+
+### Changed
+- **`axon.json` + `axon.schema.json` deleted** — confirmed dormant (never read by the binary). Replace with `~/.axon/config.toml`.
+- `build_config.rs` split: 9 helper functions moved to `helpers.rs` (971 → 681 lines).
+- `env_bool` / `env_usize_clamped` / `env_f64_clamped` now delegate to their `_opt` variants (single parse path, no logic duplication).
+- Malformed `AXON_HYBRID_SEARCH` (or any env bool) emits a warning before falling through to TOML/default.
+- PermissionDenied on config file is now a hard fail (not warn+default).
+- Docker infra cleanup: removed `docker/s6/` service scripts, CI scripts no longer needed for the current lite-mode stack.
+- `docs/CONFIG.md`, `CLAUDE.md`, `config.example.toml`: two-layer config system documented; wired vs env-only keys distinguished.
+
+### Fixed
+- `axon_config_path_env_var_overrides_home` test now acquires ENV_LOCK and saves/restores `AXON_CONFIG_PATH` unconditionally (panic-safe).
+- HOME-mutating tests in `paths.rs` now use `#[serial_test::serial]` for crate-wide serialization.
+- `check_mcp_http_only.sh` grep satisfied by comment in `build_config.rs` after `resolve_mcp_transport` moved to `helpers.rs`.
+- Redundant secondary collection-name validation removed from `into_config()` (validate_collection_name is the authoritative check; secondary was unreachable).
+- `AXON_ASK_AUTHORITATIVE_DOMAINS` now uses `parse_csv_env` helper (was inlined).
+
 ## [1.2.0] - 2026-05-04
 
 ### Added

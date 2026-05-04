@@ -1,8 +1,0 @@
-#!/command/with-contenv bash
-# shellcheck shell=bash
-set -e
-cd /app
-export AXON_MCP_TRANSPORT="http"
-export AXON_MCP_HTTP_HOST="0.0.0.0"
-export AXON_MCP_HTTP_PORT="8001"
-exec s6-setuidgid axon /usr/local/bin/axon mcp

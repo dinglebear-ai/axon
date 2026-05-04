@@ -45,6 +45,8 @@ clippy:
 
 build:
     {{rust_dev_env}}; cargo build --release --locked
+    mkdir -p bin
+    cp target/release/axon bin/axon
 
 install:
     {{rust_dev_env}}; cargo build --release --locked
@@ -56,7 +58,6 @@ lint-all:
     just clippy
 
 verify:
-    ./scripts/check_dockerignore_guards.sh
     just fmt-check
     just clippy
     just check
@@ -67,7 +68,6 @@ ci:
 
 precommit:
     python3 scripts/enforce_no_legacy_symbols.py
-    ./scripts/check_dockerignore_guards.sh
     if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; elif [ -f "scripts/enforce_monoliths.py" ]; then python3 scripts/enforce_monoliths.py --staged; else echo "ERROR: enforce_monoliths.py not found" && exit 1; fi
     just fmt-check
     just clippy
@@ -95,57 +95,13 @@ gen-mcp-schema *ARGS:
 clean:
     cargo clean
 
-docker-build tag="axon:local":
-    docker build -f docker/Dockerfile -t {{tag}} .
-
-# Start infrastructure services (postgres, redis, rabbitmq, qdrant, tei, chrome)
+# Start infrastructure services (qdrant, tei, chrome)
 services-up:
-    docker compose -f docker-compose.services.yaml up -d
+    docker compose -f config/docker-compose.services.yaml up -d
 
 # Stop infrastructure services
 services-down:
-    docker compose -f docker-compose.services.yaml down
-
-# Start app containers (workers + web) — requires services-up first
-up:
-    ./scripts/rebuild-fresh.sh
-
-# Stop app containers
-down:
-    docker compose down
-
-# Stop everything (app + infra)
-down-all:
-    docker compose down
-    docker compose -f docker-compose.services.yaml down
-
-test-infra-up:
-    docker compose -f docker-compose.test.yaml up -d
-
-test-infra-down:
-    docker compose -f docker-compose.test.yaml down -v
-
-docker-up:
-    ./scripts/rebuild-fresh.sh
-
-docker-down:
-    docker compose down
-    docker compose -f docker-compose.services.yaml down
-
-rebuild-fresh:
-    ./scripts/rebuild-fresh.sh
-
-cache-status:
-    ./scripts/cache-guard.sh status
-
-cache-prune:
-    ./scripts/cache-guard.sh prune
-
-docker-context-probe:
-    ./scripts/check_docker_context_size.sh
-
-check-container-revisions:
-    ./scripts/check-container-revisions.sh
+    docker compose -f config/docker-compose.services.yaml down
 
 watch-check:
     cargo watch -x 'check -q --locked' -x 'check -q --tests --locked' -x 'test -q --lib --locked -- --skip worker_e2e'
@@ -153,7 +109,6 @@ watch-check:
 rebuild:
     just check
     just test
-    just docker-build
 
 # ── Local dev ────────────────────────────────────────────────────
 
@@ -174,5 +129,5 @@ dev:
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    docker compose -f docker-compose.services.yaml up -d --wait axon-qdrant axon-tei axon-chrome
+    docker compose -f config/docker-compose.services.yaml up -d --wait axon-qdrant axon-tei axon-chrome
     "$AXON_BIN" mcp

@@ -3,25 +3,14 @@ pre-commit:
   commands:
     env-guard:
       run: ./scripts/check_env_staged.sh
-    dockerignore-guard:
-      run: ./scripts/check_dockerignore_guards.sh
     claude-symlinks:
       run: ./scripts/check_claude_symlinks.sh
-    pg-advisory-lock-ban:
-      glob: "**/*.rs"
-      run: ./scripts/check_pg_advisory_lock.sh
     mcp-http-only:
       glob: "**/*.rs"
       run: ./scripts/check_mcp_http_only.sh
     no-mod-rs:
       glob: "**/*.rs"
       run: ./scripts/check_no_mod_rs.sh
-    no-next-middleware:
-      glob: "apps/web/**"
-      run: ./scripts/check_no_next_middleware.sh
-    biome:
-      glob: "apps/web/**/*.{ts,tsx,js,jsx,css}"
-      run: ./scripts/check_biome_staged.sh
     unwrap-warn:
       glob: "**/*.rs"
       run: ./scripts/warn_new_unwraps.sh

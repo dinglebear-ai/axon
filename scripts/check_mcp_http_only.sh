@@ -6,7 +6,7 @@ cd "$ROOT"
 
 TARGET="crates/cli/commands/mcp.rs"
 CLI_CONFIG="crates/core/config/cli.rs"
-BUILD_CONFIG="crates/core/config/parse/build_config.rs"
+BUILD_CONFIG="crates/core/config/parse.rs"
 
 if [ ! -f "$TARGET" ]; then
   echo "ERROR: missing $TARGET"

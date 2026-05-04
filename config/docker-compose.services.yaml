@@ -1,9 +1,7 @@
 name: axon-services
 
-# Infrastructure services: qdrant, tei, chrome, ollama.
-# Start these before app containers in docker-compose.yaml:
-#   docker compose -f docker-compose.services.yaml up -d
-#   docker compose up -d
+# Infrastructure services: qdrant, tei, chrome.
+#   docker compose -f config/docker-compose.services.yaml up -d
 
 x-common-service: &common-service
   env_file:
@@ -116,7 +114,7 @@ services:
     container_name: axon-chrome
     build:
       context: .
-      dockerfile: docker/chrome/Dockerfile
+      dockerfile: chrome/Dockerfile
     env_file: []  # no app secrets needed in the browser container
     shm_size: "2gb"
     ports:

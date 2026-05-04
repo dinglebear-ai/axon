@@ -376,12 +376,6 @@ Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin.
 ### Sitemap backfill
 After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that the crawler missed and fetches them individually. Respects `--max-sitemaps` (default: 512) and `--include-subdomains`. Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` falls within the last N days; URLs without `<lastmod>` are always included.
 
-### Docker build context
-The `Dockerfile` builds from `docker/Dockerfile`. The build command inside the container is:
-
-```bash
-cargo build --release --bin axon
-```
 
 Both compose files set `context: .` — run `docker compose build` from this directory, not from a parent workspace.
 

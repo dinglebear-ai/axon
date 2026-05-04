@@ -1205,7 +1205,7 @@ The stack is split into two compose files sharing the `axon` bridge network:
 
 | File | Contents |
 |---|---|
-| `docker-compose.services.yaml` | Infrastructure services (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome) |
+| `config/docker-compose.services.yaml` | Infrastructure services (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome) |
 | `docker-compose.yaml` | App containers (workers, web UI) |
 | `docker-compose.gpu.yaml` | GPU override — layer on top of services file on NVIDIA hosts |
 
@@ -1218,7 +1218,7 @@ Infrastructure services:
 | `axon-rabbitmq` | rabbitmq:4.0-management | `45535` | AMQP job queue delivery |
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | `53333` (REST), `53334` (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | `52000` | Embedding generation (NVIDIA GPU) |
-| `axon-chrome` | built from `docker/chrome/Dockerfile` | `9222` (CDP), `6000` (management) | Headless browser for JavaScript rendering |
+| `axon-chrome` | built from `config/chrome/Dockerfile` | `9222` (CDP), `6000` (management) | Headless browser for JavaScript rendering |
 | `axon-ollama` | ollama/ollama:0.6.5 | `11434` | Optional local LLM |
 
 All ports are bound to `127.0.0.1` (loopback only) by default.
@@ -1233,9 +1233,9 @@ App containers (for Docker deployment):
 Start infrastructure:
 
 ```bash
-docker compose -f docker-compose.services.yaml up -d
+docker compose -f config/docker-compose.services.yaml up -d
 # GPU hosts:
-docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose -f config/docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
 # or: just services-up
 ```
 
