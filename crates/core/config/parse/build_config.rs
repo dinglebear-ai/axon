@@ -181,15 +181,26 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             super::super::cli::SetupSubcommand::Targets => {
                 (CommandKind::Setup, vec!["targets".to_string()])
             }
-            super::super::cli::SetupSubcommand::Deploy { target, remote_dir } => (
-                CommandKind::Setup,
-                vec![
+            super::super::cli::SetupSubcommand::Deploy {
+                target,
+                remote_dir,
+                public_exposure,
+                accept_new_host_key,
+            } => {
+                let mut positional = vec![
                     "deploy".to_string(),
                     target,
                     "--remote-dir".to_string(),
                     remote_dir,
-                ],
-            ),
+                ];
+                if public_exposure {
+                    positional.push("--public-exposure".to_string());
+                }
+                if accept_new_host_key {
+                    positional.push("--accept-new-host-key".to_string());
+                }
+                (CommandKind::Setup, positional)
+            }
         },
         CliCommand::Mcp(args) => {
             mcp_transport = args.transport;

@@ -6,7 +6,11 @@ use std::error::Error;
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
         Some("targets") => {
-            let targets = setup::list_ssh_targets().unwrap_or_default();
+            let targets = match setup::list_ssh_targets() {
+                Ok(targets) => targets,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                Err(err) => return Err(Box::new(err)),
+            };
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&targets)?);
             } else if targets.is_empty() {
@@ -30,9 +34,19 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 .get(1)
                 .ok_or("setup deploy requires an SSH target")?;
             let remote_dir = remote_dir_from_positional(&cfg.positional);
+            let public_exposure = cfg
+                .positional
+                .iter()
+                .any(|value| value == "--public-exposure");
+            let accept_new_host_key = cfg
+                .positional
+                .iter()
+                .any(|value| value == "--accept-new-host-key");
             let result = setup::deploy_remote(DeployRequest {
                 target: target.clone(),
                 remote_dir,
+                public_exposure: Some(public_exposure),
+                accept_new_host_key: Some(accept_new_host_key),
             })
             .await?;
             if cfg.json_output {
@@ -45,6 +59,9 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("TEI: {}", result.tei_url);
                 println!("Chrome: {}", result.chrome_remote_url);
                 println!("Config: {}", result.config_path);
+                if let Some(command) = result.tunnel_command {
+                    println!("Tunnel: {command}");
+                }
                 for step in result.steps {
                     println!("ok\t{}\t{}", step.name, step.detail);
                 }
@@ -55,7 +72,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let payload = json!({
                 "usage": [
                     "axon setup targets",
-                    "axon setup deploy <ssh-alias> [--remote-dir axon-deploy]"
+                    "axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
                 ]
             });
             if cfg.json_output {
@@ -63,7 +80,9 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             } else {
                 println!("Usage:");
                 println!("  axon setup targets");
-                println!("  axon setup deploy <ssh-alias> [--remote-dir axon-deploy]");
+                println!(
+                    "  axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
+                );
             }
             Ok(())
         }

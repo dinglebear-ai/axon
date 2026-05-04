@@ -30,10 +30,12 @@ type DeployResult = {
   target: string;
   remote_host: string;
   remote_dir: string;
+  public_exposure: boolean;
   qdrant_url: string;
   tei_url: string;
   chrome_remote_url: string;
   config_path: string;
+  tunnel_command?: string;
   steps: { name: string; ok: boolean; detail: string }[];
 };
 
@@ -47,8 +49,11 @@ export default function Page() {
   const [ops, setOps] = useState<OpsResponse | null>(null);
   const [targets, setTargets] = useState<SshTarget[]>([]);
   const [selectedTarget, setSelectedTarget] = useState('');
+  const [publicExposure, setPublicExposure] = useState(false);
+  const [acceptNewHostKey, setAcceptNewHostKey] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+  const [targetError, setTargetError] = useState('');
   const [message, setMessage] = useState('');
 
   const authedHeaders = useMemo(
@@ -69,18 +74,37 @@ export default function Page() {
 
   useEffect(() => {
     if (!token) return;
-    Promise.all([
-      fetch('/api/panel/config', { headers: authedHeaders }).then((res) => res.json()),
-      fetch('/api/panel/ops', { headers: authedHeaders }).then((res) => res.json()),
-      fetch('/api/panel/setup/targets', { headers: authedHeaders }).then((res) => res.json())
-    ])
-      .then(([cfg, opsData, targetData]: [ConfigResponse, OpsResponse, SshTarget[]]) => {
+    void fetch('/api/panel/config', { headers: authedHeaders })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((cfg: ConfigResponse) => {
         setConfig(cfg.raw_toml);
+      })
+      .catch((error) => setMessage(String(error)));
+
+    void fetch('/api/panel/ops', { headers: authedHeaders })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((opsData: OpsResponse) => {
         setOps(opsData);
+      })
+      .catch((error) => setMessage(String(error)));
+
+    void fetch('/api/panel/setup/targets', { headers: authedHeaders })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      })
+      .then((targetData: SshTarget[]) => {
+        setTargetError('');
         setTargets(targetData);
         setSelectedTarget((current) => current || targetData[0]?.alias || '');
       })
-      .catch((error) => setMessage(String(error)));
+      .catch((error) => setTargetError(String(error)));
   }, [token, authedHeaders]);
 
   async function login() {
@@ -120,7 +144,11 @@ export default function Page() {
     const res = await fetch('/api/panel/setup/deploy', {
       method: 'POST',
       headers: authedHeaders,
-      body: JSON.stringify({ target: selectedTarget })
+      body: JSON.stringify({
+        target: selectedTarget,
+        public_exposure: publicExposure,
+        accept_new_host_key: acceptNewHostKey
+      })
     });
     setDeploying(false);
     if (!res.ok) {
@@ -190,7 +218,10 @@ export default function Page() {
         <div className="section-heading">
           <div>
             <h2>Remote Deploy</h2>
-            <p>{targets.length ? `${targets.length} SSH target${targets.length === 1 ? '' : 's'}` : '~/.ssh/config'}</p>
+            <p>
+              {targetError ||
+                (targets.length ? `${targets.length} SSH target${targets.length === 1 ? '' : 's'}` : '~/.ssh/config')}
+            </p>
           </div>
           <button onClick={() => void deployRemote()} disabled={deploying || !selectedTarget}>
             {deploying ? 'Deploying' : 'Deploy'}
@@ -208,6 +239,22 @@ export default function Page() {
               ))}
             </select>
           </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={acceptNewHostKey}
+              onChange={(event) => setAcceptNewHostKey(event.target.checked)}
+            />
+            Accept new SSH host key
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={publicExposure}
+              onChange={(event) => setPublicExposure(event.target.checked)}
+            />
+            Public service ports
+          </label>
         </div>
         {deployResult && (
           <div className="deploy-result">
@@ -215,6 +262,7 @@ export default function Page() {
             <Metric label="Qdrant" value={deployResult.qdrant_url} />
             <Metric label="TEI" value={deployResult.tei_url} />
             <Metric label="Chrome" value={deployResult.chrome_remote_url} />
+            {deployResult.tunnel_command && <Metric label="Tunnel" value={deployResult.tunnel_command} />}
           </div>
         )}
       </section>

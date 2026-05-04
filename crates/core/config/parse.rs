@@ -558,6 +558,8 @@ mod tests {
             "prod-box",
             "--remote-dir",
             "custom-axon",
+            "--public-exposure",
+            "--accept-new-host-key",
         ]);
         let cfg = super::build_config::into_config(cli).expect("setup deploy should parse");
 
@@ -569,6 +571,8 @@ mod tests {
                 "prod-box".to_string(),
                 "--remote-dir".to_string(),
                 "custom-axon".to_string(),
+                "--public-exposure".to_string(),
+                "--accept-new-host-key".to_string(),
             ]
         );
     }

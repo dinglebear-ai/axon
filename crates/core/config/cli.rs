@@ -130,6 +130,12 @@ pub(super) enum SetupSubcommand {
         /// Remote directory under $HOME for compose assets
         #[arg(long, default_value = "axon-deploy")]
         remote_dir: String,
+        /// Bind remote service ports publicly instead of loopback-only.
+        #[arg(long)]
+        public_exposure: bool,
+        /// Accept and add a new SSH host key on first connection.
+        #[arg(long)]
+        accept_new_host_key: bool,
     },
 }
 

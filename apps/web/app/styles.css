@@ -179,8 +179,23 @@ select {
 }
 
 .deploy-controls {
+  display: grid;
+  gap: 12px;
   margin-top: 16px;
   width: min(420px, 100%);
+}
+
+.checkbox-row {
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-row input {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
 }
 
 .deploy-result {
