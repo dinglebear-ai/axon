@@ -37,14 +37,20 @@ chmod 600 ~/.axon/config.toml
 
 To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 
-**Phase 1 sections (v0.36+):**
+**Phase 1 (v0.36) — wired keys** (setting in config.toml takes effect):
 
-| Section | Keys | Purpose |
-|---------|------|---------|
-| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | Vector search tuning |
-| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | RAG answer pipeline |
-| `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | TEI embedding config |
-| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs` | Worker tuning |
+| Section | Keys |
+|---------|------|
+| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates` |
+| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` |
+
+**Phase 2 (planned) — parsed but env-only for now** (key is accepted in the file and validated, but the env var is still what the binary reads; use the env var shown in the table below):
+
+| Section | Key | Env var to use instead |
+|---------|-----|----------------------|
+| `[search]` | `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
+| `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
+| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS` |
 
 URLs, API keys, secrets, and security settings belong in `.env` — not in `config.toml`. See `config.example.toml` for the full annotated example with defaults.
 

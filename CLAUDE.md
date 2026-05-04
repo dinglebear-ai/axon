@@ -192,30 +192,30 @@ The stack uses a single compose file for infrastructure services shared on the `
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.services.yaml` | Infrastructure (qdrant, chrome, TEI) | `services.env` |
+| `config/docker-compose.services.yaml` | Infrastructure (qdrant, chrome, TEI) | `services.env` |
 | `docker-compose.gpu.yaml` | GPU override — NVIDIA reservations for `axon-tei` and `axon-ollama` | *(none)* |
 
 **GPU acceleration:** On NVIDIA hosts, layer the GPU override on top of the services file:
 ```bash
-docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose -f config/docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
 ```
-CPU-only hosts use `docker-compose.services.yaml` alone — no GPU block, no startup failure.
+CPU-only hosts use `config/docker-compose.services.yaml` alone — no GPU block, no startup failure.
 
-### Infrastructure Services (`docker-compose.services.yaml`)
+### Infrastructure Services (`config/docker-compose.services.yaml`)
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | `53333`, `53334` (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference:latest | `52000` | Embedding generation (GPU, NVIDIA) |
-| `axon-chrome` | built from docker/chrome/Dockerfile | `6000` (management), `9222` (CDP proxy) | headless_browser + chrome-headless-shell |
+| `axon-chrome` | built from config/chrome/Dockerfile | `6000` (management), `9222` (CDP proxy) | headless_browser + chrome-headless-shell |
 
 ```bash
 # Start infrastructure (qdrant, tei, chrome)
 just services-up
-# or: docker compose -f docker-compose.services.yaml up -d
+# or: docker compose -f config/docker-compose.services.yaml up -d
 
 # Check infra health
-docker compose -f docker-compose.services.yaml ps
+docker compose -f config/docker-compose.services.yaml ps
 
 # Stop everything
 just down-all
@@ -227,7 +227,7 @@ Axon uses two configuration layers:
 
 | Layer | File | Purpose | Secrets? |
 |-------|------|---------|---------|
-| Tuning knobs | `~/.axon/config.toml` | Search params, worker limits, TEI settings | No — safe to commit |
+| Tuning knobs | `~/.axon/config.toml` | Search params, worker limits, TEI settings (also settable via env vars — env wins) | No — safe to commit |
 | URLs + secrets | `.env` | Service URLs, API keys, passwords | Yes — never commit |
 
 **Priority:** CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
@@ -249,7 +249,7 @@ See `config.example.toml` at the repo root for all supported keys with defaults 
 
 ## Environment Variables
 
-`.env` is for **URLs and secrets only** (v0.36+). Tuning params live in `~/.axon/config.toml`.
+`.env` is primarily for service URLs, API keys, and secrets. Tuning params (search, TEI, workers) can live in either `~/.axon/config.toml` **or** as env vars — env vars always win over TOML.
 
 Copy `.env.example` → `.env`, then fill in values:
 

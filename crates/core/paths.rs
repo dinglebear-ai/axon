@@ -76,6 +76,7 @@ mod tests {
     }
 
     #[allow(unsafe_code)]
+    #[serial_test::serial]
     #[test]
     fn axon_home_dir_returns_some_when_home_set() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -91,6 +92,7 @@ mod tests {
     }
 
     #[allow(unsafe_code)]
+    #[serial_test::serial]
     #[test]
     fn axon_home_dir_returns_none_when_home_unset() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -105,6 +107,7 @@ mod tests {
     }
 
     #[allow(unsafe_code)]
+    #[serial_test::serial]
     #[test]
     fn axon_config_path_returns_none_when_home_unset() {
         let _guard = ENV_LOCK.lock().unwrap();
