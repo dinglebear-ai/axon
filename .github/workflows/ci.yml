@@ -478,7 +478,7 @@ jobs:
           AXON_REDIS_URL: redis://:axonredis@127.0.0.1:53379
           AXON_AMQP_URL: amqp://axon:axonrabbit@127.0.0.1:45535/%2f
         run: |
-          ./target/release/axon mcp &
+          ./target/release/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
           for i in {1..30}; do
             if nc -z 127.0.0.1 8001 2>/dev/null; then
@@ -511,5 +511,4 @@ jobs:
         run: |
           kill "$(cat /tmp/axon-mcp.pid 2>/dev/null)" 2>/dev/null || true
           docker rm -f axon-tei || true
-          docker compose down || true
           docker compose -f config/docker-compose.services.yaml down || true
