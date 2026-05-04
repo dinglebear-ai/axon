@@ -81,16 +81,17 @@ pub(super) struct TomlWorkersSection {
 /// Load TOML config from the first found path:
 /// 1. `AXON_CONFIG_PATH` env var (if set and non-empty)
 /// 2. `~/.axon/config.toml` via `axon_config_path()` (returns None when HOME unset)
-/// 3. Neither found → `TomlConfig::default()` (silent)
+/// 3. Neither found → `Ok(TomlConfig::default())` (silent)
 ///
 /// Error policy:
-/// - File absent → silent, return default
-/// - File present, permission denied → warn to stderr, return default
-/// - File present, parse error → hard fail with path + line number, exit 1
-pub(super) fn load_toml_config() -> TomlConfig {
+/// - File absent → `Ok(TomlConfig::default())` (silent)
+/// - File present, permission denied → `Err(...)` (caller hard-fails)
+/// - File present, other I/O error → warn to stderr, `Ok(TomlConfig::default())`
+/// - File present, parse error → `Err(...)` with path + line number (caller hard-fails)
+pub(super) fn load_toml_config() -> Result<TomlConfig, String> {
     let path = resolve_config_path();
     let Some(path) = path else {
-        return TomlConfig::default();
+        return Ok(TomlConfig::default());
     };
     load_from_path(&path)
 }
@@ -107,38 +108,33 @@ fn resolve_config_path() -> Option<PathBuf> {
     axon_config_path()
 }
 
-fn load_from_path(path: &Path) -> TomlConfig {
+fn load_from_path(path: &Path) -> Result<TomlConfig, String> {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return TomlConfig::default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(TomlConfig::default()),
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            // File exists but is unreadable — hard fail: user created a config the binary
-            // cannot read. Silent fallback would hide a misconfiguration silently.
-            eprintln!(
+            // File exists but is unreadable — return Err so the caller can hard-fail.
+            // Silent fallback would hide a misconfiguration the user must fix.
+            return Err(format!(
                 "axon: error: cannot read config file '{}': {e}",
                 path.display()
-            );
-            std::process::exit(1);
+            ));
         }
         Err(e) => {
             eprintln!(
                 "axon: warning: cannot read config file '{}': {e}",
                 path.display()
             );
-            return TomlConfig::default();
+            return Ok(TomlConfig::default());
         }
     };
 
-    match toml::from_str::<TomlConfig>(&contents) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!(
-                "axon: error: config file '{}' has a parse error: {e}",
-                path.display()
-            );
-            std::process::exit(1);
-        }
-    }
+    toml::from_str::<TomlConfig>(&contents).map_err(|e| {
+        format!(
+            "axon: error: config file '{}' has a parse error: {e}",
+            path.display()
+        )
+    })
 }
 
 #[cfg(test)]
@@ -160,7 +156,7 @@ mod tests {
     #[test]
     fn missing_file_returns_default() {
         let path = Path::new("/nonexistent/path/that/should/not/exist/config.toml");
-        let cfg = load_from_path(path);
+        let cfg = load_from_path(path).unwrap();
         assert!(cfg.search.hybrid_enabled.is_none());
         assert!(cfg.ask.chunk_limit.is_none());
     }
@@ -173,7 +169,7 @@ mod tests {
             "[search]\nhybrid-enabled = false\nhybrid-candidates = 200"
         )
         .unwrap();
-        let cfg = load_from_path(f.path());
+        let cfg = load_from_path(f.path()).unwrap();
         assert_eq!(cfg.search.hybrid_enabled, Some(false));
         assert_eq!(cfg.search.hybrid_candidates, Some(200));
     }
@@ -186,7 +182,7 @@ mod tests {
             "[ask]\nchunk-limit = 5\ncandidate-limit = 50\nmin-relevance-score = 0.6"
         )
         .unwrap();
-        let cfg = load_from_path(f.path());
+        let cfg = load_from_path(f.path()).unwrap();
         assert_eq!(cfg.ask.chunk_limit, Some(5));
         assert_eq!(cfg.ask.candidate_limit, Some(50));
         assert!(cfg.ask.min_relevance_score.is_some());
@@ -196,9 +192,21 @@ mod tests {
     fn valid_toml_parses_tei_and_workers() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(f, "[tei]\nmax-retries = 3\n[workers]\ningest-lanes = 4").unwrap();
-        let cfg = load_from_path(f.path());
+        let cfg = load_from_path(f.path()).unwrap();
         assert_eq!(cfg.tei.max_retries, Some(3));
         assert_eq!(cfg.workers.ingest_lanes, Some(4));
+    }
+
+    #[test]
+    fn malformed_toml_returns_err() {
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, "[search\nbadly_broken = !!!").unwrap();
+        let result = load_from_path(f.path());
+        assert!(result.is_err(), "malformed TOML should return Err");
+        assert!(
+            result.err().unwrap().contains("parse error"),
+            "error message should mention 'parse error'"
+        );
     }
 
     #[test]
@@ -214,7 +222,7 @@ mod tests {
     fn empty_file_returns_default() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(f).unwrap();
-        let cfg = load_from_path(f.path());
+        let cfg = load_from_path(f.path()).unwrap();
         assert!(cfg.search.hybrid_enabled.is_none());
     }
 

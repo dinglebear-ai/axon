@@ -196,7 +196,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     // Load TOML config as the base layer (lowest priority file source).
     // Layer order: CLI flags > env vars > TOML file > hardcoded defaults.
     // Missing file = silent. Malformed file = hard fail with line number.
-    let toml = load_toml_config();
+    let toml = load_toml_config()?;
 
     let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
