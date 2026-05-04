@@ -5,72 +5,14 @@ use super::super::types::{
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    env_bool, parse_viewport, positional_from_job, positional_from_watch_subcommand,
+    default_sqlite_path, env_bool, env_port, parse_origin_allowlist, parse_viewport,
+    positional_from_job, positional_from_watch_subcommand, resolve_ask_adapter_args,
+    resolve_ask_adapter_cmd, resolve_mcp_transport, validate_collection_name,
+    validate_custom_headers,
 };
 use super::performance;
 use clap::ValueEnum;
 use std::env;
-
-/// Parse a comma-separated string, trimming each item and discarding empties.
-/// Used for env vars like `AXON_WEB_ALLOWED_ORIGINS`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, etc.
-fn parse_csv_env<F, T>(raw: &str, map_fn: F) -> Vec<T>
-where
-    F: Fn(&str) -> T,
-{
-    raw.split(',')
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(map_fn)
-        .collect()
-}
-
-fn parse_origin_allowlist(raw: &str) -> Vec<String> {
-    parse_csv_env(raw, ToOwned::to_owned)
-}
-
-/// Read an env var, trim it, and return `None` if missing or blank.
-fn read_env(var: &str) -> Option<String> {
-    env::var(var)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-}
-
-fn default_sqlite_path() -> std::path::PathBuf {
-    crate::crates::core::paths::axon_data_base_dir()
-        .join("axon")
-        .join("jobs.db")
-}
-
-/// Reject collection names that would corrupt Qdrant URL paths when interpolated via
-/// `format!()`. Allows letters, digits, underscore, dash, and dot; bounded to 1–255 chars.
-/// Dot is permitted because some live collections use `axon_v2` etc. and dotted names
-/// appear in Qdrant docs.
-fn validate_collection_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("collection name must not be empty".to_string());
-    }
-    if name.len() > 255 {
-        return Err(format!(
-            "collection name too long ({} chars, max 255)",
-            name.len()
-        ));
-    }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        return Err(format!(
-            "collection name '{name}' contains invalid characters; \
-             only [A-Za-z0-9_.-] are allowed"
-        ));
-    }
-    // Defence-in-depth against path traversal even within the allowed charset.
-    if name == "." || name == ".." || name.starts_with("..") {
-        return Err(format!("collection name '{name}' is reserved"));
-    }
-    Ok(())
-}
 
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let global = cli.global;
@@ -375,9 +317,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .openai_model
             .or_else(|| env::var("OPENAI_MODEL").ok())
             .unwrap_or_default(),
-        // Resolve ACP adapter for ask/research.
-        // Priority: AXON_ACP_ADAPTER_CMD (global override) → AXON_ASK_AGENT=claude|codex|gemini
-        // (use the matching AXON_ACP_{AGENT}_ADAPTER_* vars already configured for Pulse chat).
         acp_adapter_cmd: resolve_ask_adapter_cmd(),
         acp_adapter_args: resolve_ask_adapter_args(),
         acp_prewarm: env_bool("AXON_ACP_PREWARM", true),
@@ -433,7 +372,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ),
         ask_authoritative_domains: env::var("AXON_ASK_AUTHORITATIVE_DOMAINS")
             .ok()
-            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_ascii_lowercase())
+                    .collect()
+            })
             .unwrap_or_default(),
         ask_authoritative_boost: performance::env_f64_clamped(
             "AXON_ASK_AUTHORITATIVE_BOOST",
@@ -553,7 +498,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     cfg.crawl_broadcast_buffer_max = ps.broadcast_buffer_max;
 
     // Derive output_dir from AXON_DATA_DIR when still at the clap default.
-    // This unifies local dev and Docker: both write to $AXON_DATA_DIR/axon/output.
     if cfg.output_dir == std::path::Path::new(".cache/axon-rust/output")
         && let Some(data_dir) = crate::crates::core::paths::axon_data_dir()
     {
@@ -561,128 +505,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     }
 
     Ok(cfg)
-}
-
-/// Validate `--header "K: V"` entries before they reach the request layer.
-///
-/// Defense in depth — these are forwarded into HTTP requests issued by the
-/// crawl/scrape paths. Since the user supplies them on a trusted plane (CLI
-/// args), this isn't a hard security boundary, but rejecting obviously
-/// malformed entries gives a clearer error than letting `reqwest::header`
-/// panic mid-crawl. (bd axon_rust-d71.33 / M-SEC-1)
-fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String>, String> {
-    for h in &headers {
-        let Some((name, value)) = h.split_once(':') else {
-            return Err(format!("--header missing ':' separator: {h:?}"));
-        };
-        let name = name.trim();
-        let value = value.trim();
-        if name.is_empty() {
-            return Err(format!("--header has empty name: {h:?}"));
-        }
-        // RFC 7230 token chars for header name.
-        let name_ok = name.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(
-                    c,
-                    '!' | '#'
-                        | '$'
-                        | '%'
-                        | '&'
-                        | '\''
-                        | '*'
-                        | '+'
-                        | '-'
-                        | '.'
-                        | '^'
-                        | '_'
-                        | '`'
-                        | '|'
-                        | '~'
-                )
-        });
-        if !name_ok {
-            return Err(format!(
-                "--header name contains illegal character: {name:?} (RFC 7230 token chars only)"
-            ));
-        }
-        if value.contains('\r') || value.contains('\n') {
-            return Err(format!(
-                "--header value contains CR or LF (CWE-93 header injection guard): {h:?}"
-            ));
-        }
-    }
-    Ok(headers)
-}
-
-/// Resolve the MCP transport from explicit CLI flag, falling back to the
-/// command-specific default. The legacy `AXON_MCP_TRANSPORT` env var is
-/// **intentionally not honored** here — tests assert that the command
-/// default (`mcp` → stdio, `serve mcp` → http) wins over any env value.
-/// The string `AXON_MCP_TRANSPORT` appears in this comment to satisfy the
-/// `check_mcp_http_only.sh` pre-commit grep that documents the var as a
-/// known knob (currently surfaced via docs/CONFIG.md only).
-fn resolve_mcp_transport(
-    cli_transport: Option<McpTransport>,
-    default_transport: McpTransport,
-) -> McpTransport {
-    if let Some(transport) = cli_transport {
-        return transport;
-    }
-    default_transport
-}
-
-/// Resolve adapter command for ask/research ACP calls.
-///
-/// Priority:
-/// 1. `AXON_ACP_ADAPTER_CMD` — explicit global override (existing behavior)
-/// 2. `AXON_ASK_AGENT=claude|codex|gemini` — look up the matching per-agent cmd var
-///    (`AXON_ACP_CLAUDE_ADAPTER_CMD`, `AXON_ACP_CODEX_ADAPTER_CMD`, or
-///    `AXON_ACP_GEMINI_ADAPTER_CMD`) that Pulse chat already uses.
-pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
-    read_env("AXON_ACP_ADAPTER_CMD").or_else(|| {
-        let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let (var, default_cmd) = match agent.trim().to_lowercase().as_str() {
-            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude-agent-acp"),
-            "codex" => ("AXON_ACP_CODEX_ADAPTER_CMD", "codex-acp"),
-            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_CMD", "gemini"),
-            _ => return None,
-        };
-        // Fall back to the well-known built-in default for the selected agent when the
-        // per-agent override var is unset, so ask/evaluate/research don't fail simply
-        // because AXON_ACP_<AGENT>_ADAPTER_CMD was never explicitly configured.
-        Some(read_env(var).unwrap_or_else(|| default_cmd.to_string()))
-    })
-}
-
-/// Resolve adapter args for ask/research ACP calls (mirrors `resolve_ask_adapter_cmd`).
-pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
-    read_env("AXON_ACP_ADAPTER_ARGS").or_else(|| {
-        let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let (var, default_args) = match agent.trim().to_lowercase().as_str() {
-            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_ARGS", None),
-            "codex" => ("AXON_ACP_CODEX_ADAPTER_ARGS", None),
-            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_ARGS", Some("--experimental-acp")),
-            _ => return None,
-        };
-        // When a global adapter command override is set, don't inject agent-specific
-        // default args — the caller's command may not accept them (e.g. --experimental-acp
-        // is a Gemini-only flag and would break a custom adapter binary).
-        if read_env("AXON_ACP_ADAPTER_CMD").is_some() {
-            None
-        } else {
-            read_env(var).or_else(|| default_args.map(str::to_string))
-        }
-    })
-}
-
-fn env_port(env_var: &str, default: u16) -> Result<u16, String> {
-    match env::var(env_var).ok() {
-        None => Ok(default),
-        Some(raw) => raw
-            .parse::<u16>()
-            .map_err(|e| format!("invalid {env_var} '{raw}': {e}")),
-    }
 }
 
 #[cfg(test)]
@@ -695,50 +517,10 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    #[test]
-    fn validate_collection_name_accepts_normal_names() {
-        for ok in ["cortex", "axon", "axon_v2", "axon-test", "Mem0.v1", "a"] {
-            assert!(
-                validate_collection_name(ok).is_ok(),
-                "expected '{ok}' to be accepted"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_collection_name_rejects_path_traversal() {
-        for bad in ["..", "../foo", "..foo", ""] {
-            assert!(
-                validate_collection_name(bad).is_err(),
-                "expected '{bad}' to be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_collection_name_rejects_url_metacharacters() {
-        for bad in [
-            "foo/bar", "foo?x=1", "foo#frag", "foo bar", "foo\nbar", "foo%20",
-        ] {
-            assert!(
-                validate_collection_name(bad).is_err(),
-                "expected '{bad}' to be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn validate_collection_name_rejects_overlong() {
-        let huge = "a".repeat(256);
-        assert!(validate_collection_name(&huge).is_err());
-    }
-
     #[allow(unsafe_code)]
     #[test]
     fn into_config_reads_axon_lite_env_var() {
         let _guard = ENV_LOCK.lock().unwrap();
-        // AXON_LITE=1 makes PG/Redis/AMQP optional — do not remove those vars;
-        // other parallel tests may hold them set and rely on them.
         unsafe {
             env::set_var("AXON_LITE", "1");
             env::set_var("QDRANT_URL", "http://localhost:53333");
@@ -808,78 +590,9 @@ mod tests {
     }
 
     #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_claude_returns_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::remove_var("AXON_ACP_CLAUDE_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "claude");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, Some("claude-agent-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_codex_returns_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::remove_var("AXON_ACP_CODEX_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "codex");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, Some("codex-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_args_gemini_returns_experimental_flag() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_ARGS");
-            env::remove_var("AXON_ACP_GEMINI_ADAPTER_ARGS");
-            env::set_var("AXON_ASK_AGENT", "gemini");
-        }
-        let result = resolve_ask_adapter_args();
-        assert_eq!(result, Some("--experimental-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_unknown_agent_returns_none() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "unknown-agent");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, None);
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
     #[test]
     fn into_config_errors_when_qdrant_url_missing() {
         let _guard = ENV_LOCK.lock().unwrap();
-        // Unset QDRANT_URL so the default branch is exercised.
-        // Safety: test-only, guarded by ENV_LOCK.
         unsafe {
             env::remove_var("QDRANT_URL");
         }
@@ -896,8 +609,6 @@ mod tests {
     #[test]
     fn into_config_errors_when_tei_url_missing() {
         let _guard = ENV_LOCK.lock().unwrap();
-        // Save and restore TEI_URL so parallel tests are not affected.
-        // Safety: test-only, guarded by ENV_LOCK.
         let orig_tei_url = env::var("TEI_URL").ok();
         unsafe {
             env::remove_var("TEI_URL");
