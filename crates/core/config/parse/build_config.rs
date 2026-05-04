@@ -5,12 +5,13 @@ use super::super::types::{
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    default_sqlite_path, env_bool, env_port, parse_origin_allowlist, parse_viewport,
+    default_sqlite_path, env_bool, env_bool_opt, env_port, parse_origin_allowlist, parse_viewport,
     positional_from_job, positional_from_watch_subcommand, resolve_ask_adapter_args,
     resolve_ask_adapter_cmd, resolve_mcp_transport, validate_collection_name,
     validate_custom_headers,
 };
 use super::performance;
+use super::toml_config::load_toml_config;
 use clap::ValueEnum;
 use std::env;
 
@@ -190,6 +191,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     // collide with reserved characters (CWE-22 — bd axon_rust-d71.6 / H2).
     validate_collection_name(&global.collection)?;
 
+    // Load TOML config as the base layer (lowest priority file source).
+    // Layer order: CLI flags > env vars > TOML file > hardcoded defaults.
+    // Missing file = silent. Malformed file = hard fail with line number.
+    let toml = load_toml_config();
+
     let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
     let sqlite_path = global
@@ -343,13 +349,12 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             20_000,
             400_000,
         ),
-        ask_candidate_limit: performance::env_usize_clamped(
-            "AXON_ASK_CANDIDATE_LIMIT",
-            150,
-            8,
-            300,
-        ),
-        ask_chunk_limit: performance::env_usize_clamped("AXON_ASK_CHUNK_LIMIT", 10, 3, 40),
+        ask_candidate_limit: performance::env_usize_opt("AXON_ASK_CANDIDATE_LIMIT", 8, 300)
+            .or_else(|| toml.ask.candidate_limit.map(|v| v.clamp(8, 300)))
+            .unwrap_or(150),
+        ask_chunk_limit: performance::env_usize_opt("AXON_ASK_CHUNK_LIMIT", 3, 40)
+            .or_else(|| toml.ask.chunk_limit.map(|v| v.clamp(3, 40)))
+            .unwrap_or(10),
         ask_full_docs: performance::env_usize_clamped("AXON_ASK_FULL_DOCS", 4, 1, 20),
         ask_backfill_chunks: performance::env_usize_clamped("AXON_ASK_BACKFILL_CHUNKS", 3, 0, 20),
         ask_doc_fetch_concurrency: performance::env_usize_clamped(
@@ -364,12 +369,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             8,
             2000,
         ),
-        ask_min_relevance_score: performance::env_f64_clamped(
+        ask_min_relevance_score: performance::env_f64_opt(
             "AXON_ASK_MIN_RELEVANCE_SCORE",
-            0.45,
             -1.0,
             2.0,
-        ),
+        )
+        .or_else(|| toml.ask.min_relevance_score.map(|v| v.clamp(-1.0, 2.0)))
+        .unwrap_or(0.45),
         ask_authoritative_domains: env::var("AXON_ASK_AUTHORITATIVE_DOMAINS")
             .ok()
             .map(|raw| {
@@ -392,19 +398,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             1,
             5,
         ),
-        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true) && !global.no_hybrid_search,
-        hybrid_search_candidates: performance::env_usize_clamped(
-            "AXON_HYBRID_CANDIDATES",
-            100,
-            10,
-            500,
-        ),
-        ask_hybrid_candidates: performance::env_usize_clamped(
-            "AXON_ASK_HYBRID_CANDIDATES",
-            150,
-            10,
-            500,
-        ),
+        hybrid_search_enabled: env_bool_opt("AXON_HYBRID_SEARCH")
+            .or(toml.search.hybrid_enabled)
+            .unwrap_or(true)
+            && !global.no_hybrid_search,
+        hybrid_search_candidates: performance::env_usize_opt("AXON_HYBRID_CANDIDATES", 10, 500)
+            .or_else(|| toml.search.hybrid_candidates.map(|v| v.clamp(10, 500)))
+            .unwrap_or(100),
+        ask_hybrid_candidates: performance::env_usize_opt("AXON_ASK_HYBRID_CANDIDATES", 10, 500)
+            .or_else(|| toml.search.ask_hybrid_candidates.map(|v| v.clamp(10, 500)))
+            .unwrap_or(150),
         cron_every_seconds: global.cron_every_seconds.filter(|value| *value > 0),
         cron_max_runs: global.cron_max_runs.filter(|value| *value > 0),
         watchdog_stale_timeout_secs: global.watchdog_stale_timeout_secs.max(30),

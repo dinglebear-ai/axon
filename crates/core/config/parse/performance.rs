@@ -66,10 +66,27 @@ pub(super) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usiz
         .clamp(min, max)
 }
 
+/// Like `env_usize_clamped` but returns `None` when the var is absent or unparseable,
+/// so TOML and hardcoded defaults can be consulted.
+pub(super) fn env_usize_opt(key: &str, min: usize, max: usize) -> Option<usize> {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .map(|v| v.clamp(min, max))
+}
+
 pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f64 {
     env::var(key)
         .ok()
         .and_then(|v| v.parse::<f64>().ok())
         .unwrap_or(default)
         .clamp(min, max)
+}
+
+/// Like `env_f64_clamped` but returns `None` when the var is absent or unparseable.
+pub(super) fn env_f64_opt(key: &str, min: f64, max: f64) -> Option<f64> {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .map(|v| v.clamp(min, max))
 }
