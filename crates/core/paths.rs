@@ -12,14 +12,15 @@ pub fn axon_data_dir() -> Option<PathBuf> {
 }
 
 /// Returns the base data directory for Axon, falling back through:
-/// `AXON_DATA_DIR` → `$HOME/.local/share` → `/tmp`.
+/// `AXON_DATA_DIR` → `$HOME/.local/share` → `.cache/axon-rust/data`.
 ///
 /// Used by subsystems that need a persistent writable directory
 /// (prewarm, assistant mode, etc.).
 pub fn axon_data_base_dir() -> PathBuf {
     axon_data_dir().unwrap_or_else(|| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        PathBuf::from(format!("{home}/.local/share"))
+        valid_home_path()
+            .map(|home| home.join(".local").join("share"))
+            .unwrap_or_else(|| PathBuf::from(".cache/axon-rust/data"))
     })
 }
 
@@ -36,6 +37,10 @@ pub fn axon_data_base_dir() -> PathBuf {
 ///
 /// Callers should skip config loading silently when this returns `None`.
 pub fn axon_home_dir() -> Option<PathBuf> {
+    valid_home_path().map(|home| home.join(".axon"))
+}
+
+fn valid_home_path() -> Option<PathBuf> {
     let home = std::env::var("HOME")
         .ok()
         .map(|h| h.trim().to_string())
@@ -56,7 +61,7 @@ pub fn axon_home_dir() -> Option<PathBuf> {
         return None;
     }
 
-    Some(home_path.join(".axon"))
+    Some(home_path)
 }
 
 /// Returns `~/.axon/config.toml` when HOME is set, otherwise `None`.
@@ -124,6 +129,98 @@ mod tests {
             None => unsafe { std::env::remove_var("HOME") },
         }
         assert_eq!(result, None);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_data_base_dir_uses_home_when_home_is_valid() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_data = std::env::var("AXON_DATA_DIR").ok();
+        unsafe {
+            std::env::remove_var("AXON_DATA_DIR");
+            std::env::set_var("HOME", "/home/testuser");
+        }
+        let result = axon_data_base_dir();
+        match saved_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match saved_data {
+            Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
+        assert_eq!(result, PathBuf::from("/home/testuser/.local/share"));
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_data_base_dir_does_not_fall_back_to_tmp_when_home_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_data = std::env::var("AXON_DATA_DIR").ok();
+        unsafe {
+            std::env::remove_var("AXON_DATA_DIR");
+            std::env::remove_var("HOME");
+        }
+        let result = axon_data_base_dir();
+        match saved_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match saved_data {
+            Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
+        assert_eq!(result, PathBuf::from(".cache/axon-rust/data"));
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_data_base_dir_rejects_relative_home() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_data = std::env::var("AXON_DATA_DIR").ok();
+        unsafe {
+            std::env::remove_var("AXON_DATA_DIR");
+            std::env::set_var("HOME", "../relative/path");
+        }
+        let result = axon_data_base_dir();
+        match saved_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match saved_data {
+            Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
+        assert_eq!(result, PathBuf::from(".cache/axon-rust/data"));
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_data_base_dir_rejects_home_with_dotdot() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved_home = std::env::var("HOME").ok();
+        let saved_data = std::env::var("AXON_DATA_DIR").ok();
+        unsafe {
+            std::env::remove_var("AXON_DATA_DIR");
+            std::env::set_var("HOME", "/tmp/../etc");
+        }
+        let result = axon_data_base_dir();
+        match saved_home {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match saved_data {
+            Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
+        assert_eq!(result, PathBuf::from(".cache/axon-rust/data"));
     }
 
     #[allow(unsafe_code)]

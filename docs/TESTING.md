@@ -49,16 +49,10 @@ These tests do **not** use `#[ignore]` — instead each test calls a resolver (`
 that returns `None` and exits cleanly when the corresponding env var is unset.
 This means they run in `just test` without error, but only exercise real I/O when infra is available.
 
-Start the isolated test containers (ephemeral — data wiped on stop):
+Start the required services explicitly, then run the full suite normally:
 
 ```bash
-just test-infra-up    # docker compose -f docker-compose.test.yaml up -d
-just test-infra-down  # docker compose -f docker-compose.test.yaml down -v
-```
-
-Then run the full suite normally:
-
-```bash
+just services-up      # Qdrant, TEI, Chrome from config/docker-compose.services.yaml
 just test
 ```
 
@@ -76,13 +70,18 @@ Set these in `.env`:
 |----------|--------------------------|---------|
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Qdrant integration tests |
 
-Test containers (from `docker-compose.test.yaml`) bind on ports that do not conflict with the dev stack:
+The tracked local compose file is `config/docker-compose.services.yaml`. It
+starts the dev infrastructure stack on loopback-bound host ports:
 
 | Service | Image | Test port |
 |---------|-------|-----------|
-| `axon-qdrant-test` | `qdrant/qdrant:v1.13.1` | `53335` (HTTP), `53336` (gRPC) |
+| `axon-qdrant` | `qdrant/qdrant:v1.13.1` | `53333` (HTTP), `53334` (gRPC) |
+| `axon-tei` | `ghcr.io/huggingface/text-embeddings-inference:89-1.9` | `52000` (HTTP) |
+| `axon-chrome` | local Chrome image | `6000`, `9222`, `9223` |
 
-All test containers use `tmpfs` mounts — data does not persist between `down -v` cycles.
+CI still provisions Postgres, Redis, and RabbitMQ as GitHub Actions service
+containers for legacy ignored worker tests. Those services are not part of the
+tracked local compose stack.
 
 ## Coverage Areas (v0.11.1+)
 
@@ -175,6 +174,27 @@ These tests use a process-level `Mutex` to serialize `std::env::set_var` / `remo
 (required in Rust 1.81+ where those functions are `unsafe`). The file-level `#![allow(unsafe_code)]`
 annotation is intentional — these are the only tests in the codebase that require it.
 
+## Test-Only Security Escape Hatches
+
+Several tests deliberately use narrow exceptions that must not be copied into
+production code:
+
+- `crates/core/http/client.rs` leaks one `reqwest::Client` per test call with
+  `Box::leak` so each async test gets a client bound to its own Tokio runtime.
+  This is `#[cfg(test)]` only; production uses the process-wide `HTTP_CLIENT`
+  singleton.
+- `crates/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
+  test builds. It lets httpmock-based tests reach `127.0.0.1` while keeping
+  `validate_url()` loopback blocking active by default.
+- `crates/services/acp/session_cache.rs` has dummy ACP handles and responder
+  maps inside its test module so cache eviction and replay-buffer behavior can
+  be tested without spawning real adapters.
+
+These patterns are acceptable only because they are compile-time test scoped.
+New tests that need a bypass should keep it behind `#[cfg(test)]` or a dedicated
+test-helper feature, and production paths should continue to go through the
+normal SSRF and ACP validation boundaries.
+
 ## Validation Commands
 
 ### Compile checks
@@ -197,8 +217,10 @@ just verify
 
 ## CI Mapping
 
-- `test` job: standard Rust test lane (`cargo test --all --locked`). Service containers: Qdrant (for integration tests that resolve `AXON_TEST_QDRANT_URL`).
-- `test-infra` job: manual-only lane, triggered via `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra` (the `#[ignore]` worker e2e suite).
+- `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. Uses GitHub Actions service containers for Postgres, Redis, and RabbitMQ.
+- `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra` against GitHub Actions service containers.
+- `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
+- `mcp-smoke` job: builds the release binary, starts `config/docker-compose.services.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
 - `msrv` job: validates declared MSRV separately.
 
@@ -262,8 +284,8 @@ just coverage-branch
 - Fix: Run `just test-infra`.
 
 ### Integration tests silently skipping
-- Cause: `AXON_TEST_AMQP_URL` / `AXON_TEST_REDIS_URL` / `AXON_TEST_PG_URL` / `AXON_TEST_QDRANT_URL` not set.
-- Fix: Run `just test-infra-up`, then verify the vars are set (run `./scripts/dev-setup.sh` once, or add them to `.env` manually).
+- Cause: the relevant `AXON_TEST_*` URL for that suite is unset.
+- Fix: start the needed service and set the matching env var. For Qdrant, use `just services-up` and `AXON_TEST_QDRANT_URL=http://127.0.0.1:53333`. For legacy worker tests, provide Postgres/Redis/RabbitMQ URLs or run the CI `test-infra` lane.
 
 ### Lockfile errors in CI/local commands
 - Cause: dependency graph changed but lockfile not updated.
@@ -280,6 +302,6 @@ just coverage-branch
 
 ## Pull Request Checklist (Testing)
 - Ran `just test` after code changes.
-- Ran `just test-infra` when changing worker/queue/DB integration paths.
-- Ran `just test-infra-up && just test` when changing infra-backed integration suites (AMQP/Redis/Postgres/Qdrant).
+- Ran `just test-infra` when changing ignored worker/queue/DB integration paths and the required external services are available.
+- Ran `just services-up && just test` when changing Qdrant/TEI/Chrome-backed integration behavior.
 - Ran `just verify` before opening/updating PR.

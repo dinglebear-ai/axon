@@ -869,6 +869,20 @@ let response = warm.complete_streaming(req, on_delta).await?;  // uses pre-warme
 | `ACP_COMPLETION_TIMEOUT_SECS` | 300s | Per-completion overall timeout |
 | One-shot exit grace | 10s | Graceful shutdown after turn |
 
+ACP uses separate timeout classes instead of one global subprocess timer:
+
+| Timeout | Default | Source | Behavior |
+|---------|---------|--------|----------|
+| Persistent adapter loop | 3600s, override via `adapter_timeout_secs` | `crates/services/acp/persistent_conn.rs` | Bounds the lifetime of the background ACP adapter loop. |
+| Permission event delivery | 5s | `crates/services/acp/bridge.rs` | Cancels the turn if the frontend permission request cannot be delivered. |
+| Permission response wait | 60s, override via `permission_timeout_secs` | `crates/services/acp/permission.rs` | Resolves the tool call as `Cancelled` and drops the responder map entry. |
+| Turn cancellation drain | 15s | `crates/services/acp/persistent_conn/turn.rs` | After WebSocket disconnect, sends `session/cancel` and waits briefly for `PromptResponse::Cancelled`. |
+| Adapter exit grace | 10s | `crates/services/acp/runtime.rs` | Gives the adapter time to flush state before kill-on-drop handles enforce cleanup. |
+
+When changing these values, keep the class-specific behavior intact: permission
+timeouts must clean up responder entries, cancellation drains must not outlive
+WebSocket teardown, and adapter loop timeouts must remain bounded.
+
 ### Configuration
 
 | Env Var | Purpose |

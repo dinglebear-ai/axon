@@ -197,8 +197,23 @@ fn validate_adapter_rejects_bare_shell_name() {
 
 #[test]
 fn validate_adapter_accepts_absolute_path() {
-    // Absolute paths pass validation regardless of whether the file exists.
-    let adapter = AcpAdapterCommand::new("/usr/bin/claude-agent-acp", vec![]);
+    // Absolute paths pass validation when they resolve to an executable file.
+    let dir = tempfile::tempdir().expect("tempdir should be created");
+    let adapter_path = dir.path().join("claude-agent-acp");
+    std::fs::write(&adapter_path, "#!/bin/sh\nexit 0\n").expect("adapter stub should be written");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut perms = std::fs::metadata(&adapter_path)
+            .expect("adapter stub metadata should be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&adapter_path, perms).expect("adapter stub should be executable");
+    }
+
+    let adapter = AcpAdapterCommand::new(adapter_path.to_string_lossy().to_string(), vec![]);
     validate_adapter_command(&adapter).expect("absolute path should pass validation");
 }
 

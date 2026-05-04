@@ -289,8 +289,8 @@ pub(super) async fn initialize_connection(
     if let Ok(json) = serde_json::to_string(&resp.agent_capabilities.prompt_capabilities) {
         *runtime_state.prompt_capabilities_json.borrow_mut() = Some(json);
     }
-    // `close_session_supported` is set unconditionally to `true` here because the
-    // current ACP SDK does not expose a capability flag that reliably indicates
+    // `close_session_supported` is set unconditionally to `true` here because
+    // agent-client-protocol 0.10.4 does not expose a capability flag that reliably indicates
     // whether the adapter supports `session/close`. The call in
     // `persistent_conn::run_adapter_main_loop` is best-effort and non-fatal: if the
     // adapter does not recognise the method it responds with an error that is logged

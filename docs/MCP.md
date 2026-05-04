@@ -44,6 +44,15 @@ MCP HTTP server to a non-loopback address such as `0.0.0.0` requires
 `AXON_MCP_HTTP_TOKEN`; otherwise startup is rejected. External OAuth gateways or
 reverse proxies may add additional ingress controls.
 
+Clients can authenticate with either header:
+
+```bash
+curl -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  http://127.0.0.1:8001/mcp
+curl -H "x-api-key: $AXON_MCP_HTTP_TOKEN" \
+  http://127.0.0.1:8001/mcp
+```
+
 ## Transport Notes
 `axon mcp` supports three transport modes:
 

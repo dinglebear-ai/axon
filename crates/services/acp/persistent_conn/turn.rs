@@ -365,8 +365,9 @@ async fn run_prompt(
             *runtime_state.service_tx.borrow_mut() = None;
             // FR-024: `conn.cancel()` sends `session/cancel` (a JSON-RPC
             // notification) which IS the cancellation mechanism defined by
-            // the ACP spec.  The SDK 0.10.x does not expose a separate
-            // `unstable_cancel_request` method — `cancel()` covers FR-024.
+            // the ACP spec.  The agent-client-protocol 0.10.4 crate does not
+            // expose a separate `unstable_cancel_request` method; `cancel()`
+            // covers FR-024.
             if let Err(err) = conn.cancel(CancelNotification::new(turn_ctx.turn_session_id.clone())).await {
                 tracing::warn!(
                     session_id = %turn_ctx.turn_session_id.0,

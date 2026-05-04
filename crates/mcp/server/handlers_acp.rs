@@ -77,14 +77,11 @@ impl AxonMcpServer {
         session_id: String,
     ) -> Result<AxonToolResponse, ErrorData> {
         let exists = SESSION_CACHE.get_by_session_id(&session_id).is_some();
-        serde_json::to_value(serde_json::json!({
-            "session_id": session_id,
-            "session_found": exists,
-            "status": "not_implemented",
-            "message": "fork_session stub: full dispatch via AdapterMessage not yet wired",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "fork_session", data))
-        .map_err(|e| internal_error(format!("serialize acp/fork_session response: {e}")))
+        Err(not_implemented_acp_error(
+            "fork_session",
+            serde_json::json!({ "session_id": session_id, "session_found": exists }),
+            "full dispatch via AdapterMessage is not yet wired",
+        ))
     }
 
     /// Resume an existing ACP session without replaying message history.
@@ -98,14 +95,11 @@ impl AxonMcpServer {
         session_id: String,
     ) -> Result<AxonToolResponse, ErrorData> {
         let exists = SESSION_CACHE.get_by_session_id(&session_id).is_some();
-        serde_json::to_value(serde_json::json!({
-            "session_id": session_id,
-            "session_found": exists,
-            "status": "not_implemented",
-            "message": "resume_session stub: full dispatch via AdapterMessage not yet wired",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "resume_session", data))
-        .map_err(|e| internal_error(format!("serialize acp/resume_session response: {e}")))
+        Err(not_implemented_acp_error(
+            "resume_session",
+            serde_json::json!({ "session_id": session_id, "session_found": exists }),
+            "full dispatch via AdapterMessage is not yet wired",
+        ))
     }
 
     /// Set the active model for an ACP session via `session/set_model`.
@@ -120,15 +114,15 @@ impl AxonMcpServer {
         model_id: String,
     ) -> Result<AxonToolResponse, ErrorData> {
         let exists = SESSION_CACHE.get_by_session_id(&session_id).is_some();
-        serde_json::to_value(serde_json::json!({
-            "session_id": session_id,
-            "model_id": model_id,
-            "session_found": exists,
-            "status": "not_implemented",
-            "message": "set_model stub: full dispatch via AdapterMessage not yet wired",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "set_model", data))
-        .map_err(|e| internal_error(format!("serialize acp/set_model response: {e}")))
+        Err(not_implemented_acp_error(
+            "set_model",
+            serde_json::json!({
+                "session_id": session_id,
+                "model_id": model_id,
+                "session_found": exists,
+            }),
+            "full dispatch via AdapterMessage is not yet wired",
+        ))
     }
 
     /// Send an outbound extension method to the ACP agent (FR-027).
@@ -151,14 +145,11 @@ impl AxonMcpServer {
                 super::common::invalid_params(format!("params must be valid JSON: {e}"))
             })?;
         }
-        serde_json::to_value(serde_json::json!({
-            "method": method,
-            "params": params,
-            "status": "not_implemented",
-            "message": "ext_method stub: full dispatch via AdapterMessage not yet wired",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "ext_method", data))
-        .map_err(|e| internal_error(format!("serialize acp/ext_method response: {e}")))
+        Err(not_implemented_acp_error(
+            "ext_method",
+            serde_json::json!({ "method": method, "params": params }),
+            "full dispatch via AdapterMessage is not yet wired",
+        ))
     }
 
     /// Send an outbound extension notification to the ACP agent (FR-028).
@@ -181,36 +172,40 @@ impl AxonMcpServer {
                 super::common::invalid_params(format!("params must be valid JSON: {e}"))
             })?;
         }
-        serde_json::to_value(serde_json::json!({
-            "method": method,
-            "params": params,
-            "status": "not_implemented",
-            "message": "ext_notification stub: full dispatch via AdapterMessage not yet wired",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "ext_notification", data))
-        .map_err(|e| internal_error(format!("serialize acp/ext_notification response: {e}")))
+        Err(not_implemented_acp_error(
+            "ext_notification",
+            serde_json::json!({ "method": method, "params": params }),
+            "full dispatch via AdapterMessage is not yet wired",
+        ))
     }
 
     /// Request a clean session logout from the ACP agent (FR-032).
     ///
     /// TODO: Full implementation requires `conn.logout()` or an equivalent SDK method.
-    /// The `agent_client_protocol` crate (v0.10.2) does not expose a logout method —
+    /// The `agent_client_protocol` crate (v0.10.4) does not expose a logout method —
     /// this stub validates the session exists and returns a not-implemented response until
     /// the SDK adds `unstable_logout` support.
     ///
     /// TODO: Also enable `unstable_logout` in `ClientCapabilities` once the SDK exposes it.
     async fn handle_acp_logout(&self, session_id: String) -> Result<AxonToolResponse, ErrorData> {
         let exists = SESSION_CACHE.get_by_session_id(&session_id).is_some();
-        serde_json::to_value(serde_json::json!({
-            "session_id": session_id,
-            "session_found": exists,
-            "status": "not_implemented",
-            "message": "logout stub: SDK v0.10.2 does not expose a logout method; \
-                        enable unstable_logout in ClientCapabilities once available",
-        }))
-        .map(|data| AxonToolResponse::ok("acp", "logout", data))
-        .map_err(|e| internal_error(format!("serialize acp/logout response: {e}")))
+        Err(not_implemented_acp_error(
+            "logout",
+            serde_json::json!({ "session_id": session_id, "session_found": exists }),
+            "agent-client-protocol 0.10.4 does not expose a logout method; \
+             enable unstable_logout in ClientCapabilities once available",
+        ))
     }
+}
+
+fn not_implemented_acp_error(
+    subaction: &str,
+    context: serde_json::Value,
+    message: &'static str,
+) -> ErrorData {
+    super::common::invalid_params(format!(
+        "acp/{subaction} is not implemented: {message}; context={context}"
+    ))
 }
 
 #[cfg(test)]
@@ -237,5 +232,24 @@ mod tests {
             AcpSubaction::Logout => "logout",
         };
         assert_eq!(name, "list_sessions");
+    }
+
+    #[tokio::test]
+    async fn unsupported_acp_subaction_returns_error() {
+        let server = AxonMcpServer::new(crate::crates::core::config::Config::default());
+        let req = AcpRequest {
+            subaction: AcpSubaction::ForkSession,
+            session_id: Some("missing-session".to_string()),
+            model_id: None,
+            method: None,
+            params: None,
+            response_mode: None,
+        };
+
+        let err = server
+            .handle_acp(req)
+            .await
+            .expect_err("unsupported subaction must return an MCP error");
+        assert!(err.message.contains("acp/fork_session is not implemented"));
     }
 }

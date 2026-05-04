@@ -28,8 +28,8 @@ services:
     image: qdrant/qdrant:v1.13.1
     container_name: axon-qdrant
     ports:
-      - "53333:6333"
-      - "53334:6334"  # gRPC
+      - "127.0.0.1:53333:6333"
+      - "127.0.0.1:53334:6334"  # gRPC
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
       - ./qdrant/production.yaml:/qdrant/config/production.yaml:ro
@@ -59,7 +59,7 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
     container_name: axon-tei
     ports:
-      - "${TEI_HTTP_PORT:-52000}:80"
+      - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
     volumes:
       - ${AXON_DATA_DIR:-./data}/tei:/data
     command:
@@ -118,9 +118,9 @@ services:
     env_file: []  # no app secrets needed in the browser container
     shm_size: "2gb"
     ports:
-      - "9222:9222"  # CDP proxy
-      - "9223:9223"  # raw Chrome DevTools
-      - "6000:6000"  # management API
+      - "127.0.0.1:9222:9222"  # CDP proxy
+      - "127.0.0.1:9223:9223"  # raw Chrome DevTools
+      - "127.0.0.1:6000:6000"  # management API
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
     networks:

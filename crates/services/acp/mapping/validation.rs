@@ -19,23 +19,11 @@ pub fn validate_adapter_command(
     }
 
     // If the program looks like a path (contains separator), verify it resolves
-    // to a real file. Bare names (e.g. "claude") are resolved by execvp via PATH.
+    // to a real executable file. Bare names (e.g. "claude") are resolved by
+    // execvp via PATH.
     let path = Path::new(program);
-    // The nested if is intentional: outer guards path-like programs, inner is
-    // a fallible canonicalize with a meaningful "allow" comment after the block.
-    #[expect(clippy::collapsible_if)]
-    if program.contains(std::path::MAIN_SEPARATOR) || program.contains('/') {
-        if let Ok(canonical) = std::fs::canonicalize(path) {
-            if !canonical.is_file() {
-                return Err(format!(
-                    "ACP adapter path exists but is not a file: {}",
-                    canonical.display()
-                )
-                .into());
-            }
-        }
-        // If canonicalize fails (file doesn't exist), allow it -- the caller may
-        // install the binary before spawn. execvp will fail with a clear error.
+    if is_path_style_program(program) {
+        validate_path_style_adapter(path)?;
     }
 
     // Reject known shell interpreters by basename to prevent command injection.
@@ -72,7 +60,7 @@ pub fn validate_adapter_command(
 
     // For path-style programs also check the resolved canonical path to catch
     // symlinks like /tmp/safe_name -> /bin/bash.
-    if (program.contains('/') || program.contains('\\'))
+    if is_path_style_program(program)
         && let Ok(canonical) = std::fs::canonicalize(path)
         && let Some(canon_name) = canonical.file_name().and_then(|n| n.to_str())
     {
@@ -87,6 +75,43 @@ pub fn validate_adapter_command(
     }
 
     Ok(())
+}
+
+fn is_path_style_program(program: &str) -> bool {
+    program.contains('/') || program.contains('\\')
+}
+
+fn validate_path_style_adapter(path: &Path) -> Result<(), Box<dyn Error>> {
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| format!("ACP adapter path does not exist: {} ({e})", path.display()))?;
+    if !canonical.is_file() {
+        return Err(format!(
+            "ACP adapter path exists but is not a file: {}",
+            canonical.display()
+        )
+        .into());
+    }
+    if !is_executable_file(&canonical)? {
+        return Err(format!(
+            "ACP adapter path exists but is not executable: {}",
+            canonical.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> Result<bool, Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = std::fs::metadata(path)?.permissions().mode();
+    Ok(mode & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> Result<bool, Box<dyn Error>> {
+    Ok(path.is_file())
 }
 
 pub fn validate_prompt_turn_request(req: &AcpPromptTurnRequest) -> Result<(), Box<dyn Error>> {
@@ -310,6 +335,56 @@ mod tests {
     fn accepts_gemini() {
         let cmd = AcpAdapterCommand::new("gemini", vec![]);
         assert!(validate_adapter_command(&cmd).is_ok());
+    }
+
+    #[test]
+    fn accepts_bare_nonexistent_program_name() {
+        let cmd = AcpAdapterCommand::new("definitely-not-installed-axon-test-adapter", vec![]);
+        assert!(validate_adapter_command(&cmd).is_ok());
+    }
+
+    #[test]
+    fn rejects_nonexistent_path_style_program() {
+        let cmd = AcpAdapterCommand::new("/tmp/definitely-not-installed-axon-test-adapter", vec![]);
+        assert!(validate_adapter_command(&cmd).is_err());
+    }
+
+    #[test]
+    fn rejects_existing_path_style_directory() {
+        let cmd = AcpAdapterCommand::new("/tmp", vec![]);
+        assert!(validate_adapter_command(&cmd).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn accepts_existing_executable_path_style_program() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let adapter = dir.path().join("adapter");
+        std::fs::write(&adapter, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut perms = std::fs::metadata(&adapter).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&adapter, perms).unwrap();
+
+        let cmd = AcpAdapterCommand::new(adapter.to_string_lossy().to_string(), vec![]);
+        assert!(validate_adapter_command(&cmd).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_existing_non_executable_path_style_program() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let adapter = dir.path().join("adapter");
+        std::fs::write(&adapter, "not executable\n").unwrap();
+        let mut perms = std::fs::metadata(&adapter).unwrap().permissions();
+        perms.set_mode(0o644);
+        std::fs::set_permissions(&adapter, perms).unwrap();
+
+        let cmd = AcpAdapterCommand::new(adapter.to_string_lossy().to_string(), vec![]);
+        assert!(validate_adapter_command(&cmd).is_err());
     }
 
     // ── validate_adapter_command: empty program ─────────────────────────

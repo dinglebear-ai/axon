@@ -129,6 +129,12 @@ foo/
 
 Enforced by `scripts/check_no_mod_rs.sh`.
 
+Do not use `#[path = "..."]` to route around this layout in production modules.
+If a temporary path attribute is needed during a file split, remove it before
+landing the change and add the new module under the standard `foo.rs` plus
+`foo/bar.rs` structure. A current-tree check should return no production
+`#[path]` attributes outside historical docs.
+
 ## Root files
 
 | File | Required | Purpose |

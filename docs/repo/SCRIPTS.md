@@ -41,7 +41,7 @@ Usage:
 | `rebuild-fresh.sh` | Build Docker images and start containers |
 | `check-container-revisions.sh` | Verify container git SHA matches local HEAD |
 | `check_docker_context_size.sh` | Audit Docker build context for large files |
-| `audit_compose_images.py` | Audit Docker Compose image versions |
+| `audit_compose_images.py` | Audit image references from `config/docker-compose.services.yaml`, including GHCR images |
 | `cache-guard.sh` | Build cache management (status/prune) |
 
 ## Testing

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-05-04
+
+### Fixed
+- Hardened MCP HTTP token middleware coverage and updated the smoke script to match the current bearer and `x-api-key` token contract.
+- Tightened ACP adapter/path validation, unsupported ACP MCP responses, Axon data-dir fallback behavior, and local infrastructure port bindings.
+- Refreshed testing, ACP, MCP, and maintainer docs for the current security and compose behavior.
+
 ## [1.3.0] - 2026-05-04
 
 ### Added
