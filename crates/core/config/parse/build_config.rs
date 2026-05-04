@@ -166,10 +166,15 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             ],
         ),
         CliCommand::Serve(args) => match args.target {
-            super::super::cli::ServeSubcommand::Mcp(args) => {
+            Some(super::super::cli::ServeSubcommand::Mcp(args)) => {
                 mcp_transport = args.transport;
                 mcp_transport_default = McpTransport::Http;
                 (CommandKind::Mcp, Vec::new())
+            }
+            None => {
+                mcp_transport = Some(McpTransport::Both);
+                mcp_transport_default = McpTransport::Both;
+                (CommandKind::Serve, Vec::new())
             }
         },
         CliCommand::Mcp(args) => {

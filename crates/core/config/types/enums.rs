@@ -28,6 +28,7 @@ pub enum CommandKind {
     Screenshot,
     Completions,
     Mcp,
+    Serve,
     Migrate,
 }
 
@@ -59,6 +60,7 @@ impl CommandKind {
             Self::Screenshot => "screenshot",
             Self::Completions => "completions",
             Self::Mcp => "mcp",
+            Self::Serve => "serve",
             Self::Migrate => "migrate",
         }
     }

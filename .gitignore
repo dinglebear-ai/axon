@@ -96,6 +96,7 @@ pip-log.txt
 
 # ── Node / TypeScript ────────────────────────────────────────────────────────
 node_modules/
+.next/
 dist/
 coverage/
 *.tsbuildinfo

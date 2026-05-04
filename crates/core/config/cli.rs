@@ -101,7 +101,7 @@ pub(super) struct McpArgs {
 #[derive(Debug, Args)]
 pub(super) struct ServeArgs {
     #[command(subcommand)]
-    pub(super) target: ServeSubcommand,
+    pub(super) target: Option<ServeSubcommand>,
 }
 
 #[derive(Debug, Subcommand)]

@@ -7,4 +7,4 @@ pub mod schema;
 #[path = "mcp/server.rs"]
 pub mod server;
 
-pub use server::{AxonMcpServer, run_http_server, run_stdio_server};
+pub use server::{AxonMcpServer, run_http_server, run_stdio_server, run_unified_server};

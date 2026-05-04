@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-05-04
+
+### Added
+- `axon serve` unified web + MCP HTTP server with a bundled static Next.js admin panel.
+- Browser-first setup flow that initializes `~/.axon/config.toml`, generates a 256-bit panel password, and exposes authenticated config/ops APIs.
+
+### Fixed
+- Hardened `~/.axon` file creation with private permissions, exclusive password creation, and `O_NOFOLLOW` on sensitive pre-create/open paths.
+- Added Host header validation to the HTTP server path to block DNS rebinding.
+
 ## [1.2.1] - 2026-05-04
 
 ### Added
