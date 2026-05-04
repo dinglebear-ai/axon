@@ -53,7 +53,6 @@ pub(super) struct TomlAskSection {
     pub min_relevance_score: Option<f64>,
 }
 
-// Phase 1: TEI and worker fields are parsed and validated but not yet wired into
 // Phase 1: TEI and worker fields are parsed by serde but not yet wired into Config
 // (those fields are read directly from env by their subsystems). See #![allow(dead_code)]
 // at module level. Per-struct allows are omitted — the module attribute covers them.
@@ -112,6 +111,15 @@ fn load_from_path(path: &Path) -> TomlConfig {
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return TomlConfig::default(),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            // File exists but is unreadable — hard fail: user created a config the binary
+            // cannot read. Silent fallback would hide a misconfiguration silently.
+            eprintln!(
+                "axon: error: cannot read config file '{}': {e}",
+                path.display()
+            );
+            std::process::exit(1);
+        }
         Err(e) => {
             eprintln!(
                 "axon: warning: cannot read config file '{}': {e}",
@@ -205,12 +213,13 @@ mod tests {
     #[test]
     fn empty_file_returns_default() {
         let mut f = NamedTempFile::new().unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         let cfg = load_from_path(f.path());
         assert!(cfg.search.hybrid_enabled.is_none());
     }
 
     #[allow(unsafe_code)]
+    #[serial_test::serial]
     #[test]
     fn axon_config_path_env_var_overrides_home() {
         let _guard = ENV_LOCK.lock().unwrap();

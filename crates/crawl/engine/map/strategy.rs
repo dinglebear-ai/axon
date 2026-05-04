@@ -181,7 +181,7 @@ pub async fn map_with_sitemap(cfg: &Config, start_url: &str) -> Result<MapResult
     let crawl_start_url = seed_result.unwrap_or_else(|_| normalize_url(start_url).into_owned());
 
     let scope_base = {
-        let start_host = Url::parse(&normalize_url(start_url).into_owned())
+        let start_host = Url::parse(&normalize_url(start_url))
             .ok()
             .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
         let resolved_host = Url::parse(&crawl_start_url)

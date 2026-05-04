@@ -7,16 +7,13 @@ use batch::collect_and_embed_batched;
 use clone::clone_repo;
 use prepare::{build_file_embed_ctx, collect_indexable_files};
 
-pub use clone::{sanitized_git_stderr, should_retry_unauthenticated_clone};
-pub use prepare::next_search_start;
-
 use anyhow::{Result, bail};
 
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_info;
 use crate::crates::ingest::progress::PhaseReporter;
 
-use super::{GitHubCommonFields, is_indexable_doc_path};
+use super::GitHubCommonFields;
 
 const PHASE_CLONING: &str = "cloning";
 const PHASE_ENUMERATING_FILES: &str = "enumerating_files";
@@ -102,7 +99,8 @@ pub async fn embed_files(
 #[cfg(test)]
 mod tests {
     use super::super::GitHubCommonFields;
-    use super::{next_search_start, should_retry_unauthenticated_clone};
+    use super::clone::should_retry_unauthenticated_clone;
+    use super::prepare::next_search_start;
     use crate::crates::vector::ops::input::{chunk_text, code::chunk_code};
 
     fn github_common(is_private: Option<bool>) -> GitHubCommonFields {

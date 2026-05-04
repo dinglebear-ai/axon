@@ -1,7 +1,7 @@
 mod strategy;
 
+pub(crate) use strategy::append_html_anchor_backfill;
 pub use strategy::map_with_sitemap;
-pub(crate) use strategy::{append_html_anchor_backfill, crawl_and_collect_map};
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -11,7 +11,6 @@ use spider::url::Url;
 use crate::crates::core::http::{http_client, normalize_url, validate_url};
 
 use super::is_excluded_url_path;
-use super::sitemap::{SitemapDiscovery, discover_sitemap_urls};
 use super::url_utils::{MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url};
 
 /// The unified result of a `map` operation.

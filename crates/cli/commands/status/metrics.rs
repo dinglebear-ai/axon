@@ -1,9 +1,7 @@
 mod format;
 mod ingest;
 
-pub(super) use format::format_age;
 pub(crate) use format::{format_error, job_runtime_text};
-pub(super) use ingest::ingest_metrics_suffix;
 
 use crate::crates::core::ui::{accent, metric, subtle, symbol_for_status};
 use serde_json::Value;

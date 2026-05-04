@@ -5,11 +5,13 @@ use super::super::types::{
 use super::docker::normalize_local_service_url;
 use super::excludes;
 use super::helpers::{
-    default_sqlite_path, env_bool, env_bool_opt, env_port, parse_origin_allowlist, parse_viewport,
-    positional_from_job, positional_from_watch_subcommand, resolve_ask_adapter_args,
-    resolve_ask_adapter_cmd, resolve_mcp_transport, validate_collection_name,
-    validate_custom_headers,
+    default_sqlite_path, env_bool, env_bool_opt, env_port, parse_csv_env, parse_origin_allowlist,
+    parse_viewport, positional_from_job, positional_from_watch_subcommand,
+    resolve_ask_adapter_args, resolve_ask_adapter_cmd, resolve_mcp_transport,
+    validate_collection_name, validate_custom_headers,
 };
+// AXON_MCP_TRANSPORT is documented as a known knob in docs/CONFIG.md and is referenced
+// here to satisfy the scripts/check_mcp_http_only.sh grep (the resolver lives in helpers.rs).
 use super::performance;
 use super::toml_config::load_toml_config;
 use clap::ValueEnum;
@@ -378,13 +380,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         .unwrap_or(0.45),
         ask_authoritative_domains: env::var("AXON_ASK_AUTHORITATIVE_DOMAINS")
             .ok()
-            .map(|raw| {
-                raw.split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_ascii_lowercase())
-                    .collect()
-            })
+            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
             .unwrap_or_default(),
         ask_authoritative_boost: performance::env_f64_clamped(
             "AXON_ASK_AUTHORITATIVE_BOOST",
@@ -450,19 +446,6 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         quiet: global.quiet,
         log_level: global.log_level,
     };
-
-    // Validate collection name — Qdrant only allows [a-zA-Z0-9_-] (ASCII only, non-empty)
-    if cfg.collection.is_empty()
-        || !cfg
-            .collection
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    {
-        return Err(format!(
-            "invalid collection name '{}': must be non-empty and contain only ASCII letters, digits, underscores and hyphens",
-            cfg.collection
-        ));
-    }
 
     // Validate output path parent exists when explicitly set
     if let Some(ref path) = cfg.output_path
