@@ -24,7 +24,7 @@ This guide defines how to deploy and roll back Axon safely in self-hosted enviro
 
 ## Deployment Targets
 
-- Primary: Docker Compose stack defined in `docker-compose.yaml`
+- Primary: infrastructure compose stack defined in `config/docker-compose.services.yaml`
 - Optional runtime clients: CLI (`./scripts/axon`) and Next.js app (`apps/web`)
 
 ## Prerequisites
@@ -60,7 +60,7 @@ It is idempotent — safe to re-run. What it does:
 7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
 8. Creates `.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_DATA_DIR`** (default `~/.local/share/axon`) and pre-creates all container volume directories under it.
-10. Starts production infrastructure (`docker compose -f docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
+10. Starts production infrastructure (`docker compose -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
@@ -80,7 +80,7 @@ Populate `.env` before first deploy. `dev-setup.sh` handles secrets and service 
 
 - `AXON_DATA_DIR` — root for all persistent volume data
 - `QDRANT_URL` — Qdrant vector store URL
-- `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.services.yaml`)
+- `TEI_URL` — text embedding service URL (runs as `axon-tei` in `config/docker-compose.services.yaml`)
 - `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` — LLM endpoint
 
 ### Web UI
@@ -105,7 +105,7 @@ Populate `.env` before first deploy. `dev-setup.sh` handles secrets and service 
 
 ### Test infrastructure
 
-These are backfilled automatically by `dev-setup.sh` and point to the separate `docker-compose.test.yaml` stack:
+These are backfilled automatically by `dev-setup.sh` and point to the test infrastructure stack:
 
 | Variable | Default |
 |----------|---------|
@@ -141,24 +141,21 @@ Ensure `.env` is never committed. `.env.example` remains tracked.
 2. Pull/build images:
 
 ```bash
-docker compose build
+docker compose -f config/docker-compose.services.yaml build
 ```
 
 3. Start the stack:
 
-**Full Docker deployment** (includes workers and web UI with published ports):
+**Local service deployment** (infra in Docker, app stack supervised locally):
 
 ```bash
-# Start infrastructure first (postgres, redis, rabbitmq, qdrant, tei, chrome)
-docker compose -f docker-compose.services.yaml up -d
-# Then start app containers (workers + web)
-docker compose up -d axon-workers axon-web
+docker compose -f config/docker-compose.services.yaml up -d
 ```
 
 **Local dev mode** (infra in Docker, app stack supervised locally):
 
 ```bash
-docker compose -f docker-compose.services.yaml up -d
+docker compose -f config/docker-compose.services.yaml up -d
 
 # Start the full local stack supervisor:
 cargo run --bin axon -- serve
@@ -172,7 +169,7 @@ just dev
 4. Verify health:
 
 ```bash
-docker compose ps
+docker compose -f config/docker-compose.services.yaml ps
 ./scripts/axon doctor
 ```
 
@@ -188,7 +185,7 @@ docker compose ps
 Workers run in-process locally — output is in the terminal directly. For infra logs:
 
 ```bash
-docker compose -f docker-compose.services.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
+docker compose -f config/docker-compose.services.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
 ```
 
 ## Validation Checklist
@@ -206,7 +203,7 @@ Rollback is compose-based and image-based.
 1. Stop current stack:
 
 ```bash
-docker compose down
+docker compose -f config/docker-compose.services.yaml down
 ```
 
 2. Revert deployment inputs:
@@ -218,8 +215,8 @@ docker compose down
 3. Rebuild/restart:
 
 ```bash
-docker compose -f docker-compose.services.yaml build
-docker compose -f docker-compose.services.yaml up -d
+docker compose -f config/docker-compose.services.yaml build
+docker compose -f config/docker-compose.services.yaml up -d
 ```
 
 Restart workers and web locally as in the standard deploy procedure.
@@ -259,8 +256,8 @@ If deploying Next.js:
 
 ## Source Map
 
-- `docker-compose.yaml`
-- `docker-compose.test.yaml`
+- `config/docker-compose.services.yaml`
+- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `README.md`
 - `docs/OPERATIONS.md`

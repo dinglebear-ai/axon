@@ -1,5 +1,5 @@
 use super::types::{QdrantPayload, QdrantPoint, RETRIEVE_MAX_POINTS_CEILING};
-use crate::crates::core::config::Config;
+use crate::crates::core::config::{CollectionNameError, Config};
 use crate::crates::core::logging::log_warn;
 use anyhow::{Result, anyhow};
 use rand::RngExt as _;
@@ -14,27 +14,8 @@ pub fn qdrant_base(cfg: &Config) -> &str {
     cfg.qdrant_url.trim_end_matches('/')
 }
 
-/// Validate a Qdrant collection name against URL path injection.
-pub(crate) fn validate_collection_name(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
-        return Err("empty");
-    }
-    if name.len() > 255 {
-        return Err("exceeds 255 characters");
-    }
-    if name == "." || name == ".." || name.starts_with('.') || name.ends_with('.') {
-        return Err("leading/trailing dot or path component");
-    }
-    if name.contains("..") {
-        return Err("contains '..'");
-    }
-    for c in name.chars() {
-        let ok = c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.');
-        if !ok {
-            return Err("contains a character outside [A-Za-z0-9_.-]");
-        }
-    }
-    Ok(())
+pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
+    crate::crates::core::config::validate_collection_name(name)
 }
 
 pub(crate) fn validate_config_collection(cfg: &Config) -> Result<()> {

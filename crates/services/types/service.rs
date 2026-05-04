@@ -480,9 +480,11 @@ pub struct IngestJobResult {
     pub payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScreenshotResult {
-    pub payload: serde_json::Value,
+    pub url: String,
+    pub path: String,
+    pub size_bytes: u64,
 }
 
 // ── Job list pagination ──────────────────────────────────────────────────

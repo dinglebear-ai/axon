@@ -1,0 +1,40 @@
+mod checks;
+
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+
+#[derive(Debug, Parser)]
+#[command(name = "xtask", about = "Axon repository maintenance checks")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Run all repository checks.
+    Check,
+    /// Enforce modern Rust module layout.
+    CheckNoModRs,
+    /// Verify MCP HTTP transport support.
+    CheckMcpHttp,
+    /// Reject staged secret env files.
+    CheckEnvStaged,
+    /// Warn about newly staged unwrap/expect calls.
+    CheckUnwraps,
+    /// Verify AGENTS.md/GEMINI.md symlinks next to CLAUDE.md files.
+    CheckClaudeSymlinks,
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    let root = std::env::current_dir()?;
+    match cli.command {
+        Command::Check => checks::check(&root),
+        Command::CheckNoModRs => checks::no_mod_rs::check(&root),
+        Command::CheckMcpHttp => checks::mcp_http::check(&root),
+        Command::CheckEnvStaged => checks::env_staged::check(&root),
+        Command::CheckUnwraps => checks::unwraps::check(&root),
+        Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
+    }
+}

@@ -8,8 +8,32 @@ use std::error::Error;
 
 // --- Pure mapping helper (no I/O, testable without live services) ---
 
-pub fn map_screenshot_result(payload: serde_json::Value) -> ScreenshotResult {
-    ScreenshotResult { payload }
+#[derive(Debug, thiserror::Error)]
+#[error("screenshot payload parse error: {0}")]
+pub struct ScreenshotPayloadError(String);
+
+pub fn map_screenshot_result(
+    payload: &serde_json::Value,
+) -> Result<ScreenshotResult, ScreenshotPayloadError> {
+    let url = payload
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| ScreenshotPayloadError("missing url".into()))?
+        .to_string();
+    let path = payload
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| ScreenshotPayloadError("missing path".into()))?
+        .to_string();
+    let size_bytes = payload
+        .get("size_bytes")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| ScreenshotPayloadError("missing size_bytes".into()))?;
+    Ok(ScreenshotResult {
+        url,
+        path,
+        size_bytes,
+    })
 }
 
 // --- Service functions ---
@@ -54,14 +78,11 @@ pub async fn screenshot_capture(
     }
     tokio::fs::write(&path, &bytes).await?;
 
-    let size_bytes = bytes.len() as u64;
-    let payload = serde_json::json!({
-        "url": normalized,
-        "path": path.to_string_lossy(),
-        "size_bytes": size_bytes,
-    });
-
-    Ok(map_screenshot_result(payload))
+    Ok(ScreenshotResult {
+        url: normalized.to_string(),
+        path: path.to_string_lossy().into_owned(),
+        size_bytes: bytes.len() as u64,
+    })
 }
 
 async fn capture_screenshot_bytes(

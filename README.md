@@ -4,7 +4,7 @@
 
 Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
 
-Version: 1.3.1 | License: MIT
+Version: 1.3.2 | License: MIT
 
 ---
 
@@ -826,8 +826,6 @@ The web UI is served separately by `apps/web` at port 49010.
 
 ```bash
 cargo run --bin axon -- serve
-# or:
-just serve
 ```
 
 ---
@@ -1205,34 +1203,23 @@ Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
 
 ### Docker Compose Stack
 
-The stack is split into two compose files sharing the `axon` bridge network:
+The local stack uses one tracked compose file for infrastructure services on
+the `axon` bridge network:
 
 | File | Contents |
 |---|---|
-| `config/docker-compose.services.yaml` | Infrastructure services (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome) |
-| `docker-compose.yaml` | App containers (workers, web UI) |
+| `config/docker-compose.services.yaml` | Infrastructure services (Qdrant, TEI, Chrome) |
 | `docker-compose.gpu.yaml` | GPU override — layer on top of services file on NVIDIA hosts |
 
 Infrastructure services:
 
 | Service | Image | Port | Purpose |
 |---|---|---|---|
-| `axon-postgres` | postgres:17-alpine | `53432` | Job persistence and state |
-| `axon-redis` | redis:8.2-alpine | `53379` | Queue state, cancellation flags |
-| `axon-rabbitmq` | rabbitmq:4.0-management | `45535` | AMQP job queue delivery |
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | `53333` (REST), `53334` (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | `52000` | Embedding generation (NVIDIA GPU) |
 | `axon-chrome` | built from `config/chrome/Dockerfile` | `9222` (CDP), `6000` (management) | Headless browser for JavaScript rendering |
-| `axon-ollama` | ollama/ollama:0.6.5 | `11434` | Optional local LLM |
 
 All ports are bound to `127.0.0.1` (loopback only) by default.
-
-App containers (for Docker deployment):
-
-| Service | Port | Purpose |
-|---|---|---|
-| `axon-workers` | `49000`, `8001` | Workers + `axon serve` + MCP HTTP |
-| `axon-web` | `49010` | Next.js dashboard |
 
 Start infrastructure:
 
@@ -1243,13 +1230,6 @@ docker compose -f config/docker-compose.services.yaml -f docker-compose.gpu.yaml
 # or: just services-up
 ```
 
-Start app containers (Docker deployment):
-
-```bash
-just up
-# or: ./scripts/rebuild-fresh.sh
-```
-
 Start local development (infra + supervisor process):
 
 ```bash
@@ -1257,10 +1237,10 @@ just dev
 # equivalent to: just services-up && axon serve
 ```
 
-Stop everything:
+Stop infrastructure:
 
 ```bash
-just down-all
+just services-down
 ```
 
 ### Lite Mode
@@ -1499,20 +1479,9 @@ just fix            # cargo fmt + clippy --fix
 ### Local Development Stack
 
 ```bash
-just services-up    # start infra (Postgres, Redis, RabbitMQ, Qdrant, TEI, Chrome)
+just services-up    # start infra (Qdrant, TEI, Chrome)
 just dev            # infra + axon serve supervisor (builds debug binary)
-just serve          # axon serve only (infra must already be running)
-just workers        # run all workers inline
-just stop           # kill running serve, workers, and Next.js processes
-```
-
-### Docker Deployment
-
-```bash
-just up             # build + start app containers
-just down           # stop app containers
-just down-all       # stop everything (app + infra)
-just rebuild-fresh  # clean rebuild and restart
+just stop           # kill running serve and worker processes
 ```
 
 ### MCP Smoke Tests
@@ -1536,9 +1505,9 @@ mcporter --config config/mcporter.json call axon.axon action:artifacts subaction
 ### Web UI Development
 
 ```bash
-just web-dev        # Next.js dev server
-just web-build      # production build
-just web-lint       # lint
+cd apps/web && npm run dev      # Next.js dev server
+cd apps/web && npm run build    # production build
+cd apps/web && npm run lint     # lint
 ```
 
 ### Wrapper Script

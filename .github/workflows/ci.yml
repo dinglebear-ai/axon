@@ -429,36 +429,23 @@ jobs:
 
       - name: Create CI env files for docker compose
         run: |
-          # .env — compose YAML interpolation (read by both compose files)
+          # .env — compose YAML interpolation for config/docker-compose.services.yaml
           {
             echo "AXON_DATA_DIR=./data"
-            echo "HOST_HOME=/home/runner"
-            echo "POSTGRES_USER=axon"
-            echo "POSTGRES_PASSWORD=postgres"
-            echo "POSTGRES_DB=axon"
-            echo "REDIS_PASSWORD=axonredis"
-            echo "RABBITMQ_USER=axon"
-            echo "RABBITMQ_PASS=axonrabbit"
-            echo "AXON_PG_URL=postgresql://axon:postgres@127.0.0.1:53432/axon"
-            echo "AXON_REDIS_URL=redis://:axonredis@axon-redis:6379"
-            echo "AXON_AMQP_URL=amqp://axon:axonrabbit@axon-rabbitmq:5672/%2f"
             echo "QDRANT_URL=http://axon-qdrant:6333"
             echo "TEI_URL=http://localhost:52000"
             echo "AXON_GIT_SHA=$(git rev-parse HEAD)"
           } > .env
-          # services.env — infra container env (postgres, redis, rabbitmq, qdrant)
+          # services.env — infra container env for qdrant/tei/chrome compose.
           {
             echo "AXON_DATA_DIR=./data"
-            echo "POSTGRES_USER=axon"
-            echo "POSTGRES_PASSWORD=postgres"
-            echo "POSTGRES_DB=axon"
-            echo "REDIS_PASSWORD=axonredis"
-            echo "RABBITMQ_USER=axon"
-            echo "RABBITMQ_PASS=axonrabbit"
+            echo "TEI_HTTP_PORT=52000"
+            echo "TEI_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5"
+            echo "HF_TOKEN="
           } > services.env
 
       - name: Start Axon infra
-        run: docker compose -f config/docker-compose.services.yaml up -d axon-postgres axon-redis axon-rabbitmq axon-qdrant
+        run: docker compose -f config/docker-compose.services.yaml up -d axon-qdrant
 
       - name: Start TEI
         run: |
@@ -486,9 +473,6 @@ jobs:
         env:
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
-          AXON_PG_URL: postgresql://axon:postgres@127.0.0.1:53432/axon
-          AXON_REDIS_URL: redis://:axonredis@127.0.0.1:53379
-          AXON_AMQP_URL: amqp://axon:axonrabbit@127.0.0.1:45535/%2f
           AXON_EMBED_STRICT_PREDELETE: "false"
         run: ./target/release/axon embed "docs/MCP.md" --wait true --json
 
@@ -496,9 +480,6 @@ jobs:
         env:
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
-          AXON_PG_URL: postgresql://axon:postgres@127.0.0.1:53432/axon
-          AXON_REDIS_URL: redis://:axonredis@127.0.0.1:53379
-          AXON_AMQP_URL: amqp://axon:axonrabbit@127.0.0.1:45535/%2f
         run: |
           ./target/release/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
@@ -516,9 +497,6 @@ jobs:
         env:
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
-          AXON_PG_URL: postgresql://axon:postgres@127.0.0.1:53432/axon
-          AXON_REDIS_URL: redis://:axonredis@127.0.0.1:53379
-          AXON_AMQP_URL: amqp://axon:axonrabbit@127.0.0.1:45535/%2f
         run: ./scripts/test-mcp-tools-mcporter.sh
 
       - name: Upload mcporter logs

@@ -46,17 +46,16 @@ async fn screenshot_one(cfg: &Config, url: &str) -> Result<(), Box<dyn Error>> {
 
     let result = screenshot_capture(cfg, &normalized).await?;
 
-    let size = result.payload["size_bytes"].as_u64().unwrap_or(0);
-    let path_str = result.payload["path"].as_str().unwrap_or("");
-
     if cfg.json_output {
-        println!("{}", result.payload);
+        println!("{}", serde_json::to_string(&result)?);
         log_done(&format!(
-            "command=screenshot url={normalized} bytes={size} format=png"
+            "command=screenshot url={normalized} bytes={} format=png",
+            result.size_bytes
         ));
     } else {
         log_done(&format!(
-            "saved: {path_str} ({size} bytes) url={normalized} format=png"
+            "saved: {} ({} bytes) url={normalized} format=png",
+            result.path, result.size_bytes
         ));
     }
 

@@ -52,7 +52,7 @@ pub(super) fn validate_mcp_urls(urls: &[String]) -> Result<(), ErrorData> {
 
 pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorData> {
     let collection = collection.trim();
-    crate::crates::vector::ops::qdrant::validate_collection_name(collection)
+    crate::crates::core::config::validate_collection_name(collection)
         .map_err(|reason| invalid_params(format!("invalid collection name: {reason}")))?;
     Ok(collection.to_string())
 }

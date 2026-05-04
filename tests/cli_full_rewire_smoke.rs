@@ -287,15 +287,15 @@ fn smoke_map_ingest_result_wraps_sessions_payload() {
 use axon::crates::services::screenshot::map_screenshot_result;
 
 #[test]
-fn smoke_map_screenshot_result_wraps_payload() {
+fn smoke_map_screenshot_result_returns_typed_fields() {
     let payload = serde_json::json!({
         "url": "https://example.com",
         "path": "/output/screenshots/example.png",
         "size_bytes": 204800
     });
-    let result: ScreenshotResult = map_screenshot_result(payload.clone());
-    assert_eq!(result.payload["size_bytes"], 204800);
-    assert_eq!(result.payload["url"], "https://example.com");
+    let result: ScreenshotResult = map_screenshot_result(&payload).unwrap();
+    assert_eq!(result.size_bytes, 204800);
+    assert_eq!(result.url, "https://example.com");
 }
 
 // ── services::types — Pagination and options types are constructible ──────────

@@ -77,29 +77,14 @@ impl AxonMcpServer {
         cfg.screenshot_full_page = full_page;
         cfg.output_path = Some(output_path.clone());
 
-        let mut shot = crate::crates::services::screenshot::screenshot_capture(&cfg, &url)
+        let shot = crate::crates::services::screenshot::screenshot_capture(&cfg, &url)
             .await
             .map_err(|e| logged_internal_error("screenshot", e.as_ref()))?;
 
-        let (size_bytes, normalized, path) = if let Some(map) = shot.payload.as_object_mut() {
-            (
-                map.remove("size_bytes").unwrap_or(serde_json::json!(0)),
-                map.remove("url").unwrap_or_else(|| serde_json::json!(url)),
-                map.remove("path")
-                    .unwrap_or_else(|| serde_json::json!(output_path)),
-            )
-        } else {
-            (
-                serde_json::json!(0),
-                serde_json::json!(url),
-                serde_json::json!(output_path),
-            )
-        };
-
         let payload = serde_json::json!({
-            "url": normalized,
-            "path": path,
-            "size_bytes": size_bytes,
+            "url": shot.url,
+            "path": shot.path,
+            "size_bytes": shot.size_bytes,
             "full_page": full_page,
             "viewport": format!("{}x{}", width, height),
         });

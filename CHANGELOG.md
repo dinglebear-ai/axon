@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-05-04
+
+### Added
+- Added the initial `xtask` workspace scaffold and cargo alias for portable repo checks.
+
+### Changed
+- Consolidated collection-name validation across config parsing, MCP, and Qdrant request paths.
+- Updated docs and CI to use the tracked `config/docker-compose.services.yaml` infrastructure stack.
+
+### Fixed
+- Migrated screenshot service results from raw JSON pass-through to a typed `url`/`path`/`size_bytes` contract.
+
 ## [1.3.1] - 2026-05-04
 
 ### Fixed

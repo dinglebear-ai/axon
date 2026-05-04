@@ -72,8 +72,8 @@ mkdir -p ~/.local/share/axon/axon/{postgres,redis,rabbitmq,qdrant,output,artifac
 ### Infrastructure (Docker)
 
 ```bash
-docker compose -f docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome
-docker compose -f docker-compose.services.yaml ps
+docker compose -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose -f config/docker-compose.services.yaml ps
 ```
 
 ### Workers (local processes)
@@ -81,10 +81,10 @@ docker compose -f docker-compose.services.yaml ps
 **All at once (recommended):**
 
 ```bash
-just workers
+just dev
 ```
 
-This starts crawl, embed, extract, ingest, and refresh workers in parallel with a shared exit trap.
+This starts the local supervisor, including the MCP HTTP server and in-process workers.
 
 **Or each in its own terminal or tmux pane:**
 
@@ -93,7 +93,6 @@ cargo run --bin axon -- crawl worker
 cargo run --bin axon -- embed worker
 cargo run --bin axon -- extract worker
 cargo run --bin axon -- ingest worker
-cargo run --bin axon -- refresh worker
 ```
 
 ### Web frontend (local process)
@@ -126,7 +125,7 @@ Current `just dev` behavior:
 Workers run in-process locally — output goes to the terminal directly. For infra containers:
 
 ```bash
-docker compose -f docker-compose.services.yaml logs -f axon-qdrant axon-tei axon-chrome
+docker compose -f config/docker-compose.services.yaml logs -f axon-qdrant axon-tei axon-chrome
 ```
 
 ## Health Checks
@@ -137,12 +136,12 @@ Expected healthy Docker containers (infra only):
 - `axon-tei`
 - `axon-chrome`
 
-Workers and web frontend are local processes — verify they are running in their respective terminals (or via `just workers`).
+Workers and web frontend are local processes — verify they are running in their respective terminals (or via `just dev`).
 
 Quick checks:
 
 ```bash
-docker compose ps
+docker compose -f config/docker-compose.services.yaml ps
 ./scripts/axon status
 ```
 
@@ -192,7 +191,7 @@ The `github`, `reddit`, and `youtube` ingest commands were unified into `axon in
 
 ### Jobs stuck in `pending`
 
-1. Confirm worker processes are running (check your terminal/tmux pane or `just workers` output).
+1. Confirm worker processes are running (check your terminal/tmux pane or `just dev` output).
 
 2. Confirm AMQP and DB reachable:
 
@@ -204,14 +203,13 @@ The `github`, `reddit`, and `youtube` ingest commands were unified into `axon in
 
 ```bash
 # All at once:
-just workers
+just dev
 
 # Or individually (each in its own terminal):
 cargo run --bin axon -- crawl worker
 cargo run --bin axon -- embed worker
 cargo run --bin axon -- extract worker
 cargo run --bin axon -- ingest worker
-cargo run --bin axon -- refresh worker
 ```
 
 ### Jobs stuck in `running`
@@ -277,39 +275,12 @@ Cleanup caution:
 - `clear` and aggressive cleanup commands are destructive.
 - Use `list` and `status` first.
 
-Cache and build-context guardrails:
-
-```bash
-# inspect local target/ + BuildKit cache sizes
-just cache-status
-
-# enforce size thresholds (prunes incremental/target and/or BuildKit cache)
-just cache-prune
-
-# run live Docker context-size probe for axon-workers + axon-web
-just docker-context-probe
-```
-
-Threshold tuning (optional):
-
-- `AXON_TARGET_MAX_GB` (default `30`)
-- `AXON_BUILDKIT_MAX_GB` (default `120`)
-- `AXON_WORKERS_CONTEXT_MAX_MB` (default `500`)
-- `AXON_WEB_CONTEXT_MAX_MB` (default `100`)
-- `AXON_CONTEXT_PROBE_TIMEOUT_SECS` (default `30`)
-
-`scripts/rebuild-fresh.sh` runs cache guard + context probe automatically unless disabled:
-
-- `AXON_AUTO_CACHE_GUARD=false`
-- `AXON_ENFORCE_DOCKER_CONTEXT_PROBE=false`
-
 ### Test infrastructure data
 
-Test containers use a separate `docker-compose.test.yaml` and store data in ephemeral volumes. Destroy test data with:
+Test infrastructure uses the repo test recipes and stores data in ephemeral volumes. Destroy test data with:
 
 ```bash
-just test-infra-down    # stops containers and wipes volumes
-just test-infra-up      # start fresh
+just test-infra         # run ignored worker e2e infrastructure tests
 ```
 
 ## Logs and Diagnostics
@@ -317,9 +288,7 @@ just test-infra-up      # start fresh
 Primary logs:
 
 ```bash
-docker compose logs -f axon-workers
-docker compose -f docker-compose.services.yaml logs -f axon-rabbitmq
-docker compose -f docker-compose.services.yaml logs -f axon-qdrant
+docker compose -f config/docker-compose.services.yaml logs -f axon-qdrant
 ```
 
 Structured app logs are written under mounted logs volume for workers.
@@ -334,7 +303,7 @@ Chrome diagnostics:
 Graceful shutdown:
 
 ```bash
-docker compose down
+docker compose -f config/docker-compose.services.yaml down
 ```
 
 If draining is needed first:
@@ -344,13 +313,12 @@ If draining is needed first:
 3. Cancel remaining long-running jobs if required.
 4. Bring stack down.
 
-To stop only local worker processes started with `just workers` or `just dev`, use `Ctrl+C` in the terminal running them — the EXIT trap kills all spawned processes cleanly.
+To stop local worker processes started with `just dev`, use `Ctrl+C` in the terminal running it — the EXIT trap kills spawned processes cleanly.
 
 ## Source Map
 
-- `docker-compose.yaml`
-- `docker-compose.services.yaml`
-- `docker-compose.test.yaml`
+- `config/docker-compose.services.yaml`
+- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `Justfile`
 - `README.md`

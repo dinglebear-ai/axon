@@ -70,32 +70,9 @@ pub(super) fn default_sqlite_path() -> std::path::PathBuf {
         .join("jobs.db")
 }
 
-/// Reject collection names that would corrupt Qdrant URL paths when interpolated via
-/// `format!()`. Allows letters, digits, underscore, dash, and dot; bounded to 1–255 chars.
 pub(super) fn validate_collection_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("collection name must not be empty".to_string());
-    }
-    if name.len() > 255 {
-        return Err(format!(
-            "collection name too long ({} chars, max 255)",
-            name.len()
-        ));
-    }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        return Err(format!(
-            "collection name '{name}' contains invalid characters; \
-             only [A-Za-z0-9_.-] are allowed"
-        ));
-    }
-    // Defence-in-depth against path traversal even within the allowed charset.
-    if name == "." || name == ".." || name.starts_with("..") {
-        return Err(format!("collection name '{name}' is reserved"));
-    }
-    Ok(())
+    crate::crates::core::config::validation::validate_collection_name(name)
+        .map_err(|err| format!("invalid collection name {name:?}: {err}"))
 }
 
 /// Validate `--header "K: V"` entries before they reach the request layer.
