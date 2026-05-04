@@ -23,20 +23,30 @@ pub fn axon_data_base_dir() -> PathBuf {
     })
 }
 
-/// Returns `~/.axon/` when HOME is set, otherwise `None`.
+/// Returns `~/.axon/` when HOME is set to an absolute path, otherwise `None`.
 ///
 /// Unlike `axon_data_base_dir()`, this returns `None` rather than falling
 /// back to `/tmp` — `/tmp` is world-readable/writable and must not be used
 /// as a config home (e.g. in systemd units, Docker containers, or CI runners
 /// where HOME is unset).
 ///
+/// A non-absolute HOME (e.g. `../somewhere`) would produce a relative config
+/// path, enabling path traversal. We reject it with a warning and return `None`.
+///
 /// Callers should skip config loading silently when this returns `None`.
 pub fn axon_home_dir() -> Option<PathBuf> {
-    std::env::var("HOME")
+    let home = std::env::var("HOME")
         .ok()
         .map(|h| h.trim().to_string())
-        .filter(|h| !h.is_empty())
-        .map(|h| PathBuf::from(h).join(".axon"))
+        .filter(|h| !h.is_empty())?;
+
+    let home_path = PathBuf::from(&home);
+    if !home_path.is_absolute() {
+        eprintln!("axon: warning: HOME is not an absolute path ({home:?}); skipping config home");
+        return None;
+    }
+
+    Some(home_path.join(".axon"))
 }
 
 /// Returns `~/.axon/config.toml` when HOME is set, otherwise `None`.
@@ -119,5 +129,23 @@ mod tests {
             None => unsafe { std::env::remove_var("HOME") },
         }
         assert_eq!(result, None);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_home_dir_returns_none_when_home_is_relative() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", "../relative/path") };
+        let result = axon_home_dir();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        assert_eq!(
+            result, None,
+            "relative HOME should return None to prevent path traversal"
+        );
     }
 }
