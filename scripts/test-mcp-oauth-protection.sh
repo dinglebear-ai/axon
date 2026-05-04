@@ -68,7 +68,7 @@ assert_www_authenticate_present() {
   GOOGLE_OAUTH_REDIRECT_HOST="localhost" \
   AXON_MCP_HTTP_HOST="${HOST}" \
   AXON_MCP_HTTP_PORT="${PORT}" \
-  cargo run --quiet --bin axon -- mcp
+  cargo run --quiet --bin axon -- mcp --transport http
 ) >"${LOG_FILE}" 2>&1 &
 SERVER_PID=$!
 
