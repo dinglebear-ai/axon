@@ -180,6 +180,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
     };
 
+    // Completions emits shell completion scripts from static CLI metadata only —
+    // no service URLs, TOML config, or collection validation needed. Return early
+    // so `axon completions` works without any environment configured. This means
+    // AXON_CONFIG_PATH parse errors and invalid collections are intentionally
+    // not checked for this subcommand.
     if matches!(command, CommandKind::Completions) {
         return Ok(Config {
             command,
@@ -501,7 +506,7 @@ mod tests {
     use std::env;
     use std::io::Write as _;
     use std::sync::Mutex;
-    use tempfile::NamedTempFile;
+    use tempfile::Builder as TempfileBuilder;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -690,7 +695,7 @@ mod tests {
     #[test]
     fn toml_chunk_limit_wins_over_default() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[ask]\nchunk-limit = 5").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();
@@ -722,7 +727,7 @@ mod tests {
     #[test]
     fn env_wins_over_toml_for_ask_chunk_limit() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[ask]\nchunk-limit = 5").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();
@@ -754,7 +759,7 @@ mod tests {
     #[test]
     fn toml_hybrid_disabled_wins_over_default() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[search]\nhybrid-enabled = false").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();
@@ -785,7 +790,7 @@ mod tests {
     #[test]
     fn env_wins_over_toml_for_hybrid_enabled() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[search]\nhybrid-enabled = false").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();
@@ -816,7 +821,7 @@ mod tests {
     #[test]
     fn toml_ask_candidate_limit_wins_over_default() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[ask]\ncandidate-limit = 50").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();
@@ -848,7 +853,7 @@ mod tests {
     #[test]
     fn toml_ask_min_relevance_score_wins_over_default() {
         let _guard = ENV_LOCK.lock().unwrap();
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
         writeln!(f, "[ask]\nmin-relevance-score = 0.7").unwrap();
 
         let saved = env::var("AXON_CONFIG_PATH").ok();

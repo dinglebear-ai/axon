@@ -89,23 +89,35 @@ pub(super) struct TomlWorkersSection {
 /// - File present, other I/O error → warn to stderr, `Ok(TomlConfig::default())`
 /// - File present, parse error → `Err(...)` with path + line number (caller hard-fails)
 pub(super) fn load_toml_config() -> Result<TomlConfig, String> {
-    let path = resolve_config_path();
+    let path = resolve_config_path()?;
     let Some(path) = path else {
         return Ok(TomlConfig::default());
     };
     load_from_path(&path)
 }
 
-fn resolve_config_path() -> Option<PathBuf> {
+fn resolve_config_path() -> Result<Option<PathBuf>, String> {
     // Explicit override takes highest priority.
     if let Ok(v) = std::env::var("AXON_CONFIG_PATH") {
         let trimmed = v.trim().to_string();
         if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
+            let path = PathBuf::from(&trimmed);
+            // Require .toml extension: prevents accidental probing of arbitrary
+            // file paths (e.g. /etc/passwd) and keeps parse error messages
+            // informative without disclosing unexpected system files.
+            if !path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+            {
+                return Err(format!(
+                    "axon: error: AXON_CONFIG_PATH must point to a .toml file: {trimmed:?}"
+                ));
+            }
+            return Ok(Some(path));
         }
     }
     // Fall back to ~/.axon/config.toml (None when HOME is unset).
-    axon_config_path()
+    Ok(axon_config_path())
 }
 
 fn load_from_path(path: &Path) -> Result<TomlConfig, String> {
@@ -239,6 +251,31 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
             None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
         }
-        assert_eq!(path, Some(PathBuf::from("/tmp/custom_axon_config.toml")));
+        assert_eq!(
+            path.unwrap(),
+            Some(PathBuf::from("/tmp/custom_axon_config.toml"))
+        );
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_config_path_non_toml_extension_returns_err() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = std::env::var("AXON_CONFIG_PATH").ok();
+        unsafe { std::env::set_var("AXON_CONFIG_PATH", "/etc/passwd") };
+        let result = resolve_config_path();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("AXON_CONFIG_PATH", v) },
+            None => unsafe { std::env::remove_var("AXON_CONFIG_PATH") },
+        }
+        assert!(
+            result.is_err(),
+            "non-.toml AXON_CONFIG_PATH should return Err"
+        );
+        assert!(
+            result.err().unwrap().contains("AXON_CONFIG_PATH"),
+            "error should mention AXON_CONFIG_PATH"
+        );
     }
 }
