@@ -1,4 +1,5 @@
 pub mod cancel;
+pub mod config_snapshot;
 pub mod ops;
 pub mod query;
 pub mod store;
@@ -133,30 +134,27 @@ impl JobBackend for LiteBackend {
     }
 
     async fn job_status(&self, id: JobId, kind: JobKind) -> BackendResult<Option<JobStatusRow>> {
-        Ok(query::job_status_row(&self.pool, kind.table_name(), id).await?)
+        Ok(query::job_status_row(&self.pool, kind, id).await?)
     }
 
     async fn cancel_job(&self, id: JobId, kind: JobKind) -> BackendResult<bool> {
-        Ok(self
-            .cancel_store
-            .cancel(id, &self.pool, kind.table_name())
-            .await?)
+        Ok(self.cancel_store.cancel(id, &self.pool, kind).await?)
     }
 
     async fn list_jobs(&self, kind: JobKind) -> BackendResult<Vec<JobSummary>> {
-        Ok(query::list_jobs(&self.pool, kind.table_name()).await?)
+        Ok(query::list_jobs(&self.pool, kind).await?)
     }
 
     async fn cleanup_jobs(&self, kind: JobKind) -> BackendResult<u64> {
-        Ok(query::cleanup_jobs(&self.pool, kind.table_name()).await?)
+        Ok(query::cleanup_jobs(&self.pool, kind).await?)
     }
 
     async fn clear_jobs(&self, kind: JobKind) -> BackendResult<u64> {
-        Ok(query::clear_jobs(&self.pool, kind.table_name()).await?)
+        Ok(query::clear_jobs(&self.pool, kind).await?)
     }
 
     async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>> {
-        Ok(query::job_errors(&self.pool, kind.table_name(), id).await?)
+        Ok(query::job_errors(&self.pool, kind, id).await?)
     }
 }
 

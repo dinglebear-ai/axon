@@ -5,9 +5,11 @@ use crate::crates::core::http::normalize_url;
 use std::collections::HashSet;
 use text_splitter::{ChunkConfig, MarkdownSplitter};
 
+/// Overlap in characters shared between adjacent chunks.
+pub const CHUNK_OVERLAP: usize = 200;
+
 pub fn chunk_text(text: &str) -> Vec<String> {
     const MAX: usize = 2000;
-    const OVERLAP: usize = 200;
 
     // Fast-path: avoid the 800 KB Vec<usize> allocation for short documents.
     if text.chars().count() <= MAX {
@@ -30,7 +32,7 @@ pub fn chunk_text(text: &str) -> Vec<String> {
         if end == char_count {
             break;
         }
-        i = end.saturating_sub(OVERLAP);
+        i = end.saturating_sub(CHUNK_OVERLAP);
     }
     out
 }
@@ -46,8 +48,8 @@ pub fn chunk_text(text: &str) -> Vec<String> {
 /// Use `chunk_text()` for plain text (Reddit posts, YouTube transcripts).
 pub fn chunk_markdown(text: &str) -> Vec<String> {
     let config = ChunkConfig::new(500..2000)
-        .with_overlap(200)
-        .expect("overlap 200 < min capacity 500");
+        .with_overlap(CHUNK_OVERLAP)
+        .expect("CHUNK_OVERLAP < max chunk size");
     MarkdownSplitter::new(config)
         .chunks(text)
         .map(|c| c.to_string())

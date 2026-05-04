@@ -3,6 +3,7 @@ use super::enums::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
     RedditTime, RenderMode, ScrapeFormat,
 };
+use super::subconfigs::AskConfig;
 use std::env;
 use std::fmt;
 use std::path::PathBuf;
@@ -102,11 +103,11 @@ impl Default for Config {
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
-            ask_authoritative_allowlist: vec![],
             ask_min_citations_nontrivial: 2,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
             ask_hybrid_candidates: 150,
+            evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
             watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
@@ -144,12 +145,32 @@ impl Default for Config {
             screenshot_full_page: true,
             viewport_width: 1920,
             viewport_height: 1080,
-            mcp_transport: McpTransport::Http,
-            mcp_http_host: "0.0.0.0".to_string(),
+            mcp_transport: McpTransport::Stdio,
+            mcp_http_host: "127.0.0.1".to_string(),
             mcp_http_port: 8001,
             custom_headers: vec![],
             quiet: false,
             log_level: None,
+        }
+    }
+}
+
+impl Config {
+    pub(crate) fn ask_config(&self) -> AskConfig {
+        AskConfig {
+            ask_max_context_chars: self.ask_max_context_chars,
+            ask_candidate_limit: self.ask_candidate_limit,
+            ask_chunk_limit: self.ask_chunk_limit,
+            ask_full_docs: self.ask_full_docs,
+            ask_backfill_chunks: self.ask_backfill_chunks,
+            ask_doc_fetch_concurrency: self.ask_doc_fetch_concurrency,
+            ask_doc_chunk_limit: self.ask_doc_chunk_limit,
+            ask_min_relevance_score: self.ask_min_relevance_score,
+            ask_authoritative_domains: self.ask_authoritative_domains.clone(),
+            ask_authoritative_boost: self.ask_authoritative_boost,
+            ask_min_citations_nontrivial: self.ask_min_citations_nontrivial,
+            ask_diagnostics: self.ask_diagnostics,
+            ask_hybrid_candidates: self.ask_hybrid_candidates,
         }
     }
 }
@@ -214,6 +235,8 @@ impl fmt::Debug for Config {
             .field("drop_thin_markdown", &self.drop_thin_markdown)
             .field("discover_sitemaps", &self.discover_sitemaps)
             .field("sitemap_since_days", &self.sitemap_since_days)
+            .field("map_fallback", &self.map_fallback)
+            .field("max_sitemaps", &self.max_sitemaps)
             .field("cache", &self.cache)
             .field("cache_skip_browser", &self.cache_skip_browser)
             .field("format", &self.format)
@@ -277,16 +300,13 @@ impl fmt::Debug for Config {
             .field("ask_authoritative_domains", &self.ask_authoritative_domains)
             .field("ask_authoritative_boost", &self.ask_authoritative_boost)
             .field(
-                "ask_authoritative_allowlist",
-                &self.ask_authoritative_allowlist,
-            )
-            .field(
                 "ask_min_citations_nontrivial",
                 &self.ask_min_citations_nontrivial,
             )
             .field("hybrid_search_enabled", &self.hybrid_search_enabled)
             .field("hybrid_search_candidates", &self.hybrid_search_candidates)
             .field("ask_hybrid_candidates", &self.ask_hybrid_candidates)
+            .field("evaluate_retrieval_ab", &self.evaluate_retrieval_ab)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)
             .field(

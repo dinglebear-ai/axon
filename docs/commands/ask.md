@@ -90,7 +90,6 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 | `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Total context characters; raise for large-context models |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
-| `AXON_ASK_AUTHORITATIVE_ALLOWLIST` | `` | Optional strict domain allowlist for retrieval candidates |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |
 
 ## Notes

@@ -83,6 +83,17 @@ The job operations interface consumed by `ServiceContext.jobs`:
 
 `resolve_runtime(cfg)` in `runtime.rs` constructs `LiteServiceRuntime` (wraps `LiteBackend`).
 
+### LiteBackend construction modes
+
+`LiteBackend` has **two** construction modes — workers do **not** spawn unconditionally:
+
+| Constructor | Workers? | Used by |
+|-------------|----------|---------|
+| `LiteBackend::new(cfg)` | **No** — enqueue-only | CLI commands that just enqueue/inspect jobs (status, list, cancel, fire-and-forget submit), all `ServiceContext::new(cfg)` callers |
+| `LiteBackend::new_with_workers(cfg)` | **Yes** — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest) | `ServiceContext::new_with_workers(cfg)`: serve, MCP server, web routes, sync `--wait true` CLI paths that need a worker to drain the queue |
+
+CLI fire-and-forget contexts must use `new()`. Spawning workers in a short-lived CLI process orphans claimed jobs when the process exits before they finish.
+
 ## Architecture Contract
 
 **Rule:** CLI handlers, MCP handlers, and web API routes call **service functions only** — never raw `crates/vector/ops/*` or `crates/jobs/*` functions directly.

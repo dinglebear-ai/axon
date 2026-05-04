@@ -320,15 +320,20 @@ pub fn handle_job_recover(
     Ok(())
 }
 
-/// Handle the result of `job_service::run_worker(cfg, kind).await?`.
+/// Handle the result of `job_service::start_worker(cfg, kind).await?`.
 ///
 /// Prints a message in lite mode (workers are in-process) and propagates
 /// any `Unsupported` error. Extracted to eliminate the identical 5-arm match
 /// block that appears in every command's `"worker"` subcommand handler.
 pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
     match mode {
-        WorkerMode::InProcess => {
-            println!("Lite mode: queue drained.")
+        WorkerMode::InProcess {
+            pending_at_start,
+            elapsed_secs,
+        } => {
+            println!(
+                "Lite mode: queue drained — {pending_at_start} pending at start, {elapsed_secs}s elapsed."
+            );
         }
         WorkerMode::Started => {}
         WorkerMode::Unsupported(message) => return Err(message.into()),

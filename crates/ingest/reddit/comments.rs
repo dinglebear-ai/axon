@@ -1,7 +1,8 @@
-use super::client::fetch_reddit_json;
+use super::client::fetch_reddit_json_with_cancel;
 use super::types::CommentWithContext;
 use crate::crates::core::config::Config;
 use std::error::Error;
+use tokio_util::sync::CancellationToken;
 
 /// Recursively traverse a Reddit comment tree up to max_depth, filtering by min_score.
 /// Borrows from `data` -- no cloning of JSON subtrees. Only the body text string is
@@ -61,6 +62,7 @@ pub(super) async fn fetch_thread_comments(
     cfg: &Config,
     token: &str,
     permalink: &str,
+    cancel_token: Option<&CancellationToken>,
 ) -> Result<Vec<CommentWithContext>, Box<dyn Error>> {
     let clean = permalink.trim_end_matches('/');
     let json_url = format!(
@@ -68,7 +70,7 @@ pub(super) async fn fetch_thread_comments(
         cfg.reddit_depth.max(1)
     );
 
-    let resp = fetch_reddit_json(&json_url, token).await?;
+    let resp = fetch_reddit_json_with_cancel(&json_url, token, cancel_token).await?;
 
     let mut comments = Vec::new();
     if let Some(data) = resp[1].get("data") {

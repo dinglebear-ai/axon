@@ -2,7 +2,8 @@ use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
     map_scrape_format, paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options,
-    to_pagination, to_retrieve_options, to_search_options, validate_mcp_url,
+    to_pagination, to_retrieve_options, to_search_options, validate_mcp_collection,
+    validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -28,13 +29,16 @@ impl AxonMcpServer {
 
         let mut cfg = self.cfg.as_ref().clone();
         if let Some(collection) = req.collection {
-            cfg.collection = collection;
+            cfg.collection = validate_mcp_collection(&collection)?;
         }
         if let Some(since) = req.since {
             cfg.since = Some(since);
         }
         if let Some(before) = req.before {
             cfg.before = Some(before);
+        }
+        if let Some(enabled) = req.hybrid_search {
+            cfg.hybrid_search_enabled = enabled;
         }
 
         let result = query_svc::query(&cfg, &query, pagination)
@@ -50,7 +54,7 @@ impl AxonMcpServer {
                 "query": query,
                 "limit": limit,
                 "offset": offset,
-                "results": result.results,
+                "results": serde_json::to_value(&result.results).map_err(|e| internal_error(format!("serialize query results: {e}")))?,
             }),
             InlineHint::Default,
         )
@@ -66,25 +70,20 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("url is required for retrieve"))?;
         let response_mode = req.response_mode;
         let opts = to_retrieve_options(req.max_points);
-        let result = query_svc::retrieve(self.cfg.as_ref(), &target, opts)
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(collection) = req.collection {
+            cfg.collection = validate_mcp_collection(&collection)?;
+        }
+        if let Some(since) = req.since {
+            cfg.since = Some(since);
+        }
+        if let Some(before) = req.before {
+            cfg.before = Some(before);
+        }
+
+        let result = query_svc::retrieve(&cfg, &target, opts)
             .await
             .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
-        // chunks is a Vec<Value> of 0 or 1 items; the actual Qdrant point count
-        // lives inside result.chunks[0]["chunk_count"], not in Vec::len().
-        let chunk_count = result
-            .chunks
-            .first()
-            .and_then(|c| c.get("chunk_count"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
-        let content = result
-            .chunks
-            .first()
-            .and_then(|c| c.get("content"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
         respond_with_mode(
             "retrieve",
             "retrieve",
@@ -92,8 +91,8 @@ impl AxonMcpServer {
             &format!("retrieve-{}", slugify(&target, 56)),
             serde_json::json!({
                 "url": target,
-                "chunks": chunk_count,
-                "content": content,
+                "chunks": result.chunk_count,
+                "content": result.content,
             }),
             InlineHint::AlwaysPath,
         )
@@ -278,13 +277,16 @@ impl AxonMcpServer {
             cfg.ask_diagnostics = diagnostics;
         }
         if let Some(collection) = req.collection {
-            cfg.collection = collection;
+            cfg.collection = validate_mcp_collection(&collection)?;
         }
         if let Some(since) = req.since {
             cfg.since = Some(since);
         }
         if let Some(before) = req.before {
             cfg.before = Some(before);
+        }
+        if let Some(enabled) = req.hybrid_search {
+            cfg.hybrid_search_enabled = enabled;
         }
 
         let result = query_svc::ask(&cfg, &query, None)
@@ -296,7 +298,8 @@ impl AxonMcpServer {
             "ask",
             response_mode,
             &format!("ask-{}", slugify(&query, 56)),
-            result.payload,
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize ask result: {e}")))?,
             InlineHint::Fields(&["answer"]),
         )
         .await

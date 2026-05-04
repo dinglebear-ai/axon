@@ -5,6 +5,7 @@ use std::error::Error;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
+use crate::crates::jobs::backend::JobKind;
 use crate::crates::jobs::lite::store::open_sqlite_pool;
 
 /// Thin Job struct used for CLI status display via `impl_job_status!`.
@@ -27,5 +28,5 @@ pub struct EmbedJob {
 /// Count all embed jobs in SQLite.
 pub async fn count_embed_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, "axon_embed_jobs").await?)
+    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, JobKind::Embed).await?)
 }

@@ -4,36 +4,17 @@
 
 Axon MCP supports three transport configurations:
 
-| Transport | Auth | Use case | Config value |
-|-----------|------|----------|--------------|
-| stdio | None (process isolation) | Claude Desktop, Codex CLI, local tools | `stdio` |
-| HTTP | OAuth / bearer token | Docker, remote servers, shared access | `http` |
-| Both | Mixed | Serve HTTP while also accepting stdio | `both` |
-
-Set the transport via environment variable:
-
-```bash
-AXON_MCP_TRANSPORT=http  # default
-```
-
-Or via `axon.json`:
-
-```json
-{
-  "mcp": {
-    "transport": "http",
-    "http_host": "0.0.0.0",
-    "http_port": 8001
-  }
-}
-```
+| Transport | Auth | Use case | Command |
+|-----------|------|----------|---------|
+| stdio | None (process isolation) | Claude Desktop, Codex CLI, local tools | `axon mcp` |
+| HTTP | OAuth / bearer token | Docker, remote servers, shared access | `axon serve mcp` |
+| Both | Mixed | Serve HTTP while also accepting stdio | `axon mcp --transport both` |
 
 ## stdio
 
 JSON-RPC messages over stdin/stdout. No network listener, no auth required.
 
 ```bash
-AXON_MCP_TRANSPORT=stdio
 axon mcp
 ```
 
@@ -89,11 +70,13 @@ axon mcp
 Streamable-HTTP transport with MCP protocol support. Uses the `rmcp` crate with `transport-streamable-http-server` feature.
 
 ```bash
-AXON_MCP_TRANSPORT=http
-AXON_MCP_HTTP_HOST=0.0.0.0
+AXON_MCP_HTTP_HOST=127.0.0.1
 AXON_MCP_HTTP_PORT=8001
-axon mcp
+axon serve mcp
 ```
+
+Non-loopback binds such as `0.0.0.0` require `AXON_MCP_HTTP_TOKEN`; tokenless
+HTTP startup is limited to loopback hosts.
 
 ### Endpoints
 
@@ -129,8 +112,7 @@ axon mcp
 Run HTTP transport while also accepting stdio connections.
 
 ```bash
-AXON_MCP_TRANSPORT=both
-axon mcp
+axon mcp --transport both
 ```
 
 This is useful for development: serve HTTP for web clients while also allowing local stdio connections.

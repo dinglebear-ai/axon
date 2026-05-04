@@ -74,7 +74,7 @@ mod tests {
     use crate::crates::core::config::{CommandKind, Config};
     use crate::crates::jobs::backend::JobKind;
     use crate::crates::services::context::ServiceContext;
-    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::runtime::ServiceJobRuntime;
     use async_trait::async_trait;
     use std::error::Error;
     use std::sync::Arc;
@@ -147,12 +147,6 @@ mod tests {
             _kind: JobKind,
             _stale_threshold_ms: i64,
         ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-            unimplemented!()
-        }
-        async fn run_worker(
-            &self,
-            _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
             unimplemented!()
         }
         async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {

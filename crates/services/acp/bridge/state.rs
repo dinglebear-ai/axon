@@ -83,6 +83,10 @@ impl AcpRuntimeState {
     pub(crate) fn apply_config_option_update(&self, update: &SessionUpdate) {
         if let SessionUpdate::ConfigOptionUpdate(u) = update {
             let mapped = map_config_options(&u.config_options);
+            tracing::debug!(
+                option_count = mapped.len(),
+                "acp: runtime config options updated"
+            );
             *self.config_options.borrow_mut() = mapped;
         }
     }
@@ -117,9 +121,11 @@ pub async fn finalize_successful_turn(
     session_id_str: &str,
 ) -> Result<(), String> {
     let stop_reason_str = stop_reason_to_str(stop_reason);
+    let text = runtime_state.assistant_text.borrow().clone();
     tracing::info!(
         session_id = %session_id_str,
         stop_reason = %stop_reason_str,
+        response_bytes = text.len(),
         "acp: turn finalized"
     );
     let log_level = match stop_reason {
@@ -127,6 +133,14 @@ pub async fn finalize_successful_turn(
         StopReason::MaxTokens | StopReason::Refusal | StopReason::Cancelled => LogLevel::Warn,
         _ => LogLevel::Info,
     };
+    if log_level == LogLevel::Warn {
+        tracing::warn!(
+            session_id = %session_id_str,
+            stop_reason = %stop_reason_str,
+            response_bytes = text.len(),
+            "acp: turn ended with non-nominal stop reason"
+        );
+    }
     let msg = format!(
         "ACP runtime: prompt turn completed (stop_reason={stop_reason_str}, session_id={session_id_str})"
     );
@@ -146,7 +160,6 @@ pub async fn finalize_successful_turn(
     );
 
     let session = session_id_str.to_string();
-    let text = runtime_state.assistant_text.borrow().clone();
 
     for (content, op_str) in parse_editor_blocks(&text) {
         let operation = if op_str == "append" {

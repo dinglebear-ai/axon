@@ -4,7 +4,7 @@
 // and map file extensions to human-readable language names.
 /// Extract the file extension from a path, lowercase.
 /// Returns an empty string if no extension is found.
-fn path_extension(path: &str) -> &str {
+pub fn path_extension(path: &str) -> &str {
     // Find the last component (after last `/` or `\`).
     let filename = path
         .rsplit_once('/')

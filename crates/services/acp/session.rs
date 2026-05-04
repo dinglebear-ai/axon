@@ -11,6 +11,7 @@ use agent_client_protocol::{
     SessionConfigOptionCategory, SessionId, SessionModeState, SetSessionConfigOptionRequest,
 };
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use tokio::sync::mpsc;
 use tokio_util::compat::TokioAsyncReadCompatExt;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
@@ -89,7 +90,11 @@ pub(super) fn spawn_adapter_with_io(
         loop {
             line.clear();
             match reader.read_line(&mut line).await {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break,
+                Err(err) => {
+                    tracing::warn!(error = %err, "acp: stderr reader error — stopping capture");
+                    break;
+                }
                 Ok(_) => {
                     let trimmed = line.trim();
                     if trimmed.is_empty() {
@@ -308,6 +313,10 @@ pub(super) async fn initialize_connection(
         let token = match token_result {
             Ok(t) if !t.is_empty() => t,
             _ => {
+                tracing::warn!(
+                    auth_method = %method.id(),
+                    "acp: adapter requires auth but AXON_ACP_AUTH_TOKEN is not set"
+                );
                 let msg =
                     "ACP: adapter requires authentication but AXON_ACP_AUTH_TOKEN is not set; \
                            set this environment variable to a valid auth token and retry"
@@ -399,7 +408,15 @@ pub(super) async fn setup_session(
 > {
     match session_setup {
         AcpSessionSetupRequest::New(new_session) => {
-            validate_cwd_usable(&new_session.cwd)?;
+            if let Err(err) = validate_cwd_usable(&new_session.cwd) {
+                tracing::error!(
+                    cwd = %new_session.cwd.display(),
+                    error = %err,
+                    setup = "new",
+                    "acp: session CWD validation failed"
+                );
+                return Err(err);
+            }
             let msg = "ACP runtime: creating new session".to_string();
             crate::crates::core::logging::log_info(&msg);
             emit(
@@ -414,6 +431,10 @@ pub(super) async fn setup_session(
                 .new_session(new_session)
                 .await
                 .map_err(|e| e.to_string())?;
+            tracing::info!(
+                session_id = %r.session_id.0,
+                "acp: new session created"
+            );
             // Emit initial mode state immediately so the frontend has it at session
             // start rather than waiting for the first ConfigOptionUpdate stream event.
             if let Some(ref mode_state) = r.modes {
@@ -431,9 +452,21 @@ pub(super) async fn setup_session(
             Ok((r.session_id, r.config_options))
         }
         AcpSessionSetupRequest::Load(load_session) => {
-            validate_cwd_usable(&load_session.cwd)?;
+            if let Err(err) = validate_cwd_usable(&load_session.cwd) {
+                tracing::error!(
+                    cwd = %load_session.cwd.display(),
+                    error = %err,
+                    setup = "load",
+                    "acp: session CWD validation failed"
+                );
+                return Err(err);
+            }
             // If the adapter does not support load_session, skip directly to new_session.
             if !load_session_supported {
+                tracing::warn!(
+                    requested_session_id = %load_session.session_id.0,
+                    "acp: adapter does not support load_session; creating new session"
+                );
                 let msg = "ACP runtime: adapter does not support load_session, falling back to new_session".to_string();
                 crate::crates::core::logging::log_warn(&msg);
                 emit(
@@ -452,6 +485,10 @@ pub(super) async fn setup_session(
                     .new_session(fallback_req)
                     .await
                     .map_err(|e| e.to_string())?;
+                tracing::info!(
+                    session_id = %r.session_id.0,
+                    "acp: fallback session created because load_session is unsupported"
+                );
                 // Emit initial mode state so the frontend has it at session start,
                 // matching the behaviour of the AcpSessionSetupRequest::New path.
                 if let Some(ref mode_state) = r.modes {
@@ -469,6 +506,10 @@ pub(super) async fn setup_session(
                 return Ok((r.session_id, r.config_options));
             }
             let msg = "ACP runtime: loading existing session".to_string();
+            tracing::info!(
+                requested_session_id = %load_session.session_id.0,
+                "acp: loading existing session"
+            );
             crate::crates::core::logging::log_info(&msg);
             emit(
                 tx,
@@ -484,8 +525,19 @@ pub(super) async fn setup_session(
             // (already capability-filtered) MCP servers as the failed Load request.
             let fallback_mcp_servers = load_session.mcp_servers.clone();
             match conn.load_session(load_session).await {
-                Ok(r) => Ok((requested_id, r.config_options)),
+                Ok(r) => {
+                    tracing::info!(
+                        session_id = %requested_id.0,
+                        "acp: existing session loaded"
+                    );
+                    Ok((requested_id, r.config_options))
+                }
                 Err(err) => {
+                    tracing::warn!(
+                        requested_session_id = %requested_id.0,
+                        error = %err,
+                        "acp: load_session failed; creating fallback session"
+                    );
                     let msg = format!("ACP load_session failed, falling back: {err}");
                     crate::crates::core::logging::log_warn(&msg);
                     emit(
@@ -504,6 +556,11 @@ pub(super) async fn setup_session(
                         .new_session(fallback_req)
                         .await
                         .map_err(|e| e.to_string())?;
+                    tracing::info!(
+                        old_session_id = %requested_id.0,
+                        new_session_id = %r.session_id.0,
+                        "acp: fallback session created after load_session failure"
+                    );
                     emit(
                         tx,
                         ServiceEvent::AcpBridge {
@@ -646,7 +703,15 @@ async fn apply_model_config(
                 requested_model.as_str(),
             ))
             .await
-            .map_err(|err| format!("failed to set ACP model config: {err}"))?;
+            .map_err(|err| {
+                tracing::warn!(
+                    session_id = %session_id.0,
+                    requested_model = %requested_model,
+                    error = %err,
+                    "acp: failed to set model config"
+                );
+                format!("failed to set ACP model config: {err}")
+            })?;
         let updated = map_config_options(&set_resp.config_options);
         if !updated.is_empty() {
             emit(
@@ -664,19 +729,61 @@ async fn apply_model_config(
     } else {
         // Use the already-computed `requested_model` rather than recomputing
         // `normalized_requested_model(model)` — they produce the same value.
-        let msg = format!("ACP runtime: skipping unsupported model value '{requested_model}'");
-        crate::crates::core::logging::log_warn(&msg);
-        emit(
-            tx,
-            ServiceEvent::Log {
-                level: LogLevel::Warn,
-                message: msg,
+        // Available fallback options (for the warning context): the adapter's
+        // model select options that we just rejected against.
+        let available: Vec<String> = match &model_config.kind {
+            SessionConfigKind::Select(select) => match &select.options {
+                agent_client_protocol::SessionConfigSelectOptions::Ungrouped(opts) => {
+                    opts.iter().map(|o| o.value.0.to_string()).collect()
+                }
+                agent_client_protocol::SessionConfigSelectOptions::Grouped(groups) => groups
+                    .iter()
+                    .flat_map(|g| &g.options)
+                    .map(|o| o.value.0.to_string())
+                    .collect(),
+                _ => Vec::new(),
             },
-        )
-        .await;
+            _ => Vec::new(),
+        };
+        // Dedupe per-process: warn once per (model) pair instead of once per ACP
+        // session (every ask/research/evaluate spawns a session and re-warns).
+        if warn_once_unsupported_model(&requested_model) {
+            let msg = format!(
+                "ACP runtime: skipping unsupported model value '{requested_model}' (available: {})",
+                if available.is_empty() {
+                    "<adapter exposed no select options>".to_string()
+                } else {
+                    available.join(", ")
+                }
+            );
+            crate::crates::core::logging::log_warn(&msg);
+            emit(
+                tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Warn,
+                    message: msg,
+                },
+            )
+            .await;
+        }
     }
 
     Ok(None)
+}
+
+/// Per-process dedupe set of unsupported-model values we've already warned about.
+/// Prevents the "skipping unsupported model value" warning from firing once per
+/// ACP session (every ask/research/evaluate command spawns a fresh session).
+static UNSUPPORTED_MODEL_WARNED: std::sync::LazyLock<StdMutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| StdMutex::new(std::collections::HashSet::new()));
+
+/// Returns true when `model` has not been warned about in this process yet.
+/// First call records and returns true; subsequent calls return false.
+fn warn_once_unsupported_model(model: &str) -> bool {
+    let mut set = UNSUPPORTED_MODEL_WARNED
+        .lock()
+        .expect("UNSUPPORTED_MODEL_WARNED mutex poisoned");
+    set.insert(model.to_string())
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub use crate::crates::jobs::ingest::{IngestJob, IngestSource};
 use crate::crates::jobs::ingest::{
     count_ingest_jobs, get_ingest_job, list_ingest_jobs, start_ingest_job,
 };
+use crate::crates::jobs::lite::config_snapshot::ingest_config_json;
 use crate::crates::services::context::ServiceContext;
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::jobs as job_service;
@@ -47,7 +48,7 @@ pub async fn ingest_start(
 }
 
 pub async fn ingest_start_with_context(
-    _cfg: &Config,
+    cfg: &Config,
     source: IngestSource,
     service_context: &ServiceContext,
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
@@ -58,7 +59,7 @@ pub async fn ingest_start_with_context(
     // called notify().
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
-    let config_json = serde_json::to_string(&source)?;
+    let config_json = ingest_config_json(cfg, &source)?;
     let job_id = service_context
         .jobs
         .enqueue(JobPayload::Ingest {
@@ -139,8 +140,8 @@ pub async fn ingest_list_raw(
 }
 
 pub async fn ingest_worker(service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    match job_service::run_worker(service_context, JobKind::Ingest).await? {
-        WorkerMode::Started | WorkerMode::InProcess => Ok(()),
+    match job_service::start_worker(service_context, JobKind::Ingest).await? {
+        WorkerMode::Started | WorkerMode::InProcess { .. } => Ok(()),
         WorkerMode::Unsupported(message) => Err(message.into()),
     }
 }
@@ -159,6 +160,18 @@ pub async fn ingest_github(
     repo: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<IngestResult, Box<dyn Error>> {
+    ingest_github_with_progress(cfg, owner, repo, tx, None).await
+}
+
+/// Ingest a GitHub repository with an optional structured progress sink.
+#[must_use = "ingest_github_with_progress returns a Result that should be handled"]
+pub async fn ingest_github_with_progress(
+    cfg: &Config,
+    owner: &str,
+    repo: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<IngestResult, Box<dyn Error>> {
     let repo_slug = format!("{owner}/{repo}");
 
     emit(
@@ -174,7 +187,7 @@ pub async fn ingest_github(
         cfg,
         &repo_slug,
         cfg.github_include_source,
-        PhaseReporter::noop(),
+        PhaseReporter::new(progress_tx),
     )
     .await
     .map_err(|e| -> Box<dyn Error> {
@@ -207,6 +220,36 @@ pub async fn ingest_reddit(
     target: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<IngestResult, Box<dyn Error>> {
+    ingest_reddit_with_progress(cfg, target, tx, None).await
+}
+
+/// Ingest a Reddit subreddit or thread with an optional structured progress sink.
+#[must_use = "ingest_reddit_with_progress returns a Result that should be handled"]
+pub async fn ingest_reddit_with_progress(
+    cfg: &Config,
+    target: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<IngestResult, Box<dyn Error>> {
+    ingest_reddit_with_progress_and_options(
+        cfg,
+        target,
+        tx,
+        progress_tx,
+        &ingest::reddit::RedditIngestOptions::default(),
+    )
+    .await
+}
+
+/// Ingest a Reddit subreddit or thread with progress and source-local controls.
+#[must_use = "ingest_reddit_with_progress_and_options returns a Result that should be handled"]
+pub async fn ingest_reddit_with_progress_and_options(
+    cfg: &Config,
+    target: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+    options: &ingest::reddit::RedditIngestOptions,
+) -> Result<IngestResult, Box<dyn Error>> {
     emit(
         &tx,
         ServiceEvent::Log {
@@ -216,8 +259,8 @@ pub async fn ingest_reddit(
     )
     .await;
 
-    let noop = PhaseReporter::noop();
-    let chunks = ingest::reddit::ingest_reddit(cfg, target, &noop)
+    let reporter = PhaseReporter::new(progress_tx);
+    let summary = ingest::reddit::ingest_reddit_with_options(cfg, target, &reporter, options)
         .await
         .map_err(|e| -> Box<dyn Error> {
             format!("reddit ingest failed for {target}: {e}").into()
@@ -227,7 +270,7 @@ pub async fn ingest_reddit(
         &tx,
         ServiceEvent::Log {
             level: LogLevel::Info,
-            message: format!("reddit ingest complete: {chunks} chunks"),
+            message: format!("reddit ingest complete: {} chunks", summary.chunks_embedded),
         },
     )
     .await;
@@ -235,7 +278,14 @@ pub async fn ingest_reddit(
     let payload = serde_json::json!({
         "source": "reddit",
         "target": target,
-        "chunks": chunks,
+        "chunks": summary.chunks_embedded,
+        "reddit_stats": {
+            "posts_seen": summary.stats.posts_seen,
+            "posts_prepared": summary.stats.posts_prepared,
+            "comment_fetch_attempts": summary.stats.comment_fetch_attempts,
+            "comment_fetch_failures": summary.stats.comment_fetch_failures,
+            "partial_comment_failures": summary.stats.has_partial_comment_failures(),
+        },
     });
     Ok(map_ingest_result(payload))
 }
@@ -250,6 +300,17 @@ pub async fn ingest_youtube(
     url: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<IngestResult, Box<dyn Error>> {
+    ingest_youtube_with_progress(cfg, url, tx, None).await
+}
+
+/// Ingest YouTube content with an optional structured progress sink.
+#[must_use = "ingest_youtube_with_progress returns a Result that should be handled"]
+pub async fn ingest_youtube_with_progress(
+    cfg: &Config,
+    url: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<IngestResult, Box<dyn Error>> {
     emit(
         &tx,
         ServiceEvent::Log {
@@ -259,8 +320,8 @@ pub async fn ingest_youtube(
     )
     .await;
 
-    let noop = PhaseReporter::noop();
-    let chunks = ingest::youtube::ingest_youtube(cfg, url, &noop)
+    let reporter = PhaseReporter::new(progress_tx);
+    let chunks = ingest::youtube::ingest_youtube_target(cfg, url, &reporter)
         .await
         .map_err(|e| -> Box<dyn Error> {
             format!("youtube ingest failed for {url}: {e}").into()
@@ -292,6 +353,16 @@ pub async fn ingest_sessions(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<IngestResult, Box<dyn Error>> {
+    ingest_sessions_with_progress(cfg, tx, None).await
+}
+
+/// Ingest AI session exports with an optional structured progress sink.
+#[must_use = "ingest_sessions_with_progress returns a Result that should be handled"]
+pub async fn ingest_sessions_with_progress(
+    cfg: &Config,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    progress_tx: Option<mpsc::Sender<serde_json::Value>>,
+) -> Result<IngestResult, Box<dyn Error>> {
     emit(
         &tx,
         ServiceEvent::Log {
@@ -301,8 +372,8 @@ pub async fn ingest_sessions(
     )
     .await;
 
-    let noop = PhaseReporter::noop();
-    let chunks = ingest::sessions::ingest_sessions(cfg, &noop)
+    let reporter = PhaseReporter::new(progress_tx);
+    let chunks = ingest::sessions::ingest_sessions(cfg, &reporter)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("session exports ingest failed: {e}").into() })?;
 
@@ -327,8 +398,9 @@ mod tests {
     use super::*;
     use crate::crates::core::config::Config;
     use crate::crates::jobs::backend::{BackendResult, JobKind, JobPayload};
+    use crate::crates::jobs::lite::config_snapshot::decode_ingest_job_config;
     use crate::crates::services::context::ServiceContext;
-    use crate::crates::services::runtime::{ServiceJobRuntime, WorkerMode};
+    use crate::crates::services::runtime::ServiceJobRuntime;
     use crate::crates::services::types::{ExecutionMode, StartDisposition};
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
@@ -350,7 +422,7 @@ mod tests {
         }
 
         async fn wait_for_job(&self, _id: Uuid, _kind: JobKind) -> BackendResult<String> {
-            Ok("completed".to_string())
+            panic!("--wait false ingest start must enqueue without waiting")
         }
 
         async fn job_errors(&self, _id: Uuid, _kind: JobKind) -> BackendResult<Option<String>> {
@@ -358,7 +430,7 @@ mod tests {
         }
 
         async fn has_active_jobs(&self, _kind: JobKind) -> BackendResult<bool> {
-            Ok(false)
+            panic!("--wait false ingest start must not drain the queue")
         }
 
         async fn list_jobs(
@@ -402,13 +474,6 @@ mod tests {
             _stale_threshold_ms: i64,
         ) -> Result<u64, Box<dyn Error + Send + Sync>> {
             Ok(0)
-        }
-
-        async fn run_worker(
-            &self,
-            _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
-            Ok(WorkerMode::InProcess)
         }
 
         async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
@@ -456,8 +521,8 @@ mod tests {
 
         assert_eq!(source_type, "sessions");
         assert_eq!(target, "claude,gemini:axon-rust");
-        let decoded: IngestSource =
-            serde_json::from_str(config_json).expect("decode source config");
+        let (decoded, effective_cfg) =
+            decode_ingest_job_config(&cfg, config_json).expect("decode source config");
         assert!(matches!(
             decoded,
             IngestSource::Sessions {
@@ -467,5 +532,10 @@ mod tests {
                 sessions_project: Some(ref project),
             } if project == "axon-rust"
         ));
+        assert_eq!(effective_cfg.collection, cfg.collection);
+        assert!(effective_cfg.sessions_claude);
+        assert!(!effective_cfg.sessions_codex);
+        assert!(effective_cfg.sessions_gemini);
+        assert_eq!(effective_cfg.sessions_project.as_deref(), Some("axon-rust"));
     }
 }

@@ -1,7 +1,7 @@
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
-    respond_with_mode,
+    respond_with_mode, validate_mcp_embed_input,
 };
 use crate::crates::core::config::Config;
 use crate::crates::mcp::schema::{
@@ -31,19 +31,33 @@ fn parse_ingest_source(
         IngestSourceType::Github => {
             let repo = target
                 .ok_or_else(|| invalid_params("target repo is required for github ingest"))?;
+            let (owner, name) = crate::crates::ingest::github::parse_github_repo(&repo)
+                .ok_or_else(|| {
+                    invalid_params(
+                        "invalid GitHub target; expected owner/repo or github.com/owner/repo",
+                    )
+                })?;
             Ok(IngestSource::Github {
-                repo,
+                repo: format!("{owner}/{name}"),
                 include_source: include_source.unwrap_or(cfg.github_include_source),
             })
         }
         IngestSourceType::Reddit => {
             let target =
                 target.ok_or_else(|| invalid_params("target is required for reddit ingest"))?;
+            validate_mcp_reddit_target(&target)?;
             Ok(IngestSource::Reddit { target })
         }
         IngestSourceType::Youtube => {
             let target =
                 target.ok_or_else(|| invalid_params("target is required for youtube ingest"))?;
+            if crate::crates::ingest::youtube::extract_video_id(&target).is_none()
+                && !crate::crates::ingest::youtube::is_playlist_or_channel_url(&target)
+            {
+                return Err(invalid_params(
+                    "invalid YouTube target; expected video URL, bare video ID, playlist URL, or channel URL",
+                ));
+            }
             Ok(IngestSource::Youtube { target })
         }
         IngestSourceType::Sessions => {
@@ -63,12 +77,41 @@ fn parse_ingest_source(
     }
 }
 
+fn validate_mcp_reddit_target(target: &str) -> Result<(), ErrorData> {
+    match crate::crates::ingest::reddit::classify_target(target)
+        .map_err(|e| invalid_params(e.to_string()))?
+    {
+        crate::crates::ingest::reddit::RedditTarget::Subreddit(name) => {
+            let len = name.len();
+            let valid = (3..=21).contains(&len)
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid {
+                Ok(())
+            } else {
+                Err(invalid_params(
+                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'",
+                ))
+            }
+        }
+        crate::crates::ingest::reddit::RedditTarget::Thread(url) => {
+            if url.starts_with("/r/") && url.contains("/comments/") {
+                Ok(())
+            } else {
+                Err(invalid_params(
+                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink",
+                ))
+            }
+        }
+    }
+}
+
 impl AxonMcpServer {
     async fn handle_embed_start(
         &self,
         input: Option<String>,
     ) -> Result<AxonToolResponse, ErrorData> {
         let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
+        let input = validate_mcp_embed_input(&input)?;
         let service_context = self
             .base_service_context()
             .await
@@ -353,5 +396,74 @@ impl AxonMcpServer {
                 ))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ingest_source_normalizes_github_url() {
+        let cfg = Config::default();
+        let source = parse_ingest_source(
+            Some(IngestSourceType::Github),
+            Some("https://github.com/owner/repo.git".to_string()),
+            None,
+            Some(false),
+            &cfg,
+        )
+        .expect("valid github target");
+        assert!(matches!(
+            source,
+            IngestSource::Github {
+                repo,
+                include_source: false,
+            } if repo == "owner/repo"
+        ));
+    }
+
+    #[test]
+    fn parse_ingest_source_rejects_invalid_github_target() {
+        let cfg = Config::default();
+        let err = parse_ingest_source(
+            Some(IngestSourceType::Github),
+            Some("owner/repo/extra".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect_err("invalid target should fail");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn parse_ingest_source_rejects_non_reddit_comments_url() {
+        let cfg = Config::default();
+        let err = parse_ingest_source(
+            Some(IngestSourceType::Reddit),
+            Some("https://example.com/r/rust/comments/abc/title".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect_err("non-reddit thread URL should fail");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn parse_ingest_source_accepts_youtube_handle() {
+        let cfg = Config::default();
+        let source = parse_ingest_source(
+            Some(IngestSourceType::Youtube),
+            Some("https://www.youtube.com/@SpaceinvaderOne".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect("valid youtube channel target");
+        assert!(
+            matches!(source, IngestSource::Youtube { target } if target.contains("@SpaceinvaderOne"))
+        );
     }
 }

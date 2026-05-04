@@ -1,3 +1,4 @@
+mod progress;
 mod runners;
 
 use runners::{
@@ -14,6 +15,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 /// Resolve the number of worker lanes for a job type from an env var.
 ///
@@ -31,6 +33,7 @@ pub(crate) fn resolve_lane_count(env_var: &str, cpu_min: usize, cpu_max: usize) 
 }
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
+const WORKER_BATCH_LIMIT: usize = 32;
 
 /// Handles to wake specific worker types when new jobs are enqueued.
 pub struct WorkerHandles {
@@ -38,8 +41,10 @@ pub struct WorkerHandles {
     pub(crate) embed: Arc<Notify>,
     pub(crate) extract: Arc<Notify>,
     pub(crate) ingest: Arc<Notify>,
-    /// Actual worker loops. These must be aborted on drop or lite workers keep
-    /// polling after the backend goes away.
+    shutdown: CancellationToken,
+    /// Actual worker loops. Dropping WorkerHandles requests graceful shutdown;
+    /// tasks observe it before polling and between jobs/batches.
+    #[allow(dead_code)]
     pub(crate) worker_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
@@ -57,9 +62,11 @@ impl WorkerHandles {
 
 impl Drop for WorkerHandles {
     fn drop(&mut self) {
-        for handle in &self.worker_handles {
-            handle.abort();
-        }
+        self.shutdown.cancel();
+        self.crawl.notify_waiters();
+        self.embed.notify_waiters();
+        self.extract.notify_waiters();
+        self.ingest.notify_waiters();
     }
 }
 
@@ -78,42 +85,69 @@ pub fn spawn_workers(
     let embed_notify = Arc::new(Notify::new());
     let extract_notify = Arc::new(Notify::new());
     let ingest_notify = Arc::new(Notify::new());
+    let shutdown = CancellationToken::new();
 
     let embed_lanes = resolve_lane_count("AXON_EMBED_LANES", 2, 32);
     let ingest_lanes = resolve_lane_count("AXON_INGEST_LANES", 2, 16);
 
     let mut worker_handles = Vec::new();
 
+    tracing::info!(
+        embed_lanes,
+        ingest_lanes,
+        "lite: spawning in-process job workers"
+    );
+
     // Crawl: single lane (spider futures are !Send — must stay single-task)
+    tracing::info!(worker = "crawl", lanes = 1, "lite: spawning worker");
     worker_handles.push(tokio::spawn(crawl_worker(
         Arc::clone(&pool),
         Arc::clone(&cfg),
         Arc::clone(&cancel_store),
         Arc::clone(&crawl_notify),
+        Arc::clone(&embed_notify),
+        shutdown.clone(),
     )));
 
     // Embed: multi-lane
-    for _ in 0..embed_lanes {
+    tracing::info!(
+        worker = "embed",
+        lanes = embed_lanes,
+        "lite: spawning workers"
+    );
+    for lane in 0..embed_lanes {
+        tracing::debug!(worker = "embed", lane, "lite: spawning embed lane");
         worker_handles.push(tokio::spawn(embed_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
             Arc::clone(&embed_notify),
+            shutdown.clone(),
         )));
     }
 
     // Extract: single lane
+    tracing::info!(worker = "extract", lanes = 1, "lite: spawning worker");
     worker_handles.push(tokio::spawn(extract_worker(
         Arc::clone(&pool),
         Arc::clone(&cfg),
         Arc::clone(&extract_notify),
+        shutdown.clone(),
     )));
 
     // Ingest: multi-lane
-    for _ in 0..ingest_lanes {
+    tracing::info!(
+        worker = "ingest",
+        lanes = ingest_lanes,
+        "lite: spawning workers"
+    );
+    for lane in 0..ingest_lanes {
+        tracing::debug!(worker = "ingest", lane, "lite: spawning ingest lane");
         worker_handles.push(tokio::spawn(ingest_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
+            Arc::clone(&cancel_store),
             Arc::clone(&ingest_notify),
+            shutdown.clone(),
         )));
     }
 
@@ -122,15 +156,22 @@ pub fn spawn_workers(
         embed: embed_notify,
         extract: extract_notify,
         ingest: ingest_notify,
+        shutdown,
         worker_handles,
     }
 }
 
 /// Generic worker loop: wait for Notify or poll timeout, then claim + run pending jobs.
+///
+/// Jobs are processed in bounded batches so multi-lane worker sets can yield
+/// between bursts and observe shutdown. Shutdown is graceful between jobs; an
+/// already-running job is allowed to finish and mark its terminal state. If the
+/// process dies mid-job, stale-job recovery reclaims the running row on restart.
 async fn worker_loop<F, Fut>(
     pool: Arc<SqlitePool>,
-    table: &'static str,
+    kind: JobKind,
     notify: Arc<Notify>,
+    shutdown: CancellationToken,
     run_job: F,
 ) where
     F: Fn(Arc<SqlitePool>, uuid::Uuid) -> Fut + Send + 'static,
@@ -140,45 +181,58 @@ async fn worker_loop<F, Fut>(
         tokio::select! {
             _ = notify.notified() => {}
             _ = tokio::time::sleep(POLL_INTERVAL) => {}
+            _ = shutdown.cancelled() => break,
         }
 
         loop {
-            match claim_next_pending(&pool, table).await {
-                Ok(Some(id)) => {
-                    let result = run_job(Arc::clone(&pool), id).await;
-                    match result {
-                        Ok(result_json) => {
-                            if let Err(e) =
-                                mark_completed(&pool, table, id, result_json.as_ref()).await
-                            {
-                                tracing::error!(
-                                    table,
-                                    job_id = %id,
-                                    error = %e,
-                                    "lite worker: failed to mark job completed — job will remain in 'running' state"
-                                );
+            let mut processed = 0usize;
+            while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
+                match claim_next_pending(&pool, kind).await {
+                    Ok(Some(id)) => {
+                        let result = run_job(Arc::clone(&pool), id).await;
+                        processed += 1;
+                        match result {
+                            Ok(result_json) => {
+                                if let Err(e) =
+                                    mark_completed(&pool, kind, id, result_json.as_ref()).await
+                                {
+                                    tracing::error!(
+                                        table = kind.table_name(),
+                                        job_id = %id,
+                                        error = %e,
+                                        "lite worker: failed to mark job completed — job will remain in 'running' state"
+                                    );
+                                }
                             }
-                        }
-                        Err(e) => {
-                            if let Err(mark_err) =
-                                mark_failed(&pool, table, id, &e.to_string()).await
-                            {
-                                tracing::error!(
-                                    table,
-                                    job_id = %id,
-                                    error = %mark_err,
-                                    "lite worker: failed to mark job failed — job will remain in 'running' state"
-                                );
+                            Err(e) => {
+                                if let Err(mark_err) =
+                                    mark_failed(&pool, kind, id, &e.to_string()).await
+                                {
+                                    tracing::error!(
+                                        table = kind.table_name(),
+                                        job_id = %id,
+                                        error = %mark_err,
+                                        "lite worker: failed to mark job failed — job will remain in 'running' state"
+                                    );
+                                }
                             }
                         }
                     }
-                }
-                Ok(None) => break,
-                Err(e) => {
-                    tracing::error!("worker claim error (table={}): {}", table, e);
-                    break;
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::error!(
+                            table = kind.table_name(),
+                            error = %e,
+                            "worker claim error"
+                        );
+                        break;
+                    }
                 }
             }
+            if shutdown.is_cancelled() || processed < WORKER_BATCH_LIMIT {
+                break;
+            }
+            tokio::task::yield_now().await;
         }
     }
 }
@@ -188,34 +242,59 @@ async fn crawl_worker(
     cfg: Arc<Config>,
     _cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
+    embed_notify: Arc<Notify>,
+    shutdown: CancellationToken,
 ) {
-    worker_loop(pool, "axon_crawl_jobs", notify, move |pool, id| {
+    worker_loop(pool, JobKind::Crawl, notify, shutdown, move |pool, id| {
         let cfg = Arc::clone(&cfg);
-        async move { run_crawl_job_lite(&pool, &cfg, id).await }
+        let embed_notify = Arc::clone(&embed_notify);
+        async move { run_crawl_job_lite(&pool, &cfg, id, Some(embed_notify)).await }
     })
     .await;
 }
 
-async fn embed_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notify>) {
-    worker_loop(pool, "axon_embed_jobs", notify, move |pool, id| {
+async fn embed_worker(
+    pool: Arc<SqlitePool>,
+    cfg: Arc<Config>,
+    notify: Arc<Notify>,
+    shutdown: CancellationToken,
+) {
+    worker_loop(pool, JobKind::Embed, notify, shutdown, move |pool, id| {
         let cfg = Arc::clone(&cfg);
         async move { run_embed_job_lite(&pool, &cfg, id).await }
     })
     .await;
 }
 
-async fn extract_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notify>) {
-    worker_loop(pool, "axon_extract_jobs", notify, move |pool, id| {
+async fn extract_worker(
+    pool: Arc<SqlitePool>,
+    cfg: Arc<Config>,
+    notify: Arc<Notify>,
+    shutdown: CancellationToken,
+) {
+    worker_loop(pool, JobKind::Extract, notify, shutdown, move |pool, id| {
         let cfg = Arc::clone(&cfg);
         async move { run_extract_job_lite(&pool, &cfg, id).await }
     })
     .await;
 }
 
-async fn ingest_worker(pool: Arc<SqlitePool>, cfg: Arc<Config>, notify: Arc<Notify>) {
-    worker_loop(pool, "axon_ingest_jobs", notify, move |pool, id| {
+async fn ingest_worker(
+    pool: Arc<SqlitePool>,
+    cfg: Arc<Config>,
+    cancel_store: Arc<CancelStore>,
+    notify: Arc<Notify>,
+    shutdown: CancellationToken,
+) {
+    worker_loop(pool, JobKind::Ingest, notify, shutdown, move |pool, id| {
         let cfg = Arc::clone(&cfg);
-        async move { run_ingest_job_lite(&pool, &cfg, id).await }
+        let cancel_store = Arc::clone(&cancel_store);
+        async move {
+            let cancel_token = cancel_store.register(id);
+            let result = run_ingest_job_lite(&pool, &cfg, id, Some(cancel_token)).await;
+            cancel_store.remove(id);
+            result
+        }
     })
     .await;
 }
@@ -247,7 +326,7 @@ mod tests {
         let notify2 = Arc::clone(&notify);
         let (tx, rx) = tokio::sync::oneshot::channel::<uuid::Uuid>();
         tokio::spawn(async move {
-            if let Some(claimed_id) = claim_next_pending(&pool2, "axon_embed_jobs").await.unwrap() {
+            if let Some(claimed_id) = claim_next_pending(&pool2, JobKind::Embed).await.unwrap() {
                 assert_eq!(claimed_id, id);
                 notify2.notify_one();
                 let _ = tx.send(claimed_id);
@@ -270,7 +349,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dropping_worker_handles_aborts_worker_loops() {
+    async fn dropping_worker_handles_gracefully_stops_worker_loops() {
         let pool = Arc::new(open_sqlite_pool(":memory:").await.unwrap());
         let cfg = Arc::new(Config::default_lite());
         let cancel_store = Arc::new(CancelStore::new());
@@ -296,6 +375,6 @@ mod tests {
             }
         })
         .await
-        .expect("worker tasks should be aborted when WorkerHandles is dropped");
+        .expect("worker tasks should stop when WorkerHandles is dropped");
     }
 }

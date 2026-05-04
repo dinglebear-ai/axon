@@ -96,7 +96,8 @@ pub struct Config {
     /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
     pub map_fallback: MapFallback,
 
-    /// Maximum number of sitemap URLs to process per map/backfill operation. Flag: `--max-sitemaps`.
+    /// Maximum number of sitemap documents to parse per map/backfill operation
+    /// (0 = unlimited). Flag: `--max-sitemaps`.
     pub max_sitemaps: usize,
 
     /// Enable Spider's built-in crawl-result caching. Flag: `--cache`.
@@ -298,11 +299,6 @@ pub struct Config {
     /// Env: `AXON_ASK_AUTHORITATIVE_BOOST` (clamped 0.0–0.5). Default: 0.0.
     pub ask_authoritative_boost: f64,
 
-    /// Optional strict allowlist for ask retrieval candidate domains.
-    /// When non-empty, candidates outside this list are excluded.
-    /// Env: `AXON_ASK_AUTHORITATIVE_ALLOWLIST` (comma-separated). Default: empty.
-    pub ask_authoritative_allowlist: Vec<String>,
-
     /// Minimum unique citations required for non-trivial ask responses.
     /// Env: `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` (clamped 1–5). Default: 2.
     pub ask_min_citations_nontrivial: usize,
@@ -310,6 +306,11 @@ pub struct Config {
     /// Enable hybrid search (dense + BM42 sparse + RRF) for Named-mode collections.
     /// Env: `AXON_HYBRID_SEARCH` (true/false/1/0). Default: true.
     pub hybrid_search_enabled: bool,
+
+    /// `evaluate` flag: replace the no-context baseline lane with a second RAG run that has
+    /// hybrid retrieval disabled (dense-only). The judge then compares hybrid-RAG vs dense-RAG.
+    /// CLI: `--retrieval-ab`. Default: false.
+    pub evaluate_retrieval_ab: bool,
 
     /// Candidates fetched per prefetch arm (dense + sparse) before RRF fusion.
     /// Env: `AXON_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
@@ -443,10 +444,11 @@ pub struct Config {
     /// Viewport height in pixels for screenshot capture. Default: 1080. Flag: `--viewport`.
     pub viewport_height: u32,
 
-    /// MCP transport mode. Env: `AXON_MCP_TRANSPORT`. Flag: `axon mcp --transport`.
+    /// MCP transport mode. Defaults by entrypoint: `axon mcp` uses stdio,
+    /// `axon serve mcp` uses HTTP. Flag: `--transport`.
     pub mcp_transport: McpTransport,
 
-    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `0.0.0.0`.
+    /// Host interface for MCP HTTP transport. Env: `AXON_MCP_HTTP_HOST`. Default: `127.0.0.1`.
     pub mcp_http_host: String,
 
     /// Port for MCP HTTP transport. Env: `AXON_MCP_HTTP_PORT`. Default: `8001`.

@@ -1,5 +1,5 @@
 use crate::crates::core::config::Config;
-use crate::crates::vector::ops::tei::tei_client::tei_embed;
+use crate::crates::vector::ops::tei::tei_client::{EmbedKind, tei_embed_kind};
 use httpmock::{HttpMockResponse, MockServer};
 use std::env;
 use std::sync::{Arc, Mutex};
@@ -43,7 +43,9 @@ async fn tei_embed_empty_input_returns_empty_vec() {
     let mut cfg = Config::test_default();
     cfg.tei_url = "http://127.0.0.1:1".to_string();
 
-    let result = tei_embed(&cfg, &[]).await.unwrap();
+    let result = tei_embed_kind(&cfg, EmbedKind::Document, &[])
+        .await
+        .unwrap();
     assert!(
         result.is_empty(),
         "empty input must return empty vec without HTTP call"
@@ -82,7 +84,7 @@ async fn tei_embed_retries_on_429() {
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["hello world".to_string()];
-    let result = tei_embed(&cfg, &inputs)
+    let result = tei_embed_kind(&cfg, EmbedKind::Document, &inputs)
         .await
         .expect("tei_embed must succeed after retry");
     assert_eq!(
@@ -122,7 +124,7 @@ async fn tei_embed_splits_batch_on_413() {
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["input-alpha".to_string(), "input-beta".to_string()];
-    let result = tei_embed(&cfg, &inputs)
+    let result = tei_embed_kind(&cfg, EmbedKind::Document, &inputs)
         .await
         .expect("tei_embed must succeed after batch split");
     assert_eq!(
@@ -170,7 +172,7 @@ async fn tei_embed_retries_on_500() {
     let _timeout_guard = EnvGuard::set("TEI_REQUEST_TIMEOUT_MS", "10000");
 
     let inputs = vec!["retry-on-500".to_string()];
-    let result = tei_embed(&cfg, &inputs)
+    let result = tei_embed_kind(&cfg, EmbedKind::Document, &inputs)
         .await
         .expect("tei_embed must succeed after retry on 500");
     assert_eq!(result.len(), 1, "must return one embedding vector");
@@ -221,7 +223,7 @@ async fn tei_embed_fails_fast_on_404() {
     cfg.tei_url = server.base_url();
 
     let inputs = vec!["fail-fast-404".to_string()];
-    let err = tei_embed(&cfg, &inputs)
+    let err = tei_embed_kind(&cfg, EmbedKind::Document, &inputs)
         .await
         .expect_err("tei_embed must fail fast on 404");
     let msg = err.to_string();

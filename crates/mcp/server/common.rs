@@ -4,6 +4,7 @@ use crate::crates::services::types::{
     MapOptions, Pagination, RetrieveOptions, SearchOptions, ServiceTimeRange,
 };
 use rmcp::ErrorData;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 // Re-export artifact helpers that are imported by multiple handler modules.
@@ -45,6 +46,180 @@ pub(super) fn validate_mcp_urls(urls: &[String]) -> Result<(), ErrorData> {
     for (i, url) in urls.iter().enumerate() {
         crate::crates::core::http::validate_url(url)
             .map_err(|e| invalid_params(format!("urls[{i}]: {e}")))?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorData> {
+    let collection = collection.trim();
+    crate::crates::vector::ops::qdrant::validate_collection_name(collection)
+        .map_err(|reason| invalid_params(format!("invalid collection name: {reason}")))?;
+    Ok(collection.to_string())
+}
+
+const MCP_EMBED_ALLOWED_ROOTS_ENV: &str = "AXON_MCP_EMBED_ALLOWED_ROOTS";
+const MCP_EMBED_MAX_LOCAL_BYTES_ENV: &str = "AXON_MCP_EMBED_MAX_LOCAL_BYTES";
+const DEFAULT_MCP_EMBED_MAX_LOCAL_BYTES: u64 = 10 * 1024 * 1024;
+
+pub(super) fn validate_mcp_embed_input(input: &str) -> Result<String, ErrorData> {
+    validate_mcp_embed_input_with_roots(
+        input,
+        &mcp_embed_allowed_roots_from_env(),
+        mcp_embed_max_local_bytes_from_env(),
+    )
+}
+
+fn mcp_embed_allowed_roots_from_env() -> Vec<PathBuf> {
+    std::env::var(MCP_EMBED_ALLOWED_ROOTS_ENV)
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|part| {
+                    let trimmed = part.trim();
+                    (!trimmed.is_empty()).then(|| PathBuf::from(trimmed))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn mcp_embed_max_local_bytes_from_env() -> u64 {
+    std::env::var(MCP_EMBED_MAX_LOCAL_BYTES_ENV)
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_MCP_EMBED_MAX_LOCAL_BYTES)
+}
+
+fn validate_mcp_embed_input_with_roots(
+    input: &str,
+    allowed_roots: &[PathBuf],
+    max_file_bytes: u64,
+) -> Result<String, ErrorData> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(invalid_params("input is required for embed.start"));
+    }
+    if input.starts_with("http://") || input.starts_with("https://") {
+        validate_mcp_url(input)?;
+        return Ok(input.to_string());
+    }
+    let path = Path::new(input);
+    if !path.exists() {
+        return Ok(input.to_string());
+    }
+    if allowed_roots.is_empty() {
+        return Err(invalid_params(format!(
+            "local file embedding via MCP is disabled; set {MCP_EMBED_ALLOWED_ROOTS_ENV} to allow specific roots"
+        )));
+    }
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| invalid_params(format!("invalid embed path: {e}")))?;
+    let root = allowed_roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .find(|root| canonical.starts_with(root))
+        .ok_or_else(|| {
+            invalid_params(format!(
+                "local embed path must be under one of {MCP_EMBED_ALLOWED_ROOTS_ENV}"
+            ))
+        })?;
+    validate_local_embed_entry(path, &canonical, &root, max_file_bytes)?;
+    Ok(canonical.to_string_lossy().to_string())
+}
+
+fn validate_local_embed_entry(
+    original: &Path,
+    canonical: &Path,
+    allowed_root: &Path,
+    max_file_bytes: u64,
+) -> Result<(), ErrorData> {
+    if std::fs::symlink_metadata(original)
+        .map_err(|e| invalid_params(format!("invalid embed path metadata: {e}")))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err(invalid_params("local embed path must not be a symlink"));
+    }
+    validate_local_embed_relative_path(canonical, allowed_root)?;
+    let meta = std::fs::metadata(canonical)
+        .map_err(|e| invalid_params(format!("invalid embed path metadata: {e}")))?;
+    if meta.is_file() {
+        return validate_local_embed_file(canonical, allowed_root, meta.len(), max_file_bytes);
+    }
+    if meta.is_dir() {
+        for entry in std::fs::read_dir(canonical)
+            .map_err(|e| invalid_params(format!("invalid embed directory: {e}")))?
+        {
+            let entry = entry.map_err(|e| invalid_params(format!("invalid embed entry: {e}")))?;
+            let child = entry.path();
+            let child_meta = std::fs::symlink_metadata(&child)
+                .map_err(|e| invalid_params(format!("invalid embed entry metadata: {e}")))?;
+            if child_meta.file_type().is_symlink() {
+                return Err(invalid_params(
+                    "local embed directory must not contain symlinks",
+                ));
+            }
+            if child_meta.is_file() {
+                let child_canonical = std::fs::canonicalize(&child)
+                    .map_err(|e| invalid_params(format!("invalid embed path: {e}")))?;
+                validate_local_embed_file(
+                    &child_canonical,
+                    allowed_root,
+                    child_meta.len(),
+                    max_file_bytes,
+                )?;
+            }
+        }
+        return Ok(());
+    }
+    Err(invalid_params(
+        "local embed path must be a regular file or directory",
+    ))
+}
+
+fn validate_local_embed_file(
+    canonical: &Path,
+    allowed_root: &Path,
+    size: u64,
+    max_file_bytes: u64,
+) -> Result<(), ErrorData> {
+    validate_local_embed_relative_path(canonical, allowed_root)?;
+    if size > max_file_bytes {
+        return Err(invalid_params(format!(
+            "local embed file exceeds {max_file_bytes} byte limit"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_local_embed_relative_path(
+    canonical: &Path,
+    allowed_root: &Path,
+) -> Result<(), ErrorData> {
+    let relative = canonical
+        .strip_prefix(allowed_root)
+        .map_err(|_| invalid_params("local embed path is outside the allowed root"))?;
+    for component in relative.components() {
+        let name = component.as_os_str().to_string_lossy();
+        let lower = name.to_ascii_lowercase();
+        if name.starts_with('.') {
+            return Err(invalid_params("local embed path must not include dotfiles"));
+        }
+        if lower == "id_rsa"
+            || lower == "id_dsa"
+            || lower == "id_ecdsa"
+            || lower == "id_ed25519"
+            || lower.ends_with(".pem")
+            || lower.ends_with(".key")
+            || lower.contains("secret")
+            || lower.contains("credential")
+            || lower.contains("token")
+        {
+            return Err(invalid_params(
+                "local embed path appears to contain secret material",
+            ));
+        }
     }
     Ok(())
 }
@@ -207,5 +382,113 @@ pub fn to_search_options(
         limit: limit.unwrap_or(default).clamp(1, 500),
         offset: offset.unwrap_or(0),
         time_range: time_range.map(to_service_time_range),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_mcp_collection, validate_mcp_embed_input_with_roots};
+    use tempfile::TempDir;
+
+    #[test]
+    fn mcp_collection_validation_accepts_safe_names() {
+        assert_eq!(
+            validate_mcp_collection("docs_v2-2026.main").unwrap(),
+            "docs_v2-2026.main"
+        );
+    }
+
+    #[test]
+    fn mcp_collection_validation_rejects_path_and_query_chars() {
+        assert!(validate_mcp_collection("../secrets").is_err());
+        assert!(validate_mcp_collection("docs/v1").is_err());
+        assert!(validate_mcp_collection("docs?token=abc").is_err());
+        assert!(validate_mcp_collection("docs#frag").is_err());
+        assert!(validate_mcp_collection(".hidden").is_err());
+        assert!(validate_mcp_collection("trailing.").is_err());
+        assert!(validate_mcp_collection("a..b").is_err());
+        assert!(validate_mcp_collection("").is_err());
+    }
+
+    #[test]
+    fn mcp_embed_accepts_url_and_text_without_local_roots() {
+        assert_eq!(
+            validate_mcp_embed_input_with_roots("https://example.com/docs", &[], 1024).unwrap(),
+            "https://example.com/docs"
+        );
+        assert_eq!(
+            validate_mcp_embed_input_with_roots("plain text to embed", &[], 1024).unwrap(),
+            "plain text to embed"
+        );
+    }
+
+    #[test]
+    fn mcp_embed_rejects_existing_local_path_without_roots() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("doc.md");
+        std::fs::write(&file, "hello").unwrap();
+
+        assert!(validate_mcp_embed_input_with_roots(&file.to_string_lossy(), &[], 1024).is_err());
+    }
+
+    #[test]
+    fn mcp_embed_allows_file_under_explicit_root() {
+        let temp = TempDir::new().unwrap();
+        let file = temp.path().join("doc.md");
+        std::fs::write(&file, "hello").unwrap();
+
+        let resolved = validate_mcp_embed_input_with_roots(
+            &file.to_string_lossy(),
+            &[temp.path().into()],
+            1024,
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolved,
+            std::fs::canonicalize(file).unwrap().to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn mcp_embed_rejects_dotfiles_secret_names_and_oversized_files() {
+        let temp = TempDir::new().unwrap();
+        let dotfile = temp.path().join(".env");
+        let secret = temp.path().join("api-token.txt");
+        let large = temp.path().join("large.md");
+        std::fs::write(&dotfile, "OPENAI_API_KEY=secret").unwrap();
+        std::fs::write(&secret, "secret").unwrap();
+        std::fs::write(&large, "0123456789").unwrap();
+        let roots = [temp.path().to_path_buf()];
+
+        assert!(
+            validate_mcp_embed_input_with_roots(&dotfile.to_string_lossy(), &roots, 1024).is_err()
+        );
+        assert!(
+            validate_mcp_embed_input_with_roots(&secret.to_string_lossy(), &roots, 1024).is_err()
+        );
+        assert!(validate_mcp_embed_input_with_roots(&large.to_string_lossy(), &roots, 4).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mcp_embed_rejects_symlink_inputs() {
+        use std::os::unix::fs::symlink;
+
+        let allowed = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let target = outside.path().join("outside.md");
+        let link = allowed.path().join("link.md");
+        std::fs::write(&target, "outside").unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(
+            validate_mcp_embed_input_with_roots(
+                &link.to_string_lossy(),
+                &[allowed.path().into()],
+                1024,
+            )
+            .is_err()
+        );
     }
 }

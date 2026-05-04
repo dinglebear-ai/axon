@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
 use std::future::Future;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{LazyLock, RwLock};
 
 #[cfg(test)]
 mod tests;
@@ -23,34 +23,59 @@ pub(crate) enum VectorMode {
     Named,
 }
 
-/// Process-lifetime cache: entries are never evicted. A process restart is required
-/// to pick up collection schema changes (e.g., migration from Unnamed to Named).
-/// Uses `RwLock` (not `Mutex`) because after initial population all accesses are
+/// Process-lifetime cache for collection vector schema.
+///
+/// `Named` hits are authoritative for the current process. `Unnamed` hits are
+/// revalidated when hybrid search is enabled so long-running workers self-heal
+/// after a collection migrates from legacy dense-only mode to named hybrid mode.
+/// Uses `RwLock` (not `Mutex`) because after initial population most accesses are
 /// read-only -- `RwLock` allows unlimited concurrent readers.
-static COLLECTION_MODES: OnceLock<RwLock<HashMap<String, VectorMode>>> = OnceLock::new();
+static COLLECTION_MODES: LazyLock<RwLock<HashMap<String, VectorMode>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+fn collection_mode_cache_key(cfg: &Config) -> String {
+    format!(
+        "{}\x1f{}",
+        qdrant_base(cfg).trim_end_matches('/'),
+        cfg.collection
+    )
+}
 
 /// Return the cached `VectorMode` for `name`, or `None` if not yet initialized.
-fn cached_vector_mode(name: &str) -> Option<VectorMode> {
+fn cached_vector_mode_key(key: &str) -> Option<VectorMode> {
     COLLECTION_MODES
-        .get()
-        .and_then(|m| m.read().ok())
-        .and_then(|map| map.get(name).copied())
+        .read()
+        .ok()
+        .and_then(|map| map.get(key).copied())
+}
+
+fn cached_vector_mode_is_authoritative(cfg: &Config, mode: VectorMode) -> bool {
+    !(cfg.hybrid_search_enabled && matches!(mode, VectorMode::Unnamed))
+}
+
+#[cfg(test)]
+fn cached_vector_mode(name: &str) -> Option<VectorMode> {
+    cached_vector_mode_key(name)
 }
 
 /// Store `mode` in the collection-mode cache for `name`.
-fn cache_vector_mode(name: &str, mode: VectorMode) {
-    let map = COLLECTION_MODES.get_or_init(|| RwLock::new(HashMap::new()));
-    match map.write() {
+fn cache_vector_mode_key(key: &str, mode: VectorMode) {
+    match COLLECTION_MODES.write() {
         Ok(mut m) => {
-            m.insert(name.to_owned(), mode);
+            m.insert(key.to_owned(), mode);
         }
         Err(e) => {
             log_warn(&format!(
                 "COLLECTION_MODES RwLock poisoned, cache write skipped for '{}': {e}",
-                name
+                key
             ));
         }
     }
+}
+
+#[cfg(test)]
+fn cache_vector_mode(name: &str, mode: VectorMode) {
+    cache_vector_mode_key(name, mode);
 }
 
 /// Clear a specific entry from the collection mode cache.
@@ -58,10 +83,10 @@ fn cache_vector_mode(name: &str, mode: VectorMode) {
 /// Useful for long-running workers that need to re-detect collection schema
 /// after a migration (e.g., Unnamed -> Named via `axon migrate`).
 pub(crate) fn clear_collection_mode_cache(name: &str) {
-    if let Some(map) = COLLECTION_MODES.get()
-        && let Ok(mut m) = map.write()
-    {
+    if let Ok(mut m) = COLLECTION_MODES.write() {
         m.remove(name);
+        let suffix = format!("\x1f{name}");
+        m.retain(|key, _| !key.ends_with(&suffix));
     }
 }
 
@@ -79,11 +104,18 @@ pub(super) async fn collection_init_or_cached(
     cfg: &Config,
     dim: usize,
 ) -> Result<VectorMode, Box<dyn Error>> {
-    if let Some(mode) = cached_vector_mode(&cfg.collection) {
-        return Ok(mode);
+    let cache_key = collection_mode_cache_key(cfg);
+    if let Some(mode) = cached_vector_mode_key(&cache_key) {
+        if cached_vector_mode_is_authoritative(cfg, mode) {
+            return Ok(mode);
+        }
+        log_info(&format!(
+            "qdrant collection_mode_cache_revalidate collection={} cached_mode={:?} reason=hybrid_enabled",
+            cfg.collection, mode
+        ));
     }
     let mode = ensure_collection(cfg, dim).await?;
-    cache_vector_mode(&cfg.collection, mode);
+    cache_vector_mode_key(&cache_key, mode);
     Ok(mode)
 }
 
@@ -98,8 +130,15 @@ pub(super) async fn collection_init_or_cached(
 /// on probe failures can misroute Named collections to `/points/search`, which
 /// Qdrant rejects.
 pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode, Box<dyn Error>> {
-    if let Some(mode) = cached_vector_mode(&cfg.collection) {
-        return Ok(mode);
+    let cache_key = collection_mode_cache_key(cfg);
+    if let Some(mode) = cached_vector_mode_key(&cache_key) {
+        if cached_vector_mode_is_authoritative(cfg, mode) {
+            return Ok(mode);
+        }
+        log_info(&format!(
+            "qdrant mode_probe_revalidate collection={} cached_mode={:?} reason=hybrid_enabled",
+            cfg.collection, mode
+        ));
     }
     let client = http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
@@ -180,7 +219,7 @@ pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode,
             .into());
         }
     };
-    cache_vector_mode(&cfg.collection, mode);
+    cache_vector_mode_key(&cache_key, mode);
     Ok(mode)
 }
 

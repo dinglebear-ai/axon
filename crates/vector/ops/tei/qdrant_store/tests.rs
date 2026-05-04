@@ -1,9 +1,16 @@
 use super::*;
 
 fn resolve_test_qdrant_url() -> Option<String> {
-    std::env::var("AXON_TEST_QDRANT_URL")
+    let url = std::env::var("AXON_TEST_QDRANT_URL")
         .ok()
-        .filter(|v| !v.trim().is_empty())
+        .filter(|v| !v.trim().is_empty());
+    if url.is_none() {
+        if cfg!(feature = "live-qdrant") {
+            panic!("AXON_TEST_QDRANT_URL must be set when running with feature=live-qdrant");
+        }
+        eprintln!("skipping live Qdrant test: AXON_TEST_QDRANT_URL is not set");
+    }
+    url
 }
 
 // -- detect_vector_mode (pure parsing logic) --
@@ -48,6 +55,43 @@ fn cache_and_retrieve_unnamed_mode() {
         cached_vector_mode("test_cache_unnamed"),
         Some(VectorMode::Unnamed)
     );
+}
+
+#[test]
+fn endpoint_collection_cache_keys_keep_same_collection_separate() {
+    let mut cfg_a = Config::test_default();
+    cfg_a.qdrant_url = "http://127.0.0.1:6333".to_string();
+    cfg_a.collection = "shared_collection_name".to_string();
+    let mut cfg_b = cfg_a.clone();
+    cfg_b.qdrant_url = "http://127.0.0.1:7333/".to_string();
+
+    let key_a = collection_mode_cache_key(&cfg_a);
+    let key_b = collection_mode_cache_key(&cfg_b);
+    assert_ne!(key_a, key_b);
+
+    cache_vector_mode_key(&key_a, VectorMode::Named);
+    cache_vector_mode_key(&key_b, VectorMode::Unnamed);
+
+    assert_eq!(cached_vector_mode_key(&key_a), Some(VectorMode::Named));
+    assert_eq!(cached_vector_mode_key(&key_b), Some(VectorMode::Unnamed));
+}
+
+#[test]
+fn cached_unnamed_mode_is_not_authoritative_when_hybrid_enabled() {
+    let mut cfg = Config::test_default();
+    cfg.hybrid_search_enabled = true;
+
+    assert!(!cached_vector_mode_is_authoritative(
+        &cfg,
+        VectorMode::Unnamed
+    ));
+    assert!(cached_vector_mode_is_authoritative(&cfg, VectorMode::Named));
+
+    cfg.hybrid_search_enabled = false;
+    assert!(cached_vector_mode_is_authoritative(
+        &cfg,
+        VectorMode::Unnamed
+    ));
 }
 
 // -- clear_collection_mode_cache --
@@ -397,6 +441,112 @@ async fn get_or_fetch_mode_429_retries_three_times() {
         mock.calls_async().await,
         3,
         "429 status should trigger exactly 3 probe attempts"
+    );
+}
+
+#[tokio::test]
+async fn get_or_fetch_revalidates_cached_unnamed_when_hybrid_enabled() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let collection = "revalidate_cached_unnamed_query";
+
+    let get_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "config": {
+                        "params": {
+                            "vectors": {
+                                "dense": {"size": 4, "distance": "Cosine"}
+                            },
+                            "sparse_vectors": {
+                                "bm42": {"modifier": "idf"}
+                            }
+                        }
+                    }
+                }
+            }));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = collection.to_string();
+    cfg.hybrid_search_enabled = true;
+
+    let key = collection_mode_cache_key(&cfg);
+    cache_vector_mode_key(&key, VectorMode::Unnamed);
+
+    let mode = get_or_fetch_vector_mode(&cfg)
+        .await
+        .expect("cached unnamed mode must be re-probed successfully");
+
+    assert_eq!(mode, VectorMode::Named);
+    assert_eq!(cached_vector_mode_key(&key), Some(VectorMode::Named));
+    assert_eq!(
+        get_mock.calls_async().await,
+        1,
+        "cached Unnamed must trigger a live schema probe under hybrid mode"
+    );
+}
+
+#[tokio::test]
+async fn collection_init_revalidates_cached_unnamed_when_hybrid_enabled() {
+    use httpmock::prelude::*;
+
+    let server = MockServer::start_async().await;
+    let collection = "revalidate_cached_unnamed_embed";
+
+    let get_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path(format!("/collections/{collection}"));
+            then.status(200).json_body(serde_json::json!({
+                "result": {
+                    "config": {
+                        "params": {
+                            "vectors": {
+                                "dense": {"size": 4, "distance": "Cosine"}
+                            },
+                            "sparse_vectors": {
+                                "bm42": {"modifier": "idf"}
+                            }
+                        }
+                    }
+                }
+            }));
+        })
+        .await;
+
+    server
+        .mock_async(|when, then| {
+            when.method(PUT).path_matches(
+                regex::Regex::new(&format!("/collections/{collection}/index")).unwrap(),
+            );
+            then.status(200)
+                .json_body(serde_json::json!({"result": true, "status": "ok", "time": 0.0}));
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = server.base_url();
+    cfg.collection = collection.to_string();
+    cfg.hybrid_search_enabled = true;
+
+    let key = collection_mode_cache_key(&cfg);
+    cache_vector_mode_key(&key, VectorMode::Unnamed);
+
+    let mode = collection_init_or_cached(&cfg, 4)
+        .await
+        .expect("cached unnamed mode must be re-probed successfully");
+
+    assert_eq!(mode, VectorMode::Named);
+    assert_eq!(cached_vector_mode_key(&key), Some(VectorMode::Named));
+    assert_eq!(
+        get_mock.calls_async().await,
+        1,
+        "cached Unnamed must trigger live ensure_collection under hybrid mode"
     );
 }
 

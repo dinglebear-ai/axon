@@ -28,6 +28,65 @@ pub(crate) fn prepend_query_instruction(query: &str) -> String {
     format!("{QUERY_INSTRUCTION}{query}")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EmbedKind {
+    Query,
+    Document,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EmbedInput {
+    pub(crate) kind: EmbedKind,
+    pub(crate) text: String,
+}
+
+impl EmbedInput {
+    pub(crate) fn query(text: impl Into<String>) -> Self {
+        Self {
+            kind: EmbedKind::Query,
+            text: text.into(),
+        }
+    }
+
+    pub(crate) fn document(text: impl Into<String>) -> Self {
+        Self {
+            kind: EmbedKind::Document,
+            text: text.into(),
+        }
+    }
+}
+
+fn materialize_embed_input(input: &EmbedInput) -> String {
+    match input.kind {
+        EmbedKind::Query => prepend_query_instruction(&input.text),
+        EmbedKind::Document => input.text.clone(),
+    }
+}
+
+pub(crate) async fn tei_embed_typed(
+    cfg: &Config,
+    inputs: &[EmbedInput],
+) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+    let materialized = inputs
+        .iter()
+        .map(materialize_embed_input)
+        .collect::<Vec<_>>();
+    tei_embed_raw(cfg, &materialized).await
+}
+
+pub(crate) async fn tei_embed_kind(
+    cfg: &Config,
+    kind: EmbedKind,
+    inputs: &[String],
+) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+    let typed = inputs
+        .iter()
+        .cloned()
+        .map(|text| EmbedInput { kind, text })
+        .collect::<Vec<_>>();
+    tei_embed_typed(cfg, &typed).await
+}
+
 const TEI_MAX_RETRIES_DEFAULT: usize = 5;
 const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
 const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;
@@ -89,8 +148,9 @@ async fn log_retry_and_sleep(
         return false;
     }
     let delay = retry_delay(attempt);
+    let safe_url = redact_url_for_log(embed_url);
     log_warn(&format!(
-        "tei_embed retry {kind} attempt={attempt}/{max_attempts} delay_ms={} url={embed_url} err={err_msg}",
+        "tei_embed retry {kind} attempt={attempt}/{max_attempts} delay_ms={} url={safe_url} err={err_msg}",
         delay.as_millis()
     ));
     tokio::time::sleep(delay).await;
@@ -136,8 +196,9 @@ async fn send_chunk_with_retries(
                 {
                     continue;
                 }
+                let safe_url = redact_url_for_log(embed_url);
                 return Err(format!(
-                    "TEI request transport error for {embed_url} after {attempt}/{max_attempts} attempts: {err}"
+                    "TEI request transport error for {safe_url} after {attempt}/{max_attempts} attempts: {err}"
                 ).into());
             }
         };
@@ -160,8 +221,9 @@ async fn send_chunk_with_retries(
                     {
                         continue;
                     }
+                    let safe_url = redact_url_for_log(embed_url);
                     return Err(format!(
-                        "TEI response decode error for {embed_url} after {attempt}/{max_attempts} attempts: {err}"
+                        "TEI response decode error for {safe_url} after {attempt}/{max_attempts} attempts: {err}"
                     ).into());
                 }
             }
@@ -185,8 +247,9 @@ async fn send_chunk_with_retries(
         }
         if is_retryable_status(status) && attempt < max_attempts {
             let delay = retry_delay(attempt);
+            let safe_url = redact_url_for_log(embed_url);
             log_warn(&format!(
-                "tei_embed retry status attempt={attempt}/{max_attempts} delay_ms={} url={embed_url} status={status}",
+                "tei_embed retry status attempt={attempt}/{max_attempts} delay_ms={} url={safe_url} status={status}",
                 delay.as_millis()
             ));
             tokio::time::sleep(delay).await;
@@ -194,17 +257,19 @@ async fn send_chunk_with_retries(
         }
         let body = err_body;
         let body_preview: String = body.chars().take(240).collect();
+        let safe_url = redact_url_for_log(embed_url);
         return Err(format!(
-            "TEI request failed with status {status} for {embed_url} after {attempt}/{max_attempts} attempts; body={body_preview}"
+            "TEI request failed with status {status} for {safe_url} after {attempt}/{max_attempts} attempts; body={body_preview}"
         ).into());
     }
-    Err(format!("TEI embed exhausted {max_attempts} attempts for {embed_url}").into())
+    Err(format!(
+        "TEI embed exhausted {max_attempts} attempts for {}",
+        redact_url_for_log(embed_url)
+    )
+    .into())
 }
 
-pub(crate) async fn tei_embed(
-    cfg: &Config,
-    inputs: &[String],
-) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
     if inputs.is_empty() {
         return Ok(Vec::new());
     }
@@ -215,11 +280,12 @@ pub(crate) async fn tei_embed(
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
     let max_attempts = *TEI_MAX_ATTEMPTS;
     let request_timeout_ms = *TEI_TIMEOUT_MS;
+    let safe_embed_url = redact_url_for_log(&embed_url);
 
     log_debug(&format!(
         "tei_embed start chunk_count={} url={}",
         inputs.len(),
-        embed_url
+        safe_embed_url
     ));
     let tei_start = std::time::Instant::now();
 
@@ -252,4 +318,42 @@ pub(crate) async fn tei_embed(
     ));
 
     Ok(vectors)
+}
+
+fn redact_url_for_log(url: &str) -> String {
+    let Ok(mut parsed) = reqwest::Url::parse(url) else {
+        return url.split('?').next().unwrap_or(url).to_string();
+    };
+    if !parsed.username().is_empty() {
+        let _ = parsed.set_username("<redacted>");
+    }
+    if parsed.password().is_some() {
+        let _ = parsed.set_password(Some("<redacted>"));
+    }
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+    parsed.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_url_for_log;
+
+    #[test]
+    fn redact_url_for_log_removes_credentials_query_and_fragment() {
+        let redacted =
+            redact_url_for_log("http://user:secret@tei.example:8080/embed?token=abc#frag");
+
+        assert_eq!(
+            redacted,
+            "http://%3Credacted%3E:%3Credacted%3E@tei.example:8080/embed"
+        );
+        assert!(!redacted.contains("secret"));
+        assert!(!redacted.contains("token=abc"));
+    }
+
+    #[test]
+    fn redact_url_for_log_handles_unparseable_urls() {
+        assert_eq!(redact_url_for_log("not a url?token=secret"), "not a url");
+    }
 }

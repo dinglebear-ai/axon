@@ -288,7 +288,7 @@ fn transform_point(point: &serde_json::Value) -> Result<serde_json::Value, Box<d
         "id": id,
         "vector": {
             "dense": dense_vec,
-            "bm42": sparse.to_json()
+            "bm42": sparse
         },
         "payload": point["payload"]
     }))

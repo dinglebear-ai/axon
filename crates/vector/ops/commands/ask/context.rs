@@ -4,6 +4,7 @@ use anyhow::Result;
 
 mod build;
 mod heuristics;
+mod query_rewrite;
 mod retrieval;
 #[cfg(test)]
 mod tests;
@@ -26,16 +27,18 @@ pub(crate) struct AskContext {
     pub diagnostic_sources: Vec<String>,
     pub top_domains: Vec<String>,
     pub authoritative_ratio: f64,
-    pub dropped_by_allowlist: usize,
 }
 
 pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskContext> {
     let retrieval = retrieve_ask_candidates(cfg, query).await?;
+    let query_tokens = crate::crates::vector::ops::ranking::tokenize_query(query);
     let built = build_context_from_candidates(
         cfg,
         &retrieval.reranked,
         &retrieval.top_chunk_indices,
         &retrieval.top_full_doc_indices,
+        retrieval.min_supplemental_score,
+        &query_tokens,
     )
     .await?;
 
@@ -65,6 +68,5 @@ pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskCo
         diagnostic_sources: built.diagnostic_sources,
         top_domains: retrieval.top_domains,
         authoritative_ratio: retrieval.authoritative_ratio,
-        dropped_by_allowlist: retrieval.dropped_by_allowlist,
     })
 }

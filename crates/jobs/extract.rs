@@ -5,7 +5,7 @@ use std::error::Error;
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::JobPayload;
+use crate::crates::jobs::backend::{JobKind, JobPayload};
 use crate::crates::jobs::lite::store::open_sqlite_pool;
 
 /// Thin Job struct used for CLI status display via `impl_job_status!`.
@@ -27,7 +27,7 @@ pub struct ExtractJob {
 /// Count all extract jobs in SQLite.
 pub async fn count_extract_jobs(cfg: &Config) -> Result<i64, Box<dyn Error>> {
     let pool = open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, "axon_extract_jobs").await?)
+    Ok(crate::crates::jobs::lite::query::count_jobs(&pool, JobKind::Extract).await?)
 }
 
 /// Enqueue a new extract job in SQLite. Returns the new job UUID.

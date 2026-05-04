@@ -101,7 +101,8 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long, default_value_t = 0)]
     pub(in crate::crates::core::config) sitemap_since_days: u32,
 
-    /// Maximum number of sitemap URLs to process per map/backfill operation (default: 512)
+    /// Maximum number of sitemap documents to parse per map/backfill operation
+    /// (0 = unlimited, default: 512)
     #[arg(global = true, long, default_value_t = 512)]
     pub(in crate::crates::core::config) max_sitemaps: usize,
 
@@ -145,7 +146,7 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     #[arg(global = true, long, default_value_t = 16)]
     pub(in crate::crates::core::config) batch_concurrency: usize,
 
-    /// Block until async job completes (default: false)
+    /// Block until async job completes; false enqueues and returns (default: false)
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::crates::core::config) wait: bool,
 
@@ -353,6 +354,11 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     /// Custom HTTP request header in 'Key: Value' format (repeatable)
     #[arg(global = true, long = "header", value_name = "HEADER")]
     pub(in crate::crates::core::config) custom_headers: Vec<String>,
+
+    /// Disable hybrid (dense + BM42 sparse + RRF) search; force dense-only retrieval.
+    /// Overrides `AXON_HYBRID_SEARCH=true`. Useful for A/B comparing retrieval quality.
+    #[arg(global = true, long = "no-hybrid-search", action = ArgAction::SetTrue, default_value_t = false)]
+    pub(in crate::crates::core::config) no_hybrid_search: bool,
 
     /// Suppress spinners and progress output (useful in scripts). JSON data is unaffected.
     #[arg(global = true, long, action = ArgAction::SetTrue, default_value_t = false)]

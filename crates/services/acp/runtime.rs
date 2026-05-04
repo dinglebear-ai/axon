@@ -10,7 +10,8 @@ use crate::crates::services::types::{
     AcpAdapterCommand, AcpPromptTurnRequest, AcpSessionProbeRequest,
 };
 use agent_client_protocol::{
-    Agent, ClientSideConnection, ContentBlock, InitializeRequest, PromptRequest, SessionId,
+    Agent, ClientSideConnection, CloseSessionRequest, ContentBlock, InitializeRequest,
+    PromptRequest, SessionId,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -44,6 +45,10 @@ impl AdapterGuard {
 impl Drop for AdapterGuard {
     fn drop(&mut self) {
         if let Some(ref mut child) = self.0 {
+            tracing::warn!(
+                pid = ?child.id(),
+                "acp: AdapterGuard dropped with live child — sending kill (RAII cleanup on error path)"
+            );
             let _ = child.start_kill();
         }
     }
@@ -155,6 +160,33 @@ async fn wait_for_adapter_exit(
     session_id_str: &str,
     tx: &Option<mpsc::Sender<ServiceEvent>>,
 ) {
+    // Match the persistent-connection teardown path: ask the adapter to close
+    // the active session before dropping stdio. Some adapters keep their event
+    // loop alive after a prompt result until they see `session/close`, which
+    // makes pure EOF-based teardown hit the 10 s kill-on-drop path per turn.
+    if runtime_state.close_session_supported.get()
+        && let Err(err) = conn
+            .close_session(CloseSessionRequest::new(SessionId::new(
+                session_id_str.to_string(),
+            )))
+            .await
+    {
+        tracing::warn!(
+            session_id = %session_id_str,
+            error = %err,
+            "acp: close_session failed during one-shot adapter teardown"
+        );
+        let msg = format!("ACP runtime: close_session failed during adapter cleanup: {err}");
+        emit(
+            tx,
+            ServiceEvent::Log {
+                level: LogLevel::Warn,
+                message: msg,
+            },
+        )
+        .await;
+    }
+
     // Drop connection handles → EOF on adapter stdin → adapter flushes + exits.
     drop(conn);
     drop(runtime_state);
@@ -362,11 +394,35 @@ fn apply_mcp_capability_filter(
     use super::mapping::filter_sdk_mcp_servers;
     match setup {
         AcpSessionSetupRequest::New(mut req) => {
+            let before = req.mcp_servers.len();
             req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            let dropped = before.saturating_sub(req.mcp_servers.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    setup = "new",
+                    dropped,
+                    kept = req.mcp_servers.len(),
+                    http,
+                    sse,
+                    "acp: filtered MCP servers due to adapter transport capability mismatch"
+                );
+            }
             AcpSessionSetupRequest::New(req)
         }
         AcpSessionSetupRequest::Load(mut req) => {
+            let before = req.mcp_servers.len();
             req.mcp_servers = filter_sdk_mcp_servers(&req.mcp_servers, http, sse);
+            let dropped = before.saturating_sub(req.mcp_servers.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    setup = "load",
+                    dropped,
+                    kept = req.mcp_servers.len(),
+                    http,
+                    sse,
+                    "acp: filtered MCP servers due to adapter transport capability mismatch"
+                );
+            }
             AcpSessionSetupRequest::Load(req)
         }
     }

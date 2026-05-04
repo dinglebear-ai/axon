@@ -31,36 +31,33 @@ Core stack env vars are reused:
 - `OPENAI_MODEL`
 - `TAVILY_API_KEY`
 
-MCP transport env vars:
-- `AXON_MCP_TRANSPORT` (`http` default; `stdio|http|both`)
-- `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)
+MCP HTTP env vars:
+- `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
+- `AXON_MCP_HTTP_TOKEN` (required for non-loopback binds; enforced on all MCP HTTP requests when set)
 
 ## Authentication
 
-Authentication is handled externally by the OAuth gateway and SWAG reverse proxy.
-The `/mcp` endpoint is unauthenticated at the application level — all auth enforcement
-happens at the ingress layer.
+HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when configured. Tokenless HTTP is
+allowed only on loopback binds (`127.0.0.1`, `::1`, or `localhost`). Binding the
+MCP HTTP server to a non-loopback address such as `0.0.0.0` requires
+`AXON_MCP_HTTP_TOKEN`; otherwise startup is rejected. External OAuth gateways or
+reverse proxies may add additional ingress controls.
 
 ## Transport Notes
 `axon mcp` supports three transport modes:
 
 - `axon mcp`
-  Starts HTTP transport only. This remains the default for backward compatibility.
-- `axon mcp --transport stdio`
   Starts stdio transport only. Use this for local MCP clients such as Claude Desktop.
+- `axon serve mcp`
+  Starts HTTP transport only.
 - `axon mcp --transport both`
   Starts stdio and HTTP concurrently.
 
-Equivalent env override:
-
-```bash
-AXON_MCP_TRANSPORT=stdio   # or http / both
-```
-
 HTTP transport uses:
-- `AXON_MCP_HTTP_HOST` (default `0.0.0.0`)
+- `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
+- `AXON_MCP_HTTP_TOKEN` (required for non-loopback binds)
 
 ## ACP MCP Server Store (Web UI + Pulse ACP)
 

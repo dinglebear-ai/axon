@@ -13,9 +13,9 @@ use axon::crates::mcp::server::common::{
 };
 use axon::crates::services::query::map_retrieve_result;
 use axon::crates::services::types::{
-    AskResult, DoctorResult, DomainFacet, DomainsResult, MapOptions, Pagination, QueryResult,
-    RetrieveOptions, RetrieveResult, SearchOptions, SearchResult, ServiceTimeRange, SourcesResult,
-    StatsResult, SuggestResult,
+    AskResult, AskTiming, DoctorResult, DomainFacet, DomainsResult, MapOptions, Pagination,
+    QueryHit, QueryResult, RetrieveOptions, RetrieveResult, SearchOptions, SearchResult,
+    ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,46 +178,65 @@ fn doctor_result_wraps_payload() {
 
 #[test]
 fn query_result_has_results_vec() {
-    let v = vec![serde_json::json!({ "score": 0.9, "url": "https://a.com" })];
+    let v = vec![QueryHit {
+        rank: 1,
+        score: 0.9,
+        rerank_score: 0.9,
+        url: "https://a.com".to_string(),
+        source: "docs".to_string(),
+        snippet: "snippet".to_string(),
+        chunk_index: None,
+    }];
     let r = QueryResult { results: v };
     assert_eq!(r.results.len(), 1);
-    assert_eq!(r.results[0]["score"], 0.9);
+    assert_eq!(r.results[0].score, 0.9);
 }
 
 #[test]
 fn retrieve_result_chunks_are_empty_for_zero_count() {
-    let r = RetrieveResult { chunks: Vec::new() };
-    assert!(r.chunks.is_empty());
+    let r = RetrieveResult {
+        chunk_count: 0,
+        content: String::new(),
+    };
+    assert_eq!(r.chunk_count, 0);
+    assert!(r.content.is_empty());
 }
 
 #[test]
-fn map_retrieve_result_stores_chunk_count_inside_chunks_element() {
-    // Pins the data contract that handlers_query.rs::handle_retrieve relies on:
-    // chunk_count lives at chunks[0]["chunk_count"], not in chunks.len().
+fn map_retrieve_result_stores_typed_chunk_count_and_content() {
     let r = map_retrieve_result(7, "hello world".to_string());
-    assert_eq!(
-        r.chunks.len(),
-        1,
-        "one wrapper element regardless of chunk count"
-    );
-    assert_eq!(r.chunks[0]["chunk_count"], 7);
-    assert_eq!(r.chunks[0]["content"], "hello world");
+    assert_eq!(r.chunk_count, 7);
+    assert_eq!(r.content, "hello world");
 }
 
 #[test]
-fn ask_result_exposes_payload_value() {
-    let v = serde_json::json!({ "answer": "42" });
-    let r = AskResult { payload: v };
-    assert_eq!(r.payload["answer"], "42");
+fn ask_result_exposes_typed_answer() {
+    let r = AskResult {
+        query: "question".to_string(),
+        answer: "42".to_string(),
+        diagnostics: None,
+        timing_ms: AskTiming {
+            retrieval: 0,
+            context_build: 0,
+            graph: 0,
+            llm: 0,
+            total: 0,
+        },
+    };
+    assert_eq!(r.answer, "42");
 }
 
 #[test]
 fn suggest_result_exposes_url_vec() {
     let r = SuggestResult {
-        urls: vec!["https://rust-lang.org".to_string()],
+        suggestions: vec![axon::crates::services::types::Suggestion {
+            url: "https://rust-lang.org".to_string(),
+            reason: "Rust docs".to_string(),
+        }],
     };
-    assert_eq!(r.urls.len(), 1);
-    assert_eq!(r.urls[0], "https://rust-lang.org");
+    assert_eq!(r.suggestions.len(), 1);
+    assert_eq!(r.suggestions[0].url, "https://rust-lang.org");
+    assert_eq!(r.suggestions[0].reason, "Rust docs");
 }
 
 #[test]

@@ -39,7 +39,7 @@ All global flags apply. Key flags:
 | `--query <text>` | — | Focus text (alternative to positional argument). |
 | `--limit <n>` | `10` | Desired number of suggested URLs (clamped to 1..100). |
 | `--collection <name>` | `cortex` | Qdrant collection to analyze. |
-| `--json` | `false` | Emits `{"suggestions": [...urls]}` JSON object. |
+| `--json` | `false` | Emits `{"suggestions": [{"url": "...", "reason": "..."}]}` JSON object. |
 
 Note: `suggest` runs synchronously and does not enqueue jobs.
 
@@ -59,6 +59,12 @@ axon suggest "MCP server operations" --limit 20
 axon suggest "qdrant filtering docs" --json
 ```
 
+Plain-text output prints one suggestion per line as:
+
+```text
+https://example.com/docs<TAB>Reason from model
+```
+
 ## Tuning Environment Variables
 
 | Variable | Default | Description |
@@ -72,3 +78,4 @@ axon suggest "qdrant filtering docs" --json
 - `suggest` requires existing indexed content. If collection is empty, it errors with `No indexed URLs found in Qdrant collection; run crawl/scrape first`.
 - Only absolute `http/https` suggestions are accepted.
 - Already-indexed URL variants are filtered out before final output.
+- Suggestion reasons are preserved through the vector suggestion parser, service layer, CLI JSON output, and MCP-facing service contract.

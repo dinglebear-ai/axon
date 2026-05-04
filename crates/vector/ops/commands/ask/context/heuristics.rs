@@ -1,5 +1,8 @@
+#[cfg(test)]
 use crate::crates::vector::ops::ranking;
+#[cfg(test)]
 use spider::url::Url;
+#[cfg(test)]
 use std::collections::HashMap;
 
 pub(super) const SUPPLEMENTAL_CONTEXT_BUDGET_PCT: usize = 85;
@@ -7,8 +10,9 @@ pub(super) const SUPPLEMENTAL_MIN_TOP_CHUNKS_FOR_COVERAGE: usize = 6;
 pub(super) const SUPPLEMENTAL_RELEVANCE_BONUS: f64 = 0.0;
 
 pub(super) fn push_context_entry(
-    entries: &mut Vec<String>,
+    entries: &mut Vec<(f64, String)>,
     context_char_count: &mut usize,
+    score: f64,
     entry: String,
     separator: &str,
     max_chars: usize,
@@ -21,7 +25,7 @@ pub(super) fn push_context_entry(
     if projected > max_chars {
         return false;
     }
-    entries.push(entry);
+    entries.push((score, entry));
     *context_char_count = projected;
     true
 }
@@ -42,10 +46,12 @@ pub(super) fn should_inject_supplemental(
     within_budget && coverage_needs_backfill
 }
 
+#[cfg(test)]
 pub(super) fn query_requests_low_signal_sources(query_tokens: &[String], raw_query: &str) -> bool {
     ranking::query_wants_low_signal_sources(query_tokens, raw_query)
 }
 
+#[cfg(test)]
 pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {
     if domains.is_empty() {
         return true;
@@ -62,12 +68,14 @@ pub(super) fn url_matches_domain_list(url: &str, domains: &[String]) -> bool {
     })
 }
 
+#[cfg(test)]
 fn host_from_url(url: &str) -> Option<String> {
     Url::parse(url)
         .ok()
         .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
 }
 
+#[cfg(test)]
 pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) -> Vec<String> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for candidate in candidates {
@@ -86,6 +94,7 @@ pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) ->
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains: &[String]) -> f64 {
     if candidates.is_empty() || domains.is_empty() {
         return 0.0;
@@ -97,6 +106,7 @@ pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains:
     authoritative as f64 / candidates.len() as f64
 }
 
+#[cfg(test)]
 fn candidate_topical_overlap_count(
     candidate: &ranking::AskCandidate,
     query_tokens: &[String],
@@ -110,6 +120,7 @@ fn candidate_topical_overlap_count(
         .count()
 }
 
+#[cfg(test)]
 pub(super) fn candidate_has_topical_overlap(
     candidate: &ranking::AskCandidate,
     query_tokens: &[String],
@@ -159,10 +170,10 @@ mod tests {
 
     #[test]
     fn push_context_entry_first_entry_no_separator_overhead() {
-        let mut entries: Vec<String> = Vec::new();
+        let mut entries: Vec<(f64, String)> = Vec::new();
         let mut count: usize = 0;
         let entry = "hello world".to_string(); // len = 11
-        let result = push_context_entry(&mut entries, &mut count, entry, "\n\n", 100);
+        let result = push_context_entry(&mut entries, &mut count, 1.0, entry, "\n\n", 100);
         assert!(result, "first entry should be accepted");
         assert_eq!(count, 11, "count should equal entry length (no separator)");
         assert_eq!(entries.len(), 1);
@@ -170,11 +181,11 @@ mod tests {
 
     #[test]
     fn push_context_entry_second_entry_within_budget() {
-        let mut entries = vec!["aaaa".to_string()]; // first entry, len=4
+        let mut entries: Vec<(f64, String)> = vec![(1.0, "aaaa".to_string())]; // first entry, len=4
         let mut count: usize = 4;
         let sep = "\n\n"; // len=2
         let entry = "bbbbb".to_string(); // len=5  => projected = 4+2+5 = 11
-        let result = push_context_entry(&mut entries, &mut count, entry, sep, 20);
+        let result = push_context_entry(&mut entries, &mut count, 0.5, entry, sep, 20);
         assert!(result, "second entry within budget should be accepted");
         assert_eq!(count, 11);
         assert_eq!(entries.len(), 2);
@@ -182,12 +193,12 @@ mod tests {
 
     #[test]
     fn push_context_entry_rejected_when_over_budget() {
-        let mut entries = vec!["aaaa".to_string()]; // len=4
+        let mut entries: Vec<(f64, String)> = vec![(1.0, "aaaa".to_string())]; // len=4
         let mut count: usize = 4;
         let sep = "\n\n"; // len=2
         // projected = 4+2+5 = 11, max=10 => reject
         let entry = "bbbbb".to_string();
-        let result = push_context_entry(&mut entries, &mut count, entry, sep, 10);
+        let result = push_context_entry(&mut entries, &mut count, 0.5, entry, sep, 10);
         assert!(!result, "entry over budget should be rejected");
         assert_eq!(count, 4, "count must be unchanged");
         assert_eq!(entries.len(), 1, "entries must be unchanged");
@@ -195,12 +206,12 @@ mod tests {
 
     #[test]
     fn push_context_entry_exactly_at_boundary_accepted() {
-        let mut entries = vec!["aaaa".to_string()]; // len=4
+        let mut entries: Vec<(f64, String)> = vec![(1.0, "aaaa".to_string())]; // len=4
         let mut count: usize = 4;
         let sep = "\n\n"; // len=2
         // projected = 4+2+5 = 11 == max=11 => accepted (projected <= max)
         let entry = "bbbbb".to_string();
-        let result = push_context_entry(&mut entries, &mut count, entry, sep, 11);
+        let result = push_context_entry(&mut entries, &mut count, 0.5, entry, sep, 11);
         assert!(
             result,
             "entry exactly at max_chars boundary should be accepted"

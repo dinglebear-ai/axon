@@ -1,6 +1,5 @@
 use crate::crates::core::config::Config;
 use crate::crates::vector::ops::ranking;
-use spider::url::Url;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub(crate) fn strip_sources_section(answer: &str) -> String {
@@ -82,22 +81,6 @@ fn is_non_trivial(query: &str, body: &str) -> bool {
     let query_tokens = ranking::tokenize_query(query);
     let body_words = body.split_whitespace().count();
     query_tokens.len() >= 4 || body_words >= 70 || body.len() >= 450
-}
-
-fn source_matches_domain_list(source: &str, domains: &[String]) -> bool {
-    if domains.is_empty() {
-        return false;
-    }
-    let Some(host) = Url::parse(source)
-        .ok()
-        .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
-    else {
-        return false;
-    };
-    domains.iter().any(|domain| {
-        let normalized = domain.trim().to_ascii_lowercase();
-        !normalized.is_empty() && (host == normalized || host.ends_with(&format!(".{normalized}")))
-    })
 }
 
 fn format_insufficient_evidence(
@@ -210,21 +193,6 @@ pub(crate) fn normalize_ask_answer(
             "Non-trivial answer requires at least {min_citations} unique citations; found {}.",
             source_lines.len()
         ));
-    }
-
-    // Gate 4b: authoritative allowlist (opt-in, empty by default)
-    let cited_sources = source_lines
-        .iter()
-        .filter_map(|line| line.split_once("] ").map(|(_, source)| source.to_string()))
-        .collect::<Vec<_>>();
-    if !cfg.ask_authoritative_allowlist.is_empty()
-        && !cited_sources
-            .iter()
-            .any(|source| source_matches_domain_list(source, &cfg.ask_authoritative_allowlist))
-    {
-        insufficiency_reasons.push(
-            "Authoritative allowlist is configured, but no cited source matched it.".to_string(),
-        );
     }
 
     if !insufficiency_reasons.is_empty() {

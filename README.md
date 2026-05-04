@@ -833,10 +833,11 @@ just serve
 
 ### mcp
 
-Start the MCP server. Default transport is HTTP (`--transport http`). See [MCP Server](#mcp-server) for full details.
+Start the stdio MCP server. See [MCP Server](#mcp-server) for full details.
 
 ```bash
 axon mcp [--transport stdio|http|both]
+axon serve mcp
 ```
 
 ---
@@ -867,23 +868,23 @@ Job state machine: `pending` → `running` → `completed` | `failed` | `cancele
 ### Transport Modes
 
 ```bash
-axon mcp                           # HTTP only (default)
-axon mcp --transport stdio         # stdio only (for Claude Desktop)
+axon mcp                           # stdio only (default, for local MCP clients)
+axon serve mcp                     # HTTP only (default for serving /mcp)
 axon mcp --transport http          # HTTP only
 axon mcp --transport both          # stdio + HTTP concurrently
 ```
 
 HTTP endpoint: `http://<AXON_MCP_HTTP_HOST>:<AXON_MCP_HTTP_PORT>/mcp`
 
-Environment equivalents:
+HTTP bind environment:
 
 ```bash
-AXON_MCP_TRANSPORT=stdio           # or http / both
-AXON_MCP_HTTP_HOST=0.0.0.0        # default
+AXON_MCP_HTTP_HOST=127.0.0.1      # default
 AXON_MCP_HTTP_PORT=8001            # default
+AXON_MCP_HTTP_TOKEN=               # required for non-loopback binds
 ```
 
-Authentication is handled at the ingress layer (OAuth gateway + SWAG reverse proxy). The `/mcp` endpoint is unauthenticated at the application level.
+HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when it is set. Tokenless HTTP is allowed only for loopback binds; non-loopback binds such as `0.0.0.0` are rejected at startup unless `AXON_MCP_HTTP_TOKEN` is configured. Reverse proxies can still add OAuth or other ingress controls in front of the token gate.
 
 ### Tool Contract
 
@@ -1140,15 +1141,14 @@ Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | — | Comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
-| `AXON_ASK_AUTHORITATIVE_ALLOWLIST` | — | Strict domain allowlist for retrieval candidates |
 
 #### MCP Transport
 
 | Variable | Default | Description |
 |---|---|---|
-| `AXON_MCP_TRANSPORT` | `http` | Transport mode: `stdio`, `http`, `both` |
-| `AXON_MCP_HTTP_HOST` | `0.0.0.0` | HTTP bind host |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP bind port |
+| `AXON_MCP_HTTP_TOKEN` | — | Bearer or `x-api-key` token required for non-loopback HTTP binds and enforced on all MCP HTTP requests when set |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline is triggered (0 = disable) |
 
 #### Ports

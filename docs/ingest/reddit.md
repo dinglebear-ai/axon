@@ -31,7 +31,7 @@ REDDIT_CLIENT_SECRET=your_client_secret
 
 ## How It Works
 
-1. Validates subreddit name: 3–21 chars, alphanumeric + underscore only (prevents path traversal)
+1. Validates subreddit names and canonicalizes thread targets before constructing Reddit API URLs. Accepted thread inputs are `reddit.com`, `www.reddit.com`, `old.reddit.com`, or `/r/<subreddit>/comments/<id>/...` permalink-style paths. Non-Reddit `/comments/` URLs are rejected.
 2. Authenticates via Reddit OAuth2 client credentials, obtaining a bearer token
 3. Fetches posts from `https://oauth.reddit.com/r/<subreddit>/<sort>?limit=100`; paginates until `--max-posts` reached
 4. For each post, fetches the comment tree at `https://oauth.reddit.com<permalink>.json?limit=100&depth=<n>`
@@ -42,7 +42,13 @@ REDDIT_CLIENT_SECRET=your_client_secret
 
 ## Rate Limits
 
-Reddit OAuth2 script apps are allowed 100 requests/minute. On 429 responses, the ingest worker currently retries with fixed exponential backoff (2s, 4s, 8s; max 3 retries). `Retry-After` headers are not currently parsed.
+Reddit OAuth2 script apps are allowed 100 requests/minute. On 429 responses, the ingest worker honors numeric `Retry-After` headers up to a 60s cap, then falls back to exponential backoff (2s, 4s, 8s; max 3 retries) when the header is missing or invalid.
+
+## Cancellation and Partial Comment Failures
+
+The Reddit source has source-local cancellation hooks that can be wired by job/service layers. Checks occur before page fetches, before comment fetches, and during retry backoff sleeps.
+
+Subreddit ingest treats per-post comment fetch failures as partial failures: the post can still be embedded, while `comment_fetch_attempts` and `comment_fetch_failures` are tracked in Reddit ingest stats and emitted through the source progress payload.
 
 ## Qdrant Metadata Fields
 
@@ -70,7 +76,7 @@ All Reddit post chunks carry structured `reddit_*` payload fields built in `crat
 | **Comment depth limits** | Reddit's API can truncate very deep threads before `--depth` is reached |
 | **Private / quarantined subreddits** | Client credentials flow cannot access these; fails with 403 |
 | **Score freshness** | Scores captured at index time; not updated on re-index |
-| **Subreddit name validation** | 3–21 chars, alphanumeric + underscore only. Don't include `r/` prefix |
+| **Target validation** | Subreddit names are 3–21 chars, alphanumeric + underscore only. Thread URLs must be on `reddit.com`, `www.reddit.com`, or `old.reddit.com`, or use `/r/.../comments/...` permalink form |
 
 ## Troubleshooting
 

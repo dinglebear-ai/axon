@@ -70,6 +70,8 @@ pub(super) enum CliCommand {
     #[command(alias = "completion")]
     /// Generate shell completions (bash, zsh, fish)
     Completions(CompletionArgs),
+    /// Start service runtimes
+    Serve(ServeArgs),
     /// Start MCP server (stdio, HTTP, or both)
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
@@ -94,6 +96,18 @@ pub(super) struct McpArgs {
     /// MCP transport: stdio, http, or both.
     #[arg(long, value_enum)]
     pub(super) transport: Option<McpTransport>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ServeArgs {
+    #[command(subcommand)]
+    pub(super) target: ServeSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ServeSubcommand {
+    /// Start the MCP HTTP server runtime
+    Mcp(McpArgs),
 }
 
 #[derive(Debug, Args)]
@@ -209,6 +223,10 @@ pub(super) struct EvaluateArgs {
     pub(super) diagnostics: bool,
     #[arg(long = "responses-mode", value_enum, default_value_t = EvaluateResponsesMode::SideBySide)]
     pub(super) responses_mode: EvaluateResponsesMode,
+    /// Replace the no-context baseline with a second RAG run that has hybrid retrieval
+    /// disabled. The judge then compares hybrid-RAG vs dense-only-RAG.
+    #[arg(long = "retrieval-ab", action = ArgAction::SetTrue)]
+    pub(super) retrieval_ab: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }

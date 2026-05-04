@@ -53,6 +53,8 @@ All global flags apply. Key flags:
 | `--include-subdomains <bool>` | `false` | Include subdomains under the same parent domain. |
 | `--respect-robots <bool>` | `false` | Respect `robots.txt` directives. |
 | `--min-markdown-chars <n>` | `200` | Thin-page threshold. |
+
+Lite mode preserves fire-and-forget semantics for `--wait false`: `crawl` enqueues and exits without draining other pending crawl rows. Use `--wait true` to run the submitted crawl inline and wait for its explicit dependent embed job, if one is created.
 | `--drop-thin-markdown <bool>` | `true` | Skip thin pages. |
 | `--sitemap-only` | `false` | Sync-only path: run sitemap backfill without full crawl. |
 | `--embed <bool>` | `true` | Queue embed job from crawl output. |

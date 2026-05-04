@@ -9,7 +9,9 @@ mod text_embed;
 
 #[cfg(test)]
 pub(crate) use tei_client::QUERY_INSTRUCTION;
-pub(crate) use tei_client::{prepend_query_instruction, tei_embed};
+#[cfg(test)]
+pub(crate) use tei_client::prepend_query_instruction;
+pub(crate) use tei_client::{EmbedInput, EmbedKind, tei_embed_kind, tei_embed_typed};
 
 // Re-export the embed API for crate callers.
 pub(crate) use text_embed::embed_prepared_docs;
@@ -64,7 +66,7 @@ pub(super) fn build_point(
                 "id": point_id.to_string(),
                 "vector": {
                     "dense": vecv,
-                    "bm42": sv.to_json()
+                    "bm42": sv
                 },
                 "payload": payload,
             })

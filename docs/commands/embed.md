@@ -37,6 +37,8 @@ All global flags apply. Key flags for this command:
 | `--json` | `false` | Machine-readable JSON output. |
 | `--yes` | `false` | Skip destructive confirmation prompts (used by `embed clear`). |
 
+Lite mode preserves fire-and-forget semantics for `--wait false`: `embed` enqueues the job and exits without draining the embed table. Use `--wait true` to run the embed operation inline and block until that operation finishes.
+
 Note: `embed` does not use `--limit`.
 
 ## Job Subcommands

@@ -11,24 +11,11 @@ use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
 use anyhow::{Result, anyhow};
-use rand::RngExt as _;
 use reqwest::StatusCode;
 use std::collections::HashSet;
-use std::time::Duration;
 
 use super::types::QdrantPoint;
-use super::utils::{qdrant_base, retrieve_max_points};
-
-/// Exponential backoff with jitter for Qdrant retries.
-/// Base delay is 250ms * 2^(attempt-1), plus random jitter up to 100ms.
-/// Prevents thundering-herd when multiple workers retry simultaneously
-/// after a Qdrant restart.
-fn qdrant_retry_delay(attempt: usize) -> Duration {
-    debug_assert!(attempt >= 1, "attempt must be >= 1");
-    let base_ms = 250_u64.saturating_mul(1u64 << attempt.saturating_sub(1));
-    let jitter_ms = rand::rng().random_range(0..100);
-    Duration::from_millis(base_ms + jitter_ms)
-}
+use super::utils::{qdrant_collection_endpoint, qdrant_retry_delay, retrieve_max_points};
 
 async fn qdrant_delete_with_retry(
     client: &reqwest::Client,
@@ -185,11 +172,7 @@ pub(crate) async fn qdrant_scroll_pages_selective(
     process_page: impl FnMut(&[serde_json::Value]) -> bool,
 ) -> Result<()> {
     let client = http_client()?;
-    let endpoint = format!(
-        "{}/collections/{}/points/scroll",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let body = serde_json::json!({
         "limit": 256,
         "with_payload": with_payload,
@@ -207,11 +190,7 @@ async fn scroll_url_set(
     limit: Option<usize>,
 ) -> Result<HashSet<String>> {
     let client = http_client()?;
-    let endpoint = format!(
-        "{}/collections/{}/points/scroll",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let mut seen = HashSet::new();
     let body = serde_json::json!({
         "limit": 1000,
@@ -262,11 +241,7 @@ pub async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result<HashSe
 #[cfg(test)]
 pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Result<()> {
     let client = http_client()?;
-    let endpoint = format!(
-        "{}/collections/{}/points/delete?wait=true",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
     qdrant_delete_with_retry(
         client,
         &endpoint,
@@ -297,11 +272,7 @@ pub(crate) async fn qdrant_delete_stale_tail(
     new_chunk_count: usize,
 ) -> Result<()> {
     let client = http_client()?;
-    let endpoint = format!(
-        "{}/collections/{}/points/delete?wait=false",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
     qdrant_delete_with_retry(
         client,
         &endpoint,
@@ -344,11 +315,7 @@ pub async fn qdrant_delete_stale_domain_urls(
     // Use wait=false for maintenance deletes — matches qdrant_delete_stale_tail pattern.
     // The preceding scroll already verified which URLs are stale; no immediate
     // consistency is needed, and wait=true blocks on HNSW index rebuild per batch.
-    let delete_url = format!(
-        "{}/collections/{}/points/delete?wait=false",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let delete_url = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
     // Qdrant filter limit is generous but chunk at 500 to be safe with large stale sets.
     for batch in url_conditions.chunks(500) {
         qdrant_delete_with_retry(
@@ -369,11 +336,7 @@ pub(crate) async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result
         return Ok(0);
     }
     let client = http_client()?;
-    let url = format!(
-        "{}/collections/{}/points/delete?wait=true",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let url = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
     for batch in ids.chunks(1000) {
         qdrant_delete_with_retry(
             client,
@@ -412,7 +375,7 @@ pub(crate) async fn qdrant_facet_filtered(
     filter: serde_json::Value,
 ) -> Result<Vec<(String, usize)>> {
     let client = http_client()?;
-    let url = format!("{}/collections/{}/facet", qdrant_base(cfg), cfg.collection);
+    let url = qdrant_collection_endpoint(cfg, "facet")?;
     let mut body = serde_json::json!({
         "key": key,
         "limit": limit,
@@ -454,23 +417,21 @@ pub(crate) async fn qdrant_retrieve_by_url(
     max_points: Option<usize>,
 ) -> Result<Vec<QdrantPoint>> {
     let client = http_client()?;
-    let endpoint = format!(
-        "{}/collections/{}/points/scroll",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
+    let url_filter = super::filter::url_filter(url_match);
+    let filter =
+        match super::filter::build_scraped_at_filter(cfg.since.as_deref(), cfg.before.as_deref()) {
+            Ok(Some(date_filter)) => {
+                super::filter::combine_must_filters(&[url_filter, date_filter])
+            }
+            Ok(None) => url_filter,
+            Err(err) => return Err(anyhow!(err)),
+        };
     let body = serde_json::json!({
         "limit": 256,
         "with_payload": true,
         "with_vector": false,
-        "filter": {
-            "must": [
-                {
-                    "key": "url",
-                    "match": {"value": url_match}
-                }
-            ]
-        }
+        "filter": filter
     });
     let max_points = retrieve_max_points(max_points);
     let mut out = Vec::new();

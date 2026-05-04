@@ -14,11 +14,13 @@ use std::error::Error as StdError;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use uuid::Uuid;
 
 use crate::crates::core::config::Config;
@@ -37,6 +39,18 @@ const BACKOFF_INITIAL_MS: u64 = 1_000;
 const BACKOFF_MAX_MS: u64 = 60_000;
 /// Maximum number of connect attempts before propagating the error.
 const BACKOFF_MAX_ATTEMPTS: u32 = 5;
+
+type AcpWsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type AcpWsRead = SplitStream<AcpWsStream>;
+type AcpWsWrite = SplitSink<AcpWsStream, Message>;
+
+struct WsCompletionLoopState<'a> {
+    result_text: &'a mut Option<String>,
+    last_pong: Arc<Mutex<Instant>>,
+    ping_interval: &'a mut tokio::time::Interval,
+    safe_ws_url: &'a str,
+    req_id: &'a str,
+}
 
 // ── Public runner ─────────────────────────────────────────────────────────────
 
@@ -102,6 +116,7 @@ where
 {
     let mut attempt: u32 = 0;
     let mut backoff_ms: u64 = BACKOFF_INITIAL_MS;
+    let safe_ws_url = redact_url_for_log(ws_url);
 
     loop {
         attempt += 1;
@@ -109,7 +124,7 @@ where
             Ok(result) => {
                 if attempt > 1 {
                     tracing::info!(
-                        ws_url = %ws_url,
+                        ws_url = %safe_ws_url,
                         attempt,
                         "acp_llm: WS connection re-established after failure",
                     );
@@ -118,7 +133,7 @@ where
             }
             Err(e) if attempt >= BACKOFF_MAX_ATTEMPTS => {
                 tracing::error!(
-                    ws_url = %ws_url,
+                    ws_url = %safe_ws_url,
                     attempt,
                     max_attempts = BACKOFF_MAX_ATTEMPTS,
                     error = %e,
@@ -131,7 +146,7 @@ where
                 let jitter = 0.8 + (rand::random::<f64>() * 0.4);
                 let delay_ms = ((backoff_ms as f64) * jitter) as u64;
                 tracing::info!(
-                    ws_url = %ws_url,
+                    ws_url = %safe_ws_url,
                     attempt,
                     backoff_ms = delay_ms,
                     error = %e,
@@ -154,11 +169,13 @@ async fn run_ws_completion<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
-    tracing::debug!(ws_url = %ws_url, model = ?req.model, "acp_llm: WS completion connecting");
+    let safe_ws_url = redact_url_for_log(ws_url);
+    tracing::debug!(ws_url = %safe_ws_url, model = ?req.model, "acp_llm: WS completion connecting");
     let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| {
-        tracing::error!(ws_url = %ws_url, error = %e, "acp_llm: WS connect failed");
-        format!("ACP WS connect failed ({ws_url}): {e}")
+        tracing::error!(ws_url = %safe_ws_url, error = %e, "acp_llm: WS connect failed");
+        format!("ACP WS connect failed ({safe_ws_url}): {e}")
     })?;
+    tracing::debug!(ws_url = %safe_ws_url, "acp_llm: WS completion connected");
     let (mut write, mut read) = ws_stream.split();
 
     let req_id = Uuid::new_v4().to_string();
@@ -167,7 +184,16 @@ where
     write
         .send(Message::Text(execute_msg.into()))
         .await
-        .map_err(|e| format!("ACP WS send failed: {e}"))?;
+        .map_err(|e| {
+            tracing::warn!(
+                ws_url = %safe_ws_url,
+                req_id = %req_id,
+                error = %e,
+                "acp_llm: WS send error"
+            );
+            format!("ACP WS send failed: {e}")
+        })?;
+    tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS execute sent");
 
     let mut result_text: Option<String> = None;
 
@@ -180,71 +206,23 @@ where
 
     let loop_result: Result<(), String> = tokio::time::timeout(
         Duration::from_secs(WS_COMPLETION_TIMEOUT_SECS),
-        async {
-            loop {
-                tokio::select! {
-                    biased;
-
-                    // ── Incoming WS frame ────────────────────────────────────
-                    msg_opt = read.next() => {
-                        let text = match msg_opt {
-                            Some(Ok(Message::Text(t))) => t.to_string(),
-                            Some(Ok(Message::Pong(_))) => {
-                                tracing::debug!(action = "ws.pong.received");
-                                *last_pong.lock().await = Instant::now();
-                                continue;
-                            }
-                            Some(Ok(Message::Close(_))) => break,
-                            Some(Ok(_)) => continue,
-                            Some(Err(e)) => {
-                                tracing::warn!(ws_url = %ws_url, error = %e, "acp_llm: WS read error");
-                                return Err(format!("ACP WS read error: {e}"));
-                            }
-                            None => break,
-                        };
-                        match extract_event(&text) {
-                            WsIncomingEvent::Delta(delta) => {
-                                on_delta(&delta).map_err(|e| e.to_string())?;
-                            }
-                            WsIncomingEvent::Result(text) => {
-                                result_text = Some(text);
-                            }
-                            WsIncomingEvent::Done => break,
-                            WsIncomingEvent::Error(msg) => {
-                                tracing::warn!(ws_url = %ws_url, server_error = %msg, "acp_llm: WS server returned error");
-                                return Err(format!("ACP WS server error: {msg}"));
-                            }
-                            WsIncomingEvent::Ignore => {}
-                        }
-                    }
-
-                    // ── Heartbeat tick: send Ping, check previous Pong ───────
-                    _ = ping_interval.tick() => {
-                        // Check if pong came back since the last ping.
-                        let since_pong = last_pong.lock().await.elapsed();
-                        if since_pong > Duration::from_secs(WS_PING_INTERVAL_SECS + WS_PONG_TIMEOUT_SECS) {
-                            tracing::warn!(
-                                ws_url = %ws_url,
-                                action = "ws.pong.timeout",
-                                since_pong_secs = since_pong.as_secs(),
-                                "acp_llm: closing stale connection — pong timeout",
-                            );
-                            return Err("WS pong timeout — stale connection".to_string());
-                        }
-                        tracing::debug!(action = "ws.ping.sent");
-                        if write.send(Message::Ping(Default::default())).await.is_err() {
-                            return Err("ACP WS ping send failed".to_string());
-                        }
-                    }
-                }
-            }
-            Ok(())
-        },
+        drive_ws_completion_loop(
+            &mut read,
+            &mut write,
+            WsCompletionLoopState {
+                result_text: &mut result_text,
+                last_pong: Arc::clone(&last_pong),
+                ping_interval: &mut ping_interval,
+                safe_ws_url: &safe_ws_url,
+                req_id: &req_id,
+            },
+            on_delta,
+        ),
     )
     .await
     .map_err(|_| {
         tracing::warn!(
-            ws_url = %ws_url,
+            ws_url = %safe_ws_url,
             timeout_secs = WS_COMPLETION_TIMEOUT_SECS,
             "acp_llm: WS completion timed out",
         );
@@ -253,7 +231,9 @@ where
     .and_then(|r| r);
 
     match loop_result {
-        Ok(()) => {}
+        Ok(()) => {
+            tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS completion finished");
+        }
         Err(e) if e == "timeout" => {
             return Err(
                 format!("ACP WS completion timed out after {WS_COMPLETION_TIMEOUT_SECS}s").into(),
@@ -265,9 +245,88 @@ where
     result_text
         .map(|text| AcpCompletionTurnResult { text, usage: None })
         .ok_or_else(|| {
-            tracing::error!(ws_url = %ws_url, "acp_llm: WS server sent Done without Result — protocol violation");
+            tracing::error!(ws_url = %safe_ws_url, "acp_llm: WS server sent Done without Result — protocol violation");
             "ACP WS completion finished without a turn result".into()
         })
+}
+
+async fn drive_ws_completion_loop<F>(
+    read: &mut AcpWsRead,
+    write: &mut AcpWsWrite,
+    state: WsCompletionLoopState<'_>,
+    on_delta: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+{
+    let WsCompletionLoopState {
+        result_text,
+        last_pong,
+        ping_interval,
+        safe_ws_url,
+        req_id,
+    } = state;
+    loop {
+        tokio::select! {
+            biased;
+
+            msg_opt = read.next() => {
+                let text = match msg_opt {
+                    Some(Ok(Message::Text(t))) => t.to_string(),
+                    Some(Ok(Message::Pong(_))) => {
+                        tracing::debug!(action = "ws.pong.received");
+                        *last_pong.lock().await = Instant::now();
+                        continue;
+                    }
+                    Some(Ok(Message::Close(_))) => break,
+                    Some(Ok(_)) => continue,
+                    Some(Err(e)) => {
+                        tracing::warn!(ws_url = %safe_ws_url, error = %e, "acp_llm: WS read error");
+                        return Err(format!("ACP WS read error: {e}"));
+                    }
+                    None => break,
+                };
+                match extract_event(&text) {
+                    WsIncomingEvent::Delta(delta) => {
+                        on_delta(&delta).map_err(|e| e.to_string())?;
+                    }
+                    WsIncomingEvent::Result(text) => {
+                        tracing::debug!(ws_url = %safe_ws_url, req_id = %req_id, "acp_llm: WS result received");
+                        *result_text = Some(text);
+                    }
+                    WsIncomingEvent::Done => break,
+                    WsIncomingEvent::Error(msg) => {
+                        tracing::warn!(ws_url = %safe_ws_url, server_error = %msg, "acp_llm: WS server returned error");
+                        return Err(format!("ACP WS server error: {msg}"));
+                    }
+                    WsIncomingEvent::Ignore => {}
+                }
+            }
+
+            _ = ping_interval.tick() => {
+                let since_pong = last_pong.lock().await.elapsed();
+                if since_pong > Duration::from_secs(WS_PING_INTERVAL_SECS + WS_PONG_TIMEOUT_SECS) {
+                    tracing::warn!(
+                        ws_url = %safe_ws_url,
+                        action = "ws.pong.timeout",
+                        since_pong_secs = since_pong.as_secs(),
+                        "acp_llm: closing stale connection — pong timeout",
+                    );
+                    return Err("WS pong timeout — stale connection".to_string());
+                }
+                tracing::debug!(action = "ws.ping.sent");
+                if let Err(e) = write.send(Message::Ping(Default::default())).await {
+                    tracing::warn!(
+                        ws_url = %safe_ws_url,
+                        error = %e,
+                        "acp_llm: WS ping send error"
+                    );
+                    return Err("ACP WS ping send failed".to_string());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── Wire helpers ──────────────────────────────────────────────────────────────
@@ -298,6 +357,18 @@ fn percent_encode(input: &str) -> String {
         }
     }
     out
+}
+
+pub(super) fn redact_url_for_log(url: &str) -> String {
+    let Some(query_start) = url.find('?') else {
+        return url.to_string();
+    };
+    let (before_query, query_and_fragment) = url.split_at(query_start);
+    let fragment = query_and_fragment
+        .find('#')
+        .map(|idx| &query_and_fragment[idx..])
+        .unwrap_or("");
+    format!("{before_query}?<redacted>{fragment}")
 }
 
 /// Build the full WebSocket endpoint URL from a base URL and optional token.
@@ -354,6 +425,10 @@ pub(super) enum WsIncomingEvent {
 /// Uses `serde_json::Value` to avoid coupling to private server types.
 pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
     let Ok(v) = serde_json::from_str::<Value>(raw) else {
+        tracing::debug!(
+            frame_len = raw.len(),
+            "acp_llm: ignoring non-json WS text frame"
+        );
         return WsIncomingEvent::Ignore;
     };
     match v["type"].as_str() {
@@ -369,7 +444,13 @@ pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
                     .filter(|s| !s.is_empty())
                     .map(|s| WsIncomingEvent::Result(s.to_string()))
                     .unwrap_or(WsIncomingEvent::Ignore),
-                _ => WsIncomingEvent::Ignore,
+                other => {
+                    tracing::debug!(
+                        event_type = ?other,
+                        "acp_llm: ignoring unsupported ACP WS output event"
+                    );
+                    WsIncomingEvent::Ignore
+                }
             }
         }
         Some("command.done") => WsIncomingEvent::Done,
@@ -380,7 +461,13 @@ pub(super) fn extract_event(raw: &str) -> WsIncomingEvent {
                 .to_string();
             WsIncomingEvent::Error(msg)
         }
-        _ => WsIncomingEvent::Ignore,
+        other => {
+            tracing::debug!(
+                event_type = ?other,
+                "acp_llm: ignoring unsupported ACP WS event"
+            );
+            WsIncomingEvent::Ignore
+        }
     }
 }
 
@@ -438,6 +525,23 @@ mod tests {
         assert!(
             !result.contains("tok&evil"),
             "raw & must not appear in URL: {result}"
+        );
+    }
+
+    #[test]
+    fn redact_url_for_log_removes_query_tokens() {
+        let result = redact_url_for_log("wss://server:49000/ws?token=tok%26evil%3D1");
+
+        assert_eq!(result, "wss://server:49000/ws?<redacted>");
+        assert!(!result.contains("tok"));
+        assert!(!result.contains("token="));
+    }
+
+    #[test]
+    fn redact_url_for_log_leaves_tokenless_url_unchanged() {
+        assert_eq!(
+            redact_url_for_log("wss://server:49000/ws"),
+            "wss://server:49000/ws"
         );
     }
 

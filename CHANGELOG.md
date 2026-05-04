@@ -7,6 +7,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-04
+
+### Added
+- **Plugin skills**: 15 Claude Code skills under `plugins/axon/skills/` covering scrape, crawl, map, extract, embed, ingest, query, ask, search, retrieve, sources, domains, stats, status, and the top-level axon skill with full action reference.
+- **Plugin agents**: researcher agent scaffold under `plugins/axon/agents/`.
+- **Plugin MCP config**: `.mcp.json` added to `plugins/axon/` for MCP server wiring.
+
+### Changed
+- **Plugin manifest relocated**: `.claude-plugin/plugin.json` moved from `plugins/axon/` to the repo root `.claude-plugin/`.
+- **Monolith splits**: `job_contracts`, `status/metrics`, `crawl/collector`, `crawl/map`, `ingest/github/files`, `jobs/lite/ops`, and `jobs/lite/workers/runners` each split into focused submodule files to comply with the 500-line file policy.
+
+## [1.1.0] - 2026-05-03
+
+### Added
+- **Tracing and progress bundle**: lite job workers now persist richer progress snapshots, CLI status prints per-job progress summaries, and ingest/embed flows expose more detailed runtime metrics.
+- **MCP plugin scaffold**: added the Axon Claude plugin package scaffold under `plugins/axon`.
+
+### Changed
+- **Operational docs and config**: updated MCP, command, ingest, and config references for the new observability and transport behavior.
+
+### Fixed
+- **MCP HTTP startup guard**: HTTP server startup now enforces the token policy before binding externally.
+
+## [1.0.13] - 2026-05-03
+
+### Changed
+- **Retrieval dispatch contract**: query and ask now build typed `VectorSearchRequest` values, pass ask-specific hybrid candidate overrides without cloning `Config`, and keep dispatch/facet/retrieve/dedupe code in focused modules.
+- **Typed embedding calls**: TEI embedding call sites now declare query vs document embedding intent with `EmbedKind`, preventing query-instruction omissions on new retrieval paths.
+
+### Fixed
+- **Ask context selection**: top chunk and full-document selections now use disjoint URL sets so the two diversity passes cannot select the same source twice.
+- **Live Qdrant testing**: added a `live-qdrant` feature and CI job so live vector integration tests fail loudly when Qdrant configuration is expected but missing.
+
+## [1.0.12] - 2026-05-03
+
+### Fixed
+- **VectorMode cache revalidation**: cached legacy `Unnamed` collection modes now re-probe live Qdrant when hybrid search is enabled, so long-running workers self-heal after migration instead of staying on dense-only paths until restart.
+
+## [1.0.11] - 2026-05-03
+
+### Fixed
+- **Ask RRF rerank scale**: ask retrieval now skips cosine-calibrated rerank thresholds and additive BM25-style boosts only on the effective RRF path, while preserving cosine behavior for legacy, named-dense, and empty-sparse fallback searches.
+- **RRF supplemental context**: supplemental ask candidates now use an optional score floor so RRF context backfill is gated by topical overlap and context budget instead of cosine-scale thresholds.
+
+## [1.0.10] - 2026-05-02
+
+### Fixed
+- **Lite job replay review fixes**: versioned lite job snapshots now exactly replay submitted `None` option fields, preserve job-critical custom headers, Chrome proxy, and ACP adapter args, and omit credential-bearing endpoint URLs from public `config_json` while falling back to process config for those endpoints.
+- **Monolith allowlist tracking**: the current extraction-sprint allowlist extension now references its review follow-up bead so the policy waiver remains auditable.
+
+## [1.0.9] - 2026-05-02
+
+### Removed
+- **Ask authoritative allowlist**: removed the `AXON_ASK_AUTHORITATIVE_ALLOWLIST` configuration knob and strict retrieval/citation allowlist behavior. Authoritative domains and boost remain as reranking signals only, so `ask` and `query` no longer drop candidates through an ask-only allowlist.
+
+## [1.0.8] - 2026-05-02
+
+### Changed
+- **RAG service contracts**: query, retrieve, ask, and evaluate service results now use typed structs at service boundaries with JSON serialization deferred to CLI/MCP entrypoints.
+- **Shared RAG retrieval**: query and ask now share candidate construction, dedupe, scoring, and filtering helpers while preserving query-specific threshold behavior.
+- **Lite job replay**: persisted lite job rows now carry non-secret config snapshots, and workers reconstruct effective crawl/embed/extract/ingest config from row data instead of relying on process defaults.
+
+## [1.0.7] - 2026-04-30
+
+### Added
+- **`render_full_doc_filtered`**: optional `(query_tokens, top_k)` parameters score each chunk by query-token overlap, keep top-K, then re-sort by `chunk_index` for narrative coherence. Used by ask context build with `FULL_DOC_RENDER_TOP_K=24`.
+
+### Changed
+- **Ask context flattening**: `context_entries: Vec<(f64, String)>` and a final sort by `rerank_score` descending so the highest-scoring chunks appear first regardless of which bucket (top-chunks / full-docs / supplemental) they came from. Mitigates LLM proximity bias against the most relevant content.
+
+## [1.0.6] - 2026-04-30
+
+### Added
+- **MCP per-request `hybrid_search` override**: `QueryRequest` and `AskRequest` now accept `hybrid_search: Option<bool>` to override `cfg.hybrid_search_enabled` per call (A/B comparison without restart).
+- **Lite drain tests**: 3 tests covering `has_active_jobs` per-kind isolation, terminal-state transition, and bounded-time drain in the presence of unrelated pending rows.
+
+### Changed
+- **`build_scraped_at_filter`**: process-level `LazyLock<RwLock<HashMap>>` memoizes parsed `--since`/`--before` strings so dual-embed asks no longer re-parse chrono twice per question.
+- **Hybrid search hot-path bodies**: replaced `serde_json::json!{...}` with typed `Serialize` structs (`HybridQueryBody`, `NamedDenseQueryBody`, `PrefetchArm`, `DenseParams`, `QuantizationParams`, `FusionSpec`). Eliminates per-request Map allocations.
+
+## [1.0.5] - 2026-04-30
+
+### Added
+- **Score-distribution telemetry**: `vector.dispatch` tracing event now carries `top1_score` and `top10_avg_score` per arm so operators can detect threshold no-op (top-1 below `ask_min_relevance_score`) and arm-scale divergence (cosine vs RRF magnitudes).
+- **`score_ask_candidates`**: ranks candidates without cloning, returning `(idx, score)` pairs sorted descending. Caller filters by threshold first; only survivors are cloned.
+
+### Changed
+- **`retrieve_ask_candidates`**: now scores → filters → clones (was clone-all → filter), avoiding ~1 MB of throwaway clones per ask. `compute_scored_indices` extracted as the shared inner loop between `score_` and `rerank_`.
+
+## [1.0.4] - 2026-04-30
+
+### Added
+- **`validate_custom_headers`**: rejects malformed `--header K: V` entries (missing separator, empty name, RFC 7230 illegal token chars in name, CR/LF in value).
+
+### Changed
+- **Ask error-path diagnostics**: `dispatch_error` now always attaches `{stage, collection, qdrant_url, query_len, error}` JSON to failed retrieval errors. `cfg.ask_diagnostics` still gates verbose **success-path** payloads.
+
+## [1.0.3] - 2026-04-30
+
+### Added
+- **`#[tracing::instrument]`** on retrieval hot path: `dispatch_vector_search`, `qdrant_hybrid_search`, `qdrant_named_dense_search`, `retrieve_ask_candidates`. Spans carry collection name, query length, sparse term count, candidate window, and filter presence.
+- **Sparse term cap**: `MAX_TERMS_PER_VECTOR = 65,536` in `compute_sparse_vector` defends against pathological inputs.
+- **Tests**: 5 unit tests for `merge_candidates` covering primary dedupe, cross-URL chunk parity, multibyte chunk-prefix boundary, empty inputs.
+- **Vector docs**: env vars table (`AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_MIN_RELEVANCE_SCORE`), Dual-Embedding for Ask section, Operational Caveats section (cache staleness, sparse fallback, threshold no-op, empty-return contract).
+
+### Changed
+- **`SparseVector`**: derives `serde::Serialize` and emits the Qdrant wire shape directly. Removed `to_json()`. Updated 4 call sites (`hybrid.rs`, `tei.rs`, `tei/pipeline.rs`, `services/migrate.rs`).
+- **`COLLECTION_MODES` cache**: `OnceLock<RwLock<HashMap>>` → `LazyLock<RwLock<HashMap>>`. One fewer `Option` layer on every cache hit; `cache_vector_mode_key` no longer needs `get_or_init`.
+
+## [1.0.2] - 2026-04-30
+
+### Changed
+- **`merge_candidates`**: Dedupes primary internally before merging secondary; a single chunk landing at slightly different RRF positions across prefetch arms no longer leaks duplicates into the ask context.
+- **`compute_sparse_vector`**: Empty-result log promoted from `log_debug` → `tracing::warn!` with query character profile (`len`, `ascii_alnum`, `non_ascii`, `whitespace`, `other`); operators now see hybrid → dense-only fallback at default INFO.
+
+### Docs
+- **vector/CLAUDE.md Ranking Pipeline**: documented the score-scale mismatch — `ask_min_relevance_score` and `ask_authoritative_boost` are cosine-calibrated and don't transfer cleanly to RRF output.
+- **vector/CLAUDE.md Query Instruction**: documented dual-embedding asymmetry (NL form gets `QUERY_INSTRUCTION`, keyword form does not).
+
+## [1.0.1] - 2026-04-30
+
+### Added
+- **Observability**: Tracing logs across lite worker spawn, watchdog sweep, ACP session lifecycle, persistent-conn turn, replay buffer cap, MCP capability filter, AdapterGuard kill, ACP CWD validation, AXON_ACP_AUTH_TOKEN missing path, dispatch arm + per-arm latency in `dispatch_vector_search`.
+- **Doctor**: Lite doctor probes Qdrant collection vector mode and warns when `unnamed` collection is paired with `hybrid_search_enabled=true` (silent dense-only fallback).
+- **Stats**: SQLite-backed metrics (counts/durations/freshness/totals/longest crawl/most chunks) replace the no-op placeholder so `axon stats` populates Pipeline Stats / Freshness in lite mode.
+- **Queue summary**: `spawn_queue_summary_logger` emits a periodic queue-depth event (env-gated `AXON_QUEUE_SUMMARY_SECS`, default 60s) from `new_with_workers` contexts.
+- **SQLite retry**: `retry_busy()` helper retries `claim_next_pending`, `mark_completed`, `mark_failed` on transient lock contention with bounded exponential backoff.
+- **Drain visibility**: `WorkerMode::InProcess` now carries `pending_at_start` + `elapsed_secs`; CLI prints both on completion.
+- **Collection name guard**: `validate_collection_name()` rejects path-traversal / URL-injection in `cfg.collection` at dispatch entry.
+
+### Changed
+- **Lite crawl runner**: `result_json` now includes the field names the CLI status display reads (`pages_crawled`, `md_created`, `pages_discovered`, `thin_md`, `error_pages`, `waf_blocked_pages`).
+- **ACP unsupported model warning**: Deduped per-process via `LazyLock<Mutex<HashSet>>`; warning now lists the adapter's available model options.
+- **ACP fallback JSON parse**: Strips ```json fences and leading prose before `serde_json::from_str`; system prompt tightened to demand bare JSON output.
+- **`extract --wait true`**: Returns non-zero exit when 0 items extracted across all URLs.
+- **`suggest`**: Filters out malformed URLs (rejects single-label hosts like `https://next.js/`).
+- **`load_status_jobs`**: Replaced `unwrap_or(0)` on `count_jobs` with `unwrap_or_else` that logs a tracing::warn! per JobKind.
+
+### Docs
+- Documented `LiteBackend::new()` (enqueue-only) vs `new_with_workers()` (spawns workers) in `crates/services/CLAUDE.md` and `docs/CONFIG.md`.
+- Removed stale `refresh` references from `crates/cli/CLAUDE.md` and `crates/mcp/CLAUDE.md` (refresh was deleted in commit 05da3b44).
+- Added an inline rationale block to `main.rs` for the 8 MB Tokio worker stack.
+
 ## [0.35.1] - 2026-04-04
 
 ### Changed

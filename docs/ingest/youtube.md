@@ -1,9 +1,9 @@
 # YouTube Ingest
-Last Modified: 2026-03-09
+Last Modified: 2026-05-03
 
 > See [`docs/commands/youtube.md`](../commands/youtube.md) for CLI reference and usage examples.
 
-Ingests YouTube video transcripts and metadata into Qdrant via `yt-dlp`. No API key required. Supports single videos, playlists, and channel URLs.
+Ingests YouTube video transcripts and metadata into Qdrant via `yt-dlp`. No API key required. The source layer supports single videos, playlists, and channel URLs.
 
 ## What Gets Indexed
 
@@ -55,7 +55,7 @@ YouTube-specific fields are sourced from the `.info.json` file written by `yt-dl
 - Embed/shorts/v path patterns: `/embed/<ID>`, `/shorts/<ID>`, `/v/<ID>`
 - Bare 11-character video IDs
 
-Playlist and channel URLs are detected by `is_playlist_or_channel_url()` and routed to the playlist pipeline (`ingest_youtube_playlist`), not the single-video path:
+Playlist and channel URLs are detected by `is_playlist_or_channel_url()` and routed by `ingest_youtube_target()` to the playlist/channel pipeline (`ingest_youtube_playlist`), not the single-video path:
 
 - `youtube.com/playlist?list=...` (no `v=` param)
 - `youtube.com/@handle`
@@ -118,41 +118,26 @@ Pipeline:
 7. Description (from `.info.json`) embedded as a separate document at `?section=description`
 8. Temp directory cleaned up automatically on drop
 
-## How It Works — Playlist / Channel (`ingest_youtube_playlist`)
+## How It Works — Playlist / Channel (`ingest_youtube_target` / `ingest_youtube_playlist`)
 
 ```bash
 # Phase 1: enumerate all video URLs (single yt-dlp call)
-yt-dlp --flat-playlist --print "%(url)s" --no-exec -- <playlist_or_channel_url>
+yt-dlp --flat-playlist --print "%(url)s" --playlist-end 500 --no-exec -- <playlist_or_channel_url>
 
-# Phase 2: per-video (up to 5 concurrent)
-ingest_youtube(cfg, video_url)   # full single-video pipeline above
+# Phase 2: per-video
+ingest_youtube(cfg, "https://www.youtube.com/watch?v=<ID>")
 ```
 
 Pipeline:
 
-1. Prior progress loaded from `result_json` DB column (`completed_urls`, `chunks_embedded`)
-2. `yt-dlp --flat-playlist` enumerates all video URLs in the playlist/channel
-3. Already-completed video URLs (from prior run) filtered out — enables resume after restart or reclaim
-4. Initial progress record written to DB immediately: `[0 / N videos, 0 chunks embedded]`
-5. Up to **5 videos processed concurrently** via `FuturesUnordered`
-6. On each video completion:
-   - `completed_urls` and `chunks_embedded` persisted to DB (enables resume)
-   - Progress display updated
-7. On **HTTP 429 / Too Many Requests** from yt-dlp: retried up to 3 times with 10s → 20s → 40s backoff. Non-429 errors skip the video and log a warning.
-8. `--sleep-requests 1` passed to every per-video yt-dlp invocation — 1s polite delay between YouTube API requests within each subprocess
-
-### Resume Behavior
-
-If a playlist job is killed mid-run and reclaimed as stale, the next run resumes from where it left off. The `completed_urls` list (stored in `result_json` JSONB, ~45 bytes × N videos) is read on startup and used to skip already-indexed videos.
-
-On final completion, `completed_urls` is discarded and the standard `{"chunks_embedded": N}` result is written.
-
-### Performance
-
-| Scenario | Approximate time |
-|----------|-----------------|
-| 278-video channel, avg 3s/video, sequential (old) | ~23 min |
-| 278-video channel, N=5 concurrent (current) | ~3 min |
+1. Target dispatch classifies the input as either a single video or playlist/channel. Raw `@handle` targets are normalized to `https://www.youtube.com/@handle`.
+2. `yt-dlp --flat-playlist` enumerates up to 500 rows from the playlist/channel.
+3. Each enumeration row is canonicalized through `extract_video_id()` to `https://www.youtube.com/watch?v=<ID>`.
+4. Empty or invalid enumeration rows are skipped with warnings.
+5. Initial progress is reported as `videos_done=0`, `videos_total=N`, `chunks_embedded=0`.
+6. Valid videos are processed sequentially through the single-video `ingest_youtube()` pipeline.
+7. After each video, progress is reported with updated `videos_done`, `videos_total`, and cumulative `chunks_embedded`.
+8. Per-video failures are logged as warnings and the playlist/channel ingest continues with the remaining videos.
 
 ## Deduplication
 
@@ -160,7 +145,7 @@ All ingest methods (single video and playlist) use `embed_prepared_docs` via `Pr
 
 - Re-ingesting a video overwrites it cleanly — no duplicate chunks
 - If transcript length changes between runs (e.g. better captions, yt-dlp update), old chunk count is fully replaced
-- Safe to re-run playlist ingest: already-done videos in `completed_urls` are skipped at the job level, so no redundant yt-dlp calls either
+- Safe to re-run playlist ingest: deterministic point IDs overwrite existing chunks cleanly, though source-side playlist processing still calls `yt-dlp` for each enumerated video.
 
 ## Known Limitations
 
@@ -193,7 +178,7 @@ yt-dlp --write-auto-sub --write-info-json --skip-download \
 
 **429 errors on large channels**
 
-Handled automatically with 3-attempt retry (10s/20s/40s backoff). If a video exhausts all retries it is skipped with a warning log; the job continues with the remaining videos.
+Playlist/channel ingest logs the per-video failure and continues with remaining videos. Update `yt-dlp`, reduce target size, or retry later if YouTube rate-limits the run.
 
 **Playlist job shows no progress for first video**
 

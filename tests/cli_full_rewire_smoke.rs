@@ -20,38 +20,33 @@ use axon::crates::services::types::{
 #[test]
 fn smoke_map_query_results_is_importable_and_works() {
     let items = vec![
-        serde_json::json!({"rank": 1, "url": "https://docs.example.com", "snippet": "first"}),
-        serde_json::json!({"rank": 2, "url": "https://api.example.com", "snippet": "second"}),
+        serde_json::json!({"rank": 1, "score": 0.9, "rerank_score": 0.8, "url": "https://docs.example.com", "source": "docs", "snippet": "first", "chunk_index": null}),
+        serde_json::json!({"rank": 2, "score": 0.7, "rerank_score": 0.6, "url": "https://api.example.com", "source": "api", "snippet": "second", "chunk_index": 3}),
     ];
-    let result: QueryResult = map_query_results(items);
+    let result: QueryResult = map_query_results(items).expect("valid query results");
     assert_eq!(result.results.len(), 2);
-    assert_eq!(result.results[0]["rank"], 1);
-    assert_eq!(result.results[1]["rank"], 2);
+    assert_eq!(result.results[0].rank, 1);
+    assert_eq!(result.results[1].rank, 2);
 }
 
 #[test]
 fn smoke_map_query_results_empty() {
-    let result: QueryResult = map_query_results(Vec::new());
+    let result: QueryResult = map_query_results(Vec::new()).expect("empty query results");
     assert!(result.results.is_empty());
 }
 
 #[test]
 fn smoke_map_retrieve_result_with_content() {
     let result: RetrieveResult = map_retrieve_result(5, "chunk content here".to_string());
-    assert_eq!(result.chunks.len(), 1);
-    assert_eq!(result.chunks[0]["chunk_count"], 5);
-    assert!(
-        result.chunks[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("chunk content")
-    );
+    assert_eq!(result.chunk_count, 5);
+    assert!(result.content.contains("chunk content"));
 }
 
 #[test]
 fn smoke_map_retrieve_result_zero_chunks_yields_empty() {
     let result: RetrieveResult = map_retrieve_result(0, String::new());
-    assert!(result.chunks.is_empty());
+    assert_eq!(result.chunk_count, 0);
+    assert!(result.content.is_empty());
 }
 
 #[test]
@@ -59,21 +54,30 @@ fn smoke_map_ask_payload_wraps_value() {
     let payload = serde_json::json!({
         "query": "what is RAG?",
         "answer": "Retrieval-Augmented Generation",
-        "timing_ms": {"total": 500}
+        "timing_ms": {"retrieval": 1, "context_build": 2, "graph": 3, "llm": 4, "total": 10}
     });
-    let result: AskResult = map_ask_payload(payload.clone());
-    assert_eq!(result.payload["query"], "what is RAG?");
-    assert_eq!(result.payload["answer"], "Retrieval-Augmented Generation");
+    let result: AskResult = map_ask_payload(payload.clone()).expect("valid ask payload");
+    assert_eq!(result.query, "what is RAG?");
+    assert_eq!(result.answer, "Retrieval-Augmented Generation");
 }
 
 #[test]
 fn smoke_map_evaluate_payload_wraps_value() {
     let payload = serde_json::json!({
-        "question": "is RAG better?",
-        "note": "output emitted to stdout"
+        "query": "is RAG better?",
+        "rag_answer": "yes with sources",
+        "baseline_answer": "maybe",
+        "analysis_answer": "rag is more grounded",
+        "source_urls": [],
+        "crawl_suggestions": [],
+        "crawl_enqueue_outcomes": [],
+        "ref_chunk_count": 0,
+        "timing_ms": {"retrieval": 1, "context_build": 2, "rag_llm": 3, "baseline_llm": 4, "research_elapsed_ms": 5, "analysis_llm_ms": 6, "total": 21}
     });
-    let result: EvaluateResult = map_evaluate_payload(payload.clone());
-    assert_eq!(result.payload, payload);
+    let result: EvaluateResult =
+        map_evaluate_payload(payload.clone()).expect("valid evaluate payload");
+    assert_eq!(result.query, "is RAG better?");
+    assert_eq!(result.ref_chunk_count, 0);
 }
 
 #[test]
@@ -85,15 +89,16 @@ fn smoke_map_suggest_payload_extracts_urls() {
         ]
     });
     let result: SuggestResult = map_suggest_payload(&payload).expect("valid suggest payload");
-    assert_eq!(result.urls.len(), 2);
-    assert_eq!(result.urls[0], "https://docs.example.com/guide");
+    assert_eq!(result.suggestions.len(), 2);
+    assert_eq!(result.suggestions[0].url, "https://docs.example.com/guide");
+    assert_eq!(result.suggestions[0].reason, "Core guide");
 }
 
 #[test]
 fn smoke_map_suggest_payload_empty_yields_empty() {
     let payload = serde_json::json!({"suggestions": []});
     let result: SuggestResult = map_suggest_payload(&payload).expect("empty payload");
-    assert!(result.urls.is_empty());
+    assert!(result.suggestions.is_empty());
 }
 
 #[test]

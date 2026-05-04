@@ -50,6 +50,6 @@ pub async fn embed_path_native_with_progress(
         .map_err(|e| -> Box<dyn Error> {
             format!("embed pipeline failed for path '{input}': {e}").into()
         })?;
-    prepare::emit_embed_summary(cfg, summary.chunks_embedded);
+    prepare::emit_embed_summary(cfg, summary.docs_embedded, summary.chunks_embedded);
     Ok(summary)
 }

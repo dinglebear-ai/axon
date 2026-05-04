@@ -5,13 +5,73 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
-use crate::crates::core::logging::{log_debug, log_warn};
+use crate::crates::core::logging::log_debug;
 use crate::crates::vector::ops::sparse::SparseVector;
 use anyhow::Result;
+use serde::Serialize;
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
-use super::utils::{HNSW_EF_SEARCH, qdrant_base};
+use super::utils::{HNSW_EF_SEARCH, qdrant_collection_endpoint, qdrant_post_json_with_retry};
+
+// Typed request bodies for Qdrant `/points/query`. Replaces serde_json::json!{...}
+// macro allocations on the retrieval hot path. (bd axon_rust-d71.25)
+
+#[derive(Serialize)]
+struct HybridQueryBody<'a> {
+    prefetch: [PrefetchArm<'a>; 2],
+    query: FusionSpec,
+    limit: usize,
+    with_payload: bool,
+    with_vector: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<&'a serde_json::Value>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum PrefetchArm<'a> {
+    Dense {
+        query: &'a [f32],
+        using: &'static str,
+        limit: usize,
+        params: DenseParams,
+    },
+    Sparse {
+        query: &'a SparseVector,
+        using: &'static str,
+        limit: usize,
+    },
+}
+
+#[derive(Serialize)]
+struct DenseParams {
+    hnsw_ef: usize,
+    quantization: QuantizationParams,
+}
+
+#[derive(Serialize)]
+struct QuantizationParams {
+    rescore: bool,
+    oversampling: f32,
+}
+
+#[derive(Serialize)]
+struct FusionSpec {
+    fusion: &'static str,
+}
+
+#[derive(Serialize)]
+struct NamedDenseQueryBody<'a> {
+    query: &'a [f32],
+    using: &'static str,
+    limit: usize,
+    with_payload: bool,
+    with_vector: bool,
+    params: DenseParams,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<&'a serde_json::Value>,
+}
 
 /// Perform hybrid search using dense + BM42 sparse prefetch with RRF fusion.
 ///
@@ -19,76 +79,70 @@ use super::utils::{HNSW_EF_SEARCH, qdrant_base};
 /// (one dense, one sparse) and `"query": {"fusion": "rrf"}` to combine them.
 /// `limit` is the final number of results after fusion. Each prefetch arm fetches
 /// `cfg.hybrid_search_candidates` candidates before RRF fusion. Requires a Named-mode collection.
+#[tracing::instrument(
+    name = "vector.hybrid",
+    skip(cfg, dense_vector, sparse_vector, filter),
+    fields(
+        collection = %cfg.collection,
+        sparse_terms = sparse_vector.indices.len(),
+        candidates = cfg.hybrid_search_candidates,
+        limit,
+        filtered = filter.is_some(),
+    )
+)]
 pub(crate) async fn qdrant_hybrid_search(
     cfg: &Config,
     dense_vector: &[f32],
     sparse_vector: &SparseVector,
     limit: usize,
+    candidates_override: Option<usize>,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
-    let url = format!(
-        "{}/collections/{}/points/query",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let url = qdrant_collection_endpoint(cfg, "points/query")?;
 
-    let candidates = cfg.hybrid_search_candidates.max(limit);
+    let candidates = candidates_override
+        .unwrap_or(cfg.hybrid_search_candidates)
+        .max(limit);
     let hnsw_ef = *HNSW_EF_SEARCH;
 
-    let mut body = serde_json::json!({
-        "prefetch": [
-            {
-                "query": dense_vector,
-                "using": "dense",
-                "limit": candidates,
-                "params": {
-                    "hnsw_ef": hnsw_ef,
-                    "quantization": {
-                        "rescore": true,
-                        "oversampling": 1.5
-                    }
-                }
+    let body = HybridQueryBody {
+        prefetch: [
+            PrefetchArm::Dense {
+                query: dense_vector,
+                using: "dense",
+                limit: candidates,
+                params: DenseParams {
+                    hnsw_ef,
+                    quantization: QuantizationParams {
+                        rescore: true,
+                        oversampling: 1.5,
+                    },
+                },
             },
-            {
-                "query": sparse_vector.to_json(),
-                "using": "bm42",
-                "limit": candidates
-            }
+            PrefetchArm::Sparse {
+                query: sparse_vector,
+                using: "bm42",
+                limit: candidates,
+            },
         ],
-        "query": {"fusion": "rrf"},
-        "limit": limit,
-        "with_payload": true,
-        "with_vector": false
-    });
-    if let Some(f) = filter {
-        body["filter"] = f.clone();
-    }
+        query: FusionSpec { fusion: "rrf" },
+        limit,
+        with_payload: true,
+        with_vector: false,
+        filter,
+    };
 
     let search_start = Instant::now();
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .inspect_err(|e| {
-            log_warn(&format!(
-                "qdrant_hybrid_search transport_error collection={} duration_ms={} err={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-        })?
-        .error_for_status()
-        .map_err(|e| {
-            log_warn(&format!(
-                "qdrant_hybrid_search status_error collection={} duration_ms={} err={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-            anyhow::Error::from(e)
-        })?;
-
-    let parsed: QdrantQueryResponse = resp.json().await?;
+    let parsed: QdrantQueryResponse = qdrant_post_json_with_retry(
+        client,
+        &url,
+        &body,
+        "qdrant_hybrid_search",
+        &cfg.collection,
+        search_start,
+    )
+    .await?;
     log_debug(&format!(
         "qdrant search_complete mode=hybrid collection={} hits={} latency_ms={}",
         cfg.collection,
@@ -107,6 +161,11 @@ pub(crate) async fn qdrant_hybrid_search(
 /// retrieval when sparse vectors are unavailable (empty query, hybrid disabled).
 ///
 /// Use `qdrant_hybrid_search` when a sparse vector is available for RRF fusion.
+#[tracing::instrument(
+    name = "vector.named_dense",
+    skip(cfg, dense_vector, filter),
+    fields(collection = %cfg.collection, limit, filtered = filter.is_some())
+)]
 pub(crate) async fn qdrant_named_dense_search(
     cfg: &Config,
     dense_vector: &[f32],
@@ -114,55 +173,35 @@ pub(crate) async fn qdrant_named_dense_search(
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
-    let url = format!(
-        "{}/collections/{}/points/query",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let url = qdrant_collection_endpoint(cfg, "points/query")?;
 
     let hnsw_ef = *HNSW_EF_SEARCH;
-    let mut body = serde_json::json!({
-        "query": dense_vector,
-        "using": "dense",
-        "limit": limit,
-        "with_payload": true,
-        "with_vector": false,
-        "params": {
-            "hnsw_ef": hnsw_ef,
-            "quantization": {
-                "rescore": true,
-                "oversampling": 1.5
-            }
-        }
-    });
-    if let Some(f) = filter {
-        body["filter"] = f.clone();
-    }
+    let body = NamedDenseQueryBody {
+        query: dense_vector,
+        using: "dense",
+        limit,
+        with_payload: true,
+        with_vector: false,
+        params: DenseParams {
+            hnsw_ef,
+            quantization: QuantizationParams {
+                rescore: true,
+                oversampling: 1.5,
+            },
+        },
+        filter,
+    };
 
     let search_start = Instant::now();
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .inspect_err(|e| {
-            log_warn(&format!(
-                "qdrant_named_dense_search transport_error collection={} duration_ms={} err={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-        })?
-        .error_for_status()
-        .map_err(|e| {
-            log_warn(&format!(
-                "qdrant_named_dense_search status_error collection={} duration_ms={} err={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-            anyhow::Error::from(e)
-        })?;
-
-    let parsed: QdrantQueryResponse = resp.json().await?;
+    let parsed: QdrantQueryResponse = qdrant_post_json_with_retry(
+        client,
+        &url,
+        &body,
+        "qdrant_named_dense_search",
+        &cfg.collection,
+        search_start,
+    )
+    .await?;
     log_debug(&format!(
         "qdrant search_complete mode=named_dense collection={} hits={} latency_ms={}",
         cfg.collection,
@@ -177,7 +216,10 @@ mod tests {
     use super::*;
     use crate::crates::core::config::Config;
     use crate::crates::vector::ops::sparse::compute_sparse_vector;
+    use httpmock::HttpMockResponse;
     use httpmock::prelude::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn make_search_response(hits: Vec<(&str, f64)>) -> serde_json::Value {
         let points: Vec<serde_json::Value> = hits
@@ -212,7 +254,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid search test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -259,12 +301,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn qdrant_named_dense_search_propagates_error() {
+    async fn qdrant_named_dense_search_recovers_after_retryable_500() {
         let server = MockServer::start_async().await;
-        server
-            .mock_async(|when, then| {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_mock = Arc::clone(&attempts);
+        let success_body =
+            make_search_response(vec![("https://example.com/retried", 0.91)]).to_string();
+        let mock = server
+            .mock_async(move |when, then| {
                 when.method(POST).path("/collections/test_col/points/query");
-                then.status(500).body("internal server error");
+                then.respond_with(move |_| {
+                    if attempts_for_mock.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return HttpMockResponse::builder()
+                            .status(500)
+                            .body("internal server error")
+                            .build();
+                    }
+                    HttpMockResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(success_body.clone())
+                        .build()
+                });
             })
             .await;
 
@@ -273,16 +331,41 @@ mod tests {
         cfg.collection = "test_col".to_string();
 
         let result = qdrant_named_dense_search(&cfg, &[0.1f32], 5, None).await;
-        assert!(result.is_err(), "HTTP 500 must propagate as Err");
+        mock.assert_calls_async(2).await;
+        assert!(
+            result.is_ok(),
+            "retryable HTTP 500 should recover: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            result.unwrap()[0].payload.url,
+            "https://example.com/retried"
+        );
     }
 
     #[tokio::test]
-    async fn qdrant_hybrid_search_propagates_qdrant_error() {
+    async fn qdrant_hybrid_search_recovers_after_retryable_429() {
         let server = MockServer::start_async().await;
-        server
-            .mock_async(|when, then| {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_mock = Arc::clone(&attempts);
+        let success_body =
+            make_search_response(vec![("https://example.com/hybrid-retried", 0.92)]).to_string();
+        let mock = server
+            .mock_async(move |when, then| {
                 when.method(POST).path("/collections/test_col/points/query");
-                then.status(500).body("internal server error");
+                then.respond_with(move |_| {
+                    if attempts_for_mock.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return HttpMockResponse::builder()
+                            .status(429)
+                            .body("too many requests")
+                            .build();
+                    }
+                    HttpMockResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(success_body.clone())
+                        .build()
+                });
             })
             .await;
 
@@ -290,8 +373,39 @@ mod tests {
         cfg.qdrant_url = server.base_url();
         cfg.collection = "test_col".to_string();
 
-        let result = qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None).await;
-        assert!(result.is_err(), "HTTP 500 must propagate as Err");
+        let result =
+            qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None, None).await;
+        mock.assert_calls_async(2).await;
+        assert!(
+            result.is_ok(),
+            "retryable HTTP 429 should recover: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            result.unwrap()[0].payload.url,
+            "https://example.com/hybrid-retried"
+        );
+    }
+
+    #[tokio::test]
+    async fn qdrant_hybrid_search_fails_fast_on_non_retryable_400() {
+        let server = MockServer::start_async().await;
+        let bad_request = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/collections/test_col/points/query");
+                then.status(400).body("bad request");
+            })
+            .await;
+
+        let mut cfg = Config::test_default();
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let result =
+            qdrant_hybrid_search(&cfg, &[0.1f32], &SparseVector::default(), 5, None, None).await;
+
+        bad_request.assert_calls_async(1).await;
+        assert!(result.is_err(), "HTTP 400 must fail without retry");
     }
 
     #[tokio::test]
@@ -316,7 +430,7 @@ mod tests {
         let filter = serde_json::json!({
             "must": [{"key": "scraped_at", "range": {"gte": "2026-01-01T00:00:00+00:00"}}]
         });
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, Some(&filter)).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, Some(&filter)).await;
 
         mock.assert_async().await;
         assert!(result.is_ok());
@@ -343,7 +457,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid hnsw ef test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(
@@ -434,7 +548,7 @@ mod tests {
 
         let dense = vec![0.1f32, 0.2, 0.3, 0.4];
         let sparse = compute_sparse_vector("hybrid search test");
-        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None).await;
+        let result = qdrant_hybrid_search(&cfg, &dense, &sparse, 5, None, None).await;
 
         mock.assert_async().await;
         assert!(

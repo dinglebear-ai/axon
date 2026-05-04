@@ -32,6 +32,7 @@ pub(super) fn spawn_warm_session(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<WarmAcpSession, Box<dyn StdError>> {
+    let _slot = super::try_acquire_prewarm_slot()?;
     let adapter = resolve_adapter_command(cfg)?;
     let scaffold = AcpClientScaffold::new(adapter.clone());
     let initialize = scaffold.prepare_initialize()?;
@@ -102,6 +103,7 @@ impl WarmAcpSession {
     where
         F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
     {
+        let _permit = super::acquire_completion_permit().await?;
         let prompt_request = AcpPromptTurnRequest {
             session_id: None,
             prompt: vec![compose_prompt(&req)],

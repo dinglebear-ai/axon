@@ -107,7 +107,7 @@ async fn parse_codex_file(
     mtime: SystemTime,
     session_meta: SessionMeta,
 ) -> IngestResult<Option<SessionDoc>> {
-    let content = fs::read_to_string(&path).await?;
+    let content = super::read_session_file_limited(&path).await?;
     let parsed = parse_codex_jsonl(&content);
     if parsed.text.trim().is_empty() {
         return Ok(None);
@@ -198,10 +198,10 @@ pub(crate) fn parse_codex_jsonl(content: &str) -> ParsedCodexSession {
                     }
                 }
                 if let Some(t) = item["text"].as_str() {
-                    combined.push_str(t);
+                    combined.push_str(&super::redact_session_text(t));
                     combined.push('\n');
                 } else if let Some(t) = item["input_text"].as_str() {
-                    combined.push_str(t);
+                    combined.push_str(&super::redact_session_text(t));
                     combined.push('\n');
                 }
             }

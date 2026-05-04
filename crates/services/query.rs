@@ -2,8 +2,8 @@ use crate::crates::core::config::Config;
 use crate::crates::services::error::{ServiceError, diagnostics_from_error};
 use crate::crates::services::events::{LogLevel, ServiceEvent, emit};
 use crate::crates::services::types::{
-    AskResult, EvaluateResult, Pagination, QueryResult, RetrieveOptions, RetrieveResult,
-    SuggestResult,
+    AskResult, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveOptions, RetrieveResult,
+    SuggestResult, Suggestion,
 };
 use crate::crates::vector::ops::commands::ask::ask_payload;
 use crate::crates::vector::ops::commands::discover_crawl_suggestions;
@@ -26,28 +26,35 @@ fn wrap_service_error(
 
 // ── Pure mapping helpers (unit-testable, no live services required) ──────────
 
-pub fn map_query_results(results: Vec<serde_json::Value>) -> QueryResult {
-    QueryResult { results }
+pub fn map_query_results(results: Vec<serde_json::Value>) -> Result<QueryResult, Box<dyn Error>> {
+    let results = results
+        .into_iter()
+        .enumerate()
+        .map(|(idx, value)| {
+            serde_json::from_value::<QueryHit>(value)
+                .map_err(|e| -> Box<dyn Error> { format!("query result[{idx}]: {e}").into() })
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    Ok(QueryResult { results })
 }
 
 pub fn map_retrieve_result(chunk_count: usize, content: String) -> RetrieveResult {
-    let chunks = if chunk_count == 0 {
-        Vec::new()
-    } else {
-        vec![serde_json::json!({
-            "chunk_count": chunk_count,
-            "content": content
-        })]
-    };
-    RetrieveResult { chunks }
+    RetrieveResult {
+        chunk_count,
+        content: if chunk_count == 0 {
+            String::new()
+        } else {
+            content
+        },
+    }
 }
 
-pub fn map_ask_payload(payload: serde_json::Value) -> AskResult {
-    AskResult { payload }
+pub fn map_ask_payload(payload: serde_json::Value) -> Result<AskResult, Box<dyn Error>> {
+    serde_json::from_value(payload).map_err(|e| format!("invalid ask payload: {e}").into())
 }
 
-pub fn map_evaluate_payload(payload: serde_json::Value) -> EvaluateResult {
-    EvaluateResult { payload }
+pub fn map_evaluate_payload(payload: serde_json::Value) -> Result<EvaluateResult, Box<dyn Error>> {
+    serde_json::from_value(payload).map_err(|e| format!("invalid evaluate payload: {e}").into())
 }
 
 pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult, Box<dyn Error>> {
@@ -55,17 +62,26 @@ pub fn map_suggest_payload(payload: &serde_json::Value) -> Result<SuggestResult,
         .get("suggestions")
         .and_then(serde_json::Value::as_array)
         .ok_or("missing suggestions array")?;
-    let urls = suggestions
+    let suggestions = suggestions
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            item.get("url")
+            let url = item
+                .get("url")
                 .and_then(serde_json::Value::as_str)
                 .map(ToString::to_string)
-                .ok_or_else(|| format!("suggestions[{i}]: missing url").into())
+                .ok_or_else(|| -> Box<dyn Error> {
+                    format!("suggestions[{i}]: missing url").into()
+                })?;
+            let reason = item
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Suggested by model")
+                .to_string();
+            Ok(Suggestion { url, reason })
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    Ok(SuggestResult { urls })
+    Ok(SuggestResult { suggestions })
 }
 
 // ── Service functions (call-through wrappers) ────────────────────────────────
@@ -86,7 +102,7 @@ pub async fn query(
             );
             wrap_service_error(message, e.as_ref())
         })?;
-    Ok(map_query_results(results))
+    map_query_results(results)
 }
 
 /// Retrieve stored document chunks for a URL.
@@ -137,7 +153,7 @@ pub async fn ask(
         },
     )
     .await;
-    Ok(map_ask_payload(payload))
+    map_ask_payload(payload)
 }
 
 /// RAG evaluate: run RAG and baseline answers, then judge with a second LLM call.
@@ -157,12 +173,12 @@ pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Bo
             )
             .into()
         })?;
-    Ok(map_evaluate_payload(payload))
+    map_evaluate_payload(payload)
 }
 
 /// Suggest new URLs to crawl based on the current Qdrant index and an optional focus.
 ///
-/// Returns the accepted suggestion URLs directly (no stdout side effects).
+/// Returns accepted suggestions directly (no stdout side effects).
 #[must_use = "suggest returns a Result that should be handled"]
 pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult, Box<dyn Error>> {
     let mut derived = cfg.clone();
@@ -175,8 +191,44 @@ pub async fn suggest(cfg: &Config, focus: Option<&str>) -> Result<SuggestResult,
         .map_err(|e| -> Box<dyn Error> {
             format!("crawl suggestion discovery failed: {e}").into()
         })?;
-    let urls = pairs.into_iter().map(|(url, _reason)| url).collect();
-    Ok(SuggestResult { urls })
+    let suggestions = pairs
+        .into_iter()
+        .filter_map(|(url, reason)| {
+            if !is_well_formed_suggest_url(&url) {
+                tracing::warn!(
+                    %url,
+                    "suggest: dropped malformed suggestion URL"
+                );
+                return None;
+            }
+            Some(Suggestion { url, reason })
+        })
+        .collect();
+    Ok(SuggestResult { suggestions })
+}
+
+/// Validate that a suggested URL is well-formed: parses as http/https with a
+/// host that contains at least one dot (rules out single-label hosts like
+/// `next.js` parsed as scheme=next, host=js).
+///
+/// This is intentionally stricter than `validate_url` (which only blocks SSRF
+/// targets) — bare hostnames without TLD pass the SSRF guard but are useless
+/// crawl seeds.
+fn is_well_formed_suggest_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    // Bare IPs are fine; otherwise require at least one dot for a real TLD.
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    host.contains('.') && !host.starts_with('.') && !host.ends_with('.')
 }
 
 #[cfg(test)]
@@ -189,18 +241,15 @@ mod tests {
     #[test]
     fn map_retrieve_zero_chunks_returns_empty() {
         let result = map_retrieve_result(0, "some content".to_string());
-        assert!(
-            result.chunks.is_empty(),
-            "chunk_count=0 must produce an empty chunks vec; content is discarded"
-        );
+        assert_eq!(result.chunk_count, 0);
+        assert_eq!(result.content, "");
     }
 
     #[test]
     fn map_retrieve_nonzero_chunks() {
         let result = map_retrieve_result(5, "hello".to_string());
-        assert_eq!(result.chunks.len(), 1);
-        assert_eq!(result.chunks[0]["chunk_count"], 5);
-        assert_eq!(result.chunks[0]["content"], "hello");
+        assert_eq!(result.chunk_count, 5);
+        assert_eq!(result.content, "hello");
     }
 
     // ── map_suggest_payload ───────────────────────────────────────────────────
@@ -209,14 +258,16 @@ mod tests {
     fn map_suggest_valid() {
         let payload = json!({
             "suggestions": [
-                { "url": "https://example.com/a" },
+                { "url": "https://example.com/a", "reason": "A docs gap" },
                 { "url": "https://example.com/b" }
             ]
         });
         let result = map_suggest_payload(&payload).unwrap();
-        assert_eq!(result.urls.len(), 2);
-        assert_eq!(result.urls[0], "https://example.com/a");
-        assert_eq!(result.urls[1], "https://example.com/b");
+        assert_eq!(result.suggestions.len(), 2);
+        assert_eq!(result.suggestions[0].url, "https://example.com/a");
+        assert_eq!(result.suggestions[0].reason, "A docs gap");
+        assert_eq!(result.suggestions[1].url, "https://example.com/b");
+        assert_eq!(result.suggestions[1].reason, "Suggested by model");
     }
 
     #[test]
@@ -246,27 +297,120 @@ mod tests {
     fn map_suggest_empty_suggestions() {
         let payload = json!({ "suggestions": [] });
         let result = map_suggest_payload(&payload).unwrap();
-        assert!(result.urls.is_empty());
+        assert!(result.suggestions.is_empty());
+    }
+
+    // ── map_ask_payload ──────────────────────────────────────────────────────
+
+    #[test]
+    fn map_ask_payload_typed() {
+        let payload = json!({
+            "query": "what is axon?",
+            "answer": "A crawler.",
+            "diagnostics": null,
+            "timing_ms": {
+                "retrieval": 1,
+                "context_build": 2,
+                "graph": 0,
+                "llm": 3,
+                "total": 6
+            }
+        });
+        let result = map_ask_payload(payload).unwrap();
+        assert_eq!(result.query, "what is axon?");
+        assert_eq!(result.answer, "A crawler.");
+        assert!(result.diagnostics.is_none());
+        assert_eq!(result.timing_ms.total, 6);
+    }
+
+    #[test]
+    fn map_ask_payload_rejects_invalid_shape() {
+        let err = map_ask_payload(json!({ "answer": "missing query and timing" })).unwrap_err();
+        assert!(err.to_string().contains("invalid ask payload"));
+    }
+
+    // ── map_evaluate_payload ─────────────────────────────────────────────────
+
+    #[test]
+    fn map_evaluate_payload_typed() {
+        let payload = json!({
+            "query": "what is axon?",
+            "rag_answer": "RAG",
+            "baseline_answer": "Baseline",
+            "analysis_answer": "Analysis",
+            "source_urls": ["https://example.com/a"],
+            "crawl_suggestions": [{ "url": "https://example.com/b", "reason": "gap" }],
+            "crawl_enqueue_outcomes": [],
+            "ref_chunk_count": 3,
+            "diagnostics": null,
+            "timing_ms": {
+                "retrieval": 1,
+                "context_build": 2,
+                "rag_llm": 3,
+                "baseline_llm": 4,
+                "research_elapsed_ms": 5,
+                "analysis_llm_ms": 6,
+                "total": 21
+            }
+        });
+        let result = map_evaluate_payload(payload).unwrap();
+        assert_eq!(result.query, "what is axon?");
+        assert_eq!(result.source_urls, vec!["https://example.com/a"]);
+        assert_eq!(result.crawl_suggestions[0].reason, "gap");
+        assert_eq!(result.timing_ms.total, 21);
+    }
+
+    #[test]
+    fn map_evaluate_payload_rejects_invalid_shape() {
+        let err = map_evaluate_payload(json!({ "query": "missing fields" })).unwrap_err();
+        assert!(err.to_string().contains("invalid evaluate payload"));
     }
 
     // ── map_query_results ─────────────────────────────────────────────────────
 
     #[test]
     fn map_query_results_passthrough_empty() {
-        let result = map_query_results(vec![]);
+        let result = map_query_results(vec![]).unwrap();
         assert!(result.results.is_empty());
     }
 
     #[test]
-    fn map_query_results_passthrough_nonempty() {
+    fn map_query_results_typed_nonempty() {
         let items = vec![
-            json!({ "url": "https://a.com", "score": 0.9 }),
-            json!({ "url": "https://b.com", "score": 0.8 }),
+            json!({
+                "rank": 1,
+                "score": 0.9,
+                "rerank_score": 1.1,
+                "url": "https://a.com",
+                "source": "a.com",
+                "snippet": "alpha",
+                "chunk_index": 2
+            }),
+            json!({
+                "rank": 2,
+                "score": 0.8,
+                "rerank_score": 0.95,
+                "url": "https://b.com",
+                "source": "b.com",
+                "snippet": "bravo",
+                "chunk_index": null
+            }),
         ];
-        let result = map_query_results(items.clone());
+        let result = map_query_results(items).unwrap();
         assert_eq!(result.results.len(), 2);
-        assert_eq!(result.results[0], items[0]);
-        assert_eq!(result.results[1], items[1]);
+        assert_eq!(result.results[0].url, "https://a.com");
+        assert_eq!(result.results[0].chunk_index, Some(2));
+        assert_eq!(result.results[1].source, "b.com");
+        assert_eq!(result.results[1].chunk_index, None);
+    }
+
+    #[test]
+    fn map_query_results_rejects_missing_required_fields() {
+        let err = map_query_results(vec![json!({ "url": "https://a.com" })]).unwrap_err();
+        assert!(
+            err.to_string().contains("query result[0]"),
+            "error should identify the bad result index, got: {err}"
+        );
     }
 
     #[tokio::test]

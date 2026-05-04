@@ -104,9 +104,9 @@ pub struct AskConfig {
     pub ask_min_relevance_score: f64,
     pub ask_authoritative_domains: Vec<String>,
     pub ask_authoritative_boost: f64,
-    pub ask_authoritative_allowlist: Vec<String>,
     pub ask_min_citations_nontrivial: usize,
     pub ask_diagnostics: bool,
+    pub ask_hybrid_candidates: usize,
 }
 
 impl Default for AskConfig {
@@ -122,9 +122,9 @@ impl Default for AskConfig {
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
-            ask_authoritative_allowlist: vec![],
             ask_min_citations_nontrivial: 2,
             ask_diagnostics: false,
+            ask_hybrid_candidates: 150,
         }
     }
 }

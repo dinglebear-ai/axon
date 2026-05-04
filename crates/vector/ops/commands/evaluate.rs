@@ -5,12 +5,11 @@ mod streaming;
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
-use crate::crates::jobs::crawl::start_crawl_job;
 use crate::crates::services::acp_llm;
 use std::error::Error;
 use std::time::Instant;
 
-use super::ask::build_ask_context;
+use super::ask::{build_ask_context, normalize_ask_answer};
 use super::suggest::discover_crawl_suggestions;
 use display::build_evaluate_json;
 use scoring::{
@@ -104,10 +103,33 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let warm2 = make_warm("baseline");
 
     let ctx = build_ask_context(&derived, &query).await?;
-    let rag = run_rag_answer(&derived, client, &query, &ctx.context, warm1).await?;
-    let baseline = run_baseline_answer(&derived, client, &query, warm2).await?;
-    let (rag_answer, rag_elapsed_ms) = rag;
-    let (baseline_answer, baseline_elapsed_ms) = baseline;
+    let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
+    let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) = if derived
+        .evaluate_retrieval_ab
+    {
+        // Retrieval A/B: replace the no-context baseline with a second RAG run that has
+        // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
+        let mut dense_cfg = derived.clone();
+        dense_cfg.hybrid_search_enabled = false;
+        let dense_ctx = build_ask_context(&dense_cfg, &query).await?;
+        let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context, warm2);
+        let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
+        let (rag_answer, rag_elapsed_ms) = rag;
+        let (dense_answer, dense_elapsed_ms) = dense;
+        (rag_answer, rag_elapsed_ms, dense_answer, dense_elapsed_ms)
+    } else {
+        let baseline_future = run_baseline_answer(&derived, client, &query, warm2);
+        let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
+        let (rag_answer, rag_elapsed_ms) = rag;
+        let (baseline_answer, baseline_elapsed_ms) = baseline;
+        (
+            rag_answer,
+            rag_elapsed_ms,
+            baseline_answer,
+            baseline_elapsed_ms,
+        )
+    };
+    let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);
     let research_started = Instant::now();
     let warm3 = make_warm("judge");
     let (judge_reference, ref_chunk_count) = build_judge_reference(&derived, &query)
@@ -129,7 +151,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let context_chars = ctx.context.len();
     let judge_ctx = super::streaming::JudgeContext {
         query: &query,
-        rag_answer: &rag_answer,
+        rag_answer: &normalized_rag_answer,
         baseline_answer: &baseline_answer,
         reference_chunks: &judge_reference,
         rag_sources_list: &rag_sources_list,
@@ -138,6 +160,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         baseline_elapsed_ms,
         source_count,
         context_chars,
+        retrieval_ab: derived.evaluate_retrieval_ab,
     };
     let (analysis_answer, analysis_elapsed_ms) =
         run_analysis(&derived, client, &judge_ctx, warm3).await;
@@ -157,11 +180,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     } else {
         Vec::new()
     };
-    let crawl_enqueue_outcomes = if crawl_suggestions.is_empty() {
-        Vec::new()
-    } else {
-        enqueue_suggested_crawls(&derived, &crawl_suggestions).await
-    };
+    let crawl_enqueue_outcomes = Vec::new();
     let timing = EvalTiming {
         rag_elapsed_ms,
         baseline_elapsed_ms,
@@ -170,7 +189,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         total_elapsed_ms: eval_started.elapsed().as_millis(),
     };
     let eval_answers = EvalAnswers {
-        rag: &rag_answer,
+        rag: &normalized_rag_answer,
         baseline: &baseline_answer,
         analysis: &analysis_answer,
         crawl_suggestions: &crawl_suggestions,
@@ -192,28 +211,6 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
 fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
     super::ask::validate_ask_llm_config(cfg)?;
     super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
-}
-
-async fn enqueue_suggested_crawls(
-    cfg: &Config,
-    suggestions: &[CrawlSuggestion],
-) -> Vec<CrawlEnqueueOutcome> {
-    let mut outcomes = Vec::with_capacity(suggestions.len());
-    for suggestion in suggestions {
-        match start_crawl_job(cfg, &suggestion.url).await {
-            Ok(job_id) => outcomes.push(CrawlEnqueueOutcome {
-                url: suggestion.url.clone(),
-                job_id: Some(job_id.to_string()),
-                error: None,
-            }),
-            Err(err) => outcomes.push(CrawlEnqueueOutcome {
-                url: suggestion.url.clone(),
-                job_id: None,
-                error: Some(err.to_string()),
-            }),
-        }
-    }
-    outcomes
 }
 
 #[cfg(test)]

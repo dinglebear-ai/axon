@@ -42,6 +42,12 @@ pub(super) async fn run_turn_on_conn(
     let mut turn_ctx = build_turn_context(turn, session_id, runtime_state);
 
     if let Err(err) = ensure_turn_session(conn, session_cwd, runtime_state, &mut turn_ctx).await {
+        tracing::warn!(
+            session_id = %session_id.0,
+            turn_id = %turn_id,
+            error = %err,
+            "acp: ensure_turn_session failed — aborting turn"
+        );
         let _ = turn_ctx.result_tx.send(Err(err));
         return;
     }
@@ -49,6 +55,12 @@ pub(super) async fn run_turn_on_conn(
     *runtime_state.current_session_id.borrow_mut() = Some(turn_ctx.turn_session_id.0.to_string());
 
     if let Err(err) = apply_requested_options(conn, runtime_state, &turn_ctx).await {
+        tracing::warn!(
+            session_id = %turn_ctx.turn_session_id.0,
+            turn_id = %turn_id,
+            error = %err,
+            "acp: failed to apply requested options — proceeding with current state"
+        );
         emit(
             &turn_ctx.service_tx,
             ServiceEvent::Log {
@@ -167,6 +179,10 @@ async fn load_or_fallback_session(
     match load_result {
         Ok(response) => {
             let turn_session_id = SessionId::new(requested_id);
+            tracing::info!(
+                session_id = %turn_session_id.0,
+                "acp: persistent-conn session loaded"
+            );
             update_config_options_from_optional(
                 runtime_state,
                 service_tx,
@@ -177,6 +193,11 @@ async fn load_or_fallback_session(
             Ok(turn_session_id)
         }
         Err(err) => {
+            tracing::warn!(
+                requested_session_id = %requested_id,
+                error = %err,
+                "acp: persistent-conn load_session failed; creating fallback session"
+            );
             emit(
                 service_tx,
                 ServiceEvent::Log {
@@ -206,6 +227,11 @@ async fn load_or_fallback_session(
                 },
             )
             .await;
+            tracing::info!(
+                old_session_id = %requested_id,
+                new_session_id = %fallback.0,
+                "acp: persistent-conn fallback session created"
+            );
             Ok(fallback)
         }
     }
@@ -225,6 +251,11 @@ async fn create_new_session(
     let response = conn.new_session(req).await.map_err(|err| err.to_string())?;
 
     let turn_session_id = response.session_id;
+    tracing::info!(
+        session_id = %turn_session_id.0,
+        cwd = %session_cwd.display(),
+        "acp: persistent-conn session created"
+    );
     update_config_options_from_optional(
         runtime_state,
         service_tx,
@@ -297,6 +328,10 @@ async fn run_prompt(
     // Early exit if already cancelled — prevents wiring up the prompt future
     // only to have the biased select! immediately pick the cancel branch.
     if cancel_token.is_cancelled() {
+        tracing::warn!(
+            session_id = %turn_ctx.turn_session_id.0,
+            "acp: turn cancelled before prompt started"
+        );
         return Err("ACP turn cancelled before prompt started".to_string());
     }
 
@@ -332,7 +367,13 @@ async fn run_prompt(
             // notification) which IS the cancellation mechanism defined by
             // the ACP spec.  The SDK 0.10.x does not expose a separate
             // `unstable_cancel_request` method — `cancel()` covers FR-024.
-            let _ = conn.cancel(CancelNotification::new(turn_ctx.turn_session_id.clone())).await;
+            if let Err(err) = conn.cancel(CancelNotification::new(turn_ctx.turn_session_id.clone())).await {
+                tracing::warn!(
+                    session_id = %turn_ctx.turn_session_id.0,
+                    error = %err,
+                    "acp: failed to send turn cancel notification"
+                );
+            }
             match tokio::time::timeout(
                 std::time::Duration::from_secs(15),
                 &mut prompt_fut,
@@ -340,7 +381,14 @@ async fn run_prompt(
             .await
             {
                 Ok(Ok(resp)) => Ok(resp),
-                Ok(Err(e)) => Err(e.to_string()),
+                Ok(Err(e)) => {
+                    tracing::error!(
+                        session_id = %turn_ctx.turn_session_id.0,
+                        error = %e,
+                        "acp: prompt failed after cancellation"
+                    );
+                    Err(e.to_string())
+                }
                 Err(_) => {
                     tracing::warn!(
                         session_id = %turn_ctx.turn_session_id.0,
@@ -354,7 +402,14 @@ async fn run_prompt(
                 }
             }
         }
-        result = &mut prompt_fut => result.map_err(|e| e.to_string()),
+        result = &mut prompt_fut => result.map_err(|e| {
+            tracing::error!(
+                session_id = %turn_ctx.turn_session_id.0,
+                error = %e,
+                "acp: prompt failed"
+            );
+            e.to_string()
+        }),
     };
 
     // Drop stale events cleanly once prompt completes (may already be None if cancelled).

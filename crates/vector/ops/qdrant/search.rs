@@ -6,12 +6,14 @@
 
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
-use crate::crates::core::logging::{log_debug, log_warn};
+use crate::crates::core::logging::log_debug;
 use anyhow::Result;
 use std::time::Instant;
 
 use super::types::{QdrantSearchHit, QdrantSearchResponse};
-use super::utils::{HNSW_EF_SEARCH_LEGACY, qdrant_base};
+use super::utils::{
+    HNSW_EF_SEARCH_LEGACY, qdrant_collection_endpoint, qdrant_post_json_with_retry,
+};
 
 /// Dense-only vector search for Unnamed (legacy) collections.
 ///
@@ -29,11 +31,7 @@ pub(crate) async fn qdrant_search(
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
     let client = http_client()?;
-    let url = format!(
-        "{}/collections/{}/points/search",
-        qdrant_base(cfg),
-        cfg.collection
-    );
+    let url = qdrant_collection_endpoint(cfg, "points/search")?;
     let hnsw_ef = *HNSW_EF_SEARCH_LEGACY;
     let search_start = Instant::now();
     let mut body = serde_json::json!({
@@ -52,29 +50,15 @@ pub(crate) async fn qdrant_search(
     if let Some(f) = filter {
         body["filter"] = f.clone();
     }
-    let res = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .inspect_err(|e| {
-            log_warn(&format!(
-                "qdrant_search failed collection={} duration_ms={} error={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-        })?
-        .error_for_status()
-        .map_err(|e| {
-            log_warn(&format!(
-                "qdrant_search failed collection={} duration_ms={} error={e}",
-                cfg.collection,
-                search_start.elapsed().as_millis()
-            ));
-            anyhow::Error::from(e)
-        })?
-        .json::<QdrantSearchResponse>()
-        .await?;
+    let res: QdrantSearchResponse = qdrant_post_json_with_retry(
+        client,
+        &url,
+        &body,
+        "qdrant_search",
+        &cfg.collection,
+        search_start,
+    )
+    .await?;
     log_debug(&format!(
         "qdrant search_complete mode=unnamed_dense collection={} hits={} latency_ms={}",
         cfg.collection,
@@ -88,7 +72,10 @@ pub(crate) async fn qdrant_search(
 mod tests {
     use super::*;
     use crate::crates::core::config::Config;
+    use httpmock::HttpMockResponse;
     use httpmock::prelude::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn make_search_response(hits: Vec<(&str, f64)>) -> serde_json::Value {
         let result: Vec<serde_json::Value> = hits
@@ -193,13 +180,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn qdrant_search_propagates_http_error() {
+    async fn qdrant_search_recovers_after_retryable_500() {
         let server = MockServer::start_async().await;
-        server
-            .mock_async(|when, then| {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_mock = Arc::clone(&attempts);
+        let success_body =
+            make_search_response(vec![("https://example.com/retried", 0.81)]).to_string();
+        let mock = server
+            .mock_async(move |when, then| {
                 when.method(POST)
                     .path("/collections/test_col/points/search");
-                then.status(500).body("internal error");
+                then.respond_with(move |_| {
+                    if attempts_for_mock.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return HttpMockResponse::builder()
+                            .status(500)
+                            .body("internal error")
+                            .build();
+                    }
+                    HttpMockResponse::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(success_body.clone())
+                        .build()
+                });
             })
             .await;
 
@@ -208,7 +211,36 @@ mod tests {
         cfg.collection = "test_col".to_string();
 
         let result = qdrant_search(&cfg, &[0.1f32], 5, None).await;
-        assert!(result.is_err(), "HTTP 500 must propagate as Err");
+        mock.assert_calls_async(2).await;
+        assert!(
+            result.is_ok(),
+            "retryable HTTP 500 should recover: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            result.unwrap()[0].payload.url,
+            "https://example.com/retried"
+        );
+    }
+
+    #[tokio::test]
+    async fn qdrant_search_fails_fast_on_non_retryable_400() {
+        let server = MockServer::start_async().await;
+        let bad_request = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/collections/test_col/points/search");
+                then.status(400).body("bad request");
+            })
+            .await;
+
+        let mut cfg = Config::test_default();
+        cfg.qdrant_url = server.base_url();
+        cfg.collection = "test_col".to_string();
+
+        let result = qdrant_search(&cfg, &[0.1f32], 5, None).await;
+        bad_request.assert_calls_async(1).await;
+        assert!(result.is_err(), "HTTP 400 must fail without retry");
     }
 
     #[tokio::test]

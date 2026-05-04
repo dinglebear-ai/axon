@@ -1,6 +1,7 @@
 use super::{
-    EmbedProgress, EmbedSummary, PreparedDoc, build_point, qdrant_store, qdrant_store::VectorMode,
-    tei_client::tei_embed,
+    EmbedProgress, EmbedSummary, PreparedDoc, build_point, qdrant_store,
+    qdrant_store::VectorMode,
+    tei_client::{EmbedKind, tei_embed_kind},
 };
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::{log_debug, log_info, log_warn};
@@ -49,7 +50,7 @@ async fn embed_prepared_doc(
             _ => format!("{}\n\n{}", doc.url, chunk),
         })
         .collect();
-    let vectors = tei_embed(cfg, &embed_texts)
+    let vectors = tei_embed_kind(cfg, EmbedKind::Document, &embed_texts)
         .await
         .map_err(|e| -> SendError { format!("TEI embed for {}: {e}", doc.url).into() })?;
     if vectors.is_empty() {
@@ -159,7 +160,7 @@ fn rebuild_points_as_named(
                 "id": id,
                 "vector": {
                     "dense": dense,
-                    "bm42": sv.to_json()
+                    "bm42": sv
                 },
                 "payload": payload,
             }))

@@ -113,13 +113,25 @@ impl AcpCompletionRunner for AcpRuntimeCompletionRunner {
 
         loop {
             for delta in delta_rx.try_iter() {
-                on_delta(&delta)?;
+                if let Err(err) = on_delta(&delta) {
+                    tracing::warn!(
+                        error = %err,
+                        "acp_llm: streaming delta callback failed"
+                    );
+                    return Err(err);
+                }
             }
             tokio::select! {
                 biased;
                 r = &mut completion_handle => {
                     for delta in delta_rx.try_iter() {
-                        on_delta(&delta)?;
+                        if let Err(err) = on_delta(&delta) {
+                            tracing::warn!(
+                                error = %err,
+                                "acp_llm: streaming delta callback failed"
+                            );
+                            return Err(err);
+                        }
                     }
                     return r;
                 }
@@ -253,15 +265,25 @@ pub(super) fn handle_completion_bridge_event(
             if update.kind == AcpSessionUpdateKind::AssistantDelta
                 && let Some(delta) = update.text_delta.as_deref()
                 && let Some(handler) = on_delta.as_mut()
+                && let Err(err) = handler(delta)
             {
-                handler(delta)?;
+                tracing::warn!(
+                    error = %err,
+                    "acp_llm: bridge delta callback failed"
+                );
+                return Err(err);
             }
         }
         AcpBridgeEvent::UsageUpdate(_) => {}
         AcpBridgeEvent::TurnResult(result) => {
             state.text = Some(result.result.clone());
         }
-        _ => {}
+        _ => {
+            tracing::debug!(
+                event = ?std::mem::discriminant(event),
+                "acp_llm: bridge event ignored"
+            );
+        }
     }
     Ok(())
 }

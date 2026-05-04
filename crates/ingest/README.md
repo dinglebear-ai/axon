@@ -1,5 +1,5 @@
 # crates/ingest
-Last Modified: 2026-03-03
+Last Modified: 2026-05-03
 
 Source-specific ingestion pipelines for non-crawl content.
 
@@ -22,7 +22,8 @@ Source-specific ingestion pipelines for non-crawl content.
 ## Integration Points
 - Async ingest job orchestration lives in `crates/jobs/ingest.rs`.
 - Embedded output ultimately flows into `crates/vector/ops` and Qdrant.
-- CLI entrypoints are in `crates/cli/commands/github.rs`, `reddit.rs`, `youtube.rs`, and `sessions.rs`.
+- Unified source ingest CLI entrypoints live in `crates/cli/commands/ingest.rs` and shared helpers in `crates/cli/commands/ingest_common.rs`.
+- AI session export ingestion is exposed through the `sessions` command path, with parsers in this crate and command handling outside the provider-specific GitHub/Reddit/YouTube adapters.
 
 ## Notes
 - Keep source adapters isolated by provider to avoid cross-provider coupling.

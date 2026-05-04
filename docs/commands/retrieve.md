@@ -22,10 +22,9 @@ axon retrieve <url> [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `QDRANT_URL` | Qdrant base URL. |
+
+`retrieve` reads existing points from Qdrant and does not call TEI. In default Lite mode it does not require Postgres, Redis, or AMQP.
 
 ## Flags
 
@@ -34,6 +33,8 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--collection <name>` | `cortex` | Qdrant collection to read from. |
+| `--since <time>` | none | Restrict retrieved chunks to content indexed on or after this time. Supports `7d`, `30d`, `YYYY-MM-DD`, and RFC3339. |
+| `--before <time>` | none | Restrict retrieved chunks to content indexed on or before this time. Supports the same formats as `--since`. |
 | `--json` | `false` | Outputs `{url, chunks, content}` JSON. |
 
 Note: `retrieve` runs synchronously and does not enqueue jobs.
@@ -49,10 +50,14 @@ axon retrieve https://qdrant.tech/documentation --collection docs-local
 
 # JSON output
 axon retrieve https://docs.rs/spider --json
+
+# Time-bounded retrieval
+axon retrieve https://docs.rs/spider --since 30d --before 2026-05-01
 ```
 
 ## Notes
 
 - Lookup tries normalized URL variants (`target`, normalized, no-trailing-slash, trailing-slash).
 - Retrieved points are capped at 500 chunks per request (hard ceiling).
+- MCP `retrieve` accepts the same collection and time-filter controls via `collection`, `since`, and `before`, plus `max_points` and `response_mode`.
 - If no matching payload URL is found, output is `No content found for URL: ...`.

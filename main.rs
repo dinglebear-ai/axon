@@ -70,7 +70,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .max_blocking_threads(acp_blocking_thread_limit())
-        .thread_stack_size(8 * 1024 * 1024) // ACP session setup future exceeds the 2MB default
+        // ACP session setup future exceeds Tokio's default 2 MB worker stack on debug builds —
+        // we hit "thread '<unnamed>' has overflowed its stack" during ACP init before this
+        // bump. Memory cost: 8 MB × `tokio::runtime` worker count (default = num_cpus). On a
+        // 16-core homelab box that's ~128 MB virtual reservation per process; the OS only
+        // commits pages actually touched, so resident set growth is much smaller.
+        .thread_stack_size(8 * 1024 * 1024)
         .build()
         .expect("failed to build tokio runtime");
     rt.block_on(async_main())
@@ -99,7 +104,6 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     load_dotenv();
-
 
     axon::run().await
 }

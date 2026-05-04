@@ -1,236 +1,179 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+mod crawl;
+mod embed;
+mod extract;
+mod ingest;
 
-use sqlx::SqlitePool;
-
-use crate::crates::core::config::Config;
-use crate::crates::jobs::backend::{JobPayload, lift_err};
-use crate::crates::jobs::lite::ops::enqueue_job;
+pub(super) use crawl::run_crawl_job_lite;
+pub(super) use embed::run_embed_job_lite;
+pub(super) use extract::run_extract_job_lite;
+pub(super) use ingest::run_ingest_job_lite;
 
 pub(super) type JobResult =
     Result<Option<serde_json::Value>, Box<dyn std::error::Error + Send + Sync>>;
 
-pub(super) async fn run_crawl_job_lite(
-    pool: &SqlitePool,
-    cfg: &Config,
-    id: uuid::Uuid,
-) -> JobResult {
-    let row: Option<(String,)> = sqlx::query_as("SELECT url FROM axon_crawl_jobs WHERE id=?")
-        .bind(id.to_string())
-        .fetch_optional(pool)
-        .await?;
-    let Some((url,)) = row else {
-        tracing::warn!(id = %id, table = "axon_crawl_jobs", "job row not found at execution time, may have been deleted mid-run");
-        return Ok(None);
+#[cfg(test)]
+mod tests {
+    use crate::crates::core::config::Config;
+    use crate::crates::core::config::RenderMode;
+    use crate::crates::jobs::ingest::IngestSource;
+    use crate::crates::jobs::lite::config_snapshot::{
+        apply_lite_config_snapshot, decode_ingest_job_config, ingest_config_json,
+        lite_config_snapshot_json,
     };
+    use std::path::PathBuf;
 
-    crate::crates::core::http::validate_url(&url).map_err(lift_err)?;
+    #[test]
+    fn lite_config_snapshot_applies_submitted_non_secret_values() {
+        let mut submitted = Config::test_default();
+        submitted.collection = "submitted_collection".to_string();
+        submitted.output_dir = PathBuf::from("/tmp/axon-submitted");
+        submitted.render_mode = RenderMode::Chrome;
+        submitted.max_pages = 37;
+        submitted.max_depth = 4;
+        submitted.embed = false;
+        submitted.query = Some("submitted prompt".to_string());
+        submitted.request_timeout_ms = Some(12_345);
+        submitted.fetch_retries = 7;
+        submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
+        submitted.tei_url = "http://submitted-tei:80".to_string();
+        submitted.openai_model = "submitted-model".to_string();
+        submitted.openai_api_key = "submitted-secret".to_string();
+        submitted.chrome_proxy = Some("http://submitted-proxy:8080".to_string());
+        submitted.acp_adapter_args = Some("--model|submitted".to_string());
+        submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
 
-    // Derive a per-job output directory to prevent concurrent crawls from clobbering each other.
-    let job_output_dir = crate::crates::services::crawl::predict_crawl_output_dir(
-        &cfg.output_dir,
-        &url,
-        &id.to_string(),
-    );
+        let mut worker = Config::test_default();
+        worker.collection = "worker_collection".to_string();
+        worker.output_dir = PathBuf::from("/tmp/axon-worker");
+        worker.render_mode = RenderMode::Http;
+        worker.max_pages = 1;
+        worker.max_depth = 1;
+        worker.embed = true;
+        worker.query = Some("worker prompt".to_string());
+        worker.request_timeout_ms = Some(999);
+        worker.fetch_retries = 1;
+        worker.qdrant_url = "http://worker-qdrant:6333".to_string();
+        worker.tei_url = "http://worker-tei:80".to_string();
+        worker.openai_model = "worker-model".to_string();
+        worker.openai_api_key = "worker-secret".to_string();
+        worker.chrome_proxy = Some("http://worker-proxy:8080".to_string());
+        worker.acp_adapter_args = Some("--model|worker".to_string());
+        worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
 
-    let (summary, _) = crate::crates::crawl::engine::run_crawl_once(
-        cfg,
-        &url,
-        cfg.render_mode,
-        &job_output_dir,
-        None,
-        cfg.discover_sitemaps,
-        Arc::new(HashMap::new()),
-        Some(&id.to_string()),
-    )
-    .await
-    .map_err(lift_err)?;
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
 
-    // Auto-enqueue embed job for the crawled output when embedding is enabled.
-    let embed_job_id = if cfg.embed && summary.markdown_files > 0 {
-        let markdown_dir = job_output_dir
-            .join("markdown")
-            .to_string_lossy()
-            .to_string();
-        match enqueue_job(
-            pool,
-            &JobPayload::Embed {
-                input: markdown_dir,
-                config_json: "{}".into(),
-            },
-        )
-        .await
-        {
-            Ok(eid) => Some(eid.to_string()),
-            Err(e) => {
-                tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    Ok(Some(serde_json::json!({
-        "url": url,
-        "pages_seen": summary.pages_seen,
-        "markdown_files": summary.markdown_files,
-        "elapsed_ms": summary.elapsed_ms,
-        "embed_job_id": embed_job_id,
-    })))
-}
-
-pub(super) async fn run_embed_job_lite(
-    pool: &SqlitePool,
-    cfg: &Config,
-    id: uuid::Uuid,
-) -> JobResult {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT input_text FROM axon_embed_jobs WHERE id=?")
-            .bind(id.to_string())
-            .fetch_optional(pool)
-            .await?;
-    let Some((input,)) = row else {
-        tracing::warn!(id = %id, table = "axon_embed_jobs", "job row not found at execution time, may have been deleted mid-run");
-        return Ok(None);
-    };
-
-    let mut worker_cfg = cfg.clone();
-    worker_cfg.json_output = false;
-    let summary = crate::crates::vector::ops::embed_path_native(&worker_cfg, &input)
-        .await
-        .map_err(lift_err)?;
-
-    Ok(Some(serde_json::json!({
-        "input": input,
-        "collection": cfg.collection,
-        "docs_embedded": summary.docs_embedded,
-        "chunks_embedded": summary.chunks_embedded,
-    })))
-}
-
-pub(super) async fn run_extract_job_lite(
-    pool: &SqlitePool,
-    cfg: &Config,
-    id: uuid::Uuid,
-) -> JobResult {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT urls_json FROM axon_extract_jobs WHERE id=?")
-            .bind(id.to_string())
-            .fetch_optional(pool)
-            .await?;
-    let Some((urls_json,)) = row else {
-        tracing::warn!(id = %id, table = "axon_extract_jobs", "job row not found at execution time, may have been deleted mid-run");
-        return Ok(None);
-    };
-
-    let urls: Vec<String> = serde_json::from_str(&urls_json).map_err(
-        |e| -> Box<dyn std::error::Error + Send + Sync> {
-            format!("invalid urls_json in extract job {id}: {e}").into()
-        },
-    )?;
-
-    let engine = Arc::new(
-        crate::crates::core::content::DeterministicExtractionEngine::with_default_parsers(),
-    );
-    let mut total_items = 0usize;
-    for url in &urls {
-        let wcfg = crate::crates::core::content::ExtractWebConfig {
-            start_url: url.clone(),
-            prompt: cfg.query.clone().unwrap_or_default(),
-            limit: cfg.max_pages,
-            openai_base_url: cfg.openai_base_url.clone(),
-            openai_api_key: cfg.openai_api_key.clone(),
-            openai_model: cfg.openai_model.clone(),
-            acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
-            acp_adapter_args: cfg.acp_adapter_args.clone(),
-            custom_headers: cfg.custom_headers.clone(),
-            render_mode: cfg.render_mode,
-            chrome_remote_url: cfg.chrome_remote_url.clone(),
-            chrome_stealth: cfg.chrome_stealth,
-            chrome_anti_bot: cfg.chrome_anti_bot,
-            chrome_intercept: cfg.chrome_intercept,
-            bypass_csp: cfg.bypass_csp,
-            accept_invalid_certs: cfg.accept_invalid_certs,
-            request_timeout_ms: cfg.request_timeout_ms,
-            fetch_retries: cfg.fetch_retries,
-            user_agent: cfg.chrome_user_agent.clone(),
-            chrome_network_idle_timeout_secs: cfg.chrome_network_idle_timeout_secs,
-        };
-        let run = crate::crates::core::content::run_extract_with_engine(wcfg, Arc::clone(&engine))
-            .await
-            .map_err(lift_err)?;
-        total_items += run.results.len();
+        assert_eq!(effective.collection, "submitted_collection");
+        assert_eq!(effective.output_dir, PathBuf::from("/tmp/axon-submitted"));
+        assert_eq!(effective.render_mode, RenderMode::Chrome);
+        assert_eq!(effective.max_pages, 37);
+        assert_eq!(effective.max_depth, 4);
+        assert!(!effective.embed);
+        assert_eq!(effective.query.as_deref(), Some("submitted prompt"));
+        assert_eq!(effective.request_timeout_ms, Some(12_345));
+        assert_eq!(effective.fetch_retries, 7);
+        assert_eq!(effective.qdrant_url, "http://submitted-qdrant:6333");
+        assert_eq!(effective.tei_url, "http://submitted-tei:80");
+        assert_eq!(effective.openai_model, "submitted-model");
+        assert_eq!(
+            effective.chrome_proxy.as_deref(),
+            Some("http://submitted-proxy:8080")
+        );
+        assert_eq!(
+            effective.acp_adapter_args.as_deref(),
+            Some("--model|submitted")
+        );
+        assert_eq!(effective.openai_api_key, "worker-secret");
+        assert_eq!(
+            effective.custom_headers,
+            vec!["Authorization: Bearer submitted".to_string()]
+        );
     }
 
-    Ok(Some(serde_json::json!({
-        "urls": urls.len(),
-        "total_items": total_items,
-    })))
-}
+    #[test]
+    fn lite_config_snapshot_exactly_replays_submitted_none_options() {
+        let mut submitted = Config::test_default();
+        submitted.output_path = None;
+        submitted.request_timeout_ms = None;
+        submitted.chrome_wait_for_selector = None;
+        submitted.acp_adapter_args = None;
 
-pub(super) async fn run_ingest_job_lite(
-    pool: &SqlitePool,
-    cfg: &Config,
-    id: uuid::Uuid,
-) -> JobResult {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT config_json FROM axon_ingest_jobs WHERE id=?")
-            .bind(id.to_string())
-            .fetch_optional(pool)
-            .await?;
-    let Some((config_json,)) = row else {
-        tracing::warn!(id = %id, table = "axon_ingest_jobs", "job row not found at execution time, may have been deleted mid-run");
-        return Ok(None);
-    };
+        let mut worker = Config::test_default();
+        worker.output_path = Some(PathBuf::from("/tmp/worker-output.md"));
+        worker.request_timeout_ms = Some(999);
+        worker.chrome_wait_for_selector = Some("#app".to_string());
+        worker.acp_adapter_args = Some("--model|worker".to_string());
 
-    let source: crate::crates::jobs::ingest::IngestSource = serde_json::from_str(&config_json)
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            let preview: String = config_json.chars().take(120).collect();
-            format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})").into()
-        })?;
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
 
-    let result = match source {
-        crate::crates::jobs::ingest::IngestSource::Github {
-            repo,
-            include_source,
-        } => {
-            let (owner, repo_name) = crate::crates::ingest::github::parse_github_repo(&repo)
-                .ok_or_else(|| -> Box<dyn std::error::Error + Send + Sync> {
-                    format!("invalid github target: {repo}").into()
-                })?;
-            let mut github_cfg = cfg.clone();
-            github_cfg.github_include_source = include_source;
-            crate::crates::services::ingest::ingest_github(&github_cfg, &owner, &repo_name, None)
-                .await
-                .map_err(lift_err)?
-        }
-        crate::crates::jobs::ingest::IngestSource::Reddit { target } => {
-            crate::crates::services::ingest::ingest_reddit(cfg, &target, None)
-                .await
-                .map_err(lift_err)?
-        }
-        crate::crates::jobs::ingest::IngestSource::Youtube { target } => {
-            crate::crates::services::ingest::ingest_youtube(cfg, &target, None)
-                .await
-                .map_err(lift_err)?
-        }
-        crate::crates::jobs::ingest::IngestSource::Sessions {
-            sessions_claude,
-            sessions_codex,
-            sessions_gemini,
-            sessions_project,
-        } => {
-            let mut sessions_cfg = cfg.clone();
-            sessions_cfg.sessions_claude = sessions_claude;
-            sessions_cfg.sessions_codex = sessions_codex;
-            sessions_cfg.sessions_gemini = sessions_gemini;
-            sessions_cfg.sessions_project = sessions_project;
-            crate::crates::services::ingest::ingest_sessions(&sessions_cfg, None)
-                .await
-                .map_err(lift_err)?
-        }
-    };
+        assert_eq!(effective.output_path, None);
+        assert_eq!(effective.request_timeout_ms, None);
+        assert_eq!(effective.chrome_wait_for_selector, None);
+        assert_eq!(effective.acp_adapter_args, None);
+    }
 
-    Ok(Some(result.payload))
+    #[test]
+    fn lite_config_snapshot_does_not_serialize_credential_bearing_endpoint_urls() {
+        let mut submitted = Config::test_default();
+        submitted.tei_url = "http://user:secret@tei.example/embed?token=abc#frag".to_string();
+        submitted.qdrant_url = "http://qdrant.example:6333?api_key=secret".to_string();
+        submitted.openai_base_url = "https://llm.example/v1?token=secret".to_string();
+        submitted.acp_ws_url = Some("wss://axon.example/ws?token=secret".to_string());
+
+        let mut worker = Config::test_default();
+        worker.tei_url = "http://worker-tei:80".to_string();
+        worker.qdrant_url = "http://worker-qdrant:6333".to_string();
+        worker.openai_base_url = "http://worker-llm/v1".to_string();
+        worker.acp_ws_url = Some("wss://worker/ws".to_string());
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        assert!(!config_json.contains("secret"));
+        assert!(!config_json.contains("token=abc"));
+        assert!(!config_json.contains("api_key"));
+        assert!(!config_json.contains("user:"));
+
+        let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
+        assert_eq!(effective.tei_url, "http://worker-tei:80");
+        assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
+        assert_eq!(effective.openai_base_url, "http://worker-llm/v1");
+        assert_eq!(effective.acp_ws_url.as_deref(), Some("wss://worker/ws"));
+    }
+
+    #[test]
+    fn ingest_job_config_preserves_source_and_supports_legacy_rows() {
+        let mut submitted = Config::test_default();
+        submitted.collection = "submitted_collection".to_string();
+        let source = IngestSource::Github {
+            repo: "owner/repo".to_string(),
+            include_source: false,
+        };
+
+        let mut worker = Config::test_default();
+        worker.collection = "worker_collection".to_string();
+
+        let config_json = ingest_config_json(&submitted, &source).expect("encode ingest config");
+        let (decoded_source, effective) =
+            decode_ingest_job_config(&worker, &config_json).expect("decode ingest config");
+        assert!(matches!(
+            decoded_source,
+            IngestSource::Github {
+                ref repo,
+                include_source: false,
+            } if repo == "owner/repo"
+        ));
+        assert_eq!(effective.collection, "submitted_collection");
+
+        let legacy_json = serde_json::to_string(&source).expect("encode legacy source");
+        let (legacy_source, legacy_effective) =
+            decode_ingest_job_config(&worker, &legacy_json).expect("decode legacy ingest config");
+        assert!(matches!(
+            legacy_source,
+            IngestSource::Github {
+                ref repo,
+                include_source: false,
+            } if repo == "owner/repo"
+        ));
+        assert_eq!(legacy_effective.collection, "worker_collection");
+    }
 }

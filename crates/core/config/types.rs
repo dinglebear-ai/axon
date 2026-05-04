@@ -70,7 +70,6 @@ mod tests {
         assert!((cfg.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert!(cfg.ask_authoritative_domains.is_empty());
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);
-        assert!(cfg.ask_authoritative_allowlist.is_empty());
         assert_eq!(cfg.ask_min_citations_nontrivial, 2);
     }
 
@@ -88,8 +87,8 @@ mod tests {
         assert!(!cfg.wait);
         assert!(!cfg.json_output);
         assert_eq!(cfg.evaluate_responses_mode, EvaluateResponsesMode::Inline);
-        assert_eq!(cfg.mcp_transport, McpTransport::Http);
-        assert_eq!(cfg.mcp_http_host, "0.0.0.0");
+        assert_eq!(cfg.mcp_transport, McpTransport::Stdio);
+        assert_eq!(cfg.mcp_http_host, "127.0.0.1");
         assert_eq!(cfg.mcp_http_port, 8001);
         assert!(!cfg.reclaimed_status_only);
         assert!(!cfg.active_status_only);

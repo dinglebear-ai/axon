@@ -127,13 +127,35 @@ pub async fn recover_jobs(
         .map_err(downgrade)
 }
 
-pub async fn run_worker(
+pub async fn start_worker(
     service_context: &ServiceContext,
     kind: JobKind,
 ) -> Result<WorkerMode, Box<dyn Error>> {
     service_context
         .jobs
-        .run_worker(kind)
+        .start_worker(kind)
+        .await
+        .map_err(downgrade)
+}
+
+pub async fn notify_worker(
+    service_context: &ServiceContext,
+    kind: JobKind,
+) -> Result<(), Box<dyn Error>> {
+    service_context
+        .jobs
+        .notify_worker(kind)
+        .await
+        .map_err(downgrade)
+}
+
+pub async fn drain_jobs(
+    service_context: &ServiceContext,
+    kind: JobKind,
+) -> Result<WorkerMode, Box<dyn Error>> {
+    service_context
+        .jobs
+        .drain_jobs(kind)
         .await
         .map_err(downgrade)
 }
@@ -225,13 +247,6 @@ mod tests {
             _stale_threshold_ms: i64,
         ) -> Result<u64, Box<dyn Error + Send + Sync>> {
             Ok(0)
-        }
-
-        async fn run_worker(
-            &self,
-            _kind: JobKind,
-        ) -> Result<WorkerMode, Box<dyn Error + Send + Sync>> {
-            Ok(WorkerMode::Unsupported("test"))
         }
 
         async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {

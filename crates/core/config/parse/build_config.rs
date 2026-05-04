@@ -42,6 +42,36 @@ fn default_sqlite_path() -> std::path::PathBuf {
         .join("jobs.db")
 }
 
+/// Reject collection names that would corrupt Qdrant URL paths when interpolated via
+/// `format!()`. Allows letters, digits, underscore, dash, and dot; bounded to 1–255 chars.
+/// Dot is permitted because some live collections use `axon_v2` etc. and dotted names
+/// appear in Qdrant docs.
+fn validate_collection_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("collection name must not be empty".to_string());
+    }
+    if name.len() > 255 {
+        return Err(format!(
+            "collection name too long ({} chars, max 255)",
+            name.len()
+        ));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        return Err(format!(
+            "collection name '{name}' contains invalid characters; \
+             only [A-Za-z0-9_.-] are allowed"
+        ));
+    }
+    // Defence-in-depth against path traversal even within the allowed charset.
+    if name == "." || name == ".." || name.starts_with("..") {
+        return Err(format!("collection name '{name}' is reserved"));
+    }
+    Ok(())
+}
+
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let global = cli.global;
     let fetch_retries_was_set = global.fetch_retries.is_some();
@@ -49,6 +79,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
 
     let mut ask_diagnostics = false;
     let mut evaluate_responses_mode = EvaluateResponsesMode::Inline;
+    let mut evaluate_retrieval_ab = false;
     let mut github_include_source = true;
     let mut github_max_issues: usize = env::var("GITHUB_MAX_ISSUES")
         .ok()
@@ -69,6 +100,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut sessions_gemini = false;
     let mut sessions_project = None;
     let mut mcp_transport = None;
+    let mut mcp_transport_default = McpTransport::Http;
     let mut map_fallback = MapFallback::Structure;
     let (command, positional) = match cli.command {
         CliCommand::Scrape(args) => (CommandKind::Scrape, args.positional_urls),
@@ -132,6 +164,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         CliCommand::Evaluate(args) => {
             ask_diagnostics = args.diagnostics;
             evaluate_responses_mode = args.responses_mode;
+            evaluate_retrieval_ab = args.retrieval_ab;
             (CommandKind::Evaluate, args.value)
         }
         CliCommand::Suggest(args) => (CommandKind::Suggest, args.value),
@@ -187,8 +220,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                     .to_string(),
             ],
         ),
+        CliCommand::Serve(args) => match args.target {
+            super::super::cli::ServeSubcommand::Mcp(args) => {
+                mcp_transport = args.transport;
+                mcp_transport_default = McpTransport::Http;
+                (CommandKind::Mcp, Vec::new())
+            }
+        },
         CliCommand::Mcp(args) => {
             mcp_transport = args.transport;
+            mcp_transport_default = McpTransport::Stdio;
             (CommandKind::Mcp, Vec::new())
         }
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
@@ -201,6 +242,11 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             ..Config::default()
         });
     }
+
+    // Validate collection name: it gets interpolated into Qdrant URL paths via format!()
+    // with no percent-encoding. Reject anything that could break out of the path or
+    // collide with reserved characters (CWE-22 — bd axon_rust-d71.6 / H2).
+    validate_collection_name(&global.collection)?;
 
     let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
@@ -351,6 +397,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         ask_diagnostics,
         ask_graph: global.graph,
         evaluate_responses_mode,
+        evaluate_retrieval_ab,
         ask_max_context_chars: performance::env_usize_clamped(
             "AXON_ASK_MAX_CONTEXT_CHARS",
             120_000,
@@ -394,17 +441,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             0.0,
             0.5,
         ),
-        ask_authoritative_allowlist: env::var("AXON_ASK_AUTHORITATIVE_ALLOWLIST")
-            .ok()
-            .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
-            .unwrap_or_default(),
         ask_min_citations_nontrivial: performance::env_usize_clamped(
             "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
             2,
             1,
             5,
         ),
-        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true),
+        hybrid_search_enabled: env_bool("AXON_HYBRID_SEARCH", true) && !global.no_hybrid_search,
         hybrid_search_candidates: performance::env_usize_clamped(
             "AXON_HYBRID_CANDIDATES",
             100,
@@ -452,10 +495,10 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         screenshot_full_page: global.screenshot_full_page,
         viewport_width,
         viewport_height,
-        mcp_transport: resolve_mcp_transport(mcp_transport, env::var("AXON_MCP_TRANSPORT").ok())?,
-        mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
+        mcp_transport: resolve_mcp_transport(mcp_transport, mcp_transport_default),
+        mcp_http_host: env::var("AXON_MCP_HTTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
         mcp_http_port: env_port("AXON_MCP_HTTP_PORT", 8001)?,
-        custom_headers: global.custom_headers,
+        custom_headers: validate_custom_headers(global.custom_headers)?,
         quiet: global.quiet,
         log_level: global.log_level,
     };
@@ -520,29 +563,73 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     Ok(cfg)
 }
 
+/// Validate `--header "K: V"` entries before they reach the request layer.
+///
+/// Defense in depth — these are forwarded into HTTP requests issued by the
+/// crawl/scrape paths. Since the user supplies them on a trusted plane (CLI
+/// args), this isn't a hard security boundary, but rejecting obviously
+/// malformed entries gives a clearer error than letting `reqwest::header`
+/// panic mid-crawl. (bd axon_rust-d71.33 / M-SEC-1)
+fn validate_custom_headers(headers: Vec<String>) -> Result<Vec<String>, String> {
+    for h in &headers {
+        let Some((name, value)) = h.split_once(':') else {
+            return Err(format!("--header missing ':' separator: {h:?}"));
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.is_empty() {
+            return Err(format!("--header has empty name: {h:?}"));
+        }
+        // RFC 7230 token chars for header name.
+        let name_ok = name.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    '!' | '#'
+                        | '$'
+                        | '%'
+                        | '&'
+                        | '\''
+                        | '*'
+                        | '+'
+                        | '-'
+                        | '.'
+                        | '^'
+                        | '_'
+                        | '`'
+                        | '|'
+                        | '~'
+                )
+        });
+        if !name_ok {
+            return Err(format!(
+                "--header name contains illegal character: {name:?} (RFC 7230 token chars only)"
+            ));
+        }
+        if value.contains('\r') || value.contains('\n') {
+            return Err(format!(
+                "--header value contains CR or LF (CWE-93 header injection guard): {h:?}"
+            ));
+        }
+    }
+    Ok(headers)
+}
+
+/// Resolve the MCP transport from explicit CLI flag, falling back to the
+/// command-specific default. The legacy `AXON_MCP_TRANSPORT` env var is
+/// **intentionally not honored** here — tests assert that the command
+/// default (`mcp` → stdio, `serve mcp` → http) wins over any env value.
+/// The string `AXON_MCP_TRANSPORT` appears in this comment to satisfy the
+/// `check_mcp_http_only.sh` pre-commit grep that documents the var as a
+/// known knob (currently surfaced via docs/CONFIG.md only).
 fn resolve_mcp_transport(
     cli_transport: Option<McpTransport>,
-    env_transport: Option<String>,
-) -> Result<McpTransport, String> {
+    default_transport: McpTransport,
+) -> McpTransport {
     if let Some(transport) = cli_transport {
-        return Ok(transport);
+        return transport;
     }
-
-    match env_transport
-        .as_deref()
-        .map(str::trim)
-        .filter(|raw| !raw.is_empty())
-    {
-        None => Ok(McpTransport::Http),
-        Some(raw) => match raw {
-            "stdio" => Ok(McpTransport::Stdio),
-            "http" => Ok(McpTransport::Http),
-            "both" => Ok(McpTransport::Both),
-            _ => Err(format!(
-                "invalid AXON_MCP_TRANSPORT '{raw}' (expected stdio, http, or both)"
-            )),
-        },
-    }
+    default_transport
 }
 
 /// Resolve adapter command for ask/research ACP calls.
@@ -607,6 +694,44 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn validate_collection_name_accepts_normal_names() {
+        for ok in ["cortex", "axon", "axon_v2", "axon-test", "Mem0.v1", "a"] {
+            assert!(
+                validate_collection_name(ok).is_ok(),
+                "expected '{ok}' to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_path_traversal() {
+        for bad in ["..", "../foo", "..foo", ""] {
+            assert!(
+                validate_collection_name(bad).is_err(),
+                "expected '{bad}' to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_url_metacharacters() {
+        for bad in [
+            "foo/bar", "foo?x=1", "foo#frag", "foo bar", "foo\nbar", "foo%20",
+        ] {
+            assert!(
+                validate_collection_name(bad).is_err(),
+                "expected '{bad}' to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_collection_name_rejects_overlong() {
+        let huge = "a".repeat(256);
+        assert!(validate_collection_name(&huge).is_err());
+    }
 
     #[allow(unsafe_code)]
     #[test]

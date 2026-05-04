@@ -1,8 +1,9 @@
 //! HTTP authentication middleware for the MCP HTTP server.
 //!
 //! Guards `axon mcp --transport http` (and `--transport both`) endpoints.
-//! Set `AXON_MCP_HTTP_TOKEN` to enable token-based auth. If unset, the server
-//! logs a one-time warning and allows all requests through.
+//! Set `AXON_MCP_HTTP_TOKEN` to enable token-based auth. If unset, loopback
+//! MCP HTTP binds are allowed with a warning; non-loopback binds are rejected
+//! at startup by the server policy.
 //!
 //! Token resolution order (first non-empty value wins):
 //! 1. `Authorization: Bearer <token>` request header
@@ -43,27 +44,31 @@ fn extract_token(req: &Request<Body>) -> Option<&str> {
         })
 }
 
-/// Axum middleware that enforces `AXON_MCP_HTTP_TOKEN` on all MCP HTTP requests.
-///
-/// - Token set: 401 for missing or mismatched token.
-/// - Token NOT set: warn once at startup and allow through.
-pub async fn mcp_auth_middleware(request: Request<Body>, next: Next) -> Response {
+fn configured_mcp_http_token() -> Option<String> {
     let configured_token = std::env::var("AXON_MCP_HTTP_TOKEN").ok();
-    let configured_token = configured_token
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    configured_token
+        .map(|value| value.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
 
-    match configured_token {
+pub(crate) fn mcp_http_token_is_configured() -> bool {
+    configured_mcp_http_token().is_some()
+}
+
+fn authorize_mcp_http_request_with_token(
+    request: &Request<Body>,
+    configured_token: Option<&str>,
+) -> Result<(), StatusCode> {
+    match configured_token.map(str::trim).filter(|s| !s.is_empty()) {
         Some(expected) => {
-            let provided = extract_token(&request).unwrap_or("").trim();
+            let provided = extract_token(request).unwrap_or("").trim();
             if provided.is_empty() {
-                return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+                return Err(StatusCode::UNAUTHORIZED);
             }
             if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
-                return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+                return Err(StatusCode::UNAUTHORIZED);
             }
-            next.run(request).await
+            Ok(())
         }
         None => {
             static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
@@ -73,7 +78,89 @@ pub async fn mcp_auth_middleware(request: Request<Body>, next: Next) -> Response
                     "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
                 );
             });
-            next.run(request).await
+            Ok(())
         }
+    }
+}
+
+fn authorize_mcp_http_request(request: &Request<Body>) -> Result<(), StatusCode> {
+    let configured_token = configured_mcp_http_token();
+    authorize_mcp_http_request_with_token(request, configured_token.as_deref())
+}
+
+/// Axum middleware that enforces `AXON_MCP_HTTP_TOKEN` on all MCP HTTP requests.
+///
+/// - Token set: 401 for missing or mismatched token.
+/// - Token NOT set: warn once and allow through. Server startup policy rejects
+///   tokenless non-loopback binds before this middleware can serve requests.
+pub async fn mcp_auth_middleware(request: Request<Body>, next: Next) -> Response {
+    match authorize_mcp_http_request(&request) {
+        Ok(()) => next.run(request).await,
+        Err(status) => (status, "unauthorized").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request_with_header(name: &'static str, value: &'static str) -> Request<Body> {
+        Request::builder()
+            .uri("/mcp")
+            .header(name, value)
+            .body(Body::empty())
+            .expect("request")
+    }
+
+    fn request_without_token() -> Request<Body> {
+        Request::builder()
+            .uri("/mcp")
+            .body(Body::empty())
+            .expect("request")
+    }
+
+    #[test]
+    fn token_middleware_rejects_missing_token_when_configured() {
+        let request = request_without_token();
+
+        let result = authorize_mcp_http_request_with_token(&request, Some("secret"));
+
+        assert_eq!(result, Err(StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn token_middleware_rejects_invalid_bearer_token() {
+        let request = request_with_header("authorization", "Bearer wrong");
+
+        let result = authorize_mcp_http_request_with_token(&request, Some("secret"));
+
+        assert_eq!(result, Err(StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn token_middleware_accepts_valid_bearer_token() {
+        let request = request_with_header("authorization", "Bearer secret");
+
+        let result = authorize_mcp_http_request_with_token(&request, Some("secret"));
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn token_middleware_accepts_valid_x_api_key_token() {
+        let request = request_with_header("x-api-key", "secret");
+
+        let result = authorize_mcp_http_request_with_token(&request, Some("secret"));
+
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn tokenless_requests_are_allowed_when_token_is_unset() {
+        let request = request_without_token();
+
+        let result = authorize_mcp_http_request_with_token(&request, None);
+
+        assert_eq!(result, Ok(()));
     }
 }

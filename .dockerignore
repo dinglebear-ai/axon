@@ -13,7 +13,7 @@
 /data
 /specs
 /.full-review
-/http-cacache
+http-cacache/
 /logs
 /docker-build.log
 

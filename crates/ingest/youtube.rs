@@ -19,24 +19,24 @@ const PHASE_DOWNLOADING: &str = "downloading_transcript";
 const PHASE_PARSING: &str = "parsing_transcript";
 const PHASE_EMBEDDING: &str = "embedding_transcript";
 
-/// Maximum videos to enumerate from a playlist or channel. Prevents runaway yt-dlp
-/// subprocesses and unbounded temp disk usage on channels with 10K+ videos.
 const MAX_PLAYLIST_VIDEOS: usize = 500;
 
-/// Extract a YouTube video ID from a URL or return the string as-is if already an ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YoutubeTargetKind {
+    SingleVideo,
+    PlaylistOrChannel,
+}
+
 pub fn extract_video_id(input: &str) -> Option<String> {
-    // Try parsing as a URL first
     if let Ok(url) = Url::parse(input) {
         let host = url.host_str().unwrap_or("");
 
-        // https://www.youtube.com/watch?v=<ID> (also m.youtube.com)
         if host == "www.youtube.com" || host == "youtube.com" || host == "m.youtube.com" {
             for (key, value) in url.query_pairs() {
                 if key == "v" {
                     return Some(value.into_owned());
                 }
             }
-            // Handle /embed/<ID>, /shorts/<ID>, /v/<ID> path patterns
             if let Some(id) = url.path_segments().and_then(|mut segs| {
                 let first = segs.next()?;
                 if matches!(first, "embed" | "shorts" | "v") {
@@ -51,7 +51,6 @@ pub fn extract_video_id(input: &str) -> Option<String> {
             return None;
         }
 
-        // https://youtu.be/<ID>
         if host == "youtu.be" {
             let path = url.path().trim_start_matches('/');
             if !path.is_empty() {
@@ -63,7 +62,6 @@ pub fn extract_video_id(input: &str) -> Option<String> {
         return None;
     }
 
-    // Not a URL — check if it's a bare 11-character video ID
     let trimmed = input.trim();
     if trimmed.len() == 11
         && trimmed
@@ -76,14 +74,6 @@ pub fn extract_video_id(input: &str) -> Option<String> {
     None
 }
 
-/// Returns `true` if `url` is a YouTube playlist or channel URL rather than a single video.
-///
-/// Handles:
-/// - `youtube.com/playlist?list=...` (without a `?v=` param)
-/// - `youtube.com/@handle`
-/// - `youtube.com/c/ChannelName`
-/// - `youtube.com/channel/UCxxx`
-/// - `youtube.com/user/username`
 pub fn is_playlist_or_channel_url(url: &str) -> bool {
     let Ok(parsed) = Url::parse(url) else {
         return false;
@@ -92,13 +82,11 @@ pub fn is_playlist_or_channel_url(url: &str) -> bool {
     if !matches!(host, "www.youtube.com" | "youtube.com" | "m.youtube.com") {
         return false;
     }
-    // playlist?list=... without a ?v= single-video param
     if parsed.query_pairs().any(|(k, _)| k == "list")
         && !parsed.query_pairs().any(|(k, _)| k == "v")
     {
         return true;
     }
-    // Channel paths: /c/, /channel/, /user/, /@handle
     if let Some(first_seg) = parsed.path_segments().and_then(|mut s| s.next()) {
         if matches!(first_seg, "c" | "channel" | "user") {
             return true;
@@ -110,13 +98,48 @@ pub fn is_playlist_or_channel_url(url: &str) -> bool {
     false
 }
 
-/// Run `yt-dlp --flat-playlist` to enumerate all individual video URLs in a playlist or channel.
-///
-/// Caps results at [`MAX_PLAYLIST_VIDEOS`] to prevent runaway subprocesses on
-/// channels with 10K+ videos.
+fn normalize_youtube_target(target: &str) -> String {
+    let trimmed = target.trim();
+    if trimmed.starts_with('@') {
+        format!("https://www.youtube.com/{trimmed}")
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub fn classify_youtube_target(target: &str) -> Result<YoutubeTargetKind, &'static str> {
+    let normalized = normalize_youtube_target(target);
+    if is_playlist_or_channel_url(&normalized) {
+        return Ok(YoutubeTargetKind::PlaylistOrChannel);
+    }
+    if extract_video_id(&normalized).is_some() {
+        return Ok(YoutubeTargetKind::SingleVideo);
+    }
+    Err("target does not appear to be a YouTube video, playlist, or channel")
+}
+
+pub fn canonicalize_enumerated_video_rows(rows: Vec<String>) -> Vec<String> {
+    rows.into_iter()
+        .filter_map(|row| {
+            let trimmed = row.trim();
+            if trimmed.is_empty() {
+                log_warn("youtube playlist enumeration skipped empty row");
+                return None;
+            }
+            match extract_video_id(trimmed) {
+                Some(id) => Some(format!("https://www.youtube.com/watch?v={id}")),
+                None => {
+                    log_warn(&format!(
+                        "youtube playlist enumeration skipped invalid row={trimmed}"
+                    ));
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
 pub async fn enumerate_playlist_videos(url: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    // SSRF guard: validate before invoking yt-dlp so malicious targets cannot make
-    // yt-dlp fetch internal/private network resources.
     validate_url(url)?;
 
     let playlist_end = MAX_PLAYLIST_VIDEOS.to_string();
@@ -140,22 +163,15 @@ pub async fn enumerate_playlist_videos(url: &str) -> Result<Vec<String>, Box<dyn
         return Err(format!("yt-dlp --flat-playlist exited non-zero: {stderr}").into());
     }
 
-    let urls: Vec<String> = String::from_utf8_lossy(&output.stdout)
+    let rows: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
-        .filter(|l| !l.trim().is_empty())
         .map(|l| l.trim().to_string())
         .collect();
 
-    Ok(urls)
+    Ok(canonicalize_enumerated_video_rows(rows))
 }
 
-/// Invoke `yt-dlp` to download English VTT subtitles + `.info.json` for `safe_url` into
-/// `tmp_path`. The URL must already be sanitized (validated video ID form) — `"--"` prevents
-/// further argument injection. Returns `Err` if yt-dlp is missing or exits non-zero.
 async fn run_ytdlp(safe_url: &str, tmp_path: &str) -> Result<(), Box<dyn Error>> {
-    // --write-info-json writes <id>.info.json (title, channel, tags, description, etc.)
-    // --no-exec prevents execution of post-processing commands.
-    // "--" separates flags from the URL argument to prevent argument injection.
     let mut command = tokio::process::Command::new("yt-dlp");
     command.args([
         "--write-auto-sub",
@@ -348,97 +364,133 @@ pub async fn ingest_youtube(
     Ok(count)
 }
 
+pub async fn ingest_youtube_target(
+    cfg: &Config,
+    target: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
+    let normalized = normalize_youtube_target(target);
+    match classify_youtube_target(&normalized)? {
+        YoutubeTargetKind::SingleVideo => ingest_youtube(cfg, &normalized, reporter).await,
+        YoutubeTargetKind::PlaylistOrChannel => {
+            ingest_youtube_playlist(cfg, &normalized, reporter).await
+        }
+    }
+}
+
+pub async fn ingest_youtube_playlist(
+    cfg: &Config,
+    target: &str,
+    reporter: &PhaseReporter,
+) -> Result<usize, Box<dyn Error>> {
+    log_info(&format!(
+        "command=ingest source=youtube playlist target={target}"
+    ));
+    reporter.report_phase("enumerating_videos").await;
+    let videos = enumerate_playlist_videos(target).await?;
+    if videos.is_empty() {
+        return Err("yt-dlp produced no valid YouTube video rows".into());
+    }
+
+    let videos_total = videos.len();
+    let mut chunks_embedded = 0usize;
+    reporter
+        .report(serde_json::json!({
+            "phase": "embedding_playlist",
+            "videos_done": 0,
+            "videos_total": videos_total,
+            "chunks_embedded": 0,
+        }))
+        .await;
+
+    for (idx, video_url) in videos.iter().enumerate() {
+        match ingest_youtube(cfg, video_url, reporter).await {
+            Ok(chunks) => chunks_embedded += chunks,
+            Err(e) => log_warn(&format!(
+                "command=ingest source=youtube playlist video_failed url={video_url} err={e}"
+            )),
+        }
+        reporter
+            .report(serde_json::json!({
+                "phase": "embedding_playlist",
+                "videos_done": idx + 1,
+                "videos_total": videos_total,
+                "chunks_embedded": chunks_embedded,
+            }))
+            .await;
+    }
+
+    log_done(&format!(
+        "command=ingest source=youtube playlist videos_total={videos_total} chunk_count={chunks_embedded}"
+    ));
+    Ok(chunks_embedded)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn extract_video_id_from_watch_url() {
-        let id = extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
+    fn extracts_video_ids_from_supported_target_forms() {
+        for input in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "dQw4w9WgXcQ",
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+        ] {
+            assert_eq!(extract_video_id(input), Some("dQw4w9WgXcQ".to_string()));
+        }
     }
 
     #[test]
-    fn extract_video_id_from_short_url() {
-        let id = extract_video_id("https://youtu.be/dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn extract_video_id_passthrough_for_bare_id() {
-        // 11-char alphanumeric = bare video ID
-        let id = extract_video_id("dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn extract_video_id_returns_none_for_garbage() {
-        assert_eq!(extract_video_id("not-a-valid-thing"), None);
-    }
-
-    #[test]
-    fn extract_video_id_from_embed_url() {
-        let id = extract_video_id("https://www.youtube.com/embed/dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn extract_video_id_from_shorts_url() {
-        let id = extract_video_id("https://www.youtube.com/shorts/dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn extract_video_id_from_v_path_url() {
-        let id = extract_video_id("https://www.youtube.com/v/dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn extract_video_id_from_mobile_url() {
-        let id = extract_video_id("https://m.youtube.com/watch?v=dQw4w9WgXcQ");
-        assert_eq!(id, Some("dQw4w9WgXcQ".to_string()));
-    }
-
-    #[test]
-    fn is_playlist_url_detects_list_param() {
-        assert!(is_playlist_or_channel_url(
-            "https://www.youtube.com/playlist?list=UUZDfnUn74N0WeAPvMqTOrtA"
-        ));
-    }
-
-    #[test]
-    fn is_playlist_url_false_for_single_video() {
+    fn detects_playlist_and_channel_urls() {
+        for input in [
+            "https://www.youtube.com/playlist?list=UUZDfnUn74N0WeAPvMqTOrtA",
+            "https://www.youtube.com/@SpaceinvaderOne",
+            "https://www.youtube.com/channel/UCZDfnUn74N0WeAPvMqTOrtA",
+            "https://www.youtube.com/c/SpaceinvaderOne",
+        ] {
+            assert!(is_playlist_or_channel_url(input));
+        }
         assert!(!is_playlist_or_channel_url(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         ));
     }
 
     #[test]
-    fn is_playlist_url_detects_at_handle() {
-        assert!(is_playlist_or_channel_url(
-            "https://www.youtube.com/@SpaceinvaderOne"
-        ));
+    fn canonicalizes_enumerated_playlist_rows_to_watch_urls() {
+        let rows = vec![
+            "dQw4w9WgXcQ".to_string(),
+            " https://youtu.be/abcDEF123_4 ".to_string(),
+            "https://www.youtube.com/shorts/ZYxwvUTsr-1".to_string(),
+            "".to_string(),
+            "not a video".to_string(),
+        ];
+
+        assert_eq!(
+            canonicalize_enumerated_video_rows(rows),
+            vec![
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "https://www.youtube.com/watch?v=abcDEF123_4",
+                "https://www.youtube.com/watch?v=ZYxwvUTsr-1",
+            ]
+        );
     }
 
     #[test]
-    fn is_playlist_url_detects_channel_path() {
-        assert!(is_playlist_or_channel_url(
-            "https://www.youtube.com/channel/UCZDfnUn74N0WeAPvMqTOrtA"
-        ));
-    }
-
-    #[test]
-    fn is_playlist_url_detects_c_path() {
-        assert!(is_playlist_or_channel_url(
-            "https://www.youtube.com/c/SpaceinvaderOne"
-        ));
-    }
-
-    #[test]
-    fn is_playlist_url_false_for_non_youtube() {
-        assert!(!is_playlist_or_channel_url(
-            "https://vimeo.com/playlist/123"
-        ));
+    fn classifies_youtube_targets_for_source_dispatch() {
+        for (target, kind) in [
+            ("dQw4w9WgXcQ", YoutubeTargetKind::SingleVideo),
+            (
+                "https://www.youtube.com/@SpaceinvaderOne",
+                YoutubeTargetKind::PlaylistOrChannel,
+            ),
+            ("@SpaceinvaderOne", YoutubeTargetKind::PlaylistOrChannel),
+        ] {
+            assert_eq!(classify_youtube_target(target).unwrap(), kind);
+        }
+        assert!(classify_youtube_target("https://example.com/nope").is_err());
     }
 }

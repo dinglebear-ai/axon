@@ -14,6 +14,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_live_qdrant_tests:
+        description: "Run live Qdrant vector integration tests"
+        required: false
+        default: false
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -318,6 +323,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: run ignored infra worker tests
         run: just test-infra
+
+  live-qdrant:
+    name: live-qdrant
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_qdrant_tests) }}
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.13.1
+        ports:
+          - 6333:6333
+    env:
+      AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+      - name: live Qdrant vector tests
+        run: cargo test --locked --features live-qdrant qdrant -- --ignored
 
   web-lint-test:
     name: web-lint-test
