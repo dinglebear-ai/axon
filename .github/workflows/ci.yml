@@ -383,11 +383,33 @@ jobs:
       - name: Install mcporter
         run: npm install -g mcporter@0.7.3
 
-      - name: Restore Hugging Face cache
+      - name: Restore Hugging Face model cache
         uses: actions/cache@v4
         with:
           path: .cache/huggingface
           key: hf-tei-${{ runner.os }}-BAAI-bge-small-en-v1.5-v1
+
+      - name: Cache Docker images (TEI + Qdrant)
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/docker-images
+          key: docker-${{ runner.os }}-tei-cpu-v1-qdrant-1.13.1
+
+      - name: Load Docker images from cache
+        if: steps.docker-cache.outputs.cache-hit == 'true'
+        run: |
+          docker load -i /tmp/docker-images/tei.tar
+          docker load -i /tmp/docker-images/qdrant.tar
+
+      - name: Pull and save Docker images
+        if: steps.docker-cache.outputs.cache-hit != 'true'
+        run: |
+          docker pull ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+          docker pull qdrant/qdrant:v1.13.1
+          mkdir -p /tmp/docker-images
+          docker save ghcr.io/huggingface/text-embeddings-inference:cpu-latest -o /tmp/docker-images/tei.tar
+          docker save qdrant/qdrant:v1.13.1 -o /tmp/docker-images/qdrant.tar
 
       - name: Build axon binary (release)
         run: cargo build --release --locked --bin axon
