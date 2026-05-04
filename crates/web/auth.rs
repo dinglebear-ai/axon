@@ -37,7 +37,7 @@ pub(crate) fn init_panel_password() -> io::Result<PanelPasswordInit> {
             "HOME is unset or invalid; cannot initialize ~/.axon panel password",
         )
     })?;
-    crate::crates::web::config_store::ensure_private_dir(&home)?;
+    crate::crates::services::setup::config_store::ensure_private_dir(&home)?;
     let path = home.join(PANEL_PASSWORD_FILE);
 
     if let Some(token) = read_existing_password(&path)? {

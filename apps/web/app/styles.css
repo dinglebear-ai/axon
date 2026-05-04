@@ -25,6 +25,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -124,6 +125,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -135,6 +137,11 @@ textarea {
 input {
   min-height: 42px;
   padding: 0 12px;
+}
+
+select {
+  min-height: 42px;
+  padding: 0 10px;
 }
 
 .ops-grid {
@@ -163,6 +170,26 @@ input {
   font-size: 15px;
 }
 
+.deploy-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 18px;
+  margin-bottom: 24px;
+}
+
+.deploy-controls {
+  margin-top: 16px;
+  width: min(420px, 100%);
+}
+
+.deploy-result {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .editor-panel {
   padding: 18px;
 }
@@ -189,6 +216,10 @@ textarea {
   .ops-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .deploy-result {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -199,6 +230,10 @@ textarea {
   }
 
   .ops-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .deploy-result {
     grid-template-columns: 1fr;
   }
 }

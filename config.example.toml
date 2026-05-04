@@ -8,7 +8,8 @@
 #
 # All values shown are defaults. Uncomment only what you need to change.
 #
-# URLs, API keys, secrets, and security settings belong in .env — not here.
+# Secrets and security settings belong in .env — not here. Service URLs are
+# safe TOML values and can be written by `axon setup deploy`.
 # This file is safe to commit to source control.
 #
 # Override path: AXON_CONFIG_PATH=/path/to/config.toml
@@ -19,6 +20,19 @@
 # Phase 1 keys (v0.36): marked "[wired]" — setting these in config.toml takes effect.
 # Phase 2 keys: marked "[env-only]" — the TOML key is parsed/validated but the value
 # is not yet read by the binary; use the env var shown instead for now.
+
+[services]
+# [wired] Base URL of the Qdrant vector store. CLI/env still override this.
+# Env: QDRANT_URL
+# qdrant-url = "http://127.0.0.1:53333"
+
+# [wired] Base URL of the TEI embedding service. CLI/env still override this.
+# Env: TEI_URL
+# tei-url = "http://127.0.0.1:52000"
+
+# [wired] Chrome management API endpoint used for rendered crawls.
+# Env: AXON_CHROME_REMOTE_URL
+# chrome-remote-url = "http://127.0.0.1:6000"
 
 [search]
 # [wired] Enable RRF hybrid search (requires a named-mode Qdrant collection).

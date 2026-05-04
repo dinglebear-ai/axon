@@ -19,6 +19,24 @@ type OpsResponse = {
   mcp_http_url: string;
 };
 
+type SshTarget = {
+  alias: string;
+  host_name?: string;
+  user?: string;
+  port?: number;
+};
+
+type DeployResult = {
+  target: string;
+  remote_host: string;
+  remote_dir: string;
+  qdrant_url: string;
+  tei_url: string;
+  chrome_remote_url: string;
+  config_path: string;
+  steps: { name: string; ok: boolean; detail: string }[];
+};
+
 const TOKEN_KEY = 'axon-panel-token';
 
 export default function Page() {
@@ -27,6 +45,10 @@ export default function Page() {
   const [panelState, setPanelState] = useState<PanelState | null>(null);
   const [config, setConfig] = useState('');
   const [ops, setOps] = useState<OpsResponse | null>(null);
+  const [targets, setTargets] = useState<SshTarget[]>([]);
+  const [selectedTarget, setSelectedTarget] = useState('');
+  const [deploying, setDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [message, setMessage] = useState('');
 
   const authedHeaders = useMemo(
@@ -49,11 +71,14 @@ export default function Page() {
     if (!token) return;
     Promise.all([
       fetch('/api/panel/config', { headers: authedHeaders }).then((res) => res.json()),
-      fetch('/api/panel/ops', { headers: authedHeaders }).then((res) => res.json())
+      fetch('/api/panel/ops', { headers: authedHeaders }).then((res) => res.json()),
+      fetch('/api/panel/setup/targets', { headers: authedHeaders }).then((res) => res.json())
     ])
-      .then(([cfg, opsData]: [ConfigResponse, OpsResponse]) => {
+      .then(([cfg, opsData, targetData]: [ConfigResponse, OpsResponse, SshTarget[]]) => {
         setConfig(cfg.raw_toml);
         setOps(opsData);
+        setTargets(targetData);
+        setSelectedTarget((current) => current || targetData[0]?.alias || '');
       })
       .catch((error) => setMessage(String(error)));
   }, [token, authedHeaders]);
@@ -82,6 +107,30 @@ export default function Page() {
       body: JSON.stringify({ raw_toml: config })
     });
     setMessage(res.ok ? 'Config saved' : await res.text());
+  }
+
+  async function deployRemote() {
+    if (!selectedTarget) {
+      setMessage('Select an SSH target');
+      return;
+    }
+    setDeploying(true);
+    setDeployResult(null);
+    setMessage('');
+    const res = await fetch('/api/panel/setup/deploy', {
+      method: 'POST',
+      headers: authedHeaders,
+      body: JSON.stringify({ target: selectedTarget })
+    });
+    setDeploying(false);
+    if (!res.ok) {
+      setMessage(await res.text());
+      return;
+    }
+    const body = (await res.json()) as DeployResult;
+    setDeployResult(body);
+    setConfig(await fetch('/api/panel/config', { headers: authedHeaders }).then((cfg) => cfg.json()).then((cfg) => cfg.raw_toml));
+    setMessage('Deployment complete');
   }
 
   if (!token) {
@@ -135,6 +184,39 @@ export default function Page() {
         <Metric label="Qdrant" value={ops?.qdrant_url ?? '...'} />
         <Metric label="TEI" value={ops?.tei_url ?? '...'} />
         <Metric label="MCP HTTP" value={ops?.mcp_http_url ?? '...'} />
+      </section>
+
+      <section className="deploy-panel">
+        <div className="section-heading">
+          <div>
+            <h2>Remote Deploy</h2>
+            <p>{targets.length ? `${targets.length} SSH target${targets.length === 1 ? '' : 's'}` : '~/.ssh/config'}</p>
+          </div>
+          <button onClick={() => void deployRemote()} disabled={deploying || !selectedTarget}>
+            {deploying ? 'Deploying' : 'Deploy'}
+          </button>
+        </div>
+        <div className="deploy-controls">
+          <label>
+            Target
+            <select value={selectedTarget} onChange={(event) => setSelectedTarget(event.target.value)}>
+              {targets.map((target) => (
+                <option key={target.alias} value={target.alias}>
+                  {target.alias}
+                  {target.host_name ? ` (${target.host_name})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {deployResult && (
+          <div className="deploy-result">
+            <Metric label="Remote" value={deployResult.remote_host} />
+            <Metric label="Qdrant" value={deployResult.qdrant_url} />
+            <Metric label="TEI" value={deployResult.tei_url} />
+            <Metric label="Chrome" value={deployResult.chrome_remote_url} />
+          </div>
+        )}
       </section>
 
       <section className="editor-panel">

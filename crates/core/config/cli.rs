@@ -72,6 +72,8 @@ pub(super) enum CliCommand {
     Completions(CompletionArgs),
     /// Start service runtimes
     Serve(ServeArgs),
+    /// Setup and deploy Axon infrastructure
+    Setup(SetupArgs),
     /// Start MCP server (stdio, HTTP, or both)
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
@@ -108,6 +110,27 @@ pub(super) struct ServeArgs {
 pub(super) enum ServeSubcommand {
     /// Start the MCP HTTP server runtime
     Mcp(McpArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub(super) struct SetupArgs {
+    #[command(subcommand)]
+    pub(super) action: SetupSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum SetupSubcommand {
+    /// List deployment targets from ~/.ssh/config
+    Targets,
+    /// Deploy Qdrant, TEI, and Chrome services to an SSH target
+    Deploy {
+        /// SSH host alias from ~/.ssh/config
+        target: String,
+        /// Remote directory under $HOME for compose assets
+        #[arg(long, default_value = "axon-deploy")]
+        remote_dir: String,
+    },
 }
 
 #[derive(Debug, Args)]

@@ -1,15 +1,16 @@
 use crate::crates::core::paths::axon_config_path;
 use std::io::{self, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use toml_edit::{DocumentMut, value};
 
-const DEFAULT_CONFIG: &str = include_str!("../../config.example.toml");
+const DEFAULT_CONFIG: &str = include_str!("../../../config.example.toml");
 
-pub(crate) struct ConfigInit {
+pub struct ConfigInit {
     pub path: PathBuf,
     pub created: bool,
 }
 
-pub(crate) fn ensure_user_config() -> io::Result<ConfigInit> {
+pub fn ensure_user_config() -> io::Result<ConfigInit> {
     let path = axon_config_path().ok_or_else(|| {
         io::Error::new(
             ErrorKind::NotFound,
@@ -48,12 +49,12 @@ pub(crate) fn ensure_user_config() -> io::Result<ConfigInit> {
     }
 }
 
-pub(crate) fn read_config() -> io::Result<String> {
+pub fn read_config() -> io::Result<String> {
     let init = ensure_user_config()?;
     std::fs::read_to_string(init.path)
 }
 
-pub(crate) fn write_config(raw_toml: &str) -> io::Result<()> {
+pub fn write_config(raw_toml: &str) -> io::Result<()> {
     let init = ensure_user_config()?;
     toml::from_str::<toml::Value>(raw_toml).map_err(|e| {
         io::Error::new(
@@ -65,7 +66,28 @@ pub(crate) fn write_config(raw_toml: &str) -> io::Result<()> {
     write_private_file(&init.path, raw_toml)
 }
 
-pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
+pub fn write_remote_service_urls(
+    qdrant_url: &str,
+    tei_url: &str,
+    chrome_remote_url: &str,
+) -> io::Result<PathBuf> {
+    let raw = read_config()?;
+    let mut document = raw.parse::<DocumentMut>().map_err(|e| {
+        io::Error::new(
+            ErrorKind::InvalidInput,
+            format!("config TOML parse error: {e}"),
+        )
+    })?;
+    document["services"]["qdrant-url"] = value(qdrant_url);
+    document["services"]["tei-url"] = value(tei_url);
+    document["services"]["chrome-remote-url"] = value(chrome_remote_url);
+
+    let init = ensure_user_config()?;
+    write_private_file(&init.path, &document.to_string())?;
+    Ok(init.path)
+}
+
+pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -79,7 +101,7 @@ pub(crate) fn ensure_private_dir(path: &Path) -> io::Result<()> {
             tracing::warn!(
                 path = %path.display(),
                 mode = format_args!("{mode:o}"),
-                "web: tightening ~/.axon directory permissions to 0700"
+                "setup: tightening ~/.axon directory permissions to 0700"
             );
             std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
         }
@@ -144,11 +166,43 @@ fn reject_symlink(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+pub fn validate_remote_dir(remote_dir: &str) -> io::Result<String> {
+    let raw = remote_dir.trim();
+    let trimmed = raw.trim_matches('/');
+    if trimmed.is_empty() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "remote_dir must not be empty",
+        ));
+    }
+    let path = Path::new(raw);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::RootDir))
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "remote_dir must be a relative path without .. components",
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn invalid_toml_is_rejected_before_write() {
         let result = toml::from_str::<toml::Value>("[broken");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn remote_dir_rejects_parent_components() {
+        assert!(validate_remote_dir("../axon").is_err());
+        assert!(validate_remote_dir("/tmp/axon").is_err());
+        assert_eq!(validate_remote_dir("axon-deploy").unwrap(), "axon-deploy");
     }
 }

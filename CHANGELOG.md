@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-04
+
+### Added
+- Added `axon setup targets` and `axon setup deploy` for SSH-config target discovery and Docker Compose remote infrastructure deployment.
+- Added web panel SSH target listing and remote deployment backed by shared `crates/services/setup/` logic.
+- Bundled deployment compose/env templates into the binary and wired `[services]` config TOML URLs for remote Qdrant, TEI, and Chrome endpoints.
+
 ## [1.2.3] - 2026-05-04
 
 ### Fixed

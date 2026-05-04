@@ -1,5 +1,5 @@
 use super::auth::{PanelPassword, init_panel_password};
-use super::config_store;
+use crate::crates::services::setup::{self, config_store};
 use axum::{
     Json, Router,
     extract::State,
@@ -92,6 +92,8 @@ pub(crate) fn router(
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
         .route("/api/panel/ops", get(ops))
+        .route("/api/panel/setup/targets", get(setup_targets))
+        .route("/api/panel/setup/deploy", post(setup_deploy))
         .fallback(super::static_assets::serve_static)
         .with_state((state, cfg))
 }
@@ -170,6 +172,36 @@ async fn ops(
         mcp_http_url: format!("http://{}:{}/mcp", cfg.mcp_http_host, cfg.mcp_http_port),
     })
     .into_response()
+}
+
+async fn setup_targets(
+    State((state, _)): State<(AppState, Arc<crate::crates::core::config::Config>)>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    match setup::list_ssh_targets() {
+        Ok(targets) => Json(targets).into_response(),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            Json(Vec::<setup::SshTarget>::new()).into_response()
+        }
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+async fn setup_deploy(
+    State((state, _)): State<(AppState, Arc<crate::crates::core::config::Config>)>,
+    headers: HeaderMap,
+    Json(req): Json<setup::DeployRequest>,
+) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    match setup::deploy_remote(req).await {
+        Ok(result) => Json(result).into_response(),
+        Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+    }
 }
 
 fn authorized(state: &AppState, headers: &HeaderMap) -> bool {

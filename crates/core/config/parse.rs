@@ -524,4 +524,52 @@ mod tests {
             env::remove_var(TRANSPORT);
         }
     }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_setup_targets_does_not_require_service_urls() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let cli = super::Cli::parse_from(["axon", "--json", "setup", "targets"]);
+        let cfg = super::build_config::into_config(cli).expect("setup targets should parse");
+
+        assert!(matches!(cfg.command, CommandKind::Setup));
+        assert_eq!(cfg.positional, vec!["targets".to_string()]);
+        assert!(cfg.json_output);
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_setup_deploy_preserves_target_and_remote_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let cli = super::Cli::parse_from([
+            "axon",
+            "setup",
+            "deploy",
+            "prod-box",
+            "--remote-dir",
+            "custom-axon",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("setup deploy should parse");
+
+        assert!(matches!(cfg.command, CommandKind::Setup));
+        assert_eq!(
+            cfg.positional,
+            vec![
+                "deploy".to_string(),
+                "prod-box".to_string(),
+                "--remote-dir".to_string(),
+                "custom-axon".to_string(),
+            ]
+        );
+    }
 }

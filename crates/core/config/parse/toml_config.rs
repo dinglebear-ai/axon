@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(super) struct TomlConfig {
     #[serde(default)]
+    pub services: TomlServicesSection,
+    #[serde(default)]
     pub search: TomlSearchSection,
     #[serde(default)]
     pub ask: TomlAskSection,
@@ -24,6 +26,17 @@ pub(super) struct TomlConfig {
     pub tei: TomlTeiSection,
     #[serde(default)]
     pub workers: TomlWorkersSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlServicesSection {
+    /// Base URL of the Qdrant vector store.
+    pub qdrant_url: Option<String>,
+    /// Base URL of the TEI embedding service.
+    pub tei_url: Option<String>,
+    /// Chrome DevTools Protocol management endpoint URL.
+    pub chrome_remote_url: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

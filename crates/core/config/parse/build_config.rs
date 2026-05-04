@@ -177,6 +177,20 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
                 (CommandKind::Serve, Vec::new())
             }
         },
+        CliCommand::Setup(args) => match args.action {
+            super::super::cli::SetupSubcommand::Targets => {
+                (CommandKind::Setup, vec!["targets".to_string()])
+            }
+            super::super::cli::SetupSubcommand::Deploy { target, remote_dir } => (
+                CommandKind::Setup,
+                vec![
+                    "deploy".to_string(),
+                    target,
+                    "--remote-dir".to_string(),
+                    remote_dir,
+                ],
+            ),
+        },
         CliCommand::Mcp(args) => {
             mcp_transport = args.transport;
             mcp_transport_default = McpTransport::Stdio;
@@ -185,15 +199,15 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         CliCommand::Migrate(args) => (CommandKind::Migrate, vec![args.from, args.to]),
     };
 
-    // Completions emits shell completion scripts from static CLI metadata only —
-    // no service URLs, TOML config, or collection validation needed. Return early
-    // so `axon completions` works without any environment configured. This means
-    // AXON_CONFIG_PATH parse errors and invalid collections are intentionally
-    // not checked for this subcommand.
-    if matches!(command, CommandKind::Completions) {
+    // Completions and setup metadata/deploy commands do not need service URLs at
+    // parse time. Return early so first-run setup works before Qdrant/TEI exist.
+    // This means AXON_CONFIG_PATH parse errors and invalid collections are
+    // intentionally not checked for these subcommands.
+    if matches!(command, CommandKind::Completions | CommandKind::Setup) {
         return Ok(Config {
             command,
             positional,
+            json_output: global.json,
             ..Config::default()
         });
     }
@@ -248,6 +262,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         chrome_remote_url: global
             .chrome_remote_url
             .or_else(|| env::var("AXON_CHROME_REMOTE_URL").ok())
+            .or(toml.services.chrome_remote_url)
             .map(normalize_local_service_url),
         chrome_proxy: global
             .chrome_proxy
@@ -307,6 +322,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             global
                 .tei_url
                 .or_else(|| env::var("TEI_URL").ok())
+                .or(toml.services.tei_url)
                 .ok_or_else(|| {
                     "TEI_URL environment variable is required (or pass --tei-url). \
                      Copy .env.example to .env and fill in credentials."
@@ -317,6 +333,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             global
                 .qdrant_url
                 .or_else(|| env::var("QDRANT_URL").ok())
+                .or(toml.services.qdrant_url)
                 .ok_or_else(|| {
                     "QDRANT_URL environment variable is required (or pass --qdrant-url). \
                      Copy .env.example to .env and fill in credentials."

@@ -17,6 +17,7 @@ pub mod runtime;
 pub mod scrape;
 pub mod screenshot;
 pub mod search;
+pub mod setup;
 pub mod system;
 pub mod types;
 pub mod watch;

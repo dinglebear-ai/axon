@@ -29,6 +29,7 @@ pub enum CommandKind {
     Completions,
     Mcp,
     Serve,
+    Setup,
     Migrate,
 }
 
@@ -61,6 +62,7 @@ impl CommandKind {
             Self::Completions => "completions",
             Self::Mcp => "mcp",
             Self::Serve => "serve",
+            Self::Setup => "setup",
             Self::Migrate => "migrate",
         }
     }

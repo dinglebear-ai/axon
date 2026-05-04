@@ -1,6 +1,6 @@
 [package]
 name = "axon"
-version = "1.2.3"
+version = "1.3.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -29,6 +29,8 @@ dialoguer = "0.12"
 indicatif = "0.18"
 log = "0.4"
 octocrab = "0.49"
+openssh = "0.11.6"
+openssh-sftp-client = { version = "0.15.7", features = ["openssh"] }
 portable-pty = "0"
 futures-util = "0.3"
 futures = "0.3"
@@ -70,6 +72,7 @@ spider_agent = { version = "2.47.89", default-features = false, features = [
   "openai",
 ] }
 spider_transformations = "2"
+ssh2-config = "0.7.1"
 sqlx = { version = "0.8", features = [
   "runtime-tokio-rustls",
   "sqlite",
@@ -101,6 +104,7 @@ toml = { version = "1.1", default-features = false, features = [
   "parse",
   "serde",
 ] }
+toml_edit = "0.25.11"
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-executor-trait = "3"
 tokio-reactor-trait = "4"

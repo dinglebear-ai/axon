@@ -4,7 +4,7 @@
 
 Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
 
-Version: 1.2.3 | License: MIT
+Version: 1.3.0 | License: MIT
 
 ---
 
@@ -83,6 +83,7 @@ Axon is three things simultaneously:
 - A CLI binary: `axon`
 - An MCP server: `axon mcp`
 - A local stack supervisor: `axon serve`
+- An SSH deployment helper: `axon setup`
 
 The stack has the following components:
 
@@ -885,6 +886,9 @@ AXON_MCP_HTTP_TOKEN=               # required for non-loopback binds
 ```
 
 HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when it is set. Tokenless HTTP is allowed only for loopback binds; non-loopback binds such as `0.0.0.0` are rejected at startup unless `AXON_MCP_HTTP_TOKEN` is configured. Reverse proxies can still add OAuth or other ingress controls in front of the token gate.
+
+Authenticated clients send either `Authorization: Bearer $AXON_MCP_HTTP_TOKEN`
+or `x-api-key: $AXON_MCP_HTTP_TOKEN` on every `/mcp` request.
 
 ### Tool Contract
 
