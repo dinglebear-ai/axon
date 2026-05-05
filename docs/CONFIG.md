@@ -1,5 +1,7 @@
 # Configuration Reference -- Axon
 
+> **Source of truth.** This file is the canonical reference for all Axon environment variables. When in doubt, this file wins over README.md, MCP.md, or any other doc. Keep `.env.example` in sync — every variable listed here that has a sensible example value should appear there, and every variable in `.env.example` should be documented here.
+
 Axon is configured through three layers: `~/.axon/config.toml`, environment variables, and CLI flags.
 
 ## Precedence (highest to lowest)
@@ -83,9 +85,6 @@ URLs, API keys, secrets, and security settings belong in `.env` — not in `conf
 | `AXON_SERVE_PORT` | `49000` | Backend bridge port |
 | `AXON_WEB_DEV_PORT` | `49010` | Next.js dev server port |
 | `SHELL_SERVER_PORT` | `49011` | Shell WebSocket server port |
-| `AXON_MCP_HTTP_PORT` | `8001` | MCP HTTP server port |
-| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP HTTP server bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
-| `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
 
 ### Lite mode
 
@@ -109,7 +108,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 |----------|---------|-------------|
 | `TEI_MAX_RETRIES` | `5` | Max retry attempts per request |
 | `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 100-600000) |
-| `TEI_MAX_CLIENT_BATCH_SIZE` | `128` | Default batch size (auto-splits on 413) |
+| `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 | `TEI_HTTP_PORT` | `52000` | Host port for TEI container |
 | `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace embedding model |
 | `TEI_MAX_CONCURRENT_REQUESTS` | `80` | Max concurrent TEI requests |
@@ -126,15 +125,21 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `OPENAI_BASE_URL` | -- | OpenAI-compatible base URL (legacy) |
 | `OPENAI_API_KEY` | -- | API key for LLM provider |
 | `OPENAI_MODEL` | -- | Model override for ACP-backed completions |
-| `AXON_ASK_AGENT` | `claude` | Which ACP agent handles ask/research |
-| `AXON_ACP_ADAPTER_CMD` | -- | Global ACP adapter override |
-| `AXON_ACP_ADAPTER_ARGS` | -- | Global ACP adapter args (pipe-delimited) |
+| `AXON_ASK_AGENT` | `claude` | Which ACP agent handles ask/research (`claude`, `codex`, or `gemini`) |
+| `AXON_ACP_ADAPTER_CMD` | -- | Global ACP adapter command override (overrides per-agent vars) |
+| `AXON_ACP_ADAPTER_ARGS` | -- | Global ACP adapter args (overrides per-agent vars) |
+| `AXON_ACP_CLAUDE_ADAPTER_CMD` | `claude-agent-acp` | ACP adapter command when `AXON_ASK_AGENT=claude` |
+| `AXON_ACP_CLAUDE_ADAPTER_ARGS` | -- | Args for the Claude ACP adapter |
+| `AXON_ACP_CODEX_ADAPTER_CMD` | `codex-acp` | ACP adapter command when `AXON_ASK_AGENT=codex` |
+| `AXON_ACP_CODEX_ADAPTER_ARGS` | -- | Args for the Codex ACP adapter |
+| `AXON_ACP_GEMINI_ADAPTER_CMD` | `gemini` | ACP adapter command when `AXON_ASK_AGENT=gemini` |
+| `AXON_ACP_GEMINI_ADAPTER_ARGS` | `--experimental-acp` | Args for the Gemini ACP adapter |
 | `AXON_ACP_AUTO_APPROVE` | `true` | Auto-approve agent tool permissions |
-| `AXON_ACP_MAX_CONCURRENT_SESSIONS` | `8` | Max concurrent ACP sessions |
-| `AXON_ACP_TURN_TIMEOUT_MS` | `300000` | Per-turn timeout for Pulse Chat |
-| `AXON_ACP_PREWARM` | `true` | Prewarm adapter on startup |
-| `AXON_ACP_WS_URL` | -- | Remote ACP WebSocket URL |
-| `AXON_ACP_WS_TOKEN` | -- | Remote ACP WebSocket token |
+| `AXON_ACP_MAX_SESSIONS` | `100` | Max cached ACP sessions (0 = unlimited). Guards memory — distinct from concurrency semaphore. |
+| `AXON_ACP_COMPLETION_CONCURRENCY` | unlimited | Max concurrent ACP completion requests (empty = unlimited) |
+| `AXON_ACP_PREWARM` | `true` | Prewarm adapter on startup to reduce cold-start latency |
+| `AXON_ACP_WS_URL` | -- | Remote ACP WebSocket URL (route completions to a remote axon serve instance) |
+| `AXON_ACP_WS_TOKEN` | -- | Bearer token for the remote ACP WebSocket endpoint |
 
 ### Queues and collections
 
@@ -167,10 +172,13 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_CHROME_REMOTE_URL` | `http://axon-chrome:6000` | CDP management endpoint |
-| `CHROME_URL` | `http://127.0.0.1:6000` | Spider-rs native CDP var |
-| `AXON_CHROME_DIAGNOSTICS` | `false` | Enable browser diagnostics |
+| `CHROME_URL` | `http://127.0.0.1:6000` | Spider-rs native CDP var (always use localhost URL here) |
 | `AXON_CHROME_PROXY` | -- | Proxy URL for Chrome requests |
-| `AXON_CHROME_USER_AGENT` | -- | Custom User-Agent |
+| `AXON_CHROME_USER_AGENT` | -- | User-Agent override for Chrome requests |
+| `AXON_CHROME_DIAGNOSTICS` | `false` | Enable browser diagnostics artifact collection |
+| `AXON_CHROME_DIAGNOSTICS_DIR` | `$AXON_DATA_DIR/axon/chrome-diagnostics` | Output directory for diagnostics artifacts |
+| `AXON_CHROME_DIAGNOSTICS_EVENTS` | `false` | Include event-log capture in diagnostics |
+| `AXON_CHROME_DIAGNOSTICS_SCREENSHOT` | `false` | Include screenshot capture in diagnostics |
 
 ### Hybrid search
 
@@ -182,17 +190,34 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
 | `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
 
+### Ask / RAG tuning
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Max context characters passed to the LLM (clamped 20000–400000) |
+| `AXON_ASK_CANDIDATE_LIMIT` | `150` | Max retrieval candidates per prefetch (clamped 8–300) |
+| `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1–16) |
+| `AXON_ASK_DOC_CHUNK_LIMIT` | `192` | Max chunks per document in context (clamped 8–2000) |
+| `AXON_ASK_CHUNK_LIMIT` | `10` | Max total chunks selected for LLM context |
+| `AXON_ASK_FULL_DOCS` | `4` | Max full documents included in context |
+| `AXON_ASK_BACKFILL_CHUNKS` | `3` | Backfill chunks from top documents to pad context (clamped 0–20) |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate inclusion |
+| `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Boost weight for authoritative domains in reranking (clamped 0.0–0.5) |
+| `AXON_ASK_AUTHORITATIVE_DOMAINS` | -- | Comma-separated authoritative domains to boost in reranking |
+| `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers (clamped 1–5) |
+
 ### Worker tuning
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_EMBED_DOC_CONCURRENCY` | CPU count | Max concurrent embed docs |
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout |
-| `AXON_EMBED_STRICT_PREDELETE` | `true` | Require pre-delete before upsert |
-| `AXON_MAX_PENDING_CRAWL_JOBS` | `100` | Crawl queue cap (0 = unlimited) |
-| `AXON_CRAWL_SIZE_WARN_THRESHOLD` | `10000` | Warn above N pages |
-| `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Stale job detection |
-| `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Stale confirmation grace period |
+| `AXON_MAX_PENDING_CRAWL_JOBS` | `100` | Crawl queue cap — new submissions rejected when exceeded (0 = unlimited) |
+| `AXON_MAX_PENDING_EMBED_JOBS` | `50` | Embed queue cap (0 = unlimited) |
+| `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
+| `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
+| `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
+| `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 
 ### Web app
 
@@ -211,15 +236,9 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_NEO4J_URL` | -- | Neo4j HTTP URL (empty = disabled) |
+| `AXON_NEO4J_URL` | -- | Neo4j HTTP URL (empty = graph features disabled) |
 | `AXON_NEO4J_USER` | `neo4j` | Neo4j username |
 | `AXON_NEO4J_PASSWORD` | -- | Neo4j password |
-| `AXON_GRAPH_CONCURRENCY` | `4` | Parallel extraction jobs |
-| `AXON_GRAPH_LLM_URL` | `http://localhost:11434` | Ollama/OpenAI URL for extraction |
-| `AXON_GRAPH_LLM_MODEL` | `qwen3.5:4b` | Graph extraction model |
-| `AXON_GRAPH_SIMILARITY_THRESHOLD` | `0.75` | Cross-document edge threshold |
-| `AXON_GRAPH_SIMILARITY_LIMIT` | `20` | Max similar URLs for edges |
-| `AXON_GRAPH_CONTEXT_MAX_CHARS` | `2000` | Graph context chars for `ask --graph` |
 
 ### Logging
 
@@ -231,15 +250,38 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_LOG_MAX_FILES` | `3` | Rotated log files retained |
 | `AXON_NO_COLOR` | -- | Disable ANSI color output |
 
+### MCP server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
+| `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port |
+| `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; required for non-loopback binds |
+| `AXON_MCP_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins for MCP HTTP CORS |
+| `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/axon/artifacts` | Directory for response artifacts |
+| `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline triggers (0 = disable) |
+| `AXON_MCP_EMBED_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) |
+| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | -- | Max bytes per local file embedding request via MCP |
+
+### Output and CLI
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/axon/output` | Output directory for file-writing commands |
+| `AXON_NO_COLOR` | -- | Disable ANSI color output (any non-empty value) |
+| `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
+| `AXON_DOMAINS_DETAILED` | -- | Enable detailed per-domain breakdown in `axon domains` |
+| `AXON_EXTRACT_EST_COST_PER_1K_TOKENS` | -- | Estimated cost per 1k tokens shown in `axon extract` output |
+| `AXON_SOURCES_FACET_LIMIT` | `100000` | Facet limit for `axon sources` |
+| `AXON_DOMAINS_FACET_LIMIT` | `100000` | Facet limit for `axon domains` |
+| `AXON_SESSION_INGEST_MAX_BYTES` | -- | Max bytes per session ingest payload |
+
 ### Miscellaneous
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/axon/artifacts` | MCP response artifact directory |
-| `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Auto-inline payload threshold |
-| `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/axon/output` | Output directory for file-writing commands |
-| `AXON_GIT_SHA` | `dev` | Git SHA baked into Docker labels |
-| `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
+| `AXON_GIT_SHA` | `dev` | Git SHA baked into Docker image labels |
+| `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53333` | Host-accessible Qdrant URL for integration tests |
 
 ## Dev vs container URL resolution
 
@@ -249,3 +291,28 @@ The CLI auto-detects its runtime environment:
 - **Outside Docker** (local dev): rewrites to localhost with mapped ports
 
 This means `.env` can use container DNS names -- `normalize_local_service_url()` in `config.rs` handles translation transparently.
+
+## Keeping this file in sync
+
+`docs/CONFIG.md` is the single source of truth for env var documentation. When adding a new env variable:
+
+1. Add it here in the appropriate section.
+2. Add it to `.env.example` with a sensible default or blank value and a `[OPTIONAL]`/`[REQUIRED]` comment.
+3. If it is MCP-server-specific, also add it to `docs/mcp/ENV.md`.
+4. Do not add full env tables to `README.md` — keep that to a short essentials list with a link here.
+
+To spot drift between `.env.example` and this file, extract keys from both and diff:
+
+```bash
+# Keys in .env.example (non-comment, non-blank)
+grep -v '^\s*#' .env.example | grep '=' | cut -d= -f1 | sort > /tmp/example_keys.txt
+
+# Keys in CONFIG.md table rows (backtick-wrapped identifiers)
+grep -oP '`[A-Z][A-Z0-9_]+`' docs/CONFIG.md | tr -d '`' | sort -u > /tmp/config_keys.txt
+
+# Vars in .env.example but missing from CONFIG.md
+comm -23 /tmp/example_keys.txt /tmp/config_keys.txt
+
+# Vars in CONFIG.md but missing from .env.example
+comm -13 /tmp/example_keys.txt /tmp/config_keys.txt
+```
