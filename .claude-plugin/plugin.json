@@ -1,27 +1,27 @@
 {
-    "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-    "name": "axon",
-    "version": "1.3.4",
-    "description": "Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query via MCP or CLI. 15 skills covering web crawling, GitHub/Reddit/YouTube ingest, semantic vector search, and grounded LLM answers over indexed content.",
-    "author": {
-        "name": "Jacob Magar",
-        "email": "jmagar@gmail.com",
-        "url": "https://github.com/jmagar"
-    },
-    "homepage": "https://github.com/jmagar/axon",
-    "repository": "https://github.com/jmagar/axon",
-    "keywords": [
-        "rag",
-        "crawl",
-        "scrape",
-        "embed",
-        "qdrant",
-        "semantic-search",
-        "mcp",
-        "spider",
-        "ingest",
-        "hybrid-search"
-    ],
-    "skills": "./plugins/axon/skills",
-    "agents": "./plugins/axon/agents/researcher.md"
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "axon",
+  "version": "1.4.0",
+  "description": "Spider-powered self-hosted RAG engine \u2014 scrape, map, extract, crawl, embed, and query via MCP or CLI. 15 skills covering web crawling, GitHub/Reddit/YouTube ingest, semantic vector search, and grounded LLM answers over indexed content.",
+  "author": {
+    "name": "Jacob Magar",
+    "email": "jmagar@gmail.com",
+    "url": "https://github.com/jmagar"
+  },
+  "homepage": "https://github.com/jmagar/axon",
+  "repository": "https://github.com/jmagar/axon",
+  "keywords": [
+    "rag",
+    "crawl",
+    "scrape",
+    "embed",
+    "qdrant",
+    "semantic-search",
+    "mcp",
+    "spider",
+    "ingest",
+    "hybrid-search"
+  ],
+  "skills": "./plugins/axon/skills",
+  "agents": "./plugins/axon/agents/researcher.md"
 }

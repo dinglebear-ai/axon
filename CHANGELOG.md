@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-05-05
+
+### Added
+- Queue caps for embed, extract, and ingest jobs (AXON_MAX_PENDING_EMBED_JOBS, AXON_MAX_PENDING_EXTRACT_JOBS, AXON_MAX_PENDING_INGEST_JOBS, default 50)
+- Global LRU session cap for ACP session cache (AXON_ACP_MAX_SESSIONS, default 100)
+- taplo TOML formatter config and taplo-check/taplo-fmt Justfile recipes
+
+### Changed
+- MapResult migrated from serde_json::Value to typed struct with total: u64 field
+- docs/CONFIG.md designated as single authoritative env var reference
+- Fixed MCP handle_map double-pagination bug
+
 ## [1.3.4] - 2026-05-05
 
 ### Fixed
