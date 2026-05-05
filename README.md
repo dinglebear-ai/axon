@@ -1046,156 +1046,26 @@ Copy `.env.example` to `.env` and fill in values. Two env files are used:
 
 ### Environment Variables
 
-#### Core Infrastructure
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AXON_PG_URL` | Yes | `postgresql://axon:postgres@127.0.0.1:53432/axon` | PostgreSQL connection URL |
-| `AXON_REDIS_URL` | Yes | `redis://127.0.0.1:53379` | Redis connection URL |
-| `AXON_AMQP_URL` | Yes | `amqp://axon:axonrabbit@127.0.0.1:45535/%2f` | RabbitMQ AMQP URL |
-| `QDRANT_URL` | Yes | `http://127.0.0.1:53333` | Qdrant REST API base URL |
-| `TEI_URL` | Yes | — | Text Embeddings Inference base URL |
-| `AXON_DATA_DIR` | No | `./data` | Persistent data root for container volumes |
-| `AXON_COLLECTION` | No | `cortex` | Default Qdrant collection name |
-| `AXON_SQLITE_PATH` | No | `$AXON_DATA_DIR/axon/jobs.db` | SQLite path (lite mode only) |
-| `AXON_LITE` | No | `0` | Set to `1` to enable lite mode (SQLite, no external queue) |
-
-#### LLM and ACP
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AXON_ACP_ADAPTER_CMD` | Yes (for ask/evaluate/research) | — | ACP adapter binary (e.g. `codex`) |
-| `AXON_ACP_ADAPTER_ARGS` | No | — | Additional arguments for the ACP adapter |
-| `OPENAI_BASE_URL` | No | — | OpenAI-compatible API base URL |
-| `OPENAI_API_KEY` | No | — | API key for the LLM endpoint |
-| `OPENAI_MODEL` | No | — | Model name override passed to the ACP adapter |
-| `AXON_ACP_AUTO_APPROVE` | No | `true` | Auto-approve ACP tool permission requests |
-
-#### Search
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `TAVILY_API_KEY` | Yes (for search/research) | — | Tavily search API key |
-
-#### Graph (Neo4j)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AXON_NEO4J_URL` | No | — | Neo4j HTTP base URL (e.g. `http://127.0.0.1:7474`). Graph features disabled when empty. |
-| `AXON_NEO4J_USER` | No | `neo4j` | Neo4j username |
-| `AXON_NEO4J_PASSWORD` | No | — | Neo4j password |
-| `AXON_GRAPH_CONCURRENCY` | No | `4` | Graph worker concurrency |
-| `AXON_GRAPH_LLM_URL` | No | — | LLM endpoint for entity extraction (e.g. `http://localhost:11434`) |
-| `AXON_GRAPH_LLM_MODEL` | No | `qwen3.5:2b` | Model for graph entity extraction |
-| `AXON_GRAPH_SIMILARITY_THRESHOLD` | No | `0.75` | Min similarity score for `SIMILAR_TO` edges |
-| `AXON_GRAPH_SIMILARITY_LIMIT` | No | `20` | Max similarity edges per document |
-| `AXON_GRAPH_CONTEXT_MAX_CHARS` | No | `2000` | Max characters for graph context injected into `ask --graph` |
-| `AXON_GRAPH_TAXONOMY_PATH` | No | — | Path to custom taxonomy file |
-
-#### Ingest Credentials
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GITHUB_TOKEN` | No | — | GitHub personal access token (raises rate limit from 60 to 5000 req/hr) |
-| `REDDIT_CLIENT_ID` | Yes (Reddit) | — | Reddit OAuth2 app client ID |
-| `REDDIT_CLIENT_SECRET` | Yes (Reddit) | — | Reddit OAuth2 app client secret |
-
-Note: `yt-dlp` must be on `PATH` for YouTube ingest targets.
-
-#### Browser Rendering
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `AXON_CHROME_REMOTE_URL` | No | — | Chrome headless_browser management API URL (e.g. `http://axon-chrome:6000`) |
-
-#### Queue Names
-
-| Variable | Default | Description |
-|---|---|---|
-| `AXON_CRAWL_QUEUE` | `axon.crawl.jobs` | Crawl job queue name |
-| `AXON_EXTRACT_QUEUE` | `axon.extract.jobs` | Extract job queue name |
-| `AXON_EMBED_QUEUE` | `axon.embed.jobs` | Embed job queue name |
-| `AXON_INGEST_QUEUE` | `axon.ingest.jobs` | Ingest job queue name |
-| `AXON_REFRESH_QUEUE` | `axon.refresh.jobs` | Refresh job queue name |
-| `AXON_GRAPH_QUEUE` | `axon.graph.jobs` | Graph job queue name |
-
-#### Worker Tuning
-
-| Variable | Default | Description |
-|---|---|---|
-| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes |
-| `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout in seconds |
-| `AXON_EMBED_STRICT_PREDELETE` | `true` | Delete existing points before re-embedding |
-| `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
-| `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
-| `AXON_MAX_PENDING_CRAWL_JOBS` | `100` | Max pending crawl jobs before rejection (0 = unlimited) |
-| `AXON_CRAWL_SIZE_WARN_THRESHOLD` | `10000` | Warn when uncapped crawl exceeds this page count (0 = disable) |
-
-#### Ask / RAG Tuning
-
-| Variable | Default | Description |
-|---|---|---|
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate chunks |
-| `AXON_ASK_CANDIDATE_LIMIT` | `64` | Candidate pool size from Qdrant |
-| `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks included in the final LLM context |
-| `AXON_ASK_FULL_DOCS` | `4` | Number of top documents for additional chunk backfill |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Max LLM context characters |
-| `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers |
-| `AXON_ASK_AUTHORITATIVE_DOMAINS` | — | Comma-separated domains to boost in reranking |
-| `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
-
-#### MCP Transport
-
-| Variable | Default | Description |
-|---|---|---|
-| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
-| `AXON_MCP_HTTP_PORT` | `8001` | HTTP bind port |
-| `AXON_MCP_HTTP_TOKEN` | — | Bearer or `x-api-key` token required for non-loopback HTTP binds and enforced on all MCP HTTP requests when set |
-| `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline is triggered (0 = disable) |
-
-#### Ports
-
-| Variable | Default | Description |
-|---|---|---|
-| `AXON_SERVE_PORT` | `49000` | WebSocket bridge server port |
-| `AXON_SERVE_HOST` | `127.0.0.1` | WebSocket bridge bind host |
-| `AXON_WEB_DEV_PORT` | `49010` | Next.js dashboard port |
-| `SHELL_SERVER_PORT` | `49011` | Shell server port |
-
-#### Web UI Security
+The minimum set needed to start:
 
 | Variable | Required | Description |
 |---|---|---|
-| `AXON_WEB_API_TOKEN` | No (but recommended) | Primary token. Gates `/api/*` and `/ws` when set. |
-| `AXON_WEB_BROWSER_API_TOKEN` | No | Optional second token for `/api/*` only (does not gate `/ws`). |
-| `NEXT_PUBLIC_AXON_API_TOKEN` | Required when `AXON_WEB_API_TOKEN` is set | Browser-exposed token. Must equal `AXON_WEB_BROWSER_API_TOKEN` when that is set, otherwise `AXON_WEB_API_TOKEN`. |
-| `AXON_WEB_ALLOWED_ORIGINS` | No | CORS allowed origins. |
-| `AXON_WEB_ALLOW_INSECURE_DEV` | `false` | Loopback bypass for `/api/*`. Never set to `true` in production. |
+| `QDRANT_URL` | Yes | Qdrant REST API base URL (e.g. `http://127.0.0.1:53333`) |
+| `TEI_URL` | Yes | Text Embeddings Inference base URL (e.g. `http://127.0.0.1:52000`) |
+| `AXON_ASK_AGENT` | For ask/research | Which ACP agent handles synthesis: `claude`, `codex`, or `gemini` |
+| `AXON_ACP_CLAUDE_ADAPTER_CMD` | When `AXON_ASK_AGENT=claude` | ACP adapter command (default: `claude-agent-acp`) |
+| `OPENAI_BASE_URL` | For ask/research | OpenAI-compatible API base URL |
+| `OPENAI_MODEL` | For ask/research | Model name passed to the ACP adapter |
+| `TAVILY_API_KEY` | For search/research | Tavily search API key |
+| `GITHUB_TOKEN` | For GitHub ingest | GitHub personal access token (optional, raises rate limits) |
+| `REDDIT_CLIENT_ID` | For Reddit ingest | Reddit OAuth2 app client ID |
+| `REDDIT_CLIENT_SECRET` | For Reddit ingest | Reddit OAuth2 app client secret |
+| `AXON_CHROME_REMOTE_URL` | For Chrome rendering | Chrome management API URL (e.g. `http://axon-chrome:6000`) |
+| `AXON_COLLECTION` | No | Default Qdrant collection name (default: `cortex`) |
+| `AXON_DATA_DIR` | No | Persistent data root (default: `./data`) |
+| `AXON_LITE` | No | Set to `1` for lite mode — SQLite-backed, no external queue (default in this build) |
 
-#### OAuth (MCP OAuth gateway)
-
-| Variable | Description |
-|---|---|
-| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth2 client ID |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth2 client secret |
-| `GOOGLE_OAUTH_REDIRECT_URI` | OAuth redirect URI |
-| `GOOGLE_OAUTH_SCOPES` | Requested OAuth scopes |
-| `GOOGLE_OAUTH_DCR_TOKEN` | Dynamic Client Registration token |
-| `GOOGLE_OAUTH_REDIS_URL` | Redis URL for OAuth token storage |
-
-#### TEI (Text Embeddings Inference)
-
-| Variable | Default | Description |
-|---|---|---|
-| `TEI_HTTP_PORT` | `52000` | TEI container port |
-| `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Embedding model ID |
-| `TEI_MAX_CONCURRENT_REQUESTS` | `256` | Max concurrent embedding requests |
-| `TEI_MAX_BATCH_TOKENS` | `163840` | Max tokens per batch |
-| `TEI_MAX_BATCH_REQUESTS` | `256` | Max requests per batch |
-| `TEI_MAX_CLIENT_BATCH_SIZE` | `128` | Max batch size per client request |
-| `TEI_POOLING` | `last-token` | Pooling strategy |
-| `TEI_TOKENIZATION_WORKERS` | `8` | Tokenization thread count |
-| `HF_TOKEN` | — | HuggingFace token for model download |
+> **Full reference:** See [`docs/CONFIG.md`](docs/CONFIG.md) for every environment variable, its default, and description. `docs/CONFIG.md` is the single authoritative source — when in doubt, it wins over this file.
 
 ---
 

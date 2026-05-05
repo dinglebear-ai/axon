@@ -9,8 +9,11 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_MCP_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_MCP_HTTP_TOKEN` | no |
 | `AXON_MCP_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
 | `AXON_MCP_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
+| `AXON_MCP_ALLOWED_ORIGINS` | no | -- | Comma-separated allowed origins for MCP HTTP CORS | no |
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/axon/artifacts` | Directory for response artifacts | no |
-| `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes) | no |
+| `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
+| `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | -- | Max bytes per local file embedding request via MCP | no |
 
 ## OAuth broker (optional)
 
