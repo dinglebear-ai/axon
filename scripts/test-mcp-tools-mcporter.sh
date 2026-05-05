@@ -283,12 +283,19 @@ build_suite_config() {
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/axon/logs/axon.log" \
     --arg sqlite_path "$runtime_root/axon/mcporter-jobs.db" \
-    '.mcpServers[$server].env.AXON_LITE = $lite
-     | .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
-     | .mcpServers[$server].env.AXON_REPO_ROOT = $repo_root
-     | .mcpServers[$server].env.AXON_DATA_DIR = $data_dir
-     | .mcpServers[$server].env.AXON_LOG_FILE = $log_file
-     | .mcpServers[$server].env.AXON_SQLITE_PATH = $sqlite_path' \
+    '.mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
+        AXON_LITE: $lite,
+        AXON_REPO_ROOT: $repo_root,
+        AXON_DATA_DIR: $data_dir,
+        AXON_LOG_FILE: $log_file,
+        AXON_SQLITE_PATH: $sqlite_path
+      })
+     | if ((.mcpServers[$server].args // []) | length) > 1 then
+         .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
+       else
+         .
+       end
+    ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
   printf '%s\n' "$suite_config"
 }
