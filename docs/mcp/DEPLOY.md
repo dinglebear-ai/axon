@@ -46,20 +46,21 @@ just services-up
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | `services.env` |
-| `docker-compose.gpu.yaml` | GPU override for TEI and Ollama | -- |
+| `config/docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | repo-root `services.env` |
 
-Both compose files share the `axon` bridge network and read `.env` for `${VAR}` interpolation.
+The compose file creates the `axon` bridge network and reads repo-root `.env`
+for `${VAR}` interpolation.
 
 ### GPU acceleration
 
 For NVIDIA hosts with GPU-accelerated TEI:
 
 ```bash
-docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose -f config/docker-compose.services.yaml up -d
 ```
 
-CPU-only hosts use `docker-compose.services.yaml` alone.
+CPU-only hosts should override the TEI image/settings or point `TEI_URL` at an
+external CPU embedding endpoint.
 
 ### Container architecture
 
@@ -85,23 +86,19 @@ The `axon-web` container uses s6-overlay for:
 ### Build
 
 ```bash
-# Build workers image
-docker build -f docker/Dockerfile -t axon:local .
-
-# Build web image
-docker build -f docker/web/Dockerfile -t axon-web:local apps/web
-
 # Build Chrome image
-docker build -f docker/chrome/Dockerfile -t axon-chrome:local docker/chrome
+docker compose -f config/docker-compose.services.yaml build axon-chrome
 ```
 
-Build context must be the repo root (both compose files set `context: .`).
+Run compose commands from the repo root. The services compose file lives under
+`config/`, so paths inside it resolve relative to `config/`; its `env_file`
+entry intentionally points back to the repo-root `services.env`.
 
 ### Health checks
 
 ```bash
 # Infrastructure
-docker compose -f docker-compose.services.yaml ps
+docker compose -f config/docker-compose.services.yaml ps
 
 # App containers
 docker compose ps

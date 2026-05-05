@@ -318,7 +318,6 @@ To stop local worker processes started with `just dev`, use `Ctrl+C` in the term
 ## Source Map
 
 - `config/docker-compose.services.yaml`
-- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `Justfile`
 - `README.md`

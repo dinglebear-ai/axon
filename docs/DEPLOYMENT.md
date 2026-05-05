@@ -257,7 +257,6 @@ If deploying Next.js:
 ## Source Map
 
 - `config/docker-compose.services.yaml`
-- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `README.md`
 - `docs/OPERATIONS.md`

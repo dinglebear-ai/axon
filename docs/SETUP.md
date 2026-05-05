@@ -66,12 +66,12 @@ See [CONFIG.md](CONFIG.md) for the full variable reference.
 just services-up
 ```
 
-This starts Qdrant, TEI, and Chrome via `docker-compose.services.yaml`.
+This starts Qdrant, TEI, and Chrome via `config/docker-compose.services.yaml`.
 
 For GPU-accelerated embeddings (NVIDIA):
 
 ```bash
-docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose -f config/docker-compose.services.yaml up -d axon-tei
 ```
 
 ## 5. Run axon
@@ -117,7 +117,7 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 
 ### "doctor" reports service unreachable
 
-- Confirm infrastructure is running: `docker compose -f docker-compose.services.yaml ps`
+- Confirm infrastructure is running: `docker compose -f config/docker-compose.services.yaml ps`
 - Check that `.env` credentials match `services.env`
 - For local dev, Qdrant URLs auto-normalize to localhost ports
 
@@ -128,8 +128,8 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 ### TEI container exits immediately
 
 - TEI requires a GPU with NVIDIA drivers for the default image
-- CPU-only hosts: use `docker-compose.services.yaml` without the GPU overlay
-- Check model download: `docker compose -f docker-compose.services.yaml logs axon-tei`
+- CPU-only hosts: override the TEI image/settings or point `TEI_URL` at an external CPU endpoint
+- Check model download: `docker compose -f config/docker-compose.services.yaml logs axon-tei`
 
 ### Web UI shows "connection refused"
 

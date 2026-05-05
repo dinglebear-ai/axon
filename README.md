@@ -99,7 +99,7 @@ The stack has the following components:
 | `crates/mcp/` | MCP server, tool schema, action router |
 | `crates/services/` | Typed service entry points for CLI, MCP, and web |
 | `apps/web/` | Next.js dashboard at port 49010 |
-| `docker/`, compose files | Infrastructure and runtime deployment |
+| `config/docker-compose.services.yaml`, compose files | Infrastructure and runtime deployment |
 
 ---
 
@@ -1042,7 +1042,7 @@ MCP server config for ACP sessions is read from `${AXON_DATA_DIR}/axon/mcp.json`
 Copy `.env.example` to `.env` and fill in values. Two env files are used:
 
 - `.env` — app runtime variables + shared Docker Compose interpolation
-- `services.env` — infrastructure container credentials
+- `services.env` — infrastructure container credentials, stored at the repository root and referenced from `config/docker-compose.services.yaml` as `../services.env`
 
 ### Environment Variables
 
@@ -1209,7 +1209,6 @@ the `axon` bridge network:
 | File | Contents |
 |---|---|
 | `config/docker-compose.services.yaml` | Infrastructure services (Qdrant, TEI, Chrome) |
-| `docker-compose.gpu.yaml` | GPU override — layer on top of services file on NVIDIA hosts |
 
 Infrastructure services:
 
@@ -1225,8 +1224,6 @@ Start infrastructure:
 
 ```bash
 docker compose -f config/docker-compose.services.yaml up -d
-# GPU hosts:
-docker compose -f config/docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
 # or: just services-up
 ```
 

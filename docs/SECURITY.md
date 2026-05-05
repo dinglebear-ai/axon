@@ -248,5 +248,5 @@ After deploy:
 - `apps/web/app/api/omnibox/files/route.ts`
 - `apps/web/app/api/pulse/chat/route.ts`
 - `apps/web/app/api/ai/copilot/route.ts`
-- `docker-compose.yaml`
+- `config/docker-compose.services.yaml`
 - `.gitignore`

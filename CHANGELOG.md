@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-05-05
+
+### Fixed
+- Fixed fresh-checkout compose path drift by making `config/docker-compose.services.yaml` read the repo-root `services.env`, validating that contract in CI and tests, and refreshing current infra docs to the tracked compose layout.
+
 ## [1.3.3] - 2026-05-04
 
 ### Fixed

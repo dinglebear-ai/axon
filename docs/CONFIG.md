@@ -16,7 +16,7 @@ Two env files are used:
 | File | Purpose | Loaded by |
 |------|---------|-----------|
 | `.env` | App runtime + shared Docker Compose interpolation | Docker Compose (automatic), `dotenvy` in binary |
-| `services.env` | Infrastructure container credentials | Docker Compose `env_file:` directive |
+| `services.env` | Infrastructure container credentials | Docker Compose `env_file:` directive in `config/docker-compose.services.yaml` via `../services.env` |
 
 ```bash
 cp .env.example .env

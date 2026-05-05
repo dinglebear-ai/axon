@@ -62,7 +62,7 @@ Infrastructure runs via Docker Compose. No manual installation needed:
 |---------|-------------|-----------|---------|
 | Qdrant | qdrant/qdrant:v1.13.1 | 53333 | Vector store |
 | TEI | ghcr.io/huggingface/text-embeddings-inference | 52000 | Embedding generation |
-| Chrome | Custom (docker/chrome/) | 6000 | Headless browser |
+| Chrome | Custom (`config/chrome/`) | 6000 | Headless browser |
 
 Start all infrastructure:
 
@@ -74,7 +74,7 @@ just services-up
 
 TEI benefits from GPU acceleration for embedding generation:
 - NVIDIA GPU with CUDA drivers
-- `docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d`
+- `docker compose -f config/docker-compose.services.yaml up -d`
 - CPU-only: works without GPU overlay, but slower embedding
 
 ### System resources

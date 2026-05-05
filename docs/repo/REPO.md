@@ -50,24 +50,11 @@ axon_rust/
 │   ├── web.rs                       # WebSocket execution bridge
 │   └── web/                         # Web-specific handlers
 │
-├── docker/                          # Container builds and s6 supervision
-│   ├── Dockerfile                   # Multi-stage: cargo-chef -> build -> runtime
-│   ├── chrome/                      # Headless Chrome + CDP proxy
-│   ├── web/                         # Next.js + s6-overlay
-│   │   ├── Dockerfile
-│   │   ├── cont-init.d/            # Container init scripts
-│   │   └── s6-rc.d/                # s6 service definitions
-│   ├── rabbitmq/                    # (legacy — no longer used)
-│   ├── s6/                          # Worker s6 service definitions
-│   │   ├── cont-init.d/
-│   │   └── s6-rc.d/
-│   └── CLAUDE.md                    # Docker build instructions
-│
 ├── docs/                            # Documentation (this directory)
 ├── migrations/                      # SQL migrations
 ├── scripts/                         # Maintenance, hooks, testing scripts
 ├── tests/                           # Integration tests
-├── config/                          # Additional config files
+├── config/                          # Compose, Chrome, Qdrant, and MCP config files
 ├── specs/                           # Specifications
 │
 ├── main.rs                          # Binary entry point
@@ -82,10 +69,7 @@ axon_rust/
 ├── renovate.json                    # Dependency update bot
 ├── rust-toolchain.toml              # Rust 1.94.0 pinned toolchain
 │
-├── docker-compose.yaml              # App containers (workers + web)
-├── docker-compose.services.yaml     # Infrastructure services
-├── docker-compose.gpu.yaml          # GPU override for TEI/Ollama
-├── docker-compose.test.yaml         # Test infrastructure
+├── config/docker-compose.services.yaml # Infrastructure services
 ├── .env.example                     # Environment variable template
 ├── services.env                     # Infrastructure container credentials
 │
@@ -153,5 +137,4 @@ landing the change and add the new module under the standard `foo.rs` plus
 
 | File | Contents | Network |
 |------|----------|---------|
-| `docker-compose.services.yaml` | Qdrant, TEI, Chrome | `axon` bridge |
-| `docker-compose.gpu.yaml` | NVIDIA GPU reservations overlay | -- |
+| `config/docker-compose.services.yaml` | Qdrant, TEI, Chrome | `axon` bridge |
