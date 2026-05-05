@@ -81,6 +81,12 @@ fix:
 fix-all:
     just fix
 
+taplo-check:
+    taplo fmt --check
+
+taplo-fmt:
+    taplo fmt
+
 llvm-cov-install:
     {{rust_dev_env}}; cargo install cargo-llvm-cov --locked
 
