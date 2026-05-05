@@ -6,6 +6,16 @@
 //! receives any events buffered during the disconnect.
 //!
 //! Idle sessions are reaped after `SESSION_TTL` (default 30 minutes).
+//!
+//! ## Global session count cap
+//!
+//! `AXON_ACP_MAX_SESSIONS` (default: 100, `0` = unlimited) limits the total
+//! number of cached sessions. When the cache is at capacity and a new session
+//! is inserted, the least-recently-used session (by `last_active`) is evicted.
+//!
+//! **Not the same as `AXON_ACP_MAX_CONCURRENT_SESSIONS`**, which is a semaphore
+//! that gates how many ACP adapter processes may run *simultaneously*. This cap
+//! is purely about how many idle sessions the cache may hold across the process.
 
 mod cache;
 mod entry;
@@ -31,6 +41,18 @@ const MAX_REPLAY_BUFFER: usize = 4096;
 /// Primary memory bound — a single `TurnResult` can be many KB, so counting
 /// messages alone is insufficient.
 const MAX_REPLAY_BUFFER_BYTES: usize = 4 * 1024 * 1024;
+
+/// Global cap on cached ACP sessions. Read once from `AXON_ACP_MAX_SESSIONS`
+/// at startup. `0` means unlimited. Default: 100.
+///
+/// When the cache reaches this limit and a new session is inserted, the
+/// least-recently-used session (by `last_active`) is evicted.
+pub(super) static MAX_SESSIONS: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| {
+    std::env::var("AXON_ACP_MAX_SESSIONS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(100)
+});
 
 /// Process-wide ACP session cache.
 pub static SESSION_CACHE: std::sync::LazyLock<AcpSessionCache> =
@@ -321,5 +343,104 @@ mod tests {
         cache.reap_expired().await;
 
         assert!(cache.get("agent:hung").is_none());
+    }
+
+    // ── Global session cap tests ──────────────────────────────────────────────
+
+    /// Helper: insert `n` sessions into `cache` with keys `"cap-agent:{i}"`.
+    /// Returns the key of the first session inserted (useful as the "oldest").
+    fn insert_n_sessions(cache: &AcpSessionCache, n: usize) -> String {
+        for i in 0..n {
+            let handle = test_handle();
+            let responders = test_responder_map();
+            cache.insert(format!("cap-agent:{i}"), handle, responders);
+        }
+        "cap-agent:0".to_owned()
+    }
+
+    /// Inserting sessions up to the cap does NOT trigger eviction.
+    #[tokio::test]
+    async fn cap_no_eviction_below_limit() {
+        let cache = AcpSessionCache::new();
+        // Insert exactly 3 sessions; cap is 5 — no eviction expected.
+        insert_n_sessions(&cache, 3);
+        cache.evict_if_over_cap(5);
+        assert_eq!(cache.len(), 3);
+    }
+
+    /// When the cache exceeds cap, the LRU session is evicted.
+    #[tokio::test]
+    async fn cap_evicts_lru_when_over_cap() {
+        let cache = AcpSessionCache::new();
+
+        // Insert two sessions.
+        let handle_a = test_handle();
+        let handle_b = test_handle();
+        let session_a = cache.insert("cap-a".into(), handle_a, test_responder_map());
+        let _session_b = cache.insert("cap-b".into(), handle_b, test_responder_map());
+
+        // Backdate session_a so it is the least recently used.
+        {
+            let mut last = session_a.last_active.lock().expect("poisoned");
+            *last = Instant::now() - Duration::from_secs(600);
+        }
+
+        // Evict with a cap of 1 — must remove the oldest (cap-a).
+        cache.evict_if_over_cap(1);
+
+        assert_eq!(cache.len(), 1);
+        assert!(
+            cache.get("cap-a").is_none(),
+            "LRU session should be evicted"
+        );
+        assert!(cache.get("cap-b").is_some(), "newer session should survive");
+    }
+
+    /// When the cache is at exactly the cap, no eviction occurs.
+    #[tokio::test]
+    async fn cap_no_eviction_at_exactly_cap() {
+        let cache = AcpSessionCache::new();
+        insert_n_sessions(&cache, 3);
+        cache.evict_if_over_cap(3);
+        assert_eq!(cache.len(), 3);
+    }
+
+    /// cap=0 means unlimited — evict_if_over_cap is skipped in insert().
+    /// This test verifies that passing 0 directly does nothing.
+    #[tokio::test]
+    async fn cap_zero_means_unlimited() {
+        let cache = AcpSessionCache::new();
+        insert_n_sessions(&cache, 10);
+        // Calling with cap=0 should not evict anything (caller guards cap>0).
+        cache.evict_if_over_cap(0);
+        assert_eq!(cache.len(), 10);
+    }
+
+    /// Evicting an LRU session also clears its session_id_index entry.
+    #[tokio::test]
+    async fn cap_eviction_clears_session_id_index() {
+        let cache = AcpSessionCache::new();
+
+        let handle_a = test_handle();
+        let handle_b = test_handle();
+        let session_a = cache.insert("idx-a".into(), handle_a, test_responder_map());
+        let _session_b = cache.insert("idx-b".into(), handle_b, test_responder_map());
+
+        // Register a session_id for the soon-to-be-evicted session.
+        cache.register_session_id("sess-evict".into(), "idx-a".into());
+
+        // Backdate session_a so it is the LRU.
+        {
+            let mut last = session_a.last_active.lock().expect("poisoned");
+            *last = Instant::now() - Duration::from_secs(600);
+        }
+
+        cache.evict_if_over_cap(1);
+
+        assert!(cache.get("idx-a").is_none());
+        assert!(
+            cache.get_by_session_id("sess-evict").is_none(),
+            "session_id index entry should be cleaned up on eviction"
+        );
     }
 }

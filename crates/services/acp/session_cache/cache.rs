@@ -71,6 +71,12 @@ impl AcpSessionCache {
     }
 
     /// Insert or replace a cached session.
+    ///
+    /// After inserting, if the global session cap (`AXON_ACP_MAX_SESSIONS`,
+    /// default 100, 0 = unlimited) is exceeded, the least-recently-used session
+    /// is evicted. Concurrent inserts may briefly overshoot the cap by the
+    /// number of racing writers — this is acceptable and noted here to avoid
+    /// introducing a global mutex.
     pub fn insert(
         &self,
         agent_key: String,
@@ -96,8 +102,48 @@ impl AcpSessionCache {
                 "acp: session inserted"
             );
         }
+        let cap = *super::MAX_SESSIONS;
+        if cap > 0 {
+            self.evict_if_over_cap(cap);
+        }
         self.ensure_reaper();
         session
+    }
+
+    /// Evict the LRU session if the cache has exceeded `cap`.
+    ///
+    /// Finds the victim by scanning `last_active` across all sessions, clones
+    /// its key, drops the iterator, then calls `self.remove()` (which also
+    /// cleans `session_id_index`). Skips eviction if every entry was freshly
+    /// inserted with an identical timestamp — extremely rare and safe to miss.
+    pub(super) fn evict_if_over_cap(&self, cap: usize) {
+        // cap=0 means unlimited — never evict.
+        if cap == 0 || self.sessions.len() <= cap {
+            return;
+        }
+        // Find the LRU key by scanning last_active under each entry's lock.
+        // Iterator is dropped before remove() to avoid lock-order inversion.
+        let lru_key: Option<String> = self
+            .sessions
+            .iter()
+            .min_by_key(|e| {
+                *e.value()
+                    .last_active
+                    .lock()
+                    .expect("last_active mutex poisoned")
+            })
+            .map(|e| e.key().clone());
+
+        if let Some(key) = lru_key {
+            let cache_size = self.sessions.len();
+            tracing::warn!(
+                agent_key = %key,
+                cache_size,
+                cap,
+                "acp: session evicted (global cap reached)"
+            );
+            self.remove(&key);
+        }
     }
 
     /// Register a mapping from ACP session_id to agent_key.
