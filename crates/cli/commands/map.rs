@@ -5,6 +5,10 @@ use crate::crates::services::map::discover as map_discover;
 use crate::crates::services::types::MapOptions;
 use std::error::Error;
 
+/// Return the map result as a raw JSON value.
+///
+/// Exists for backward-compat with migration tests that assert JSON field
+/// shapes. Internally calls the typed service and serializes via serde.
 pub async fn map_payload(
     cfg: &Config,
     start_url: &str,
@@ -19,7 +23,7 @@ pub async fn map_payload(
         None,
     )
     .await?;
-    Ok(result.payload)
+    Ok(serde_json::to_value(&result)?)
 }
 
 pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>> {
@@ -48,13 +52,13 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
     )
     .await?;
 
-    let pages_seen = result.payload["pages_seen"].as_u64().unwrap_or(0);
-    let sitemap_urls = result.payload["sitemap_urls"].as_u64().unwrap_or(0);
-    let mapped_urls = result.payload["mapped_urls"].as_u64().unwrap_or(0);
-    let thin_pages = result.payload["thin_pages"].as_u64().unwrap_or(0);
-    let elapsed_ms = result.payload["elapsed_ms"].as_u64().unwrap_or(0);
-    let map_source = result.payload["map_source"].as_str().unwrap_or("unknown");
-    let warning = result.payload["warning"].as_str();
+    let pages_seen = result.pages_seen;
+    let sitemap_urls = result.sitemap_urls;
+    let mapped_urls = result.mapped_urls;
+    let thin_pages = result.thin_pages;
+    let elapsed_ms = result.elapsed_ms;
+    let map_source = result.map_source.as_str();
+    let warning = result.warning.as_deref();
 
     if let Some(s) = map_spinner {
         s.finish(&format!(
@@ -63,7 +67,7 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
     }
 
     if cfg.json_output {
-        println!("{}", result.payload);
+        println!("{}", serde_json::to_string(&result)?);
     } else {
         println!("{}", primary(&format!("Map Results for {start_url}")));
         println!(
@@ -76,12 +80,8 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
             println!("{} {}", muted("Warning:"), w);
         }
         println!();
-        if let Some(urls) = result.payload["urls"].as_array() {
-            for url in urls {
-                if let Some(u) = url.as_str() {
-                    println!("  • {u}");
-                }
-            }
+        for url in &result.urls {
+            println!("  • {url}");
         }
     }
 

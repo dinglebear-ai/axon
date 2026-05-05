@@ -1,9 +1,8 @@
 use super::AxonMcpServer;
 use super::common::{
     InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
-    map_scrape_format, paginate_vec, parse_offset, respond_with_mode, slugify, to_map_options,
-    to_pagination, to_retrieve_options, to_search_options, validate_mcp_collection,
-    validate_mcp_url,
+    map_scrape_format, parse_offset, respond_with_mode, slugify, to_map_options, to_pagination,
+    to_retrieve_options, to_search_options, validate_mcp_collection, validate_mcp_url,
 };
 use crate::crates::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
@@ -110,22 +109,9 @@ impl AxonMcpServer {
         let result = map_svc::discover(self.cfg.as_ref(), &url, map_opts, None)
             .await
             .map_err(|e| logged_internal_error(&format!("map '{url}'"), e.as_ref()))?;
-        let payload = result.payload;
-        let urls: Vec<String> = payload["urls"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(ToString::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        // limit=0 means "no limit" (return all); positive values paginate normally.
-        let total_urls = urls.len();
-        let paged_urls = if limit == 0 {
-            urls
-        } else {
-            paginate_vec(&urls, offset, limit)
-        };
+        // The service already applied offset/limit pagination.
+        // `result.total` is the pre-pagination count; `result.urls` is the page slice.
+        let total_urls = result.total;
         respond_with_mode(
             "map",
             "map",
@@ -133,13 +119,13 @@ impl AxonMcpServer {
             &format!("map-{}", slugify(&url, 56)),
             serde_json::json!({
                 "url": url,
-                "pages_seen": payload["pages_seen"].as_u64().unwrap_or(0),
-                "elapsed_ms": payload["elapsed_ms"].as_u64().unwrap_or(0),
-                "thin_pages": payload["thin_pages"].as_u64().unwrap_or(0),
+                "pages_seen": result.pages_seen,
+                "elapsed_ms": result.elapsed_ms,
+                "thin_pages": result.thin_pages,
                 "limit": limit,
                 "offset": offset,
                 "total_urls": total_urls,
-                "urls": paged_urls,
+                "urls": result.urls,
             }),
             InlineHint::Default,
         )

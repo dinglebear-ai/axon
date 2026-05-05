@@ -30,3 +30,4 @@ crates/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | spli
 
 crates/services/types/acp.rs  # expires: 2026-06-09 | owner: jmagar | split: types/acp/{sse,headers,auth}.rs
 crates/services/acp/session.rs  # expires: 2026-06-09 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs
+crates/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs

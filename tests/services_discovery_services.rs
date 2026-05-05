@@ -1,6 +1,6 @@
+use axon::crates::services::map::parse_map_result;
 use axon::crates::services::scrape::map_scrape_payload;
 use axon::crates::services::search::{map_research_payload, map_search_results};
-use axon::crates::services::types::MapResult;
 
 // ---------------------------------------------------------------------------
 // scrape service — map_scrape_payload
@@ -55,76 +55,89 @@ fn maps_scrape_payload_requires_required_fields() {
 }
 
 // ---------------------------------------------------------------------------
-// map service — MapResult
+// map service — MapResult (typed, via parse_map_result)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn maps_map_payload_to_map_result() {
     let payload = serde_json::json!({
         "url": "https://example.com",
-        "mapped_urls": 3,
-        "sitemap_urls": 2,
-        "pages_seen": 3,
-        "thin_pages": 0,
-        "elapsed_ms": 450,
+        "mapped_urls": 3u64,
+        "total": 3u64,
+        "sitemap_urls": 2usize,
+        "pages_seen": 3u32,
+        "thin_pages": 0u32,
+        "elapsed_ms": 450u64,
+        "map_source": "sitemap",
+        "warning": null,
         "urls": ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
     });
-    let result = MapResult {
-        payload: payload.clone(),
-    };
-    assert_eq!(result.payload, payload);
+    let result = parse_map_result(payload).expect("valid map payload");
+    assert_eq!(result.url, "https://example.com");
+    assert_eq!(result.mapped_urls, 3);
+    assert_eq!(result.sitemap_urls, 2);
+    assert_eq!(result.pages_seen, 3);
+    assert_eq!(result.urls.len(), 3);
 }
 
 #[test]
 fn maps_map_payload_preserves_urls_array() {
     let payload = serde_json::json!({
         "url": "https://example.com",
-        "mapped_urls": 2,
-        "sitemap_urls": 0,
-        "pages_seen": 2,
-        "thin_pages": 0,
-        "elapsed_ms": 200,
+        "mapped_urls": 2u64,
+        "total": 2u64,
+        "sitemap_urls": 0usize,
+        "pages_seen": 2u32,
+        "thin_pages": 0u32,
+        "elapsed_ms": 200u64,
+        "map_source": "crawl",
+        "warning": null,
         "urls": ["https://example.com/one", "https://example.com/two"],
     });
-    let result = MapResult {
-        payload: payload.clone(),
-    };
-    let urls = result.payload["urls"]
-        .as_array()
-        .expect("urls must be array");
-    assert_eq!(urls.len(), 2);
-    assert_eq!(urls[0], "https://example.com/one");
-    assert_eq!(urls[1], "https://example.com/two");
+    let result = parse_map_result(payload).expect("valid map payload");
+    assert_eq!(result.urls.len(), 2);
+    assert_eq!(result.urls[0], "https://example.com/one");
+    assert_eq!(result.urls[1], "https://example.com/two");
 }
 
 #[test]
 fn maps_map_payload_with_empty_urls() {
     let payload = serde_json::json!({
         "url": "https://example.com",
-        "mapped_urls": 0,
-        "sitemap_urls": 0,
-        "pages_seen": 0,
-        "thin_pages": 0,
-        "elapsed_ms": 50,
+        "mapped_urls": 0u64,
+        "total": 0u64,
+        "sitemap_urls": 0usize,
+        "pages_seen": 0u32,
+        "thin_pages": 0u32,
+        "elapsed_ms": 50u64,
+        "map_source": "sitemap",
+        "warning": null,
         "urls": [],
     });
-    let result = MapResult {
-        payload: payload.clone(),
-    };
-    assert_eq!(result.payload["mapped_urls"], 0);
-    let urls = result.payload["urls"]
-        .as_array()
-        .expect("urls must be array");
-    assert!(urls.is_empty());
+    let result = parse_map_result(payload).expect("valid map payload");
+    assert_eq!(result.mapped_urls, 0);
+    assert!(result.urls.is_empty());
 }
 
 #[test]
-fn maps_map_payload_wraps_json_value_verbatim() {
-    let payload = serde_json::json!({"x": true});
-    let result = MapResult {
-        payload: payload.clone(),
-    };
-    assert_eq!(result.payload, payload);
+fn maps_map_payload_rejects_missing_required_field() {
+    // A payload missing `map_source` must fail to parse.
+    let payload = serde_json::json!({
+        "url": "https://example.com",
+        "mapped_urls": 0u64,
+        "sitemap_urls": 0usize,
+        "pages_seen": 0u32,
+        "thin_pages": 0u32,
+        "elapsed_ms": 0u64,
+        "warning": null,
+        "urls": []
+        // map_source intentionally omitted
+    });
+    let err = parse_map_result(payload).unwrap_err();
+    assert!(
+        err.to_string().contains("map_source") || err.to_string().contains("missing field"),
+        "expected error about missing field, got: {err}"
+    );
 }
 
 // ---------------------------------------------------------------------------

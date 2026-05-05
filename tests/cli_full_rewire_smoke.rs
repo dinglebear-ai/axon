@@ -1,3 +1,4 @@
+use axon::crates::services::map::parse_map_result;
 /// Smoke tests for Task 3.2: CLI full rewire through services layer.
 ///
 /// These tests verify that:
@@ -131,13 +132,18 @@ fn smoke_map_scrape_payload_wraps_value() {
 fn smoke_map_map_payload_wraps_value() {
     let payload = serde_json::json!({
         "url": "https://docs.example.com",
-        "mapped_urls": 42,
+        "mapped_urls": 42u64,
+        "total": 42u64,
+        "sitemap_urls": 0usize,
+        "pages_seen": 0u32,
+        "thin_pages": 0u32,
+        "elapsed_ms": 100u64,
+        "map_source": "sitemap",
+        "warning": null,
         "urls": ["https://docs.example.com/page1"]
     });
-    let result = MapResult {
-        payload: payload.clone(),
-    };
-    assert_eq!(result.payload["mapped_urls"], 42);
+    let result: MapResult = parse_map_result(payload).expect("valid map payload");
+    assert_eq!(result.mapped_urls, 42);
 }
 
 // ── services::search ──────────────────────────────────────────────────────────

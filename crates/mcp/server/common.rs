@@ -243,10 +243,6 @@ pub(super) fn parse_offset(offset: Option<usize>) -> usize {
     offset.unwrap_or(0)
 }
 
-pub(super) fn paginate_vec<T: Clone>(items: &[T], offset: usize, limit: usize) -> Vec<T> {
-    items.iter().skip(offset).take(limit).cloned().collect()
-}
-
 // --- General-purpose slug utility (used by query handlers for artifact stems) ---
 
 pub(super) fn slugify(value: &str, max_len: usize) -> String {

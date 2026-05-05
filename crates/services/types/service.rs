@@ -371,9 +371,37 @@ pub struct ScrapeResult {
     pub output: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Typed result of a `map` (URL discovery) operation.
+///
+/// Replaces the previous `MapResult { payload: serde_json::Value }` pass-through.
+/// Serializes to the same JSON shape so callers that use `serde_json::to_value`
+/// remain wire-compatible.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapResult {
-    pub payload: serde_json::Value,
+    /// The start URL that was mapped.
+    pub url: String,
+    /// Total distinct URLs discovered (equals `urls.len()`).
+    pub mapped_urls: u64,
+    /// Pre-pagination total URL count (all discovered URLs before offset/limit).
+    ///
+    /// CLI callers always pass `limit=0, offset=0`, so `total == mapped_urls` there.
+    /// MCP callers use this field for `total_urls` in the response to avoid
+    /// reporting the paginated count as the total.
+    pub total: u64,
+    /// Raw count of URLs found in sitemap.xml (before dedup).
+    pub sitemap_urls: usize,
+    /// Number of pages actually fetched during a crawl pass (0 in sitemap-only mode).
+    pub pages_seen: u32,
+    /// Pages below the minimum markdown character threshold.
+    pub thin_pages: u32,
+    /// Wall-clock time for the entire map operation.
+    pub elapsed_ms: u64,
+    /// How the URLs were discovered: `"sitemap"`, `"crawl"`, or `"bounded-structure"`.
+    pub map_source: String,
+    /// Optional user-visible warning (e.g. too few URLs found).
+    pub warning: Option<String>,
+    /// The discovered URLs (deduplicated, sorted), after offset/limit pagination.
+    pub urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
