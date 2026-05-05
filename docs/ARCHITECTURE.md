@@ -68,7 +68,7 @@ flowchart LR
 | `crates/jobs/*` | SQLite-backed worker runtime + job state transitions |
 | `crates/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
 | `crates/services/acp/*` | ACP session lifecycle, subprocess bridge, runtime state, permission map |
-| `docker-compose.services.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
+| `config/docker-compose.services.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
 

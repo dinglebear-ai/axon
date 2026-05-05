@@ -60,7 +60,7 @@ It is idempotent — safe to re-run. What it does:
 7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
 8. Creates `.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_DATA_DIR`** (default `~/.local/share/axon`) and pre-creates all container volume directories under it.
-10. Starts production infrastructure (`docker compose -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
+10. Starts production infrastructure (`docker compose --env-file .env -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
 **Optional flags:**
@@ -141,7 +141,7 @@ Ensure `.env` is never committed. `.env.example` remains tracked.
 2. Pull/build images:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml build
+docker compose --env-file .env -f config/docker-compose.services.yaml build
 ```
 
 3. Start the stack:
@@ -149,13 +149,13 @@ docker compose -f config/docker-compose.services.yaml build
 **Local service deployment** (infra in Docker, app stack supervised locally):
 
 ```bash
-docker compose -f config/docker-compose.services.yaml up -d
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 ```
 
 **Local dev mode** (infra in Docker, app stack supervised locally):
 
 ```bash
-docker compose -f config/docker-compose.services.yaml up -d
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 
 # Start the full local stack supervisor:
 cargo run --bin axon -- serve
@@ -169,7 +169,7 @@ just dev
 4. Verify health:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml ps
+docker compose --env-file .env -f config/docker-compose.services.yaml ps
 ./scripts/axon doctor
 ```
 
@@ -185,7 +185,7 @@ docker compose -f config/docker-compose.services.yaml ps
 Workers run in-process locally — output is in the terminal directly. For infra logs:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
+docker compose --env-file .env -f config/docker-compose.services.yaml logs --tail=200 axon-qdrant axon-tei axon-chrome
 ```
 
 ## Validation Checklist
@@ -203,7 +203,7 @@ Rollback is compose-based and image-based.
 1. Stop current stack:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml down
+docker compose --env-file .env -f config/docker-compose.services.yaml down
 ```
 
 2. Revert deployment inputs:
@@ -215,8 +215,8 @@ docker compose -f config/docker-compose.services.yaml down
 3. Rebuild/restart:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml build
-docker compose -f config/docker-compose.services.yaml up -d
+docker compose --env-file .env -f config/docker-compose.services.yaml build
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 ```
 
 Restart workers and web locally as in the standard deploy procedure.
@@ -257,7 +257,6 @@ If deploying Next.js:
 ## Source Map
 
 - `config/docker-compose.services.yaml`
-- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `README.md`
 - `docs/OPERATIONS.md`

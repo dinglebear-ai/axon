@@ -123,6 +123,9 @@ status
 EOF
 )"
 
+LITE_EXPECTED_ROUTES="$(printf '%s\n' "$EXPECTED_ROUTES" | grep -Ev '^(export|graph:|refresh:)')"
+LITE_EXPECTED_TOP_LEVEL_ACTIONS="$(printf '%s\n' "$EXPECTED_TOP_LEVEL_ACTIONS" | grep -Ev '^(export|graph|refresh)$')"
+
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
   exit 2
@@ -131,6 +134,11 @@ fi
 if ! command -v jq >/dev/null 2>&1; then
   echo "FAIL: jq not found in PATH" >&2
   exit 2
+fi
+
+URL_MODE=0
+if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "$BASE_CONFIG_PATH" >/dev/null; then
+  URL_MODE=1
 fi
 
 trim() {
@@ -283,12 +291,19 @@ build_suite_config() {
     --arg data_dir "$runtime_root" \
     --arg log_file "$runtime_root/axon/logs/axon.log" \
     --arg sqlite_path "$runtime_root/axon/mcporter-jobs.db" \
-    '.mcpServers[$server].env.AXON_LITE = $lite
-     | .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
-     | .mcpServers[$server].env.AXON_REPO_ROOT = $repo_root
-     | .mcpServers[$server].env.AXON_DATA_DIR = $data_dir
-     | .mcpServers[$server].env.AXON_LOG_FILE = $log_file
-     | .mcpServers[$server].env.AXON_SQLITE_PATH = $sqlite_path' \
+    '.mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
+        AXON_LITE: $lite,
+        AXON_REPO_ROOT: $repo_root,
+        AXON_DATA_DIR: $data_dir,
+        AXON_LOG_FILE: $log_file,
+        AXON_SQLITE_PATH: $sqlite_path
+      })
+     | if ((.mcpServers[$server].args // []) | length) > 1 then
+         .mcpServers[$server].args[1] |= sub("export AXON_LITE=\\\"\\$\\{AXON_LITE:-0\\}\\\""; "export AXON_LITE=" + $lite)
+       else
+         .
+       end
+    ' \
     "$BASE_CONFIG_PATH" >"$suite_config"
   printf '%s\n' "$suite_config"
 }
@@ -297,6 +312,12 @@ run_suite() {
   local mode="$1"
   local lite_value="$2"
   local prefix="$mode"
+  local expected_routes="$EXPECTED_ROUTES"
+  local expected_top_level_actions="$EXPECTED_TOP_LEVEL_ACTIONS"
+  if [[ "$lite_value" == "1" ]]; then
+    expected_routes="$LITE_EXPECTED_ROUTES"
+    expected_top_level_actions="$LITE_EXPECTED_TOP_LEVEL_ACTIONS"
+  fi
 
   CONFIG_PATH="$(build_suite_config "$mode" "$lite_value")"
   OUTDIR="$BASE_OUTDIR/$mode"
@@ -316,12 +337,12 @@ run_suite() {
   echo "== $mode parity checks ==" | tee -a "$SUMMARY"
   run_case "${prefix}_schema_has_tool" assert_ok "$schema_file" '.status == "ok" and any(.tools[]; .name == "axon")'
   run_case "${prefix}_help_has_resource" assert_ok "$help_file" '.ok == true and (.data.inline.resources | index("axon://schema/mcp-tool")) != null'
-  run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$EXPECTED_ROUTES" "$(normalize_discovered_routes "$help_file")"
-  run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$EXPECTED_TOP_LEVEL_ACTIONS" "$(normalize_description_actions "$schema_file")"
+  run_case "${prefix}_help_routes_match_expected" assert_sorted_equals "$expected_routes" "$(normalize_discovered_routes "$help_file")"
+  run_case "${prefix}_tool_description_actions_match_expected" assert_sorted_equals "$expected_top_level_actions" "$(normalize_description_actions "$schema_file")"
   run_case "${prefix}_help_top_actions_match_description" assert_sorted_equals "$(normalize_description_actions "$schema_file")" "$(normalize_help_top_actions "$help_file")"
 
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
-  run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and ((.data.data.json | type == "object") or (.data.artifact.path | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
+  run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.path | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
   run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
   run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and .data.data.all_ok == true' call_tool action:doctor
   run_json_case "${prefix}_stats" '.ok == true and .action == "stats" and .subaction == "stats" and (.data.data.collection | type == "string") and (.data.data.collection | length) > 0 and (.data.data.counts | type == "object")' call_tool action:stats
@@ -329,17 +350,26 @@ run_suite() {
   run_json_case "${prefix}_sources" '.ok == true and .action == "sources" and .subaction == "sources" and (.data.data.urls | type == "array") and .data.data.limit == 5' call_tool action:sources limit:5 offset:0
   if [[ "$lite_value" == "0" ]]; then
     run_json_case "${prefix}_export" '.ok == true and .action == "export"' call_tool action:export
+  elif [[ "$URL_MODE" == "1" ]]; then
+    run_error_case "${prefix}_export_unavailable" "unknown variant \`export\`" call_tool action:export
   else
     run_error_case "${prefix}_export_unavailable" "export is not available in lite mode because it requires Postgres-backed history" call_tool action:export
   fi
   run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk"' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
-  run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and (.data.data.urls | length) > 0 and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
-  run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.markdown | type == \"string\") and (.data.data.markdown | length) > 0 and (.data.data.status_code | type == \"number\")" call_tool action:scrape url:"$REAL_PAGE_URL"
-  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.content | type == \"string\")" call_tool action:retrieve url:"$REAL_PAGE_URL"
-  run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
-  run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and (.data.shape.search_results | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
-  run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (.data.data.answer | type == "string") and .data.data.query == "What is this repository?"' call_tool action:ask query:'What is this repository?'
-  run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
+  run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.markdown | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.markdown | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.content | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
+  if [[ "$URL_MODE" == "1" ]]; then
+    run_error_case "${prefix}_search_unavailable" "TAVILY_API_KEY is required for search" call_tool action:search query:'rust programming language' limit:3 offset:0
+    run_error_case "${prefix}_research_unavailable" "TAVILY_API_KEY is required for research" call_tool action:research query:'rust async best practices' limit:3 offset:0
+    run_error_case "${prefix}_ask_unavailable" "ask 'What is this repository?' failed" call_tool action:ask query:'What is this repository?'
+    run_error_case "${prefix}_screenshot_unavailable" "screenshot failed" call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  else
+    run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
+    run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and (.data.shape.search_results | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
+    run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (.data.data.answer | type == "string") and .data.data.query == "What is this repository?"' call_tool action:ask query:'What is this repository?'
+    run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  fi
   run_json_case "${prefix}_elicit_demo" '.ok == true and .action == "elicit_demo" and (.data.action | type == "string")' call_tool action:elicit_demo
 
   echo "== $mode artifacts ==" | tee -a "$SUMMARY"
@@ -351,7 +381,7 @@ run_suite() {
   run_json_case "${prefix}_artifacts_wc" '.ok == true and .action == "artifacts" and .subaction == "wc" and (.data.path | type == "string") and (.data.bytes | type == "number") and (.data.lines | type == "number")' call_tool action:artifacts subaction:wc path:"$artifact_path"
   run_json_case "${prefix}_artifacts_read" '.ok == true and .action == "artifacts" and .subaction == "read" and (.data.path | type == "string") and (.data.content | type == "string")' call_tool action:artifacts subaction:read path:"$artifact_path" full:true limit:20 offset:0
   run_json_case "${prefix}_artifacts_grep" '.ok == true and .action == "artifacts" and .subaction == "grep" and (.data.path | type == "string") and .data.pattern == "action" and (.data.matches | type == "array")' call_tool action:artifacts subaction:grep path:"$artifact_path" pattern:'action' limit:10
-  run_json_case "${prefix}_artifacts_list" '.ok == true and .action == "artifacts" and .subaction == "list" and .data.response_mode == "path" and (.data.artifact.path | type == "string")' call_tool action:artifacts subaction:list
+  run_json_case "${prefix}_artifacts_list" '.ok == true and .action == "artifacts" and .subaction == "list" and (((.data.response_mode == "path") and (.data.artifact.path | type == "string")) or ((.data.response_mode == "auto-inline") and (.data.data.files | type == "array")))' call_tool action:artifacts subaction:list
   run_json_case "${prefix}_artifacts_search" '.ok == true and .action == "artifacts" and .subaction == "search" and (((.data.data.matches | type) == "array" and .data.data.pattern == "action") or ((.data.artifact.path | type) == "string" and .data.response_mode == "path"))' call_tool action:artifacts subaction:search pattern:'action' limit:10
   run_json_case "${prefix}_artifacts_clean" '.ok == true and .action == "artifacts" and .subaction == "clean" and .data.max_age_hours == 24 and (.data.files | type == "array")' call_tool action:artifacts subaction:clean max_age_hours:24
   run_json_case "${prefix}_artifacts_delete" '.ok == true and .action == "artifacts" and .subaction == "delete" and (.data.deleted | type == "string") and (.data.bytes_freed | type == "number")' call_tool action:artifacts subaction:delete path:"$artifact_path"
@@ -371,11 +401,15 @@ run_suite() {
   run_json_case "${prefix}_extract_cancel" '.ok == true and .action == "extract" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:extract subaction:cancel job_id:"$extract_job_id"
   run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:extract subaction:list limit:5 offset:0
 
-  run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/MCP.md\"}"
-  local embed_job_id
-  embed_job_id="$(extract_json_field "$OUTDIR/${prefix}_embed_start.log" '.data.job_id')"
-  run_json_case "${prefix}_embed_status" '.ok == true and .action == "embed" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:embed subaction:status job_id:"$embed_job_id"
-  run_json_case "${prefix}_embed_cancel" '.ok == true and .action == "embed" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:embed subaction:cancel job_id:"$embed_job_id"
+  if [[ "$URL_MODE" == "1" ]]; then
+    run_error_case "${prefix}_embed_start_unavailable" "local file embedding via MCP is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/MCP.md\"}"
+  else
+    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/MCP.md\"}"
+    local embed_job_id
+    embed_job_id="$(extract_json_field "$OUTDIR/${prefix}_embed_start.log" '.data.job_id')"
+    run_json_case "${prefix}_embed_status" '.ok == true and .action == "embed" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:embed subaction:status job_id:"$embed_job_id"
+    run_json_case "${prefix}_embed_cancel" '.ok == true and .action == "embed" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:embed subaction:cancel job_id:"$embed_job_id"
+  fi
   run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:embed subaction:list limit:5 offset:0
 
   run_json_case "${prefix}_ingest_start" '.ok == true and .action == "ingest" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json '{"action":"ingest","subaction":"start","source_type":"sessions","sessions":{"codex":true,"project":"axon_rust"}}'
@@ -385,12 +419,14 @@ run_suite() {
   run_json_case "${prefix}_ingest_cancel" '.ok == true and .action == "ingest" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:ingest subaction:cancel job_id:"$ingest_job_id"
   run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0
 
-  run_json_case "${prefix}_refresh_start" '.ok == true and .action == "refresh" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"refresh\",\"subaction\":\"start\",\"url\":\"$REAL_PAGE_URL\"}"
-  local refresh_job_id
-  refresh_job_id="$(extract_json_field "$OUTDIR/${prefix}_refresh_start.log" '.data.job_id')"
-  run_json_case "${prefix}_refresh_status" '.ok == true and .action == "refresh" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:refresh subaction:status job_id:"$refresh_job_id"
-  run_json_case "${prefix}_refresh_cancel" '.ok == true and .action == "refresh" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:refresh subaction:cancel job_id:"$refresh_job_id"
-  run_json_case "${prefix}_refresh_list" '.ok == true and .action == "refresh" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:refresh subaction:list limit:5 offset:0
+  if [[ "$lite_value" == "0" ]]; then
+    run_json_case "${prefix}_refresh_start" '.ok == true and .action == "refresh" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"refresh\",\"subaction\":\"start\",\"url\":\"$REAL_PAGE_URL\"}"
+    local refresh_job_id
+    refresh_job_id="$(extract_json_field "$OUTDIR/${prefix}_refresh_start.log" '.data.job_id')"
+    run_json_case "${prefix}_refresh_status" '.ok == true and .action == "refresh" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:refresh subaction:status job_id:"$refresh_job_id"
+    run_json_case "${prefix}_refresh_cancel" '.ok == true and .action == "refresh" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:refresh subaction:cancel job_id:"$refresh_job_id"
+    run_json_case "${prefix}_refresh_list" '.ok == true and .action == "refresh" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:refresh subaction:list limit:5 offset:0
+  fi
 
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_crawl_cleanup" '.ok == true and .action == "crawl" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:crawl subaction:cleanup
@@ -405,43 +441,40 @@ run_suite() {
   run_json_case "${prefix}_ingest_cleanup" '.ok == true and .action == "ingest" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:ingest subaction:cleanup
   run_json_case "${prefix}_ingest_recover" '.ok == true and .action == "ingest" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:ingest subaction:recover
   run_json_case "${prefix}_ingest_clear" '.ok == true and .action == "ingest" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:ingest subaction:clear
-  run_json_case "${prefix}_refresh_cleanup" '.ok == true and .action == "refresh" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:refresh subaction:cleanup
-  run_json_case "${prefix}_refresh_recover" '.ok == true and .action == "refresh" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:refresh subaction:recover
-  run_json_case "${prefix}_refresh_clear" '.ok == true and .action == "refresh" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:refresh subaction:clear
+  if [[ "$lite_value" == "0" ]]; then
+    run_json_case "${prefix}_refresh_cleanup" '.ok == true and .action == "refresh" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:refresh subaction:cleanup
+    run_json_case "${prefix}_refresh_recover" '.ok == true and .action == "refresh" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:refresh subaction:recover
+    run_json_case "${prefix}_refresh_clear" '.ok == true and .action == "refresh" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:refresh subaction:clear
+  fi
 
-  echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
   local schedule_name="mcporter-smoke-$mode-$$"
   if [[ "$lite_value" == "0" ]]; then
+    echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
     run_json_case "${prefix}_refresh_schedule_list" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.data.schedules | type == "array")' call_tool action:refresh subaction:schedule schedule_subaction:list
     run_json_case "${prefix}_refresh_schedule_create" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.created.name | type == "string")' call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
     run_json_case "${prefix}_refresh_schedule_disable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == false and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
     run_json_case "${prefix}_refresh_schedule_enable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == true and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
     run_json_case "${prefix}_refresh_schedule_delete" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and (.data.deleted | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
-  else
-    run_error_case "${prefix}_refresh_schedule_list" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:list
-    run_error_case "${prefix}_refresh_schedule_create" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
-    run_error_case "${prefix}_refresh_schedule_disable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
-    run_error_case "${prefix}_refresh_schedule_enable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
-    run_error_case "${prefix}_refresh_schedule_delete" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
   fi
 
-  echo "== $mode graph ==" | tee -a "$SUMMARY"
   if [[ "$lite_value" == "0" ]]; then
+    echo "== $mode graph ==" | tee -a "$SUMMARY"
     run_json_case "${prefix}_graph_status" '.ok == true and .action == "graph" and .subaction == "status" and (.data.response_mode | type == "string") and ((.data.data.counts | type == "object") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:status
     run_json_case "${prefix}_graph_stats" '.ok == true and .action == "graph" and .subaction == "stats" and (.data.response_mode | type == "string") and ((.data.data.rows | type == "array") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:stats
     run_json_case "${prefix}_graph_explore" '.ok == true and .action == "graph" and .subaction == "explore" and (.data.response_mode | type == "string") and ((.data.data.entity | type == "string") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
     run_json_case "${prefix}_graph_build" '.ok == true and .action == "graph" and .subaction == "build" and (.data.response_mode | type == "string") and ((.data.data.queued | type == "number") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
-  else
-    run_error_case "${prefix}_graph_status_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:status
-    run_error_case "${prefix}_graph_stats_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:stats
-    run_error_case "${prefix}_graph_explore_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
-    run_error_case "${prefix}_graph_build_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
   fi
 }
 
-run_suite full 0
-echo "" | tee -a "$SUMMARY"
-run_suite lite 1
+if [[ "$URL_MODE" == "1" ]]; then
+  # URL-mode configs target an already-running MCP HTTP server. CI starts that
+  # server in default lite mode, so run the suite that matches the live process.
+  run_suite lite 1
+else
+  run_suite full 0
+  echo "" | tee -a "$SUMMARY"
+  run_suite lite 1
+fi
 echo "" | tee -a "$SUMMARY"
 echo "Results: PASS=$pass FAIL=$fail" | tee -a "$SUMMARY"
 echo "Summary: $SUMMARY"

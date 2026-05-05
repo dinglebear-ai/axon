@@ -37,7 +37,9 @@ wait_for_server() {
       tail -n 200 "${LOG_FILE}" >&2 || true
       return 1
     fi
-    if curl -fsS "${BASE_URL}/oauth/google/status" >/dev/null 2>&1; then
+    local status
+    status="$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/mcp" 2>/dev/null || true)"
+    if [[ "${status}" != "000" ]]; then
       return 0
     fi
     sleep 0.25

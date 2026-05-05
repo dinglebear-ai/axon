@@ -72,8 +72,8 @@ mkdir -p ~/.local/share/axon/axon/{postgres,redis,rabbitmq,qdrant,output,artifac
 ### Infrastructure (Docker)
 
 ```bash
-docker compose -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome
-docker compose -f config/docker-compose.services.yaml ps
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome
+docker compose --env-file .env -f config/docker-compose.services.yaml ps
 ```
 
 ### Workers (local processes)
@@ -125,7 +125,7 @@ Current `just dev` behavior:
 Workers run in-process locally — output goes to the terminal directly. For infra containers:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml logs -f axon-qdrant axon-tei axon-chrome
+docker compose --env-file .env -f config/docker-compose.services.yaml logs -f axon-qdrant axon-tei axon-chrome
 ```
 
 ## Health Checks
@@ -141,7 +141,7 @@ Workers and web frontend are local processes — verify they are running in thei
 Quick checks:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml ps
+docker compose --env-file .env -f config/docker-compose.services.yaml ps
 ./scripts/axon status
 ```
 
@@ -288,7 +288,7 @@ just test-infra         # run ignored worker e2e infrastructure tests
 Primary logs:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml logs -f axon-qdrant
+docker compose --env-file .env -f config/docker-compose.services.yaml logs -f axon-qdrant
 ```
 
 Structured app logs are written under mounted logs volume for workers.
@@ -303,7 +303,7 @@ Chrome diagnostics:
 Graceful shutdown:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml down
+docker compose --env-file .env -f config/docker-compose.services.yaml down
 ```
 
 If draining is needed first:
@@ -318,7 +318,6 @@ To stop local worker processes started with `just dev`, use `Ctrl+C` in the term
 ## Source Map
 
 - `config/docker-compose.services.yaml`
-- `docker-compose.gpu.yaml`
 - `scripts/dev-setup.sh`
 - `Justfile`
 - `README.md`

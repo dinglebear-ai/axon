@@ -35,7 +35,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 ## Infrastructure
 
-- [ ] `docker-compose.services.yaml` starts cleanly (Qdrant, TEI, Chrome)
+- [ ] `config/docker-compose.services.yaml` starts cleanly (Qdrant, TEI, Chrome)
 - [ ] All worker types start (crawl, embed, extract, ingest)
 - [ ] SQLite schema auto-creates via `ensure_schema()`
 

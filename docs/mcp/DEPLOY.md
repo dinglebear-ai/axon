@@ -46,68 +46,46 @@ just services-up
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | `services.env` |
-| `docker-compose.gpu.yaml` | GPU override for TEI and Ollama | -- |
+| `config/docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | repo-root `services.env` |
 
-Both compose files share the `axon` bridge network and read `.env` for `${VAR}` interpolation.
+The compose file creates the `axon` bridge network. Pass `--env-file .env` when
+running it directly so repo-root `.env` is used for `${VAR}` interpolation.
 
 ### GPU acceleration
 
 For NVIDIA hosts with GPU-accelerated TEI:
 
 ```bash
-docker compose -f docker-compose.services.yaml -f docker-compose.gpu.yaml up -d
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 ```
 
-CPU-only hosts use `docker-compose.services.yaml` alone.
+CPU-only hosts should override the TEI image/settings or point `TEI_URL` at an
+external CPU embedding endpoint.
 
-### Container architecture
+### Local app runtime
 
-The `axon-workers` container uses s6-overlay for process supervision:
-
-| s6 service | Binary command | Purpose |
-|------------|---------------|---------|
-| `web-server` | `axon serve` | Backend bridge + MCP HTTP |
-| `crawl-worker` | `axon crawl worker` | Crawl job processor |
-| `embed-worker` | `axon embed worker` | Embedding pipeline |
-| `extract-worker` | `axon extract worker` | LLM extraction |
-| `ingest-worker` | `axon ingest worker` | Source ingestion |
-| `graph-worker` | `axon graph worker` | Neo4j graph building |
-
-All worker processes run as the `axon` user (UID 1001) via `s6-setuidgid`.
-
-The `axon-web` container uses s6-overlay for:
-- `pnpm-dev`: Next.js dev server
-- `pnpm-watcher`: Polls lockfile for changes
-- `claude-session`: Persistent Claude Code session
-- `claude-watcher`: Hot-reload trigger
+The tracked compose file starts infrastructure only. Run `axon serve` locally to
+supervise the MCP HTTP server, backend bridge, workers, shell server, and web UI.
 
 ### Build
 
 ```bash
-# Build workers image
-docker build -f docker/Dockerfile -t axon:local .
-
-# Build web image
-docker build -f docker/web/Dockerfile -t axon-web:local apps/web
-
 # Build Chrome image
-docker build -f docker/chrome/Dockerfile -t axon-chrome:local docker/chrome
+docker compose --env-file .env -f config/docker-compose.services.yaml build axon-chrome
 ```
 
-Build context must be the repo root (both compose files set `context: .`).
+Run compose commands from the repo root. The services compose file lives under
+`config/`, so paths inside it resolve relative to `config/`; its `env_file`
+entry intentionally points back to the repo-root `services.env`.
 
 ### Health checks
 
 ```bash
 # Infrastructure
-docker compose -f docker-compose.services.yaml ps
-
-# App containers
-docker compose ps
+docker compose --env-file .env -f config/docker-compose.services.yaml ps
 
 # Service connectivity
-docker exec axon-workers axon doctor
+./scripts/axon doctor
 ```
 
 ## Data volumes

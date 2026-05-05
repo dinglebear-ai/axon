@@ -1,11 +1,13 @@
 name: axon-services
 
 # Infrastructure services: qdrant, tei, chrome.
-#   docker compose -f config/docker-compose.services.yaml up -d
+#   docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 
 x-common-service: &common-service
   env_file:
-    - services.env
+    # Paths in env_file are resolved relative to this compose file.
+    # Keep the secrets file at the repository root alongside .env.
+    - ../services.env
   networks:
     - axon
   restart: unless-stopped
@@ -92,7 +94,7 @@ services:
       RUST_LOG: text_embeddings_router=info
       HF_HUB_CACHE: /data/cache
       HF_HUB_ENABLE_HF_TRANSFER: 1
-      HF_TOKEN: ${HF_TOKEN}
+      HF_TOKEN: ${HF_TOKEN:-}
     deploy:
       resources:
         reservations:
