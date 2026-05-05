@@ -74,7 +74,7 @@ just services-up
 
 TEI benefits from GPU acceleration for embedding generation:
 - NVIDIA GPU with CUDA drivers
-- `docker compose -f config/docker-compose.services.yaml up -d`
+- `docker compose --env-file .env -f config/docker-compose.services.yaml up -d`
 - CPU-only: works without GPU overlay, but slower embedding
 
 ### System resources

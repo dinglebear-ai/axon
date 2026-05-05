@@ -1,7 +1,7 @@
 name: axon-services
 
 # Infrastructure services: qdrant, tei, chrome.
-#   docker compose -f config/docker-compose.services.yaml up -d
+#   docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 
 x-common-service: &common-service
   env_file:

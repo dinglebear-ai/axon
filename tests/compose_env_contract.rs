@@ -17,3 +17,31 @@ fn services_compose_reads_repo_root_services_env() {
          fresh checkouts"
     );
 }
+
+#[test]
+fn ci_env_file_contains_compose_interpolation_values() {
+    let workflow = fs::read_to_string(".github/workflows/ci.yml")
+        .expect(".github/workflows/ci.yml should be readable");
+
+    let env_block_start = workflow
+        .find("} > .env")
+        .expect("CI workflow should create a repo-root .env file");
+    let env_block = &workflow[..env_block_start];
+
+    for key in [
+        "TEI_HTTP_PORT=52000",
+        "TEI_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5",
+    ] {
+        assert!(
+            env_block.contains(key),
+            "compose interpolation value {key} must be written to .env, not only services.env"
+        );
+    }
+
+    assert!(
+        workflow.contains(
+            "docker compose --env-file .env -f config/docker-compose.services.yaml config"
+        ),
+        "CI should validate compose with the same repo-root .env file used for interpolation"
+    );
+}

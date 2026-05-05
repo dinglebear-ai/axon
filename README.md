@@ -4,7 +4,7 @@
 
 Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
 
-Version: 1.3.2 | License: MIT
+Version: 1.3.4 | License: MIT
 
 ---
 
@@ -99,7 +99,7 @@ The stack has the following components:
 | `crates/mcp/` | MCP server, tool schema, action router |
 | `crates/services/` | Typed service entry points for CLI, MCP, and web |
 | `apps/web/` | Next.js dashboard at port 49010 |
-| `config/docker-compose.services.yaml`, compose files | Infrastructure and runtime deployment |
+| `config/docker-compose.services.yaml` | Infrastructure deployment |
 
 ---
 
@@ -1223,7 +1223,7 @@ All ports are bound to `127.0.0.1` (loopback only) by default.
 Start infrastructure:
 
 ```bash
-docker compose -f config/docker-compose.services.yaml up -d
+docker compose --env-file .env -f config/docker-compose.services.yaml up -d
 # or: just services-up
 ```
 
