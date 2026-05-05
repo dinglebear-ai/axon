@@ -446,9 +446,15 @@ run_suite() {
   fi
 }
 
-run_suite full 0
-echo "" | tee -a "$SUMMARY"
-run_suite lite 1
+if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "$BASE_CONFIG_PATH" >/dev/null; then
+  # URL-mode configs target an already-running MCP HTTP server. CI starts that
+  # server in default lite mode, so run the suite that matches the live process.
+  run_suite lite 1
+else
+  run_suite full 0
+  echo "" | tee -a "$SUMMARY"
+  run_suite lite 1
+fi
 echo "" | tee -a "$SUMMARY"
 echo "Results: PASS=$pass FAIL=$fail" | tee -a "$SUMMARY"
 echo "Summary: $SUMMARY"
