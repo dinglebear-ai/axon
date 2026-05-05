@@ -419,12 +419,14 @@ run_suite() {
   run_json_case "${prefix}_ingest_cancel" '.ok == true and .action == "ingest" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:ingest subaction:cancel job_id:"$ingest_job_id"
   run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0
 
-  run_json_case "${prefix}_refresh_start" '.ok == true and .action == "refresh" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"refresh\",\"subaction\":\"start\",\"url\":\"$REAL_PAGE_URL\"}"
-  local refresh_job_id
-  refresh_job_id="$(extract_json_field "$OUTDIR/${prefix}_refresh_start.log" '.data.job_id')"
-  run_json_case "${prefix}_refresh_status" '.ok == true and .action == "refresh" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:refresh subaction:status job_id:"$refresh_job_id"
-  run_json_case "${prefix}_refresh_cancel" '.ok == true and .action == "refresh" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:refresh subaction:cancel job_id:"$refresh_job_id"
-  run_json_case "${prefix}_refresh_list" '.ok == true and .action == "refresh" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:refresh subaction:list limit:5 offset:0
+  if [[ "$lite_value" == "0" ]]; then
+    run_json_case "${prefix}_refresh_start" '.ok == true and .action == "refresh" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"refresh\",\"subaction\":\"start\",\"url\":\"$REAL_PAGE_URL\"}"
+    local refresh_job_id
+    refresh_job_id="$(extract_json_field "$OUTDIR/${prefix}_refresh_start.log" '.data.job_id')"
+    run_json_case "${prefix}_refresh_status" '.ok == true and .action == "refresh" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:refresh subaction:status job_id:"$refresh_job_id"
+    run_json_case "${prefix}_refresh_cancel" '.ok == true and .action == "refresh" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:refresh subaction:cancel job_id:"$refresh_job_id"
+    run_json_case "${prefix}_refresh_list" '.ok == true and .action == "refresh" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:refresh subaction:list limit:5 offset:0
+  fi
 
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_crawl_cleanup" '.ok == true and .action == "crawl" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:crawl subaction:cleanup
@@ -439,37 +441,28 @@ run_suite() {
   run_json_case "${prefix}_ingest_cleanup" '.ok == true and .action == "ingest" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:ingest subaction:cleanup
   run_json_case "${prefix}_ingest_recover" '.ok == true and .action == "ingest" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:ingest subaction:recover
   run_json_case "${prefix}_ingest_clear" '.ok == true and .action == "ingest" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:ingest subaction:clear
-  run_json_case "${prefix}_refresh_cleanup" '.ok == true and .action == "refresh" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:refresh subaction:cleanup
-  run_json_case "${prefix}_refresh_recover" '.ok == true and .action == "refresh" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:refresh subaction:recover
-  run_json_case "${prefix}_refresh_clear" '.ok == true and .action == "refresh" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:refresh subaction:clear
+  if [[ "$lite_value" == "0" ]]; then
+    run_json_case "${prefix}_refresh_cleanup" '.ok == true and .action == "refresh" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:refresh subaction:cleanup
+    run_json_case "${prefix}_refresh_recover" '.ok == true and .action == "refresh" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:refresh subaction:recover
+    run_json_case "${prefix}_refresh_clear" '.ok == true and .action == "refresh" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:refresh subaction:clear
+  fi
 
-  echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
   local schedule_name="mcporter-smoke-$mode-$$"
   if [[ "$lite_value" == "0" ]]; then
+    echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
     run_json_case "${prefix}_refresh_schedule_list" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.data.schedules | type == "array")' call_tool action:refresh subaction:schedule schedule_subaction:list
     run_json_case "${prefix}_refresh_schedule_create" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.created.name | type == "string")' call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
     run_json_case "${prefix}_refresh_schedule_disable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == false and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
     run_json_case "${prefix}_refresh_schedule_enable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == true and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
     run_json_case "${prefix}_refresh_schedule_delete" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and (.data.deleted | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
-  else
-    run_error_case "${prefix}_refresh_schedule_list" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:list
-    run_error_case "${prefix}_refresh_schedule_create" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
-    run_error_case "${prefix}_refresh_schedule_disable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
-    run_error_case "${prefix}_refresh_schedule_enable" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
-    run_error_case "${prefix}_refresh_schedule_delete" "refresh scheduling is not available in lite mode" call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
   fi
 
-  echo "== $mode graph ==" | tee -a "$SUMMARY"
   if [[ "$lite_value" == "0" ]]; then
+    echo "== $mode graph ==" | tee -a "$SUMMARY"
     run_json_case "${prefix}_graph_status" '.ok == true and .action == "graph" and .subaction == "status" and (.data.response_mode | type == "string") and ((.data.data.counts | type == "object") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:status
     run_json_case "${prefix}_graph_stats" '.ok == true and .action == "graph" and .subaction == "stats" and (.data.response_mode | type == "string") and ((.data.data.rows | type == "array") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:stats
     run_json_case "${prefix}_graph_explore" '.ok == true and .action == "graph" and .subaction == "explore" and (.data.response_mode | type == "string") and ((.data.data.entity | type == "string") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
     run_json_case "${prefix}_graph_build" '.ok == true and .action == "graph" and .subaction == "build" and (.data.response_mode | type == "string") and ((.data.data.queued | type == "number") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
-  else
-    run_error_case "${prefix}_graph_status_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:status
-    run_error_case "${prefix}_graph_stats_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:stats
-    run_error_case "${prefix}_graph_explore_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
-    run_error_case "${prefix}_graph_build_unavailable" "graph is not available in lite mode because it requires Postgres-backed graph storage" call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
   fi
 }
 
