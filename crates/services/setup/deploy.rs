@@ -249,10 +249,11 @@ where
 }
 
 fn render_compose(public_exposure: bool) -> String {
+    let remote_compose = DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env");
     if public_exposure {
-        DOCKER_COMPOSE_SERVICES.replace("127.0.0.1:", "")
+        remote_compose.replace("127.0.0.1:", "")
     } else {
-        DOCKER_COMPOSE_SERVICES.to_string()
+        remote_compose
     }
 }
 
@@ -301,6 +302,8 @@ mod tests {
     #[test]
     fn compose_rendering_is_private_by_default_and_public_on_opt_in() {
         let private = render_compose(false);
+        assert!(private.contains("- services.env"));
+        assert!(!private.contains("../services.env"));
         assert!(private.contains("127.0.0.1:53333:6333"));
         assert!(private.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
         assert!(private.contains("127.0.0.1:6000:6000"));
