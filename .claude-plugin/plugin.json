@@ -23,7 +23,5 @@
         "hybrid-search"
     ],
     "skills": "./plugins/axon/skills",
-    "agents": "./plugins/axon/agents/researcher.md",
-    "hooks": "./plugins/axon/hooks/hooks.json",
-    "monitors": "./plugins/axon/monitors/monitors.json"
+    "agents": "./plugins/axon/agents/researcher.md"
 }

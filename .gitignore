@@ -8,6 +8,7 @@ services.env
 logs/
 backups/
 docker/data/
+config/data/
 *.log
 *.pid
 *.bak
