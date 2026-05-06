@@ -1,6 +1,167 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::path::Path;
 
-pub fn check(_root: &Path) -> Result<()> {
-    todo!("ported in axon_rust-pp5.4")
+/// (relative_path, &[(pattern, error_message_if_missing)])
+type FileSpec = (&'static str, &'static [(&'static str, &'static str)]);
+
+const FILE_SPECS: &[FileSpec] = &[
+    (
+        "crates/cli/commands/mcp.rs",
+        &[
+            (
+                "run_http_server(",
+                "ERROR: MCP CLI must support HTTP transport in crates/cli/commands/mcp.rs",
+            ),
+            (
+                "run_stdio_server(",
+                "ERROR: MCP CLI must support stdio transport in crates/cli/commands/mcp.rs",
+            ),
+            (
+                "Both",
+                "ERROR: MCP CLI must support both transports concurrently in crates/cli/commands/mcp.rs",
+            ),
+        ],
+    ),
+    (
+        "crates/core/config/cli.rs",
+        &[(
+            "transport: Option<McpTransport>",
+            "ERROR: MCP CLI must expose --transport in crates/core/config/cli.rs",
+        )],
+    ),
+    (
+        "crates/core/config/parse/build_config.rs",
+        &[(
+            "resolve_mcp_transport(mcp_transport, mcp_transport_default)",
+            "ERROR: MCP transport resolver not wired into config build in crates/core/config/parse/build_config.rs",
+        )],
+    ),
+    (
+        "crates/core/config/parse/helpers.rs",
+        &[(
+            "AXON_MCP_TRANSPORT",
+            "ERROR: MCP transport env override missing in crates/core/config/parse/helpers.rs",
+        )],
+    ),
+];
+
+pub fn check(root: &Path) -> Result<()> {
+    for (rel_path, patterns) in FILE_SPECS {
+        let path = root.join(rel_path);
+        if !path.is_file() {
+            bail!("ERROR: missing {}", rel_path);
+        }
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|e| anyhow::anyhow!("ERROR: failed to read {}: {}", rel_path, e))?;
+        for (pattern, err_msg) in *patterns {
+            if !contents.contains(pattern) {
+                bail!("{}", err_msg);
+            }
+        }
+    }
+    println!("OK: MCP CLI supports stdio, http, and both transport modes.");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn write_all_required(root: &Path) {
+        let mcp_rs = root.join("crates/cli/commands/mcp.rs");
+        fs::create_dir_all(mcp_rs.parent().unwrap()).unwrap();
+        fs::write(
+            &mcp_rs,
+            "fn run_http_server() {}\nfn run_stdio_server() {}\nenum T { Both }\n",
+        )
+        .unwrap();
+
+        let cli_cfg = root.join("crates/core/config/cli.rs");
+        fs::create_dir_all(cli_cfg.parent().unwrap()).unwrap();
+        fs::write(
+            &cli_cfg,
+            "pub struct C { pub transport: Option<McpTransport> }\n",
+        )
+        .unwrap();
+
+        let build_cfg = root.join("crates/core/config/parse/build_config.rs");
+        fs::create_dir_all(build_cfg.parent().unwrap()).unwrap();
+        fs::write(
+            &build_cfg,
+            "let t = resolve_mcp_transport(mcp_transport, mcp_transport_default);\n",
+        )
+        .unwrap();
+
+        let helpers = root.join("crates/core/config/parse/helpers.rs");
+        fs::create_dir_all(helpers.parent().unwrap()).unwrap();
+        fs::write(&helpers, "// reads AXON_MCP_TRANSPORT env var\n").unwrap();
+    }
+
+    #[test]
+    fn passes_with_all_patterns_present() {
+        let tmp = TempDir::new().unwrap();
+        write_all_required(tmp.path());
+        check(tmp.path()).expect("expected check to pass");
+    }
+
+    #[test]
+    fn fails_when_file_missing() {
+        let tmp = TempDir::new().unwrap();
+        write_all_required(tmp.path());
+        fs::remove_file(tmp.path().join("crates/cli/commands/mcp.rs")).unwrap();
+        let err = check(tmp.path()).expect_err("expected missing file error");
+        assert_eq!(err.to_string(), "ERROR: missing crates/cli/commands/mcp.rs");
+    }
+
+    #[test]
+    fn fails_when_pattern_missing() {
+        let tmp = TempDir::new().unwrap();
+        write_all_required(tmp.path());
+        // Overwrite mcp.rs missing the `Both` pattern
+        fs::write(
+            tmp.path().join("crates/cli/commands/mcp.rs"),
+            "fn run_http_server() {}\nfn run_stdio_server() {}\n",
+        )
+        .unwrap();
+        let err = check(tmp.path()).expect_err("expected pattern error");
+        assert_eq!(
+            err.to_string(),
+            "ERROR: MCP CLI must support both transports concurrently in crates/cli/commands/mcp.rs"
+        );
+    }
+
+    #[test]
+    fn pattern_table_is_canonical() {
+        // Lock the table shape to catch accidental edits.
+        let paths: Vec<&'static str> = FILE_SPECS.iter().map(|(p, _)| *p).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "crates/cli/commands/mcp.rs",
+                "crates/core/config/cli.rs",
+                "crates/core/config/parse/build_config.rs",
+                "crates/core/config/parse/helpers.rs",
+            ]
+        );
+
+        let mcp_patterns: Vec<&'static str> = FILE_SPECS[0].1.iter().map(|(p, _)| *p).collect();
+        assert_eq!(
+            mcp_patterns,
+            vec!["run_http_server(", "run_stdio_server(", "Both"]
+        );
+
+        assert_eq!(FILE_SPECS[1].1.len(), 1);
+        assert_eq!(FILE_SPECS[1].1[0].0, "transport: Option<McpTransport>");
+
+        assert_eq!(FILE_SPECS[2].1.len(), 1);
+        assert_eq!(
+            FILE_SPECS[2].1[0].0,
+            "resolve_mcp_transport(mcp_transport, mcp_transport_default)"
+        );
+
+        assert_eq!(FILE_SPECS[3].1.len(), 1);
+        assert_eq!(FILE_SPECS[3].1[0].0, "AXON_MCP_TRANSPORT");
+    }
 }
