@@ -407,7 +407,7 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). The web UI streams both: stdout as `"type": "output"`, stderr as `"type": "log"`. ANSI codes stripped via `console::strip_ansi_codes()`.
 
 ### Crawl queue cap (`AXON_MAX_PENDING_CRAWL_JOBS`)
-New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `crates/jobs/crawl/runtime/db.rs` via `check_pending_cap()`.
+New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `crates/jobs/lite/ops/enqueue.rs` via `check_pending_cap_for()`.
 
 ### Crawl size warning (`AXON_CRAWL_SIZE_WARN_THRESHOLD`)
 After an uncapped crawl completes (`--max-pages 0`, the default), if the total pages crawled exceeds `AXON_CRAWL_SIZE_WARN_THRESHOLD` (default 10,000), a warning is logged suggesting the user add `--max-pages`. Set to 0 to disable the warning.

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-05-06
+
+### Added
+- `--whole-repo` and `--include-allowlisted` flags to `enforce_monoliths.py` for auditing all production files (axon_rust-pkl.7)
+- `just monolith-report` recipe and non-blocking informational CI step for whole-repo monolith visibility (axon_rust-pkl.7)
+- Tests locking the canonical key set of crawl job result JSON (axon_rust-pkl.8)
+
+### Changed
+- Removed legacy aliases `pages_seen` and `markdown_files` from crawl job result JSON; consumers now read canonical `pages_crawled` and `md_created` only (axon_rust-pkl.8)
+
+### Fixed
+- CLAUDE.md crawl queue cap section now references the correct file path and function name (axon_rust-pkl.35)
+
 ## [1.4.0] - 2026-05-05
 
 ### Added
