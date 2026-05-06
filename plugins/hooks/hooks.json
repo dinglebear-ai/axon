@@ -1,0 +1,12 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "mkdir -p ~/.local/bin && ln -sf \"${CLAUDE_PLUGIN_ROOT}/bin/axon\" ~/.local/bin/axon"
+        }
+      ]
+    }
+  ]
+}
