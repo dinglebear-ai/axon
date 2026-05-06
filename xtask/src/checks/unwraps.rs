@@ -5,10 +5,11 @@ use std::process::Command;
 /// Returns true if the given path (forward-slash separated, repo-relative) is
 /// a Rust test file that should be excluded from new-unwrap accounting.
 ///
-/// Rules (mirrors the original shell regex):
+/// Rules (mirrors the original shell regex `(^|/)tests?(/|\.rs$)` plus
+/// `_test(s)?\.rs$`):
 /// - any `/`-separated path component equal to `test` or `tests` → test
 ///   (catches root `tests/foo.rs`, `crates/foo/tests/bar.rs`, …)
-/// - filename equal to `test.rs` (root or otherwise) → test
+/// - filename equal to `test.rs` or `tests.rs` (root or otherwise) → test
 /// - filename ending in `_test.rs` or `_tests.rs` → test
 /// - paths like `src/testability/foo.rs` are NOT test files (no full
 ///   `test`/`tests` component, filename does not match either suffix).
@@ -21,7 +22,7 @@ fn is_test_path(path: &str) -> bool {
     }
     // Filename check.
     let filename = path.rsplit('/').next().unwrap_or(path);
-    if filename == "test.rs" {
+    if filename == "test.rs" || filename == "tests.rs" {
         return true;
     }
     if filename.ends_with("_test.rs") || filename.ends_with("_tests.rs") {
@@ -30,11 +31,14 @@ fn is_test_path(path: &str) -> bool {
     false
 }
 
-/// Counts new `.unwrap()` and `.expect(` occurrences in added diff lines.
+/// Counts the number of *added diff lines* that contain at least one
+/// `.unwrap()` or `.expect(` call. Mirrors the original shell `grep -cE`
+/// semantics — chained calls on a single line count once, not twice — so
+/// historical warning totals stay comparable.
 ///
 /// - Added lines start with `+` but NOT `+++` (which is a file header).
 /// - Removed lines (`-`/`---`) and context lines (` `) are ignored.
-/// - Multiple occurrences on a single line are all counted.
+/// - A line containing both `.unwrap()` and `.expect(` counts as one match.
 fn count_added_unwraps(diff: &str) -> usize {
     let mut total = 0usize;
     for line in diff.lines() {
@@ -46,8 +50,9 @@ fn count_added_unwraps(diff: &str) -> usize {
         }
         // Strip the leading `+` to avoid matching diff metadata accidentally.
         let body = &line[1..];
-        total += body.matches(".unwrap()").count();
-        total += body.matches(".expect(").count();
+        if body.contains(".unwrap()") || body.contains(".expect(") {
+            total += 1;
+        }
     }
     total
 }
@@ -169,10 +174,20 @@ mod tests {
     }
 
     #[test]
-    fn count_multiple_hits_on_one_line() {
+    fn count_is_per_line_not_per_occurrence() {
+        // Two added lines, each containing multiple unwrap()/expect( calls.
+        // Old shell semantics (grep -cE) count *matching lines*, not occurrences,
+        // so this should be 2 — not 4.
         let diff = "+    let _ = a.unwrap().unwrap();\n+    b.expect(\"a\"); c.expect(\"b\");\n";
-        // 2 unwraps on line 1, 2 expects on line 2.
-        assert_eq!(count_added_unwraps(diff), 4);
+        assert_eq!(count_added_unwraps(diff), 2);
+    }
+
+    #[test]
+    fn count_one_line_with_both_unwrap_and_expect() {
+        // A single added line that contains both `.unwrap()` and `.expect(` still
+        // counts as one matching line, not two.
+        let diff = "+    a.unwrap(); b.expect(\"x\");\n";
+        assert_eq!(count_added_unwraps(diff), 1);
     }
 
     #[test]
@@ -200,6 +215,16 @@ mod tests {
     #[test]
     fn is_test_path_underscore_tests_rs() {
         assert!(is_test_path("src/foo_tests.rs"));
+    }
+
+    #[test]
+    fn is_test_path_root_tests_rs() {
+        assert!(is_test_path("tests.rs"));
+    }
+
+    #[test]
+    fn is_test_path_nested_tests_rs() {
+        assert!(is_test_path("src/foo/tests.rs"));
     }
 
     #[test]

@@ -2,7 +2,17 @@ use anyhow::{Result, bail};
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
 
-const SKIP_DIRS: &[&str] = &[".git", "node_modules", "target", ".cache", ".next"];
+// `.worktrees` is the documented home for sibling worktrees in this repo
+// (see CLAUDE.md). Recursing into it would surface symlink failures that
+// belong to other branch checkouts, not the current one.
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    ".cache",
+    ".next",
+    ".worktrees",
+];
 const TARGETS: &[&str] = &["AGENTS.md", "GEMINI.md"];
 
 fn is_excluded_dir(entry: &DirEntry) -> bool {

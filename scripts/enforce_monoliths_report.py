@@ -13,6 +13,7 @@ auditing the allowlist itself).
 from __future__ import annotations
 
 import fnmatch
+import os
 from pathlib import Path
 
 from enforce_monoliths_helpers import (
@@ -43,21 +44,25 @@ SKIP_DIRS = {
 
 
 def _iter_source_files(root: Path) -> list[str]:
-    """Yield repo-relative paths to checkable source files."""
+    """Yield repo-relative paths to checkable source files.
+
+    Uses ``os.walk`` so we can prune ``SKIP_DIRS`` from ``dirnames`` BEFORE
+    descending — ``Path.rglob`` would still walk into ``target/``,
+    ``node_modules/``, ``.worktrees/`` etc. and only filter at yield time,
+    which is meaningfully slow on real checkouts after a local build.
+    """
     out: list[str] = []
-    for path in root.rglob("*"):
-        if path.is_dir():
-            continue
-        # Cheap pruning: skip anything under SKIP_DIRS at any depth.
-        rel_parts = path.relative_to(root).parts
-        if any(part in SKIP_DIRS for part in rel_parts):
-            continue
-        if path.suffix not in CHECKABLE_EXTENSIONS:
-            continue
-        rel = "/".join(rel_parts)
-        if any(fnmatch.fnmatch(rel, pattern) for pattern in EXCLUDED_GLOBS):
-            continue
-        out.append(rel)
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune skipped subdirs in place so os.walk doesn't descend into them.
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for fname in filenames:
+            full = Path(dirpath) / fname
+            if full.suffix not in CHECKABLE_EXTENSIONS:
+                continue
+            rel = full.relative_to(root).as_posix()
+            if any(fnmatch.fnmatch(rel, pattern) for pattern in EXCLUDED_GLOBS):
+                continue
+            out.append(rel)
     out.sort()
     return out
 

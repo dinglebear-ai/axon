@@ -35,12 +35,18 @@ pre-commit:
     rustfmt:
       glob: "**/*.rs"
       run: cargo fmt -- --check
+    # clippy --all-targets already type-checks tests; we don't need a separate
+    # `cargo check`. Test coverage runs on pre-push / CI, not pre-commit:
+    # `cargo test --workspace` on this codebase takes minutes per commit and
+    # contends with clippy on the same target/ build lock.
     clippy:
       glob: "**/*.{rs,toml}"
       run: cargo clippy --workspace --all-targets --locked -- -D warnings
-    check:
-      glob: "**/*.{rs,toml}"
-      run: cargo check --workspace --all-targets --locked
     test:
       glob: "**/*.{rs,toml}"
-      run: cargo test --workspace --locked
+      run: >
+        if command -v cargo-nextest >/dev/null 2>&1; then
+          cargo nextest run --workspace --locked --lib -E 'not test(/worker_e2e/)';
+        else
+          cargo test --workspace --locked --lib -- --skip worker_e2e;
+        fi

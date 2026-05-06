@@ -28,11 +28,15 @@ fn is_violation(filename: &str) -> bool {
 }
 
 pub fn check(root: &Path) -> Result<()> {
+    // Restrict to Added / Modified / Renamed-to so we don't block contributors
+    // who are *removing* an accidentally-tracked .env file (D = deleted,
+    // R = renamed-from). The whole point of this hook is to encourage that
+    // cleanup, not punish it.
     let output = Command::new("git")
-        .args(["diff", "--cached", "--name-only"])
+        .args(["diff", "--cached", "--name-only", "--diff-filter=AMR"])
         .current_dir(root)
         .output()
-        .context("failed to invoke `git diff --cached --name-only`")?;
+        .context("failed to invoke `git diff --cached --name-only --diff-filter=AMR`")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

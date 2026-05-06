@@ -16,9 +16,13 @@ const FILE_SPECS: &[FileSpec] = &[
                 "run_stdio_server(",
                 "ERROR: MCP CLI must support stdio transport in crates/cli/commands/mcp.rs",
             ),
+            // Match the actual McpTransport::Both match arm shape, not a bare "Both"
+            // substring. The bare token would be satisfied by a comment, an unrelated
+            // enum, or even the doc-comment in this file — defeating the gate.
             (
-                "Both",
-                "ERROR: MCP CLI must support both transports concurrently in crates/cli/commands/mcp.rs",
+                "McpTransport::Both =>",
+                "ERROR: MCP CLI must support both transports concurrently \
+                 (`McpTransport::Both =>` arm) in crates/cli/commands/mcp.rs",
             ),
         ],
     ),
@@ -74,7 +78,8 @@ mod tests {
         fs::create_dir_all(mcp_rs.parent().unwrap()).unwrap();
         fs::write(
             &mcp_rs,
-            "fn run_http_server() {}\nfn run_stdio_server() {}\nenum T { Both }\n",
+            "fn run_http_server() {}\nfn run_stdio_server() {}\n\
+             match t { McpTransport::Both => {} }\n",
         )
         .unwrap();
 
@@ -119,16 +124,17 @@ mod tests {
     fn fails_when_pattern_missing() {
         let tmp = TempDir::new().unwrap();
         write_all_required(tmp.path());
-        // Overwrite mcp.rs missing the `Both` pattern
+        // Overwrite mcp.rs missing the `McpTransport::Both =>` arm. A bare `Both`
+        // token (e.g., in a comment) must NOT satisfy the matcher.
         fs::write(
             tmp.path().join("crates/cli/commands/mcp.rs"),
-            "fn run_http_server() {}\nfn run_stdio_server() {}\n",
+            "fn run_http_server() {}\nfn run_stdio_server() {}\n// keyword: Both\n",
         )
         .unwrap();
         let err = check(tmp.path()).expect_err("expected pattern error");
-        assert_eq!(
-            err.to_string(),
-            "ERROR: MCP CLI must support both transports concurrently in crates/cli/commands/mcp.rs"
+        assert!(
+            err.to_string().contains("McpTransport::Both =>"),
+            "error should reference the strengthened matcher, got: {err}"
         );
     }
 
@@ -149,7 +155,11 @@ mod tests {
         let mcp_patterns: Vec<&'static str> = FILE_SPECS[0].1.iter().map(|(p, _)| *p).collect();
         assert_eq!(
             mcp_patterns,
-            vec!["run_http_server(", "run_stdio_server(", "Both"]
+            vec![
+                "run_http_server(",
+                "run_stdio_server(",
+                "McpTransport::Both =>"
+            ]
         );
 
         assert_eq!(FILE_SPECS[1].1.len(), 1);
