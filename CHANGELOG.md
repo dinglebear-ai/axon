@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-05-06
+
+### Fixed
+
+- Crawl auto-embed silently dropped when embed queue at capacity. Now logs `tracing::error!`, prints `⚠ embed DEFERRED` to stderr, and exposes an `embed_deferred: <reason>` field in the result JSON so CLI/MCP/web callers can detect deferred indexing without parsing logs (PR #67 P1)
+- Whole-repo monolith report walked into `target/`, `node_modules/`, `.worktrees/` before filtering — switched to `os.walk` with dirname pruning (PR #67)
+- xtask `check-claude-symlinks` recursed into `.worktrees/`, surfacing failures from sibling checkouts. Added `.worktrees` to `SKIP_DIRS` (PR #67)
+- xtask `check-mcp-http` matcher strengthened from bare `Both` substring to `McpTransport::Both =>` so comments/docs/unrelated enums cannot satisfy the gate (PR #67)
+- xtask `check-unwraps` now treats `tests.rs` as a test filename and counts matching lines (not occurrences), restoring the original `grep -cE` semantics (PR #67)
+- xtask `check-env-staged` uses `--diff-filter=AMR` so deletions of accidentally-tracked `.env` files are no longer blocked (PR #67)
+
+### Changed
+
+- Pre-commit `cargo test` scoped to `--lib` and `worker_e2e` skipped; redundant `cargo check` removed (clippy `--all-targets` already type-checks tests). Per-commit budget now under a minute (PR #67)
+- ACP session cache exposes `pub(super) insert_with_cap` for testability of the `cap == 0` (unlimited) branch (PR #67)
+- `Justfile` `taplo-check` / `taplo-fmt` recipes gated on `command -v taplo` with install hint (PR #67)
+
+### Docs
+
+- README clarified that `AXON_LITE` defaults to `false` (was incorrectly described as the build default) (PR #67)
+- `docs/CONFIG.md` deduplicated `AXON_NO_COLOR` row (PR #67)
+- `docs/mcp/ENV.md` documents unset semantics for `AXON_MCP_EMBED_MAX_LOCAL_BYTES` and `AXON_MCP_ALLOWED_ORIGINS` (PR #67)
+- ACP session cache `evict_if_over_cap` doc rewritten to describe actual `min_by_key` tie-breaking (the previous "skips eviction on identical timestamps" claim was incorrect) (PR #67)
+
 ## [1.5.2] - 2026-05-06
 
 ### Added
