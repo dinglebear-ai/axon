@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.5.5] - 2026-05-06
+## [1.5.6] - 2026-05-06
+
+### Added
+
+- Per-job heartbeat: 30 s tokio ticker bumps `updated_at` on every claimed job via new `crates/jobs/lite/workers/heartbeat.rs` (`HeartbeatGuard` RAII type) and `touch_heartbeat()` helper. Long blocking phases (single-page crawls, mid-batch embeds) no longer leave rows stale.
+- Periodic stale-job watchdog: re-runs `reclaim_stale_running_jobs` every 60 s for the worker lifetime, alongside the existing startup-only sweep.
+- `CancellationToken` plumbing for crawl, embed, and extract runners (previously only ingest had one). All four runners now respect `cancel_row` cleanly via `tokio::select!`.
+- `SizeRotatingFile` writer in `crates/core/logging/size_rotating.rs` — supports `AXON_LOG_MAX_BYTES` (default 10 MiB) and `AXON_LOG_MAX_FILES` (default 3).
+
+### Changed
+
+- Logging now uses size-based rotation instead of daily/7-file. `<dir>/<file>` rolls when the active file exceeds `AXON_LOG_MAX_BYTES`; archives shift `<file>.{N-1} -> <file>.N`. `AXON_LOG_DIR` and `AXON_LOG_FILE` (bare filename) control location.
+- `crates/jobs/CLAUDE.md`, `README.md`, `crates/ingest/CLAUDE.md`: replaced fictional "Tier 2 content-aware heartbeat" section (referenced non-existent constants) with accurate description of the new heartbeat + cancellation contract.
+- `docs/auth/API-TOKEN.md`: full rewrite. Documents the four real axon-side tokens (`AXON_MCP_HTTP_TOKEN`, web panel password, `AXON_ACP_AUTH_TOKEN`, `AXON_ACP_WS_TOKEN`); removes deleted-surface references (`/ws`, `/output/*`, `/download/*`, `AXON_WEB_API_TOKEN`).
+- `docs/SECURITY.md` §8: lists all three Chrome ports (6000 management, 9222 CDP proxy, 9223 raw DevTools), confirms loopback bind, adds cross-host deployment caveats. `config/docker-compose.services.yaml` annotated with intentional-loopback-bind comment.
+
+### Security
+
+- Bump `openssl` 0.10.78 -> 0.10.79 (and `openssl-sys` 0.9.114 -> 0.9.115) via `cargo update -p openssl` to address [GHSA-xp3w-r5p5-63rr](https://github.com/advisories/GHSA-xp3w-r5p5-63rr) / CVE-2026-42327 (high). `X509Ref::ocsp_responders` could construct a `&str` violating the UTF-8 invariant when a certificate's OCSP accessLocation contained non-UTF-8 bytes, causing undefined behavior. Pulled in transitively via `native-tls` (reqwest, sqlx, tokio-native-tls). No source changes required.
 
 ### Changed
 

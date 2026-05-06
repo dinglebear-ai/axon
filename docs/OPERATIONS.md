@@ -299,13 +299,15 @@ This is faster for one-shot full backups and includes index state.
 `init_tracing()` in `crates/core/logging.rs` writes to two sinks:
 
 - **stderr**, default level `WARN` (overridable with `RUST_LOG=info`)
-- **rotating JSON file** under `${AXON_LOG_DIR}` (default
-  `${AXON_DATA_DIR}/axon/logs`), `INFO` level, daily rotation, 7 files
-  retained — `axon.log.YYYY-MM-DD`
+- **size-rotated JSON file** at `${AXON_LOG_DIR}/${AXON_LOG_FILE}` (defaults
+  to `${AXON_DATA_DIR}/axon/logs/axon.log`), `INFO` level. Rotation triggers
+  when the active file exceeds `AXON_LOG_MAX_BYTES` (default 10 MiB);
+  archives are renamed `<file>.1`, `<file>.2`, … up to `AXON_LOG_MAX_FILES`
+  (default `3`). The oldest archive is pruned on each rotation.
 
 ```bash
-# tail today's log
-tail -f "${AXON_DATA_DIR:-$HOME/.local/share}/axon/logs/axon.log.$(date -u +%F)"
+# tail the active log
+tail -f "${AXON_DATA_DIR:-$HOME/.local/share}/axon/logs/axon.log"
 
 # noisier output for one run
 RUST_LOG=info,crates::jobs::lite=debug just dev
@@ -486,5 +488,6 @@ host and persist across restarts.
 | `crates/cli/commands/migrate.rs` | `axon migrate` |
 | `crates/jobs/lite/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
 | `crates/jobs/lite/store.rs` | SQLite schema bootstrap + lifecycle SQL |
-| `crates/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`, daily rotation |
+| `crates/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`/`AXON_LOG_FILE`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
+| `crates/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
 | `crates/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |

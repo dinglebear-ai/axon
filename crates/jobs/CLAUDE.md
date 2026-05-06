@@ -101,23 +101,35 @@ The SQLite pool is expensive. `LiteBackend::new()` creates one pool at startup a
 
 All internal async channels use `tokio::sync::mpsc::channel(256)` — **never** `unbounded_channel()`. Unbounded channels hide backpressure bugs and cause OOM under load.
 
-### Liveness Enforcement (Two Tiers)
+### Liveness Enforcement (Heartbeat + Watchdog)
 
-**Tier 1 — Dead-process detection (watchdog):**
-Reclaims jobs where `updated_at` goes stale (process died, heartbeat stopped).
-- Threshold: `AXON_JOB_STALE_TIMEOUT_SECS` (default 300s) + `AXON_JOB_STALE_CONFIRM_SECS` (60s)
-- Implemented in `crawl/watchdog.rs`
+Two cooperating mechanisms keep job state honest:
 
-**Tier 2 — Stuck-process detection (content-aware heartbeat):**
-Detects jobs that are alive (heartbeat touching `updated_at`) but making no progress (`result_json` unchanged).
-- Warn at `STALE_STREAK_WARN_THRESHOLD` = 6 intervals × 30s = **3 min** no progress
-- Kill at `STALE_STREAK_KILL_THRESHOLD` = 20 intervals × 30s = **10 min** no progress
+**Heartbeat (per running job):**
+- `HeartbeatGuard` in `crates/jobs/lite/workers/heartbeat.rs` is spawned by `worker_loop` for every claimed job and aborted (RAII drop) when the runner returns.
+- Loops every 30s and calls `touch_heartbeat()` (in `lite/ops/lifecycle.rs`) which bumps `updated_at` only on rows still in `running` state. It never writes `result_json` — that column is owned by the progress persisters.
+- Purpose: keep `updated_at` advancing during long blocking phases (crawl rendering a single page, embed pipeline mid-batch) where no progress event has fired yet.
 
-The watchdog handles the **crash** case (process died). The heartbeat handles the **hang** case (process alive, job stuck).
+**Watchdog (periodic + startup):**
+- Startup-time sweep: `LiteBackend::init` calls `reclaim_stale_running_jobs` once, resetting any `running` row whose `updated_at < now - (watchdog_stale_timeout_secs + watchdog_confirm_secs)` to `pending`.
+- Periodic sweep: `spawn_workers` spawns a 60s ticker that re-runs `reclaim_stale_running_jobs` while the process is alive, cooperating with the heartbeat to detect both **crash** (process gone, heartbeat stopped) and **hang** (heartbeat task wedged) cases.
+- Thresholds via `cfg.watchdog_stale_timeout_secs` (default 300s) and `cfg.watchdog_confirm_secs` (60s) → 360s total. With a 30s heartbeat that gives ~12x safety margin.
+
+### Cancellation
+
+All four job runners (`crawl`, `embed`, `extract`, `ingest`) accept an `Option<CancellationToken>`. `worker_loop` registers a token in the shared `CancelStore` for each claimed job, runs the job future, and removes the token when the runner returns.
+
+`LiteBackend::cancel_job` calls `CancelStore::cancel`, which (a) flips the SQLite row to `canceled` and (b) fires the in-memory token. Each runner observes the token at its safe interruption points:
+
+- **crawl / embed**: top-level `tokio::select!` between `token.cancelled()` and the engine future. Cancel returns immediately; in-flight network IO inside the engine continues briefly but its result is dropped.
+- **extract**: per-URL check before each iteration plus a `select!` around the per-URL extract future.
+- **ingest**: Reddit consumes the token natively (mid-loop); GitHub / YouTube / Sessions are wrapped in `tokio::select!` at the runner boundary.
+
+When the runner exits with `Err("<kind> canceled")`, the worker loop calls `mark_failed`. Because `mark_failed`'s `WHERE status='running'` guard already failed (the row is now `canceled`), the late-arriving terminal write is silently dropped — the row stays `canceled`. This is the intended semantics.
 
 ### Stale Job Recovery
 
-- The lite-mode watchdog (in `crates/jobs/lite/`) marks jobs stuck in `running` state as `failed` after the stale timeout. The exact submodule name was renamed during the lite-mode collapse — search for `STALE_TIMEOUT` / `recover_jobs` in `crates/jobs/lite/` if the path matters.
+- The lite-mode watchdog (in `crates/jobs/lite/store.rs::reclaim_stale_running_jobs`) marks jobs stuck in `running` state as `pending` after the stale timeout, both at startup and on the periodic 60s tick from `spawn_workers`.
 - `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`).
 
 ## ingest_jobs Schema Difference

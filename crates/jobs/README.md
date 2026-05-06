@@ -13,7 +13,8 @@ Async job runtime and lifecycle management for axon's lite-mode backend.
 - SQLite-backed job persistence.
 - Atomic claim/run/complete/fail/cancel state transitions.
 - In-process worker dispatch per `JobKind`.
-- Stale-job watchdog and content-aware heartbeat.
+- Per-job heartbeat (`updated_at` touch every 30s) plus periodic + startup watchdog (`reclaim_stale_running_jobs`).
+- In-process cancellation via `CancelStore` + `CancellationToken` for crawl/embed/extract/ingest runners.
 - Per-domain job family schemas (crawl/extract/embed/ingest) and the watch scheduler.
 
 ## Key Files

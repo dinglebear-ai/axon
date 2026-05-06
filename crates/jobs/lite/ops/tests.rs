@@ -444,3 +444,65 @@ async fn concurrent_claims_only_return_one_job() {
     drop(pool_b);
     tokio::fs::remove_file(&path).await.ok();
 }
+
+#[tokio::test]
+async fn touch_heartbeat_advances_updated_at_only_on_running_rows() {
+    use crate::crates::jobs::lite::ops::touch_heartbeat;
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Embed {
+            input: "test".into(),
+            config_json: "{}".into(),
+        },
+    )
+    .await
+    .expect("enqueue");
+
+    // Pending rows are not heartbeated.
+    let before_pending: (i64,) =
+        sqlx::query_as("SELECT updated_at FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    touch_heartbeat(&pool, JobKind::Embed, id)
+        .await
+        .expect("touch");
+    let after_pending: (i64,) =
+        sqlx::query_as("SELECT updated_at FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    assert_eq!(
+        before_pending.0, after_pending.0,
+        "touch_heartbeat must not bump pending rows"
+    );
+
+    // Claim the job — now in running state.
+    claim_next_pending(&pool, JobKind::Embed)
+        .await
+        .expect("claim");
+    let before_running: (i64,) =
+        sqlx::query_as("SELECT updated_at FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    touch_heartbeat(&pool, JobKind::Embed, id)
+        .await
+        .expect("touch");
+    let after_running: (i64,) =
+        sqlx::query_as("SELECT updated_at FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    assert!(
+        after_running.0 > before_running.0,
+        "touch_heartbeat must advance updated_at on running rows"
+    );
+}

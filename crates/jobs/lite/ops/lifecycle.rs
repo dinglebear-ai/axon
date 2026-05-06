@@ -145,6 +145,35 @@ async fn mark_completed_inner(
     Ok(())
 }
 
+/// Bump only `updated_at` for a running job. Used by the periodic heartbeat
+/// task so the watchdog's stale detection (driven by `updated_at`) does not
+/// reclaim long-running jobs that haven't emitted a progress update recently.
+///
+/// Unlike [`update_result_json`], this does NOT touch `result_json` — that
+/// avoids racing with progress persisters that own that column.
+///
+/// No-op (rows_affected=0) for jobs not in `running` state.
+pub async fn touch_heartbeat(
+    pool: &SqlitePool,
+    kind: JobKind,
+    id: Uuid,
+) -> Result<(), sqlx::Error> {
+    retry_busy("touch_heartbeat", || async {
+        let now = now_ms();
+        let table = kind.table_name();
+        sqlx::query(&format!(
+            "UPDATE {} SET updated_at=? WHERE id=? AND status='running'",
+            table
+        ))
+        .bind(now)
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+        Ok(())
+    })
+    .await
+}
+
 /// Persist live job progress/result JSON without changing job status.
 pub async fn update_result_json(
     pool: &SqlitePool,

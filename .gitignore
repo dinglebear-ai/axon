@@ -115,7 +115,6 @@ container/.env.*
 container/*.local.yml
 container/*.local.yaml
 docker/mem0/config.json
-.config/
 .superpowers/
 /data/
 http-cacache/

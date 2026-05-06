@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
+use tokio_util::sync::CancellationToken;
 
 use crate::crates::core::config::Config;
 use crate::crates::jobs::backend::{JobKind, lift_err};
@@ -9,7 +10,12 @@ use crate::crates::jobs::lite::ops::update_result_json;
 
 use super::JobResult;
 
-pub async fn run_extract_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uuid) -> JobResult {
+pub async fn run_extract_job_lite(
+    pool: &SqlitePool,
+    cfg: &Config,
+    id: uuid::Uuid,
+    cancel_token: Option<CancellationToken>,
+) -> JobResult {
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT urls_json, config_json FROM axon_extract_jobs WHERE id=?")
             .bind(id.to_string())
@@ -32,6 +38,12 @@ pub async fn run_extract_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uui
     );
     let mut total_items = 0usize;
     for (idx, url) in urls.iter().enumerate() {
+        if cancel_token
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            return Err("extract canceled".into());
+        }
         let wcfg = crate::crates::core::content::ExtractWebConfig {
             start_url: url.clone(),
             prompt: effective_cfg.query.clone().unwrap_or_default(),
@@ -54,9 +66,15 @@ pub async fn run_extract_job_lite(pool: &SqlitePool, cfg: &Config, id: uuid::Uui
             user_agent: effective_cfg.chrome_user_agent.clone(),
             chrome_network_idle_timeout_secs: effective_cfg.chrome_network_idle_timeout_secs,
         };
-        let run = crate::crates::core::content::run_extract_with_engine(wcfg, Arc::clone(&engine))
-            .await
-            .map_err(lift_err)?;
+        let extract_fut =
+            crate::crates::core::content::run_extract_with_engine(wcfg, Arc::clone(&engine));
+        let run = match cancel_token.as_ref() {
+            Some(token) => tokio::select! {
+                _ = token.cancelled() => return Err("extract canceled".into()),
+                r = extract_fut => r.map_err(lift_err)?,
+            },
+            None => extract_fut.await.map_err(lift_err)?,
+        };
         total_items += run.results.len();
         let progress = serde_json::json!({
             "urls": idx + 1,

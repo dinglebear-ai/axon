@@ -52,7 +52,9 @@ core/
 │   └── doctor.rs         # probe_tei_info, probe_openai, build_browser_runtime
 │   └── doctor/
 │       └── lite.rs       # Lite-mode doctor probe orchestration
-├── logging.rs            # init_tracing(), log_info/log_warn/log_done, SizeRotatingFile
+├── logging.rs            # init_tracing(), log_info/log_warn/log_done
+├── logging/
+│   └── size_rotating.rs  # SizeRotatingFile: byte-budget rotation writer
 ├── neo4j.rs              # Neo4j client wiring (used by graph-enhanced retrieval)
 ├── paths.rs              # Path helpers (data dir, output dir, cache dir)
 └── ui.rs                 # Spinner, primary/accent/muted(), symbol_for_status(), confirm_destructive()
@@ -224,8 +226,9 @@ log_done("message")   // → tracing::info! with status = "done"
 
 **Log targets:**
 - **Console:** stderr, `WARN` level (override with `RUST_LOG`)
-- **File:** `AXON_LOG_FILE` (default: `logs/axon.log`), `INFO` level, JSON format
-- **Rotation:** `AXON_LOG_MAX_BYTES` (default 10 MB), `AXON_LOG_MAX_FILES` (default 3 files)
+- **File:** `<AXON_LOG_DIR>/<AXON_LOG_FILE>` — defaults to `$AXON_DATA_DIR/axon/logs/axon.log` (falls back to `logs/axon.log`), `INFO` level, JSON format. `AXON_LOG_FILE` is a bare filename, **not** a path.
+- **Rotation:** size-based via `SizeRotatingFile` (`logging/size_rotating.rs`). When the active file exceeds `AXON_LOG_MAX_BYTES` (default 10 MiB / `10485760`), archives shift `<file>.{N-1} → <file>.N` from the top down and a fresh `<file>` is opened. `AXON_LOG_MAX_FILES` (default `3`) caps the number of archives. `max_bytes=0` disables rotation; `max_files=0` truncates without keeping any archive.
+- `tracing-appender::non_blocking` serialises writes through one worker thread; the returned `WorkerGuard` MUST be held for the process lifetime (returned by `init_tracing()`).
 - CDP noise suppressed: `chromiumoxide::conn::raw_ws::parse_errors=off`
 
 ## Terminal UI (`ui.rs`)

@@ -245,9 +245,10 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUST_LOG` | `info` | Rust tracing filter |
-| `AXON_LOG_FILE` | -- | Structured log file path |
-| `AXON_LOG_MAX_BYTES` | `10485760` | Log rotation size (10 MB) |
-| `AXON_LOG_MAX_FILES` | `3` | Rotated log files retained |
+| `AXON_LOG_DIR` | `$AXON_DATA_DIR/axon/logs` (or `logs/`) | Directory holding the active log + rotated archives |
+| `AXON_LOG_FILE` | `axon.log` | Filename of the active log (joined under `AXON_LOG_DIR`); rotated archives are `<file>.1`, `<file>.2`, … |
+| `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation (single file grows unboundedly). Default is 10 MB. |
+| `AXON_LOG_MAX_FILES` | `3` | Number of rotated archives to retain. `0` truncates without keeping any archive. |
 
 ### MCP server
 

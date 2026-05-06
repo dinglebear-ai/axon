@@ -123,6 +123,13 @@ services:
       - "127.0.0.1:9222:9222"  # CDP proxy
       - "127.0.0.1:9223:9223"  # raw Chrome DevTools
       - "127.0.0.1:6000:6000"  # management API
+    # Security: all three Chrome ports (6000 management API, 9222 CDP proxy,
+    # 9223 raw DevTools) are intentionally bound to 127.0.0.1 ONLY. The
+    # upstream `headless_browser` crate and Chrome DevTools Protocol have no
+    # built-in authentication — anyone who can reach these ports can drive
+    # the browser arbitrarily. Do NOT change these to 0.0.0.0; cross-host
+    # deployments must front Chrome with an authenticated reverse proxy or
+    # tunnel. See docs/SECURITY.md §8.
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
     networks:

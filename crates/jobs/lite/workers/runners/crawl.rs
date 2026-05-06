@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use sqlx::SqlitePool;
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 use super::super::progress::spawn_crawl_progress_persister;
 use crate::crates::core::config::Config;
@@ -21,6 +22,7 @@ pub async fn run_crawl_job_lite(
     cfg: &Config,
     id: uuid::Uuid,
     embed_notify: Option<Arc<Notify>>,
+    cancel_token: Option<CancellationToken>,
 ) -> JobResult {
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT url, config_json FROM axon_crawl_jobs WHERE id=?")
@@ -42,65 +44,42 @@ pub async fn run_crawl_job_lite(
     );
 
     let (progress_tx, progress_task) = spawn_crawl_progress_persister(pool, id);
-    let (summary, _) = crate::crates::crawl::engine::run_crawl_once(
-        &effective_cfg,
-        &url,
-        effective_cfg.render_mode,
-        &job_output_dir,
-        Some(progress_tx),
-        effective_cfg.discover_sitemaps,
-        Arc::new(HashMap::new()),
-        Some(&id.to_string()),
-    )
-    .await
-    .map_err(lift_err)?;
+    let id_str = id.to_string();
+    let crawl_fut = async {
+        crate::crates::crawl::engine::run_crawl_once(
+            &effective_cfg,
+            &url,
+            effective_cfg.render_mode,
+            &job_output_dir,
+            Some(progress_tx),
+            effective_cfg.discover_sitemaps,
+            Arc::new(HashMap::new()),
+            Some(id_str.as_str()),
+        )
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })
+    };
+    let (summary, _) = match cancel_token.as_ref() {
+        Some(token) => tokio::select! {
+            _ = token.cancelled() => {
+                return Err("crawl canceled".into());
+            }
+            r = crawl_fut => r?,
+        },
+        None => crawl_fut.await?,
+    };
     if let Err(e) = progress_task.await {
         tracing::warn!(job_id = %id, error = %e, "crawl progress persister task failed");
     }
 
-    let (embed_job_id, embed_deferred) = if effective_cfg.embed && summary.markdown_files > 0 {
-        let markdown_dir = job_output_dir
-            .join("markdown")
-            .to_string_lossy()
-            .to_string();
-        match enqueue_job(
-            pool,
-            &JobPayload::Embed {
-                input: markdown_dir,
-                config_json: lite_config_snapshot_json(&effective_cfg).map_err(lift_err)?,
-            },
-        )
-        .await
-        {
-            Ok(eid) => {
-                if let Some(notify) = &embed_notify {
-                    notify.notify_one();
-                }
-                (Some(eid.to_string()), None)
-            }
-            Err(JobError::QueueCapacityExceeded { kind, cap, current }) => {
-                // Loud: capacity-bounded queues must not silently drop work. Markdown is on
-                // disk, but query/ask cannot see it until the queue drains and embedding is
-                // retried (out of band). Surface via tracing::error AND result_json so the
-                // CLI/MCP/web layer can see this without parsing log streams.
-                let msg = format!("embed queue at capacity: {current}/{cap} pending {kind} jobs");
-                tracing::error!(
-                    queue = %kind,
-                    cap,
-                    current,
-                    markdown_files = summary.markdown_files,
-                    "crawl auto-embed deferred — {msg}; markdown on disk but unindexed"
-                );
-                (None, Some(msg))
-            }
-            Err(e) => {
-                tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
-                (None, Some(format!("enqueue error: {e}")))
-            }
-        }
-    } else {
-        (None, None)
-    };
+    let (embed_job_id, embed_deferred) = try_enqueue_embed_handoff(
+        pool,
+        &effective_cfg,
+        &job_output_dir,
+        &summary,
+        embed_notify,
+    )
+    .await?;
 
     if !effective_cfg.json_output && !effective_cfg.quiet {
         eprintln!(
@@ -136,6 +115,57 @@ pub async fn run_crawl_job_lite(
         embed_job_id.as_deref(),
         embed_deferred.as_deref(),
     )))
+}
+
+/// Enqueue an embed job for the freshly-crawled markdown directory. Returns
+/// `(Some(embed_job_id), None)` on success, `(None, Some(reason))` when the
+/// embed queue is at cap or the enqueue fails, or `(None, None)` when no
+/// markdown was produced or auto-embed is disabled.
+async fn try_enqueue_embed_handoff(
+    pool: &SqlitePool,
+    effective_cfg: &Config,
+    job_output_dir: &std::path::Path,
+    summary: &crate::crates::crawl::engine::CrawlSummary,
+    embed_notify: Option<Arc<Notify>>,
+) -> Result<(Option<String>, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
+    if !effective_cfg.embed || summary.markdown_files == 0 {
+        return Ok((None, None));
+    }
+    let markdown_dir = job_output_dir
+        .join("markdown")
+        .to_string_lossy()
+        .to_string();
+    let payload = JobPayload::Embed {
+        input: markdown_dir,
+        config_json: lite_config_snapshot_json(effective_cfg).map_err(lift_err)?,
+    };
+    match enqueue_job(pool, &payload).await {
+        Ok(eid) => {
+            if let Some(notify) = &embed_notify {
+                notify.notify_one();
+            }
+            Ok((Some(eid.to_string()), None))
+        }
+        Err(JobError::QueueCapacityExceeded { kind, cap, current }) => {
+            // Loud: capacity-bounded queues must not silently drop work. Markdown is on
+            // disk, but query/ask cannot see it until the queue drains and embedding is
+            // retried (out of band). Surface via tracing::error AND result_json so the
+            // CLI/MCP/web layer can see this without parsing log streams.
+            let msg = format!("embed queue at capacity: {current}/{cap} pending {kind} jobs");
+            tracing::error!(
+                queue = %kind,
+                cap,
+                current,
+                markdown_files = summary.markdown_files,
+                "crawl auto-embed deferred — {msg}; markdown on disk but unindexed"
+            );
+            Ok((None, Some(msg)))
+        }
+        Err(e) => {
+            tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
+            Ok((None, Some(format!("enqueue error: {e}"))))
+        }
+    }
 }
 
 /// Builds the canonical result JSON written to `axon_crawl_jobs.result_json`.

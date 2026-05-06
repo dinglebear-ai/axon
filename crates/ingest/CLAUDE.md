@@ -153,7 +153,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 | YouTube age-restricted / private videos | `yt-dlp` exits non-zero; error is a per-video skip warning in playlist mode, job failure in single-video mode. No friendly message. |
 | YouTube manual captions | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not requested. Videos with manual but no auto-generated captions will fail. |
 | GitHub file stream resilience | `flush_batch` errors are logged and counted (not propagated via `?`). A single TEI/Qdrant failure discards that batch and continues with remaining files. Batch timeout: 120s. |
-| Ingest job hang detection | Content-aware heartbeat kills stuck jobs after 10 min no progress (`STALE_STREAK_KILL_THRESHOLD = 20` × 30s in `crates/jobs/common/heartbeat.rs`). Job transitions to `failed` with reason logged. |
+| Ingest job hang detection | Per-job heartbeat (30s touch, `crates/jobs/lite/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `crates/jobs/lite/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
 
 ## yt-dlp Requirement
 

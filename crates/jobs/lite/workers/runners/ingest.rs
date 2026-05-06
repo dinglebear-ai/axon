@@ -32,6 +32,11 @@ pub async fn run_ingest_job_lite(
 
     let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id);
 
+    // The ingest service functions return `Box<dyn Error>` (not Send+Sync), so we
+    // can't easily wrap them in a generic helper. Each branch races its own
+    // source-specific future against the cancel token. Reddit consumes the token
+    // natively (mid-loop), the others are cooperatively canceled at this
+    // boundary — any in-flight HTTP request continues but its result is dropped.
     let result = match source {
         crate::crates::jobs::ingest::IngestSource::Github {
             repo,
@@ -43,15 +48,20 @@ pub async fn run_ingest_job_lite(
                 })?;
             let mut github_cfg = effective_cfg.clone();
             github_cfg.github_include_source = include_source;
-            crate::crates::services::ingest::ingest_github_with_progress(
+            let fut = crate::crates::services::ingest::ingest_github_with_progress(
                 &github_cfg,
                 &owner,
                 &repo_name,
                 None,
                 Some(progress_tx.clone()),
-            )
-            .await
-            .map_err(lift_err)?
+            );
+            match cancel_token.as_ref() {
+                Some(token) => tokio::select! {
+                    _ = token.cancelled() => return Err("ingest canceled".into()),
+                    r = fut => r.map_err(lift_err)?,
+                },
+                None => fut.await.map_err(lift_err)?,
+            }
         }
         crate::crates::jobs::ingest::IngestSource::Reddit { target } => {
             let options = cancel_token
@@ -69,14 +79,19 @@ pub async fn run_ingest_job_lite(
             .map_err(lift_err)?
         }
         crate::crates::jobs::ingest::IngestSource::Youtube { target } => {
-            crate::crates::services::ingest::ingest_youtube_with_progress(
+            let fut = crate::crates::services::ingest::ingest_youtube_with_progress(
                 &effective_cfg,
                 &target,
                 None,
                 Some(progress_tx.clone()),
-            )
-            .await
-            .map_err(lift_err)?
+            );
+            match cancel_token.as_ref() {
+                Some(token) => tokio::select! {
+                    _ = token.cancelled() => return Err("ingest canceled".into()),
+                    r = fut => r.map_err(lift_err)?,
+                },
+                None => fut.await.map_err(lift_err)?,
+            }
         }
         crate::crates::jobs::ingest::IngestSource::Sessions {
             sessions_claude,
@@ -89,13 +104,18 @@ pub async fn run_ingest_job_lite(
             sessions_cfg.sessions_codex = sessions_codex;
             sessions_cfg.sessions_gemini = sessions_gemini;
             sessions_cfg.sessions_project = sessions_project;
-            crate::crates::services::ingest::ingest_sessions_with_progress(
+            let fut = crate::crates::services::ingest::ingest_sessions_with_progress(
                 &sessions_cfg,
                 None,
                 Some(progress_tx.clone()),
-            )
-            .await
-            .map_err(lift_err)?
+            );
+            match cancel_token.as_ref() {
+                Some(token) => tokio::select! {
+                    _ = token.cancelled() => return Err("ingest canceled".into()),
+                    r = fut => r.map_err(lift_err)?,
+                },
+                None => fut.await.map_err(lift_err)?,
+            }
         }
     };
     drop(progress_tx);

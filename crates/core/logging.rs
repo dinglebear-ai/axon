@@ -1,10 +1,13 @@
+mod size_rotating;
+
 use chrono::Local;
 use console::Style;
+use size_rotating::SizeRotatingFile;
 use std::fmt;
 use std::io;
+use std::path::PathBuf;
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::{
     FmtContext, FormatEvent, FormatFields, FormattedFields, format::Writer,
 };
@@ -225,20 +228,36 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
         .with_writer(io::stderr)
         .with_filter(console_filter);
 
-    // ── Rolling file appender (guard MUST be held for the process lifetime) ──
-    let log_dir = std::env::var("AXON_LOG_DIR").unwrap_or_else(|_| {
-        super::paths::axon_data_dir()
-            .map(|d| format!("{}/axon/logs", d.display()))
-            .unwrap_or_else(|| "logs".to_string())
-    });
+    // ── Size-rotating file appender ──────────────────────────────────────────
+    //
+    // Active log file lives at `<dir>/<file_name>`. When it exceeds
+    // `AXON_LOG_MAX_BYTES` the writer renames `.{N-1}` → `.N` from the top
+    // down (oldest pruned), `<file>` → `<file>.1`, then reopens fresh.
+    //
+    // tracing_appender::non_blocking serialises writes through one worker
+    // thread, so the guard MUST be held for the process lifetime.
+    let log_dir: PathBuf = std::env::var("AXON_LOG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            super::paths::axon_data_dir()
+                .map(|d| d.join("axon").join("logs"))
+                .unwrap_or_else(|| PathBuf::from("logs"))
+        });
     std::fs::create_dir_all(&log_dir).ok();
 
-    let file_appender = RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix("axon")
-        .filename_suffix("log")
-        .max_log_files(7)
-        .build(&log_dir)
+    let log_file_name = std::env::var("AXON_LOG_FILE").unwrap_or_else(|_| "axon.log".to_string());
+
+    let max_bytes = std::env::var("AXON_LOG_MAX_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(10 * 1024 * 1024); // 10 MB
+
+    let max_files = std::env::var("AXON_LOG_MAX_FILES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(3);
+
+    let file_appender = SizeRotatingFile::new(log_dir, log_file_name, max_bytes, max_files)
         .expect("failed to create axon log file appender");
 
     let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);

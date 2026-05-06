@@ -212,13 +212,18 @@ Do **not** add new secret fields without extending this impl. The compiler will 
 | `axon serve` (unified web + MCP) | `127.0.0.1:49000` | Same MCP token policy applies. |
 | `axon-qdrant` (compose) | `127.0.0.1:53333`, `:53334` | Loopback in `config/docker-compose.services.yaml`. |
 | `axon-tei` (compose) | `127.0.0.1:52000` | Loopback. |
-| `axon-chrome` (compose) | `127.0.0.1:6000`, `:9222` | Loopback. |
+| `axon-chrome` (compose) | `127.0.0.1:6000`, `:9222`, `:9223` | Loopback. Ports: 6000 = `headless_browser` management API, 9222 = CDP proxy, 9223 = raw Chrome DevTools. **All three are unauthenticated control planes** and rely on the loopback bind for access control. |
 
 Hardening guidance:
 
-- Keep infra services loopback-bound. The compose file already does this.
+- Keep infra services loopback-bound. The compose file already does this; the `127.0.0.1:` prefix on every Chrome port mapping is intentional security posture, not a bug.
 - For the MCP server on a non-loopback host, set a long random `AXON_MCP_HTTP_TOKEN` (`openssl rand -hex 32`).
-- Never expose Qdrant or Chrome's CDP port to a network — both have unauthenticated control planes.
+- Never expose Qdrant or Chrome's CDP / management ports to a network. The upstream `headless_browser` and Chrome DevTools Protocol have **no built-in authentication** — anyone who can reach 6000/9222/9223 can run arbitrary JS, navigate to internal URLs, exfiltrate cookies from any origin Chrome has visited, and (via `Page.navigate` on `file://` URLs) read local files inside the container.
+
+Cross-host deployments (`crates/services/setup/deploy.rs` / `axon serve` setup wizard):
+
+- The setup wizard can write a non-loopback `chrome_remote_url` into `~/.axon/config.toml` for clients running on a different machine than `axon-chrome`. **If you do this, you own the auth boundary** — front the Chrome ports with an authenticated reverse proxy, an SSH tunnel, a WireGuard mesh, or equivalent. Axon does not add a token to the CDP/management endpoints because those endpoints are owned by upstream crates we do not control.
+- The defense-in-depth `validate_url()` SSRF guard still runs on every URL handed to Chrome via spider (`screenshot`, `extract`, `crawl`, `map`, `scrape`), so an attacker who tricks axon into asking Chrome to fetch `http://127.0.0.1:54321/admin` is blocked at the axon layer regardless of where Chrome is hosted.
 
 ---
 

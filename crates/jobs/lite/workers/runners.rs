@@ -176,4 +176,50 @@ mod tests {
         ));
         assert_eq!(legacy_effective.collection, "worker_collection");
     }
+
+    #[tokio::test]
+    async fn extract_runner_returns_canceled_when_token_pre_cancelled() {
+        use super::run_extract_job_lite;
+        use crate::crates::core::config::Config;
+        use crate::crates::jobs::backend::{JobKind, JobPayload};
+        use crate::crates::jobs::lite::ops::{claim_next_pending, enqueue_job};
+        use crate::crates::jobs::lite::store::open_sqlite_pool;
+        use tokio_util::sync::CancellationToken;
+
+        let pool = open_sqlite_pool(":memory:").await.expect("pool");
+        // Encode a urls list that would otherwise drive a real fetch — but the
+        // pre-cancelled token short-circuits the per-URL loop before any fetch.
+        let urls_json = serde_json::to_string(&vec!["https://example.invalid/"]).unwrap();
+        let id = enqueue_job(
+            &pool,
+            &JobPayload::Extract {
+                urls: vec!["https://example.invalid/".into()],
+                config_json: "{}".into(),
+            },
+        )
+        .await
+        .expect("enqueue");
+        // Sanity: enqueue persisted with the urls_json shape we expect.
+        let row: (String,) = sqlx::query_as("SELECT urls_json FROM axon_extract_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+        assert_eq!(row.0, urls_json);
+
+        claim_next_pending(&pool, JobKind::Extract)
+            .await
+            .expect("claim");
+
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let cfg = Config::default_lite();
+        let result = run_extract_job_lite(&pool, &cfg, id, Some(token)).await;
+        let err = result.expect_err("pre-cancelled token must short-circuit extract runner");
+        assert!(
+            err.to_string().contains("canceled"),
+            "expected 'canceled' in error, got: {err}"
+        );
+    }
 }

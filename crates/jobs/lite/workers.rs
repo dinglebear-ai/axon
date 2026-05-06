@@ -1,5 +1,8 @@
+mod heartbeat;
 mod progress;
 mod runners;
+
+use heartbeat::HeartbeatGuard;
 
 use runners::{
     JobResult, run_crawl_job_lite, run_embed_job_lite, run_extract_job_lite, run_ingest_job_lite,
@@ -120,6 +123,7 @@ pub fn spawn_workers(
         worker_handles.push(tokio::spawn(embed_worker(
             Arc::clone(&pool),
             Arc::clone(&cfg),
+            Arc::clone(&cancel_store),
             Arc::clone(&embed_notify),
             shutdown.clone(),
         )));
@@ -130,6 +134,7 @@ pub fn spawn_workers(
     worker_handles.push(tokio::spawn(extract_worker(
         Arc::clone(&pool),
         Arc::clone(&cfg),
+        Arc::clone(&cancel_store),
         Arc::clone(&extract_notify),
         shutdown.clone(),
     )));
@@ -151,6 +156,41 @@ pub fn spawn_workers(
         )));
     }
 
+    // Periodic watchdog: re-runs reclaim_stale_running_jobs every 60s while the
+    // process is alive. Pairs with the per-job HeartbeatGuard — heartbeat keeps
+    // updated_at fresh for live jobs; watchdog reclaims rows whose updated_at
+    // has gone stale (process died, runner panicked, etc.).
+    {
+        let pool = Arc::clone(&pool);
+        let cfg_for_watchdog = Arc::clone(&cfg);
+        let shutdown = shutdown.clone();
+        worker_handles.push(tokio::spawn(async move {
+            let stale_threshold_ms = (cfg_for_watchdog.watchdog_stale_timeout_secs
+                + cfg_for_watchdog.watchdog_confirm_secs)
+                .max(0)
+                * 1_000i64;
+            let mut ticker = tokio::time::interval(Duration::from_secs(60));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            // Skip immediate tick — startup-time reclaim already ran in LiteBackend::init.
+            ticker.tick().await;
+            loop {
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = ticker.tick() => {
+                        if let Err(e) = crate::crates::jobs::lite::store::reclaim_stale_running_jobs(
+                            &pool,
+                            stale_threshold_ms,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %e, "watchdog: periodic reclaim failed");
+                        }
+                    }
+                }
+            }
+        }));
+    }
+
     WorkerHandles {
         crawl: crawl_notify,
         embed: embed_notify,
@@ -170,11 +210,12 @@ pub fn spawn_workers(
 async fn worker_loop<F, Fut>(
     pool: Arc<SqlitePool>,
     kind: JobKind,
+    cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
     run_job: F,
 ) where
-    F: Fn(Arc<SqlitePool>, uuid::Uuid) -> Fut + Send + 'static,
+    F: Fn(Arc<SqlitePool>, uuid::Uuid, CancellationToken) -> Fut + Send + 'static,
     Fut: Future<Output = JobResult> + Send,
 {
     loop {
@@ -189,7 +230,10 @@ async fn worker_loop<F, Fut>(
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
                 match claim_next_pending(&pool, kind).await {
                     Ok(Some(id)) => {
-                        let result = run_job(Arc::clone(&pool), id).await;
+                        let cancel_token = cancel_store.register(id);
+                        let _hb = HeartbeatGuard::spawn(Arc::clone(&pool), kind, id);
+                        let result = run_job(Arc::clone(&pool), id, cancel_token).await;
+                        cancel_store.remove(id);
                         processed += 1;
                         match result {
                             Ok(result_json) => {
@@ -240,42 +284,67 @@ async fn worker_loop<F, Fut>(
 async fn crawl_worker(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
-    _cancel_store: Arc<CancelStore>,
+    cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
     embed_notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    worker_loop(pool, JobKind::Crawl, notify, shutdown, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        let embed_notify = Arc::clone(&embed_notify);
-        async move { run_crawl_job_lite(&pool, &cfg, id, Some(embed_notify)).await }
-    })
+    worker_loop(
+        pool,
+        JobKind::Crawl,
+        cancel_store,
+        notify,
+        shutdown,
+        move |pool, id, token| {
+            let cfg = Arc::clone(&cfg);
+            let embed_notify = Arc::clone(&embed_notify);
+            async move {
+                run_crawl_job_lite(&pool, &cfg, id, Some(embed_notify), Some(token)).await
+            }
+        },
+    )
     .await;
 }
 
 async fn embed_worker(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
+    cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    worker_loop(pool, JobKind::Embed, notify, shutdown, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        async move { run_embed_job_lite(&pool, &cfg, id).await }
-    })
+    worker_loop(
+        pool,
+        JobKind::Embed,
+        cancel_store,
+        notify,
+        shutdown,
+        move |pool, id, token| {
+            let cfg = Arc::clone(&cfg);
+            async move { run_embed_job_lite(&pool, &cfg, id, Some(token)).await }
+        },
+    )
     .await;
 }
 
 async fn extract_worker(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
+    cancel_store: Arc<CancelStore>,
     notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    worker_loop(pool, JobKind::Extract, notify, shutdown, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        async move { run_extract_job_lite(&pool, &cfg, id).await }
-    })
+    worker_loop(
+        pool,
+        JobKind::Extract,
+        cancel_store,
+        notify,
+        shutdown,
+        move |pool, id, token| {
+            let cfg = Arc::clone(&cfg);
+            async move { run_extract_job_lite(&pool, &cfg, id, Some(token)).await }
+        },
+    )
     .await;
 }
 
@@ -286,16 +355,17 @@ async fn ingest_worker(
     notify: Arc<Notify>,
     shutdown: CancellationToken,
 ) {
-    worker_loop(pool, JobKind::Ingest, notify, shutdown, move |pool, id| {
-        let cfg = Arc::clone(&cfg);
-        let cancel_store = Arc::clone(&cancel_store);
-        async move {
-            let cancel_token = cancel_store.register(id);
-            let result = run_ingest_job_lite(&pool, &cfg, id, Some(cancel_token)).await;
-            cancel_store.remove(id);
-            result
-        }
-    })
+    worker_loop(
+        pool,
+        JobKind::Ingest,
+        cancel_store,
+        notify,
+        shutdown,
+        move |pool, id, token| {
+            let cfg = Arc::clone(&cfg);
+            async move { run_ingest_job_lite(&pool, &cfg, id, Some(token)).await }
+        },
+    )
     .await;
 }
 
