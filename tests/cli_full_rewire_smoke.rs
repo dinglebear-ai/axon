@@ -143,7 +143,10 @@ fn smoke_map_map_payload_wraps_value() {
         "urls": ["https://docs.example.com/page1"]
     });
     let result: MapResult = parse_map_result(payload).expect("valid map payload");
-    assert_eq!(result.mapped_urls, 42);
+    assert_eq!(result.returned_url_count, 42);
+    // wire JSON key remains `mapped_urls` for backward compat
+    let v = serde_json::to_value(&result).unwrap();
+    assert!(v.get("mapped_urls").is_some());
 }
 
 // ── services::search ──────────────────────────────────────────────────────────

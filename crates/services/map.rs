@@ -64,7 +64,7 @@ pub async fn discover(
 
     Ok(MapResult {
         url: url.to_string(),
-        mapped_urls: mapped_count,
+        returned_url_count: mapped_count,
         total,
         sitemap_urls: result.sitemap_urls,
         pages_seen,
@@ -112,7 +112,7 @@ mod tests {
         });
         let result = parse_map_result(v).unwrap();
         assert_eq!(result.url, "https://example.com");
-        assert_eq!(result.mapped_urls, 3);
+        assert_eq!(result.returned_url_count, 3);
         assert_eq!(result.sitemap_urls, 3);
         assert_eq!(result.pages_seen, 2);
         assert_eq!(result.thin_pages, 0);
@@ -218,14 +218,14 @@ mod tests {
         });
         let result = parse_map_result(v).unwrap();
         assert!(result.urls.is_empty());
-        assert_eq!(result.mapped_urls, 0);
+        assert_eq!(result.returned_url_count, 0);
     }
 
     #[test]
     fn parse_map_result_round_trips_via_serde() {
         let original = crate::crates::services::types::MapResult {
             url: "https://example.com".to_string(),
-            mapped_urls: 2,
+            returned_url_count: 2,
             total: 10,
             sitemap_urls: 5,
             pages_seen: 1,

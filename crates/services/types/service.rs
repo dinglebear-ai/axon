@@ -380,8 +380,13 @@ pub struct ScrapeResult {
 pub struct MapResult {
     /// The start URL that was mapped.
     pub url: String,
-    /// Total distinct URLs discovered (equals `urls.len()`).
-    pub mapped_urls: u64,
+    /// Number of URLs returned in this page slice (equals `urls.len()`).
+    ///
+    /// This is the post-pagination count. For the pre-pagination total
+    /// across all discovered URLs, use [`MapResult::total`]. The wire JSON
+    /// key remains `mapped_urls` for backward compatibility.
+    #[serde(rename = "mapped_urls")]
+    pub returned_url_count: u64,
     /// Pre-pagination total URL count (all discovered URLs before offset/limit).
     ///
     /// CLI callers always pass `limit=0, offset=0`, so `total == mapped_urls` there.

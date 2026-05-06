@@ -54,7 +54,7 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
 
     let pages_seen = result.pages_seen;
     let sitemap_urls = result.sitemap_urls;
-    let mapped_urls = result.mapped_urls;
+    let mapped_urls = result.returned_url_count;
     let thin_pages = result.thin_pages;
     let elapsed_ms = result.elapsed_ms;
     let map_source = result.map_source.as_str();

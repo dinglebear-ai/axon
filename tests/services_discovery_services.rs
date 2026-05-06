@@ -74,7 +74,7 @@ fn maps_map_payload_to_map_result() {
     });
     let result = parse_map_result(payload).expect("valid map payload");
     assert_eq!(result.url, "https://example.com");
-    assert_eq!(result.mapped_urls, 3);
+    assert_eq!(result.returned_url_count, 3);
     assert_eq!(result.sitemap_urls, 2);
     assert_eq!(result.pages_seen, 3);
     assert_eq!(result.urls.len(), 3);
@@ -115,7 +115,7 @@ fn maps_map_payload_with_empty_urls() {
         "urls": [],
     });
     let result = parse_map_result(payload).expect("valid map payload");
-    assert_eq!(result.mapped_urls, 0);
+    assert_eq!(result.returned_url_count, 0);
     assert!(result.urls.is_empty());
 }
 
