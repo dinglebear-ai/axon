@@ -8,6 +8,7 @@ use super::super::progress::spawn_crawl_progress_persister;
 use crate::crates::core::config::Config;
 use crate::crates::core::ui::{accent, symbol_for_status};
 use crate::crates::jobs::backend::{JobPayload, lift_err};
+use crate::crates::jobs::error::JobError;
 use crate::crates::jobs::lite::config_snapshot::{
     apply_lite_config_snapshot, lite_config_snapshot_json,
 };
@@ -57,7 +58,7 @@ pub async fn run_crawl_job_lite(
         tracing::warn!(job_id = %id, error = %e, "crawl progress persister task failed");
     }
 
-    let embed_job_id = if effective_cfg.embed && summary.markdown_files > 0 {
+    let (embed_job_id, embed_deferred) = if effective_cfg.embed && summary.markdown_files > 0 {
         let markdown_dir = job_output_dir
             .join("markdown")
             .to_string_lossy()
@@ -75,15 +76,30 @@ pub async fn run_crawl_job_lite(
                 if let Some(notify) = &embed_notify {
                     notify.notify_one();
                 }
-                Some(eid.to_string())
+                (Some(eid.to_string()), None)
+            }
+            Err(JobError::QueueCapacityExceeded { kind, cap, current }) => {
+                // Loud: capacity-bounded queues must not silently drop work. Markdown is on
+                // disk, but query/ask cannot see it until the queue drains and embedding is
+                // retried (out of band). Surface via tracing::error AND result_json so the
+                // CLI/MCP/web layer can see this without parsing log streams.
+                let msg = format!("embed queue at capacity: {current}/{cap} pending {kind} jobs");
+                tracing::error!(
+                    queue = %kind,
+                    cap,
+                    current,
+                    markdown_files = summary.markdown_files,
+                    "crawl auto-embed deferred — {msg}; markdown on disk but unindexed"
+                );
+                (None, Some(msg))
             }
             Err(e) => {
                 tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
-                None
+                (None, Some(format!("enqueue error: {e}")))
             }
         }
     } else {
-        None
+        (None, None)
     };
 
     if !effective_cfg.json_output && !effective_cfg.quiet {
@@ -101,6 +117,12 @@ pub async fn run_crawl_job_lite(
         );
         if let Some(embed_job_id) = &embed_job_id {
             eprintln!("  embed queued job={embed_job_id}");
+        } else if let Some(reason) = &embed_deferred {
+            eprintln!("  ⚠ embed DEFERRED: {reason}");
+            eprintln!(
+                "    markdown is on disk at {} but NOT yet indexed; query/ask will not see it.",
+                job_output_dir.join("markdown").display()
+            );
         } else if effective_cfg.embed {
             eprintln!("  embed skipped no markdown output");
         } else {
@@ -112,17 +134,22 @@ pub async fn run_crawl_job_lite(
         &url,
         &summary,
         embed_job_id.as_deref(),
+        embed_deferred.as_deref(),
     )))
 }
 
 /// Builds the canonical result JSON written to `axon_crawl_jobs.result_json`.
-/// Key set is locked by `crawl_result_json_canonical_key_set_is_exact`.
+/// Required keys are locked by `crawl_result_json_required_keys`. The optional
+/// `embed_deferred` key is only present when the embed enqueue was rejected
+/// (typically due to the embed queue cap) — its presence signals that markdown
+/// is on disk but not yet indexed.
 fn build_crawl_result_json(
     url: &str,
     summary: &crate::crates::crawl::engine::CrawlSummary,
     embed_job_id: Option<&str>,
+    embed_deferred: Option<&str>,
 ) -> serde_json::Value {
-    serde_json::json!({
+    let mut value = serde_json::json!({
         "url": url,
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
@@ -132,7 +159,14 @@ fn build_crawl_result_json(
         "waf_blocked_pages": summary.waf_blocked_pages,
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
-    })
+    });
+    if let (Some(reason), Some(obj)) = (embed_deferred, value.as_object_mut()) {
+        obj.insert(
+            "embed_deferred".to_string(),
+            serde_json::Value::String(reason.to_string()),
+        );
+    }
+    value
 }
 
 fn format_elapsed_ms(elapsed_ms: u128) -> String {
@@ -163,8 +197,12 @@ mod tests {
 
     #[test]
     fn crawl_result_json_uses_canonical_keys() {
-        let json =
-            build_crawl_result_json("https://example.com", &make_summary(), Some("embed-job-id"));
+        let json = build_crawl_result_json(
+            "https://example.com",
+            &make_summary(),
+            Some("embed-job-id"),
+            None,
+        );
         let obj = json.as_object().expect("json is an object");
 
         // Canonical keys are present
@@ -193,7 +231,7 @@ mod tests {
 
     #[test]
     fn crawl_result_json_omits_legacy_aliases() {
-        let json = build_crawl_result_json("https://example.com", &make_summary(), None);
+        let json = build_crawl_result_json("https://example.com", &make_summary(), None, None);
         let obj = json.as_object().expect("json is an object");
 
         // Legacy aliases removed (axon_rust-pkl.8)
@@ -208,29 +246,42 @@ mod tests {
     }
 
     #[test]
-    fn crawl_result_json_canonical_key_set_is_exact() {
-        let json = build_crawl_result_json("https://example.com", &make_summary(), None);
-        let mut keys: Vec<&str> = json
-            .as_object()
-            .expect("json is an object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        keys.sort();
-        let expected = vec![
-            "elapsed_ms",
-            "embed_job_id",
-            "error_pages",
-            "md_created",
+    fn crawl_result_json_required_keys() {
+        let json = build_crawl_result_json("https://example.com", &make_summary(), None, None);
+        let obj = json.as_object().expect("json is an object");
+        for key in [
+            "url",
             "pages_crawled",
+            "md_created",
             "pages_discovered",
             "thin_md",
-            "url",
+            "error_pages",
             "waf_blocked_pages",
-        ];
+            "elapsed_ms",
+            "embed_job_id",
+        ] {
+            assert!(obj.contains_key(key), "required key missing: {key}");
+        }
+        assert!(
+            !obj.contains_key("embed_deferred"),
+            "embed_deferred must be absent when embed was not deferred"
+        );
+    }
+
+    #[test]
+    fn crawl_result_json_includes_embed_deferred_when_capacity_exceeded() {
+        let json = build_crawl_result_json(
+            "https://example.com",
+            &make_summary(),
+            None,
+            Some("embed queue at capacity: 50/50 pending embed jobs"),
+        );
+        let obj = json.as_object().expect("json is an object");
+        assert_eq!(obj.get("embed_job_id").and_then(|v| v.as_str()), None);
         assert_eq!(
-            keys, expected,
-            "canonical crawl result key set drift detected"
+            obj.get("embed_deferred").and_then(|v| v.as_str()),
+            Some("embed queue at capacity: 50/50 pending embed jobs"),
+            "capacity-deferred embed must surface a reason in result_json"
         );
     }
 }
