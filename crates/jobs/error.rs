@@ -18,6 +18,20 @@ pub enum JobError {
     /// Operation exceeded its timeout.
     #[error("operation timed out")]
     Timeout,
+    /// New job submission rejected because the per-queue pending cap was reached.
+    ///
+    /// `kind` is the human-readable queue name (e.g. `"crawl"`, `"embed"`).
+    /// `current` is the count of pending jobs at the time of the check.
+    /// `cap` is the configured cap (always > 0; cap=0 means unlimited and never rejects).
+    #[error(
+        "{kind} queue is at capacity ({current} pending jobs, max {cap}); \
+         wait for workers to drain or raise the queue cap env var"
+    )]
+    QueueCapacityExceeded {
+        kind: &'static str,
+        cap: u64,
+        current: u64,
+    },
     /// Catch-all for unstructured errors during migration.
     #[error("{0}")]
     Other(String),
