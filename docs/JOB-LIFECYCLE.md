@@ -1,19 +1,20 @@
 # Job Lifecycle
-Last Modified: 2026-02-25
+Last Modified: 2026-05-06
 
-Version: 1.0.0
-Last Updated: 01:26:53 | 02/25/2026 EST
+The async-job state machine for axon. Lite-mode-only — SQLite persistence and in-process tokio workers; there is no message broker, no Postgres, no Redis.
+
+For module layout, helper-function index, and the `JobBackend` / `ServiceJobRuntime` distinction, see [`crates/jobs/CLAUDE.md`](../crates/jobs/CLAUDE.md) and [`crates/services/CLAUDE.md`](../crates/services/CLAUDE.md).
 
 ## Table of Contents
 
 1. Scope
-2. Job Families
+2. Job Kinds and Tables
 3. State Machine
 4. Enqueue Flow
 5. Claim and Execute Flow
 6. Cancellation Model
-7. Watchdog and Stale Recovery
-8. Worker Lane Runtime
+7. Stale-Job Recovery
+8. Worker Runtime
 9. Data Model
 10. Operational Commands
 11. Failure Modes
@@ -21,272 +22,334 @@ Last Updated: 01:26:53 | 02/25/2026 EST
 
 ## Scope
 
-This document defines lifecycle behavior for async jobs across:
+Four async job families are persisted in SQLite and processed by in-process workers spawned by `LiteBackend::new_with_workers`:
 
-- Crawl
-- Extract
-- Embed
-- Graph
-- Ingest (`github`, `reddit`, `youtube`, `sessions`)
-- Refresh (schedule-triggered or manual URL re-checking)
-- Watch (top-level recurring scheduler definitions and run history)
+- **Crawl** — site/URL crawling (`crates/jobs/lite/workers/runners/crawl.rs`)
+- **Extract** — LLM structured extraction (`crates/jobs/lite/workers/runners/extract.rs`)
+- **Embed** — TEI embedding + Qdrant upsert (`crates/jobs/lite/workers/runners/embed.rs`)
+- **Ingest** — GitHub / Reddit / YouTube / sessions (`crates/jobs/lite/workers/runners/ingest.rs`)
 
-## Job Families
+Refresh and graph jobs were removed when full mode was retired. The migration `0001_create_tables.sql` still creates `axon_refresh_jobs` and `axon_graph_jobs` for historical compatibility, but no `JobKind`, runner, or service code references those tables.
 
-| Family | Table | Queue env var | Primary start path |
-|---|---|---|---|
-| Crawl | `axon_crawl_jobs` | `AXON_CRAWL_QUEUE` | `start_crawl_job`, `start_crawl_jobs_batch` |
-| Extract | `axon_extract_jobs` | `AXON_EXTRACT_QUEUE` | `start_extract_job_with_pool` |
-| Embed | `axon_embed_jobs` | `AXON_EMBED_QUEUE` | `start_embed_job_with_pool` |
-| Graph | `axon_graph_jobs` | `AXON_GRAPH_QUEUE` | `enqueue_graph_job`, `graph_build` |
-| Ingest | `axon_ingest_jobs` | `AXON_INGEST_QUEUE` | `start_ingest_job` (`sessions` uses same ingest table and queue) |
-| Refresh | `axon_refresh_jobs` | `AXON_REFRESH_QUEUE` | `start_refresh_job` (schedule-triggered), `run_refresh_once` (manual/`--wait true`) |
-| Watch | `axon_watch_defs`, `axon_watch_runs` | N/A (direct DB poll loop) | `run_watch_scheduler_tick`, `run_watch_worker` |
+Watch (recurring scheduler) is **not** part of `JobBackend`/`JobKind`. It is a separate SQLite-backed scheduler in `crates/jobs/watch_lite.rs` whose CRUD shim lives in `crates/services/watch.rs`. It dispatches into the four queues above when a watch fires.
+
+## Job Kinds and Tables
+
+`JobKind` (`crates/jobs/backend.rs:20-40`) enumerates exactly four variants. There is one SQLite table per kind:
+
+| `JobKind` | SQL table | Type-specific column(s) | Queue cap env var | Default cap |
+|-----------|-----------|-------------------------|-------------------|-------------|
+| `Crawl`   | `axon_crawl_jobs`   | `url TEXT`                              | `AXON_MAX_PENDING_CRAWL_JOBS`   | 100 |
+| `Embed`   | `axon_embed_jobs`   | `input_text TEXT`                       | `AXON_MAX_PENDING_EMBED_JOBS`   | 50  |
+| `Extract` | `axon_extract_jobs` | `urls_json TEXT` (JSON array)           | `AXON_MAX_PENDING_EXTRACT_JOBS` | 50  |
+| `Ingest`  | `axon_ingest_jobs`  | `target TEXT`, `source_type TEXT`       | `AXON_MAX_PENDING_INGEST_JOBS`  | 50  |
+
+`JobKind::table_name()` is the single source of truth for table names — never hardcode `"axon_*_jobs"` strings outside `enqueue.rs` (which interpolates compile-time `&'static str` literals; see safety note in `crates/jobs/lite/ops/enqueue.rs:55-64`).
+
+`JobPayload` (`crates/jobs/backend.rs:43-62`) carries the per-kind body submitted to `enqueue`:
+
+- `Crawl { url, config_json }`
+- `Embed { input, config_json }`
+- `Extract { urls: Vec<String>, config_json }`
+- `Ingest { target, source_type, config_json }`
+
+`config_json` is a worker-side configuration snapshot produced by `lite_config_snapshot_json()` (`crates/jobs/lite/config_snapshot.rs`), so each job replays the submitter's non-secret config knobs irrespective of the worker's local environment.
 
 ## State Machine
 
-Statuses are defined in `crates/jobs/status.rs`:
+Five statuses, defined in `JobStatus` (`crates/jobs/status.rs:26-32`) and enforced by a SQL CHECK constraint (migration `0003_add_status_checks.sql`):
 
-- `pending`
-- `running`
-- `completed`
-- `failed`
-- `canceled`
+```
+pending → running → { completed | failed | canceled }
+pending → canceled                  (cancel before claim)
+running → pending                   (stale-job reclaim only)
+```
 
 ```mermaid
 stateDiagram-v2
     [*] --> pending
-    pending --> running: claim
-    running --> completed: success
-    running --> failed: runtime error
-    running --> canceled: cancel request observed
-    pending --> canceled: early cancel
+    pending --> running: claim_next_pending (BEGIN IMMEDIATE)
+    pending --> canceled: cancel_row (early cancel)
+    running --> completed: mark_completed
+    running --> failed: mark_failed
+    running --> canceled: cancel_row (late cancel)
+    running --> pending: reclaim_stale_running_jobs (watchdog)
 ```
+
+`JobStatus::from_str` falls back to `JobStatus::Failed` on unknown DB values and emits a `tracing::warn!` (`crates/jobs/status.rs:55-69`) — corrupt status strings never crash the runtime.
+
+### Column transitions
+
+Every `axon_*_jobs` row carries the same lifecycle columns. The transitions are:
+
+| Transition           | SQL written                                                                                          | Where                                                  |
+|----------------------|------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| insert (pending)     | `status='pending'`, `created_at=now`, `updated_at=now`                                               | `enqueue_job` (`lite/ops/enqueue.rs`)                  |
+| claim (→running)     | `status='running'`, `started_at=now`, `updated_at=now` *(guarded by `WHERE status='pending'`)*       | `claim_next_pending_inner` (`lite/ops/lifecycle.rs`)   |
+| live progress        | `result_json=…`, `updated_at=now` *(no status change)*                                               | `update_result_json` (`lite/ops/lifecycle.rs`)         |
+| complete             | `status='completed'`, `finished_at=now`, `updated_at=now`, `result_json=…` *(if provided)*           | `mark_completed_inner` (`lite/ops/lifecycle.rs`)       |
+| fail                 | `status='failed'`, `finished_at=now`, `updated_at=now`, `error_text=…`                               | `mark_failed_inner` (`lite/ops/lifecycle.rs`)          |
+| cancel               | `status='canceled'`, `finished_at=now`, `updated_at=now` *(guarded by `WHERE status IN ('pending','running')`)* | `cancel_row` (`lite/ops/lifecycle.rs`)                 |
+| stale reclaim        | `status='pending'`, `error_text='reclaimed after unexpected shutdown'`, `updated_at=now` *(guarded by `WHERE status='running' AND updated_at<threshold`)* | `reclaim_stale_running_jobs_for_table` (`lite/store.rs`) |
+
+`mark_completed` and `mark_failed` use `WHERE status='running'` so a row that was canceled mid-execution stays in `canceled` — the worker's terminal write is logged as a warning and silently dropped (`lite/ops/lifecycle.rs:138-145`, `200-207`).
 
 ## Enqueue Flow
 
-1. Command validates input and builds `config_json`.
-2. Job row is inserted in SQLite as `pending`.
-3. In-process worker picks up the job.
-4. Worker claims and executes.
+`LiteBackend::enqueue` (`crates/jobs/lite.rs:124-134`):
 
-Important rule:
+1. `JobPayload::kind()` selects the target table.
+2. `enqueue_job()` checks the per-kind queue cap via `check_pending_cap_for()` (`lite/ops/enqueue.rs:65-87`).
+   - `cap == 0` → unlimited; check is skipped.
+   - `cap > 0` and `pending_count >= cap` → returns `JobError::QueueCapacityExceeded { kind, cap, current }`.
+   - The cap value is parsed once at process start with `LazyLock` and `parse_cap_env`. A non-numeric env value logs `tracing::warn!` and falls back to the default.
+3. Insert row with `status='pending'`, fresh UUID, `created_at`/`updated_at = now_ms()`.
+4. Returns the new `JobId` (`Uuid`).
+5. If the backend has workers (`new_with_workers` mode), `WorkerHandles::notify(kind)` fires the per-kind `Notify` so the lane wakes immediately instead of waiting for the next 5 s poll.
 
-- Database is source of truth for job state.
+The auto-embed handoff inside the crawl runner (`runners/crawl.rs:61-103`) also flows through `enqueue_job`, so the embed cap applies even to internally-chained jobs. When the embed cap rejects the chain, the crawl result JSON includes `"embed_deferred"` with a human-readable reason and the markdown is left on disk unindexed.
 
 ## Claim and Execute Flow
 
-Claim uses atomic SQL in `claim_next_pending` / `claim_pending_by_id` (`FOR UPDATE SKIP LOCKED`):
+The single claim primitive — used by every worker lane — is `claim_next_pending` (`crates/jobs/lite/ops/lifecycle.rs:15-88`):
 
-- `pending -> running`
-- `started_at` set on first claim
-- `updated_at` touched
+1. Acquire a SQLite connection from the pool.
+2. `BEGIN IMMEDIATE` — under WAL this acquires the write lock up front, serializing concurrent claims atomically and removing the SELECT/UPDATE TOCTOU window between lanes.
+3. `SELECT id FROM <table> WHERE status='pending' ORDER BY created_at LIMIT 1`.
+4. `UPDATE … SET status='running', started_at=?, updated_at=? WHERE id=? AND status='pending'`. The `AND status='pending'` predicate is the second-line defence — if a different lane somehow claimed it first the update affects 0 rows and the call returns `Ok(None)`.
+5. `COMMIT` (or `ROLLBACK` on any error).
 
-Execution then updates terminal state:
+Lock-contention errors (`database is locked`, `database table is locked`) are swallowed by `retry_busy` (`lite/ops/retry.rs`) up to 5 attempts with exponential backoff starting at 25 ms.
 
-- success -> `completed`, `finished_at`, `result_json`
-- failure -> `failed`, `finished_at`, `error_text`
-- cancellation -> `canceled` (implementation depends on family)
+Once a worker holds an `Uuid`, `worker_loop` (`crates/jobs/lite/workers.rs:170-238`) drives the per-kind runner:
+
+- **Ok(`Some(result_json)`)** → `mark_completed(pool, kind, id, result_json)`.
+- **Ok(`None`)** → `mark_completed(pool, kind, id, None)`. Returned when the row was deleted between claim and execute (e.g. `axon … clear` mid-run); a warn is logged.
+- **Err(e)** → `mark_failed(pool, kind, id, &e.to_string())`.
+
+Any failure in `mark_completed`/`mark_failed` itself is logged at `error` level and leaves the row in `running` — the next stale-job sweep on process restart will repair it.
+
+A worker processes up to `WORKER_BATCH_LIMIT = 32` jobs per wake before yielding (`workers.rs:36`, `188-235`); shutdown is checked between jobs and between batches.
+
+### Live progress writes
+
+Long-running jobs persist progress through `update_result_json` without changing status:
+
+- **Crawl** uses `spawn_crawl_progress_persister` (`workers/progress.rs:9-28`). The crawl engine sends `CrawlSummary` on a 32-slot mpsc channel; the persister updates `result_json` after each message.
+- **Embed** uses `spawn_embed_progress_persister` (`workers/progress.rs:30-48`) keyed off `EmbedProgress` from `vector::ops::tei`.
+- **Extract** and **ingest** runners write progress directly via `update_result_json` from inside their bodies.
+
+Because progress writes update `updated_at`, they double as a heartbeat that prevents the watchdog from flagging an actively-progressing job as stale.
 
 ## Cancellation Model
 
-Cancellation is dual channel:
+Cancellation is **in-process only** (lite mode is single-process by design — see `crates/jobs/lite/cancel.rs:9-12`). There is no Redis flag and no cross-process polling.
 
-- DB status mutation to `canceled`
-- Redis cancellation flag (`axon:<type>:cancel:<job_id>`) with TTL
+`CancelStore` (`crates/jobs/lite/cancel.rs`) is a `DashMap<Uuid, CancellationToken>`. Two paths of consumption:
 
-Behavior:
+1. **DB row update** — `cancel_row` flips `status` to `canceled` (gated `WHERE status IN ('pending','running')`).
+2. **In-memory token** — runners that registered a token via `cancel_store.register(id)` observe `token.is_cancelled()` mid-execution and abort cleanly.
 
-- Crawl workers poll cancellation key periodically during processing.
-- Extract and embed workers check cancellation key before expensive work.
-- Redis failures do not block DB update.
+Today only the **ingest** runner registers a cancel token (`lite/workers.rs:282-300`). The other runners observe cancellation only via the next DB read or via process exit; an already-running crawl/extract/embed job runs to completion (the `cancel_row` SQL will mark the row `canceled` immediately, but the runner's `mark_completed`/`mark_failed` write is then dropped by the `WHERE status='running'` guard).
 
-## Watchdog and Stale Recovery
+`CancelStore::cancel(id, pool, kind)` performs both writes and returns `true` when the row update affected at least one row.
 
-Stale reclaim is implemented in `crates/jobs/common/watchdog.rs` with two-pass confirmation:
+## Stale-Job Recovery
 
-1. Pass 1: stale `running` rows are marked with `_watchdog` metadata in `result_json`.
-2. Pass 2: if same `updated_at` remains stale after `confirm_secs`, row is failed with watchdog error text.
+axon detects dead workers by tracking `updated_at` on `running` rows. Reclaim is **startup-only** plus an explicit subcommand — there is **no periodic background watchdog** today.
 
-Controls:
+### Startup sweep
 
-- `AXON_JOB_STALE_TIMEOUT_SECS`
-- `AXON_JOB_STALE_CONFIRM_SECS`
+`LiteBackend::init` (`crates/jobs/lite.rs:34-43`) runs on every `LiteBackend::new` / `new_with_workers` boot:
 
-Recovery paths:
+```rust
+let stale_threshold_ms =
+    (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000;
+store::reclaim_stale_running_jobs(&pool, stale_threshold_ms).await?;
+store::reclaim_stale_watch_leases(&pool).await?;
+```
 
-- Automatic periodic sweeps in worker lanes.
-- Manual recovery commands (`axon <family> recover`).
+`reclaim_stale_running_jobs` iterates `JobKind::all()` and for each table runs:
 
-## Worker Lane Runtime
+```sql
+UPDATE <table>
+   SET status='pending',
+       error_text='reclaimed after unexpected shutdown',
+       updated_at=?
+ WHERE status='running'
+   AND updated_at < (now_ms - stale_threshold_ms);
+```
 
-Generic lane runtime (`crates/jobs/worker_lane.rs`):
+(`crates/jobs/lite/store.rs:90-130`.)
 
-- Opens AMQP channel and applies `basic_qos(1)`.
-- Uses semaphore + futures set for bounded concurrency.
-- Acks after successful claim.
-- Nacks with requeue on claim DB error.
-- Falls back to polling if AMQP unavailable.
-- Runs stale sweeps on interval.
+Reclaimed jobs go back to `pending` so the next claim cycle picks them up. The previous `error_text` is overwritten with the marker string. `started_at` and `finished_at` are not touched.
 
-Polling mode:
+The same function powers `axon … recover`, which `ServiceJobRuntime::recover_jobs` (`crates/services/runtime.rs:239-248`) wires through to `reclaim_stale_running_jobs_for_table` for a single kind.
 
-- Exponential backoff between empty polls.
-- Still uses same claim path and semaphore gating.
+### Threshold knobs
+
+| Env var                          | Field                          | Default | Floor |
+|----------------------------------|--------------------------------|---------|-------|
+| `AXON_JOB_STALE_TIMEOUT_SECS`    | `watchdog_stale_timeout_secs`  | 300     | 30    |
+| `AXON_JOB_STALE_CONFIRM_SECS`    | `watchdog_confirm_secs`        | 60      | 10    |
+
+Effective threshold = `(timeout + confirm) * 1_000` ms (default **360 s**). Floors are applied in `crates/core/config/parse/build_config.rs:447-448` to prevent dangerously short windows from being configured.
+
+### Crash semantics
+
+If a process dies mid-job:
+
+1. The `running` row's `updated_at` stops advancing.
+2. After 360 s (default), the **next** boot sweeps it back to `pending`.
+3. A worker re-claims it on next poll.
+
+There is no two-pass `_watchdog` confirmation marker today — the single timeout/confirm sum is the only window. Any caller that needs continuous reclaim during a long-lived process must explicitly invoke `axon <kind> recover` (or call `recover_jobs` through the service runtime).
+
+### Watch leases
+
+`reclaim_stale_watch_leases` (`store.rs:136-145`) clears `lease_expires_at` on `axon_watch_defs` rows whose lease has already expired, so the watch scheduler in `crates/jobs/watch_lite.rs` can re-acquire them on the next tick.
+
+## Worker Runtime
+
+In-process workers live entirely in `crates/jobs/lite/workers.rs` plus the runner modules under `lite/workers/runners/`. Spawned only by `LiteBackend::new_with_workers`; never by `LiteBackend::new`.
+
+```
+spawn_workers (workers.rs:79)
+├─ crawl_worker        (1 lane — spider futures are !Send)
+├─ embed_worker        (N lanes; AXON_EMBED_LANES; CPU-scaled default 2..=32)
+├─ extract_worker      (1 lane)
+└─ ingest_worker       (N lanes; AXON_INGEST_LANES; CPU-scaled default 2..=16)
+```
+
+Lane count is resolved by `resolve_lane_count(env, cpu_min, cpu_max)` (`workers.rs:23-33`): env wins; otherwise `available_parallelism()` clamped to `[cpu_min, cpu_max]`.
+
+Each lane runs `worker_loop` (`workers.rs:170-238`):
+
+```text
+loop {
+    select! {
+        notify.notified() | sleep(POLL_INTERVAL=5s) | shutdown.cancelled()
+    }
+    while processed < 32 && !shutdown {
+        match claim_next_pending() {
+            Some(id) => { run_job(id); mark_completed/mark_failed; processed += 1 }
+            None => break,
+            Err  => break (logged),
+        }
+    }
+}
+```
+
+- All lanes for a kind share the same `Arc<Notify>`. `notify_one()` wakes exactly one waiting lane; SQLite `BEGIN IMMEDIATE` serializes claim attempts, so no semaphore is needed.
+- Crawl is forced to a single lane because spider's chrome futures are `!Send` and cannot be moved between tokio worker threads.
+- After auto-enqueueing an embed job, the crawl runner pings `embed_notify` so the embed lane wakes without waiting for the 5 s poll.
+- `Drop` for `WorkerHandles` cancels the shutdown token and `notify_waiters()` on every lane — joining the worker tasks is graceful: a lane finishes its current job (terminal mark included) before exiting.
+
+`AXON_JOB_WAIT_TIMEOUT_SECS` (default 300 s) bounds `JobBackend::wait_for_job`, used by CLI commands invoked with `--wait true`.
 
 ## Data Model
 
-Schema is auto-created at runtime by `ensure_schema()` in each `crates/jobs/*_jobs.rs` file — read those files for canonical column lists. Summary:
+Schema is created by sqlx migrations under `crates/jobs/lite/migrations/`:
 
-- Shared fields: `id`, `status`, timestamps, `error_text`, `result_json`, `config_json`
-- Crawl-specific: `url`
-- Extract-specific: `urls_json`
-- Embed-specific: `input_text`
-- Graph-specific: `url`, `chunk_count`, `entity_count`, `relation_count`
-- Ingest-specific: `source_type`, `target`
-- Refresh-specific: `urls_json` (array of URLs to re-check)
-- Refresh targets: `axon_refresh_targets` (per-URL ETag/hash state, separate table)
-- Refresh schedules: `axon_refresh_schedules` (recurring schedule definitions, separate table)
-- Watch definitions: `axon_watch_defs` (generic scheduler definitions)
-- Watch runs: `axon_watch_runs` (run status/history and dispatched job references)
-- Watch artifacts: `axon_watch_run_artifacts` (optional run artifact pointers)
+- `0001_create_tables.sql` — creates the four active tables plus the legacy-but-unused `axon_refresh_jobs` and `axon_graph_jobs` tables.
+- `0002_create_watch_tables.sql` — `axon_watch_defs`, `axon_watch_runs`, `axon_watch_run_artifacts` (used by `watch_lite.rs`).
+- `0003_add_status_checks.sql` — adds the `status IN (...)` CHECK constraint to every job table.
+
+Common columns on every active job table:
+
+```
+id          TEXT PRIMARY KEY            -- UUIDv4
+status      TEXT NOT NULL DEFAULT 'pending'
+config_json TEXT NOT NULL DEFAULT '{}'
+result_json TEXT                          -- live progress + final summary
+error_text  TEXT                          -- failure reason / reclaim marker
+created_at  INTEGER NOT NULL              -- unix millis
+updated_at  INTEGER NOT NULL              -- bumped on every mutation
+started_at  INTEGER                       -- set on claim
+finished_at INTEGER                       -- set on terminal mark
+```
+
+Plus an `idx_<kind>_status` index on `status` (used by `claim_next_pending` and the cap query).
+
+Per-kind columns:
+
+| Table              | Extra columns                              |
+|--------------------|--------------------------------------------|
+| `axon_crawl_jobs`  | `url TEXT NOT NULL DEFAULT ''`             |
+| `axon_embed_jobs`  | `input_text TEXT NOT NULL DEFAULT ''`      |
+| `axon_extract_jobs`| `urls_json TEXT NOT NULL DEFAULT '[]'`     |
+| `axon_ingest_jobs` | `source_type TEXT NOT NULL DEFAULT ''`, `target TEXT NOT NULL DEFAULT ''` |
+
+`SqliteConnectOptions` set in `open_sqlite_pool` (`store.rs:43-53`):
+
+- `journal_mode = WAL`
+- `busy_timeout = 5000`
+- `foreign_keys = ON`
+- pool: `max_connections = 8`, `acquire_timeout = 30s`
+
+The DB file is pre-created at mode `0o600` with `O_NOFOLLOW` to close the TOCTOU window where it could be world-readable (`store.rs:28-41`).
 
 ## Operational Commands
 
-Crawl/extract/embed support:
+Each kind exposes the same job-management subcommands. Invocation: `axon <kind> <subcommand>`.
 
-```bash
-axon <family> status <job_id>
-axon <family> cancel <job_id>
-axon <family> errors <job_id>
-axon <family> list
-axon <family> recover
-axon <family> cleanup
-axon <family> clear
-axon <family> worker
-```
+| Subcommand         | Service entry point                              | Effect |
+|--------------------|--------------------------------------------------|--------|
+| `status <id>`      | `ServiceJobRuntime::job_status`                  | Read row → `ServiceJob` |
+| `cancel <id>`      | `ServiceJobRuntime::cancel_job`                  | DB flip + in-memory token (where applicable) |
+| `errors <id>`      | `JobBackend::job_errors`                         | Read `error_text` |
+| `list`             | `lite_query::list_jobs` (paginated)              | Most-recent 500, summary view |
+| `cleanup`          | `lite_query::cleanup_jobs`                       | Delete `completed`/`failed` older than 24 h |
+| `clear`            | `lite_query::clear_jobs`                         | Delete every row in the table |
+| `recover`          | `ServiceJobRuntime::recover_jobs`                | Reclaim stale `running` rows for that kind |
+| `worker`           | `ServiceJobRuntime::run_worker`                  | In-process: drains the queue then exits |
 
-Graph commands:
+The four ingest source aliases (`axon github`, `axon reddit`, `axon youtube`, `axon sessions`) all route through `JobKind::Ingest` and share the `axon_ingest_jobs` table — the `source_type` column distinguishes them.
 
-```bash
-axon graph build [--url <url> | --domain <domain> | --all]
-axon graph status
-axon graph explore <entity>
-axon graph stats
-axon graph worker
-```
-
-Ingest aliases route through ingest lifecycle:
-
-```bash
-axon github status <job_id>
-axon reddit cancel <job_id>
-axon youtube list
-axon sessions list
-```
-
-## Refresh Job Lifecycle
-
-Refresh jobs re-check previously crawled URLs for content changes using HTTP conditional requests and content hashing. They can be triggered by schedules or created manually.
-
-### Creation
-
-- **Schedule-triggered**: The refresh worker periodically calls `claim_due_refresh_schedules()`, which atomically claims enabled schedules whose `next_run_at <= NOW()` using `FOR UPDATE SKIP LOCKED`. For each claimed schedule, a new refresh job is inserted as `pending` and enqueued to AMQP. The schedule's `next_run_at` is advanced by `SCHEDULE_CLAIM_LEASE_SECS` (300s) to prevent duplicate claims.
-- **Manual**: `axon refresh <urls...>` creates a job directly via `start_refresh_job()`. With `--wait true`, the job is claimed and processed inline via `run_refresh_once()`.
-
-### Processing
-
-1. Worker claims the job (`pending` -> `running`).
-2. A heartbeat task starts, touching `updated_at` every 15 seconds to prevent watchdog reclaim.
-3. Previous target state (ETag, Last-Modified, content hash) is loaded from `axon_refresh_targets` for all URLs in the job.
-4. Each URL is processed sequentially:
-   - HTTP request sent with `If-None-Match` (ETag) and `If-Modified-Since` headers when previous state exists.
-   - **304 Not Modified**: counted as `not_modified` + `unchanged`. No content fetched.
-   - **2xx with matching content hash**: counted as `unchanged`. Content was fetched but SHA-256 hash matches previous.
-   - **2xx with different hash**: counted as `changed`. Markdown is extracted, written to disk, manifest entry appended. If `embed = true`, content is embedded into Qdrant via `embed_prepared_docs()` with a `PreparedDoc`.
-   - **4xx/5xx**: counted as `failed`. Error text stored in `axon_refresh_targets`.
-   - **Network error**: counted as `failed`. Previous state preserved via COALESCE upsert.
-5. After each URL, `result_json` is updated with a `"phase": "refreshing"` progress snapshot containing running totals.
-6. Per-URL state (ETag, Last-Modified, content hash, last_status, last_checked_at, last_changed_at, error_text) is upserted into `axon_refresh_targets`.
-
-### Completion
-
-- Heartbeat task is stopped.
-- `result_json` is finalized with `"phase": "completed"` and full summary stats.
-- Job is marked `completed` (or `failed` if the completion update itself fails).
-- If schedule-triggered, `mark_refresh_schedule_ran()` updates `last_run_at` and sets `next_run_at` to the actual next interval.
-
-### Related tables
-
-- `axon_refresh_targets`: persists per-URL conditional request state across jobs. No foreign key to jobs — targets accumulate indefinitely.
-- `axon_refresh_schedules`: defines recurring refresh configurations. See `crates/jobs/*_jobs.rs` `ensure_schema()` for column details.
-
-## Watch Scheduler Lifecycle
-
-Top-level watch scheduling is handled by a dedicated poll loop (`run_watch_worker`) that repeatedly calls `run_watch_scheduler_tick`.
-
-### Claim and lease
-
-1. `claim_due_watches_with_pool` selects due rows from `axon_watch_defs` using `FOR UPDATE SKIP LOCKED`.
-2. Claimed rows receive a short lease via `lease_expires_at` to prevent duplicate dispatch.
-3. Claim order is oldest `next_run_at` first.
-
-### Dispatch and run history
-
-1. For each claimed watch, `create_watch_run_with_pool` inserts a `running` row in `axon_watch_runs`.
-2. Dispatcher routes by `task_type` (current implementation supports `refresh` task dispatch).
-3. Run row is completed via `mark_watch_run_finished_with_pool` with status + result/error payload.
-4. Definition row is advanced: `last_run_at = NOW()`, `next_run_at = NOW() + every_seconds`, and lease is cleared.
-
-### Refresh compatibility bridge
-
-`axon refresh schedule add/list` is now compatibility-backed by watch definitions (`task_type=refresh`). This preserves existing operator workflows while consolidating scheduler state in watch tables.
+`--wait true` on a submit command (`crawl`, `extract`, `embed`, `ingest`) constructs a `LiteBackend` with workers, enqueues the job, and polls `wait_for_job` until terminal — bounded by `AXON_JOB_WAIT_TIMEOUT_SECS`.
 
 ## Failure Modes
 
-| Job Type | Failure Mode | Symptom | Recovery |
-|----------|-------------|---------|----------|
-| All | Worker process crash (OOM, panic) | Job stuck in `running` | Watchdog reclaims after `AXON_JOB_STALE_TIMEOUT_SECS` + `AXON_JOB_STALE_CONFIRM_SECS` (default: 360s total) |
-| All | AMQP channel dies mid-job | Job stuck in `running`; AMQP lane reconnects with backoff | Watchdog reclaims stale job; worker resumes consuming on new channel |
-| All | Postgres connection pool exhausted | Worker hangs waiting for pool slot | Increase pool size; reduce concurrent workers/lanes |
-| All | Advisory lock timeout (5s) | Schema init returns error | Retry; investigate long-running migrations |
-| Crawl | spider.rs future panics | Job marked `failed` by crawl process error handler | Retry via `axon crawl recover` |
-| Graph | Neo4j not configured/reachable | Worker fails to start or jobs fail with Neo4j error text | Set `AXON_NEO4J_URL` + credentials; verify Neo4j HTTP endpoint and auth |
-| Refresh | HTTP timeout on all URLs | Job marked `failed` with per-URL error detail in `axon_refresh_targets` | Retry manually or wait for next schedule trigger |
-| Ingest | YouTube: yt-dlp not found | Job marked `failed` immediately | Install yt-dlp in the worker container |
-| Ingest | GitHub: token rate-limited | Job marked `failed` with 403 | Set `GITHUB_TOKEN` env var for higher rate limits |
-
-## Polling Fallback — Permanent Death Warning
-
-When AMQP is unavailable, workers fall back to Postgres polling. The polling loop
-**permanently exits** if the Postgres connection itself fails (e.g., Postgres restart).
-
-Unlike the AMQP reconnect loop (which retries indefinitely with backoff), the
-polling loop propagates Postgres errors up to the caller, which returns an error
-and causes the worker process to exit.
-
-**Consequence**: A Postgres restart during AMQP-fallback polling **kills the worker
-process**. The s6 supervisor will restart the process, but any job in mid-flight
-will remain in `running` state until the watchdog reclaims it.
-
-**Recovery**: The watchdog will automatically reclaim stale running jobs after
-`AXON_JOB_STALE_TIMEOUT_SECS` + `AXON_JOB_STALE_CONFIRM_SECS` (default: 360s total).
+| Layer | Symptom | Root cause | Recovery |
+|-------|---------|-----------|----------|
+| Worker panic / OOM / kill -9 | Row stuck in `running`, `updated_at` not advancing | Process died mid-job | Stale-job sweep on next boot or `axon <kind> recover` |
+| Claim collision under load | `database is locked` | Two lanes raced `BEGIN IMMEDIATE` | `retry_busy` retries up to 5× with 25 ms..400 ms backoff |
+| `mark_completed` 0 rows | `mark_completed: job row not found or not in running state` warn | Row was canceled or deleted mid-run | None needed — terminal state already correct |
+| Queue cap reached | `JobError::QueueCapacityExceeded { kind, cap, current }` | `pending` count ≥ cap | Wait for workers to drain or raise the env var (`0` = unlimited) |
+| Auto-embed deferred | Crawl `result_json.embed_deferred` populated; markdown unindexed | Embed queue at capacity when crawl finished | Drain embed queue, then re-embed the markdown directory manually |
+| `wait_for_job` timeout | `job <id> timed out after Ns in state running` | Job exceeded `AXON_JOB_WAIT_TIMEOUT_SECS` | Continue polling via `axon <kind> status <id>`; raise the env var or run with `--wait false` |
+| Crawl runner row-missing | `job row not found at execution time, may have been deleted mid-run` warn | Row deleted between claim and execute (e.g. `clear`) | None — runner returns `Ok(None)` and `mark_completed` no-ops |
+| Cancel of mid-flight crawl/extract/embed | Row goes `canceled`, runner keeps running until natural finish | These runners do not register a `CancellationToken` today | Process termination is the only forceful stop |
+| Unknown status string in DB | `unknown job status value in DB — treating as Failed` warn | DB hand-edited or schema drift | Restore via SQL or run a fresh DB |
 
 ## Source Map
 
-- `crates/jobs/status.rs`
-- `crates/jobs/common/job_ops.rs`
-- `crates/jobs/common/watchdog.rs`
-- `crates/jobs/worker_lane.rs`
-- `crates/jobs/crawl/runtime.rs`
-- `crates/jobs/extract.rs`
-- `crates/jobs/embed.rs`
-- `crates/jobs/ingest.rs`
-- `crates/jobs/refresh.rs`
-- `crates/jobs/refresh/processor.rs`
-- `crates/jobs/refresh/schedule.rs`
-- `crates/jobs/refresh/state.rs`
-- `crates/jobs/refresh/worker.rs`
-- `crates/jobs/watch.rs`
-- `crates/jobs/watch_worker.rs`
-- (Schema is auto-created at runtime — see `ensure_schema()` in each `crates/jobs/*_jobs.rs`)
+Active code:
+
+- `crates/jobs/backend.rs` — `JobBackend` trait, `JobKind`, `JobPayload`, `JobStatusRow`, `JobSummary`, `wait_for_job`
+- `crates/jobs/status.rs` — `JobStatus` enum + `from_str`/`as_str`
+- `crates/jobs/error.rs` — `JobError` (`Db`, `JobNotFound`, `AlreadyClaimed`, `Timeout`, `QueueCapacityExceeded`, `Other`)
+- `crates/jobs/lite.rs` — `LiteBackend::{new, new_with_workers, new_with_path, init}` and `JobBackend` impl
+- `crates/jobs/lite/store.rs` — `open_sqlite_pool`, `reclaim_stale_running_jobs`, `reclaim_stale_running_jobs_for_table`, `reclaim_stale_watch_leases`, `now_ms`
+- `crates/jobs/lite/cancel.rs` — `CancelStore` (in-memory token map)
+- `crates/jobs/lite/ops/enqueue.rs` — `enqueue_job`, `check_pending_cap_for`, queue-cap `LazyLock` statics
+- `crates/jobs/lite/ops/lifecycle.rs` — `claim_next_pending`, `mark_completed`, `mark_failed`, `cancel_row`, `update_result_json`
+- `crates/jobs/lite/ops/retry.rs` — `retry_busy` for transient SQLite lock contention
+- `crates/jobs/lite/query.rs` — `list_jobs`, `count_jobs`, `cleanup_jobs`, `clear_jobs`, `job_status_row`, `job_errors`
+- `crates/jobs/lite/workers.rs` — `spawn_workers`, `worker_loop`, `WorkerHandles`, `resolve_lane_count`
+- `crates/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` — per-kind runner bodies
+- `crates/jobs/lite/workers/progress.rs` — crawl/embed progress persisters
+- `crates/jobs/lite/config_snapshot.rs` — submitter→worker config snapshotting
+- `crates/jobs/lite/migrations/` — `0001_create_tables.sql`, `0002_create_watch_tables.sql`, `0003_add_status_checks.sql`
+- `crates/jobs/watch_lite.rs` — recurring watch scheduler (separate state machine, not a `JobKind`)
+- `crates/services/runtime.rs` — `ServiceJobRuntime` trait + `LiteServiceRuntime` (`recover_jobs`, `notify_worker`, `drain_jobs`, `count_jobs`)
+- `crates/services/jobs.rs` — `recover_jobs(ctx, kind)` shim used by CLI/MCP
+
+Companion docs:
+
+- `crates/jobs/CLAUDE.md` — module layout, helper-function index, `JobBackend` vs `ServiceJobRuntime` rationale, lite-mode patterns
+- `crates/services/CLAUDE.md` — services-first contract, `ServiceContext`, `LiteBackend` worker split
+
+Legacy (kept for archaeological reasons; no live code references):
+
+- `axon_refresh_jobs`, `axon_graph_jobs` (defined in `0001_create_tables.sql`)

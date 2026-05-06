@@ -28,17 +28,13 @@ Version: 1.5.4 | License: MIT
    - [suggest](#suggest)
    - [ingest](#ingest)
    - [sessions](#sessions)
-   - [refresh](#refresh)
    - [watch](#watch)
-   - [graph](#graph)
    - [sources](#sources)
    - [domains](#domains)
    - [stats](#stats)
    - [status](#status)
    - [doctor](#doctor)
    - [debug](#debug)
-   - [export](#export)
-   - [artifacts](#artifacts)
    - [migrate](#migrate)
    - [serve](#serve)
    - [mcp](#mcp)
@@ -55,7 +51,7 @@ Version: 1.5.4 | License: MIT
    - [Environment Variables](#environment-variables)
 6. [Infrastructure](#infrastructure)
    - [Docker Compose Stack](#docker-compose-stack)
-   - [Lite Mode](#lite-mode)
+   - [Runtime Mode](#runtime-mode)
 7. [Ingest Sources](#ingest-sources)
    - [GitHub](#github-ingest)
    - [Reddit](#reddit-ingest)
@@ -65,14 +61,13 @@ Version: 1.5.4 | License: MIT
    - [Collection Modes](#collection-modes)
    - [Hybrid Search](#hybrid-search)
    - [RAG Pipeline](#rag-pipeline)
-9. [Graph Operations](#graph-operations)
-10. [Browser Rendering](#browser-rendering)
-11. [Performance Profiles](#performance-profiles)
-12. [Web UI](#web-ui)
-13. [Security](#security)
-14. [Development](#development)
-15. [End-to-End Workflow Example](#end-to-end-workflow-example)
-16. [Related Files](#related-files)
+9. [Browser Rendering](#browser-rendering)
+10. [Performance Profiles](#performance-profiles)
+11. [Web UI](#web-ui)
+12. [Security](#security)
+13. [Development](#development)
+14. [End-to-End Workflow Example](#end-to-end-workflow-example)
+15. [Related Files](#related-files)
 
 ---
 
@@ -93,7 +88,7 @@ The stack has the following components:
 | `crates/cli/` | Command handlers |
 | `crates/core/` | Config, HTTP safety, content transforms |
 | `crates/crawl/` | Crawl engine, render modes, sitemap backfill |
-| `crates/jobs/` | Async job runtime, AMQP workers, state machine |
+| `crates/jobs/` | SQLite-backed job runtime, in-process worker lanes, state machine |
 | `crates/vector/` | Qdrant operations, TEI embedding, RAG |
 | `crates/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
 | `crates/mcp/` | MCP server, tool schema, action router |
@@ -166,8 +161,7 @@ All commands share global flags documented below. Commands listed as **async by 
 | `--wait <bool>` | bool | `false` | Block until async job completes. Without this, async commands return a job ID immediately. |
 | `--yes` | flag | — | Skip destructive confirmation prompts. |
 | `--json` | flag | — | Machine-readable JSON output on stdout. |
-| `--graph` | flag | — | Enable graph-enhanced retrieval for `ask` (requires Neo4j). |
-| `--lite` | flag | — | Run in lite mode (SQLite, no external queue services). |
+| `--lite` | flag | — | Accepted for backwards compatibility. Lite is the only runtime; this flag is a no-op beyond setting `AXON_LITE=1`. |
 
 #### Crawl and Scrape
 
@@ -212,8 +206,7 @@ All commands share global flags documented below. Commands listed as **async by 
 | `--batch-concurrency <n>` | usize | `16` | Concurrent connections for batch operations (1–512). |
 | `--concurrency-limit <n>` | usize | — | Override crawl, sitemap, and backfill concurrency at once. |
 | `--crawl-concurrency-limit <n>` | usize | profile | Override crawl concurrency. |
-| `--sitemap-concurrency-limit <n>` | usize | profile | Override sitemap backfill concurrency. |
-| `--backfill-concurrency-limit <n>` | usize | profile | Override backfill concurrency. |
+| `--backfill-concurrency-limit <n>` | usize | profile | Override sitemap backfill concurrency. |
 | `--request-timeout-ms <ms>` | u64 | profile | Per-request timeout in milliseconds. |
 | `--fetch-retries <n>` | usize | profile | Number of retries on failed fetches. |
 | `--retry-backoff-ms <ms>` | u64 | profile | Backoff between retries in milliseconds. |
@@ -222,22 +215,12 @@ All commands share global flags documented below. Commands listed as **async by 
 
 | Flag | Env Var | Default |
 |------|---------|---------|
-| `--pg-url <url>` | `AXON_PG_URL` | `postgresql://axon:postgres@127.0.0.1:53432/axon` |
-| `--redis-url <url>` | `AXON_REDIS_URL` | `redis://127.0.0.1:53379` |
-| `--amqp-url <url>` | `AXON_AMQP_URL` | `amqp://axon:axonrabbit@127.0.0.1:45535/%2f` |
 | `--qdrant-url <url>` | `QDRANT_URL` | `http://127.0.0.1:53333` |
 | `--tei-url <url>` | `TEI_URL` | — |
 | `--openai-base-url <url>` | `OPENAI_BASE_URL` | — |
 | `--openai-api-key <key>` | `OPENAI_API_KEY` | — |
 | `--openai-model <name>` | `OPENAI_MODEL` | — |
-
-#### Queue Configuration
-
-| Flag | Env Var | Default |
-|------|---------|---------|
-| `--crawl-queue <name>` | `AXON_CRAWL_QUEUE` | `axon.crawl.jobs` |
-| `--extract-queue <name>` | `AXON_EXTRACT_QUEUE` | `axon.extract.jobs` |
-| `--embed-queue <name>` | `AXON_EMBED_QUEUE` | `axon.embed.jobs` |
+| `--sqlite-path <path>` | `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/axon/jobs.db` |
 
 ---
 
@@ -430,26 +413,23 @@ axon ask --query "<question>" [FLAGS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
-| `--graph` | `false` | Enable graph-enhanced retrieval via Neo4j (requires `AXON_NEO4J_URL`). |
 | `--diagnostics` | `false` | Print retrieval diagnostics. |
 
 RAG pipeline:
 
 1. Embed the question via TEI
-2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 64) candidates
+2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 150) candidates
 3. Filter by `AXON_ASK_MIN_RELEVANCE_SCORE` (default: 0.45)
 4. Rerank by score; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
 5. Backfill additional chunks from top `AXON_ASK_FULL_DOCS` (default: 4) documents
 6. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
-7. Optionally inject Neo4j graph context block (when `--graph` is set)
-8. Call the LLM via ACP adapter
-9. Apply citation-quality gates and return the answer
+7. Call the LLM via ACP adapter
+8. Apply citation-quality gates and return the answer
 
 ```bash
 axon ask "how does spider.rs handle JavaScript-heavy sites?"
 axon ask "list all indexed rust crates" --collection rust-libs
 axon ask "qdrant HNSW parameters" --diagnostics
-axon ask "what is the default chunk size?" --graph
 ```
 
 ---
@@ -572,56 +552,6 @@ axon sessions --claude --gemini --project axon        # filtered by project name
 
 ---
 
-### refresh
-
-Revalidate already-indexed URLs. Checks ETag and content hash; re-embeds only changed content. **Async by default.**
-
-```bash
-axon refresh <url...> [FLAGS]
-axon refresh <SUBCOMMAND> [ARGS]
-```
-
-One-off refresh:
-
-```bash
-axon refresh https://docs.rs/spider --wait true
-axon refresh https://docs.rs/spider https://qdrant.tech/documentation
-axon refresh https://docs.rs --wait true                 # manifest fallback
-```
-
-Job subcommands: `status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `recover`, `worker`.
-
-Schedule subcommands:
-
-```bash
-axon refresh schedule add <name> [seed_url] [--every-seconds N | --tier high|medium|low] [--urls "u1,u2"]
-axon refresh schedule add github:<owner>/<repo> [--tier high|medium|low]
-axon refresh schedule list
-axon refresh schedule enable <name>
-axon refresh schedule disable <name>
-axon refresh schedule delete <name>
-axon refresh schedule worker
-axon refresh schedule run-due [--batch <n>]       # default: 25
-```
-
-Tier presets:
-
-| Tier | Interval |
-|---|---|
-| `high` | 1800 seconds (30 min) |
-| `medium` | 21600 seconds (6 hours) |
-| `low` | 86400 seconds (24 hours) |
-
-GitHub schedules check `pushed_at` before running — no re-ingest if nothing was pushed.
-
-```bash
-axon refresh schedule add docs-high https://docs.rs --tier high
-axon refresh schedule add github:rust-lang/rust --tier medium
-axon refresh schedule run-due --batch 25 --json
-```
-
----
-
 ### watch
 
 Scheduled task management. Recurring definitions backed by `axon_watch_defs` and `axon_watch_runs` tables.
@@ -668,33 +598,7 @@ axon watch run-now <uuid>
 axon watch history <uuid> --limit 20
 ```
 
-Note: `AXON_LITE=1` disables the watch scheduler. Scheduler automation requires full mode.
-
----
-
-### graph
-
-Knowledge graph operations backed by Neo4j. **Requires `AXON_NEO4J_URL`.**
-
-```bash
-axon graph build [<url>] [--url <url>] [--domain <domain>] [--all]
-axon graph status
-axon graph explore <entity>
-axon graph stats
-axon graph worker
-```
-
-Build requires at least one of: a URL, `--domain`, or `--all`.
-
-`axon graph worker` runs the background extractor that pulls Qdrant chunks and writes entity/relation graphs to Neo4j.
-
-```bash
-axon graph build --url https://tokio.rs/tokio/tutorial
-axon graph build --all
-axon graph status
-axon graph explore "Tokio"
-axon graph stats
-```
+Note: `watch list`, `watch create`, `watch run-now`, and `watch history` work in lite mode (the only mode). The other listed subcommands parse but are not yet wired to a scheduler.
 
 ---
 
@@ -740,7 +644,7 @@ axon status [FLAGS]
 
 ### doctor
 
-Diagnose service connectivity. Checks Postgres, Redis, RabbitMQ, Qdrant, TEI, and LLM endpoint reachability.
+Diagnose service connectivity. Checks Qdrant, TEI, Chrome, and LLM endpoint reachability.
 
 ```bash
 axon doctor [FLAGS]
@@ -754,39 +658,6 @@ Run `doctor` plus LLM-assisted troubleshooting with recommendations. Requires `A
 
 ```bash
 axon debug [FLAGS]
-```
-
----
-
-### export
-
-Export a full index manifest (jobs, ingest targets, refresh schedules, Qdrant summary) to JSON.
-
-```bash
-axon export [FLAGS]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--include-history` | `false` | Include historical job records. |
-
-Not available in lite mode.
-
----
-
-### artifacts
-
-Inspect MCP tool response artifacts stored under `.cache/axon-mcp/`. Used primarily via the MCP server but also accessible directly.
-
-```bash
-axon artifacts list
-axon artifacts head <path> [--limit <n>]
-axon artifacts grep <path> --pattern "<regex>" [--context-lines <n>]
-axon artifacts wc <path>
-axon artifacts read <path> [--pattern "<regex>"] [--full]
-axon artifacts search --pattern "<regex>"
-axon artifacts delete <path>
-axon artifacts clean --max-age-hours <n> [--dry-run]
 ```
 
 ---
@@ -843,7 +714,7 @@ axon serve mcp
 
 ### Job Lifecycle Subcommands
 
-All async job families (`crawl`, `extract`, `embed`, `ingest`, `sessions`, `refresh`, `graph`) share these subcommands:
+All async job families (`crawl`, `extract`, `embed`, `ingest`, `sessions`) share these subcommands:
 
 | Subcommand | Description |
 |---|---|
@@ -918,9 +789,8 @@ These actions do not require `subaction`:
 
 | Action | Optional Fields |
 |--------|-----------------|
-| `ask` | `query`, `graph`, `diagnostics`, `collection`, `since`, `before`, `response_mode` |
+| `ask` | `query`, `diagnostics`, `collection`, `since`, `before`, `response_mode` |
 | `elicit_demo` | `message`, `response_mode` |
-| `export` | `include_history`, `response_mode` |
 | `help` | `response_mode` |
 | `map` | `url`, `limit`, `offset`, `response_mode` |
 | `query` | `query`, `limit`, `offset`, `collection`, `since`, `before`, `response_mode` |
@@ -940,11 +810,7 @@ These actions require `subaction`:
 | `crawl` | `start\|status\|cancel\|list\|cleanup\|clear\|recover` |
 | `embed` | `start\|status\|cancel\|list\|cleanup\|clear\|recover` |
 | `extract` | `start\|status\|cancel\|list\|cleanup\|clear\|recover` |
-| `graph` | `build\|status\|explore\|stats` |
 | `ingest` | `start\|status\|cancel\|list\|cleanup\|clear\|recover` |
-| `refresh` | `start\|status\|cancel\|list\|cleanup\|clear\|recover\|schedule` |
-
-Refresh schedule subaction (`schedule_subaction`): `list`, `create`, `delete`, `enable`, `disable`
 
 Also available as direct actions (no subaction): `doctor`, `domains`, `sources`, `stats`, `status`
 
@@ -955,8 +821,6 @@ Example requests:
 { "action": "crawl", "subaction": "start", "urls": ["https://example.com"] }
 { "action": "ingest", "subaction": "start", "source_type": "github", "target": "rust-lang/rust" }
 { "action": "ask", "query": "how does hybrid search work?" }
-{ "action": "graph", "subaction": "build", "url": "https://tokio.rs" }
-{ "action": "refresh", "subaction": "schedule", "schedule_subaction": "list" }
 { "action": "artifacts", "subaction": "list" }
 ```
 
@@ -1010,11 +874,9 @@ Cleanup:
       "command": "axon",
       "args": ["mcp", "--transport", "stdio"],
       "env": {
-        "AXON_PG_URL": "postgresql://axon:postgres@127.0.0.1:53432/axon",
-        "AXON_REDIS_URL": "redis://127.0.0.1:53379",
-        "AXON_AMQP_URL": "amqp://axon:axonrabbit@127.0.0.1:45535/%2f",
         "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://YOUR_TEI_HOST:52000"
+        "TEI_URL": "http://YOUR_TEI_HOST:52000",
+        "AXON_DATA_DIR": "/home/yourname/appdata"
       }
     }
   }
@@ -1063,7 +925,8 @@ The minimum set needed to start:
 | `AXON_CHROME_REMOTE_URL` | For Chrome rendering | Chrome management API URL (e.g. `http://axon-chrome:6000`) |
 | `AXON_COLLECTION` | No | Default Qdrant collection name (default: `cortex`) |
 | `AXON_DATA_DIR` | No | Persistent data root (default: `./data`) |
-| `AXON_LITE` | No | Set to `1` (or pass `--lite`) for lite mode — SQLite-backed, no external queue. Defaults to `false`. |
+| `AXON_LITE` | No | Accepted for compatibility only. Lite is the only runtime; setting this has no effect beyond signalling intent. |
+| `AXON_SQLITE_PATH` | No | SQLite jobs database path (default: `$AXON_DATA_DIR/axon/jobs.db`) |
 
 > **Full reference:** See [`docs/CONFIG.md`](docs/CONFIG.md) for every environment variable, its default, and description. `docs/CONFIG.md` is the single authoritative source — when in doubt, it wins over this file.
 
@@ -1110,19 +973,17 @@ Stop infrastructure:
 just services-down
 ```
 
-### Lite Mode
+### Runtime Mode
 
-Lite mode runs without Postgres, Redis, or RabbitMQ. Jobs are stored in SQLite and workers run in-process.
+Lite is the only supported runtime. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Postgres, Redis, and RabbitMQ are no longer used.
 
 ```bash
-AXON_LITE=1 axon scrape https://example.com
-# or:
-axon --lite scrape https://example.com
+axon scrape https://example.com               # default
+AXON_LITE=1 axon scrape https://example.com   # accepted, no behavior change
+axon --lite scrape https://example.com        # accepted, no behavior change
 ```
 
-Supported in lite mode: `scrape`, `crawl` (sync), `map`, `embed`, `query`, `ask`, `extract`, `ingest`, `search`, `research`, `sources`, `stats`, `doctor`, MCP server.
-
-Not supported in lite mode: `graph`, `refresh` (including scheduling), `watch` scheduler, `export`.
+All commands run in lite mode. The `watch` scheduler exposes `list`, `create`, `run-now`, and `history` today; the remaining `watch` subcommands (`get`, `update`, `pause`, `resume`, `delete`, `artifacts`) parse but are not yet implemented.
 
 ---
 
@@ -1205,40 +1066,6 @@ The `ask` retrieval pipeline is described under [ask](#ask). Key tuning variable
 
 ---
 
-## Graph Operations
-
-Graph features require `AXON_NEO4J_URL`. They are fully opt-in and gracefully disabled when the variable is absent.
-
-Neo4j is accessed via HTTP transactional Cypher (`/db/neo4j/tx/commit`). Use an HTTP base URL, not a Bolt DSN.
-
-Neo4j data model:
-
-- **Nodes**: `Document {url, source_type, collection}`, `Chunk {point_id, url, collection, chunk_index}`, `Entity {name, entity_type, confidence}`
-- **Relationships**: `(Chunk)-[:BELONGS_TO]->(Document)`, `(Entity)-[:MENTIONED_IN]->(Chunk)`, `(Entity)-[:RELATES_TO]->(Entity)`, `(Document)-[:SIMILAR_TO]->(Document)`
-
-Graph worker pipeline:
-
-1. Pull Qdrant chunks by URL
-2. Extract entities via taxonomy (built-in or `AXON_GRAPH_TAXONOMY_PATH`)
-3. Optionally run LLM extraction for ambiguous entities
-4. Write documents, chunks, entities, and relations to Neo4j
-5. Compute `SIMILAR_TO` edges using Qdrant recommend scores
-
-The embed worker auto-enqueues graph jobs for newly embedded URLs when `AXON_NEO4J_URL` is set.
-
-`ask --graph` behavior: after vector retrieval, taxonomy-scan top chunks for entity names, query Neo4j neighborhood for those entities, and prepend a bounded `Graph Context:` block to the LLM context. Falls back to vector-only on any Neo4j failure.
-
-Configuration:
-
-```bash
-AXON_NEO4J_URL=http://127.0.0.1:7474
-AXON_NEO4J_USER=neo4j
-AXON_NEO4J_PASSWORD=your-password
-AXON_GRAPH_CONTEXT_MAX_CHARS=2000
-```
-
----
-
 ## Browser Rendering
 
 Axon supports two fetch modes:
@@ -1318,8 +1145,8 @@ Concurrent ACP sessions are isolated by `(session_id, tool_call_id)` composite k
 ### Destructive Operations
 
 The following operations are unauthenticated at the application level (network-level controls apply):
-- `axon crawl clear`, `axon extract clear`, `axon refresh clear`
-- `axon crawl cancel <id>`, `axon refresh cancel <id>`
+- `axon crawl clear`, `axon extract clear`, `axon embed clear`, `axon ingest clear`
+- `axon crawl cancel <id>`, `axon ingest cancel <id>`
 
 Axon is designed for self-hosted single-user operation. All service ports are loopback-bound by default.
 
@@ -1391,7 +1218,7 @@ Use `./scripts/axon` instead of the cargo binary for local dev — it auto-sourc
 
 ## End-to-End Workflow Example
 
-Ingest a repository, embed it, and ask questions with graph context.
+Ingest a repository, embed it, and ask questions over the indexed content.
 
 ```bash
 # 1. Start infrastructure
@@ -1423,23 +1250,13 @@ axon query "async runtime architecture" --limit 5
 # 9. RAG question answering
 axon ask "how does tokio handle task scheduling?"
 
-# 10. Build graph from indexed content (requires Neo4j)
-axon graph build --all
-axon graph worker   # run in background or separate terminal
-
-# 11. Ask with graph context
-axon ask "what are the key entities in the tokio runtime?" --graph
-
-# 12. Schedule periodic refresh
-axon refresh schedule add github:tokio-rs/tokio --tier medium
-
-# 13. Set up a watch definition for recurring refresh
+# 10. Set up a watch definition that re-ingests on a schedule
 axon watch create tokio-refresh \
-  --task-type refresh \
+  --task-type ingest \
   --every-seconds 21600 \
-  --task-payload '{"urls":["https://tokio.rs/tokio/tutorial"]}'
+  --task-payload '{"target":"tokio-rs/tokio"}'
 
-# 14. View indexed domains and sources
+# 11. View indexed domains and sources
 axon domains
 axon sources
 ```
@@ -1452,14 +1269,17 @@ axon sources
 |---|---|
 | `CLAUDE.md` | Canonical developer reference: commands, architecture, gotchas |
 | `docs/ARCHITECTURE.md` | Subsystem map and data-flow diagrams |
+| `docs/CONFIG.md` | Authoritative environment variable reference |
 | `docs/MCP.md` | MCP runtime and design guide |
 | `docs/MCP-TOOL-SCHEMA.md` | MCP tool schema source of truth |
+| `docs/ACP.md` | ACP protocol reference |
 | `docs/SECURITY.md` | Security model, SSRF controls, ACP permission isolation |
 | `docs/JOB-LIFECYCLE.md` | Async job state machine, worker architecture |
 | `docs/DEPLOYMENT.md` | Deploy and rollback procedures |
 | `docs/TESTING.md` | Test strategy and mcporter smoke harness |
 | `docs/commands/` | Per-command reference documentation |
 | `docs/ingest/` | Per-source ingest deep dives |
+| `docs/archive/pre-lite-mode/` | Historical docs from the pre-lite-mode runtime (Postgres/Redis/RabbitMQ era) |
 | `CHANGELOG.md` | Release history |
 
 ---

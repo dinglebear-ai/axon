@@ -5,7 +5,7 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 
 ## Quick Start
 
-> **Lite mode (default)**: axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime.
+> **Lite mode is the only runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. There is no Postgres/Redis/RabbitMQ path; the `--lite` flag and `AXON_LITE=1` env are accepted for backwards compatibility but always resolve to lite mode.
 
 ```bash
 # Recommended: use the wrapper script (auto-sources .env)
@@ -62,11 +62,16 @@ MCP docs:
 | `status` | Show async job queue status | No |
 | `doctor` | Diagnose service connectivity | No |
 | `debug` | Run doctor + LLM-assisted troubleshooting | No |
-| `mcp` | Start MCP stdio server | No |
-| `watch <sub>` | Scheduled task management: `create`, `list`, `get`, `update`, `run-now`, `pause`, `resume`, `delete`, `history`, `artifacts`. | Depends |
+| `mcp` | Start MCP stdio/HTTP server | No |
+| `serve` | Start the local app stack supervisor (axum WS bridge, MCP HTTP, in-process workers) | No |
+| `setup` | First-run + remote SSH deploy helper | No |
+| `screenshot <url>` | Capture a full-page screenshot via headless Chrome | No |
+| `dedupe` | Deduplicate near-identical chunks within a Qdrant collection | No |
+| `completions <shell>` | Emit shell completion scripts | No |
+| `watch <sub>` | Scheduled task management. Lite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
-### Job Subcommands (for crawl / extract / embed / refresh)
+### Job Subcommands (for crawl / extract / embed / ingest / sessions)
 
 ```bash
 axon crawl status <job_id>
@@ -134,8 +139,7 @@ All flags are `--global` (usable with any subcommand).
 | `--batch-concurrency <n>` | usize | `16` | Concurrent connections for batch operations (clamped 1–512). |
 | `--concurrency-limit <n>` | usize | — | Override all three concurrency limits (crawl, sitemap, backfill) at once. |
 | `--crawl-concurrency-limit <n>` | usize | *profile* | Override crawl concurrency (profile default: CPUs x multiplier). |
-| `--sitemap-concurrency-limit <n>` | usize | *profile* | Override sitemap backfill concurrency. |
-| `--backfill-concurrency-limit <n>` | usize | *profile* | Override backfill concurrency. |
+| `--backfill-concurrency-limit <n>` | usize | *profile* | Override sitemap backfill concurrency. |
 | `--request-timeout-ms <ms>` | u64 | *profile* | Per-request timeout in milliseconds. |
 | `--fetch-retries <n>` | usize | *profile* | Number of retries on failed fetches. |
 | `--retry-backoff-ms <ms>` | u64 | *profile* | Backoff between retries in milliseconds. |
@@ -165,10 +169,13 @@ High-level subsystem map:
 - Crawl + content:
   - `crates/crawl/engine.rs`
   - `crates/core/http.rs` and `crates/core/content.rs`
-- Async jobs:
-  - `crates/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog, worker, runtime)
-  - `crates/jobs/{extract,embed}/` modules, `crates/jobs/ingest.rs`
-  - `crates/jobs/common/*` and `crates/jobs/worker_lane.rs`
+- Async jobs (lite-only):
+  - `crates/jobs/lite.rs` + `crates/jobs/lite/` (SQLite-backed enqueue/query/store/cancel)
+  - `crates/jobs/lite/workers.rs` + `crates/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
+  - `crates/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
+  - `crates/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog support)
+  - `crates/jobs/watch_lite.rs` (recurring task scheduler — list/create/run-now/history)
+  - `crates/jobs/backend.rs` (`JobBackend` trait + `LiteBackend` only)
   - job states in `crates/jobs/status.rs`
 - Vector + RAG:
   - `crates/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
@@ -304,29 +311,29 @@ MCP OAuth (`atk_` tokens) is the auth system for MCP clients:
 AXON_MCP_ALLOWED_ORIGINS=
 ```
 
-## Lite Mode (`AXON_LITE=1`)
+## Runtime Mode (lite-only)
 
-Lite mode is the default operating mode. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services.
+Lite is the only supported runtime. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path has been removed; the `--lite` flag and `AXON_LITE=1` env var are accepted for compatibility but always resolve to lite mode.
 
 ```bash
-AXON_LITE=1 axon scrape https://example.com   # no external services needed
-# or
-axon --lite scrape https://example.com
+axon scrape https://example.com           # lite by default — no external services needed
+AXON_LITE=1 axon scrape https://example.com   # equivalent
+axon --lite scrape https://example.com        # equivalent
 ```
 
-**What works in lite mode:** scrape, crawl (sync), map, embed, query, ask, extract, ingest, search, research, sources, stats, doctor, MCP server.
+**Supported commands:** scrape, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Unsupported in lite mode:** watch scheduler.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `crates/services/watch.rs` → `crates/jobs/watch_lite.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
-# Env vars for lite mode
-AXON_LITE=1                              # enable lite mode
+# Env vars for runtime tuning
+AXON_LITE=1                              # accepted for compatibility (lite is mandatory)
 AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/axon/jobs.db
 ```
 
-The `ServiceContext` (in `crates/services/context.rs`) is constructed at startup and carries a `ServiceCapabilities` struct that gates unsupported operations. MCP handlers check `ctx.capabilities.<cap>.supported` before executing.
+The `ServiceContext` (in `crates/services/context.rs`) is constructed at startup and carries `cfg: Arc<Config>` plus `jobs: Arc<dyn ServiceJobRuntime>`. CLI fire-and-forget callers use `ServiceContext::new(cfg)` (no in-process workers); long-running services (`serve`, `mcp`, sync `--wait true` paths) use `ServiceContext::new_with_workers(cfg)`.
 
-See `crates/jobs/CLAUDE.md` for the `JobBackend` trait and backend selection details.
+See `crates/jobs/CLAUDE.md` for the `JobBackend` trait and `LiteBackend` details, and `crates/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
 
 ## Gotchas
 

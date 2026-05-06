@@ -1,252 +1,259 @@
 # Security Model
-Last Modified: 2026-03-09
-
-Version: 1.0.0
-Last Updated: 01:26:53 | 02/25/2026 EST
+Last Modified: 2026-05-06
 
 ## Table of Contents
 
-1. Scope
-2. Threat Model
-3. Security Controls
-4. ACP Permission Security
-5. Secrets Management
-6. Network Exposure
-7. API and Command Surface Hardening
-8. Residual Risks
-9. Operational Security Checklist
+1. Scope and Threat Model
+2. SSRF and URL Validation
+3. HTTP Client Safety
+4. MCP HTTP Authentication
+5. Host and CORS Allowlists
+6. Web Admin Panel
+7. Secrets Handling
+8. Network Exposure
+9. Operational Checklist
 10. Source Map
 
-## Scope
+---
 
-This document captures security controls present in code and deployment configuration for Axon.
+## 1. Scope and Threat Model
 
-## Threat Model
+This document captures the security controls present in the Axon code base today. Axon is a single-binary Rust application (`axon`) running in **lite mode only** — SQLite-backed jobs and in-process workers. The legacy Postgres / Redis / AMQP / OAuth surfaces described in older revisions of this document have been removed; if you find references to them in other files they are stale.
 
-In scope:
+**In scope:**
 
-- SSRF attempts through user-provided URLs
-- Path traversal attempts in file/download APIs
-- Command injection attempts through websocket `execute`
-- Secret leakage through repository commits and logs
-- Local service exposure beyond host boundary
+- SSRF via user-supplied URLs (CLI args, MCP tool calls, sitemap/discovered URLs)
+- DNS rebinding against the in-process HTTP client
+- Secret leakage through commits, logs, and `Debug` impls
+- MCP HTTP transport authentication and origin/host validation
+- Local admin web panel access control
 
-Out of scope:
+**Out of scope:**
 
 - Host kernel compromise
-- Supply-chain integrity beyond pinned images/dependencies
-- Full multi-tenant isolation (system is designed for trusted self-hosted operation)
+- Multi-tenant isolation — Axon is designed for trusted self-hosted operation
+- Hardening of the upstream services Axon talks to (Qdrant, TEI, ACP-backed LLMs)
+- Supply-chain integrity beyond pinned crate versions
 
-## Security Controls
+---
 
-### URL Validation and SSRF Controls
+## 2. SSRF and URL Validation
 
-Implemented in `crates/core/http.rs`:
+### 2.1 `validate_url()`
 
-- scheme allowlist: `http` and `https` only
-- blocked hosts: `localhost`, `.localhost`, `.internal`, `.local`
-- blocked IP ranges:
-  - loopback
-  - link-local
-  - RFC-1918 private ranges
-  - IPv4-mapped IPv6 private/loopback
-  - IPv6 unique-local
-- additional crawler blacklist patterns for defense-in-depth
+Source: `crates/core/http/ssrf.rs:64`.
 
-### File Path Safety
+`validate_url(&str) -> Result<(), HttpError>` is the parse-time SSRF guard. It rejects:
 
-`/output/{*path}` (`crates/web.rs`):
+| Category | Examples |
+|----------|----------|
+| Non-HTTP schemes | `file://`, `gopher://`, `ftp://`, `javascript:` |
+| Loopback hosts | `localhost`, `*.localhost` |
+| Reserved TLDs | `*.internal`, `*.local` |
+| Loopback IPs | `127.0.0.0/8`, `::1`, `0.0.0.0/8` |
+| Link-local | `169.254.0.0/16`, `fe80::/10` |
+| RFC 1918 private | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
+| IPv6 unique-local | `fc00::/7` |
+| IPv4-mapped IPv6 | `::ffff:127.0.0.1`, `::ffff:10.x.x.x` (recursed into the v4 checks) |
 
-- rejects `..` and NUL bytes
-- canonicalizes base and target
-- enforces target path under output root
+Implementation note: hosts are parsed with `host_str().parse::<IpAddr>()`, **not** `spider::url::Host::Ipv4/Ipv6` — the spider variants silently miss IPv6 (confirmed production bug, see `crates/core/CLAUDE.md`).
 
-`/download/{job_id}/...` (`crates/web/download.rs`):
+### 2.2 Call sites
 
-- validates job id format
-- resolves files only from registered job output dirs
-- path traversal guarded
-- max files limit enforced via `AXON_DOWNLOAD_MAX_FILES`
+`validate_url()` is invoked at every external entry point that accepts a URL. As of this writing, callers include (`crates/core/http/client.rs:46,70` and):
 
-`/api/omnibox/files` (`apps/web/app/api/omnibox/files/route.ts`):
+- `crates/cli/commands/scrape.rs`, `crawl.rs`, `screenshot.rs`
+- `crates/services/scrape.rs`, `map.rs`, `screenshot.rs`
+- `crates/crawl/engine/map.rs`, `engine/sitemap.rs`, `scrape.rs`, `screenshot.rs`
+- `crates/jobs/lite/workers/runners/crawl.rs`, `crates/jobs/crawl.rs`
+- `crates/ingest/youtube.rs`, `ingest/github/files/clone.rs`, `ingest/github/wiki.rs`
+- `crates/mcp/server/common.rs`
+- `crates/core/content/engine.rs`
 
-- id parsing with `source:path` model
-- rejects unsafe ids and `..`
-- resolves within source root only
+The reqwest redirect policy also re-validates every redirect target (`crates/core/http/client.rs:44-53`). A 30x to a blocked URL becomes `PermissionDenied` instead of a follow.
 
-### WebSocket Authentication Gate
+### 2.3 DNS rebinding (TOCTOU) — mitigated
 
-`/ws` upgrade path (`crates/web.rs`):
+`validate_url()` only checks literal hostnames and IPs. The connect-time TOCTOU window is closed by `SsrfBlockingResolver` (`crates/core/http/ssrf.rs:174-205`), wired into the reqwest client via `ClientBuilder::dns_resolver()` in production builds. The resolver runs `check_ip()` on every IP returned by the OS resolver at the moment reqwest dials. A TTL-0 record that flips to `127.0.0.1` after `validate_url()` returns is rejected before the connection is made.
 
-- Gate is active when `AXON_WEB_API_TOKEN` is set; disabled (open) when unset
-- Token for `/ws`: `AXON_WEB_API_TOKEN` — the primary static secret; `proxy.ts` accepts either `AXON_WEB_API_TOKEN` or `AXON_WEB_BROWSER_API_TOKEN` for `/api/*` routes (when both are set, `/ws` always uses `AXON_WEB_API_TOKEN`)
-- Browser sends it as `?token=` query param (appended by `hooks/use-axon-ws.ts`)
-- MCP OAuth clients (`atk_` tokens) do not have access to `/ws` — they use the MCP tool API instead
-- Non-loopback connections to `/ws/shell` rejected with 403; IPv4-mapped loopback (`::ffff:127.0.0.1`) accepted correctly
-- Rejected upgrades return 401 before the WebSocket handshake completes
+Test builds (`#[cfg(test)]`) skip the custom resolver so `httpmock` servers on `127.0.0.1` remain reachable; `validate_url()` itself still blocks loopback unless a thread-local `ALLOW_LOOPBACK` flag is set inside the test.
 
-### Command Surface Hardening
+### 2.4 Defence-in-depth blacklist
 
-WebSocket command execution (`crates/web/execute.rs`):
+`ssrf_blacklist_patterns()` (`crates/core/http/ssrf.rs:144`) returns 12 regex patterns covering loopback, link-local, RFC-1918, and IPv6 private ranges. These are passed to `spider`'s `with_blacklist_url()` so URLs **discovered during crawl** (sitemaps, link extraction) are dropped before fetch — even if the seed URL was public, a crawler cannot follow a same-page link to `http://127.0.0.1/admin`.
 
-- explicit `ALLOWED_MODES` list
-- explicit `ALLOWED_FLAGS` list
-- blocked forwarding of sensitive infra flags (db/redis/amqp/openai/qdrant/tei URL flags)
-- asynchronous mode semantics controlled server-side
+---
 
-## ACP Permission Security
+## 3. HTTP Client Safety
 
-### SEC-7: Session-Scoped Permission Routing
+Source: `crates/core/http/client.rs`.
 
-Implemented across `crates/services/acp/`, `crates/web.rs`, and the execute bridge.
+- Production builds use a single shared `LazyLock<reqwest::Client>` (`HTTP_CLIENT`), constructed once with a 30-second timeout and the SSRF-blocking DNS resolver. **Never construct `reqwest::Client::new()` per call** — that bypasses the resolver and exhausts sockets under load.
+- The redirect policy re-validates every hop with `validate_url()` (`client.rs:44`).
+- `fetch_html()` validates the final URL before issuing the request (`client.rs:70`).
+- Test builds get a fresh leaked `reqwest::Client` per call to avoid cross-runtime "dispatch task is gone" failures and to keep `httpmock` working.
 
-**Problem addressed:** When multiple ACP sessions run concurrently (e.g. two open browser tabs both active in Pulse), permission responses routed only by `tool_call_id` can bleed across sessions. If two sessions happen to produce the same `tool_call_id`, the wrong session's frontend could receive or consume the other session's permission prompt.
+The shared user-agent honours `AXON_CHROME_USER_AGENT` if set.
 
-**Fix:** The `PermissionResponderMap` keys on `(session_id, tool_call_id)` — a composite tuple — instead of `tool_call_id` alone. Two concurrent sessions with colliding `tool_call_id` values cannot route to each other's responder channels.
+---
 
-**Type definition** (`crates/services/acp.rs`):
+## 4. MCP HTTP Authentication
 
-```rust
-/// Key is (session_id, tool_call_id) to prevent cross-session collisions (SEC-7).
-pub type PermissionResponderMap =
-    Arc<dashmap::DashMap<(String, String), tokio::sync::oneshot::Sender<String>>>;
-```
+The MCP server (`axon mcp`) supports `stdio`, `http`, and `both` transports. **Stdio is unauthenticated** and relies on OS process boundaries — the MCP client owns the process lifecycle. HTTP is gated by a single static bearer token.
 
-`DashMap` is used instead of `Arc<Mutex<HashMap<...>>>` to eliminate lock contention when the bridge concurrently inserts and removes responders from multiple async tasks (shard-level locking).
+Sources: `crates/mcp/auth.rs`, `crates/mcp/server/http.rs`.
 
-**Wire path:**
+### 4.1 Token enforcement
 
-```
-WS handler (crates/web.rs)
-  └─ init_permission_responders()         ← one map per WS connection
-       └─ execute bridge (crates/web/execute.rs)
-            └─ sync_mode dispatch
-                 └─ AcpBridgeClient::request_permission()
-                      ├─ auto-approve path  (AXON_ACP_AUTO_APPROVE=true, default)
-                      └─ interactive path   → handle_interactive_permission()
-                           └─ insert (session_id, tool_call_id) → oneshot sender
-                           └─ WS message routes response back by (session_id, tool_call_id)
-                           └─ cleanup on receive OR timeout
-```
+- Configured via `AXON_MCP_HTTP_TOKEN` (single shared secret).
+- Accepted on either header:
+  - `Authorization: Bearer <token>`
+  - `x-api-key: <token>`
+- Compared in constant time via `subtle::ConstantTimeEq` (`auth.rs:21-23`) to defeat timing oracles.
+- Empty / whitespace-only tokens are treated as unset (`auth.rs:47-52`).
 
-**Auto-approve behavior:**
+### 4.2 Startup policy
 
-- `AXON_ACP_AUTO_APPROVE` env var (default: `true`) — when set, permission requests are granted immediately without waiting for frontend input. This is the expected default for self-hosted, trusted deployments.
-- Set `AXON_ACP_AUTO_APPROVE=false` to require explicit frontend approval for every ACP tool-use permission request.
+`enforce_mcp_http_startup_policy` (`server/http.rs:154-171`) runs before the listener binds:
 
-**Interactive path timeout:**
+| Bind host | Token configured | Behaviour |
+|-----------|------------------|-----------|
+| Loopback (`127.0.0.1`, `::1`, `localhost`) | yes | start, auth required |
+| Loopback | no | start, log a warning, requests pass through |
+| Non-loopback (`0.0.0.0`, public DNS) | yes | start, auth required |
+| Non-loopback | no | **refuse to start** with a clear error |
 
-When auto-approve is disabled, `handle_interactive_permission()` inserts a oneshot sender into the map and waits up to **60 seconds** for the frontend to respond. On timeout:
+This means a forgotten token on a public bind fails closed instead of running unauthenticated.
 
-1. The map entry is removed (no leak).
-2. The outcome is `Cancelled` — the ACP agent receives a cancellation, not a hang.
-3. A warning is logged: `ACP permission request timed out after 60s`.
+### 4.3 What is not implemented
 
-**Cross-session bleed prevention (SEC-7):**
+There is **no OAuth broker, no Google sign-in, no DCR, no `atk_` token issuance, and no Redis-backed token cache**. Earlier docs referenced these surfaces; they were never shipped. See `docs/auth/MCP-AUTH.md` for the canonical, code-aligned auth flow.
 
-The `send_permission_response()` helper in `crates/web.rs` looks up the responder by `(session_id, tool_call_id)`. A permission response from session A can only resolve a pending responder that was registered under session A's `session_id`. Session B's responders are unreachable regardless of `tool_call_id` value.
+---
 
-## Secrets Management
+## 5. Host and CORS Allowlists
 
-Required practice:
+The MCP HTTP server stacks two additional middlewares around `mcp_auth_middleware`:
 
-- secrets in `.env` only
-- `.env` is gitignored
-- `.env.example` is the tracked template
+### 5.1 Host validation
 
-Do not:
+Source: `crates/web/security.rs` (used by `crates/mcp/server/http.rs:23-26`).
 
-- commit real credentials
-- print API keys in logs
-- hardcode endpoint credentials in source
+`HostAllowlist` accepts:
 
-## Network Exposure
+- `127.0.0.1:<port>`, `localhost:<port>`, `[::1]:<port>`
+- The configured bind host on its port
+- Every entry in `AXON_MCP_ALLOWED_ORIGINS` (origin → authority via `Uri::authority()`)
 
-Most infra services bind to loopback (`127.0.0.1`) in compose:
+Requests with a `Host` header outside that set return `403 forbidden: host not allowed`. Missing `Host` returns `400`.
 
-- Qdrant
-- Chrome management/CDP endpoints
+### 5.2 CORS
 
-`axon-web` is published as `49010:49010` by default (host-accessible unless firewall/reverse-proxy constrained).
+Source: `crates/mcp/cors.rs` (mounted by `server/http.rs:148-151`).
+
+- Allowlist driven by `AXON_MCP_ALLOWED_ORIGINS` (comma-separated). Unset = strict default (only same-origin / loopback). Non-browser tools (curl, MCP SDKs) are unaffected because they do not send `Origin`.
+- Preflight `OPTIONS` requests with a disallowed origin return `403`.
+- `Access-Control-Allow-Headers` is the **static** list `authorization, content-type, x-api-key`. The middleware never reflects the client-supplied `Access-Control-Request-Headers` value, which would grant an effective wildcard (CWE-942).
+
+---
+
+## 6. Web Admin Panel
+
+Source: `crates/web/auth.rs`, `crates/web/server.rs`.
+
+`apps/web` (`@axon/admin-panel`) is an admin-only setup/config UI mounted by `axon serve`. It is **not** a public-facing application.
+
+- On first start, `init_panel_password()` (`auth.rs:33`) generates a 32-byte URL-safe password, writes it to `~/.axon/panel-password` with mode `0600` and `O_NOFOLLOW`, and prints it once to stderr. Existing files are reused.
+- `/api/panel/login` accepts the password and returns it back to the caller as a session token. `/api/panel/state` is unauthenticated (returns only `setup_required` + the config path).
+- All other `/api/panel/*` routes require `Authorization: Bearer <token>` or `x-axon-panel-token: <token>`, verified in constant time via `PanelPassword::verify` (`auth.rs:21-26`).
+- Routes exposed: `state` (GET), `login` (POST), `config` (GET/PUT), `ops` (GET), `setup/targets` (GET), `setup/deploy` (POST). There is no shell endpoint, no WebSocket, no download route, no `/output/*` route in the current code.
+
+Recommendations:
+
+- Bind the unified `axon serve` to `127.0.0.1` unless you intend to expose the panel externally.
+- If exposing externally, terminate TLS and add a reverse-proxy auth layer in front — the panel password is meant for local administration.
+
+---
+
+## 7. Secrets Handling
+
+### 7.1 `.env` is the only secret store
+
+- Service URLs and credentials live in `.env` (gitignored). `.env.example` is the tracked template.
+- `~/.axon/config.toml` is for **non-secret** tuning knobs only (search params, worker limits). The loader treats unknown fields as fatal so accidentally pasting a secret there fails fast (`crates/core/config/parse/toml_config.rs`).
+- The MCP HTTP token is `AXON_MCP_HTTP_TOKEN`. No other static auth tokens exist in the current binary.
+
+### 7.2 `Debug` redaction
+
+`Config`'s `fmt::Debug` impl (`crates/core/config/types/config_impls.rs:203-369`) redacts:
+
+- `github_token`
+- `reddit_client_id`, `reddit_client_secret`
+- `openai_api_key`
+- `acp_ws_token`
+- `tavily_api_key`
+- `custom_headers` — values redacted, header names preserved as `"Name: [REDACTED]"`; malformed entries become `"[MALFORMED]"`
+
+Do **not** add new secret fields without extending this impl. The compiler will not warn you.
+
+### 7.3 Logging hygiene
+
+- Library code uses `log_info` / `log_warn` / `log_done` from `crates/core/logging.rs`. Never `println!` from a library — it bypasses log targets and rotation.
+- `redact_url()` in `crates/core/content.rs` strips `username:password@` from URLs before logging.
+- The MCP server returns deterministic error messages and never echoes secret env values back to callers.
+
+---
+
+## 8. Network Exposure
+
+| Service | Default bind | Notes |
+|---------|--------------|-------|
+| `axon mcp` (HTTP) | `127.0.0.1:8001` | Non-loopback bind requires `AXON_MCP_HTTP_TOKEN` (startup policy). |
+| `axon serve` (unified web + MCP) | `127.0.0.1:49000` | Same MCP token policy applies. |
+| `axon-qdrant` (compose) | `127.0.0.1:53333`, `:53334` | Loopback in `config/docker-compose.services.yaml`. |
+| `axon-tei` (compose) | `127.0.0.1:52000` | Loopback. |
+| `axon-chrome` (compose) | `127.0.0.1:6000`, `:9222` | Loopback. |
 
 Hardening guidance:
-- For local-only web UI, publish `127.0.0.1:49010:49010`.
-- If exposed externally, enforce TLS + auth at reverse proxy.
-- Keep worker/internal service ports loopback-bound unless explicitly required.
 
-## API and Command Surface Hardening
+- Keep infra services loopback-bound. The compose file already does this.
+- For the MCP server on a non-loopback host, set a long random `AXON_MCP_HTTP_TOKEN` (`openssl rand -hex 32`).
+- Never expose Qdrant or Chrome's CDP port to a network — both have unauthenticated control planes.
 
-Pulse/Copilot API routes:
+---
 
-- schema validation with Zod
-- explicit error mapping (for example `400`, `401`, `408`, `500`)
-- timeout on upstream LLM calls
-
-Worker startup:
-
-- validates required env vars for DB/Redis/AMQP before long-running lane execution
-
-## Residual Risks
-
-1. DNS rebinding TOCTOU window — **MITIGATED** (v0.32.4):
-- `SsrfBlockingResolver` (in `crates/core/http/ssrf.rs`) is wired into the reqwest client via `ClientBuilder::dns_resolver()`. It re-runs `check_ip()` on every IP returned by the OS resolver at the moment TCP connects — the same instant reqwest would dial. A TTL-0 DNS record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
-- Two-layer defence: `validate_url()` blocks literal IPs, hostile TLDs, and `localhost` at parse time; `SsrfBlockingResolver` blocks any hostname whose DNS resolution produces a blocked IP at connect time.
-
-2. WebSocket auth requires explicit env config:
-- Gate is disabled if `AXON_WEB_API_TOKEN` is not set — any client can connect to `/ws`.
-- For production / externally-exposed deployments, always set `AXON_WEB_API_TOKEN` to activate the gate.
-
-3. Upstream model endpoints:
-- security posture depends on TEI/LLM deployment hardening outside this repo.
-
-4. **`AXON_WEB_ALLOW_INSECURE_DEV` loopback bypass:** When set to `true`, requests from `127.0.0.1`/`::1` bypass the `AXON_WEB_API_TOKEN` check on `/api/*` and `/ws/shell` — even when the token IS configured. This flag must never be set to `true` in any deployment accessible from untrusted networks. Default is `false`. See `.env.example`.
-
-## Operational Security Checklist
+## 9. Operational Checklist
 
 Before deploy:
 
-1. Confirm `.env` exists and is not tracked.
-2. Confirm no secrets in changed files:
-
-```bash
-git diff -- . ':!*.lock'
-```
-
-Note: `git diff` only checks current uncommitted/staged changes. It does not detect
-secrets already present in commit history.
-
-For history scans, run a dedicated secret scanner on recent commits, for example:
-
-```bash
-gitleaks detect --source=. --log-opts="HEAD~5..HEAD"
-```
-
-3. Validate local-only bindings in compose.
-4. Confirm `AXON_WEB_ALLOW_INSECURE_DEV=false` before any network-accessible deployment.
-5. Run `./scripts/axon doctor`.
+1. `.env` exists, is not committed, and contains every required secret.
+2. `git diff -- . ':!*.lock'` shows no secret material in the changeset.
+3. For history scans, run a dedicated tool (`gitleaks detect --source=. --log-opts="HEAD~50..HEAD"` or similar). `git diff` only sees uncommitted changes.
+4. `AXON_MCP_HTTP_TOKEN` is set if `AXON_MCP_HTTP_HOST` is anything other than `127.0.0.1` / `localhost` / `::1`.
+5. `~/.axon/panel-password` exists and is mode `0600` if `axon serve` will run.
+6. `./scripts/axon doctor` reports Qdrant and TEI healthy.
 
 After deploy:
 
-1. Confirm healthy containers.
-2. Check logs for repeated auth/network failures.
-3. Ensure API routes return expected status codes on invalid requests.
+1. Containers report healthy.
+2. `curl http://<host>:8001/mcp` (no auth) returns `401` when the token is configured.
+3. `curl -H "Authorization: Bearer <wrong>" http://<host>:8001/mcp` returns `401`.
+4. Logs do not show repeated `web: rejected request with disallowed Host header` (indicates a misconfigured allowlist) or token-auth failures from your own clients.
 
-## Source Map
+---
 
-- `crates/core/http.rs` — SSRF / URL validation
-- `crates/web.rs` — WS OAuth gate, shell WS loopback restriction, output file path safety, `init_permission_responders()`, `send_permission_response()` (SEC-7)
-- `crates/web/download.rs` — download path safety
-- `crates/web/execute.rs` — ALLOWED_MODES / ALLOWED_FLAGS command surface, `PermissionResponderMap` wire-through
-- `crates/web/execute/cancel.rs` — cancel mode guard (H-04)
-- `crates/web/execute/sync_mode/dispatch.rs` — `PermissionResponderMap` passed to ACP bridge
-- `crates/services/acp.rs` — `PermissionResponderMap` type definition (SEC-7 composite key)
-- `crates/services/acp/bridge.rs` — `handle_interactive_permission()`, `resolve_acp_auto_approve()`, 60s timeout + cleanup
-- `crates/services/acp/runtime.rs` — `PermissionResponderMap` threaded through session init
-- `crates/mcp/server/oauth_google/` — MCP OAuth server (issues `atk_` tokens; separate from WS auth)
-- `apps/web/hooks/use-axon-ws.ts` — WS URL construction with `?token=` passthrough
-- `apps/web/proxy.ts` — `/api/*` origin check + API token validation helpers
-- `apps/web/app/api/omnibox/files/route.ts`
-- `apps/web/app/api/pulse/chat/route.ts`
-- `apps/web/app/api/ai/copilot/route.ts`
-- `config/docker-compose.services.yaml`
-- `.gitignore`
+## 10. Source Map
+
+- `crates/core/http/ssrf.rs` — `validate_url()`, `check_ip()`, `ssrf_blacklist_patterns()`, `SsrfBlockingResolver`
+- `crates/core/http/client.rs` — `HTTP_CLIENT` singleton, redirect-time SSRF re-validation, `fetch_html()`
+- `crates/core/http/normalize.rs` — `normalize_url()` (scheme prepend)
+- `crates/core/config/types/config_impls.rs` — `Config::Debug` redaction
+- `crates/mcp/auth.rs` — `mcp_auth_middleware`, `mcp_http_token_is_configured`
+- `crates/mcp/server/http.rs` — startup policy, host allowlist + CORS wiring, unified router
+- `crates/mcp/cors.rs` — CORS middleware (static `Allow-Headers`, no reflection)
+- `crates/web/security.rs` — `HostAllowlist`, `host_validation_middleware`
+- `crates/web/auth.rs` — admin panel password generation and constant-time verify
+- `crates/web/server.rs` — admin panel routes and authorization helper
+- `docs/auth/MCP-AUTH.md` — canonical MCP HTTP auth reference
+
+> The legacy `docs/auth/API-TOKEN.md` describes a `/ws`, `/output/*`, `/download/*`, and `AXON_WEB_API_TOKEN`-gated surface that does not exist in the current binary. Treat that file as historical until it is rewritten or removed.
