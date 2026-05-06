@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-05-06
+
+### Fixed
+- Negative-count wrap on i64→u64 cast in queue cap check (axon_rust-pkl.10.5)
+
+### Changed
+- Queue cap path: cache env vars in LazyLock; warn on unparseable env; introduce JobError::QueueCapacityExceeded domain error; inline four dead-weight wrappers; tighten table_name to &'static str (axon_rust-pkl.10.1-10.7)
+- ACP session cache: document concurrent overshoot + O(N) eviction scan rationale; remove redundant cap==0 guard; demote routine eviction log to info; add at-most-one-victim contract test (axon_rust-pkl.11.1-11.4)
+- MapResult.mapped_urls renamed to returned_url_count for clarity (JSON wire key preserved via serde rename) (axon_rust-pkl.34.3)
+
 ## [1.5.0] - 2026-05-06
 
 ### Added
