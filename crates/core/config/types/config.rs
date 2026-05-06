@@ -264,7 +264,7 @@ pub struct Config {
     pub ask_max_context_chars: usize,
 
     /// Number of candidate chunks retrieved from Qdrant before reranking.
-    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–200). Default: 64.
+    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–200). Default: 150.
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
