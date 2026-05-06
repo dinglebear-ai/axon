@@ -65,17 +65,11 @@ All three modes share the same Rust binary, the same services layer, and the sam
 ### Core docs
 
 - [Architecture](./ARCHITECTURE.md) -- detailed system architecture
-- [API](./API.md) -- HTTP API reference
 - [Deployment](./DEPLOYMENT.md) -- production deployment guide
 - [Operations](./OPERATIONS.md) -- operational runbooks
 - [Performance](./PERFORMANCE.md) -- tuning and benchmarks
 - [Security](./SECURITY.md) -- security model
-- [Schema](./SCHEMA.md) -- database schema
 - [Job Lifecycle](./JOB-LIFECYCLE.md) -- async job state machine
-- [Serve Runtime](./SERVE.md) -- `axon serve` supervisor details
-- [Export/Backup](./EXPORT.md) -- export contract
-- [Restore](./RESTORE.md) -- restore guide
-- [Graph Features](./GRAPH.md) -- Neo4j graph RAG
 - [Testing](./TESTING.md) -- test patterns and coverage
 
 ### MCP docs

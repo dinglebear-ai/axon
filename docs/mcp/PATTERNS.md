@@ -163,7 +163,7 @@ Lifecycle actions (crawl, extract, embed, ingest) share a common pattern:
 
 Each job type has:
 - A `Processor` trait implementation in `crates/jobs/<type>/`
-- A SQLite table (e.g., `axon_crawl_jobs` — see `docs/SCHEMA.md`)
+- A SQLite table (e.g., `axon_crawl_jobs`) created by `ensure_schema()` in `crates/jobs/<type>_jobs.rs`
 - An in-process worker started by `LiteBackend::new_with_workers`
 
 ## Hybrid search pattern

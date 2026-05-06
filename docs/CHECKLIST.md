@@ -55,7 +55,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 ## Database
 
 - [ ] Migrations in `migrations/` are sequential
-- [ ] Schema changes documented in `docs/SCHEMA.md`
+- [ ] Schema changes reflected in the corresponding `ensure_schema()` in `crates/jobs/*_jobs.rs`
 - [ ] `ensure_schema()` handles upgrade path from previous version
 
 ## Web UI

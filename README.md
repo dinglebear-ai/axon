@@ -1454,11 +1454,9 @@ axon sources
 | `docs/ARCHITECTURE.md` | Subsystem map and data-flow diagrams |
 | `docs/MCP.md` | MCP runtime and design guide |
 | `docs/MCP-TOOL-SCHEMA.md` | MCP tool schema source of truth |
-| `docs/GRAPH.md` | Graph features, Neo4j data model, and CLI reference |
 | `docs/SECURITY.md` | Security model, SSRF controls, ACP permission isolation |
 | `docs/JOB-LIFECYCLE.md` | Async job state machine, worker architecture |
 | `docs/DEPLOYMENT.md` | Deploy and rollback procedures |
-| `docs/SERVE.md` | WebSocket bridge architecture |
 | `docs/TESTING.md` | Test strategy and mcporter smoke harness |
 | `docs/commands/` | Per-command reference documentation |
 | `docs/ingest/` | Per-source ingest deep dives |

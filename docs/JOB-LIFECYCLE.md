@@ -136,7 +136,7 @@ Polling mode:
 
 ## Data Model
 
-Full schema lives in `docs/SCHEMA.md`. Summary:
+Schema is auto-created at runtime by `ensure_schema()` in each `crates/jobs/*_jobs.rs` file — read those files for canonical column lists. Summary:
 
 - Shared fields: `id`, `status`, timestamps, `error_text`, `result_json`, `config_json`
 - Crawl-specific: `url`
@@ -219,7 +219,7 @@ Refresh jobs re-check previously crawled URLs for content changes using HTTP con
 ### Related tables
 
 - `axon_refresh_targets`: persists per-URL conditional request state across jobs. No foreign key to jobs — targets accumulate indefinitely.
-- `axon_refresh_schedules`: defines recurring refresh configurations. See `docs/SCHEMA.md` for column details.
+- `axon_refresh_schedules`: defines recurring refresh configurations. See `crates/jobs/*_jobs.rs` `ensure_schema()` for column details.
 
 ## Watch Scheduler Lifecycle
 
@@ -289,5 +289,4 @@ will remain in `running` state until the watchdog reclaims it.
 - `crates/jobs/refresh/worker.rs`
 - `crates/jobs/watch.rs`
 - `crates/jobs/watch_worker.rs`
-- `crates/jobs/common/amqp.rs`
-- `docs/SCHEMA.md`
+- (Schema is auto-created at runtime — see `ensure_schema()` in each `crates/jobs/*_jobs.rs`)

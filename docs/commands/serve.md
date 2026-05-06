@@ -67,4 +67,4 @@ AXON_SERVE_HOST=0.0.0.0 axon serve --port 49000
 - `serve` aborts the whole stack after repeated fast failures instead of crash-looping forever.
 - `serve` does not auto-start Docker containers; it only checks them.
 - `/ws/shell` rejects non-loopback clients with HTTP 403.
-- See `docs/SERVE.md` for full protocol and architecture details.
+> Note: this doc was flagged for rewrite in the 2026-05-06 stale-docs audit — the description above predates the lite-mode simplification. The current `axon serve` runs the MCP HTTP server only (see `crates/cli/commands/serve.rs`).
