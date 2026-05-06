@@ -29,7 +29,7 @@ Lefthook hooks verify security invariants:
 
 | Hook | Purpose |
 |------|---------|
-| `check_env_staged.sh` | Blocks commits that include `.env` files |
+| `cargo xtask check-env-staged` | Blocks commits that include `.env` files |
 | `check_dockerignore_guards.sh` | Verifies `.dockerignore` contains required patterns |
 
 ## Web app token model

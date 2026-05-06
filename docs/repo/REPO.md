@@ -111,7 +111,7 @@ foo/
   mod.rs        <- forbidden
 ```
 
-Enforced by `scripts/check_no_mod_rs.sh`.
+Enforced by `cargo xtask check-no-mod-rs`.
 
 Do not use `#[path = "..."]` to route around this layout in production modules.
 If a temporary path attribute is needed during a file split, remove it before

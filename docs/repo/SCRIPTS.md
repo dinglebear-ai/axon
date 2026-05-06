@@ -27,12 +27,19 @@ Usage:
 | `enforce_monoliths.py` | Enforce file size (500 lines) and function size (120 lines) limits on `.rs` files |
 | `enforce_no_legacy_symbols.py` | Block deprecated function/type names |
 | `check_dockerignore_guards.sh` | Verify `.dockerignore` contains required patterns |
-| `check_env_staged.sh` | Block commits that include `.env` files |
-| `check_no_mod_rs.sh` | Enforce no `mod.rs` files (Rust 2018+ convention) |
 | `check_no_next_middleware.sh` | Block Next.js middleware files |
 | `check_pg_advisory_lock.sh` | Verify advisory lock usage |
 | `check_shell_completions.sh` | Verify shell completion generation |
-| `check_mcp_http_only.sh` | Verify MCP transport configuration |
+
+The five enforcement checks below were ported from shell scripts to the `xtask` crate (see `axon_rust-pp5`). Run via `cargo xtask <name>` or in lefthook:
+
+| xtask command | Purpose |
+|---------------|---------|
+| `check-env-staged` | Block commits that include `.env` files |
+| `check-no-mod-rs` | Enforce no `mod.rs` files (Rust 2018+ convention) |
+| `check-mcp-http` | Verify MCP transport configuration |
+| `check-unwraps` | Warn about new `.unwrap()`/`.expect(` calls in staged code (warn-only) |
+| `check-claude-symlinks` | Verify AGENTS.md / GEMINI.md symlinks next to every CLAUDE.md |
 
 ## Docker and deployment
 
@@ -94,7 +101,6 @@ Usage:
 | `install-git-hooks.sh` | Install lefthook git hooks |
 | `install-agent-skill.sh` | Install agent skill symlinks |
 | `validate_skills_ref.sh` | Validate skill references |
-| `warn_new_unwraps.sh` | Warn about new `.unwrap()` calls in staged code |
 | `hook_deny_audit_sync.py` | Hook: verify cargo-deny audit |
 | `hook_justfile_lefthook_sync.py` | Hook: verify Justfile/lefthook sync |
 

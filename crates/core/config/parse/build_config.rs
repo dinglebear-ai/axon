@@ -11,7 +11,7 @@ use super::helpers::{
     validate_collection_name, validate_custom_headers,
 };
 // AXON_MCP_TRANSPORT is documented as a known knob in docs/CONFIG.md and is referenced
-// here to satisfy the scripts/check_mcp_http_only.sh grep (the resolver lives in helpers.rs).
+// here to satisfy the `cargo xtask check-mcp-http` grep (the resolver lives in helpers.rs).
 use super::performance;
 use super::toml_config::load_toml_config;
 use clap::ValueEnum;

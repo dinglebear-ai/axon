@@ -75,7 +75,7 @@ foo/
   baz.rs        <- submodule
 ```
 
-Enforcement: `scripts/check_no_mod_rs.sh`.
+Enforcement: `cargo xtask check-no-mod-rs`.
 
 ## Rust code standards
 
@@ -108,9 +108,11 @@ Enforcement: `scripts/check_no_mod_rs.sh`.
 | `enforce_monoliths.py` | File and function size limits |
 | `enforce_no_legacy_symbols.py` | Block deprecated names |
 | `check_dockerignore_guards.sh` | Docker ignore patterns |
-| `check_env_staged.sh` | Block .env commits |
-| `check_no_mod_rs.sh` | No mod.rs files |
-| `warn_new_unwraps.sh` | Flag new .unwrap() calls |
+| `cargo xtask check-env-staged` | Block .env commits |
+| `cargo xtask check-no-mod-rs` | No mod.rs files |
+| `cargo xtask check-unwraps` | Flag new .unwrap() calls (warn-only) |
+| `cargo xtask check-mcp-http` | MCP transport configuration parity |
+| `cargo xtask check-claude-symlinks` | AGENTS.md/GEMINI.md symlinks present |
 
 Install hooks:
 

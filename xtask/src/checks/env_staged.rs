@@ -4,7 +4,7 @@ use std::process::Command;
 
 /// Returns true if the given basename is a staged-file violation.
 ///
-/// Rules (mirrors `scripts/check_env_staged.sh`):
+/// Rules:
 /// - `.env.example` → allowed (template file, committed by design)
 /// - basename equals `.env` or starts with `.env.` → blocked
 ///   (`.env`, `.env.local`, `.env.production`, ...)

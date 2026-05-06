@@ -2,18 +2,18 @@ pre-commit:
   parallel: true
   commands:
     env-guard:
-      run: ./scripts/check_env_staged.sh
+      run: cargo xtask check-env-staged
     claude-symlinks:
-      run: ./scripts/check_claude_symlinks.sh
+      run: cargo xtask check-claude-symlinks
     mcp-http-only:
       glob: "**/*.rs"
-      run: ./scripts/check_mcp_http_only.sh
+      run: cargo xtask check-mcp-http
     no-mod-rs:
       glob: "**/*.rs"
-      run: ./scripts/check_no_mod_rs.sh
+      run: cargo xtask check-no-mod-rs
     unwrap-warn:
       glob: "**/*.rs"
-      run: ./scripts/warn_new_unwraps.sh
+      run: cargo xtask check-unwraps
     skills-ref:
       glob: "skills/**"
       run: ./scripts/validate_skills_ref.sh
@@ -29,15 +29,18 @@ pre-commit:
         else
           echo "ERROR enforce_monoliths.py not found in scripts/ or ~/.claude/hooks/" >&2; exit 1;
         fi
+    taplo:
+      glob: "**/*.toml"
+      run: taplo fmt --check {staged_files}
     rustfmt:
       glob: "**/*.rs"
       run: cargo fmt -- --check
     clippy:
       glob: "**/*.{rs,toml}"
-      run: cargo clippy --all-targets --locked -- -D warnings
+      run: cargo clippy --workspace --all-targets --locked -- -D warnings
     check:
       glob: "**/*.{rs,toml}"
-      run: cargo check --all-targets --locked
+      run: cargo check --workspace --all-targets --locked
     test:
       glob: "**/*.{rs,toml}"
-      run: cargo test --all --locked
+      run: cargo test --workspace --locked
