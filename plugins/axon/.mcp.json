@@ -1,3 +1,19 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "axon": {
+      "type": "stdio",
+      "command": "axon",
+      "args": ["mcp"],
+      "env": {
+        "QDRANT_URL": "${user_config.qdrant_url}",
+        "TEI_URL": "${user_config.tei_url}",
+        "AXON_COLLECTION": "${user_config.collection}",
+        "OPENAI_BASE_URL": "${user_config.openai_base_url}",
+        "OPENAI_API_KEY": "${user_config.openai_api_key}",
+        "OPENAI_MODEL": "${user_config.openai_model}",
+        "TAVILY_API_KEY": "${user_config.tavily_api_key}",
+        "AXON_CHROME_REMOTE_URL": "${user_config.chrome_remote_url}"
+      }
+    }
+  }
 }

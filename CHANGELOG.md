@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-05-06
+
+### Added
+
+- Plugin `userConfig` schema for Qdrant URL, TEI URL, collection name, LLM endpoint, API keys (sensitive), Tavily API key (sensitive), and Chrome remote URL — prompts users at enable time
+- Plugin `mcp` field in `plugin.json` pointing to `plugins/axon/.mcp.json`
+- MCP server entry in `.mcp.json` wires `axon mcp` stdio transport with `${user_config.*}` env var substitution for all service URLs and credentials
+
 ## [1.5.3] - 2026-05-06
 
 ### Fixed
