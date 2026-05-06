@@ -74,9 +74,23 @@ impl AcpSessionCache {
     ///
     /// After inserting, if the global session cap (`AXON_ACP_MAX_SESSIONS`,
     /// default 100, 0 = unlimited) is exceeded, the least-recently-used session
-    /// is evicted. Concurrent inserts may briefly overshoot the cap by the
-    /// number of racing writers — this is acceptable and noted here to avoid
-    /// introducing a global mutex.
+    /// is evicted (at most one per call — see `evict_if_over_cap`).
+    ///
+    /// ## Concurrency notes (documented, not fixed)
+    ///
+    /// - **Overshoot window:** between `sessions.insert()` and `evict_if_over_cap()`,
+    ///   N concurrent writers may each observe `len <= cap` and skip eviction,
+    ///   transiently overshooting the cap by up to `N` entries (where `N` is the
+    ///   count of in-flight inserts). The next single insert will only evict one
+    ///   victim, so the cache may run a few entries over `cap` until traffic
+    ///   resumes. This is acceptable: ACP session inserts are rare (one per
+    ///   distinct agent_key), and a global mutex would defeat `DashMap`'s
+    ///   per-shard locking.
+    /// - **Eviction scan is O(N):** `evict_if_over_cap` linearly scans all
+    ///   entries to pick the LRU victim. At the default cap of 100 (and
+    ///   realistic deployments well under 1000), this is negligible. If the
+    ///   cap is raised into the tens of thousands, replace this with an
+    ///   ordered index (e.g. `BTreeMap<Instant, String>`).
     pub fn insert(
         &self,
         agent_key: String,
@@ -110,15 +124,22 @@ impl AcpSessionCache {
         session
     }
 
-    /// Evict the LRU session if the cache has exceeded `cap`.
+    /// Evict at most ONE LRU session if the cache has exceeded `cap`.
     ///
-    /// Finds the victim by scanning `last_active` across all sessions, clones
-    /// its key, drops the iterator, then calls `self.remove()` (which also
-    /// cleans `session_id_index`). Skips eviction if every entry was freshly
-    /// inserted with an identical timestamp — extremely rare and safe to miss.
+    /// Finds the victim by scanning `last_active` across all sessions
+    /// (O(N) — see notes on `insert`), clones its key, drops the iterator,
+    /// then calls `self.remove()` (which also cleans `session_id_index`).
+    /// Skips eviction if every entry was freshly inserted with an identical
+    /// timestamp — extremely rare and safe to miss.
+    ///
+    /// **Contract:** This function evicts at most one entry per call. Callers
+    /// that need to bring the cache under `cap` after a burst of concurrent
+    /// inserts must call repeatedly (or rely on subsequent inserts to drain
+    /// the overshoot one-by-one).
+    ///
+    /// **Caller guarantees `cap > 0`** — `insert()` checks this before calling.
     pub(super) fn evict_if_over_cap(&self, cap: usize) {
-        // cap=0 means unlimited — never evict.
-        if cap == 0 || self.sessions.len() <= cap {
+        if self.sessions.len() <= cap {
             return;
         }
         // Find the LRU key by scanning last_active under each entry's lock.
@@ -136,7 +157,8 @@ impl AcpSessionCache {
 
         if let Some(key) = lru_key {
             let cache_size = self.sessions.len();
-            tracing::warn!(
+            // Routine at-cap eviction is expected behavior, not a warning.
+            tracing::info!(
                 agent_key = %key,
                 cache_size,
                 cap,
