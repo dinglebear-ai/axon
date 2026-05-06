@@ -74,6 +74,12 @@ precommit:
     just check
     just test
 
+# Whole-repo monolith size report (informational, exits 0).
+# Lists every oversized file/function not already in .monolith-allowlist.
+# Pass --include-allowlisted to also surface allowlisted entries.
+monolith-report *ARGS:
+    python3 scripts/enforce_monoliths.py --whole-repo {{ARGS}}
+
 fix:
     cargo fmt --all
     {{rust_dev_env}}; cargo clippy --fix --all-targets --locked --allow-dirty --allow-staged

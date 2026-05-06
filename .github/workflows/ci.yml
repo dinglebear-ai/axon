@@ -162,6 +162,14 @@ jobs:
           else
             echo "ERROR: enforce_monoliths.py not found in scripts/ or ~/.claude/hooks/" && exit 1
           fi
+      - name: Whole-repo monolith report (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [ -f "scripts/enforce_monoliths.py" ]; then
+            python3 scripts/enforce_monoliths.py --whole-repo --include-allowlisted
+          fi
 
   fmt:
     name: fmt

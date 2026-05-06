@@ -114,6 +114,19 @@ def main() -> int:
     parser.add_argument(
         "--self-test", action="store_true", help="Run internal detector self-tests"
     )
+    parser.add_argument(
+        "--whole-repo",
+        action="store_true",
+        help=(
+            "Informational whole-repo size report (always exits 0). "
+            "Skips allowlisted files unless --include-allowlisted is set."
+        ),
+    )
+    parser.add_argument(
+        "--include-allowlisted",
+        action="store_true",
+        help="With --whole-repo, also include files already in the allowlist.",
+    )
     parser.add_argument("--file-max-lines", type=int, default=DEFAULT_FILE_MAX_LINES)
     parser.add_argument(
         "--function-warn-lines", type=int, default=DEFAULT_FUNCTION_WARN_LINES
@@ -131,6 +144,16 @@ def main() -> int:
 
     if args.self_test:
         return _self_test()
+
+    if args.whole_repo:
+        from enforce_monoliths_report import whole_repo_report
+
+        return whole_repo_report(
+            file_max=args.file_max_lines,
+            fn_warn=args.function_warn_lines,
+            fn_max=args.function_max_lines,
+            include_allowlisted=args.include_allowlisted,
+        )
 
     if not args.file and not args.staged and (not args.base or not args.head):
         print(
