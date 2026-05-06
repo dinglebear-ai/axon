@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-05-06
+
+### Added
+- `xtask` workspace member with five enforcement checks ported from shell: `check-no-mod-rs`, `check-mcp-http`, `check-env-staged`, `check-unwraps` (warn-only), `check-claude-symlinks` (axon_rust-pp5.3–pp5.7)
+- `taplo` TOML formatter wired into lefthook (staged-file glob) and CI (new `toml-fmt` job) (axon_rust-pp5.8, pp5.9)
+- New CI `windows-check` lane validating xtask portability on `windows-latest`: `cargo check -p xtask`, `cargo test -p xtask`, `cargo xtask check-no-mod-rs`, `cargo xtask check-mcp-http` (axon_rust-pp5.9)
+
+### Changed
+- `lefthook.yml`: replaced 5 shell hooks with `cargo xtask check-*`; switched cargo gates to `--workspace` so the xtask crate is exercised by clippy/check/test (axon_rust-pp5.8)
+- CI `mcp-transport-modes` and `no-mod-rs` jobs now install Rust toolchain + cache and call `cargo xtask`; `check`, `msrv`, `clippy`, `test` jobs upgraded to `--workspace` (axon_rust-pp5.9)
+- Updated docs (`docs/GUARDRAILS.md`, `docs/repo/REPO.md`, `docs/repo/RULES.md`, `docs/repo/SCRIPTS.md`) and one source comment in `crates/core/config/parse/build_config.rs` to reference the new xtask commands (axon_rust-pp5.8)
+
+### Removed
+- `scripts/check_no_mod_rs.sh`, `scripts/check_mcp_http_only.sh`, `scripts/check_env_staged.sh`, `scripts/warn_new_unwraps.sh`, `scripts/check_claude_symlinks.sh` — superseded by `cargo xtask check-*` (axon_rust-pp5.8)
+
 ## [1.5.1] - 2026-05-06
 
 ### Fixed
