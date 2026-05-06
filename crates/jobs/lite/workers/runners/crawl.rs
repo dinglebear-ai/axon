@@ -108,24 +108,31 @@ pub async fn run_crawl_job_lite(
         }
     }
 
-    Ok(Some(serde_json::json!({
+    Ok(Some(build_crawl_result_json(
+        &url,
+        &summary,
+        embed_job_id.as_deref(),
+    )))
+}
+
+/// Builds the canonical result JSON written to `axon_crawl_jobs.result_json`.
+/// Key set is locked by `crawl_result_json_canonical_key_set_is_exact`.
+fn build_crawl_result_json(
+    url: &str,
+    summary: &crate::crates::crawl::engine::CrawlSummary,
+    embed_job_id: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
         "url": url,
-        // CLI/MCP `crawl status` reads these field names (see
-        // crates/cli/commands/crawl/subcommands.rs:print_status_metrics).
-        // Keep both legacy names (`pages_seen`, `markdown_files`) and the
-        // canonical names (`pages_crawled`, `md_created`) so older consumers
-        // still work.
         "pages_crawled": summary.pages_seen,
-        "pages_seen": summary.pages_seen,
         "md_created": summary.markdown_files,
-        "markdown_files": summary.markdown_files,
         "pages_discovered": summary.pages_discovered,
         "thin_md": summary.thin_pages,
         "error_pages": summary.error_pages,
         "waf_blocked_pages": summary.waf_blocked_pages,
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
-    })))
+    })
 }
 
 fn format_elapsed_ms(elapsed_ms: u128) -> String {
@@ -133,5 +140,97 @@ fn format_elapsed_ms(elapsed_ms: u128) -> String {
         format!("{:.1}s", elapsed_ms as f64 / 1_000.0)
     } else {
         format!("{elapsed_ms}ms")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_crawl_result_json;
+    use crate::crates::crawl::engine::CrawlSummary;
+
+    fn make_summary() -> CrawlSummary {
+        CrawlSummary {
+            pages_seen: 7,
+            markdown_files: 5,
+            pages_discovered: 9,
+            thin_pages: 2,
+            error_pages: 1,
+            waf_blocked_pages: 0,
+            elapsed_ms: 1234,
+            ..CrawlSummary::default()
+        }
+    }
+
+    #[test]
+    fn crawl_result_json_uses_canonical_keys() {
+        let json =
+            build_crawl_result_json("https://example.com", &make_summary(), Some("embed-job-id"));
+        let obj = json.as_object().expect("json is an object");
+
+        // Canonical keys are present
+        assert_eq!(
+            obj.get("url").and_then(|v| v.as_str()),
+            Some("https://example.com")
+        );
+        assert_eq!(obj.get("pages_crawled").and_then(|v| v.as_u64()), Some(7));
+        assert_eq!(obj.get("md_created").and_then(|v| v.as_u64()), Some(5));
+        assert_eq!(
+            obj.get("pages_discovered").and_then(|v| v.as_u64()),
+            Some(9)
+        );
+        assert_eq!(obj.get("thin_md").and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(obj.get("error_pages").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(
+            obj.get("waf_blocked_pages").and_then(|v| v.as_u64()),
+            Some(0)
+        );
+        assert_eq!(obj.get("elapsed_ms").and_then(|v| v.as_u64()), Some(1234));
+        assert_eq!(
+            obj.get("embed_job_id").and_then(|v| v.as_str()),
+            Some("embed-job-id")
+        );
+    }
+
+    #[test]
+    fn crawl_result_json_omits_legacy_aliases() {
+        let json = build_crawl_result_json("https://example.com", &make_summary(), None);
+        let obj = json.as_object().expect("json is an object");
+
+        // Legacy aliases removed (axon_rust-pkl.8)
+        assert!(
+            !obj.contains_key("pages_seen"),
+            "legacy alias pages_seen must not appear in crawl result JSON"
+        );
+        assert!(
+            !obj.contains_key("markdown_files"),
+            "legacy alias markdown_files must not appear in crawl result JSON"
+        );
+    }
+
+    #[test]
+    fn crawl_result_json_canonical_key_set_is_exact() {
+        let json = build_crawl_result_json("https://example.com", &make_summary(), None);
+        let mut keys: Vec<&str> = json
+            .as_object()
+            .expect("json is an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort();
+        let expected = vec![
+            "elapsed_ms",
+            "embed_job_id",
+            "error_pages",
+            "md_created",
+            "pages_crawled",
+            "pages_discovered",
+            "thin_md",
+            "url",
+            "waf_blocked_pages",
+        ];
+        assert_eq!(
+            keys, expected,
+            "canonical crawl result key set drift detected"
+        );
     }
 }
