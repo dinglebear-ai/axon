@@ -248,7 +248,6 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_LOG_FILE` | -- | Structured log file path |
 | `AXON_LOG_MAX_BYTES` | `10485760` | Log rotation size (10 MB) |
 | `AXON_LOG_MAX_FILES` | `3` | Rotated log files retained |
-| `AXON_NO_COLOR` | -- | Disable ANSI color output |
 
 ### MCP server
 

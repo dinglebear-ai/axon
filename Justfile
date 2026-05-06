@@ -88,10 +88,10 @@ fix-all:
     just fix
 
 taplo-check:
-    taplo fmt --check
+    if command -v taplo >/dev/null 2>&1; then taplo fmt --check; else echo "taplo not installed. Run: cargo install taplo-cli --locked"; exit 1; fi
 
 taplo-fmt:
-    taplo fmt
+    if command -v taplo >/dev/null 2>&1; then taplo fmt; else echo "taplo not installed. Run: cargo install taplo-cli --locked"; exit 1; fi
 
 llvm-cov-install:
     {{rust_dev_env}}; cargo install cargo-llvm-cov --locked

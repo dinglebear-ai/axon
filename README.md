@@ -1063,7 +1063,7 @@ The minimum set needed to start:
 | `AXON_CHROME_REMOTE_URL` | For Chrome rendering | Chrome management API URL (e.g. `http://axon-chrome:6000`) |
 | `AXON_COLLECTION` | No | Default Qdrant collection name (default: `cortex`) |
 | `AXON_DATA_DIR` | No | Persistent data root (default: `./data`) |
-| `AXON_LITE` | No | Set to `1` for lite mode — SQLite-backed, no external queue (default in this build) |
+| `AXON_LITE` | No | Set to `1` (or pass `--lite`) for lite mode — SQLite-backed, no external queue. Defaults to `false`. |
 
 > **Full reference:** See [`docs/CONFIG.md`](docs/CONFIG.md) for every environment variable, its default, and description. `docs/CONFIG.md` is the single authoritative source — when in doubt, it wins over this file.
 

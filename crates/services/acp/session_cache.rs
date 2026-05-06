@@ -405,19 +405,28 @@ mod tests {
         assert_eq!(cache.len(), 3);
     }
 
-    /// cap=0 means unlimited — `insert()` guards `cap > 0` before calling
-    /// `evict_if_over_cap`, so the eviction path is never reached with cap=0.
-    /// This test verifies the caller-side guard by inserting via the public
-    /// `insert()` path with `MAX_SESSIONS=0` semantics simulated: we never
-    /// invoke `evict_if_over_cap(0)` directly because that now violates the
-    /// "caller guarantees cap > 0" contract.
+    /// cap=0 means unlimited — `insert_with_cap(0)` skips `evict_if_over_cap`
+    /// entirely. This test exercises that exact branch by inserting more
+    /// sessions than the default `MAX_SESSIONS` (100) with cap=0 forced and
+    /// asserting all are retained. Without the cap==0 guard, the public
+    /// `insert()` path would evict down to MAX_SESSIONS.
     #[tokio::test]
     async fn cap_zero_means_unlimited_via_insert_guard() {
         let cache = AcpSessionCache::new();
-        // Insert many sessions; with no eviction call from the test, all stay.
-        // (Production code: insert() skips evict_if_over_cap when cap == 0.)
-        insert_n_sessions(&cache, 10);
-        assert_eq!(cache.len(), 10);
+        // Force cap=0 explicitly (not relying on process-wide MAX_SESSIONS).
+        for i in 0..150 {
+            cache.insert_with_cap(
+                format!("cap0-agent:{i}"),
+                test_handle(),
+                test_responder_map(),
+                0,
+            );
+        }
+        assert_eq!(
+            cache.len(),
+            150,
+            "cap=0 must skip eviction even when inserts exceed the default MAX_SESSIONS"
+        );
     }
 
     /// Multiple successive over-cap inserts each evict exactly one LRU victim,

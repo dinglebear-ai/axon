@@ -97,6 +97,24 @@ impl AcpSessionCache {
         handle: Arc<AcpConnectionHandle>,
         permission_responders: PermissionResponderMap,
     ) -> Arc<CachedSession> {
+        self.insert_with_cap(
+            agent_key,
+            handle,
+            permission_responders,
+            *super::MAX_SESSIONS,
+        )
+    }
+
+    /// Like [`insert`] but with an injectable cap. Used by tests to exercise
+    /// the `cap == 0` (unlimited) branch and the cap-eviction branch without
+    /// relying on the process-wide `MAX_SESSIONS` LazyLock.
+    pub(super) fn insert_with_cap(
+        &self,
+        agent_key: String,
+        handle: Arc<AcpConnectionHandle>,
+        permission_responders: PermissionResponderMap,
+        cap: usize,
+    ) -> Arc<CachedSession> {
         let session = Arc::new(CachedSession::new(handle, permission_responders));
         let replaced = self
             .sessions
@@ -116,7 +134,6 @@ impl AcpSessionCache {
                 "acp: session inserted"
             );
         }
-        let cap = *super::MAX_SESSIONS;
         if cap > 0 {
             self.evict_if_over_cap(cap);
         }
@@ -129,8 +146,9 @@ impl AcpSessionCache {
     /// Finds the victim by scanning `last_active` across all sessions
     /// (O(N) — see notes on `insert`), clones its key, drops the iterator,
     /// then calls `self.remove()` (which also cleans `session_id_index`).
-    /// Skips eviction if every entry was freshly inserted with an identical
-    /// timestamp — extremely rare and safe to miss.
+    /// On ties (identical `last_active` timestamps — which only happen under
+    /// extreme insert burst), `Iterator::min_by_key` deterministically picks
+    /// the last equal element it sees; one entry is always evicted.
     ///
     /// **Contract:** This function evicts at most one entry per call. Callers
     /// that need to bring the cache under `cap` after a burst of concurrent

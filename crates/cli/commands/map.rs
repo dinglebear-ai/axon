@@ -67,7 +67,7 @@ pub async fn run_map(cfg: &Config, start_url: &str) -> Result<(), Box<dyn Error>
     }
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string(&result)?);
+        println!("{}", serde_json::to_string_pretty(&result)?);
     } else {
         println!("{}", primary(&format!("Map Results for {start_url}")));
         println!(
