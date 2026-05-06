@@ -30,16 +30,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
       - name: Enforce MCP CLI transport mode support
-        run: ./scripts/check_mcp_http_only.sh
+        run: cargo xtask check-mcp-http
 
   no-mod-rs:
     name: no-mod-rs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask
       - name: Enforce modern Rust module style (no mod.rs)
-        run: ./scripts/check_no_mod_rs.sh
+        run: cargo xtask check-no-mod-rs
+
+  toml-fmt:
+    name: toml-fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: taplo-cli
+      - name: taplo fmt --check
+        run: taplo fmt --check
+
+  windows-check:
+    name: windows-check (xtask only)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: xtask-windows
+      - name: cargo check -p xtask
+        run: cargo check -p xtask --locked
+      - name: cargo test -p xtask
+        run: cargo test -p xtask --locked
+      - name: cargo xtask check-no-mod-rs
+        run: cargo xtask check-no-mod-rs
+      - name: cargo xtask check-mcp-http
+        run: cargo xtask check-mcp-http
 
   shell-completions-smoke:
     name: shell-completions-smoke
@@ -196,7 +233,7 @@ jobs:
       - name: cargo check (warnings are errors)
         env:
           RUSTFLAGS: -D warnings
-        run: cargo check --all-targets --locked --features test-helpers
+        run: cargo check --workspace --all-targets --locked --features test-helpers
 
   msrv:
     name: msrv
@@ -208,7 +245,7 @@ jobs:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (MSRV)
-        run: cargo check --all-targets --locked --features test-helpers
+        run: cargo check --workspace --all-targets --locked --features test-helpers
 
   clippy:
     name: clippy
@@ -221,7 +258,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
-        run: cargo clippy --all-targets --locked --features test-helpers -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked --features test-helpers -- -D warnings
 
   test:
     name: test
@@ -269,7 +306,7 @@ jobs:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
-        run: cargo test --all --locked --features test-helpers -- --skip worker_e2e
+        run: cargo test --workspace --locked --features test-helpers -- --skip worker_e2e
 
       - name: cargo test ignored cli infra tests
         run: cargo test --locked cli_ --features test-helpers -- --ignored
