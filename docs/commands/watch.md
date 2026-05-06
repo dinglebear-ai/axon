@@ -81,6 +81,6 @@ axon watch run-now <uuid> --json
 axon watch history <uuid> --limit 20
 ```
 
-## Relationship to refresh schedule
+## Notes
 
-`axon refresh schedule ...` remains available as a compatibility interface and is backed by watch definitions with `task_type=refresh`.
+- The legacy `axon refresh schedule ...` compatibility surface has been removed; use `axon watch` directly. Watch definitions with `task_type=refresh` are still the supported way to schedule recurring refreshes.

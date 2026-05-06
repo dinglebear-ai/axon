@@ -22,7 +22,7 @@ docs/
 ├── DEPLOYMENT.md             # Production deployment guide
 ├── FEATURE-DELIVERY-FRAMEWORK.md  # Feature development process
 ├── HEADLESS_OPTIONS.md       # Chrome/headless rendering configuration options
-├── JOB-LIFECYCLE.md          # AMQP job state machine and lifecycle diagrams
+├── JOB-LIFECYCLE.md          # Job state machine and lifecycle diagrams (SQLite-backed)
 ├── LIVE-TEST-SCRIPTS.md      # Live integration test scripts reference
 ├── MCP.md                    # MCP server runtime and design guide
 ├── MCP-TOOL-SCHEMA.md        # MCP wire contract — source of truth for the axon tool schema

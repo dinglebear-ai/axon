@@ -15,9 +15,11 @@ CLI command routing and command handlers for the `axon` binary.
 
 ## Key Files
 - `commands.rs`: top-level command module surface.
-- `commands/common.rs`: shared URL/argument helpers used across command modules.
-- `commands/crawl.rs` + `commands/crawl/*`: crawl command flow and sync/runtime variants.
-- `commands/status.rs` + `commands/status/metrics.rs`: queue and runtime status reporting.
+- `commands/common_urls.rs`: URL parsing/glob expansion helpers (`truncate_chars`, `parse_urls`, `start_url_from_cfg`).
+- `commands/common_jobs.rs`: job lifecycle renderers (`handle_job_status/cancel/errors/list/cleanup/clear/recover`).
+- `commands/job_contracts.rs` + `commands/job_contracts/*`: stable JSON output types for `--json` callers.
+- `commands/crawl.rs` + `commands/crawl/*`: crawl command flow and sync/runtime shim variants.
+- `commands/status.rs` + `commands/status/*`: queue and runtime status reporting.
 - `commands/doctor.rs` + `commands/doctor/render.rs`: connectivity checks and doctor output rendering.
 - `commands/ingest.rs` + `commands/ingest_common.rs`: shared ingest CLI wiring.
 

@@ -23,12 +23,11 @@ axon suggest --query "<focus>" [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `QDRANT_URL` | Qdrant base URL (reads indexed URLs/domains). |
-| `OPENAI_BASE_URL` | OpenAI-compatible API base URL. |
-| `OPENAI_MODEL` | Model name for suggestion generation. |
+| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for LLM suggestion generation. |
+| `OPENAI_MODEL` | Model name passed to the ACP adapter for suggestion generation. |
+
+`suggest` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 

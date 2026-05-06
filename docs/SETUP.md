@@ -10,8 +10,8 @@ Step-by-step instructions to get Axon running locally or via Docker.
 | Docker | 24+ | Infrastructure services |
 | Docker Compose | v2+ | Service orchestration |
 | just | latest | Task runner |
-| Node.js | 22+ | Web UI (Next.js) |
-| pnpm | 9+ | Web UI package manager |
+| Node.js | 24+ | Web UI (Next.js) |
+| pnpm | 10+ | Web UI package manager |
 
 Optional but recommended:
 
@@ -33,10 +33,10 @@ cd ~/workspace/axon_rust
 ## 2. Run the setup script
 
 ```bash
-just setup
+./scripts/dev-setup.sh
 ```
 
-This installs Rust toolchain components, cargo tools, pnpm, and verifies all prerequisites. If `just` is not installed, run `./scripts/dev-setup.sh` directly -- it installs `just` for you.
+This installs the Rust toolchain, cargo tools, `just`, pnpm, and verifies all prerequisites. The script is idempotent — safe to re-run.
 
 ## 3. Configure environment
 

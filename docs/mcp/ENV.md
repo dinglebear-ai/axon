@@ -15,24 +15,11 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) | no |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | -- | Max bytes per local file embedding request via MCP (unset = no per-request size limit; only `AXON_MCP_EMBED_ALLOWED_ROOTS` gates access) | no |
 
-## OAuth broker (optional)
+## Transport selection
 
-MCP OAuth is an optional auth system for MCP HTTP clients. It uses `atk_` tokens and is separate from the web UI token model.
-
-| Variable | Required | Default | Description | Sensitive |
-|----------|----------|---------|-------------|-----------|
-| `GOOGLE_OAUTH_CLIENT_ID` | no | -- | Google OAuth client ID | no |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | no | -- | Google OAuth client secret | **yes** |
-| `GOOGLE_OAUTH_AUTH_URL` | no | -- | Authorization endpoint | no |
-| `GOOGLE_OAUTH_TOKEN_URL` | no | -- | Token endpoint | no |
-| `GOOGLE_OAUTH_REDIRECT_URI` | no | -- | Full redirect URI | no |
-| `GOOGLE_OAUTH_REDIRECT_HOST` | no | -- | Redirect hostname | no |
-| `GOOGLE_OAUTH_REDIRECT_PATH` | no | -- | Redirect path | no |
-| `GOOGLE_OAUTH_REDIRECT_POLICY` | no | -- | Redirect policy | no |
-| `GOOGLE_OAUTH_SCOPES` | no | -- | OAuth scopes | no |
-| `GOOGLE_OAUTH_BROKER_ISSUER` | no | -- | Token issuer | no |
-| `GOOGLE_OAUTH_REDIS_URL` | no | -- | Redis URL for token cache | no |
-| `GOOGLE_OAUTH_REDIS_PREFIX` | no | -- | Redis key prefix | no |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AXON_MCP_TRANSPORT` | no | per-command | `stdio` / `http` / `both`. Overrides the per-command default (`axon mcp` defaults to stdio; `axon serve mcp` defaults to http; `axon serve` to both). |
 
 ## Stack variables consumed by MCP
 

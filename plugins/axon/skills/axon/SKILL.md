@@ -101,7 +101,7 @@ CLI: `axon scrape <url>` / `axon crawl <url> --max-pages N --max-depth N` / `axo
 
 LLM-powered. Pass a natural-language prompt describing the schema you want.
 
-CLI: `axon extract <url> --prompt "…"`.
+CLI: `axon extract <url> --query "…"` (the `--query` flag carries the extraction prompt).
 
 ## Ingest external sources
 

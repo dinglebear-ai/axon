@@ -23,11 +23,10 @@ axon query --query "<text>" [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `TEI_URL` | TEI embeddings base URL. |
 | `QDRANT_URL` | Qdrant base URL. |
+
+`query` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 

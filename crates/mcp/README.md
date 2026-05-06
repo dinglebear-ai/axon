@@ -43,12 +43,9 @@ bash ./scripts/test-mcp-tools-mcporter.sh
 mcporter --config config/mcporter.json list axon --schema
 mcporter --config config/mcporter.json call axon.axon action:doctor --output json
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
-mcporter --config config/mcporter.json call axon.axon action:refresh subaction:list limit:5 --output json
 ```
 
-The smoke harness runs both:
-- full mode (`AXON_LITE=0`) with successful coverage for the full routed surface
-- lite mode (`AXON_LITE=1`) with expected unavailability checks for `export` and `graph:*`
+The smoke harness runs against `AXON_LITE=1` (lite mode is the only supported runtime). Legacy `export` and `graph:*` actions were removed.
 
 ## Change Rule
 When changing tool behavior, update in the same commit:

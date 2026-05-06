@@ -6,24 +6,48 @@ TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (de
 ## Module Layout
 
 ```
-vector/ops/
-├── commands/        # ask/, ask.rs, evaluate.rs, query.rs, streaming.rs, suggest.rs
-├── input.rs         # module root: chunk_text(), url_lookup_candidates()
-├── input/
-│   ├── classify.rs  # classify_file_type(), language_name(), is_test_path()
-│   └── code.rs      # chunk_code() — tree-sitter AST-aware code chunking
-├── qdrant/          # client.rs, commands.rs, types.rs, utils.rs
-│   └── hybrid.rs    # qdrant_hybrid_search(), qdrant_named_dense_search() — hybrid/named-mode search
-├── ranking.rs       # BM25-style reranking module root
-├── ranking/         # snippet.rs (helpers used by ranking.rs)
-├── sparse.rs        # compute_sparse_vector(), SparseVector — BM42-style sparse vectors
-├── stats/           # display.rs, pg.rs, qdrant_fetch.rs
-├── tei.rs           # tei_embed(), PreparedDoc, EmbedSummary, embed_prepared_docs()
-├── tei/
-│   ├── tei_manifest.rs
-│   └── qdrant_store.rs  # ensure_collection(), VectorMode detection, named vs unnamed collection management
-└── source_display.rs
+vector/
+├── ops.rs           # Crate-level module root re-exporting ops/*
+└── ops/
+    ├── commands.rs / commands/
+    │   ├── ask.rs               # Module root for the ask path
+    │   ├── ask/
+    │   │   ├── context.rs / context/{build,heuristics,query_rewrite,retrieval,tests}.rs
+    │   │   ├── normalize.rs
+    │   │   ├── output.rs
+    │   │   └── tests.rs
+    │   ├── evaluate.rs / evaluate/{display,scoring,streaming}.rs (+ streaming/tests.rs)
+    │   ├── query.rs
+    │   ├── retrieval.rs
+    │   ├── streaming.rs / streaming/{test_support,tests}.rs
+    │   └── suggest.rs
+    ├── input.rs / input/{classify,code}.rs    # chunk_text(), chunk_code(), classify_file_type(), language_name(), is_test_path()
+    ├── input_proptest.rs                       # Property-based chunk_text tests
+    ├── qdrant.rs / qdrant/
+    │   ├── client.rs            # HTTP/Qdrant client wiring
+    │   ├── commands.rs / commands/{dedupe,dispatch,facets,retrieve}.rs
+    │   ├── filter.rs            # Qdrant filter builder
+    │   ├── hybrid.rs            # qdrant_hybrid_search(), qdrant_named_dense_search()
+    │   ├── search.rs            # Standard cosine search path
+    │   ├── tests.rs
+    │   ├── types.rs             # Qdrant types
+    │   └── utils.rs             # Shared helpers
+    ├── ranking.rs / ranking/snippet.rs
+    ├── ranking_test.rs
+    ├── sparse.rs               # compute_sparse_vector(), SparseVector — BM42-style sparse vectors
+    ├── source_display.rs
+    ├── stats.rs / stats/{display,pg,qdrant_fetch}.rs
+    └── tei.rs / tei/
+        ├── pipeline.rs          # run_embed_pipeline() — concurrent doc embedding with timeouts
+        ├── prepare.rs           # PreparedDoc helpers
+        ├── qdrant_store.rs / qdrant_store/tests.rs   # ensure_collection(), VectorMode cache
+        ├── tei_client.rs        # tei_embed(), QUERY_INSTRUCTION, retry/backoff, batch sizing
+        ├── tei_manifest.rs
+        ├── tests.rs
+        └── text_embed.rs        # embed_prepared_docs() entry point
 ```
+
+The diagram is intentionally complete — every named function in this CLAUDE.md should be locatable from the listing above.
 
 ## Critical Patterns
 

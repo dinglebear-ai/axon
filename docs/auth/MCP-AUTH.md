@@ -1,235 +1,127 @@
 # MCP Auth — Axon
-Last Modified: 2026-03-10
+Last Modified: 2026-05-06
 
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [How It Works](#how-it-works)
-3. [Prerequisites](#prerequisites)
-4. [Setup](#setup)
-5. [OAuth Endpoints](#oauth-endpoints)
-6. [Token Persistence](#token-persistence)
-7. [Environment Variables](#environment-variables)
-8. [MCP Client Configuration](#mcp-client-configuration)
-9. [Verification](#verification)
-10. [Security Model](#security-model)
-11. [Troubleshooting](#troubleshooting)
+3. [Setup](#setup)
+4. [Environment Variables](#environment-variables)
+5. [MCP Client Configuration](#mcp-client-configuration)
+6. [Verification](#verification)
+7. [Security Model](#security-model)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-`axon mcp` supports `http`, `stdio`, and `both` transport modes. This document covers the HTTP transport only: the separate HTTP server (default port `8001`) exposes a single MCP tool (`axon`) over streamable HTTP (`/mcp`). Access to that HTTP surface supports dual auth modes: OAuth (Google broker) or a static MCP API key.
+`axon mcp` supports `stdio`, `http`, and `both` transport modes. This document covers
+authentication on the HTTP transport. The `stdio` transport runs as a child process
+of the MCP client and has no network listener, so no auth is applied there.
+
+The HTTP transport exposes a single MCP tool (`axon`) over streamable HTTP at `/mcp`.
+Access is gated by a simple bearer token (`AXON_MCP_HTTP_TOKEN`). There is **no
+OAuth broker, no Google sign-in, no dynamic client registration, and no `atk_`
+token issuance** in the current code base — those features are not implemented.
 
 **Key facts:**
-- `atk_` tokens issued by this broker are scoped to `/mcp` **only**. They have no effect on the WebSocket gate (`/ws`) or `/api/*` routes.
-- `stdio` transport does not use this OAuth broker. It is a separate local-process transport choice.
-- `/mcp` accepts either `Authorization: Bearer atk_...` (OAuth) or `Authorization: Bearer <AXON_MCP_API_KEY>` (static API key).
-- OAuth state is persisted in Redis when available; in-memory fallback is used otherwise.
-- MCP clients that support dynamic client registration (DCR) — Claude Desktop, mcporter, etc. — auto-register via `/oauth/register`.
+- Auth is enforced by `crates/mcp/auth.rs` via `mcp_auth_middleware`.
+- A single shared static token is configured via `AXON_MCP_HTTP_TOKEN`.
+- Clients authenticate using either header:
+  - `Authorization: Bearer <AXON_MCP_HTTP_TOKEN>`
+  - `x-api-key: <AXON_MCP_HTTP_TOKEN>`
+- Token comparison uses constant-time equality (`subtle::ConstantTimeEq`).
+- Loopback binds (`127.0.0.1`, `::1`, `localhost`) may run **without** a token —
+  startup logs a warning. Non-loopback binds (`0.0.0.0`, public hostnames) **require**
+  a token; otherwise the server refuses to start (`enforce_mcp_http_startup_policy`).
 
 ---
 
 ## How It Works
 
 ```
-[MCP Client — e.g. Claude Desktop, mcporter]
-    │
-    │  1. Discover metadata
-    │     GET /.well-known/oauth-protected-resource
-    │     GET /.well-known/oauth-authorization-server
-    │
-    │  2. Register (DCR — dynamic client registration)
-    │     POST /oauth/register
-    │
-    │  3. Authorize
-    │     GET /oauth/authorize  → redirect to Google login
-    │     User signs in with Google account
-    │     GET /oauth/google/callback (Google redirect)
-    │     GET /oauth/authorize  → issues auth code
-    │
-    │  4. Exchange auth code for token
-    │     POST /oauth/token
-    │     → { "access_token": "atk_...", "token_type": "Bearer" }
-    │
-    │  5. Call MCP
-    │     POST /mcp  Authorization: Bearer atk_...
+[MCP Client]
+    │  POST /mcp
+    │  Authorization: Bearer <AXON_MCP_HTTP_TOKEN>
     ▼
-[axon mcp server — crates/mcp/]
-    │  Validates Bearer token → executes MCP tool
+[axum router (crates/mcp/server/http.rs)]
+    │  └─ host_validation_middleware  (HostAllowlist)
+    │  └─ mcp_http_cors_middleware    (AXON_MCP_ALLOWED_ORIGINS)
+    │  └─ mcp_auth_middleware         (AXON_MCP_HTTP_TOKEN check)
+    ▼
+[StreamableHttpService → AxonMcpServer]
+    │  Tool dispatch by action / subaction
 ```
 
-The broker acts as an OAuth 2.0 authorization server, using Google as the identity provider. Users authenticate with Google, but the token issued to the MCP client (`atk_`) is Axon's own credential.
-
----
-
-## Prerequisites
-
-1. A Google OAuth 2.0 application with credentials.
-2. The redirect URI configured in Google Cloud Console.
-3. `axon mcp` running with HTTP transport enabled and reachable from the MCP client.
-4. Redis running (optional but recommended — without it, tokens are lost on server restart).
+The middleware extracts the token from the `Authorization: Bearer …` or
+`x-api-key` header. If `AXON_MCP_HTTP_TOKEN` is unset, the middleware allows the
+request through and emits a one-time warning (allowed only because the startup
+policy already verified the bind is loopback).
 
 ---
 
 ## Setup
 
-### 1. Create a Google OAuth application
+### 1. Pick a strong token
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials.
-2. Create an OAuth 2.0 Client ID (type: **Web application**).
-3. Add the redirect URI:
-   ```
-   https://<your-axon-mcp-host>/oauth/google/callback
-   ```
-   For local dev: `http://localhost:8001/oauth/google/callback`
-4. Copy the **Client ID** and **Client Secret**.
+```bash
+# Generate a token (any cryptographically random secret works)
+openssl rand -hex 32
+```
 
 ### 2. Set environment variables in `.env`
 
 ```bash
-# Required — Google OAuth credentials
-GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
-GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+# Required for non-loopback binds
+AXON_MCP_HTTP_TOKEN=your-strong-random-token
 
-# MCP server host/port (defaults shown)
+# MCP server bind (defaults shown)
 AXON_MCP_HTTP_HOST=127.0.0.1
 AXON_MCP_HTTP_PORT=8001
-# Required when binding to non-loopback hosts such as 0.0.0.0.
-AXON_MCP_HTTP_TOKEN=your-token
+
+# Optional CORS allowlist (comma-separated origins)
+# Defaults to strict same-origin/loopback when unset.
+AXON_MCP_ALLOWED_ORIGINS=
 ```
 
 ### 3. Start the MCP server
 
 ```bash
-# From project root — binary reads .env automatically
-AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- serve mcp
+# stdio transport (default for `axon mcp`)
+axon mcp
 
-# Dual mode also exposes the same OAuth-protected HTTP endpoint
-AXON_MCP_HTTP_PORT=8001 cargo run --locked --bin axon -- mcp --transport both
-
-# Or via just dev (starts everything including MCP server at port 8001)
-just dev
+# HTTP transport
+axon serve mcp                         # default for the `serve mcp` subcommand
+axon mcp --transport http              # explicit
+axon mcp --transport both              # stdio + HTTP concurrently
 ```
 
-### 4. Verify OAuth is active
-
-```bash
-curl -s http://localhost:8001/oauth/google/status | python3 -m json.tool
-# → {"configured": true, "provider": "google"}
-
-# Check well-known discovery document
-curl -s http://localhost:8001/.well-known/oauth-authorization-server | python3 -m json.tool
-```
-
----
-
-## OAuth Endpoints
-
-All endpoints are on the MCP server (default `http://localhost:8001`), not on the main Axon server (port `49000`).
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/.well-known/oauth-protected-resource` | GET | Resource server metadata (RFC 9470) |
-| `/.well-known/oauth-authorization-server` | GET | Authorization server discovery (RFC 8414) |
-| `/oauth/register` | POST | Dynamic Client Registration (RFC 7591) |
-| `/oauth/authorize` | GET | Authorization endpoint — redirects to Google |
-| `/oauth/token` | POST | Token endpoint — auth code → `atk_` bearer token |
-| `/oauth/google/status` | GET | Check if Google OAuth is configured |
-| `/oauth/google/login` | GET | Initiate Google sign-in (browser redirect) |
-| `/oauth/google/callback` | GET | Google redirect callback |
-| `/oauth/google/token` | GET | Current session token info |
-| `/oauth/google/logout` | GET, POST | Invalidate session |
-| `/mcp` | POST | MCP tool endpoint (requires `Authorization: Bearer atk_...` **or** `Authorization: Bearer <AXON_MCP_API_KEY>`) |
-
----
-
-## Token Persistence
-
-OAuth state is stored in Redis under the `GOOGLE_OAUTH_REDIS_PREFIX` prefix (default: `axon:oauth:`).
-
-Stored record types:
-- Pending login state
-- Google session data
-- `atk_` access tokens
-- Refresh tokens
-- Auth codes
-- Rate-limit buckets
-
-Session cookie: `__Host-axon_oauth_session`
-
-**TTL semantics:**
-
-| Record | TTL |
-|--------|-----|
-| OAuth session | 7 days |
-| Refresh token | 30 days |
-| Auth code | 10 minutes |
-| Pending login state | 15 minutes |
-
-When Redis is unavailable, the in-memory fallback is used. Tokens are lost when the `axon mcp` process restarts. For production use, configure Redis (`AXON_REDIS_URL`).
+The unified `axon serve` command (no subcommand) also starts MCP HTTP at
+`/mcp` on the same port as the web UI.
 
 ---
 
 ## Environment Variables
 
-### Required
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AXON_MCP_HTTP_HOST` | no | `127.0.0.1` | MCP HTTP bind address. Non-loopback values require `AXON_MCP_HTTP_TOKEN`. |
+| `AXON_MCP_HTTP_PORT` | no | `8001` | MCP HTTP listen port. |
+| `AXON_MCP_HTTP_TOKEN` | conditional | unset | Bearer / `x-api-key` token. Required when bind is non-loopback. |
+| `AXON_MCP_ALLOWED_ORIGINS` | no | unset | Comma-separated CORS allowlist. Unset = strict default (same-origin/loopback browsers only; non-browser tools unaffected). |
+| `AXON_MCP_TRANSPORT` | no | per-command | Override transport for `axon mcp` / `axon serve mcp` (`stdio`, `http`, `both`). |
 
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth 2.0 Client ID |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth 2.0 Client Secret |
-
-### Optional overrides
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP server bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
-| `AXON_MCP_HTTP_PORT` | `8001` | MCP server port |
-| `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
-| `GOOGLE_OAUTH_AUTH_URL` | Google default | Override Google authorization URL |
-| `GOOGLE_OAUTH_TOKEN_URL` | Google default | Override Google token URL |
-| `GOOGLE_OAUTH_REDIRECT_PATH` | `/oauth/google/callback` | Override callback path |
-| `GOOGLE_OAUTH_REDIRECT_HOST` | Inferred from request | Override redirect host (useful behind reverse proxies) |
-| `GOOGLE_OAUTH_REDIRECT_URI` | Inferred | Full override for redirect URI |
-| `GOOGLE_OAUTH_BROKER_ISSUER` | Inferred | OAuth issuer identifier |
-| `GOOGLE_OAUTH_SCOPES` | `openid email profile` | Google OAuth scopes |
-| `GOOGLE_OAUTH_DCR_TOKEN` | None | Static bearer token required for Dynamic Client Registration (empty = open registration) |
-| `GOOGLE_OAUTH_REDIRECT_POLICY` | `loopback_or_https` | Callback URI policy (see below) |
-| `GOOGLE_OAUTH_REDIS_URL` | `AXON_REDIS_URL` | Redis URL for OAuth state (falls back to `AXON_REDIS_URL`) |
-| `GOOGLE_OAUTH_REDIS_PREFIX` | `axon:oauth:` | Key prefix in Redis |
-| `AXON_MCP_API_KEY` | None | Optional static bearer token accepted on `/mcp` as an alternative to OAuth tokens |
-
-### `GOOGLE_OAUTH_REDIRECT_POLICY` modes
-
-| Value | Allowed callback URIs |
-|-------|-----------------------|
-| `loopback_or_https` (default) | `http://localhost/*`, `http://127.0.0.1/*`, `http://::1/*`, and any `https://` URI |
-| `loopback_only` | Loopback HTTP only |
-| `any` | Any HTTP/HTTPS URI |
+**There are no `GOOGLE_OAUTH_*` variables, no `AXON_MCP_API_KEY`, and no Redis
+prefix used by the MCP HTTP server.** Earlier revisions of this document
+referenced an OAuth broker — that feature was never implemented. Search
+`crates/mcp/auth.rs` for the full set of token-related code.
 
 ---
 
 ## MCP Client Configuration
 
-### Claude Desktop
-
-Add to your Claude Desktop MCP config (`~/.claude/mcp.json` or the path given by `--mcp-config`):
-
-```json
-{
-  "mcpServers": {
-    "axon": {
-      "type": "http",
-      "url": "http://localhost:8001/mcp"
-    }
-  }
-}
-```
-
-Claude Desktop supports OAuth out of the box — it will open a browser window for Google sign-in on first connection.
-
-If you want static API key auth instead of OAuth, use:
+### Claude Code (HTTP transport)
 
 ```json
 {
@@ -238,31 +130,59 @@ If you want static API key auth instead of OAuth, use:
       "type": "http",
       "url": "http://localhost:8001/mcp",
       "headers": {
-        "Authorization": "Bearer <AXON_MCP_API_KEY>"
+        "Authorization": "Bearer YOUR_AXON_MCP_HTTP_TOKEN"
       }
     }
   }
 }
 ```
 
-If you instead configure Claude Desktop to use `stdio` mode (`axon mcp --transport stdio`), this OAuth flow does not apply because there is no HTTP `/mcp` endpoint in that mode.
+Or with `x-api-key`:
+
+```json
+{
+  "mcpServers": {
+    "axon": {
+      "type": "http",
+      "url": "http://localhost:8001/mcp",
+      "headers": {
+        "x-api-key": "YOUR_AXON_MCP_HTTP_TOKEN"
+      }
+    }
+  }
+}
+```
+
+### Claude Code (stdio transport)
+
+```json
+{
+  "mcpServers": {
+    "axon": {
+      "command": "/path/to/axon",
+      "args": ["mcp"],
+      "env": {
+        "QDRANT_URL": "http://127.0.0.1:53333",
+        "TEI_URL": "http://127.0.0.1:52000"
+      }
+    }
+  }
+}
+```
+
+stdio transport does not perform any auth check — the MCP client owns the
+process lifecycle and the binary inherits its environment.
 
 ### mcporter
 
 ```bash
-# Local repo config (stdio)
+# Repo-local stdio config
 mcporter --config config/mcporter.json list axon --schema
-
-# Call a tool
-mcporter --config config/mcporter.json call axon.axon action:help
 mcporter --config config/mcporter.json call axon.axon action:doctor
-mcporter --config config/mcporter.json call axon.axon action:query query:"embedding pipeline"
-```
 
-To test OAuth over HTTP instead of the repo-local stdio config, register a separate mcporter entry:
-```bash
-mcporter add axon-http http://localhost:8001/mcp
-mcporter list axon-http
+# HTTP transport
+mcporter add axon-http http://localhost:8001/mcp \
+  --header "Authorization: Bearer $AXON_MCP_HTTP_TOKEN"
 mcporter call axon-http.axon action:help
 ```
 
@@ -273,42 +193,47 @@ mcporter call axon-http.axon action:help
 bash ./scripts/test-mcp-tools-mcporter.sh
 ```
 
-The smoke script uses [`config/mcporter.json`](/home/jmagar/workspace/axon_rust/config/mcporter.json), runs both full (`AXON_LITE=0`) and lite (`AXON_LITE=1`) suites, and writes logs under `.cache/mcporter-test/`.
+The smoke harness uses `config/mcporter.json` and writes logs under
+`.cache/mcporter-test/`.
 
 ---
 
 ## Verification
 
 ```bash
-# 1. Check OAuth is configured
-curl -s http://localhost:8001/oauth/google/status
+# 1. Verify /mcp accepts a valid bearer token
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  http://localhost:8001/mcp
+# → 200 (or 405 / 406 depending on missing JSON-RPC body — auth has passed)
 
-# 2. Check discovery document
-curl -s http://localhost:8001/.well-known/oauth-authorization-server | python3 -m json.tool
-
-# 3. Check protected resource metadata
-curl -s http://localhost:8001/.well-known/oauth-protected-resource | python3 -m json.tool
-
-# 4. Verify /mcp rejects unauthenticated requests
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/mcp
+# 2. Verify /mcp rejects an invalid bearer token when the env var is set
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer wrong" \
+  http://localhost:8001/mcp
 # → 401
+
+# 3. Discover tools via MCP JSON-RPC
+curl -s -X POST http://localhost:8001/mcp \
+  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ---
 
 ## Security Model
 
-**`atk_` tokens are scoped to `/mcp` only.** They cannot be used for `/ws`, `/api/*`, or any other Axon endpoint. The MCP server and the main Axon server (`axon serve`) are separate processes on separate ports — they share no token state.
-
-**Static MCP API key is an alternative auth mode for `/mcp`.** When `AXON_MCP_API_KEY` is set, the MCP server accepts `Authorization: Bearer <AXON_MCP_API_KEY>` for full `/mcp` access.
-
-**Google is the identity provider.** Axon does not manage passwords or user accounts. Authentication is delegated entirely to Google. Only Google-authenticated users receive `atk_` tokens.
-
-**Dynamic Client Registration can be open or gated.** By default, any MCP client can register via `/oauth/register`. Set `GOOGLE_OAUTH_DCR_TOKEN` to require a static bearer token for registration — prevents unknown clients from registering.
-
-**Redis persistence.** In-memory fallback means tokens are lost on restart. For any production or persistent deployment, Redis (`AXON_REDIS_URL`) should be configured.
-
-**Redirect URI validation.** The `GOOGLE_OAUTH_REDIRECT_POLICY` controls which callback URIs are accepted. The default (`loopback_or_https`) allows local dev clients and HTTPS production clients while blocking plain HTTP non-loopback URIs.
+- **Static bearer token** — single shared secret, comparable in constant time.
+- **Loopback default** — startup refuses non-loopback binds without a token, so a
+  forgotten env var on a public host fails closed instead of running unauthenticated.
+- **Host allowlist** — `host_validation_middleware` rejects requests whose `Host`
+  header is not in the loopback set or `AXON_MCP_ALLOWED_ORIGINS`.
+- **CORS allowlist** — `mcp_http_cors_middleware` restricts browser-origin requests.
+- **No user accounts** — there is no per-user auth, no OAuth, no DCR. Any caller
+  with the token has full access to the `axon` tool.
+- **stdio is unauthenticated** — relies on OS process boundaries: the MCP client
+  spawns the server with its own environment.
 
 ---
 
@@ -316,39 +241,33 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/mcp
 
 ### `/mcp` returns `401 Unauthorized`
 
-Neither OAuth nor API key auth is configured, or the provided bearer token is invalid.
+`AXON_MCP_HTTP_TOKEN` is set on the server but the client either omitted the
+header or sent the wrong value.
 
-1. Configure Google OAuth credentials (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`) **or** set `AXON_MCP_API_KEY`.
-2. Restart `axon mcp`.
+1. Confirm the server token: `grep AXON_MCP_HTTP_TOKEN .env`
+2. Verify the request header matches exactly. Both schemes are accepted:
+   - `Authorization: Bearer <token>`
+   - `x-api-key: <token>`
+3. Bearer token comparison is case-sensitive; only the `Bearer` scheme name is
+   case-insensitive.
 
-### OAuth redirect fails after Google sign-in
+### Server refuses to start with `refusing to start unauthenticated MCP HTTP server`
 
-The redirect URI in your Google Cloud Console does not match the one Axon is using.
+You bound to a non-loopback address (e.g. `0.0.0.0`) without setting
+`AXON_MCP_HTTP_TOKEN`. Either bind to `127.0.0.1` / `localhost` or set the token.
 
-1. Check what Axon expects:
-   ```bash
-   curl -s http://localhost:8001/.well-known/oauth-authorization-server | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('authorization_endpoint',''))"
-   ```
-2. Ensure the redirect URI registered in Google Cloud Console matches exactly (including scheme, host, port, and path).
-3. If running behind a reverse proxy (e.g. Tailscale Serve or Nginx), set `GOOGLE_OAUTH_REDIRECT_HOST` to the external hostname so the callback URL matches what Google expects.
+### MCP client cannot connect
 
-### Tokens lost on restart
+1. Verify the server is running: `pgrep -fa 'axon.*mcp'`
+2. Verify the port: `ss -ltn 'sport = :8001'`
+3. For remote clients, confirm the host firewall allows inbound traffic.
+4. Run `axon doctor` to verify infrastructure connectivity (Qdrant, TEI).
 
-Redis is not configured or not reachable. Set `AXON_REDIS_URL` (or `GOOGLE_OAUTH_REDIS_URL`) to your Redis instance. Verify connectivity:
+### Where is the OAuth flow?
 
-```bash
-./scripts/axon doctor
-# or
-redis-cli -u "$AXON_REDIS_URL" ping
-```
-
-### MCP client says "OAuth configuration not found"
-
-The MCP client cannot reach the `/.well-known/oauth-authorization-server` endpoint. Verify:
-1. `axon mcp` is running: `ps aux | grep 'axon.*mcp'`
-2. The port is correct (default `8001`).
-3. If the client is remote (not localhost), verify network access to the MCP server port.
-
-### `atk_` token rejected on `/ws`
-
-Expected. MCP OAuth tokens are scoped to `/mcp` only. For WebSocket access, use the shared API token — see `docs/auth/README.md`.
+It does not exist. Earlier docs referenced a Google OAuth broker / `atk_`
+tokens / `/.well-known/oauth-*` endpoints — none of that is implemented in
+`crates/mcp/`. The only auth path is `AXON_MCP_HTTP_TOKEN` enforced by
+`mcp_auth_middleware` in `crates/mcp/auth.rs`. If you need OAuth, run the MCP
+server behind a reverse proxy that performs the OAuth handshake and forwards
+the bearer token (or none, on loopback) to `/mcp`.

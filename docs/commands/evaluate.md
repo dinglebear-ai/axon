@@ -26,13 +26,12 @@ axon evaluate --query "<question>" [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `TEI_URL` | TEI embeddings base URL (retrieval and judge reference). |
 | `QDRANT_URL` | Qdrant base URL. |
 | `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for all LLM calls (RAG, baseline, judge). |
 | `OPENAI_MODEL` | Model name passed to the ACP adapter for all evaluate LLM calls. |
+
+`evaluate` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 
@@ -41,26 +40,33 @@ All global flags apply. Key flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--query <text>` | — | Question text (alternative to positional argument). |
+| `--diagnostics` | `false` | Print retrieval diagnostics alongside the evaluation. |
+| `--responses-mode <mode>` | `side-by-side` | Human-output rendering for `rag_answer` vs `baseline_answer`: `inline`, `side-by-side`, or `events`. |
+| `--retrieval-ab` | `false` | Replace the no-context baseline with a second RAG run that has hybrid retrieval disabled. The judge then compares hybrid-RAG vs dense-only-RAG. |
 | `--collection <name>` | `cortex` | Qdrant collection to retrieve from. |
+| `--json` | `false` | Machine-readable JSON output (overrides `--responses-mode`). |
 
-Note: `evaluate` runs synchronously and does not enqueue jobs. Output is always JSON.
+Note: `evaluate` runs synchronously and does not enqueue jobs.
 
 ## Examples
 
 ```bash
-# Basic evaluate run (always outputs JSON)
+# Default human output (side-by-side rendering)
 axon evaluate "How does auto-switch choose Chrome fallback?"
 
 # Using --query
 axon evaluate --query "What does AXON_DOMAINS_DETAILED change?"
 
-# Pipe to jq for readable output
-axon evaluate "How does ask citation gating work?" | jq .
+# Machine-readable JSON
+axon evaluate "How does ask citation gating work?" --json | jq .
+
+# Hybrid vs dense-only RAG comparison
+axon evaluate "tokio cancellation patterns" --retrieval-ab
 ```
 
 ## Output
 
-Output is always a pretty-printed JSON object containing:
+With `--json`, output is a pretty-printed JSON object containing:
 - `rag_answer`
 - `baseline_answer`
 - `analysis_answer`
@@ -70,7 +76,7 @@ Output is always a pretty-printed JSON object containing:
 
 ## Notes
 
-- Output is always JSON — there is no human-readable text mode for this command.
+- Without `--json`, evaluate prints a human-readable answer comparison whose layout is controlled by `--responses-mode` (`side-by-side` by default; `inline` for stacked output; `events` for a single `evaluate_complete` JSON event line).
 - If streaming fails for any LLM phase, evaluate falls back to non-streaming for that phase.
 - Judge reference retrieval is best-effort; evaluate continues even if reference gathering fails.
 - When judge scoring indicates RAG underperformed baseline, suggested crawl sources are auto-enqueued as crawl jobs immediately after generation.

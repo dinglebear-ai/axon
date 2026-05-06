@@ -8,10 +8,11 @@ Module index for Axon’s Rust crate directories.
 - [core](./core/README.md): shared config, HTTP/content, logging, and health primitives.
 - [crawl](./crawl/README.md): crawl engine and crawl manifest logic.
 - [ingest](./ingest/README.md): source adapters (GitHub, Reddit, YouTube, sessions).
-- [jobs](./jobs/README.md): async queue workers and job lifecycle management.
+- [jobs](./jobs/README.md): async job workers and lifecycle management (SQLite + in-process workers).
 - [mcp](./mcp/README.md): MCP server crate for `axon mcp`.
+- [services](./services/CLAUDE.md): typed service layer — canonical entry contract for CLI/MCP/web handlers.
 - [vector](./vector/README.md): embeddings, Qdrant operations, retrieval, and RAG.
-- [web](./web/README.md): core `axon serve` runtime providing `/ws`, `/ws/shell`, `/download/*`, and `/output/*` for `apps/web`.
+- web: core `axon serve` runtime providing `/ws`, `/ws/shell`, `/download/*`, and `/output/*` for `apps/web`. (No README in this crate yet.)
 
 ## Re-export Shims
 These top-level Rust files re-export module roots used by the workspace crate graph:
@@ -20,6 +21,8 @@ These top-level Rust files re-export module roots used by the workspace crate gr
 - `crawl.rs`
 - `ingest.rs`
 - `jobs.rs`
+- `mcp.rs`
+- `services.rs`
 - `vector.rs`
 - `web.rs`
 

@@ -9,7 +9,11 @@ Translates parsed `Config` state into command execution. Delegates all business 
 cli/
 ├── commands.rs                   # Module declarations + pub use exports (NOT dispatch)
 └── commands/
-    ├── common.rs                 # Shared URL parsing, job output, handle_job_* helpers
+    ├── common.rs                 # Tiny stub — most shared helpers live in common_urls.rs / common_jobs.rs
+    ├── common_urls.rs            # truncate_chars, parse_urls, expand_url_glob_seed, start_url_from_cfg
+    ├── common_jobs.rs            # handle_job_status/cancel/errors/list/cleanup/clear/recover renderers
+    ├── job_contracts.rs          # + job_contracts/{record,responses,summary}.rs — stable JSON output types
+    ├── ingest_common.rs          # Shared ingest subcommand routing + enqueue helpers
     ├── ask.rs                    # RAG ask command via services layer
     ├── completions.rs            # Shell completion script generation
     ├── crawl.rs                  # Crawl entry: sync/async dispatch + URL validation
@@ -20,12 +24,10 @@ cli/
     ├── embed.rs                  # Embed files/dirs/URLs into Qdrant
     ├── evaluate.rs               # RAG evaluation command
     ├── extract.rs                # LLM-powered structured data extraction
-    ├── graph.rs                  # Graph command CLI shim
     ├── ingest.rs                 # Unified ingest: classify_target → enqueue or run_ingest_sync
-    ├── job_contracts.rs          # Stable JSON output types for all job commands
-    ├── ingest_common.rs          # Shared ingest subcommand routing + enqueue helpers
     ├── map.rs                    # Discover all URLs without scraping
-    ├── mcp.rs                    # MCP HTTP server entry point
+    ├── mcp.rs                    # MCP server entry point (HTTP / stdio)
+    ├── migrate.rs                # Collection migration entry (unnamed → named-mode upgrade)
     ├── probe.rs                  # HTTP probing utilities used by doctor command
     ├── query.rs                  # Semantic/vector query command
     ├── research.rs               # Tavily AI research + LLM synthesis
@@ -34,7 +36,9 @@ cli/
     ├── screenshot.rs             # Screenshot entry: URL loop, Chrome requirement check
     ├── search.rs                 # Web search via Tavily API
     ├── serve.rs                  # axum web UI + WebSocket server entry point
+    ├── services_migration_tests.rs # Migration tests for the services-layer refactor
     ├── sessions.rs               # Ingest AI session exports (Claude/Codex/Gemini)
+    ├── setup.rs                  # First-run / interactive config setup
     ├── sources.rs                # Indexed source listing
     ├── stats.rs                  # Qdrant/stats command entry point
     ├── status.rs                 # System/job status entry point
@@ -42,48 +46,63 @@ cli/
     ├── watch.rs                  # Watch definition and run management
     ├── crawl/
     │   ├── subcommands.rs        # Job lifecycle routing: status/cancel/errors/list/cleanup/clear/worker/recover/audit/diff
-    │   ├── runtime.rs            # Chrome bootstrap: CDP discovery, WS URL pre-resolution
-    │   ├── sync_crawl.rs         # Sync crawl: 24h cache, sitemap-only mode, HTTP→Chrome fallback
+    │   ├── runtime.rs            # Thin shim — delegates to crates/crawl/engine::resolve_cdp_ws_url
+    │   ├── sync_crawl.rs         # Thin shim — sync-crawl logic lives in crates/services/crawl_sync.rs
+    │   ├── runtime_migration_tests.rs
+    │   ├── sync_backfill_migration_tests.rs
+    │   ├── sync_crawl_migration_tests.rs
     │   └── audit/                # crawl audit + crawl diff: snapshot generation and comparison
     │       ├── audit.rs          # Entry point + snapshot/diff dispatch
     │       ├── audit_diff.rs     # Diff computation (added/removed/changed URLs)
     │       ├── manifest_audit.rs # Snapshot persistence to disk
-    │       └── sitemap.rs        # Sitemap + robots.txt URL discovery (adapter over engine)
+    │       ├── sitemap.rs        # Sitemap + robots.txt URL discovery (adapter over engine)
+    │       └── sitemap_migration_tests.rs
     ├── screenshot/
-    │   ├── screenshot_migration_tests.rs  # Migration tests for screenshot command refactor
+    │   ├── screenshot_migration_tests.rs
     │   └── util.rs               # Filename generation, require_chrome()
     ├── scrape/
-    │   ├── scrape_migration_tests.rs      # Migration/regression tests for scrape
+    │   ├── scrape_migration_tests.rs
     │   └── tests.rs               # Scrape unit tests
     ├── status/
-    │   ├── metrics.rs            # Postgres metrics: job counts, rates, stale jobs
+    │   ├── failure_summary.rs    # Recent failure summary rendering
+    │   ├── metrics.rs            # Job counts, rates, stale-job aggregates
+    │   ├── metrics/{format,ingest}.rs
     │   └── presentation.rs       # Status output rendering (JSON + human text)
     ├── doctor/
     │   └── render.rs             # Doctor report rendering (human + JSON)
     └── map/
-        └── map_migration_tests.rs # Migration/regression tests for map command
+        ├── map_migration_tests.rs
+        └── map_sitemap_tests.rs
 ```
+
+> There is **no `commands/graph.rs`** and no `Graph` `CommandKind` variant. The `graph` ask flag survives as a per-request boolean (see `crates/mcp/schema.rs`), not a dedicated CLI subcommand.
 
 ## Dispatch
 
-`commands.rs` declares modules and exports — it is **not** the dispatch layer. The actual match lives in `lib.rs`:
+`commands.rs` declares modules and exports — it is **not** the dispatch layer. The actual match lives in `lib.rs::run_once()` (see `lib.rs` lines 34–61 for the full 28-arm match). Excerpt:
 
 ```rust
 match cfg.command {
-    CommandKind::Crawl      => run_crawl(cfg).await?,
-    CommandKind::Ask        => run_ask(cfg).await?,    // delegates to crates/services::query
-    CommandKind::Watch      => run_watch(cfg).await?,  // delegates to crates/services::watch
-    CommandKind::Dedupe     => run_dedupe(cfg).await?,
-    CommandKind::Migrate    => run_migrate(cfg).await?,
-    CommandKind::Graph      => run_graph(cfg).await?,
-    // ...
+    CommandKind::Scrape    => run_scrape(cfg).await?,
+    CommandKind::Crawl     => run_crawl(cfg, service_context).await?,
+    CommandKind::Watch     => run_watch(cfg, service_context).await?,
+    CommandKind::Extract   => run_extract(cfg, service_context).await?,
+    CommandKind::Embed     => run_embed(cfg, service_context).await?,
+    CommandKind::Ask       => run_ask(cfg).await?,
+    CommandKind::Status    => run_status(cfg, service_context).await?,
+    CommandKind::Ingest    => run_ingest(cfg, service_context).await?,
+    CommandKind::Sessions  => run_sessions(cfg, service_context).await?,
+    // ... 19 more arms
 }
 ```
 
-All command handlers share the same signature:
+Two handler signatures coexist:
 ```rust
 pub async fn run_<command>(cfg: &Config) -> Result<(), Box<dyn Error>>
+pub async fn run_<command>(cfg: &Config, service_context: &ServiceContext) -> Result<(), Box<dyn Error>>
 ```
+
+Handlers that touch the job runtime (anything that enqueues/inspects jobs) take `&ServiceContext`; pure-CLI handlers take `&Config` only.
 
 ## Critical Pattern: `maybe_handle_subcommand()`
 
@@ -106,7 +125,7 @@ pub async fn run_crawl(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 ## Critical Pattern: `start_url_from_cfg()`
 
-**Never** blindly use `cfg.positional[0]` as a URL. Use `start_url_from_cfg(cfg)` from `common.rs`:
+**Never** blindly use `cfg.positional[0]` as a URL. Use `start_url_from_cfg(cfg)` from `commands/common_urls.rs`:
 
 ```rust
 pub fn start_url_from_cfg(cfg: &Config) -> String
@@ -120,14 +139,23 @@ Current guard list:
 
 `"doctor"` is not part of the `start_url_from_cfg()` guard list.
 
-## `commands/common.rs` — Shared Helpers
+## Shared Helpers — `common_urls.rs` and `common_jobs.rs`
+
+`commands/common.rs` is a small stub. The shared helpers were split into two files. Use the table to find the right module.
+
+### `commands/common_urls.rs` — URL & string helpers
 
 | Function | Purpose |
 |----------|---------|
 | `truncate_chars(s, n)` | UTF-8-safe truncation at char boundary (no mid-codepoint panic) |
 | `parse_urls(cfg)` | Collects URLs from `urls_csv`, `url_glob`, and `positional`; expands `{a,b}` and `{1..10}` brace syntax; dedupes; normalizes |
-| `expand_url_glob_seed(seed)` | Expands single URL glob string into `Vec<String>` (capped at depth 10 and 10,000 total outputs) |
+| `expand_url_glob_seed(seed)` | Expands a single URL glob string into `Vec<String>` (capped at depth 10 and 10,000 total outputs) |
 | `start_url_from_cfg(cfg)` | Subcommand-aware URL extraction — always use this, never raw `positional[0]` |
+
+### `commands/common_jobs.rs` — Job lifecycle renderers
+
+| Function | Purpose |
+|----------|---------|
 | `handle_job_status(cfg, job, id, cmd)` | Renders job status (JSON or human) |
 | `handle_job_cancel(cfg, id, canceled, cmd)` | Renders cancel result |
 | `handle_job_errors(cfg, job, id, cmd)` | Renders job error text |
@@ -137,6 +165,10 @@ Current guard list:
 | `handle_job_recover(cfg, reclaimed, cmd)` | Renders stale job reclaim count |
 
 All `handle_job_*` functions accept `T: JobStatus + Serialize` — new job types must implement both.
+
+### `crates/core/ui.rs` — UI helpers
+
+`confirm_destructive(cfg, prompt)` lives in `crates/core/ui.rs` (not in the CLI common modules). It returns `Ok(true)` if `cfg.yes` is set OR if stdout is not a TTY.
 
 ## `commands/job_contracts.rs` — Stable Output Types
 
@@ -196,20 +228,13 @@ if !confirm_destructive(cfg, "This will delete all jobs. Continue?")? {
 
 `confirm_destructive()` returns `Ok(true)` if `cfg.yes` is set OR if stdout is not a TTY. Never gate on `cfg.yes` directly — this function handles both cases.
 
-## `crawl/runtime.rs` — Chrome Bootstrap
+## `crawl/runtime.rs` — Chrome Bootstrap (thin shim)
 
-Pre-resolves the CDP WebSocket URL before starting the crawl by delegating to the shared engine resolver (`crates/crawl/engine::resolve_cdp_ws_url`). The CLI runtime no longer owns a CDP probe implementation — all resolution logic (Docker host rewrite, `/json/version` discovery, ws:// shortcut) lives in the crawl engine.
+`crates/cli/commands/crawl/runtime.rs` is a small (≈1 KB) shim that delegates to the shared engine resolver `crates/crawl/engine::resolve_cdp_ws_url`. All real resolution logic (Docker host rewrite, `/json/version` discovery, `ws://` shortcut, retries) lives in the crawl engine. Always call the bootstrap entry point once before Chrome-mode crawls so each worker doesn't probe independently.
 
-The bootstrap function retries resolution with configurable backoff (`chrome_bootstrap_retries`) and passes the resolved URL into the crawl config to avoid a redundant `/json/version` fetch mid-crawl.
+## `crawl/sync_crawl.rs` — Synchronous Crawl (thin shim)
 
-Always call `bootstrap_chrome_runtime(cfg)` before Chrome-mode crawls; do not let each worker probe independently.
-
-## `crawl/sync_crawl.rs` — Synchronous Crawl
-
-- Checks 24-hour disk cache before crawling; returns cached result if hit
-- Supports sitemap-only mode (`--sitemap-only`) — skips main crawl, backfills from sitemap
-- Calls `should_fallback_to_chrome()` after HTTP crawl and retries with Chrome if thin rate is too high
-- Sitemap backfill delegates to `crawl::engine::append_sitemap_backfill()` — no CLI-owned fetch loop
+`crates/cli/commands/crawl/sync_crawl.rs` is a thin shim. The synchronous crawl logic — 24-hour disk cache, sitemap-only mode, HTTP→Chrome fallback, sitemap backfill — lives in `crates/services/crawl_sync.rs`. The shim exists so the CLI handler can stay tiny and the same logic can be reused by other entry points.
 
 ## Testing
 

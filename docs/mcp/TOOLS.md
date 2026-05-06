@@ -98,9 +98,10 @@ Semantic vector search against the Qdrant collection.
 | `query` | string | -- | Search text |
 | `limit` | usize | 10 | Max results |
 | `offset` | usize | 0 | Skip N results |
-| `collection` | string | `cortex` | Qdrant collection |
+| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
 | `since` | string | -- | Filter: only docs after this date |
 | `before` | string | -- | Filter: only docs before this date |
+| `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config (`AXON_HYBRID_SEARCH`, default true) |
 
 ### ask
 
@@ -113,11 +114,12 @@ RAG: semantic search + LLM answer synthesis with citations.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | string | -- | Question to answer |
-| `graph` | bool | `false` | Inject Neo4j graph context |
+| `graph` | bool | `false` | Inject Neo4j graph context (no-op in lite mode) |
 | `diagnostics` | bool | `false` | Include retrieval diagnostics |
-| `collection` | string | `cortex` | Qdrant collection |
+| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
 | `since` | string | -- | Date filter (after) |
 | `before` | string | -- | Date filter (before) |
+| `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
 
 ### search
 
@@ -179,13 +181,19 @@ Capture a page screenshot via headless Chrome.
 | `viewport` | string | -- | Viewport dimensions |
 | `output` | string | -- | Output file path |
 
-### export
+### elicit_demo
 
-Export full index manifest (jobs + ingest targets + refresh schedules + Qdrant summary).
+Demo elicitation prompt — exercises the MCP elicitation request path end to end.
 
 ```json
-{ "action": "export" }
+{ "action": "elicit_demo", "message": "Pick a focus topic" }
 ```
+
+### acp
+
+Manage ACP adapter sessions (advanced). Subactions: `list_sessions`,
+`fork_session`, `resume_session`, `set_model`, `ext_method`, `ext_notification`,
+`logout`. See `crates/mcp/server/handlers_acp.rs` for the wire contract.
 
 ## Lifecycle action families
 
@@ -229,25 +237,6 @@ Start parameters:
 ```
 
 Source types: `github`, `reddit`, `youtube`, `sessions`.
-
-### refresh
-
-```json
-{ "action": "refresh", "subaction": "start", "url": "https://docs.example.com" }
-```
-
-Refresh also supports scheduling:
-```json
-{ "action": "refresh", "subaction": "schedule", "schedule_subaction": "list" }
-```
-
-### graph
-
-```json
-{ "action": "graph", "subaction": "build", "url": "https://example.com" }
-```
-
-Subactions: `build`, `status`, `explore`, `stats`.
 
 ### artifacts
 

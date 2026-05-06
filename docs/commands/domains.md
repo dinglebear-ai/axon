@@ -22,10 +22,9 @@ None.
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `QDRANT_URL` | Qdrant base URL. |
+
+`domains` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 

@@ -8,23 +8,25 @@ Ingests external sources (GitHub, Reddit, YouTube, AI sessions) into Qdrant.
 ```
 ingest/
 ├── classify.rs    # classify_target(): auto-detect IngestSource from raw user input
+├── progress.rs    # Progress reporting helpers shared across ingest sources
+├── subprocess.rs  # Subprocess launch helpers (used by youtube + github wiki paths)
+├── github.rs      # module root + orchestration
 ├── github/        # GitHub repo ingestion (code, issues, PRs, wiki)
 │   ├── files.rs   # file tree fetch + raw content via reqwest
 │   ├── issues.rs  # octocrab paginated issues + PRs
-│   ├── meta.rs    # GitHubPayloadParams unified builder → 31 gh_* fields per chunk
+│   ├── meta.rs    # GitHubPayloadParams unified builder → gh_* fields per chunk
 │   └── wiki.rs    # git clone --depth=1 subprocess; no wiki = Ok(0)
-├── github.rs      # module root + orchestration
 ├── reddit.rs      # module root — ingest_reddit, ingest_subreddit, ingest_thread
 ├── reddit/        # Reddit ingest submodules
 │   ├── client.rs  # OAuth2 access token + JSON fetch helper
 │   ├── comments.rs # recursive comment traversal + CommentWithContext
 │   ├── meta.rs    # build_reddit_post_extra_payload (reddit_* fields)
 │   └── types.rs   # RedditTarget enum, classify_target, validate_subreddit
+├── youtube.rs     # module root — extract_video_id, is_playlist_or_channel_url, enumerate_playlist_videos, ingest_youtube
 ├── youtube/       # YouTube ingest submodules
 │   ├── meta.rs    # YoutubeVideoMeta struct, parse_youtube_info_json, build_youtube_extra_payload
 │   └── vtt.rs     # parse_vtt_to_text + VTT tests
-├── youtube.rs     # module root — extract_video_id, is_playlist_or_channel_url,
-│                  #   enumerate_playlist_videos, ingest_youtube
+├── sessions.rs    # module root for the AI-session parsers
 └── sessions/      # AI session export parsers
     ├── claude.rs
     ├── codex.rs
@@ -142,7 +144,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 `axon_ingest_jobs` differs from other job tables:
 - Uses `source_type TEXT` (`github`/`reddit`/`youtube`) + `target TEXT` (repo name, subreddit, video URL)
 - Does **NOT** have `url` or `urls_json` columns
-- `worker_lane.rs` reads `AXON_INGEST_LANES` (default 2) to run parallel lanes
+- Ingest worker lifecycle is owned by the lite worker subsystem (`crates/jobs/lite/workers.rs`); the legacy `worker_lane.rs` was removed when full mode was retired. Whether `AXON_INGEST_LANES` is still respected should be confirmed against the lite ingest worker.
 
 ## Known Gaps
 
@@ -163,8 +165,7 @@ Install: `pip install yt-dlp` or `brew install yt-dlp`. Verify: `yt-dlp --versio
 
 ## Adding a New Ingest Source
 1. Add parser in `crates/ingest/<source>.rs`
-2. Add `CommandKind::<Source>` + CLI arg to `config.rs`
-3. Add command handler in `crates/cli/commands/<source>.rs`
-4. Add `source_type` variant handling in `ingest_jobs.rs` worker dispatch
+2. Extend `classify_target()` in `crates/ingest/classify.rs` to recognize the new source
+3. Add a per-source variant in the relevant ingest service entry point (`crates/services/ingest.rs`)
+4. Add `source_type` variant handling in the lite ingest worker (`crates/jobs/lite/workers.rs` and the ingest payload schema)
 5. Add env vars to `.env.example`
-6. Add s6 worker lane entry if the source is job-queue-backed

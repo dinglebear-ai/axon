@@ -3,8 +3,32 @@ Last Modified: 2026-03-21
 
 Wraps spider.rs for site crawling with HTTP and Chrome rendering paths.
 
-## Key Files
-- `engine.rs` — `crawl_and_collect_map()`, `run_crawl_once()`, `crawl_sitemap_urls()`, `append_sitemap_backfill()`, `try_auto_switch()`, `should_fallback_to_chrome()`
+## Module Layout
+
+```
+crawl/
+├── engine.rs              # Module root. `run_crawl_once()` (line 96), `run_sitemap_only()` (215), `should_fallback_to_chrome()` (66)
+├── engine/
+│   ├── runtime.rs         # configure_website()/configure_website_with_crawl_id() — spider Website builder, control-thread wiring, request/identity settings
+│   ├── collector.rs       # Crawl collection pipeline
+│   ├── collector/         # Collector submodules
+│   ├── map.rs             # Map-mode helpers
+│   ├── map/               # `crawl_and_collect_map()` lives here (engine/map/strategy.rs)
+│   ├── sitemap.rs         # `append_sitemap_backfill()`, sitemap discovery + filtering, `<lastmod>` parsing
+│   ├── thin_refetch.rs    # Re-fetch thin pages with Chrome
+│   ├── cdp_render.rs      # Chrome DevTools Protocol render path
+│   ├── url_utils.rs       # `is_junk_discovered_url`, `derive_auto_whitelist_pattern`, helpers
+│   ├── url_utils_proptest.rs
+│   ├── waf.rs             # WAF/firewall detection helpers
+│   ├── dir_ops.rs         # Output directory helpers
+│   └── tests.rs
+├── manifest.rs            # Crawl manifest generation + persistence
+├── scrape.rs              # Single-URL scrape entrypoint (32K — owns its own Website builder)
+├── screenshot.rs          # Screenshot capture
+└── chrome_bootstrap.rs    # Chrome runtime bootstrap utilities
+```
+
+Top-level keynote: `engine.rs`, `manifest.rs`, `scrape.rs`, `screenshot.rs`, and `chrome_bootstrap.rs` each have **independent** `Website::new()` paths — when adjusting retry/UA/header behavior, keep them in sync.
 
 ## Critical Patterns
 

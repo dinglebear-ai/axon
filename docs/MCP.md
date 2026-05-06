@@ -18,7 +18,9 @@ Canonical schema and action contract:
 Implementation:
 - `crates/mcp/schema.rs`
 - `crates/mcp/server.rs`
-- `crates/mcp/config.rs`
+- `crates/mcp/auth.rs`
+- `crates/mcp/cors.rs`
+- `crates/mcp/server/handlers_*.rs`
 
 ## Runtime Model
 `axon mcp` is expected to run in the same environment as Axon workers.
@@ -155,6 +157,7 @@ Use CLI-identical action names:
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
 - `scrape`, `research`, `ask`, `screenshot`, `help`, `status`, `elicit_demo`
+- `acp` (subactions: `list_sessions|fork_session|resume_session|set_model|ext_method|ext_notification|logout`)
 
 Examples:
 - `action: "ingest", subaction: "start"`

@@ -6,9 +6,14 @@ Axon MCP supports three transport configurations:
 
 | Transport | Auth | Use case | Command |
 |-----------|------|----------|---------|
-| stdio | None (process isolation) | Claude Desktop, Codex CLI, local tools | `axon mcp` |
-| HTTP | OAuth / bearer token | Docker, remote servers, shared access | `axon serve mcp` |
+| stdio | None (process isolation) | Claude Desktop, Codex CLI, local tools | `axon mcp` (default) |
+| HTTP | `AXON_MCP_HTTP_TOKEN` bearer | Docker, remote servers, shared access | `axon serve mcp` or `axon mcp --transport http` |
 | Both | Mixed | Serve HTTP while also accepting stdio | `axon mcp --transport both` |
+
+`axon mcp` defaults to **stdio**. The HTTP transport is the default for the
+`axon serve mcp` subcommand. The unified `axon serve` command runs **both**
+transports concurrently. There is no OAuth flow — see
+[`../auth/MCP-AUTH.md`](../auth/MCP-AUTH.md) for the actual auth model.
 
 ## stdio
 
@@ -30,15 +35,15 @@ axon mcp
       "args": ["mcp"],
       "env": {
         "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000",
-        "AXON_PG_URL": "postgresql://axon:pass@127.0.0.1:53432/axon",
-        "AXON_REDIS_URL": "redis://:pass@127.0.0.1:53379",
-        "AXON_AMQP_URL": "amqp://axon:pass@127.0.0.1:45535"
+        "TEI_URL": "http://127.0.0.1:52000"
       }
     }
   }
 }
 ```
+
+Lite mode is the only runtime mode — Postgres / Redis / AMQP env vars are not
+read by the MCP server.
 
 ### Codex CLI configuration
 
@@ -82,8 +87,11 @@ HTTP startup is limited to loopback hosts.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/mcp` | POST | MCP JSON-RPC with streamable-http |
-| `/health` | GET | Health check |
+| `/mcp` | POST | MCP JSON-RPC streamable-HTTP transport |
+
+When running under `axon serve` (unified web + MCP), additional web endpoints
+are mounted alongside `/mcp`. The MCP HTTP server itself does not expose a
+dedicated health endpoint.
 
 ### Claude Code configuration
 
@@ -94,11 +102,17 @@ HTTP startup is limited to loopback hosts.
   "mcpServers": {
     "axon": {
       "type": "http",
-      "url": "http://localhost:8001/mcp"
+      "url": "http://localhost:8001/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_AXON_MCP_HTTP_TOKEN"
+      }
     }
   }
 }
 ```
+
+Loopback binds (`127.0.0.1`) may run without `AXON_MCP_HTTP_TOKEN`; non-loopback
+binds (e.g. `0.0.0.0`) require it or the server refuses to start.
 
 ### When to use
 

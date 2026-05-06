@@ -12,32 +12,30 @@ Index of Axon CLI command docs.
 - [domains](./domains.md)
 - [embed](./embed.md)
 - [evaluate](./evaluate.md)
-- [export](./export.md)
 - [extract](./extract.md)
-- [graph](./graph.md)
 - [ingest](./ingest.md)
 - [map](./map.md)
 - [mcp](./mcp.md)
 - [migrate](./migrate.md)
 - [query](./query.md)
-- [refresh](./refresh.md)
 - [research](./research.md)
 - [retrieve](./retrieve.md)
 - [scrape](./scrape.md)
 - [screenshot](./screenshot.md)
 - [search](./search.md)
 - [serve](./serve.md)
+- [sessions](./sessions.md)
 - [sources](./sources.md)
 - [stats](./stats.md)
 - [status](./status.md)
 - [suggest](./suggest.md)
 - [watch](./watch.md)
 
-## Ingest Source Commands
-- [github](./github.md)
-- [reddit](./reddit.md)
-- [sessions](./sessions.md)
-- [youtube](./youtube.md)
+## Ingest Source Redirects
+The following are now ingest sub-targets — see [ingest](./ingest.md) for the unified command:
+- [github](./github.md) (auto-detected by `axon ingest`)
+- [reddit](./reddit.md) (auto-detected by `axon ingest`)
+- [youtube](./youtube.md) (auto-detected by `axon ingest`)
 
 ## Shell
 - [completions](./completions.md)

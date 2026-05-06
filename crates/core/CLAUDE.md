@@ -7,38 +7,55 @@ Foundational crate. Owns configuration parsing, the `Config` struct, HTTP client
 
 ```
 core/
-├── config.rs             # Re-export shim: parse_args, Config, CommandKind, all enums
+├── config.rs             # Module root: re-exports parse_args, Config, CommandKind, all enums
 ├── config/
-│   ├── cli.rs            # Cli { command: CliCommand, global: GlobalArgs } — clap entry struct (module root)
-│   ├── types/
-│   │   ├── config.rs     # Config struct — ALL runtime state (100+ fields)
-│   │   ├── config_impls.rs  # Config::default() + fmt::Debug (secrets redacted)
-│   │   └── enums.rs      # CommandKind, RenderMode, PerformanceProfile, ScrapeFormat, RedditSort, RedditTime
+│   ├── cli.rs            # Cli { command, global } — clap entry struct
 │   ├── cli/
-│   │   └── global_args.rs   # All ~60 global flags (#[arg(global=true)])
+│   │   └── global_args.rs   # All global flags (#[arg(global=true)])
+│   ├── help.rs           # maybe_print_top_level_help_and_exit(): colored help text
+│   ├── parse.rs          # Module root for the parse subtree
 │   ├── parse/
-│   │   ├── build_config.rs  # into_config(): CliArgs → Config (env vars, clamps, normalization)
+│   │   ├── build_config.rs  # into_config(): CliArgs → Config (env vars, clamps, normalization, lite-mode)
 │   │   ├── performance.rs   # profile_settings(): PerformanceProfile → concrete concurrency values
-│   │   ├── excludes.rs      # default_exclude_prefixes(): 110+ default path exclusions
+│   │   ├── excludes.rs      # default_exclude_prefixes(): default path exclusions
 │   │   ├── helpers.rs       # viewport parsing, flag helpers, env_usize_clamped, env_f64_clamped
-│   │   └── docker.rs        # normalize_local_service_url(): Docker-inside vs outside detection
-│   └── help.rs           # maybe_print_top_level_help_and_exit(): colored help text
-├── http.rs               # Module root + re-exports: validate_url, normalize_url, fetch_html, http_client, HttpError
+│   │   ├── docker.rs        # normalize_local_service_url(): Docker-inside vs outside detection
+│   │   └── toml_config.rs   # Optional ~/.axon/config.toml loader + merge
+│   ├── secret.rs         # Secret-handling helpers used during parse
+│   ├── validation.rs     # Validation helpers used during parse
+│   ├── types.rs          # Module root for the types subtree
+│   └── types/
+│       ├── config.rs        # Config struct — top-level runtime state
+│       ├── config_impls.rs  # Config::default(), Config::default_lite(), fmt::Debug (secrets redacted)
+│       ├── enums.rs         # CommandKind, RenderMode, PerformanceProfile, ScrapeFormat, RedditSort, RedditTime
+│       ├── subconfigs.rs    # Sub-config structs (legacy infra URLs live here, not on Config directly)
+│       └── overrides.rs     # CLI/env override application
+├── http.rs               # Module root + re-exports
 ├── http/
-│   ├── ssrf.rs           # validate_url() SSRF guard + ssrf_blacklist_patterns()
+│   ├── ssrf.rs           # validate_url() SSRF guard + ssrf_blacklist_patterns() + SsrfBlockingResolver
 │   ├── client.rs         # HTTP_CLIENT singleton (LazyLock), http_client(), fetch_html()
 │   ├── normalize.rs      # normalize_url(): prepend https:// when scheme missing
 │   ├── cdp.rs            # cdp_discovery_url(): Chrome DevTools Protocol URL rewriting
-│   ├── error.rs          # HttpError enum: InvalidUrl, BlockedScheme, BlockedHost, BlockedIpRange
-│   └── tests.rs          # 38 tests: URL normalization (11) + SSRF validation (27)
+│   ├── error.rs          # HttpError enum
+│   ├── headers.rs        # Custom-header parsing helpers
+│   ├── tests.rs          # URL normalization + SSRF validation tests
+│   └── proptest_tests.rs # Property-based URL/SSRF tests
 ├── content.rs            # build_transform_config(), to_markdown(), url_to_filename(), extract_*()
 ├── content/
 │   ├── engine.rs         # ExtractWebConfig + run_extract_with_engine(): deterministic extraction + LLM fallback
-│   ├── deterministic.rs  # DeterministicExtractionEngine, DeterministicParser trait, JsonLdParser, OgParser, HtmlTableParser
+│   ├── engine/
+│   │   └── chrome.rs        # Chrome-backed extraction helpers
+│   ├── deterministic.rs  # DeterministicExtractionEngine + parsers (JsonLd / OG / HtmlTable)
 │   └── tests.rs          # Content transformation and extraction tests
+├── health.rs             # browser_diagnostics_pattern() + Chrome diagnostics env vars
+├── health/
+│   └── doctor.rs         # probe_tei_info, probe_openai, build_browser_runtime
+│   └── doctor/
+│       └── lite.rs       # Lite-mode doctor probe orchestration
 ├── logging.rs            # init_tracing(), log_info/log_warn/log_done, SizeRotatingFile
-├── ui.rs                 # Spinner, primary/accent/muted(), symbol_for_status(), confirm_destructive()
-└── health.rs             # redis_healthy(), BrowserDiagnosticsPattern, Chrome diagnostics env vars
+├── neo4j.rs              # Neo4j client wiring (used by graph-enhanced retrieval)
+├── paths.rs              # Path helpers (data dir, output dir, cache dir)
+└── ui.rs                 # Spinner, primary/accent/muted(), symbol_for_status(), confirm_destructive()
 ```
 
 ## Config Struct (`config/types/config.rs`)
@@ -57,8 +74,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Vector Store | `collection` (default "cortex"), `embed` (default true), `search_limit` (default 10) |
 | Output | `output_dir` (`.cache/axon-rust/output`), `output_path`, `json_output`, `format: ScrapeFormat` |
 | Performance | `performance_profile`, `batch_concurrency` (default 16), `wait` (default false), `yes` (default false) |
-| Service URLs | `pg_url`, `redis_url`, `amqp_url`, `qdrant_url`, `tei_url`, `openai_*`, `tavily_api_key` |
-| Queues | `crawl_queue`, `extract_queue`, `embed_queue`, `ingest_queue`, `refresh_queue` |
+| Service URLs | `qdrant_url`, `tei_url`, `openai_base_url`, `openai_api_key`, `openai_model`, `tavily_api_key` |
 | RAG/Ask tuning | `ask_max_context_chars` (120k), `ask_candidate_limit` (150), `ask_chunk_limit` (10), `ask_full_docs` (4), `ask_min_relevance_score` (0.45) — all clamped |
 | Ingest credentials | `github_token`, `reddit_client_id`, `reddit_client_secret` |
 | Auto-switch | `auto_switch_thin_ratio` (0.60), `auto_switch_min_pages` (10) |
@@ -67,24 +83,28 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Web UI | `serve_port` (default 49000, env: `AXON_SERVE_PORT`) |
 | Lite mode | `lite_mode: bool` (set by `AXON_LITE=1` or `--lite`; skips PG/Redis/AMQP checks), `sqlite_path: PathBuf` (default `$AXON_DATA_DIR/axon/jobs.db`, env: `AXON_SQLITE_PATH`) |
 
-**Debug redacts secrets:** `Config`'s `fmt::Debug` replaces `pg_url`, `redis_url`, `amqp_url`, `github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key` with `[REDACTED]`.
+**Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `crates/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
 
 ## CommandKind Enum (`config/types/enums.rs`)
 
-28 variants: `Scrape`, `Crawl`, `Refresh`, `Map`, `Extract`, `Search`, `Embed`, `Debug`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Evaluate`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Github`, `Ingest`, `Reddit`, `Youtube`, `Sessions`, `Research`, `Screenshot`, `Mcp`, `Serve`
+28 variants (verify against `crates/core/config/types/enums.rs:5-34`):
+`Scrape`, `Crawl`, `Watch`, `Map`, `Extract`, `Search`, `Embed`, `Debug`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Evaluate`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Ingest`, `Sessions`, `Research`, `Screenshot`, `Completions`, `Mcp`, `Serve`, `Setup`, `Migrate`.
+
+The legacy `Refresh`, `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `crates/ingest/classify.rs`.
 
 Other enums: `RenderMode` (Http/Chrome/AutoSwitch), `ScrapeFormat` (Markdown/Html/RawHtml/Json), `PerformanceProfile` (HighStable/Extreme/Balanced/Max), `RedditSort` (Hot/Top/New/Rising), `RedditTime` (Hour/Day/Week/Month/Year/All)
 
 ## `into_config()` — CLI → Config Translation (`config/parse/build_config.rs`)
 
 Translates `clap` output into the runtime `Config` struct:
-1. Extracts command-specific args (ask_diagnostics, github_include_source (default: true, disabled by `--no-source`), reddit_*, sessions_*, serve_port)
-2. Maps `CliCommand` → `(CommandKind, Vec<String> positional)`
-3. Normalizes service URLs via `normalize_local_service_url()` (Docker detection)
-4. Applies `profile_settings()` for performance defaults
-5. Clamps all Ask parameters to their defined ranges
-6. Parses viewport string ("1920x1080") into width/height
-7. Normalizes exclude-path-prefixes via `default_exclude_prefixes()` + user overrides
+1. Resolves `lite_mode` from `--lite` flag and `AXON_LITE` env (lite mode is the only supported runtime)
+2. Extracts command-specific args (ask_diagnostics, github_include_source (default: true, disabled by `--no-source`), reddit_*, sessions_*, serve_port)
+3. Maps `CliCommand` → `(CommandKind, Vec<String> positional)`
+4. Normalizes service URLs via `normalize_local_service_url()` (Docker detection)
+5. Applies `profile_settings()` for performance defaults
+6. Clamps all Ask parameters to their defined ranges
+7. Parses viewport string ("1920x1080") into width/height
+8. Normalizes exclude-path-prefixes via `default_exclude_prefixes()` + user overrides
 
 ## `Config::default_lite()`
 
@@ -234,12 +254,9 @@ if !confirm_destructive(cfg, "Delete all jobs?")? { return Ok(()); }
 
 **Do not use `println!` for colored output** — use these functions so output is consistent with the rest of the CLI.
 
-## Health Checks (`health.rs`)
+## Health Checks (`health.rs` + `health/doctor*`)
 
-```rust
-// Service health probes (used by doctor command)
-redis_healthy(redis_url: &str) -> bool   // 5-second PING timeout
-```
+`health.rs` itself exports `browser_diagnostics_pattern()` plus the Chrome diagnostics env wiring. Active service probes live under `health/doctor.rs` (e.g. `probe_tei_info`, `probe_openai`, `build_browser_runtime`) and `health/doctor/lite.rs` (lite-mode orchestration). There is no `redis_healthy()` — Redis was removed when the runtime collapsed to lite mode.
 
 **Chrome diagnostics (env-controlled):**
 - `AXON_CHROME_DIAGNOSTICS=1` — enable screenshot/event capture

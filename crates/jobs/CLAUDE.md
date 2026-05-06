@@ -9,18 +9,26 @@ Async job workers. The single backend is `LiteBackend` — SQLite persistence + 
 jobs/
 ├── backend.rs       # JobBackend trait + JobPayload + JobKind + JobStatusRow + JobSummary
 ├── lite.rs          # LiteBackend: SQLite pool + in-process worker spawning
-├── lite/            # LiteBackend submodules: cancel, ops, query, store, workers
+├── lite/
+│   ├── cancel.rs            # Lite-mode cancel signaling (status update + spider control)
+│   ├── config_snapshot.rs   # Config snapshotting per-job
+│   ├── ops.rs / ops/        # Insert/claim/mark/list helpers
+│   ├── query.rs             # Service-job query helpers (lite_query::*)
+│   ├── store.rs             # Schema bootstrap + lifecycle SQL
+│   ├── workers.rs / workers/ # In-process tokio workers, one per JobKind
+│   └── migrations/          # SQLite migration files
 ├── status.rs        # JobStatus enum
 ├── error.rs         # Job error types
-├── crawl.rs         # Crawl job schema helpers
-├── embed.rs         # Embed job schema helpers
-├── extract.rs       # Extract job schema helpers
-├── ingest.rs        # Ingest job schema + worker (github/reddit/youtube/sessions)
-├── watch_lite.rs    # Watch task scheduler (SQLite-backed, in-process)
-├── crawl/           # manifest, processor, repo, sitemap, watchdog, worker, runtime
-├── embed/           # Embed worker
-└── extract/         # Extract worker
+├── crawl.rs         # Crawl job schema/payload helpers
+├── crawl/sitemap.rs # Sitemap helpers used by the crawl worker
+├── embed.rs         # Embed job schema/payload helpers
+├── extract.rs       # Extract job schema/payload helpers
+├── ingest.rs        # Ingest job schema + payload (github/reddit/youtube/sessions)
+├── ingest/{tests,types}.rs
+└── watch_lite.rs    # Watch task scheduler (SQLite-backed, in-process)
 ```
+
+There are no longer separate `crawl/{processor,repo,watchdog,worker,runtime}.rs` or `embed/`/`extract/` worker subdirs — those workers were consolidated into `crates/jobs/lite/workers.rs` (and its sibling `workers/` submodule directory) when full mode was retired.
 
 ## Backend Selection
 
@@ -109,8 +117,8 @@ The watchdog handles the **crash** case (process died). The heartbeat handles th
 
 ### Stale Job Recovery
 
-- `crawl/watchdog.rs`: marks jobs stuck in `running` state as `failed` after the stale timeout
-- `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`)
+- The lite-mode watchdog (in `crates/jobs/lite/`) marks jobs stuck in `running` state as `failed` after the stale timeout. The exact submodule name was renamed during the lite-mode collapse — search for `STALE_TIMEOUT` / `recover_jobs` in `crates/jobs/lite/` if the path matters.
+- `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`).
 
 ## ingest_jobs Schema Difference
 `axon_ingest_jobs` uses `source_type` + `target` columns instead of `url`/`urls_json` used by all other job tables. When querying or listing ingest jobs, join/filter on `source_type` (`github`/`reddit`/`youtube`) not on `url`.

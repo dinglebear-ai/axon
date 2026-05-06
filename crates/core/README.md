@@ -15,15 +15,16 @@ Shared runtime primitives used across CLI, jobs, crawl, vector, and web modules.
 - Health probes and user-facing output utilities.
 
 ## Key Files
-- `config.rs`: config module root.
-- `config/cli.rs`: clap argument schema.
-- `config/parse.rs`: env + flag merge and normalization logic.
-- `config/types.rs`: canonical `Config` shape consumed by handlers/workers.
-- `config/parse/performance.rs`: performance profile defaults and overrides.
-- `http.rs`: HTTP fetch and request safety behaviors.
-- `content.rs` + `content/deterministic.rs`: deterministic content handling utilities.
+Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirectory holding submodules (modern Rust 2018 layout — no `mod.rs`).
+
+- `config.rs` + `config/`: clap schema (`cli.rs`/`cli/global_args.rs`), env+flag merge (`parse/build_config.rs` + helpers), canonical `Config` (`types/config.rs`, `types/config_impls.rs`, `types/enums.rs`, `types/subconfigs.rs`, `types/overrides.rs`), validation, secret handling, performance-profile defaults.
+- `http.rs` + `http/`: HTTP fetch + request safety (`ssrf.rs`, `client.rs`, `normalize.rs`, `cdp.rs`, `error.rs`, `headers.rs`).
+- `content.rs` + `content/`: deterministic content handling (`engine.rs`, `engine/chrome.rs`, `deterministic.rs`).
+- `health.rs` + `health/doctor*`: service health probes (TEI, OpenAI, browser).
 - `logging.rs`: structured logging helpers used across runtime.
-- `health.rs`: service health-check helpers.
+- `paths.rs`: filesystem-path helpers (data/output/cache).
+- `neo4j.rs`: Neo4j client wiring (graph-enhanced retrieval).
+- `ui.rs`: spinner / colored output / `confirm_destructive`.
 
 ## Integration Points
 - `lib.rs` command dispatch consumes config produced here.

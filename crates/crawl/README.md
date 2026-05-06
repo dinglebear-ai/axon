@@ -15,11 +15,11 @@ Crawl engine and crawl artifact manifest logic for Axon.
 - Crawl manifest generation and bookkeeping.
 
 ## Key Files
-- `engine.rs`: crawl orchestration entry and render-mode control.
-- `engine/collector.rs`: crawl collection pipeline.
-- `engine/sitemap.rs`: sitemap discovery/backfill logic.
+- `engine.rs` + `engine/`: crawl orchestration (`runtime.rs`, `collector.rs`, `map.rs`, `sitemap.rs`, `cdp_render.rs`, `thin_refetch.rs`, `url_utils.rs`, `waf.rs`, `dir_ops.rs`, `tests.rs`).
+- `scrape.rs`: single-URL scrape entrypoint (HTTP + Chrome paths).
+- `screenshot.rs`: screenshot capture.
 - `manifest.rs`: crawl manifest model and persistence helpers.
-- `engine/tests.rs`: crawl engine behavior tests.
+- `chrome_bootstrap.rs`: Chrome runtime bootstrap utilities.
 
 ## Integration Points
 - Invoked by `crates/cli/commands/crawl*`.

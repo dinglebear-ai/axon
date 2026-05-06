@@ -18,10 +18,21 @@ claude mcp add axon -- env QDRANT_URL=http://127.0.0.1:53333 TEI_URL=http://127.
 
 ### HTTP
 
-When `axon serve` or `axon mcp` is running with HTTP transport (default):
+`axon mcp` defaults to **stdio** transport. To run the HTTP transport, use one
+of:
 
 ```bash
-claude mcp add --transport http axon http://localhost:8001/mcp
+axon mcp --transport http       # HTTP only
+axon mcp --transport both       # stdio + HTTP concurrently
+axon serve mcp                  # HTTP transport (defaults to HTTP for the serve subcommand)
+axon serve                      # unified web + MCP HTTP on the same port
+```
+
+Then register the HTTP transport with Claude Code:
+
+```bash
+claude mcp add --transport http axon http://localhost:8001/mcp \
+  --header "Authorization: Bearer $AXON_MCP_HTTP_TOKEN"
 ```
 
 ### Scopes
@@ -46,15 +57,15 @@ claude mcp add --transport http axon http://localhost:8001/mcp
       "args": ["mcp"],
       "env": {
         "QDRANT_URL": "http://127.0.0.1:53333",
-        "TEI_URL": "http://127.0.0.1:52000",
-        "AXON_PG_URL": "postgresql://axon:pass@127.0.0.1:53432/axon",
-        "AXON_REDIS_URL": "redis://:pass@127.0.0.1:53379",
-        "AXON_AMQP_URL": "amqp://axon:pass@127.0.0.1:45535"
+        "TEI_URL": "http://127.0.0.1:52000"
       }
     }
   }
 }
 ```
+
+Lite mode is the only runtime mode — Postgres / Redis / AMQP env vars are not
+required (and not read by the MCP server).
 
 ### HTTP
 
@@ -63,7 +74,10 @@ claude mcp add --transport http axon http://localhost:8001/mcp
   "mcpServers": {
     "axon": {
       "type": "http",
-      "url": "http://localhost:8001/mcp"
+      "url": "http://localhost:8001/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_AXON_MCP_HTTP_TOKEN"
+      }
     }
   }
 }
@@ -139,8 +153,10 @@ For lite-mode MCP (SQLite-backed, no external queue broker):
 ## Verifying connection
 
 ```bash
-# HTTP health check
-curl -s http://localhost:8001/health
+# HTTP probe (requires bearer token; returns 401 without it when token is set)
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $AXON_MCP_HTTP_TOKEN" \
+  http://localhost:8001/mcp
 
 # Test via doctor
 axon doctor
@@ -154,7 +170,11 @@ If connection fails:
 1. Verify the server is running (`just dev` or `axon mcp`)
 2. Check port 8001 is not blocked
 3. For stdio: confirm the `axon` binary path is correct and all env vars are set
-4. Run `axon doctor` to check infrastructure connectivity
+4. For HTTP: confirm `AXON_MCP_HTTP_TOKEN` is set on both server and client
+5. Run `axon doctor` to check infrastructure connectivity
+
+The MCP HTTP server does not currently expose a dedicated `/health` endpoint —
+auth-pass on `/mcp` (anything other than `401`) is the closest probe.
 
 ## See also
 

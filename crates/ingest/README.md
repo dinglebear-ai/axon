@@ -14,10 +14,13 @@ Source-specific ingestion pipelines for non-crawl content.
 - Session ingest parsers for Claude, Codex, and Gemini exports.
 
 ## Key Files
-- `github.rs` + `github/files.rs` + `github/issues.rs` + `github/wiki.rs`: GitHub source ingest.
-- `reddit.rs`: Reddit source ingest.
-- `youtube.rs`: YouTube transcript ingest.
-- `sessions.rs` + `sessions/claude.rs` + `sessions/codex.rs` + `sessions/gemini.rs`: session export parsers.
+- `classify.rs`: `classify_target()` auto-detects ingest source from raw user input.
+- `progress.rs`: shared progress reporting helpers.
+- `subprocess.rs`: shared subprocess launch helpers (yt-dlp, git clone).
+- `github.rs` + `github/{files,issues,meta,wiki}.rs`: GitHub source ingest.
+- `reddit.rs` + `reddit/{client,comments,meta,types}.rs`: Reddit source ingest.
+- `youtube.rs` + `youtube/{meta,vtt}.rs`: YouTube transcript ingest.
+- `sessions.rs` + `sessions/{claude,codex,gemini}.rs`: AI session export parsers.
 
 ## Integration Points
 - Async ingest job orchestration lives in `crates/jobs/ingest.rs`.

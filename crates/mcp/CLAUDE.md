@@ -12,20 +12,37 @@ Last Modified: 2026-03-28
 ## Module Layout
 
 ```
+crates/mcp.rs           # Crate-root re-export shim (sibling to crates/mcp/)
 mcp/
-├── ../mcp.rs           # Crate root module file, re-exports
-├── schema.rs           # AxonRequest/AxonToolResponse types, action/subaction enums
-├── config.rs           # OAuth token storage helpers (load_mcp_config() removed in 54244286)
-├── server.rs           # AxonMcpServer: tool registration + action dispatch router
-└── server/
-    ├── common.rs                   # Shared handler utilities
-    ├── handlers_crawl_extract.rs   # crawl + extract action handlers
-    ├── handlers_embed_ingest.rs    # embed + ingest action handlers
-    ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research, screenshot
-    ├── handlers_acp.rs             # acp action handlers
-    ├── handlers_elicit.rs          # elicitation prompts
-    ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
+├── auth.rs                     # OAuth token storage + auth helpers
+├── cors.rs                     # CORS middleware for the HTTP transport
+├── schema.rs                   # AxonRequest / AxonToolResponse types, action/subaction enums
+├── schema/
+│   └── tests.rs                # Schema parser + dispatch tests
+├── server.rs                   # AxonMcpServer: tool registration + action dispatch router
+├── server/
+│   ├── common.rs                   # Shared handler utilities
+│   ├── http.rs                     # HTTP transport plumbing
+│   ├── handlers_crawl_extract.rs   # crawl + extract action handlers
+│   ├── handlers_embed_ingest.rs    # embed + ingest action handlers
+│   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research
+│   ├── handlers_acp.rs             # acp action handlers
+│   ├── handlers_elicit.rs          # elicitation prompts
+│   ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
+│   ├── handlers_system/
+│   │   └── screenshot.rs           # screenshot handler split off from handlers_system
+│   ├── artifacts.rs                # Artifact response wrapper
+│   ├── artifacts/
+│   │   ├── lifecycle.rs            # Artifact lifecycle (creation, eviction)
+│   │   ├── path.rs                 # `.cache/axon-mcp/` path helpers
+│   │   ├── respond.rs              # Inline-vs-path response shaping
+│   │   └── shape.rs                # Artifact response shape
+│   └── services_migration_tests.rs # Migration tests for the services-layer plumbing
+└── assets/
+    └── status_dashboard.html       # MCP App resource for `ui://axon/status-dashboard`
 ```
+
+There is no `crates/mcp/config.rs`. The `load_mcp_config()` helper that used to live here was removed when the MCP server adopted the unified `build_config()` path; OAuth token storage helpers live in `auth.rs`.
 
 ## Source-of-Truth References
 - Wire contract schema doc: `docs/MCP-TOOL-SCHEMA.md`
@@ -161,24 +178,16 @@ Expected runtime model:
 
 ## `ServiceContext` Wiring
 
-All MCP action handlers receive a `&ServiceContext` (from `crates/services/context`) constructed once at server startup. This gives handlers backend-agnostic job ops and capability gating:
+All MCP action handlers receive a `&ServiceContext` (from `crates/services/context.rs`) constructed once at server startup:
 
 ```rust
 // In handler dispatch
-let ctx = ServiceContext::new(Arc::new(cfg)).await?;
+let ctx = ServiceContext::new_with_workers(Arc::new(cfg)).await?;
 // ...
 self.handle_crawl(request).await
 ```
 
-**Lite mode capability guards:** Some actions are unavailable in lite mode and must be guarded:
-
-| Unsupported action | Guard |
-|--------------------|-------|
-| `watch` scheduler | `ctx.capabilities.watch_scheduler` |
-
-(`graph`, `refresh`, and `export` actions were removed in the lite-mode simplification — see commit 05da3b44.)
-
-Return `ErrorData::invalid_params("not supported in lite mode")` when `!capability.supported`.
+`ServiceContext` carries exactly two fields — `cfg: Arc<Config>` and `jobs: Arc<dyn ServiceJobRuntime>`. **There is no `capabilities` field and no `ServiceCapabilities` struct.** Any documentation referring to `ctx.capabilities.<cap>.supported` is stale; gating now lives inside the individual service functions (e.g. the watch scheduler returns its own "not supported" error). The legacy `graph`, `refresh`, and `export` MCP actions were removed entirely when full mode was retired.
 
 ## Implementation Rules
 1. Keep one tool (`axon`) only.

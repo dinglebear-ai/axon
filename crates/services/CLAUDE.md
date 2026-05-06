@@ -7,45 +7,57 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 
 ```
 services/
-├── context.rs              # ServiceContext — canonical handler entry point
-├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime() + LiteServiceRuntime
-├── acp/                    # ACP adapter orchestration (Claude/Codex/Gemini subprocess)
+├── context.rs              # ServiceContext — canonical handler entry point (cfg + jobs only)
+├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime{,_with_workers}() + LiteServiceRuntime
+├── acp.rs                  # ACP adapter orchestration module root
+├── acp/
 │   ├── adapters.rs         # Adapter subprocess wrappers (spawn, stdin/stdout)
-│   ├── bridge.rs           # Shared turn finalization: logging, EditorWrite, TurnResult dispatch
+│   ├── bridge.rs / bridge/ # Shared turn finalization: logging, EditorWrite, TurnResult dispatch
 │   ├── config.rs           # ACP session/model/tool config builder
-│   ├── mapping/            # SDK event mapping: SessionInfoUpdate, UsageUpdate, etc.
+│   ├── mapping.rs / mapping/ # SDK event mapping
 │   ├── permission.rs       # Permission bridge: maps ACP tool calls to gated operations
-│   ├── persistent_conn/    # Persistent-connection mode: single process per WS lifetime
+│   ├── persistent_conn.rs / persistent_conn/ # Persistent-connection mode
 │   ├── preflight.rs        # Pre-flight checks before spawning an adapter
 │   ├── runtime.rs          # One-shot mode: spawn → init → turn → teardown per prompt
 │   ├── session.rs          # Session setup: context injection, system prompt assembly
-│   └── session_cache/      # WS reconnect replay buffer (TTL, byte cap, reaper)
-│       ├── cache.rs        # SessionCache impl — insert, replay, reap
-│       └── entry.rs        # SessionEntry type + message buffer
-├── acp_llm.rs              # ACP-backed LLM completion gateway (module root + re-exports)
+│   └── session_cache.rs / session_cache/  # WS reconnect replay buffer (TTL, byte cap, reaper)
+├── acp_llm.rs              # ACP-backed LLM completion gateway module root
 ├── acp_llm/                # Submodules for the completion gateway
-│   ├── runner.rs           # AcpRuntimeCompletionRunner — one-shot adapter execution
+│   ├── pool.rs             # Pool of warm sessions
+│   ├── runner.rs           # One-shot adapter execution
 │   ├── types.rs            # AcpCompletionRequest/Response, AcpUsageSnapshot, helpers
-│   └── warm.rs             # WarmAcpSession — pre-warmed adapter (overlaps cold-start)
-├── events.rs               # ServiceEvent enum + emit() — async channel helper
-├── types/
-│   ├── acp.rs              # AcpBridgeEvent enum (all ACP → client wire events)
-│   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
-├── query.rs                # query, retrieve, ask, evaluate, suggest
-├── system.rs               # doctor, stats, sources, domains, status, dedupe
-├── scrape.rs               # scrape
-├── search.rs               # search, research
-├── map.rs                  # map
-├── screenshot.rs           # screenshot
+│   ├── warm.rs             # Pre-warmed adapter (overlaps cold-start)
+│   └── ws_runner.rs        # WS-driven runner used by Pulse Chat
 ├── crawl.rs                # crawl start/status/cancel/list/cleanup/recover
+├── crawl_sync.rs           # Synchronous crawl orchestration (24h cache, sitemap-only, HTTP→Chrome fallback)
+├── debug.rs                # doctor + LLM-assisted debug
 ├── embed.rs                # embed start/status/cancel/list
+├── error.rs                # service error types
+├── events.rs               # ServiceEvent enum + emit() — async channel helper
 ├── extract.rs              # extract start/status/cancel/list
 ├── ingest.rs               # ingest start/status/cancel/list
+├── ingest/classify.rs      # ingest classification helpers (services-layer wrapper)
 ├── jobs.rs                 # shared job status helpers
+├── map.rs                  # map
 ├── migrate.rs              # collection migration (unnamed → named mode)
-├── watch.rs                # watch definition + run management
-├── debug.rs                # doctor + LLM-assisted debug
-└── error.rs                # service error types
+├── query.rs                # query, retrieve, ask, evaluate, suggest
+├── scrape.rs               # scrape
+├── screenshot.rs           # screenshot
+├── search.rs               # search, research
+├── setup.rs                # Setup-flow service entry
+├── setup/
+│   ├── assets.rs           # Setup assets
+│   ├── config_store.rs     # Persistent config-store helpers
+│   ├── deploy.rs           # Setup deploy steps
+│   └── ssh_targets.rs      # Remote SSH target management
+├── system.rs               # doctor, stats, sources, domains, status, dedupe
+├── types.rs                # types/ module root
+├── types/
+│   ├── acp.rs              # AcpBridgeEvent enum (all ACP → client wire events)
+│   ├── acp/                # ACP type submodules
+│   ├── contracts.rs        # External-facing service contract types
+│   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
+└── watch.rs                # CRUD shim — actual scheduler runtime lives in crates/jobs/watch_lite.rs
 ```
 
 ## `ServiceContext` — The Entry Point
@@ -81,7 +93,7 @@ The job operations interface consumed by `ServiceContext.jobs`:
 - `run_worker(kind)` → `WorkerMode` (`Started` / `InProcess` / `Unsupported`)
 - `wait_for_job(id, kind)` → `String` (final status)
 
-`resolve_runtime(cfg)` in `runtime.rs` constructs `LiteServiceRuntime` (wraps `LiteBackend`).
+Two public entry points construct the runtime: `resolve_runtime(cfg)` (no workers) and `resolve_runtime_with_workers(cfg, spawn)` (driven by `ServiceContext::new_with_workers`). Both return `Arc<dyn ServiceJobRuntime>` backed by `LiteServiceRuntime`, which wraps `LiteBackend`.
 
 ### LiteBackend construction modes
 
@@ -237,4 +249,4 @@ Pure mapping tests (`map_*` functions) and channel tests run without live servic
 
 ## `watch.rs` and `events.rs` — Live Streaming
 
-`watch.rs` manages watch definition and run lifecycle for `axon watch` commands. It uses `ServiceEvent` as the streaming primitive — the watch runner emits events via `tx` that the web/WS layer forwards to clients in real-time.
+`crates/services/watch.rs` is a thin CRUD layer (~2 KB) that exposes watch definition + run lookups to CLI/MCP/web. The actual scheduler runtime lives in `crates/jobs/watch_lite.rs` (SQLite-backed, in-process). Streaming is plumbed through `ServiceEvent` so the watch runner can emit progress that the web/WS layer forwards to clients in real time.

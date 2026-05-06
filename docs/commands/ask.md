@@ -23,13 +23,12 @@ axon ask --query "<question>" [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_PG_URL` | Required by global config parsing (all commands). |
-| `AXON_REDIS_URL` | Required by global config parsing (all commands). |
-| `AXON_AMQP_URL` | Required by global config parsing (all commands). |
 | `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
 | `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for LLM answer generation — ask fails fast without it. |
 | `OPENAI_MODEL` | Model name passed to the ACP adapter for answer generation. |
+
+`ask` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 
@@ -69,7 +68,7 @@ axon ask "what is the max crawl depth?" --json
 ## RAG Pipeline
 
 1. Embed the question via TEI
-2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 64) candidate chunks
+2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 150) candidate chunks
 3. Filter chunks below `AXON_ASK_MIN_RELEVANCE_SCORE` (default: 0.45)
 4. Rerank by score; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
 5. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
@@ -85,7 +84,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance (0.6–0.7 for high-precision); lower if you get "no candidates" |
-| `AXON_ASK_CANDIDATE_LIMIT` | `64` | More candidates = better recall, slower reranking |
+| `AXON_ASK_CANDIDATE_LIMIT` | `150` | More candidates = better recall, slower reranking |
 | `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks in final LLM context |
 | `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Total context characters; raise for large-context models |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |

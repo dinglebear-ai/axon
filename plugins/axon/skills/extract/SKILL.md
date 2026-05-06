@@ -35,7 +35,7 @@ Check status:
 ## CLI fallback
 
 ```bash
-axon extract https://example.com/pricing --prompt "Extract plan name, price, and features as JSON"
+axon extract https://example.com/pricing --query "Extract plan name, price, and features as JSON"
 ```
 
 ## Reading results

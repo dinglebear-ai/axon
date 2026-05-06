@@ -1,5 +1,5 @@
-# axon_cli — Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-04-27
+# Axon CLI (Rust + Spider.rs)
+Last Modified: 2026-05-06
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
@@ -219,7 +219,7 @@ just services-up
 docker compose -f config/docker-compose.services.yaml ps
 
 # Stop everything
-just down-all
+just services-down
 ```
 
 ## Configuration (Two-Layer System)
@@ -378,7 +378,7 @@ Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin.
 After a crawl, `append_sitemap_backfill()` discovers URLs via sitemap.xml that the crawler missed and fetches them individually. Respects `--max-sitemaps` (default: 512) and `--include-subdomains`. Use `--sitemap-since-days N` to restrict backfill to URLs whose `<lastmod>` falls within the last N days; URLs without `<lastmod>` are always included.
 
 
-Both compose files set `context: .` — run `docker compose build` from this directory, not from a parent workspace.
+The compose file sets `context: .` — run `docker compose build` from this directory, not from a parent workspace.
 
 ### `spider_agent` path dep (CI / fresh environments)
 
@@ -416,7 +416,7 @@ After an uncapped crawl completes (`--max-pages 0`, the default), if the total p
 When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, the crawl is automatically scoped to the directory subtree of the start URL via a derived whitelist regex. For example, crawling `https://ai.google.dev/api/python/google/generativeai/GenerativeModel` auto-scopes to `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`. Root paths (`/`) and single-segment paths (`/docs`) are not scoped — they're already broad enough. Pass `--url-whitelist <pattern>` to override auto-scoping.
 
 ### Adding fields to `Config` struct
-When adding a new non-`Option` field to `Config` in `crates/core/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:
+When adding a new non-`Option` field to `Config` in `crates/core/config/types/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:
 - `crates/cli/commands/research.rs`
 - `crates/cli/commands/search.rs`
 - Any `make_test_config()` helpers in `crates/jobs/common/`
@@ -471,7 +471,7 @@ just watch-check # cargo watch: check + test-lib on every file save
 just rebuild     # check + test + docker-build (pre-deploy gate)
 just services-up # start infra (qdrant, tei, chrome)
 just services-down # stop infra
-just down-all    # stop everything
+just stop        # stop running serve and worker processes
 ```
 
 ### Run directly

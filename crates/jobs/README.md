@@ -1,39 +1,46 @@
 # crates/jobs
-Last Modified: 2026-03-03
+Last Modified: 2026-05-06
 
-Asynchronous job runtime, queue integration, and lifecycle management.
+Async job runtime and lifecycle management for axon's lite-mode backend.
 
 ## Purpose
-- Provide durable async execution for crawl, extract, embed, and ingest jobs.
-- Track job lifecycle in Postgres while RabbitMQ handles delivery.
-- Expose operational controls (`status`, `cancel`, `errors`, `list`, `recover`, `worker`).
+- Persist crawl/extract/embed/ingest jobs in SQLite.
+- Run in-process tokio workers that drain the queues without external brokers.
+- Expose status/cancel/list/cleanup/recover/worker controls via the `JobBackend` trait
+  and the richer `ServiceJobRuntime` consumed by the services layer.
 
 ## Responsibilities
-- Queue publish/consume wiring.
-- Atomic claim/run/complete/fail state transitions.
-- Worker lane orchestration and stale-job watchdog/recovery.
-- Per-domain job family implementations (crawl/extract/embed/ingest).
+- SQLite-backed job persistence.
+- Atomic claim/run/complete/fail/cancel state transitions.
+- In-process worker dispatch per `JobKind`.
+- Stale-job watchdog and content-aware heartbeat.
+- Per-domain job family schemas (crawl/extract/embed/ingest) and the watch scheduler.
 
 ## Key Files
-- `status.rs`: shared job status model.
-- `worker_lane.rs`: worker lane runtime orchestration (module root file).
-- `common/amqp.rs`: queue transport helpers.
-- `common/job_ops.rs`: atomic DB lifecycle operations.
-- `common/watchdog.rs`: stale-job reclaim logic.
-- `crawl.rs` + `crawl/*`: crawl worker runtime and persistence paths.
-- `extract.rs` + `extract/worker.rs`: extract worker path.
-- `embed.rs` + `embed/worker.rs`: embed worker path.
-- `ingest.rs`: shared ingest worker path for GitHub/Reddit/YouTube.
+- `backend.rs`: `JobBackend` trait + `JobPayload` + `JobKind` + `JobStatusRow` + `JobSummary`.
+- `lite.rs`: `LiteBackend` — SQLite pool + in-process worker spawning (with `new()` enqueue-only and `new_with_workers()` constructors).
+- `lite/workers.rs` + `lite/workers/`: per-kind in-process workers.
+- `lite/store.rs`, `lite/query.rs`, `lite/cancel.rs`, `lite/ops.rs` (+ `lite/ops/`): SQL helpers.
+- `lite/config_snapshot.rs`: per-job config snapshotting.
+- `lite/migrations/`: SQLite migration files.
+- `crawl.rs`, `embed.rs`, `extract.rs`, `ingest.rs`: per-kind schema + payload helpers.
+- `watch_lite.rs`: SQLite-backed watch task scheduler.
+- `status.rs`: shared `JobStatus` enum.
+- `error.rs`: job error types.
 
 ## Integration Points
-- Enqueue operations are initiated from `crates/cli/commands/*`.
+- Enqueue is initiated from `crates/services/<kind>::*_start` via `ServiceContext.jobs`.
 - Crawl execution delegates into `crates/crawl`.
-- Embed/query workflows interact with `crates/vector`.
-- Runtime config and connections come from `crates/core/config` and `crates/jobs/common/pool.rs`.
+- Embed/query workflows interact with `crates/vector/ops`.
+- Service callers go through `ServiceJobRuntime` (`crates/services/runtime.rs`),
+  not `JobBackend` directly.
 
 ## Notes
-- Postgres is the source of truth for job state; queue delivery alone is not sufficient for lifecycle integrity.
-- Recovery behavior should stay aligned with stale timeout and confirmation config.
+- SQLite is the source of truth for job state; lite mode is the only supported runtime.
+- `LiteBackend::new(cfg)` is enqueue-only — safe for fire-and-forget CLI commands.
+  Use `LiteBackend::new_with_workers(cfg)` for serve / mcp / web (anywhere the process
+  must drain the queue itself).
+- Recovery behavior is driven by `AXON_JOB_STALE_TIMEOUT_SECS` and `AXON_JOB_STALE_CONFIRM_SECS`.
 
 ## Related Docs
 - [Repository README](../../README.md)

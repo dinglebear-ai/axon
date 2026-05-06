@@ -25,7 +25,7 @@ pub struct McpInput {
 
 Rules:
 - `action` is required and must match canonical enum names
-- `subaction` is required for lifecycle families (crawl, extract, embed, ingest, refresh, graph, artifacts)
+- `subaction` is required for lifecycle families (crawl, extract, embed, ingest, artifacts)
 - No fallback fields, no token normalization, no case folding
 - Invalid input returns MCP `invalid_params` error
 
@@ -127,55 +127,44 @@ pub enum AxonError {
 
 ## ServiceContext
 
-The `ServiceContext` is constructed at startup and shared across all handlers:
+The `ServiceContext` is constructed at startup and shared across all handlers
+(definition in `crates/services/context.rs`):
 
 ```rust
 pub struct ServiceContext {
-    pub config: Config,
-    pub capabilities: ServiceCapabilities,
-    pub pg_pool: Option<PgPool>,
-    pub redis: Option<RedisConnection>,
-    pub amqp: Option<AmqpConnection>,
-    // ...
+    pub cfg: Arc<Config>,
+    pub jobs: Arc<dyn ServiceJobRuntime>,
 }
 ```
 
-`ServiceCapabilities` gates operations based on runtime mode:
+There is no separate `capabilities` struct on `ServiceContext` and no embedded
+Postgres / Redis / AMQP connection pools — lite mode is the only mode and jobs
+are backed by SQLite via `LiteServiceRuntime`. Two construction modes exist:
 
-```rust
-pub struct ServiceCapabilities {
-    pub jobs: CapabilityGate,      // SQLite-backed (lite mode, always available)
-    pub graph: CapabilityGate,     // Requires Neo4j
-    pub search: CapabilityGate,    // Requires Tavily API key
-    // ...
-}
-```
+- `ServiceContext::new(cfg)` — enqueue-only, no in-process workers (CLI default).
+- `ServiceContext::new_with_workers(cfg)` — spawns in-process workers for jobs.
+  Used by `axon serve` and the MCP server.
 
-MCP handlers check capabilities before executing:
-
-```rust
-if !ctx.capabilities.jobs.supported {
-    return Err(McpError::new("Operation not available in this configuration"));
-}
-```
+The MCP server constructs its `ServiceContext` once via `new_with_workers` (see
+`AxonMcpServer::base_service_context` in `crates/mcp/server.rs`) so jobs
+enqueued via MCP are drained by the same process.
 
 ## Lifecycle job pattern
 
-Lifecycle actions (crawl, extract, embed, ingest, refresh) share a common pattern:
+Lifecycle actions (crawl, extract, embed, ingest) share a common pattern:
 
-1. `start` -- enqueue job to AMQP queue, return job ID
-2. `status` -- query Postgres for job state
-3. `cancel` -- set cancel flag in Redis
-4. `list` -- list recent jobs from Postgres
+1. `start` -- enqueue job, return job ID
+2. `status` -- query SQLite for job state
+3. `cancel` -- mark the job cancelled
+4. `list` -- list recent jobs from SQLite (paginated by `limit`/`offset`)
 5. `cleanup` -- remove completed/failed jobs
 6. `clear` -- remove all jobs
 7. `recover` -- reclaim stale/interrupted jobs
 
 Each job type has:
 - A `Processor` trait implementation in `crates/jobs/<type>/`
-- A queue name in `axon.json` (e.g., `axon.crawl.jobs`)
-- A database table (e.g., `axon_crawl_jobs`)
-- A worker binary path (e.g., `axon crawl worker`)
+- A SQLite table (e.g., `axon_crawl_jobs` — see `docs/SCHEMA.md`)
+- An in-process worker started by `LiteBackend::new_with_workers`
 
 ## Hybrid search pattern
 

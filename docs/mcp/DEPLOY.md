@@ -31,7 +31,7 @@ axon serve mcp
 AXON_LITE=1 axon mcp
 ```
 
-Runs with SQLite for job storage. Requires Qdrant and TEI for embedding/search. Does not support graph, refresh, or watch operations.
+Runs with SQLite for job storage. Requires Qdrant and TEI for embedding/search. The watch scheduler is the only feature unavailable in lite mode (see `crates/services/context.rs` and `crates/jobs/CLAUDE.md`).
 
 ## Docker
 
