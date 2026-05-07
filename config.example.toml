@@ -64,8 +64,8 @@
 # collection = "cortex"
 
 [ask]
-# LLM synthesis uses Gemini headless. Override the Gemini model with OPENAI_MODEL
-# in the env layer rather than config.toml.
+# LLM synthesis uses Gemini headless. Override the Gemini model with
+# AXON_HEADLESS_GEMINI_MODEL in the env layer rather than config.toml.
 
 # Max chunks returned per ask query (clamped 3–40).
 # Env: AXON_ASK_CHUNK_LIMIT

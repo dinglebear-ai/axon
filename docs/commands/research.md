@@ -25,7 +25,7 @@ axon research --query "<query>" [FLAGS]
 |----------|-------------|
 | `TAVILY_API_KEY` | Tavily API key for source discovery. |
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
-| `OPENAI_MODEL` | Optional Gemini model override for synthesis. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for synthesis. |
 
 ## Flags
 

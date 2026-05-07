@@ -15,7 +15,8 @@ pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
     let _ = cfg;
-    llm_backend::headless::dispatch::validate_selected_agent().map_err(|e| anyhow::anyhow!("{e}"))
+    let backend = llm_backend::LlmBackendConfig::from_config(cfg);
+    llm_backend::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {

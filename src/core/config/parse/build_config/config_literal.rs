@@ -45,7 +45,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     populate_identity_and_crawl(&mut cfg, &inputs);
     populate_chrome_and_filtering(&mut cfg, &inputs);
     populate_perf_and_credentials(&mut cfg, &inputs);
-    populate_services_and_ask_basics(&mut cfg, &inputs, tei_url, qdrant_url);
+    populate_services_and_ask_basics(&mut cfg, &inputs, tei_url, qdrant_url)?;
     populate_ask_tuning(&mut cfg, inputs.toml);
     populate_misc(&mut cfg, &inputs, custom_headers, mcp_http_port)?;
     Ok(cfg)
@@ -146,7 +146,7 @@ fn populate_services_and_ask_basics(
     inputs: &LiteralInputs<'_>,
     tei_url: String,
     qdrant_url: String,
-) {
+) -> Result<(), String> {
     let g = inputs.global;
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
@@ -165,6 +165,18 @@ fn populate_services_and_ask_basics(
         .clone()
         .or_else(|| env::var("OPENAI_MODEL").ok())
         .unwrap_or_default();
+    cfg.headless_gemini_model = non_empty_env("AXON_HEADLESS_GEMINI_MODEL")
+        .or_else(|| gemini_compatible_openai_model(&cfg.openai_model))
+        .unwrap_or_default();
+    cfg.headless_gemini_cmd =
+        non_empty_env("AXON_HEADLESS_GEMINI_CMD").unwrap_or_else(|| "gemini".to_string());
+    cfg.headless_gemini_home = non_empty_env("AXON_HEADLESS_GEMINI_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| env::var("HOME").ok().map(std::path::PathBuf::from));
+    cfg.llm_completion_concurrency =
+        parse_positive_usize_env("AXON_LLM_COMPLETION_CONCURRENCY", 4)?;
+    cfg.llm_completion_timeout_secs =
+        parse_positive_u64_env("AXON_LLM_COMPLETION_TIMEOUT_SECS", 300)?;
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()
@@ -174,6 +186,43 @@ fn populate_services_and_ask_basics(
     cfg.ask_graph = g.graph;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;
+    Ok(())
+}
+
+fn gemini_compatible_openai_model(model: &str) -> Option<String> {
+    let model = model.trim();
+    model.starts_with("gemini-").then(|| model.to_string())
+}
+
+fn non_empty_env(var_name: &str) -> Option<String> {
+    env::var(var_name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_positive_usize_env(var_name: &str, default: usize) -> Result<usize, String> {
+    match env::var(var_name) {
+        Ok(raw) if raw.trim().is_empty() => Ok(default),
+        Ok(raw) => raw
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),
+        Err(_) => Ok(default),
+    }
+}
+
+fn parse_positive_u64_env(var_name: &str, default: u64) -> Result<u64, String> {
+    match env::var(var_name) {
+        Ok(raw) if raw.trim().is_empty() => Ok(default),
+        Ok(raw) => raw
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| format!("{var_name} must be a positive integer, got {raw:?}")),
+        Err(_) => Ok(default),
+    }
 }
 
 fn populate_ask_tuning(cfg: &mut Config, toml: &TomlConfig) {
@@ -280,4 +329,23 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
                     .to_string()
             })?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gemini_compatible_openai_model;
+
+    #[test]
+    fn gemini_compatible_openai_model_ignores_openai_model_names() {
+        assert_eq!(gemini_compatible_openai_model("gpt-4o-mini"), None);
+        assert_eq!(gemini_compatible_openai_model("claude-4-sonnet"), None);
+    }
+
+    #[test]
+    fn gemini_compatible_openai_model_accepts_gemini_names() {
+        assert_eq!(
+            gemini_compatible_openai_model(" gemini-3.1-flash-lite-preview "),
+            Some("gemini-3.1-flash-lite-preview".to_string())
+        );
+    }
 }

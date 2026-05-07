@@ -5,15 +5,17 @@ pub mod headless;
 pub mod types;
 
 pub use types::{
-    CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult, UsageSnapshot,
-    extract_completion_result, normalize_stream_flag,
+    CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult,
+    LlmBackendConfig, UsageSnapshot, extract_completion_result, normalize_stream_flag,
 };
 
 pub async fn complete_text(
     req: CompletionRequest,
 ) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
-    let _permit = concurrency::acquire_completion_permit().await?;
-    headless::dispatch::complete_text(req).await
+    ensure_configured(&req)?;
+    let _permit =
+        concurrency::acquire_completion_permit(req.backend.completion_concurrency).await?;
+    headless::gemini::complete_text(req).await
 }
 
 pub async fn complete_streaming<F>(
@@ -23,8 +25,17 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
 {
-    let _permit = concurrency::acquire_completion_permit().await?;
-    headless::dispatch::complete_streaming(req, on_delta).await
+    ensure_configured(&req)?;
+    let _permit =
+        concurrency::acquire_completion_permit(req.backend.completion_concurrency).await?;
+    headless::gemini::complete_streaming(req, on_delta).await
+}
+
+fn ensure_configured(req: &CompletionRequest) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    req.backend
+        .configured
+        .then_some(())
+        .ok_or_else(|| "LLM completion request is missing resolved backend config".into())
 }
 
 pub async fn complete_text_with_runner<R>(

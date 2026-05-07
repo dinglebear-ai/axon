@@ -25,7 +25,7 @@ axon suggest --query "<focus>" [FLAGS]
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL (reads indexed URLs/domains). |
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
-| `OPENAI_MODEL` | Optional Gemini model override for suggestion generation. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for suggestion generation. |
 
 `suggest` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 

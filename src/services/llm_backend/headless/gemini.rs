@@ -3,7 +3,7 @@ use super::common::{
     env_or_default, redacted_stderr_tail,
 };
 use super::env::apply_env_allowlist;
-use crate::services::llm_backend::{CompletionRequest, CompletionResponse};
+use crate::services::llm_backend::{CompletionRequest, CompletionResponse, LlmBackendConfig};
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 use std::fs;
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 
 const DEFAULT_GEMINI_MODEL: &str = "gemini-3.1-flash-lite-preview";
 const GEMINI_AUTH_FILES: &[&str] = &[
@@ -19,7 +19,6 @@ const GEMINI_AUTH_FILES: &[&str] = &[
     "gemini-credentials.json",
     "google_accounts.json",
 ];
-const DEFAULT_COMPLETION_TIMEOUT_SECS: u64 = 300;
 
 pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec, String> {
     let args = vec![
@@ -50,6 +49,29 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
 pub fn validate_command() -> Result<(), Box<dyn StdError + Send + Sync>> {
     let req = HeadlessCommandRequest::new(None, None);
     let spec = build_command(&req)?;
+    validate_command_spec(&spec)
+}
+
+pub fn validate_config(config: &LlmBackendConfig) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let spec = configured_command_spec(config, None, None)?;
+    validate_command_spec(&spec)
+}
+
+fn configured_command_spec(
+    config: &LlmBackendConfig,
+    model: Option<String>,
+    system_prompt: Option<String>,
+) -> Result<HeadlessCommandSpec, String> {
+    let req =
+        HeadlessCommandRequest::new(model.or_else(|| config.gemini_model.clone()), system_prompt);
+    let mut spec = build_command(&req)?;
+    spec.program = config.gemini_cmd.clone();
+    Ok(spec)
+}
+
+fn validate_command_spec(
+    spec: &HeadlessCommandSpec,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
     if spec.program.contains('/') || spec.program.contains('\\') {
         let path = Path::new(&spec.program);
         let metadata = fs::symlink_metadata(path)
@@ -78,31 +100,13 @@ pub async fn complete_streaming<F>(
 where
     F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
 {
-    validate_command()?;
-    let command_req = HeadlessCommandRequest::new(req.model.clone(), req.system_prompt.clone());
-    let spec = build_command(&command_req)?;
-    let gemini_home = prepare_gemini_home()?;
+    validate_config(&req.backend)?;
+    let spec = configured_command_spec(&req.backend, req.model.clone(), req.system_prompt.clone())?;
+    let gemini_home = prepare_gemini_home(&req.backend)?;
     let cwd = tempfile::tempdir()
         .map_err(|err| format!("failed to create isolated Gemini cwd: {err}"))?;
 
-    let mut command = Command::new(&spec.program);
-    command
-        .args(&spec.args)
-        .current_dir(cwd.path())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    apply_env_allowlist(&mut command);
-    command
-        .env("HOME", gemini_home.path())
-        .env("XDG_CONFIG_HOME", gemini_home.path().join(".config"))
-        .env("XDG_CACHE_HOME", gemini_home.path().join(".cache"));
-
-    let mut child = command
-        .spawn()
-        .map_err(|err| format!("failed to spawn Gemini headless command: {err}"))?;
-
+    let mut child = spawn_gemini_child(&spec, &gemini_home, cwd.path())?;
     let mut stdin = child
         .stdin
         .take()
@@ -123,45 +127,73 @@ where
         .ok_or("failed to open Gemini headless stderr")?;
     let stderr_task = tokio::spawn(async move { read_bounded_stderr(stderr).await });
 
-    let timeout = completion_timeout();
+    let timeout = completion_timeout(&req.backend);
     let mut parser = GeminiStreamState::default();
     let mut lines = BufReader::new(stdout).lines();
-    let stream_result: Result<(), Box<dyn StdError + Send + Sync>> =
-        tokio::time::timeout(timeout, async {
-            loop {
-                match lines.next_line().await {
-                    Ok(Some(line)) => {
-                        if let Err(err) = parser.handle_line(&line, &mut on_delta) {
-                            break Err(err);
-                        }
+    let stream_result = match tokio::time::timeout(timeout, async {
+        loop {
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    if let Err(err) = parser.handle_line(&line, &mut on_delta) {
+                        break Err(err);
                     }
-                    Ok(None) => break Ok(()),
-                    Err(err) => break Err(Box::new(err) as Box<dyn StdError + Send + Sync>),
                 }
+                Ok(None) => break Ok(()),
+                Err(err) => break Err(Box::new(err) as Box<dyn StdError + Send + Sync>),
             }
-        })
-        .await
-        .map_err(|_| {
-            format!(
-                "Gemini headless timed out after {} seconds",
-                timeout.as_secs()
+        }
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            let cleanup = kill_and_wait(&mut child).await;
+            stdin_task.abort();
+            stderr_task.abort();
+            let _ = stdin_task.await;
+            let _ = stderr_task.await;
+            return Err(format!(
+                "Gemini headless timed out after {} seconds; cleanup: {cleanup}",
+                timeout.as_secs(),
             )
-        })?;
+            .into());
+        }
+    };
     if let Err(err) = stream_result {
-        let _ = child.kill().await;
-        let _ = child.wait().await;
+        let cleanup = kill_and_wait(&mut child).await;
         let _ = stdin_task.await;
         let _ = stderr_task.await;
-        return Err(err);
+        return Err(format!("{err}; cleanup: {cleanup}").into());
     }
 
     stdin_task
         .await
         .map_err(|err| format!("failed to join Gemini stdin writer: {err}"))??;
-    let status = child.wait().await?;
-    let stderr = stderr_task
-        .await
-        .map_err(|err| format!("failed to join Gemini stderr reader: {err}"))??;
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(status) => status?,
+        Err(_) => {
+            let cleanup = kill_and_wait(&mut child).await;
+            stderr_task.abort();
+            let _ = stderr_task.await;
+            return Err(format!(
+                "Gemini headless timed out waiting for process exit after {} seconds; cleanup: {cleanup}",
+                timeout.as_secs(),
+            )
+            .into());
+        }
+    };
+    let stderr = match tokio::time::timeout(timeout, stderr_task).await {
+        Ok(joined) => {
+            joined.map_err(|err| format!("failed to join Gemini stderr reader: {err}"))??
+        }
+        Err(_) => {
+            return Err(format!(
+                "Gemini headless timed out reading stderr after {} seconds",
+                timeout.as_secs()
+            )
+            .into());
+        }
+    };
 
     if !status.success() {
         return Err(format!(
@@ -175,10 +207,53 @@ where
     Ok(CompletionResponse { text, usage: None })
 }
 
+fn spawn_gemini_child(
+    spec: &HeadlessCommandSpec,
+    gemini_home: &TempDir,
+    cwd: &Path,
+) -> Result<Child, Box<dyn StdError + Send + Sync>> {
+    let mut command = Command::new(&spec.program);
+    command
+        .args(&spec.args)
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    apply_env_allowlist(&mut command);
+    command
+        .env("HOME", gemini_home.path())
+        .env("XDG_CONFIG_HOME", gemini_home.path().join(".config"))
+        .env("XDG_CACHE_HOME", gemini_home.path().join(".cache"));
+
+    command
+        .spawn()
+        .map_err(|err| format!("failed to spawn Gemini headless command: {err}").into())
+}
+
+pub async fn complete_text(
+    req: CompletionRequest,
+) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>> {
+    complete_streaming(req, |_| Ok(())).await
+}
+
 fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
     match system_prompt.map(str::trim).filter(|s| !s.is_empty()) {
         Some(system) => format!("{system}\n\n{user_prompt}"),
         None => user_prompt.to_string(),
+    }
+}
+
+async fn kill_and_wait(child: &mut Child) -> String {
+    let kill_result = child.kill().await;
+    let wait_result = child.wait().await;
+    match (kill_result, wait_result) {
+        (Ok(()), Ok(status)) => format!("killed and reaped with {status}"),
+        (Ok(()), Err(wait_err)) => format!("killed but wait failed: {wait_err}"),
+        (Err(kill_err), Ok(status)) => format!("kill failed: {kill_err}; wait returned {status}"),
+        (Err(kill_err), Err(wait_err)) => {
+            format!("kill failed: {kill_err}; wait failed: {wait_err}")
+        }
     }
 }
 
@@ -197,7 +272,9 @@ async fn read_bounded_stderr(
     }
 }
 
-fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
+fn prepare_gemini_home(
+    config: &LlmBackendConfig,
+) -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
     let temp = tempfile::Builder::new()
         .prefix("axon-gemini-headless-")
         .tempdir()
@@ -207,7 +284,7 @@ fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
     fs::create_dir_all(temp.path().join(".config"))?;
     fs::create_dir_all(temp.path().join(".cache"))?;
 
-    let source_home = gemini_source_home()?;
+    let source_home = gemini_source_home(config)?;
     let source_gemini = source_home.join(".gemini");
     for filename in GEMINI_AUTH_FILES {
         let src = source_gemini.join(filename);
@@ -222,9 +299,11 @@ fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
     Ok(temp)
 }
 
-fn gemini_source_home() -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
-    if let Some(path) = non_empty_env("AXON_HEADLESS_GEMINI_HOME") {
-        return validate_source_home(PathBuf::from(path));
+fn gemini_source_home(
+    config: &LlmBackendConfig,
+) -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
+    if let Some(path) = &config.gemini_home {
+        return validate_source_home(path.clone());
     }
     let home = non_empty_env("HOME").map(PathBuf::from).ok_or_else(
         || -> Box<dyn StdError + Send + Sync> {
@@ -261,13 +340,8 @@ fn non_empty_env(var_name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn completion_timeout() -> std::time::Duration {
-    let secs = std::env::var("AXON_LLM_COMPLETION_TIMEOUT_SECS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_COMPLETION_TIMEOUT_SECS);
-    std::time::Duration::from_secs(secs)
+fn completion_timeout(config: &LlmBackendConfig) -> std::time::Duration {
+    std::time::Duration::from_secs(config.completion_timeout_secs.max(1))
 }
 
 fn write_isolated_settings(path: &Path) -> Result<(), Box<dyn StdError + Send + Sync>> {
@@ -524,5 +598,34 @@ mod tests {
         let snowman = "hi \u{2603}".as_bytes();
         let out = assemble_utf8_chunks(&[&snowman[..4], &snowman[4..]]).unwrap();
         assert_eq!(out, "hi \u{2603}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn gemini_headless_timeout_returns_error_for_hung_child() {
+        use crate::services::llm_backend::{CompletionRequest, LlmBackendConfig};
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cmd = dir.path().join("fake-gemini");
+        fs::write(&cmd, "#!/bin/sh\nsleep 5\n").unwrap();
+        let mut perms = fs::metadata(&cmd).unwrap().permissions();
+        perms.set_mode(0o700);
+        fs::set_permissions(&cmd, perms).unwrap();
+
+        let mut req = CompletionRequest::new("hello");
+        req.backend = LlmBackendConfig {
+            gemini_cmd: cmd.display().to_string(),
+            gemini_model: None,
+            gemini_home: Some(dir.path().to_path_buf()),
+            completion_concurrency: 1,
+            completion_timeout_secs: 1,
+            configured: true,
+        };
+
+        let err = complete_text(req)
+            .await
+            .expect_err("hung child should time out");
+        assert!(err.to_string().contains("timed out"));
     }
 }

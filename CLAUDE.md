@@ -278,9 +278,10 @@ TEI_URL=http://axon-tei:80
 # Gemini CLI is required for ask/evaluate/suggest/extract fallback/debug/research synthesis.
 AXON_HEADLESS_GEMINI_CMD=gemini
 AXON_HEADLESS_GEMINI_HOME=
+AXON_HEADLESS_GEMINI_MODEL=
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
-# OPENAI_MODEL is used as Gemini model override (compatibility key name retained).
+# OPENAI_MODEL is retained for compatibility; only gemini-* values are reused by Gemini.
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key-or-empty
 OPENAI_MODEL=your-model-name
@@ -353,7 +354,7 @@ When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_
 
 ### Gemini headless completion path
 `ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`).
-`OPENAI_MODEL` remains the model override knob for Gemini-backed calls.
+`AXON_HEADLESS_GEMINI_MODEL` is the Gemini model override knob. `OPENAI_MODEL` remains as a compatibility setting, but only `gemini-*` values are reused by Gemini-backed calls.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

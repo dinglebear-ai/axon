@@ -168,7 +168,8 @@ fn test_process_sse_line_emits_tagged_token() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn ask_llm_streaming_with_runner_builds_completion_request_and_collects_tokens() {
-    let cfg = Config::test_default();
+    let mut cfg = Config::test_default();
+    cfg.headless_gemini_model = "gemini-test-model".to_string();
     let runner = MockRunner::with_streaming(&["hello ", "there"], "hello there");
 
     let answer = ask_llm_streaming_with_runner(&runner, &cfg, "How?", "Context block", false)
@@ -182,7 +183,8 @@ async fn ask_llm_streaming_with_runner_builds_completion_request_and_collects_to
         observed[0],
         CompletionRequest::new("Question: How?\n\nContext:\nContext block")
             .system_prompt(ASK_RAG_SYSTEM_PROMPT)
-            .model("test-model")
+            .backend_from_config(&cfg)
+            .model("gemini-test-model")
             .stream(true)
     );
 }
@@ -203,6 +205,7 @@ async fn ask_llm_streaming_with_runner_omits_blank_model_for_completion_only_con
         observed[0],
         CompletionRequest::new("Question: How?\n\nContext:\nContext block")
             .system_prompt(ASK_RAG_SYSTEM_PROMPT)
+            .backend_from_config(&cfg)
             .stream(true)
     );
 }
@@ -223,7 +226,7 @@ async fn baseline_llm_non_streaming_with_runner_builds_completion_request() {
         observed[0],
         CompletionRequest::new("What changed?")
             .system_prompt(BASELINE_SYSTEM_PROMPT)
-            .model("test-model")
+            .backend_from_config(&cfg)
             .stream(false)
     );
 }
@@ -282,7 +285,7 @@ async fn judge_llm_non_streaming_with_runner_builds_completion_request() {
         observed[0],
         CompletionRequest::new(judge_user_msg(&judge_ctx))
             .system_prompt(judge_system_prompt())
-            .model("test-model")
+            .backend_from_config(&cfg)
             .stream(false)
     );
 }

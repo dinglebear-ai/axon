@@ -916,10 +916,11 @@ The minimum set needed to start:
 | `TEI_URL` | Yes | Text Embeddings Inference base URL (e.g. `http://127.0.0.1:52000`) |
 | `AXON_HEADLESS_GEMINI_CMD` | For ask/research/evaluate/suggest/debug/extract fallback | Gemini CLI command (default: `gemini`) |
 | `AXON_HEADLESS_GEMINI_HOME` | For Gemini auth isolation | Source HOME to copy Gemini auth files from |
+| `AXON_HEADLESS_GEMINI_MODEL` | For ask/research | Gemini model override; defaults to `gemini-3.1-flash-lite-preview` |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | No | Max concurrent Gemini headless completions (default: `4`) |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | No | Gemini completion timeout in seconds (default: `300`) |
 | `OPENAI_BASE_URL` | For ask/research | OpenAI-compatible API base URL |
-| `OPENAI_MODEL` | For ask/research | Model override; headless Gemini defaults to `gemini-3.1-flash-lite-preview` |
+| `OPENAI_MODEL` | Compatibility | Only `gemini-*` values are reused as Gemini overrides; older OpenAI model names are ignored |
 | `TAVILY_API_KEY` | For search/research | Tavily search API key |
 | `GITHUB_TOKEN` | For GitHub ingest | GitHub personal access token (optional, raises rate limits) |
 | `REDDIT_CLIENT_ID` | For Reddit ingest | Reddit OAuth2 app client ID |

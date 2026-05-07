@@ -239,7 +239,7 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) openai_api_key: Option<String>,
 
-    /// LLM model name for Gemini headless completion (overrides OPENAI_MODEL)
+    /// Compatibility LLM model name. Gemini headless only reuses gemini-* values.
     #[arg(global = true, long)]
     pub(in crate::core::config) openai_model: Option<String>,
 

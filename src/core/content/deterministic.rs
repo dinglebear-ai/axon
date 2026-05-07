@@ -15,6 +15,7 @@ pub struct ExtractionMetrics {
     pub completion_tokens: u64,
     pub total_tokens: u64,
     pub estimated_cost_usd: f64,
+    pub llm_fallback_failures: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -284,6 +285,7 @@ pub(crate) struct FallbackResponse {
 pub(crate) async fn extract_items_fallback(
     _client: &reqwest::Client,
     openai_model: &str,
+    llm_backend: llm_backend::LlmBackendConfig,
     prompt: &str,
     page_url: &str,
     markdown: &str,
@@ -297,7 +299,17 @@ pub(crate) async fn extract_items_fallback(
          The JSON must have a top-level key \"results\" containing an array of extracted items. \
          Output the bare JSON object starting with `{{` and nothing before or after it."
     ));
-    if !openai_model.trim().is_empty() {
+    request.backend = llm_backend;
+    if !request
+        .backend
+        .gemini_model
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        request.model = request.backend.gemini_model.clone();
+    } else if openai_model.trim().starts_with("gemini-") {
         request = request.model(openai_model.to_string());
     }
     let response = llm_backend::complete_text(request)

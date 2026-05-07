@@ -2,7 +2,7 @@
 
 `axon ask` uses the Gemini CLI headless path. The path is intended only for synthesis: no tools, no permissions, no warm session, and no workspace mutation.
 
-Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `OPENAI_MODEL` to override the Gemini model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
+Gemini is selected by `AXON_HEADLESS_GEMINI_CMD` (default: `gemini`). Set `AXON_HEADLESS_GEMINI_MODEL` to override the Gemini model. Set `AXON_HEADLESS_GEMINI_HOME` to copy auth from a prepared Gemini home instead of the process HOME.
 
 Safety rules:
 

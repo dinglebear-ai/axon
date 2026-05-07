@@ -30,8 +30,9 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
     let mut request = CompletionRequest::new(prompt).system_prompt(
         "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
     );
-    if !cfg.openai_model.trim().is_empty() {
-        request = request.model(cfg.openai_model.clone());
+    request = request.backend_from_config(cfg);
+    if !cfg.headless_gemini_model.trim().is_empty() {
+        request = request.model(cfg.headless_gemini_model.clone());
     }
     let completion = llm_backend::complete_text(request)
         .await
@@ -46,7 +47,7 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         payload: serde_json::json!({
             "doctor_report": doctor_report,
             "llm_debug": {
-                "model": if cfg.openai_model.trim().is_empty() { serde_json::Value::Null } else { serde_json::json!(&cfg.openai_model) },
+                "model": if cfg.headless_gemini_model.trim().is_empty() { serde_json::Value::Null } else { serde_json::json!(&cfg.headless_gemini_model) },
                 "analysis": analysis,
             }
         }),

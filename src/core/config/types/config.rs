@@ -226,6 +226,22 @@ pub struct Config {
     /// Retained as `OPENAI_MODEL` for backward compatibility.
     pub openai_model: String,
 
+    /// Gemini-specific model override for headless LLM synthesis.
+    /// Env: `AXON_HEADLESS_GEMINI_MODEL`.
+    pub headless_gemini_model: String,
+
+    /// Gemini CLI command for headless LLM synthesis. Env: `AXON_HEADLESS_GEMINI_CMD`.
+    pub headless_gemini_cmd: String,
+
+    /// Source HOME for Gemini CLI auth isolation. Env: `AXON_HEADLESS_GEMINI_HOME`.
+    pub headless_gemini_home: Option<PathBuf>,
+
+    /// Max concurrent Gemini headless completion requests. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
+    pub llm_completion_concurrency: usize,
+
+    /// Timeout for each Gemini headless completion request. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
+    pub llm_completion_timeout_secs: u64,
+
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
 

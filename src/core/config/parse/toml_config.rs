@@ -54,6 +54,10 @@ pub(super) struct TomlSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskSection {
+    /// Deprecated compatibility field. Gemini headless is the only backend now,
+    /// so old `[ask] backend = "headless"` config is accepted and ignored.
+    #[serde(rename = "backend")]
+    pub _backend: Option<serde::de::IgnoredAny>,
     /// Max chunks returned per ask query (clamped 3–40).
     pub chunk_limit: Option<usize>,
     /// Max candidate chunks fetched before scoring (clamped 8–300).

@@ -79,6 +79,75 @@ fn into_config_normalizes_tei_url_like_other_services() {
 
 #[allow(unsafe_code)]
 #[test]
+fn into_config_migrates_gemini_model_env_without_reusing_openai_names() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(
+        &[
+            "OPENAI_MODEL",
+            "AXON_HEADLESS_GEMINI_MODEL",
+            "AXON_HEADLESS_GEMINI_CMD",
+            "AXON_HEADLESS_GEMINI_HOME",
+            "AXON_LLM_COMPLETION_CONCURRENCY",
+            "AXON_LLM_COMPLETION_TIMEOUT_SECS",
+        ],
+        || unsafe {
+            env::set_var("OPENAI_MODEL", "gpt-4o-mini");
+            env::set_var("AXON_HEADLESS_GEMINI_CMD", "/usr/local/bin/gemini");
+            env::set_var("AXON_HEADLESS_GEMINI_HOME", "/tmp/gemini-home");
+            env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "3");
+            env::set_var("AXON_LLM_COMPLETION_TIMEOUT_SECS", "42");
+            let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+            assert_eq!(cfg.openai_model, "gpt-4o-mini");
+            assert_eq!(cfg.headless_gemini_model, "");
+            assert_eq!(cfg.headless_gemini_cmd, "/usr/local/bin/gemini");
+            assert_eq!(
+                cfg.headless_gemini_home,
+                Some(std::path::PathBuf::from("/tmp/gemini-home"))
+            );
+            assert_eq!(cfg.llm_completion_concurrency, 3);
+            assert_eq!(cfg.llm_completion_timeout_secs, 42);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_prefers_explicit_gemini_model_over_compatible_openai_model() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["OPENAI_MODEL", "AXON_HEADLESS_GEMINI_MODEL"], || unsafe {
+        env::set_var("OPENAI_MODEL", "gemini-legacy");
+        env::set_var("AXON_HEADLESS_GEMINI_MODEL", "gemini-explicit");
+        let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+        assert_eq!(cfg.headless_gemini_model, "gemini-explicit");
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_accepts_deprecated_ask_backend_toml() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    write!(f, "[ask]\nbackend = \"headless\"\nchunk-limit = 8\n").unwrap();
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+        assert_eq!(cfg.ask_chunk_limit, 8);
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_rejects_invalid_llm_runtime_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
+        env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "abc");
+        let err = into_config(cli_with_services(&["status"])).unwrap_err();
+        assert!(err.contains("AXON_LLM_COMPLETION_CONCURRENCY"));
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn into_config_errors_when_qdrant_url_missing() {
     let _guard = ENV_LOCK.lock().unwrap();
     unsafe {

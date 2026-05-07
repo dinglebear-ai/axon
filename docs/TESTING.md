@@ -141,19 +141,6 @@ New TypeScript test files added in v0.11.1:
 | `pulse-chat-api-lib.test.ts` | Pulse chat API library — streaming, message assembly |
 | `pulse-session-store.test.ts` | Pulse session store — persistence, hydration, eviction |
 
-**Tests:**
-
-| Test | What it asserts |
-|------|----------------|
-| `spawn_adapter_strips_claudecode_nested_session_guard` | `CLAUDECODE` is not present in child env |
-| `spawn_adapter_strips_llm_proxy_vars` | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` absent from child |
-| `spawn_adapter_passes_through_gemini_auth_vars` | Gemini auth vars (`GOOGLE_*`) are NOT stripped |
-| `spawn_adapter_strips_all_isolation_vars_together` | All isolation vars stripped in combination |
-
-These tests use a process-level `Mutex` to serialize `std::env::set_var` / `remove_var` calls
-(required in Rust 1.81+ where those functions are `unsafe`). The file-level `#![allow(unsafe_code)]`
-annotation is intentional — these are the only tests in the codebase that require it.
-
 ## Test-Only Security Escape Hatches
 
 Several tests deliberately use narrow exceptions that must not be copied into
@@ -166,8 +153,6 @@ production code:
 - `crates/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
   test builds. It lets httpmock-based tests reach `127.0.0.1` while keeping
   `validate_url()` loopback blocking active by default.
-  maps inside its test module so cache eviction and replay-buffer behavior can
-  be tested without spawning real adapters.
 
 These patterns are acceptable only because they are compile-time test scoped.
 New tests that need a bypass should keep it behind `#[cfg(test)]` or a dedicated

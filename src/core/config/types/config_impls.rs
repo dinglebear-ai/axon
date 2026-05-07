@@ -81,6 +81,11 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
+            headless_gemini_model: String::new(),
+            headless_gemini_cmd: "gemini".to_string(),
+            headless_gemini_home: None,
+            llm_completion_concurrency: 4,
+            llm_completion_timeout_secs: 300,
             tavily_api_key: String::new(),
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
@@ -289,6 +294,17 @@ impl fmt::Debug for Config {
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
+            .field("headless_gemini_model", &self.headless_gemini_model)
+            .field("headless_gemini_cmd", &self.headless_gemini_cmd)
+            .field("headless_gemini_home", &self.headless_gemini_home)
+            .field(
+                "llm_completion_concurrency",
+                &self.llm_completion_concurrency,
+            )
+            .field(
+                "llm_completion_timeout_secs",
+                &self.llm_completion_timeout_secs,
+            )
             .field("tavily_api_key", &"[REDACTED]")
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)

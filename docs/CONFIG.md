@@ -85,7 +85,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
-URLs, API keys, and secrets belong in `.env` — not in `config.toml`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and Gemini headless runtime controls belong in `.env` — not in `config.toml`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -155,11 +155,12 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 |----------|---------|-------------|
 | `OPENAI_BASE_URL` | -- | Compatibility setting retained for callers that also use OpenAI-compatible providers; Gemini headless does not require it. |
 | `OPENAI_API_KEY` | -- | Compatibility setting retained for callers that also use OpenAI-compatible providers; Gemini headless does not require it. |
-| `OPENAI_MODEL` | -- | Model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
+| `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
+| `OPENAI_MODEL` | -- | Compatibility model setting. Only `gemini-*` values are reused as Gemini overrides; older OpenAI model names are ignored. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
-| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Max concurrent Gemini headless completion requests. |
-| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Timeout for each Gemini headless completion request. |
+| `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent Gemini headless completion requests. |
+| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each Gemini headless completion request. |
 
 ### Queues and collections
 

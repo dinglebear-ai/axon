@@ -37,6 +37,11 @@ mod tests {
         submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
         submitted.tei_url = "http://submitted-tei:80".to_string();
         submitted.openai_model = "submitted-model".to_string();
+        submitted.headless_gemini_model = "gemini-submitted".to_string();
+        submitted.headless_gemini_cmd = "/opt/submitted/gemini".to_string();
+        submitted.headless_gemini_home = Some(PathBuf::from("/tmp/submitted-gemini-home"));
+        submitted.llm_completion_concurrency = 2;
+        submitted.llm_completion_timeout_secs = 17;
         submitted.openai_api_key = "submitted-secret".to_string();
         submitted.chrome_proxy = Some("http://submitted-proxy:8080".to_string());
         submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
@@ -54,6 +59,11 @@ mod tests {
         worker.qdrant_url = "http://worker-qdrant:6333".to_string();
         worker.tei_url = "http://worker-tei:80".to_string();
         worker.openai_model = "worker-model".to_string();
+        worker.headless_gemini_model = "gemini-worker".to_string();
+        worker.headless_gemini_cmd = "/opt/worker/gemini".to_string();
+        worker.headless_gemini_home = Some(PathBuf::from("/tmp/worker-gemini-home"));
+        worker.llm_completion_concurrency = 8;
+        worker.llm_completion_timeout_secs = 99;
         worker.openai_api_key = "worker-secret".to_string();
         worker.chrome_proxy = Some("http://worker-proxy:8080".to_string());
         worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
@@ -73,6 +83,14 @@ mod tests {
         assert_eq!(effective.qdrant_url, "http://submitted-qdrant:6333");
         assert_eq!(effective.tei_url, "http://submitted-tei:80");
         assert_eq!(effective.openai_model, "submitted-model");
+        assert_eq!(effective.headless_gemini_model, "gemini-submitted");
+        assert_eq!(effective.headless_gemini_cmd, "/opt/submitted/gemini");
+        assert_eq!(
+            effective.headless_gemini_home,
+            Some(PathBuf::from("/tmp/submitted-gemini-home"))
+        );
+        assert_eq!(effective.llm_completion_concurrency, 2);
+        assert_eq!(effective.llm_completion_timeout_secs, 17);
         assert_eq!(
             effective.chrome_proxy.as_deref(),
             Some("http://submitted-proxy:8080")

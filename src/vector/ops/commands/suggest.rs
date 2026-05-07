@@ -239,10 +239,11 @@ fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> Completi
     let req = CompletionRequest::new(user_prompt)
         .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
         .stream(false);
-    if cfg.openai_model.trim().is_empty() {
+    let req = req.backend_from_config(cfg);
+    if cfg.headless_gemini_model.trim().is_empty() {
         req
     } else {
-        req.model(cfg.openai_model.clone())
+        req.model(cfg.headless_gemini_model.clone())
     }
 }
 

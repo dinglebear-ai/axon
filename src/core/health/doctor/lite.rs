@@ -53,6 +53,7 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
 
     let sqlite_path = cfg.sqlite_path.display().to_string();
     let sqlite_exists = cfg.sqlite_path.exists();
+    let gemini_probe = probe_gemini_headless(cfg);
     let tei_model = tei_info_probe.0.as_ref().and_then(tei_model_from_info);
     let tei_summary = tei_info_probe.0.as_ref().and_then(tei_info_summary);
     let (openai_live_ok, ref openai_live_detail) = openai_probe;
@@ -61,24 +62,10 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let qdrant_ok = qdrant_probe.0;
     let browser_runtime = build_browser_runtime(&diagnostics);
 
-    // Vector mode mismatch probe: when Qdrant is reachable, look at the active
-    // collection's vectors block and compare to cfg.hybrid_search_enabled. If
-    // the collection is unnamed (legacy) but hybrid_search_enabled is on,
-    // hybrid search will silently fall back to dense-only — operators need to
-    // see this. (bd axon_rust-d71.4)
-    let vector_mode = if qdrant_ok && probe_client_result.is_ok() {
-        probe_vector_mode(&cfg.qdrant_url, &cfg.collection).await
-    } else {
-        None
-    };
+    let vector_mode =
+        probe_vector_mode_if_reachable(cfg, qdrant_ok, probe_client_result.is_ok()).await;
     let vector_mode_str = vector_mode.as_deref();
-    let vector_mode_mismatch = match vector_mode_str {
-        Some("unnamed") if cfg.hybrid_search_enabled => Some(
-            "collection is in legacy unnamed-vector mode but hybrid_search_enabled=true; \
-             hybrid RRF search will fall back to dense-only — run `axon migrate` to upgrade",
-        ),
-        _ => None,
-    };
+    let vector_mode_mismatch = vector_mode_mismatch_warning(vector_mode_str, cfg);
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
@@ -120,11 +107,18 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
                 "model": openai_model,
                 "latency_ms": openai_probe_ms,
             },
+            "gemini_headless": {
+                "ok": gemini_probe.0,
+                "configured": true,
+                "detail": gemini_probe.1,
+                "command": cfg.headless_gemini_cmd,
+                "model": if cfg.headless_gemini_model.trim().is_empty() { Value::Null } else { serde_json::json!(&cfg.headless_gemini_model) },
+            },
         },
         "pipelines": {
             "crawl": true,
             "extract": true,
-            "extract_llm_ready": openai_live_ok,
+            "extract_llm_ready": gemini_probe.0,
             "embed": true,
             "ingest": true,
         },
@@ -134,6 +128,39 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "pending_jobs": 0_i64,
         "all_ok": tei_ok && qdrant_ok && vector_mode_mismatch.is_none(),
     }))
+}
+
+fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
+    let gemini_backend = crate::services::llm_backend::LlmBackendConfig::from_config(cfg);
+    match crate::services::llm_backend::headless::gemini::validate_config(&gemini_backend) {
+        Ok(()) => (
+            true,
+            "Gemini headless command validation passed".to_string(),
+        ),
+        Err(err) => (false, err.to_string()),
+    }
+}
+
+async fn probe_vector_mode_if_reachable(
+    cfg: &Config,
+    qdrant_ok: bool,
+    client_ok: bool,
+) -> Option<String> {
+    if qdrant_ok && client_ok {
+        probe_vector_mode(&cfg.qdrant_url, &cfg.collection).await
+    } else {
+        None
+    }
+}
+
+fn vector_mode_mismatch_warning(vector_mode: Option<&str>, cfg: &Config) -> Option<&'static str> {
+    match vector_mode {
+        Some("unnamed") if cfg.hybrid_search_enabled => Some(
+            "collection is in legacy unnamed-vector mode but hybrid_search_enabled=true; \
+             hybrid RRF search will fall back to dense-only — run `axon migrate` to upgrade",
+        ),
+        _ => None,
+    }
 }
 
 /// GET `/collections/{name}` and classify the vectors block as named/unnamed.

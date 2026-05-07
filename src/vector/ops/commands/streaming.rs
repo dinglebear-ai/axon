@@ -231,15 +231,17 @@ fn ask_completion_request(
 ) -> CompletionRequest {
     let req = CompletionRequest::new(format!("Question: {query}\n\nContext:\n{context}"))
         .system_prompt(ASK_RAG_SYSTEM_PROMPT)
-        .stream(stream);
-    apply_optional_model(req, &cfg.openai_model)
+        .stream(stream)
+        .backend_from_config(cfg);
+    apply_optional_model(req, &cfg.headless_gemini_model)
 }
 
 fn baseline_completion_request(cfg: &Config, query: &str, stream: bool) -> CompletionRequest {
     let req = CompletionRequest::new(query)
         .system_prompt(BASELINE_SYSTEM_PROMPT)
-        .stream(stream);
-    apply_optional_model(req, &cfg.openai_model)
+        .stream(stream)
+        .backend_from_config(cfg);
+    apply_optional_model(req, &cfg.headless_gemini_model)
 }
 
 fn judge_completion_request(
@@ -249,8 +251,9 @@ fn judge_completion_request(
 ) -> CompletionRequest {
     let req = CompletionRequest::new(judge_user_msg(ctx))
         .system_prompt(judge_system_prompt())
-        .stream(stream);
-    apply_optional_model(req, &cfg.openai_model)
+        .stream(stream)
+        .backend_from_config(cfg);
+    apply_optional_model(req, &cfg.headless_gemini_model)
 }
 
 fn apply_optional_model(req: CompletionRequest, model: &str) -> CompletionRequest {
@@ -321,12 +324,13 @@ pub(crate) async fn run_streaming_completion_ttft(
 }
 
 async fn run_streaming_completion_inner(
-    _cfg: &Config,
+    cfg: &Config,
     req: CompletionRequest,
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
     capture_ttft: bool,
 ) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
+    let req = req.backend_from_config(cfg);
     let mut state = StreamProcessorState::default();
     let stream_result = llm_backend::complete_streaming(req, |delta| {
         process_one_delta(
@@ -365,10 +369,10 @@ async fn run_streaming_completion(
 
 /// Run a non-streaming LLM completion through the Gemini headless backend.
 pub(super) async fn run_text_completion(
-    _cfg: &Config,
+    cfg: &Config,
     req: CompletionRequest,
 ) -> Result<String, Box<dyn Error>> {
-    llm_backend::complete_text(req)
+    llm_backend::complete_text(req.backend_from_config(cfg))
         .await
         .map(|response| response.text)
         .map_err(|err| err.to_string().into())

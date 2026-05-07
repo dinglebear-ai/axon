@@ -26,7 +26,7 @@ axon ask --query "<question>" [FLAGS]
 | `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
-| `OPENAI_MODEL` | Optional Gemini model override for answer generation. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
 
 `ask` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
@@ -94,7 +94,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 
 ## Notes
 
-- LLM answer generation goes through Gemini headless. `OPENAI_MODEL` is used as the Gemini model override.
+- LLM answer generation goes through Gemini headless. `AXON_HEADLESS_GEMINI_MODEL` is used as the Gemini model override.
 - If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.

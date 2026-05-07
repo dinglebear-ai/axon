@@ -20,7 +20,7 @@ axon debug [context text ...] [FLAGS]
 | Variable | Description |
 |----------|-------------|
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
-| `OPENAI_MODEL` | Optional Gemini model override for troubleshooting guidance. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for troubleshooting guidance. |
 
 ## Flags
 
@@ -46,4 +46,4 @@ axon debug "qdrant timeout after restart" --json
 ## Notes
 
 - LLM completions go through Gemini headless.
-- `OPENAI_MODEL` optionally overrides the default Gemini model.
+- `AXON_HEADLESS_GEMINI_MODEL` optionally overrides the default Gemini model.
