@@ -102,7 +102,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let warm1 = make_warm("rag");
     let warm2 = make_warm("baseline");
 
-    let ctx = build_ask_context(&derived, &query).await?;
+    let ctx = build_ask_context(&derived, &query, &mut disabled_ask_timing()).await?;
     let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
     let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) = if derived
         .evaluate_retrieval_ab
@@ -111,7 +111,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
         let mut dense_cfg = derived.clone();
         dense_cfg.hybrid_search_enabled = false;
-        let dense_ctx = build_ask_context(&dense_cfg, &query).await?;
+        let dense_ctx = build_ask_context(&dense_cfg, &query, &mut disabled_ask_timing()).await?;
         let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context, warm2);
         let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
         let (rag_answer, rag_elapsed_ms) = rag;
@@ -292,4 +292,11 @@ mod tests {
             "error should mention AXON_ASK_AGENT: {err}"
         );
     }
+}
+
+/// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
+/// not surfaced from the evaluate path, so this helper produces a disabled
+/// AskTiming accumulator (no Instant probes fire). (bd axon_rust-nm9)
+fn disabled_ask_timing() -> super::ask::AskTiming {
+    super::ask::AskTiming::new(false, Instant::now())
 }

@@ -107,6 +107,7 @@ pub(super) async fn build_context_from_candidates(
 
     let mut supplemental: Vec<usize> = Vec::new();
     let mut supplemental_count = 0usize;
+    let supplemental_started = std::time::Instant::now();
     if should_inject_supplemental(
         context_char_count,
         max_context_chars,
@@ -135,6 +136,7 @@ pub(super) async fn build_context_from_candidates(
             max_context_chars,
         );
     }
+    timing.record(AskTimingSlot::Supplemental, supplemental_started);
 
     if context_entries.is_empty() {
         return Err(anyhow!("Failed to retrieve any context sources for ask"));

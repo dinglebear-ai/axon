@@ -221,6 +221,18 @@ fn ask_result_exposes_typed_answer() {
             graph: 0,
             llm: 0,
             total: 0,
+            warm_session_ready_ms: None,
+            tei_embed_ms: None,
+            qdrant_primary_ms: None,
+            qdrant_secondary_ms: None,
+            rerank_ms: None,
+            top_select_ms: None,
+            full_doc_fetch_ms: None,
+            supplemental_ms: None,
+            llm_ttft_ms: None,
+            llm_total_ms: None,
+            llm_warm_path: None,
+            normalize_ms: None,
         },
     };
     assert_eq!(r.answer, "42");

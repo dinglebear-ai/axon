@@ -124,48 +124,51 @@ fn build_timing_json(
     total_ms: u128,
     timing: &AskTiming,
 ) -> serde_json::Value {
+    fn ms(v: u128) -> serde_json::Value {
+        serde_json::Value::Number(serde_json::Number::from(u64::try_from(v).unwrap_or(u64::MAX)))
+    }
     let mut obj = serde_json::Map::new();
-    obj.insert("retrieval".into(), retrieval_ms.into());
-    obj.insert("context_build".into(), context_ms.into());
-    obj.insert("graph".into(), graph_ms.into());
-    obj.insert("llm".into(), llm_ms.into());
-    obj.insert("total".into(), total_ms.into());
+    obj.insert("retrieval".into(), ms(retrieval_ms));
+    obj.insert("context_build".into(), ms(context_ms));
+    obj.insert("graph".into(), ms(graph_ms));
+    obj.insert("llm".into(), ms(llm_ms));
+    obj.insert("total".into(), ms(total_ms));
 
     if let Some(v) = timing.warm_session_ready_ms {
-        obj.insert("warm_session_ready_ms".into(), v.into());
+        obj.insert("warm_session_ready_ms".into(), ms(v));
     }
     if let Some(v) = timing.tei_embed_ms {
-        obj.insert("tei_embed_ms".into(), v.into());
+        obj.insert("tei_embed_ms".into(), ms(v));
     }
     if let Some(v) = timing.qdrant_primary_ms {
-        obj.insert("qdrant_primary_ms".into(), v.into());
+        obj.insert("qdrant_primary_ms".into(), ms(v));
     }
     if let Some(v) = timing.qdrant_secondary_ms {
-        obj.insert("qdrant_secondary_ms".into(), v.into());
+        obj.insert("qdrant_secondary_ms".into(), ms(v));
     }
     if let Some(v) = timing.rerank_ms {
-        obj.insert("rerank_ms".into(), v.into());
+        obj.insert("rerank_ms".into(), ms(v));
     }
     if let Some(v) = timing.top_select_ms {
-        obj.insert("top_select_ms".into(), v.into());
+        obj.insert("top_select_ms".into(), ms(v));
     }
     if let Some(v) = timing.full_doc_fetch_ms {
-        obj.insert("full_doc_fetch_ms".into(), v.into());
+        obj.insert("full_doc_fetch_ms".into(), ms(v));
     }
     if let Some(v) = timing.supplemental_ms {
-        obj.insert("supplemental_ms".into(), v.into());
+        obj.insert("supplemental_ms".into(), ms(v));
     }
     if let Some(v) = timing.llm_ttft_ms {
-        obj.insert("llm_ttft_ms".into(), v.into());
+        obj.insert("llm_ttft_ms".into(), ms(v));
     }
     if let Some(v) = timing.llm_total_ms {
-        obj.insert("llm_total_ms".into(), v.into());
+        obj.insert("llm_total_ms".into(), ms(v));
     }
     if let Some(v) = timing.llm_warm_path {
         obj.insert("llm_warm_path".into(), v.into());
     }
     if let Some(v) = timing.normalize_ms {
-        obj.insert("normalize_ms".into(), v.into());
+        obj.insert("normalize_ms".into(), ms(v));
     }
     serde_json::Value::Object(obj)
 }
