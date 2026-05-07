@@ -4,6 +4,7 @@ use super::common::{
     map_scrape_format, parse_offset, respond_with_mode, slugify, to_map_options, to_pagination,
     to_retrieve_options, to_search_options, validate_mcp_collection, validate_mcp_url,
 };
+use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
     AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
     ScrapeRequest, SearchRequest,
@@ -26,19 +27,18 @@ impl AxonMcpServer {
         let response_mode = req.response_mode;
         let pagination = to_pagination(Some(limit), Some(offset), self.cfg.search_limit);
 
-        let mut cfg = self.cfg.as_ref().clone();
-        if let Some(collection) = req.collection {
-            cfg.collection = validate_mcp_collection(&collection)?;
-        }
-        if let Some(since) = req.since {
-            cfg.since = Some(since);
-        }
-        if let Some(before) = req.before {
-            cfg.before = Some(before);
-        }
-        if let Some(enabled) = req.hybrid_search {
-            cfg.hybrid_search_enabled = enabled;
-        }
+        let collection = req
+            .collection
+            .as_deref()
+            .map(validate_mcp_collection)
+            .transpose()?;
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            collection,
+            since: req.since,
+            before: req.before,
+            hybrid_search_enabled: req.hybrid_search,
+            ..ConfigOverrides::default()
+        });
 
         let result = query_svc::query(&cfg, &query, pagination)
             .await
@@ -69,16 +69,17 @@ impl AxonMcpServer {
             .ok_or_else(|| invalid_params("url is required for retrieve"))?;
         let response_mode = req.response_mode;
         let opts = to_retrieve_options(req.max_points);
-        let mut cfg = self.cfg.as_ref().clone();
-        if let Some(collection) = req.collection {
-            cfg.collection = validate_mcp_collection(&collection)?;
-        }
-        if let Some(since) = req.since {
-            cfg.since = Some(since);
-        }
-        if let Some(before) = req.before {
-            cfg.before = Some(before);
-        }
+        let collection = req
+            .collection
+            .as_deref()
+            .map(validate_mcp_collection)
+            .transpose()?;
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            collection,
+            since: req.since,
+            before: req.before,
+            ..ConfigOverrides::default()
+        });
 
         let result = query_svc::retrieve(&cfg, &target, opts)
             .await
@@ -180,22 +181,14 @@ impl AxonMcpServer {
         validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
 
-        let mut cfg = self.cfg.as_ref().clone();
-        if let Some(rm) = req.render_mode {
-            cfg.render_mode = map_render_mode(rm);
-        }
-        if let Some(fmt) = req.format {
-            cfg.format = map_scrape_format(fmt);
-        }
-        if let Some(embed) = req.embed {
-            cfg.embed = embed;
-        }
-        if let Some(sel) = req.root_selector {
-            cfg.root_selector = Some(sel);
-        }
-        if let Some(sel) = req.exclude_selector {
-            cfg.exclude_selector = Some(sel);
-        }
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            render_mode: req.render_mode.map(map_render_mode),
+            format: req.format.map(map_scrape_format),
+            embed: req.embed,
+            root_selector: req.root_selector,
+            exclude_selector: req.exclude_selector,
+            ..ConfigOverrides::default()
+        });
 
         let result = scrape_svc::scrape(&cfg, &url, None)
             .await
@@ -254,26 +247,26 @@ impl AxonMcpServer {
             .query
             .ok_or_else(|| invalid_params("query is required for ask"))?;
         let response_mode = req.response_mode;
+        if req.graph == Some(true) {
+            return Err(invalid_params(
+                "graph retrieval is unavailable in this build; omit graph or set graph=false",
+            ));
+        }
 
-        let mut cfg = self.cfg.as_ref().clone();
-        if let Some(graph) = req.graph {
-            cfg.ask_graph = graph;
-        }
-        if let Some(diagnostics) = req.diagnostics {
-            cfg.ask_diagnostics = diagnostics;
-        }
-        if let Some(collection) = req.collection {
-            cfg.collection = validate_mcp_collection(&collection)?;
-        }
-        if let Some(since) = req.since {
-            cfg.since = Some(since);
-        }
-        if let Some(before) = req.before {
-            cfg.before = Some(before);
-        }
-        if let Some(enabled) = req.hybrid_search {
-            cfg.hybrid_search_enabled = enabled;
-        }
+        let collection = req
+            .collection
+            .as_deref()
+            .map(validate_mcp_collection)
+            .transpose()?;
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            ask_graph: req.graph,
+            ask_diagnostics: req.diagnostics,
+            collection,
+            since: req.since,
+            before: req.before,
+            hybrid_search_enabled: req.hybrid_search,
+            ..ConfigOverrides::default()
+        });
 
         let result = query_svc::ask(&cfg, &query, None)
             .await

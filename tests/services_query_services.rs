@@ -61,6 +61,42 @@ fn map_ask_payload_wraps_value() {
 }
 
 #[test]
+fn map_ask_payload_preserves_adaptive_diagnostics() {
+    let payload = serde_json::json!({
+        "query": "compare retrieval modes",
+        "answer": "Hybrid uses rank fusion.",
+        "diagnostics": {
+            "candidate_pool": 10,
+            "reranked_pool": 8,
+            "chunks_selected": 4,
+            "full_docs_selected": 2,
+            "supplemental_selected": 1,
+            "context_chars": 1234,
+            "graph_entities": 0,
+            "graph_context_chars": 0,
+            "min_relevance_score": 0.45,
+            "doc_fetch_concurrency": 4,
+            "top_domains": ["docs.example.com"],
+            "authority_ratio": 0.5,
+            "full_doc_fetch_skipped": true,
+            "full_doc_fetch_skip_reason": "ok_skip",
+            "detected_complexity": "complex",
+            "resolved_full_docs": 6,
+            "full_docs_source": "adaptive_complex"
+        },
+        "timing_ms": {"retrieval": 1, "context_build": 2, "graph": 3, "llm": 4, "total": 10}
+    });
+
+    let result = map_ask_payload(payload).expect("valid ask payload");
+    let diagnostics = result.diagnostics.expect("diagnostics should deserialize");
+    assert!(diagnostics.full_doc_fetch_skipped);
+    assert_eq!(diagnostics.full_doc_fetch_skip_reason, "ok_skip");
+    assert_eq!(diagnostics.detected_complexity, "complex");
+    assert_eq!(diagnostics.resolved_full_docs, 6);
+    assert_eq!(diagnostics.full_docs_source, "adaptive_complex");
+}
+
+#[test]
 fn map_ask_payload_rejects_null() {
     let result = map_ask_payload(serde_json::Value::Null);
     assert!(result.is_err());

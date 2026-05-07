@@ -1,5 +1,6 @@
 use super::config::Config;
-use super::enums::RenderMode;
+use super::enums::{RenderMode, ScrapeFormat};
+use std::path::PathBuf;
 
 /// Fields that can be overridden per-request, used by both MCP and CLI paths.
 ///
@@ -37,8 +38,47 @@ pub struct ConfigOverrides {
     /// Override `Config::embed` (auto-embed after scrape/crawl).
     pub embed: Option<bool>,
 
+    /// Override `Config::query`.
+    pub query: Option<Option<String>>,
+
     /// Override `Config::render_mode` (http / chrome / auto-switch).
     pub render_mode: Option<RenderMode>,
+
+    /// Override `Config::format` (markdown / html / rawHtml / json).
+    pub format: Option<ScrapeFormat>,
+
+    /// Override `Config::root_selector`.
+    pub root_selector: Option<String>,
+
+    /// Override `Config::exclude_selector`.
+    pub exclude_selector: Option<String>,
+
+    /// Override `Config::since` (`scraped_at` lower-bound filter).
+    pub since: Option<String>,
+
+    /// Override `Config::before` (`scraped_at` upper-bound filter).
+    pub before: Option<String>,
+
+    /// Override `Config::hybrid_search_enabled`.
+    pub hybrid_search_enabled: Option<bool>,
+
+    /// Override `Config::ask_graph`.
+    pub ask_graph: Option<bool>,
+
+    /// Override `Config::ask_diagnostics`.
+    pub ask_diagnostics: Option<bool>,
+
+    /// Override `Config::viewport_width`.
+    pub viewport_width: Option<u32>,
+
+    /// Override `Config::viewport_height`.
+    pub viewport_height: Option<u32>,
+
+    /// Override `Config::screenshot_full_page`.
+    pub screenshot_full_page: Option<bool>,
+
+    /// Override `Config::output_path`.
+    pub output_path: Option<Option<PathBuf>>,
 
     /// Override `Config::include_subdomains`.
     pub include_subdomains: Option<bool>,
@@ -103,8 +143,47 @@ impl Config {
         if let Some(v) = overrides.embed {
             cfg.embed = v;
         }
+        if let Some(ref v) = overrides.query {
+            cfg.query = v.clone();
+        }
         if let Some(v) = overrides.render_mode {
             cfg.render_mode = v;
+        }
+        if let Some(v) = overrides.format {
+            cfg.format = v;
+        }
+        if let Some(ref v) = overrides.root_selector {
+            cfg.root_selector = Some(v.clone());
+        }
+        if let Some(ref v) = overrides.exclude_selector {
+            cfg.exclude_selector = Some(v.clone());
+        }
+        if let Some(ref v) = overrides.since {
+            cfg.since = Some(v.clone());
+        }
+        if let Some(ref v) = overrides.before {
+            cfg.before = Some(v.clone());
+        }
+        if let Some(v) = overrides.hybrid_search_enabled {
+            cfg.hybrid_search_enabled = v;
+        }
+        if let Some(v) = overrides.ask_graph {
+            cfg.ask_graph = v;
+        }
+        if let Some(v) = overrides.ask_diagnostics {
+            cfg.ask_diagnostics = v;
+        }
+        if let Some(v) = overrides.viewport_width {
+            cfg.viewport_width = v;
+        }
+        if let Some(v) = overrides.viewport_height {
+            cfg.viewport_height = v;
+        }
+        if let Some(v) = overrides.screenshot_full_page {
+            cfg.screenshot_full_page = v;
+        }
+        if let Some(ref v) = overrides.output_path {
+            cfg.output_path = v.clone();
         }
         if let Some(v) = overrides.include_subdomains {
             cfg.include_subdomains = v;
@@ -187,6 +266,72 @@ mod tests {
             ..ConfigOverrides::default()
         });
         assert!(matches!(cfg.render_mode, RenderMode::Chrome));
+    }
+
+    #[test]
+    fn apply_overrides_sets_scrape_fields() {
+        let cfg = Config::default().apply_overrides(&ConfigOverrides {
+            format: Some(ScrapeFormat::Html),
+            root_selector: Some("main".to_string()),
+            exclude_selector: Some("nav".to_string()),
+            ..ConfigOverrides::default()
+        });
+        assert!(matches!(cfg.format, ScrapeFormat::Html));
+        assert_eq!(cfg.root_selector.as_deref(), Some("main"));
+        assert_eq!(cfg.exclude_selector.as_deref(), Some("nav"));
+    }
+
+    #[test]
+    fn apply_overrides_sets_query_filters_and_hybrid() {
+        let cfg = Config::default().apply_overrides(&ConfigOverrides {
+            since: Some("7d".to_string()),
+            before: Some("2026-05-07".to_string()),
+            hybrid_search_enabled: Some(false),
+            ..ConfigOverrides::default()
+        });
+        assert_eq!(cfg.since.as_deref(), Some("7d"));
+        assert_eq!(cfg.before.as_deref(), Some("2026-05-07"));
+        assert!(!cfg.hybrid_search_enabled);
+    }
+
+    #[test]
+    fn apply_overrides_sets_ask_flags() {
+        let cfg = Config::default().apply_overrides(&ConfigOverrides {
+            ask_graph: Some(true),
+            ask_diagnostics: Some(true),
+            ..ConfigOverrides::default()
+        });
+        assert!(cfg.ask_graph);
+        assert!(cfg.ask_diagnostics);
+    }
+
+    #[test]
+    fn apply_overrides_sets_query_even_to_none() {
+        let base = Config {
+            query: Some("existing".to_string()),
+            ..Config::default()
+        };
+        let cfg = base.apply_overrides(&ConfigOverrides {
+            query: Some(None),
+            ..ConfigOverrides::default()
+        });
+        assert_eq!(cfg.query, None);
+    }
+
+    #[test]
+    fn apply_overrides_sets_screenshot_fields() {
+        let output = PathBuf::from("/tmp/axon-shot.png");
+        let cfg = Config::default().apply_overrides(&ConfigOverrides {
+            viewport_width: Some(800),
+            viewport_height: Some(600),
+            screenshot_full_page: Some(false),
+            output_path: Some(Some(output.clone())),
+            ..ConfigOverrides::default()
+        });
+        assert_eq!(cfg.viewport_width, 800);
+        assert_eq!(cfg.viewport_height, 600);
+        assert!(!cfg.screenshot_full_page);
+        assert_eq!(cfg.output_path, Some(output));
     }
 
     #[test]

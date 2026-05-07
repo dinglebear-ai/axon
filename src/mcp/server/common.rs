@@ -1,4 +1,4 @@
-use crate::core::config::{Config, RenderMode, ScrapeFormat};
+use crate::core::config::{Config, ConfigOverrides, RenderMode, ScrapeFormat};
 use crate::mcp::schema::{CrawlRequest, McpRenderMode, McpScrapeFormat, SearchTimeRange};
 use crate::services::types::{
     MapOptions, Pagination, RetrieveOptions, SearchOptions, ServiceTimeRange,
@@ -285,32 +285,17 @@ pub(super) fn slugify(value: &str, max_len: usize) -> String {
 // --- Crawl config helpers ---
 
 pub(super) fn apply_crawl_overrides(cfg: &Config, req: &CrawlRequest) -> Config {
-    let mut out = cfg.clone();
-    if let Some(max_pages) = req.max_pages {
-        out.max_pages = max_pages;
-    }
-    if let Some(max_depth) = req.max_depth {
-        out.max_depth = max_depth;
-    }
-    if let Some(include_subdomains) = req.include_subdomains {
-        out.include_subdomains = include_subdomains;
-    }
-    if let Some(respect_robots) = req.respect_robots {
-        out.respect_robots = respect_robots;
-    }
-    if let Some(discover_sitemaps) = req.discover_sitemaps {
-        out.discover_sitemaps = discover_sitemaps;
-    }
-    if let Some(sitemap_since_days) = req.sitemap_since_days {
-        out.sitemap_since_days = sitemap_since_days;
-    }
-    if let Some(render_mode) = req.render_mode {
-        out.render_mode = map_render_mode(render_mode);
-    }
-    if let Some(delay_ms) = req.delay_ms {
-        out.delay_ms = delay_ms;
-    }
-    out
+    cfg.apply_overrides(&ConfigOverrides {
+        max_pages: req.max_pages,
+        max_depth: req.max_depth,
+        include_subdomains: req.include_subdomains,
+        respect_robots: req.respect_robots,
+        discover_sitemaps: req.discover_sitemaps,
+        sitemap_since_days: req.sitemap_since_days,
+        render_mode: req.render_mode.map(map_render_mode),
+        delay_ms: req.delay_ms,
+        ..ConfigOverrides::default()
+    })
 }
 
 pub(super) fn map_render_mode(mode: McpRenderMode) -> RenderMode {

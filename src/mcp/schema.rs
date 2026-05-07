@@ -365,7 +365,8 @@ pub struct ResearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
-    /// Enable graph-enhanced retrieval (requires Neo4j). Overrides cfg.ask_graph.
+    /// Deprecated/unavailable: graph retrieval is not wired in this build.
+    /// `graph: true` is rejected by the MCP ask handler.
     pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,

@@ -1,3 +1,4 @@
+use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{AxonToolResponse, ResponseMode, ScreenshotRequest};
 use crate::mcp::server::AxonMcpServer;
 use crate::mcp::server::artifacts::{ensure_artifact_root, resolve_artifact_output_path};
@@ -71,11 +72,13 @@ impl AxonMcpServer {
             ))
         };
 
-        let mut cfg = self.cfg.as_ref().clone();
-        cfg.viewport_width = width;
-        cfg.viewport_height = height;
-        cfg.screenshot_full_page = full_page;
-        cfg.output_path = Some(output_path.clone());
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            viewport_width: Some(width),
+            viewport_height: Some(height),
+            screenshot_full_page: Some(full_page),
+            output_path: Some(Some(output_path.clone())),
+            ..ConfigOverrides::default()
+        });
 
         let shot = crate::services::screenshot::screenshot_capture(&cfg, &url)
             .await

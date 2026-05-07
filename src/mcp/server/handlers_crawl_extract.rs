@@ -3,7 +3,7 @@ use super::common::{
     InlineHint, apply_crawl_overrides, invalid_params, logged_internal_error, parse_job_id,
     parse_limit, parse_offset, respond_with_mode, validate_mcp_urls,
 };
-use crate::core::config::Config;
+use crate::core::config::{Config, ConfigOverrides};
 use crate::mcp::schema::{
     AxonToolResponse, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
 };
@@ -99,11 +99,11 @@ impl AxonMcpServer {
             return Err(invalid_params("urls cannot be empty"));
         }
         validate_mcp_urls(&urls)?;
-        let mut cfg = self.cfg.as_ref().clone();
-        cfg.query = prompt;
-        if let Some(mp) = max_pages {
-            cfg.max_pages = mp;
-        }
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
+            query: Some(prompt),
+            max_pages,
+            ..ConfigOverrides::default()
+        });
         let service_context = self
             .base_service_context()
             .await
