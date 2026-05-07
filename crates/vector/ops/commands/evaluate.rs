@@ -213,6 +213,14 @@ fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
     super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
 }
 
+
+/// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
+/// not surfaced from the evaluate path, so this helper produces a disabled
+/// AskTiming accumulator (no Instant probes fire). (bd axon_rust-nm9)
+fn disabled_ask_timing() -> super::ask::AskTiming {
+    super::ask::AskTiming::new(false, Instant::now())
+}
+
 #[cfg(test)]
 mod tests {
     use super::display::{build_side_by_side_frame, wrap_fixed_width};
@@ -292,11 +300,4 @@ mod tests {
             "error should mention AXON_ASK_AGENT: {err}"
         );
     }
-}
-
-/// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
-/// not surfaced from the evaluate path, so this helper produces a disabled
-/// AskTiming accumulator (no Instant probes fire). (bd axon_rust-nm9)
-fn disabled_ask_timing() -> super::ask::AskTiming {
-    super::ask::AskTiming::new(false, Instant::now())
 }
