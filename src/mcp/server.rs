@@ -48,7 +48,7 @@ static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
     let schema = rmcp::schemars::schema_for!(AxonRequest);
     let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
     format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for lifecycle actions\n- `response_mode` supports `path|inline|both` and defaults to `path`\n\n## JSON Schema\n\n```json\n{}\n```\n",
+        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for subaction families\n- `response_mode` supports `path|inline|both|auto_inline` and defaults to `path`\n\n## JSON Schema\n\n```json\n{}\n```\n",
         MCP_TOOL_SCHEMA_URI, schema_json
     )
 });
@@ -106,7 +106,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo, acp.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -142,6 +142,8 @@ impl AxonMcpServer {
             AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
             AxonRequest::Search(req) => self.handle_search(req).await?,
             AxonRequest::Map(req) => self.handle_map(req).await?,
+            AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
+            AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
             AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
             AxonRequest::Domains(req) => self.handle_domains(req).await?,
             AxonRequest::Sources(req) => self.handle_sources(req).await?,
@@ -241,13 +243,16 @@ impl ServerHandler for AxonMcpServer {
             "- `ingest` — GitHub/Reddit/YouTube source ingestion\n",
             "- `query` — dense + BM42 hybrid semantic search\n",
             "- `ask` — RAG: retrieve context + LLM answer\n",
+            "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
+            "- `suggest` — propose new crawl targets from indexed source coverage\n",
             "- `research` — Tavily AI search with LLM synthesis\n",
             "- `extract` — structured data extraction via LLM\n",
+            "- `acp` — inspect and manage ACP-backed LLM sessions\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",
             "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
             "\n",
-            "All async operations (crawl, embed, ingest, extract) return a job_id. Poll with `action:status` or pass `wait:true` for synchronous execution."
+            "Async operations (crawl, embed, ingest, extract) return a job_id. Poll the same action with `subaction:status` and the returned `job_id`."
         ).into());
         info.capabilities = mcp_apps_server_capabilities();
         info

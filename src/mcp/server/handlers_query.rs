@@ -6,8 +6,8 @@ use super::common::{
 };
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{
-    AskRequest, AxonToolResponse, MapRequest, QueryRequest, ResearchRequest, RetrieveRequest,
-    ScrapeRequest, SearchRequest,
+    AskRequest, AxonToolResponse, EvaluateRequest, MapRequest, QueryRequest, ResearchRequest,
+    RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
 };
 use crate::services::{
     map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
@@ -171,6 +171,98 @@ impl AxonMcpServer {
         .await
     }
 
+    pub(super) async fn handle_evaluate(
+        &self,
+        req: EvaluateRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let query = req
+            .query
+            .ok_or_else(|| invalid_params("query is required for evaluate"))?;
+        let response_mode = req.response_mode;
+
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(diagnostics) = req.diagnostics {
+            cfg.ask_diagnostics = diagnostics;
+        }
+        if let Some(retrieval_ab) = req.retrieval_ab {
+            cfg.evaluate_retrieval_ab = retrieval_ab;
+        }
+        if let Some(collection) = req.collection {
+            cfg.collection = validate_mcp_collection(&collection)?;
+        }
+        if let Some(since) = req.since {
+            cfg.since = Some(since);
+        }
+        if let Some(before) = req.before {
+            cfg.before = Some(before);
+        }
+        if let Some(enabled) = req.hybrid_search {
+            cfg.hybrid_search_enabled = enabled;
+        }
+
+        let query_for_task = query.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| format!("build evaluate runtime: {e}"))?;
+            runtime.block_on(async {
+                query_svc::evaluate(&cfg, &query_for_task)
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("join evaluate task: {e}");
+            internal_error(format!("evaluate '{query}' failed"))
+        })?
+        .map_err(|e| {
+            tracing::error!("evaluate '{query}': {e}");
+            internal_error(format!("evaluate '{query}' failed"))
+        })?;
+
+        respond_with_mode(
+            "evaluate",
+            "evaluate",
+            response_mode,
+            &format!("evaluate-{}", slugify(&query, 56)),
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize evaluate result: {e}")))?,
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_suggest(
+        &self,
+        req: SuggestRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let response_mode = req.response_mode;
+        let mut cfg = self.cfg.as_ref().clone();
+        if let Some(collection) = req.collection {
+            cfg.collection = validate_mcp_collection(&collection)?;
+        }
+        if let Some(limit) = req.limit {
+            cfg.search_limit = limit.clamp(1, 100);
+        }
+        let focus = req.focus;
+        let result = query_svc::suggest(&cfg, focus.as_deref())
+            .await
+            .map_err(|e| logged_internal_error("suggest", e.as_ref()))?;
+
+        respond_with_mode(
+            "suggest",
+            "suggest",
+            response_mode,
+            "suggestions",
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize suggest result: {e}")))?,
+            InlineHint::Default,
+        )
+        .await
+    }
+
     pub(super) async fn handle_scrape(
         &self,
         req: ScrapeRequest,
@@ -259,7 +351,7 @@ impl AxonMcpServer {
             .map(validate_mcp_collection)
             .transpose()?;
         let cfg = self.cfg.apply_overrides(&ConfigOverrides {
-            ask_graph: req.graph,
+            ask_graph: Some(false),
             ask_diagnostics: req.diagnostics,
             collection,
             since: req.since,

@@ -33,12 +33,12 @@ pub(super) async fn run_rag_answer(
     warm: Option<WarmAcpSession>,
 ) -> Result<(String, u128), Box<dyn Error>> {
     let started = Instant::now();
-    let answer = match ask_llm_streaming(cfg, client, query, context, !cfg.json_output, warm).await
-    {
+    let streaming = ask_llm_streaming(cfg, client, query, context, !cfg.json_output, warm).await;
+    let answer = match streaming.map_err(|e| e.to_string()) {
         Ok(v) => v,
-        Err(e) => {
+        Err(message) => {
             log_warn(&format!(
-                "rag streaming failed, falling back to non-streaming: {e}"
+                "rag streaming failed, falling back to non-streaming: {message}"
             ));
             let fallback = ask_llm_non_streaming(cfg, client, query, context).await?;
             if !cfg.json_output {
@@ -57,11 +57,12 @@ pub(super) async fn run_baseline_answer(
     warm: Option<WarmAcpSession>,
 ) -> Result<(String, u128), Box<dyn Error>> {
     let started = Instant::now();
-    let answer = match baseline_llm_streaming(cfg, client, query, !cfg.json_output, warm).await {
+    let streaming = baseline_llm_streaming(cfg, client, query, !cfg.json_output, warm).await;
+    let answer = match streaming.map_err(|e| e.to_string()) {
         Ok(v) => v,
-        Err(e) => {
+        Err(message) => {
             log_warn(&format!(
-                "baseline streaming failed, falling back to non-streaming: {e}"
+                "baseline streaming failed, falling back to non-streaming: {message}"
             ));
             let fallback = baseline_llm_non_streaming(cfg, client, query).await?;
             if !cfg.json_output {

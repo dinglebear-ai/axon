@@ -109,6 +109,8 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Retrieve": "retrieve",
     "Search": "search",
     "Map": "map",
+    "Evaluate": "evaluate",
+    "Suggest": "suggest",
     "Doctor": "doctor",
     "Domains": "domains",
     "Sources": "sources",
@@ -120,6 +122,7 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Ask": "ask",
     "Screenshot": "screenshot",
     "ElicitDemo": "elicit_demo",
+    "Acp": "acp",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {

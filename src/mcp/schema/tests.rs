@@ -51,6 +51,56 @@ fn parse_query_action_with_all_optional_fields() {
 }
 
 #[test]
+fn parse_evaluate_action_with_question_alias() {
+    let raw = obj(json!({
+        "action": "evaluate",
+        "question": "does retrieval answer this?",
+        "diagnostics": true,
+        "retrieval_ab": true,
+        "collection": "docs_v2",
+        "since": "30d",
+        "before": "2026-05-03",
+        "hybrid_search": false,
+        "response_mode": "inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "evaluate should parse successfully");
+    if let Ok(AxonRequest::Evaluate(req)) = result {
+        assert_eq!(req.query.as_deref(), Some("does retrieval answer this?"));
+        assert_eq!(req.diagnostics, Some(true));
+        assert_eq!(req.retrieval_ab, Some(true));
+        assert_eq!(req.collection.as_deref(), Some("docs_v2"));
+        assert_eq!(req.since.as_deref(), Some("30d"));
+        assert_eq!(req.before.as_deref(), Some("2026-05-03"));
+        assert_eq!(req.hybrid_search, Some(false));
+        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
+    } else {
+        panic!("expected Evaluate variant");
+    }
+}
+
+#[test]
+fn parse_suggest_action_with_query_alias() {
+    let raw = obj(json!({
+        "action": "suggest",
+        "query": "refresh scheduler internals",
+        "limit": 5,
+        "collection": "docs_v2",
+        "response_mode": "auto_inline"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "suggest should parse successfully");
+    if let Ok(AxonRequest::Suggest(req)) = result {
+        assert_eq!(req.focus.as_deref(), Some("refresh scheduler internals"));
+        assert_eq!(req.limit, Some(5));
+        assert_eq!(req.collection.as_deref(), Some("docs_v2"));
+        assert!(matches!(req.response_mode, Some(ResponseMode::AutoInline)));
+    } else {
+        panic!("expected Suggest variant");
+    }
+}
+
+#[test]
 fn parse_retrieve_action_with_collection_and_time_filters() {
     let raw = obj(json!({
         "action": "retrieve",

@@ -9,7 +9,7 @@ Last Modified: 2026-05-07
 - Tool name: `axon`
 - Primary route field: `action`
 - Canonical route form: `action` + optional `subaction`
-- Response control field: `response_mode` (`path|inline|both`, default `path`)
+- Response control field: `response_mode` (`path|inline|both|auto_inline`, default `path`)
 
 Code references:
 - `src/mcp/schema.rs`
@@ -29,17 +29,17 @@ Code references:
 Incoming request map is parsed strictly with serde:
 
 - `action` is required and must match canonical schema names
-- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|refresh|graph|artifacts`)
+- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|artifacts|acp`)
 - No fallback fields (`command`, `op`, `operation`)
 - No token normalization or case folding
 - No action alias remapping
 
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
-- Lifecycle families: `artifacts`, `crawl`, `doctor`, `domains`, `embed`, `extract`, `help`, `ingest`, `sources`, `stats`, `status`
-- Direct actions: `ask`, `elicit_demo`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`
+- Lifecycle families: `acp`, `artifacts`, `crawl`, `embed`, `extract`, `ingest`
+- Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`
 
-For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`. `refresh` also supports `schedule` subaction with `schedule_subaction` param (`list`, `create`, `delete`, `enable`, `disable`):
+For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
 
 ```json
 { "action": "ingest", "subaction": "status", "job_id": "..." }
@@ -51,6 +51,7 @@ For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canon
 - Tool response returns compact metadata only by default:
   - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`
 - Inline modes are capped/truncated and always include artifact pointers.
+- `auto_inline`/`auto-inline` may be requested as an alias for `inline`; the server also emits `auto-inline` when a path-mode payload is small enough to inline automatically.
 
 ## Direct Actions
 These actions do not require `subaction`:
@@ -58,7 +59,11 @@ These actions do not require `subaction`:
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
 | `ask` | -- | `query`, `graph`, `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `doctor` | -- | `response_mode` |
+| `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
+| `evaluate` | -- | `query`, `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `help` | -- | `response_mode` |
 | `map` | -- | `url`, `limit`, `offset`, `response_mode` |
 | `query` | -- | `query`, `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `research` | -- | `query`, `limit`, `offset`, `search_time_range`, `response_mode` |
@@ -66,6 +71,12 @@ These actions do not require `subaction`:
 | `scrape` | -- | `url`, `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector` |
 | `screenshot` | -- | `url`, `full_page`, `viewport`, `output`, `response_mode` |
 | `search` | -- | `query`, `limit`, `offset`, `search_time_range`, `response_mode` |
+| `sources` | -- | `limit`, `offset`, `response_mode` |
+| `stats` | -- | `response_mode` |
+| `status` | -- | `response_mode` |
+| `suggest` | -- | `focus`, `limit`, `collection`, `response_mode` |
+
+Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`.
 
 Note: `ask.graph` is retained for schema compatibility, but graph retrieval is
 not available in this build. Requests with `graph: true` return
@@ -87,25 +98,13 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 | `render_mode` | McpRenderMode | `auto_switch` | `http`, `chrome`, `auto_switch` |
 | `delay_ms` | u64 | 0 | Per-request delay ms |
 
-## Refresh Start Parameters
-`refresh` accepts either form:
-- `url` (string) -- single URL refresh
-- `urls` (string[]) -- batch URL refresh
-
-For scheduled refreshes: `{ "action": "refresh", "subaction": "schedule", "schedule_subaction": "list|create|delete|enable|disable", "schedule_name": "..." }`
-
 ## Lifecycle Action Families
+- `acp`: `list_sessions|fork_session|resume_session|set_model|ext_method|ext_notification|logout` -- requires action-specific session fields
 - `artifacts`: `head|grep|wc|read|list|delete|clean|search` -- requires `path`; `pattern` for grep
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
-- `doctor`: `?` -- no required fields
-- `domains`: `?` -- no required fields
 - `embed`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `input` (string)
 - `extract`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
-- `help`: `?` -- no required fields
 - `ingest`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `source_type` + `target`
-- `sources`: `?` -- no required fields
-- `stats`: `?` -- no required fields
-- `status`: `?` -- no required fields
 
 ## Ingest Source Types
 

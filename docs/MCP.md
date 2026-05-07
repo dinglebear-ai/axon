@@ -8,7 +8,7 @@ Last Modified: 2026-03-11
 - Tool count: 1
 - Tool name: `axon`
 - Routing fields: `action` + `subaction` for lifecycle families
-- Response behavior field: `response_mode` (`path|inline|both`, default `path`; `auto-inline` is a server-emitted value indicating the auto-inline path was taken — it cannot be requested by the caller)
+- Response behavior field: `response_mode` (`path|inline|both|auto_inline`, default `path`; `auto_inline`/`auto-inline` may be requested as an alias for inline and `auto-inline` is also emitted when path-mode payloads are small enough to inline automatically)
 - Resources: `axon://schema/mcp-tool`, `ui://axon/status-dashboard`
 - MCP Apps capability is enabled so compatible hosts can render the status dashboard widget
 
@@ -16,11 +16,11 @@ Canonical schema and action contract:
 - `docs/MCP-TOOL-SCHEMA.md`
 
 Implementation:
-- `crates/mcp/schema.rs`
-- `crates/mcp/server.rs`
-- `crates/mcp/auth.rs`
-- `crates/mcp/cors.rs`
-- `crates/mcp/server/handlers_*.rs`
+- `src/mcp/schema.rs`
+- `src/mcp/server.rs`
+- `src/mcp/auth.rs`
+- `src/mcp/cors.rs`
+- `src/mcp/server/handlers_*.rs`
 
 ## Runtime Model
 `axon mcp` is expected to run in the same environment as Axon workers.
@@ -247,7 +247,7 @@ Artifact responses written in path mode are pretty-printed JSON. The preferred i
 
 All actions support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
 
-Valid `response_mode` values: `path|inline|both|auto-inline`. Note that `auto-inline` is system-assigned — it cannot be requested by the caller. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
+Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `auto-inline` spelling is accepted as an alias. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
 
 **Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
 

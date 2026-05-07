@@ -42,7 +42,6 @@ def generate_markdown(
     _emit_response_policy(emit)
     _emit_direct_actions(emit, direct_actions, structs)
     _emit_crawl_parameters(emit, structs)
-    _emit_refresh_parameters(emit)
     _emit_lifecycle_families(emit, lifecycle_actions, structs, enums)
     _emit_ingest_source_types(emit, enums)
     _emit_sessions_ingest_options(emit, structs)
@@ -79,7 +78,7 @@ def _emit_contract(emit) -> None:
     emit("- Primary route field: `action`")
     emit("- Canonical route form: `action` + optional `subaction`")
     emit(
-        "- Response control field: `response_mode` (`path|inline|both`, default `path`)"
+        "- Response control field: `response_mode` (`path|inline|both|auto_inline`, default `path`)"
     )
     emit()
     emit("Code references:")
@@ -108,7 +107,7 @@ def _emit_parser_rules(emit) -> None:
     emit("- `action` is required and must match canonical schema names")
     emit(
         "- `subaction` is required for lifecycle families "
-        "(`crawl|extract|embed|ingest|refresh|graph|artifacts`)"
+        "(`crawl|extract|embed|ingest|artifacts|acp`)"
     )
     emit("- No fallback fields (`command`, `op`, `operation`)")
     emit("- No token normalization or case folding")
@@ -128,9 +127,7 @@ def _emit_preferred_client_actions(
     emit()
     emit(
         "For lifecycle management (`status|cancel|list|cleanup|clear|recover`), "
-        "use canonical families with `subaction`. "
-        "`refresh` also supports `schedule` subaction with `schedule_subaction` param "
-        "(`list`, `create`, `delete`, `enable`, `disable`):"
+        "use canonical families with `subaction`:"
     )
     emit()
     emit("```json")
@@ -146,6 +143,10 @@ def _emit_response_policy(emit) -> None:
     emit("- Tool response returns compact metadata only by default:")
     emit("  - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`")
     emit("- Inline modes are capped/truncated and always include artifact pointers.")
+    emit(
+        "- `auto_inline`/`auto-inline` may be requested as an alias for `inline`; "
+        "the server also emits `auto-inline` when a path-mode payload is small enough to inline automatically."
+    )
     emit()
 
 
@@ -163,10 +164,15 @@ def _emit_direct_actions(
         if not sdef:
             continue
         required = sdef.required_fields()
-        optional = sdef.optional_fields()
+        optional = [f for f in sdef.optional_fields() if f.name != "subaction"]
         req_str = ", ".join(f"`{f.name}` ({f.display_type})" for f in required) or "--"
         opt_str = ", ".join(f"`{f.name}`" for f in optional) or "--"
         emit(f"| `{action}` | {req_str} | {opt_str} |")
+    if "ask" in direct_actions:
+        emit()
+        emit(
+            "Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`."
+        )
     emit()
 
 
@@ -187,21 +193,6 @@ def _emit_crawl_parameters(emit, structs: dict[str, StructDef]) -> None:
             default = desc_info[0] if desc_info else "--"
             desc = desc_info[1] if desc_info else ""
             emit(f"| `{f.name}` | {f.display_type} | {default} | {desc} |")
-    emit()
-
-
-def _emit_refresh_parameters(emit) -> None:
-    emit("## Refresh Start Parameters")
-    emit("`refresh` accepts either form:")
-    emit("- `url` (string) -- single URL refresh")
-    emit("- `urls` (string[]) -- batch URL refresh")
-    emit()
-    emit(
-        "For scheduled refreshes: "
-        '`{ "action": "refresh", "subaction": "schedule", '
-        '"schedule_subaction": "list|create|delete|enable|disable", '
-        '"schedule_name": "..." }`'
-    )
     emit()
 
 
@@ -340,12 +331,12 @@ def _emit_error_semantics(emit) -> None:
 def _classify_actions(
     structs: dict[str, StructDef],
 ) -> tuple[list[str], list[str]]:
-    """Split actions into lifecycle (has subaction) and direct (no subaction)."""
+    """Split actions into subaction families and direct singleton actions."""
     lifecycle_actions: list[str] = []
     direct_actions: list[str] = []
     for struct_name, action in sorted(STRUCT_TO_ACTION.items(), key=lambda x: x[1]):
         sdef = structs.get(struct_name)
-        if sdef and sdef.has_subaction:
+        if sdef and sdef.subaction_enum_name:
             lifecycle_actions.append(action)
         else:
             direct_actions.append(action)
@@ -371,12 +362,10 @@ def _start_requirement_summary(action: str, sdef: StructDef) -> str:
             return "start requires `input` (string)"
         case "ingest":
             return "start requires `source_type` + `target`"
-        case "refresh":
-            return "start accepts `url` or `urls`"
-        case "graph":
-            return "build requires one of `url`, `domain`, or `all=true`"
         case "artifacts":
             return "requires `path`; `pattern` for grep"
+        case "acp":
+            return "requires action-specific session fields"
         case _:
             req = sdef.required_fields()
             if req:

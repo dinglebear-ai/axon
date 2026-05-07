@@ -283,6 +283,16 @@ pub struct AskDiagnostics {
     pub context_chars: usize,
     pub graph_entities: usize,
     pub graph_context_chars: usize,
+    #[serde(default)]
+    pub full_doc_fetch_skipped: bool,
+    #[serde(default)]
+    pub full_doc_fetch_skip_reason: String,
+    #[serde(default)]
+    pub detected_complexity: String,
+    #[serde(default)]
+    pub resolved_full_docs: usize,
+    #[serde(default)]
+    pub full_docs_source: String,
     pub min_relevance_score: f64,
     pub doc_fetch_concurrency: usize,
     pub top_domains: Vec<String>,
