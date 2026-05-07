@@ -69,6 +69,11 @@ pub(super) struct TomlAskSection {
     /// (bd axon_rust-pmc)
     #[serde(default)]
     pub cache: TomlAskCacheSection,
+    /// Adaptive ask heuristics — currently the full-doc fetch skip gate.
+    /// Opt-in until validated against the `axon evaluate` golden set.
+    /// (bd axon_rust-30y)
+    #[serde(default)]
+    pub adaptive: TomlAskAdaptiveSection,
 }
 
 #[derive(Deserialize, Default)]
@@ -80,6 +85,19 @@ pub(super) struct TomlAskCacheSection {
     pub max_capacity_bytes: Option<u64>,
     /// TTL in seconds. Capped at 300s. Default: 300.
     pub ttl_secs: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAskAdaptiveSection {
+    /// Enable the adaptive full-doc fetch skip gate. Default: false (opt-in).
+    pub fulldoc_skip_enabled: Option<bool>,
+    /// Minimum unique URLs required in reranked top-K. Default: 3.
+    pub fulldoc_skip_min_urls: Option<usize>,
+    /// Minimum total chunk_text bytes summed across reranked top-K. Default: 4000.
+    pub fulldoc_skip_min_chars: Option<usize>,
+    /// Cosine-mode score floor offset on top of `ask_min_relevance_score`. Default: 0.15.
+    pub fulldoc_skip_score_delta: Option<f64>,
 }
 
 // Phase 1: TEI and worker fields are parsed by serde but not yet wired into Config

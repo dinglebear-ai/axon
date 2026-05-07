@@ -97,6 +97,7 @@ impl Default for Config {
             ask_candidate_limit: 150,
             ask_chunk_limit: 10,
             ask_full_docs: 4,
+            ask_full_docs_explicit: false,
             ask_backfill_chunks: 3,
             ask_doc_fetch_concurrency: 4,
             ask_doc_chunk_limit: 192,
@@ -110,6 +111,10 @@ impl Default for Config {
             ask_cache_enabled: false,
             ask_cache_max_capacity_bytes: 256 * 1024 * 1024,
             ask_cache_ttl_secs: 300,
+            ask_fulldoc_skip_enabled: false,
+            ask_fulldoc_skip_min_urls: 3,
+            ask_fulldoc_skip_min_chars: 4000,
+            ask_fulldoc_skip_score_delta: 0.15,
             evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
@@ -297,6 +302,7 @@ impl fmt::Debug for Config {
             .field("ask_candidate_limit", &self.ask_candidate_limit)
             .field("ask_chunk_limit", &self.ask_chunk_limit)
             .field("ask_full_docs", &self.ask_full_docs)
+            .field("ask_full_docs_explicit", &self.ask_full_docs_explicit)
             .field("ask_backfill_chunks", &self.ask_backfill_chunks)
             .field("ask_doc_fetch_concurrency", &self.ask_doc_fetch_concurrency)
             .field("ask_doc_chunk_limit", &self.ask_doc_chunk_limit)

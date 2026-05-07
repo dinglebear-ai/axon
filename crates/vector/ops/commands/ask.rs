@@ -111,6 +111,11 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
                 "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
                 "top_domains": ctx.top_domains,
                 "authority_ratio": ctx.authoritative_ratio,
+                "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
+                "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
+                "detected_complexity": ctx.detected_complexity,
+                "resolved_full_docs": ctx.resolved_full_docs,
+                "full_docs_source": ctx.full_docs_source,
             })
         } else {
             serde_json::Value::Null

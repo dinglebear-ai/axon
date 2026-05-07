@@ -275,6 +275,14 @@ pub struct Config {
     /// Env: `AXON_ASK_FULL_DOCS` (clamped 1–20). Default: 4.
     pub ask_full_docs: usize,
 
+    /// True when `ask_full_docs` was set explicitly by the user (via
+    /// `AXON_ASK_FULL_DOCS` env var or a CLI flag) rather than left at the
+    /// hardcoded default. The adaptive resolver in
+    /// `build_ask_context` honours user overrides and only applies its
+    /// complexity-based default when this is `false`.
+    /// (bd axon_rust-721)
+    pub ask_full_docs_explicit: bool,
+
     /// Extra chunks added from each full-doc backfill pass.
     /// Env: `AXON_ASK_BACKFILL_CHUNKS` (clamped 0–20). Default: 3.
     pub ask_backfill_chunks: usize,
@@ -337,6 +345,31 @@ pub struct Config {
     /// (security primitive: bounds staleness of deleted content).
     /// Config-only via `[ask.cache] ttl-secs`. Default: 300s.
     pub ask_cache_ttl_secs: u64,
+
+    /// Enable the adaptive full-doc fetch skip gate for `ask`. When the top-K
+    /// reranked candidates already cover enough URLs, bytes, and quality, the
+    /// full-doc backfill stage is elided entirely. Opt-in: defaults to `false`
+    /// until validated against `axon evaluate` golden set. Config-only via
+    /// `[ask.adaptive] fulldoc-skip-enabled`. (bd axon_rust-30y)
+    pub ask_fulldoc_skip_enabled: bool,
+
+    /// Minimum unique URLs required in the reranked top-K for the skip gate
+    /// to fire. Config-only via `[ask.adaptive] fulldoc-skip-min-urls`.
+    /// Default: 3.
+    pub ask_fulldoc_skip_min_urls: usize,
+
+    /// Minimum total chunk_text bytes (summed across reranked top-K) required
+    /// for the skip gate to fire. Config-only via
+    /// `[ask.adaptive] fulldoc-skip-min-chars`. Default: 4000.
+    pub ask_fulldoc_skip_min_chars: usize,
+
+    /// Cosine-mode score floor offset added on top of `ask_min_relevance_score`.
+    /// Every score in the reranked top-K must be `>= ask_min_relevance_score +
+    /// ask_fulldoc_skip_score_delta` for the gate to fire on cosine paths.
+    /// Ignored on RRF paths (rank-fusion output is unitless and uses a
+    /// rank-based gate instead). Config-only via
+    /// `[ask.adaptive] fulldoc-skip-score-delta`. Default: 0.15.
+    pub ask_fulldoc_skip_score_delta: f64,
 
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,

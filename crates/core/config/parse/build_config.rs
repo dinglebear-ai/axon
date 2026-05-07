@@ -396,6 +396,15 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .or_else(|| toml.ask.chunk_limit.map(|v| v.clamp(3, 40)))
             .unwrap_or(10),
         ask_full_docs: performance::env_usize_clamped("AXON_ASK_FULL_DOCS", 4, 1, 20),
+        // Track whether the user pinned ask_full_docs explicitly so the
+        // adaptive resolver in build_ask_context can defer to user overrides
+        // and only apply complexity-based defaults when left implicit.
+        // (bd axon_rust-721)
+        ask_full_docs_explicit: env::var("AXON_ASK_FULL_DOCS")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .and_then(|v| v.parse::<usize>().ok())
+            .is_some(),
         ask_backfill_chunks: performance::env_usize_clamped("AXON_ASK_BACKFILL_CHUNKS", 3, 0, 20),
         ask_doc_fetch_concurrency: performance::env_usize_clamped(
             "AXON_ASK_DOC_FETCH_CONCURRENCY",
@@ -451,6 +460,27 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .max_capacity_bytes
             .unwrap_or(256 * 1024 * 1024),
         ask_cache_ttl_secs: toml.ask.cache.ttl_secs.unwrap_or(300).min(300),
+        // [ask.adaptive] — full-doc fetch skip gate. Opt-in via config; no env vars.
+        // (bd axon_rust-30y)
+        ask_fulldoc_skip_enabled: toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(false),
+        ask_fulldoc_skip_min_urls: toml
+            .ask
+            .adaptive
+            .fulldoc_skip_min_urls
+            .map(|v| v.clamp(1, 50))
+            .unwrap_or(3),
+        ask_fulldoc_skip_min_chars: toml
+            .ask
+            .adaptive
+            .fulldoc_skip_min_chars
+            .map(|v| v.clamp(500, 200_000))
+            .unwrap_or(4000),
+        ask_fulldoc_skip_score_delta: toml
+            .ask
+            .adaptive
+            .fulldoc_skip_score_delta
+            .map(|v| v.clamp(0.0, 1.0))
+            .unwrap_or(0.15),
         cron_every_seconds: global.cron_every_seconds.filter(|value| *value > 0),
         cron_max_runs: global.cron_max_runs.filter(|value| *value > 0),
         watchdog_stale_timeout_secs: global.watchdog_stale_timeout_secs.max(30),

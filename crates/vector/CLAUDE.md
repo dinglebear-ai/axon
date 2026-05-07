@@ -118,14 +118,16 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 
 The ask reranker has two score-scale contracts:
 
-| Collection vectors | `cfg.hybrid_search_enabled` | Sparse query | Effective scoring | Rerank + threshold |
-|--------------------|-----------------------------|--------------|-------------------|--------------------|
-| Named (`dense` + `bm42`) | `true` | non-empty | RRF rank-fusion score | Skipped |
-| Named (`dense` + `bm42`) | `true` | empty | Cosine via `named_dense` | Applied |
-| Named (`dense` + `bm42`) | `false` | any | Cosine via `named_dense` | Applied |
-| Unnamed legacy vector | any | n/a | Cosine via `/points/search` | Applied |
+| Collection vectors | `cfg.hybrid_search_enabled` | Sparse query | Effective scoring | Rerank + threshold | Adaptive full-doc skip gate |
+|--------------------|-----------------------------|--------------|-------------------|--------------------|------------------------------|
+| Named (`dense` + `bm42`) | `true` | non-empty | RRF rank-fusion score | Skipped | Rank-based: every top-K score must be `>= P75` of all reranked candidates (only when `[ask.adaptive] fulldoc-skip-enabled = true`) |
+| Named (`dense` + `bm42`) | `true` | empty | Cosine via `named_dense` | Applied | Score-floor: every top-K `rerank_score >= ask_min_relevance_score + ask_fulldoc_skip_score_delta` (only when enabled) |
+| Named (`dense` + `bm42`) | `false` | any | Cosine via `named_dense` | Applied | Score-floor (same as above; only when enabled) |
+| Unnamed legacy vector | any | n/a | Cosine via `/points/search` | Applied | Score-floor (same as above; only when enabled) |
 
 On RRF mode, Qdrant's fusion order is already the ranking signal. The ask path keeps only the loose topical-overlap gate, sets `rerank_score = candidate.score`, and skips `AXON_ASK_MIN_RELEVANCE_SCORE` because that threshold is calibrated to cosine `[0, 1]`, not rank-fusion output. Run `axon evaluate --no-hybrid-search` to compare RRF against dense-only behavior on Named collections. If evaluation data shows a quality regression, track mode-aware boost tuning in bd `axon_rust-d71.1.4`; the P0 fix intentionally does not add additive lexical/phrase boosts back onto RRF output. (bd axon_rust-d71.1 / C1 + d71.12 / H8.)
+
+The **adaptive full-doc fetch skip gate** (bd axon_rust-30y) elides `fetch_full_docs(...)` when the reranked top-K already covers >= `ask_fulldoc_skip_min_urls` unique URLs, >= `ask_fulldoc_skip_min_chars` chunk-text bytes, and every score satisfies the mode-specific floor above. The gate defaults to **disabled** — opt in with `[ask.adaptive] fulldoc-skip-enabled = true` in `~/.axon/config.toml` after validating against the `axon evaluate` golden set. The decision is exposed in ask diagnostics as `full_doc_fetch_skipped: bool` and `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" | "insufficient_chars" | "low_top_scores" | "empty_top_k"`. The cosine `score_delta` knob is intentionally ignored on the RRF row because rank-fusion output is unitless — the rank-based gate uses P75 across the full reranked set instead.
 
 ### Collection Naming
 Default collection: `cortex` (set via `AXON_COLLECTION` or `--collection`). The legacy `firecrawl` alias resolves to `cortex` — GET returns 200, `ensure_collection()` exits early. Do not hardcode `cortex` in new code; always read from `cfg.collection`.
