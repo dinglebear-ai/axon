@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 
 use tokio::io::AsyncWriteExt;
 
@@ -6,11 +7,8 @@ use crate::crawl::manifest::ManifestEntry;
 
 use super::page::PageOutcome;
 
-fn previous_markdown_path(
-    markdown_dir: &std::path::Path,
-    entry: &ManifestEntry,
-) -> Option<std::path::PathBuf> {
-    let relative = std::path::Path::new(&entry.relative_path);
+fn previous_markdown_path(markdown_dir: &Path, entry: &ManifestEntry) -> Option<PathBuf> {
+    let relative = Path::new(&entry.relative_path);
     if relative.is_absolute() {
         return None;
     }
@@ -22,17 +20,14 @@ fn previous_markdown_path(
     }
     if markdown_relative
         .components()
-        .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        .any(|component| !matches!(component, Component::Normal(_)))
     {
         return None;
     }
     Some(output_dir.join("markdown.old").join(markdown_relative))
 }
 
-async fn previous_path_is_inside_archive(
-    output_dir: &std::path::Path,
-    prev_path: &std::path::Path,
-) -> bool {
+async fn previous_path_is_inside_archive(output_dir: &Path, prev_path: &Path) -> bool {
     let archive_root = output_dir.join("markdown.old");
     let Ok(archive_root) = tokio::fs::canonicalize(&archive_root).await else {
         return false;
@@ -43,12 +38,24 @@ async fn previous_path_is_inside_archive(
     prev_path.starts_with(archive_root)
 }
 
+async fn previous_markdown_exists(markdown_dir: &Path, prev_path: Option<&PathBuf>) -> bool {
+    let Some(output_dir) = markdown_dir.parent() else {
+        return false;
+    };
+    let Some(prev_path) = prev_path else {
+        return false;
+    };
+
+    tokio::fs::try_exists(prev_path).await.unwrap_or(false)
+        && previous_path_is_inside_archive(output_dir, prev_path).await
+}
+
 /// Write a page to disk (or relink from cache) and append its manifest entry.
 /// Returns `true` on success, `false` on any I/O failure.
 pub async fn write_page_to_manifest(
     manifest: &mut tokio::io::BufWriter<tokio::fs::File>,
     outcome: &PageOutcome,
-    markdown_dir: &std::path::Path,
+    markdown_dir: &Path,
     prev_manifest: &HashMap<String, ManifestEntry>,
     url: &str,
 ) -> Result<bool, String> {
@@ -62,13 +69,7 @@ pub async fn write_page_to_manifest(
                 .get(url)
                 .and_then(|m| previous_markdown_path(markdown_dir, m));
             let path = markdown_dir.join(filename);
-            let prev_exists = match (markdown_dir.parent(), prev_path.as_ref()) {
-                (Some(output_dir), Some(p)) => {
-                    tokio::fs::try_exists(p).await.unwrap_or(false)
-                        && previous_path_is_inside_archive(output_dir, p).await
-                }
-                _ => false,
-            };
+            let prev_exists = previous_markdown_exists(markdown_dir, prev_path.as_ref()).await;
             if !prev_exists {
                 crate::core::logging::log_warn(&format!(
                     "cache_miss: previous file missing for {url}, writing fresh"

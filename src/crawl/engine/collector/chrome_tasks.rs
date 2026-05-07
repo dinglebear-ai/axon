@@ -4,6 +4,7 @@ use crate::core::logging::{log_info, log_warn};
 use crate::crawl::engine::CrawlSummary;
 use crate::crawl::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
 use crate::crawl::manifest::ManifestEntry;
+use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -23,7 +24,7 @@ pub(super) fn spawn_chrome_render(
     url: String,
     min_chars: usize,
     timeout_secs: u64,
-    selector_config: Option<spider_transformations::transformation::content::SelectorConfiguration>,
+    selector_config: Option<SelectorConfiguration>,
 ) {
     chrome_tasks.spawn(async move {
         let _permit = match sem.acquire().await {
