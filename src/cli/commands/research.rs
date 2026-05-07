@@ -1,6 +1,6 @@
 use crate::cli::commands::common::parse_service_time_range;
 use crate::cli::commands::resolve_input_text;
-use crate::core::config::Config;
+use crate::core::config::{AskBackend, Config};
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
 use crate::services::events::ServiceEvent;
@@ -99,10 +99,11 @@ fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
-    if cfg
-        .acp_adapter_cmd
-        .as_deref()
-        .is_none_or(|s| s.trim().is_empty())
+    if cfg.ask_backend != AskBackend::Headless
+        && cfg
+            .acp_adapter_cmd
+            .as_deref()
+            .is_none_or(|s| s.trim().is_empty())
     {
         return Err(anyhow::anyhow!(
             "research requires AXON_ACP_ADAPTER_CMD — set it in .env (run 'axon doctor' to check service connectivity)"
@@ -212,11 +213,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_research_rejects_empty_acp_adapter() {
-        let cfg = make_research_cfg("tvly-key", None, "gpt-4o-mini");
+        let mut cfg = make_research_cfg("tvly-key", None, "gpt-4o-mini");
+        cfg.ask_backend = AskBackend::Acp;
         let err = run_research(&cfg).await.unwrap_err();
         assert!(
             err.to_string().contains("AXON_ACP_ADAPTER_CMD"),
             "expected AXON_ACP_ADAPTER_CMD error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_research_allows_headless_without_acp_adapter() {
+        let mut cfg = make_research_cfg("tvly-key", None, "");
+        cfg.ask_backend = AskBackend::Headless;
+        cfg.positional = vec![];
+        cfg.query = None;
+        let err = run_research(&cfg).await.unwrap_err();
+        assert!(
+            err.to_string().contains("query"),
+            "expected query validation after headless ACP skip, got: {err}"
         );
     }
 

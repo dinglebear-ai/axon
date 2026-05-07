@@ -1,4 +1,4 @@
-use crate::core::config::Config;
+use crate::core::config::{AskBackend, Config};
 use crate::core::logging::log_warn;
 use crate::services::acp_llm::{self, AcpCompletionRequest};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
@@ -139,12 +139,13 @@ pub async fn research_payload(
     if cfg.tavily_api_key.is_empty() {
         return Err("research requires TAVILY_API_KEY — set it in .env".into());
     }
-    if cfg
-        .acp_adapter_cmd
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or_default()
-        .is_empty()
+    if cfg.ask_backend != AskBackend::Headless
+        && cfg
+            .acp_adapter_cmd
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
     {
         return Err("research requires AXON_ACP_ADAPTER_CMD — set it in .env".into());
     }
@@ -154,14 +155,17 @@ pub async fn research_payload(
     // returned without LLM synthesis rather than aborting the whole request.
     // Convert to Option<_> immediately so Box<dyn Error> (!Send) is dropped
     // before the first .await below.
-    let warm_opt = match acp_llm::warm_session(cfg, tx.clone()) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            log_warn(&format!(
-                "ACP warm session failed (synthesis will be skipped): {e}"
-            ));
-            None
-        }
+    let warm_opt = match cfg.ask_backend {
+        AskBackend::Headless => None,
+        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, tx.clone()) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                log_warn(&format!(
+                    "ACP warm session failed (synthesis will use cold path): {e}"
+                ));
+                None
+            }
+        },
     };
 
     let agent = Agent::builder()
@@ -258,15 +262,6 @@ async fn synthesize_warm(
     if extractions.is_empty() {
         return (None, TokenUsage::default());
     }
-    let warm = match warm_opt {
-        Some(w) => w,
-        None => {
-            return (
-                Some(fallback_summary_from_extractions(query, extractions)),
-                TokenUsage::default(),
-            );
-        }
-    };
     let context = build_synthesis_context(extractions);
     let mut req = AcpCompletionRequest::new(format!(
         "Topic: {query}\n\nUntrusted sources:{context}\n\nProvide a comprehensive plain-text summary of the findings, citing sources where appropriate. Do not wrap the response in JSON."
@@ -277,19 +272,13 @@ async fn synthesize_warm(
     if !cfg.openai_model.trim().is_empty() {
         req = req.model(cfg.openai_model.clone());
     }
-    match warm
-        .complete_streaming(req, move |delta| {
-            if let Some(ref sender) = tx
-                && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
-                    text: delta.to_string(),
-                })
-            {
-                log_warn(&format!("synthesis_delta dropped: {e}"));
-            }
-            Ok(())
-        })
-        .await
-    {
+    let completion = if let Some(warm) = warm_opt {
+        warm.complete_streaming(req, synthesis_delta_handler(tx))
+            .await
+    } else {
+        complete_synthesis_cold(cfg, req, tx).await
+    };
+    match completion {
         Ok(response) => parse_synthesis_response(response),
         Err(e) => {
             log_warn(&format!("synthesis failed: {e}"));
@@ -299,6 +288,46 @@ async fn synthesize_warm(
             )
         }
     }
+}
+
+fn synthesis_delta_handler(
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> impl FnMut(&str) -> Result<(), Box<dyn Error>> + Send {
+    move |delta| {
+        if let Some(ref sender) = tx
+            && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
+                text: delta.to_string(),
+            })
+        {
+            log_warn(&format!("synthesis_delta dropped: {e}"));
+        }
+        Ok(())
+    }
+}
+
+async fn complete_synthesis_cold(
+    cfg: &Config,
+    req: AcpCompletionRequest,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<acp_llm::AcpCompletionResponse, Box<dyn Error>> {
+    let cfg = cfg.clone();
+    tokio::task::spawn_blocking(move || -> Result<acp_llm::AcpCompletionResponse, String> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to build research synthesis runtime: {err}"))?;
+        rt.block_on(acp_llm::complete_streaming(
+            &cfg,
+            req,
+            synthesis_delta_handler(tx),
+        ))
+        .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| -> Box<dyn Error> {
+        format!("failed to join research synthesis task: {err}").into()
+    })?
+    .map_err(|err| -> Box<dyn Error> { err.into() })
 }
 
 fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {

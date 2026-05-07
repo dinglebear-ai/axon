@@ -1,4 +1,4 @@
-use crate::core::config::Config;
+use crate::core::config::{AskBackend, Config};
 use crate::core::http::normalize_url;
 use crate::core::logging::log_warn;
 use crate::services::acp_llm::{self, AcpCompletionRequest};
@@ -340,14 +340,17 @@ async fn discover_suggestions_with_context(
     desired: usize,
 ) -> Result<(Vec<Suggestion>, Vec<String>, String, SuggestPromptContext), Box<dyn Error>> {
     // Start warming before Qdrant calls so cold-start overlaps with retrieval.
-    let warm = match acp_llm::warm_session(cfg, None) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            log_warn(&format!(
-                "suggest: warm session failed to start, using cold path: {e}"
-            ));
-            None
-        }
+    let warm = match cfg.ask_backend {
+        AskBackend::Headless => None,
+        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                log_warn(&format!(
+                    "suggest: warm session failed to start, using cold path: {e}"
+                ));
+                None
+            }
+        },
     };
     let ctx = build_suggest_prompt_context(cfg, focus, desired).await?;
     let user_prompt = build_suggest_user_prompt(&ctx);

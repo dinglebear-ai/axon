@@ -155,7 +155,11 @@ pub(super) async fn build_context_from_candidates(
     // LLMs have proximity bias — highest-scoring chunks should appear first
     // regardless of which bucket they came from. (bd axon_rust-az9)
     context_entries.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let joined: Vec<String> = context_entries.into_iter().map(|(_, s)| s).collect();
+    let joined = context_entries
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (_, entry))| renumber_context_source_header(&entry, idx + 1))
+        .collect::<Vec<_>>();
     let context = format!("Sources:\n{}", joined.join(separator));
     let context_elapsed_ms = context_started.elapsed().as_millis();
 
@@ -179,6 +183,21 @@ pub(super) async fn build_context_from_candidates(
         full_doc_fetch_skipped: skip_decision.skip,
         full_doc_fetch_skip_reason: skip_decision.reason,
     })
+}
+
+fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
+    let Some(start) = entry.find("[S") else {
+        return entry.to_string();
+    };
+    let rest = &entry[start + 2..];
+    let Some(end_rel) = rest.find(']') else {
+        return entry.to_string();
+    };
+    if rest[..end_rel].parse::<usize>().is_err() {
+        return entry.to_string();
+    }
+    let end = start + 2 + end_rel;
+    format!("{}S{}{}", &entry[..start + 1], display_id, &entry[end..])
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -480,4 +499,24 @@ fn build_diagnostic_sources(
             .map(|c| format!("chunk score={:.3} url={}", c.score, display_source(&c.url))),
     );
     diagnostic_sources
+}
+
+#[cfg(test)]
+mod renumber_tests {
+    use super::renumber_context_source_header;
+
+    #[test]
+    fn renumber_context_source_header_updates_existing_source_id() {
+        let entry = "## Top Chunk [S11]: https://docs.example.com\n\nbody";
+        assert_eq!(
+            renumber_context_source_header(entry, 1),
+            "## Top Chunk [S1]: https://docs.example.com\n\nbody"
+        );
+    }
+
+    #[test]
+    fn renumber_context_source_header_leaves_malformed_header_unchanged() {
+        let entry = "## Top Chunk [SX]: https://docs.example.com\n\nbody";
+        assert_eq!(renumber_context_source_header(entry, 1), entry);
+    }
 }

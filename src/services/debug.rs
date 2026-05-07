@@ -1,4 +1,4 @@
-use crate::core::config::Config;
+use crate::core::config::{AskBackend, Config};
 use crate::core::health::build_doctor_report;
 use crate::core::logging::log_warn;
 use crate::services::acp_llm::{self, AcpCompletionRequest};
@@ -12,23 +12,26 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         .as_deref()
         .map(str::trim)
         .unwrap_or_default();
-    if acp_adapter_cmd.is_empty() {
+    if cfg.ask_backend != AskBackend::Headless && acp_adapter_cmd.is_empty() {
         return Err("AXON_ACP_ADAPTER_CMD is required for debug".into());
     }
-    if cfg.openai_model.is_empty() {
+    if cfg.ask_backend != AskBackend::Headless && cfg.openai_model.is_empty() {
         return Err("OPENAI_MODEL is required for debug".into());
     }
 
     // Start warming the ACP adapter before build_doctor_report so the cold-start
     // overlaps with the HTTP health checks instead of running sequentially after them.
-    let warm = match acp_llm::warm_session(cfg, None) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            log_warn(&format!(
-                "debug: warm session failed to start, using cold path: {e}"
-            ));
-            None
-        }
+    let warm = match cfg.ask_backend {
+        AskBackend::Headless => None,
+        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                log_warn(&format!(
+                    "debug: warm session failed to start, using cold path: {e}"
+                ));
+                None
+            }
+        },
     };
 
     let doctor_report = build_doctor_report(cfg).await?;
@@ -52,11 +55,12 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         serde_json::to_string_pretty(&doctor_report)?
     );
 
-    let request = AcpCompletionRequest::new(prompt)
-        .system_prompt(
-            "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
-        )
-        .model(cfg.openai_model.clone());
+    let mut request = AcpCompletionRequest::new(prompt).system_prompt(
+        "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
+    );
+    if !cfg.openai_model.trim().is_empty() {
+        request = request.model(cfg.openai_model.clone());
+    }
     // Warm path: WarmAcpSession is Send — await directly.
     // Cold path: acp_llm::complete_text is !Send — use spawn_blocking to keep this
     // function's future Send for web/MCP call sites that require Send + 'static.
@@ -86,7 +90,7 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         payload: serde_json::json!({
             "doctor_report": doctor_report,
             "llm_debug": {
-                "model": &cfg.openai_model,
+                "model": if cfg.openai_model.trim().is_empty() { serde_json::Value::Null } else { serde_json::json!(&cfg.openai_model) },
                 "adapter_cmd": cfg.acp_adapter_cmd,
                 "analysis": analysis,
             }
@@ -97,13 +101,14 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
 #[cfg(test)]
 mod tests {
     use super::debug_report;
-    use crate::core::config::Config;
+    use crate::core::config::{AskBackend, Config};
 
     #[tokio::test]
     async fn debug_report_requires_acp_adapter_command() {
         let cfg = Config {
             openai_model: "gpt-4o-mini".to_string(),
             acp_adapter_cmd: None,
+            ask_backend: AskBackend::Acp,
             ..Config::default()
         };
 
@@ -116,10 +121,26 @@ mod tests {
         let cfg = Config {
             acp_adapter_cmd: Some("codex".to_string()),
             openai_model: String::new(),
+            ask_backend: AskBackend::Acp,
             ..Config::default()
         };
 
         let err = debug_report(&cfg, "ctx").await.expect_err("should fail");
         assert!(err.to_string().contains("OPENAI_MODEL"));
+    }
+
+    #[tokio::test]
+    async fn debug_report_headless_skips_acp_and_model_prereqs() {
+        let cfg = Config {
+            ask_backend: AskBackend::Headless,
+            acp_adapter_cmd: None,
+            openai_model: String::new(),
+            ..Config::default()
+        };
+
+        match debug_report(&cfg, "ctx").await {
+            Ok(result) => assert!(result.payload.get("llm_debug").is_some()),
+            Err(err) => panic!("headless should skip ACP/model prereqs: {err}"),
+        }
     }
 }
