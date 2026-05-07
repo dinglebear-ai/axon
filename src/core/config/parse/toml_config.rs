@@ -234,6 +234,31 @@ mod tests {
         assert!(cfg.ask.chunk_limit.is_none());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn load_from_path_rejects_symlinked_config() {
+        // Plant a symlink at a config path pointing at a real TOML file.
+        // load_from_path must refuse to follow the symlink even though
+        // the target parses cleanly — a symlink under ~/.axon/ would let
+        // a local attacker redirect [services] URLs / adapter cmds.
+        let target = NamedTempFile::new().unwrap();
+        writeln!(target.as_file(), "[ask]\nchunk-limit = 5").unwrap();
+        let link =
+            std::env::temp_dir().join(format!("axon-symlink-test-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(target.path(), &link).expect("create symlink");
+        let result = load_from_path(&link, true);
+        let _ = std::fs::remove_file(&link);
+        let err = match result {
+            Ok(_) => panic!("symlinked config must be rejected, got Ok"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("symlinked config file") || err.contains("symlink attack"),
+            "error should mention symlink rejection, got: {err}"
+        );
+    }
+
     #[test]
     fn valid_toml_parses_search_section() {
         let mut f = NamedTempFile::new().unwrap();

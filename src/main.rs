@@ -263,4 +263,35 @@ mod tests {
             assert!(std::env::var(key).is_err());
         });
     }
+
+    #[cfg(unix)]
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn load_dotenv_rejects_symlinked_axon_home_env() {
+        // Plant a symlink at $HOME/.axon/.env pointing at a real env file
+        // with a probe variable. load_dotenv must refuse to follow the
+        // symlink (security: prevents a local attacker from redirecting
+        // env loading via a symlink under a permissive ~/.axon/).
+        let key = "AXON_TEST_SYMLINK_REJECT_PROBE";
+        with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let axon_dir = tmp.path().join(".axon");
+            fs::create_dir_all(&axon_dir).expect("mkdir .axon");
+            let target = tmp.path().join("attacker.env");
+            fs::write(&target, format!("{key}=from_symlink_target\n")).expect("write target");
+            std::os::unix::fs::symlink(&target, axon_dir.join(".env")).expect("symlink");
+            unsafe {
+                std::env::set_var("HOME", tmp.path());
+                std::env::remove_var("AXON_ENV_FILE");
+                std::env::remove_var(key);
+            }
+            load_dotenv();
+            assert!(
+                std::env::var(key).is_err(),
+                "symlinked ~/.axon/.env must NOT be loaded; key was set to {:?}",
+                std::env::var(key).ok()
+            );
+        });
+    }
 }

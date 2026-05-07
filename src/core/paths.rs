@@ -101,12 +101,16 @@ pub fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
         let metadata = std::fs::metadata(path)?;
         let mode = metadata.permissions().mode() & 0o777;
         if mode != 0o700 {
+            // Tighten before logging so a chmod failure surfaces as Err
+            // and the log line never lies about a state that didn't
+            // happen. (`?` propagates EPERM/EACCES; the caller decides
+            // whether to hard-fail or warn-and-continue.)
+            std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
             tracing::warn!(
                 path = %path.display(),
-                mode = format_args!("{mode:o}"),
-                "tightening directory permissions to 0700"
+                from_mode = format_args!("{mode:o}"),
+                "tightened directory permissions to 0700"
             );
-            std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
         }
         Ok(())
     }
@@ -131,6 +135,45 @@ pub async fn ensure_private_dir_async(path: PathBuf) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_creates_with_0700_when_absent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("secrets");
+        ensure_private_dir(&target).expect("create");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "fresh dir should be 0o700");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_tightens_loose_mode_to_0700() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("loose");
+        std::fs::create_dir(&target).expect("mkdir");
+        std::fs::set_permissions(&target, PermissionsExt::from_mode(0o755)).expect("chmod 0755");
+        ensure_private_dir(&target).expect("tighten");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "existing dir at 0o755 must be tightened to 0o700"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_is_idempotent_when_already_0700() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("already");
+        ensure_private_dir(&target).expect("first");
+        ensure_private_dir(&target).expect("second");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+    }
 
     #[test]
     fn path_basename_extracts_filename() {

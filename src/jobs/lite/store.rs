@@ -17,8 +17,26 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         // which inherit umask defaults and may contain credential
         // snapshots from job payloads — are not group/world-readable
         // on multi-user hosts.
+        //
+        // Failure policy: if the parent is under ~/.axon/, hard-fail —
+        // SQLite would otherwise create the dir at default umask
+        // and silently expose secrets. For paths the operator chose
+        // explicitly (AXON_SQLITE_PATH=/var/lib/axon/...), warn-and-
+        // continue so non-secret operator-managed locations still work.
         if let Err(e) = crate::core::paths::ensure_private_dir_async(parent.to_path_buf()).await {
-            tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
+            let parent_under_axon_home =
+                crate::core::paths::axon_home_dir().is_some_and(|home| parent.starts_with(&home));
+            if parent_under_axon_home {
+                return Err(sqlx::Error::Configuration(
+                    format!(
+                        "lite: refusing to open SQLite at {} because parent dir {} could not be created at 0o700: {e}",
+                        path,
+                        parent.display()
+                    )
+                    .into(),
+                ));
+            }
+            tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir at 0o700");
         }
     }
 
