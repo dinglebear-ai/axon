@@ -1,6 +1,6 @@
 use crate::core::config::Config;
 use crate::vector::ops::ranking;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub(crate) fn strip_sources_section(answer: &str) -> String {
     let lower = answer.to_ascii_lowercase();
@@ -18,8 +18,47 @@ pub(crate) fn extract_cited_source_ids(text: &str) -> BTreeSet<usize> {
     let mut out = BTreeSet::new();
     let mut i = 0usize;
     while i + 3 < bytes.len() {
-        if bytes[i] == b'[' && (bytes[i + 1] == b'S' || bytes[i + 1] == b's') {
-            let mut j = i + 2;
+        if bytes[i] == b'['
+            && let Some(j) = find_source_citation_end(bytes, i)
+        {
+            for id in parse_source_citation_ids(&text[i + 1..j]) {
+                out.insert(id);
+            }
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+fn find_source_citation_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start + 1;
+    let mut saw_source = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b']' => return saw_source.then_some(i),
+            b'S' | b's' if i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() => {
+                saw_source = true;
+                i += 2;
+                while i < bytes.len() && bytes[i].is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            b',' | b' ' | b'\t' => i += 1,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn parse_source_citation_ids(content: &str) -> Vec<usize> {
+    let bytes = content.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'S' || bytes[i] == b's' {
+            let mut j = i + 1;
             let mut value: usize = 0;
             let mut saw_digit = false;
             while j < bytes.len() && bytes[j].is_ascii_digit() {
@@ -29,8 +68,8 @@ pub(crate) fn extract_cited_source_ids(text: &str) -> BTreeSet<usize> {
                     .saturating_add((bytes[j] - b'0') as usize);
                 j += 1;
             }
-            if saw_digit && j < bytes.len() && bytes[j] == b']' {
-                out.insert(value);
+            if saw_digit {
+                out.push(value);
                 i = j + 1;
                 continue;
             }
@@ -66,6 +105,41 @@ pub(crate) fn parse_context_source_map(context: &str) -> BTreeMap<usize, String>
             out.insert(id, source.to_string());
         }
     }
+    out
+}
+
+fn remap_source_citations(text: &str, id_map: &BTreeMap<usize, usize>) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0usize;
+    let mut i = 0usize;
+    while i + 3 < bytes.len() {
+        if bytes[i] == b'['
+            && let Some(j) = find_source_citation_end(bytes, i)
+        {
+            let display_ids = parse_source_citation_ids(&text[i + 1..j])
+                .into_iter()
+                .filter_map(|id| id_map.get(&id).copied())
+                .collect::<BTreeSet<_>>();
+            if !display_ids.is_empty() {
+                out.push_str(&text[last..i]);
+                out.push('[');
+                out.push_str(
+                    &display_ids
+                        .into_iter()
+                        .map(|id| format!("S{id}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                out.push(']');
+                i = j + 1;
+                last = i;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&text[last..]);
     out
 }
 
@@ -165,18 +239,25 @@ pub(crate) fn normalize_ask_answer(
 
     // Gate 3: citations don't map to retrieved sources
     let mut seen_sources: HashSet<String> = HashSet::new();
-    let source_lines = cited
-        .iter()
-        .filter_map(|id| {
-            source_map.get(id).and_then(|source| {
-                if seen_sources.insert(source.clone()) {
-                    Some(format!("- [S{id}] {source}"))
-                } else {
-                    None
-                }
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut display_id_by_source: HashMap<String, usize> = HashMap::new();
+    let mut display_id_by_original_id: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut source_lines = Vec::new();
+    for id in cited.iter() {
+        let Some(source) = source_map.get(id) else {
+            continue;
+        };
+        if let Some(display_id) = display_id_by_source.get(source) {
+            display_id_by_original_id.insert(*id, *display_id);
+            continue;
+        }
+        if !seen_sources.insert(source.clone()) {
+            continue;
+        }
+        let display_id = source_lines.len() + 1;
+        display_id_by_source.insert(source.clone(), display_id);
+        display_id_by_original_id.insert(*id, display_id);
+        source_lines.push(format!("- [S{display_id}] {source}"));
+    }
     if source_lines.is_empty() {
         insufficiency_reasons.push("Citations did not map to retrieved sources.".to_string());
         return format_insufficient_evidence(&source_map, Some(&cited), &insufficiency_reasons);
@@ -198,6 +279,8 @@ pub(crate) fn normalize_ask_answer(
     if !insufficiency_reasons.is_empty() {
         return format_insufficient_evidence(&source_map, Some(&cited), &insufficiency_reasons);
     }
+
+    let body = remap_source_citations(&body, &display_id_by_original_id);
 
     format!(
         "{}\n\n## Sources\n{}",

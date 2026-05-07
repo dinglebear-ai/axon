@@ -11,8 +11,8 @@ fn cfg() -> Config {
 
 #[test]
 fn extract_cited_source_ids_deduplicates_ids() {
-    let ids = extract_cited_source_ids("A [S1] B [S2][S1] C [s3]");
-    assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
+    let ids = extract_cited_source_ids("A [S1] B [S2][S1] C [s3] D [S11, S13]");
+    assert_eq!(ids.into_iter().collect::<Vec<_>>(), vec![1, 2, 3, 11, 13]);
 }
 
 #[test]
@@ -32,8 +32,30 @@ fn normalize_ask_answer_dedupes_sources_by_url() {
     let context = "Sources:\n## Top Chunk [S1]: https://same.dev/docs\n\n---\n\n## Top Chunk [S9]: https://same.dev/docs";
     let raw = "Use this flow [S1][S9].";
     let normalized = normalize_ask_answer(&cfg(), "how do I use this?", raw, context);
+    assert!(normalized.contains("Use this flow [S1][S1]."));
     assert!(normalized.contains("- [S1] https://same.dev/docs"));
     assert!(!normalized.contains("- [S9] https://same.dev/docs"));
+}
+
+#[test]
+fn normalize_ask_answer_renumbers_sparse_source_ids_for_display() {
+    let context = "Sources:\n## Top Chunk [S11]: https://docs.example.com/hooks";
+    let raw = "Hooks run at configured lifecycle events [S11].";
+    let normalized = normalize_ask_answer(&cfg(), "how do hooks work?", raw, context);
+    assert!(normalized.contains("Hooks run at configured lifecycle events [S1]."));
+    assert!(normalized.contains("## Sources\n- [S1] https://docs.example.com/hooks"));
+    assert!(!normalized.contains("[S11]"));
+}
+
+#[test]
+fn normalize_ask_answer_renumbers_grouped_source_ids_for_display() {
+    let context = "Sources:\n## Top Chunk [S11]: https://docs.example.com/hooks\n\n---\n\n## Top Chunk [S13]: https://docs.example.com/settings";
+    let raw = "Hooks and settings interact at lifecycle boundaries [S11, S13].";
+    let normalized = normalize_ask_answer(&cfg(), "how do hooks work?", raw, context);
+    assert!(normalized.contains("Hooks and settings interact at lifecycle boundaries [S1, S2]."));
+    assert!(normalized.contains("- [S1] https://docs.example.com/hooks"));
+    assert!(normalized.contains("- [S2] https://docs.example.com/settings"));
+    assert!(!normalized.contains("[S11, S13]"));
 }
 
 #[test]
