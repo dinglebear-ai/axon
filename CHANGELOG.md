@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.7] - 2026-05-06
+
+### Changed
+
+- Docker compose reorganized: `config/docker-compose.services.yaml` replaced by `docker-compose.yaml` at repo root (full stack — axon + qdrant + tei + chrome). Added `config/Dockerfile` (multi-stage Rust builder → debian:bookworm-slim runtime, tini PID 1, UID 1000).
+- `.env.example` cleaned up: removed Docker-compose-only interpolation vars (`AXON_LITE`, `HF_TOKEN`, `HOST_HOME`, `AXON_WORKSPACE`, `HOST_WORKSPACE`, `AXON_BIN`, `TEI_*`, `AXON_EXTRACT_EST_COST_PER_1K_TOKENS`); added `SCREENSHOT_DIRECTORY`; fixed `AXON_ACP_AUTO_APPROVE` default comment.
+- `mcporter.json`: pin `npm_config_cache` to `~/.cache/axon-mcporter-npm` for mcporter and context7 servers.
+- `path.rs`: use `axon_data_base_dir()` helper instead of inline `AXON_DATA_DIR` env var read.
+- `plugins/hooks/hooks.json`: fix structure — wrap `SessionStart` inside `hooks` key per plugin spec.
+
+### Fixed
+
+- `size_rotating.rs`: replace `vec![b'x'; N]` with `[b'x'; N]` slice literals (clippy::useless_vec).
+
 ## [1.5.6] - 2026-05-06
 
 ### Added
