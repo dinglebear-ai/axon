@@ -120,48 +120,22 @@ pub(super) async fn retrieve_ask_candidates(
     }
     let vecq = ask_vectors.remove(0);
 
-    // Run primary (NL) and secondary (keyword) dispatches in parallel when dual-embedding
-    // is active. They are independent Qdrant queries; awaiting them sequentially burned
-    // ~2-3s per ask (bd axon_rust-d71.3 / C3).
-    let primary_request =
-        qdrant::VectorSearchRequest::from_query(cfg, &vecq, query, ask_tuning.ask_candidate_limit)
-            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
-            .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
-    let qdrant_started = std::time::Instant::now();
-    let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
-    let (primary_res, secondary_res) = if query_forms.use_dual && !ask_vectors.is_empty() {
-        let vecq_kw = ask_vectors.remove(0);
-        let secondary_request = qdrant::VectorSearchRequest::from_query(
-            cfg,
-            &vecq_kw,
-            &query_forms.keyword_query,
-            ask_tuning.ask_candidate_limit,
-        )
-        .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
-        .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
-        let secondary_fut = qdrant::dispatch_vector_search_request(cfg, &secondary_request);
-        let (p, s) = tokio::join!(primary_fut, secondary_fut);
-        (p, Some(s))
-    } else {
-        (primary_fut.await, None)
-    };
-    // Both dispatches run via tokio::join! when dual-embed is active; the
-    // wall-clock from launching the primary future to having both responses
-    // is the only meaningful Qdrant-roundtrip metric we can capture here.
-    // Record the combined wall-clock as `qdrant_primary_ms` (always populated)
-    // and a separate `qdrant_secondary_ms` of 0 when no secondary ran.
-    let qdrant_elapsed_ms = qdrant_started.elapsed().as_millis();
-    if query_forms.use_dual {
-        // With join!, we cannot separate primary vs secondary completion times
-        // from the parent future. Record the joined wall-clock against
-        // `qdrant_primary_ms`; `qdrant_secondary_ms` reflects whether a
-        // secondary dispatch ran (0 means "no secondary").
-        timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
-        timing.set(AskTimingSlot::QdrantSecondary, qdrant_elapsed_ms);
-    } else {
-        timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
-        timing.set(AskTimingSlot::QdrantSecondary, 0);
-    }
+    let DispatchOutcome {
+        primary_request,
+        primary_res,
+        secondary_res,
+    } = run_qdrant_dispatch(
+        cfg,
+        query,
+        &vecq,
+        &mut ask_vectors,
+        &query_forms.keyword_query,
+        query_forms.use_dual,
+        ask_tuning.ask_candidate_limit,
+        ask_tuning.ask_hybrid_candidates,
+        timing,
+    )
+    .await?;
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
     let vector_mode = get_or_fetch_vector_mode(cfg)
@@ -251,3 +225,62 @@ pub(super) async fn retrieve_ask_candidates(
         },
     })
 }
+
+struct DispatchOutcome<'a> {
+    primary_request: qdrant::VectorSearchRequest<'a>,
+    primary_res: Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
+    secondary_res:
+        Option<Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>>,
+}
+
+/// Build the primary (NL) and optional secondary (keyword) Qdrant search
+/// requests, dispatch them in parallel via `tokio::join!` when dual-embedding
+/// is active (sequential dispatch burned ~2-3s per ask — bd axon_rust-d71.3 /
+/// C3), and record the combined wall-clock into the ask timing accumulator.
+#[allow(clippy::too_many_arguments)]
+async fn run_qdrant_dispatch<'a>(
+    cfg: &'a Config,
+    query: &'a str,
+    vecq: &'a [f32],
+    ask_vectors: &mut Vec<Vec<f32>>,
+    keyword_query: &'a str,
+    use_dual: bool,
+    candidate_limit: usize,
+    hybrid_candidates: usize,
+    timing: &mut AskTiming,
+) -> Result<DispatchOutcome<'a>> {
+    let primary_request = qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
+        .map_err(|e| anyhow!("build ask vector search request: {e}"))?
+        .with_candidates_override(Some(hybrid_candidates));
+    let qdrant_started = std::time::Instant::now();
+    let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
+    let (primary_res, secondary_res) = if use_dual && !ask_vectors.is_empty() {
+        let vecq_kw = ask_vectors.remove(0);
+        let secondary_request =
+            qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
+                .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
+                .with_candidates_override(Some(hybrid_candidates));
+        let secondary_fut = qdrant::dispatch_vector_search_request(cfg, &secondary_request);
+        let (p, s) = tokio::join!(primary_fut, secondary_fut);
+        (p, Some(s))
+    } else {
+        (primary_fut.await, None)
+    };
+    // tokio::join! only exposes the wall-clock from launching the primary
+    // future to having both responses; that combined window is the only
+    // meaningful Qdrant-roundtrip metric available here. Record it against
+    // `qdrant_primary_ms`; `qdrant_secondary_ms` reflects whether a secondary
+    // dispatch ran (0 = no secondary).
+    let qdrant_elapsed_ms = qdrant_started.elapsed().as_millis();
+    timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
+    timing.set(
+        AskTimingSlot::QdrantSecondary,
+        if use_dual { qdrant_elapsed_ms } else { 0 },
+    );
+    Ok(DispatchOutcome {
+        primary_request,
+        primary_res,
+        secondary_res,
+    })
+}
+
