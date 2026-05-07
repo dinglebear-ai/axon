@@ -320,8 +320,23 @@ pub struct Config {
     ///
     /// Ask reranks with `ask_min_relevance_score` (default 0.45) before selecting context,
     /// so it needs a wider prefetch window than `query` (which skips reranking).
-    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
     pub ask_hybrid_candidates: usize,
+
+    /// Enable the in-process document-chunk cache for `ask` (full-doc fetch path).
+    /// Process-local cache: only useful in long-lived parents (`axon serve`, `axon mcp`).
+    /// CLI one-shots see zero hit rate. Config-only via `[ask.cache] enabled` in
+    /// `~/.axon/config.toml`. Default: false. (bd axon_rust-pmc)
+    pub ask_cache_enabled: bool,
+
+    /// Maximum bytes (summed `chunk_text` length) the doc-chunk cache may hold.
+    /// Config-only via `[ask.cache] max-capacity-bytes`. Default: 256 MiB.
+    pub ask_cache_max_capacity_bytes: u64,
+
+    /// Time-to-live for cached doc-chunk entries, in seconds. Capped at 300s
+    /// (security primitive: bounds staleness of deleted content).
+    /// Config-only via `[ask.cache] ttl-secs`. Default: 300s.
+    pub ask_cache_ttl_secs: u64,
 
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,
@@ -475,11 +490,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ask_hybrid_candidates_default_is_150() {
+    fn ask_hybrid_candidates_default_is_100() {
         let cfg = Config::default();
         assert_eq!(
-            cfg.ask_hybrid_candidates, 150,
-            "ask_hybrid_candidates must default to 150 for wider prefetch before reranking"
+            cfg.ask_hybrid_candidates, 100,
+            "ask_hybrid_candidates must default to 100 (Qdrant RRF rank-stable at 2x final K = 50)"
         );
     }
 }

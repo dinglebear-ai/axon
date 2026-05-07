@@ -48,7 +48,7 @@
 # [wired] Hybrid prefetch window for the ask pipeline (clamped 10–500).
 # Wider than hybrid-candidates to give reranking more material.
 # Env: AXON_ASK_HYBRID_CANDIDATES
-# ask-hybrid-candidates = 150
+# ask-hybrid-candidates = 100
 
 # [env-only] HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
 # Higher = better recall, more RAM/CPU. Use AXON_HNSW_EF_SEARCH env var for now.
@@ -75,6 +75,21 @@
 # Lower = more results, more noise. Higher = stricter but may miss relevant chunks.
 # Env: AXON_ASK_MIN_RELEVANCE_SCORE
 # min-relevance-score = 0.45
+
+[ask.cache]
+# [wired] In-process document-chunk cache for the ask full-doc fetch path.
+# Process-local: only useful in long-lived parents (`axon serve`, `axon mcp`).
+# CLI one-shots see zero hit rate by definition. Default: disabled.
+# (bd axon_rust-pmc)
+# enabled = false
+
+# [wired] Max bytes (summed `chunk_text` length across cached entries).
+# Default: 268_435_456 (256 MiB).
+# max-capacity-bytes = 268435456
+
+# [wired] Time-to-live for cached entries, in seconds. Hard-capped at 300s
+# (security primitive bounding staleness of deleted content). Default: 300.
+# ttl-secs = 300
 
 [tei]
 # [env-only] Max retry attempts per TEI request. Use TEI_MAX_RETRIES env var for now.

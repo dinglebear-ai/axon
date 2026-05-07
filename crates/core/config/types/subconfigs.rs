@@ -124,7 +124,7 @@ impl Default for AskConfig {
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
             ask_diagnostics: false,
-            ask_hybrid_candidates: 150,
+            ask_hybrid_candidates: 100,
         }
     }
 }

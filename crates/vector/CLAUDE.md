@@ -111,7 +111,7 @@ qdrant_hybrid_search(cfg, &dense_vec, &sparse_vec, limit).await?
 
 **Hash collisions:** With 65,536 buckets, ~7% collision rate for 100 unique terms, ~26% for 200 — roughly half the collision rate of the old 30,522-bucket scheme. Qdrant's IDF weighting mitigates remaining impact — high-IDF terms are unlikely to collide. This is a deliberate trade-off vs. requiring the BERT tokenizer vocabulary.
 
-**Config:** `AXON_ASK_HYBRID_CANDIDATES` env var (default: `150`) controls the prefetch window size per arm before RRF fusion. The `cfg.hybrid_search_candidates` field carries this value at runtime.
+**Config:** `AXON_ASK_HYBRID_CANDIDATES` env var (default: `100`) controls the prefetch window size per arm before RRF fusion. The `cfg.hybrid_search_candidates` field carries this value at runtime. (was 150, lowered to 100 per Qdrant RRF guidance: prefetch >= 2x final K is rank-stable; ask_candidate_limit=50 final → prefetch=100 sufficient)
 
 ### Ranking Pipeline
 `ranking.rs` applies BM25-style scoring on top of Qdrant cosine/hybrid results. `ranking/snippet.rs` extracts and highlights matching text fragments. Used by `ask` and `query` commands. Do not bypass ranking in new retrieval commands — it significantly improves answer quality.
@@ -177,7 +177,7 @@ All TEI, Qdrant, and sparse tests run without live services (`httpmock` for netw
 | `AXON_HYBRID_CANDIDATES` | `100` | Prefetch window per arm (dense + sparse) before RRF fusion for `query`. Maps to `cfg.hybrid_search_candidates`. |
 | `AXON_SOURCES_FACET_LIMIT` | 100,000 | Max URLs returned by `sources` command via facet |
 | `AXON_SUGGEST_INDEX_LIMIT` | 50,000 | Max URLs fetched for dedup in `suggest` command |
-| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Prefetch window per arm before RRF fusion for `ask`; overrides `cfg.hybrid_search_candidates` for the ask path only. |
+| `AXON_ASK_HYBRID_CANDIDATES` | `100` | Prefetch window per arm before RRF fusion for `ask`; overrides `cfg.hybrid_search_candidates` for the ask path only. (was 150, lowered to 100 per Qdrant RRF guidance: prefetch >= 2x final K is rank-stable; ask_candidate_limit=50 final → prefetch=100 sufficient) |
 | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum reranker score to include a candidate on cosine paths. Intentionally skipped on the RRF path — see Ranking Pipeline above. |
 
 **Retrieval input caps:** `dispatch_vector_search` rejects queries longer than 64 KiB (CWE-770). Queries are validated before reaching `compute_sparse_vector` or TEI.

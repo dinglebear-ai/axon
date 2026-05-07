@@ -441,7 +441,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .unwrap_or(100),
         ask_hybrid_candidates: performance::env_usize_opt("AXON_ASK_HYBRID_CANDIDATES", 10, 500)
             .or_else(|| toml.search.ask_hybrid_candidates.map(|v| v.clamp(10, 500)))
-            .unwrap_or(150),
+            .unwrap_or(100),
+        // [ask.cache] in ~/.axon/config.toml -- no env-var path. Cache is only
+        // useful in long-lived parents; users opt in explicitly. (axon_rust-pmc)
+        ask_cache_enabled: toml.ask.cache.enabled.unwrap_or(false),
+        ask_cache_max_capacity_bytes: toml
+            .ask
+            .cache
+            .max_capacity_bytes
+            .unwrap_or(256 * 1024 * 1024),
+        ask_cache_ttl_secs: toml.ask.cache.ttl_secs.unwrap_or(300).min(300),
         cron_every_seconds: global.cron_every_seconds.filter(|value| *value > 0),
         cron_max_runs: global.cron_max_runs.filter(|value| *value > 0),
         watchdog_stale_timeout_secs: global.watchdog_stale_timeout_secs.max(30),

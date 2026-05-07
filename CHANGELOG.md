@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### bd-teams/ask-perf-foundation
+
+- ask: AXON_ASK_HYBRID_CANDIDATES default lowered 150 → 100 (Qdrant RRF rank-stable at 2x final K; ask_candidate_limit=50 → prefetch=100 is sufficient).
+
 ## [1.5.7] - 2026-05-06
 
 ### Changed
