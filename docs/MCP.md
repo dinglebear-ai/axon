@@ -8,7 +8,7 @@ Last Modified: 2026-03-11
 - Tool count: 1
 - Tool name: `axon`
 - Routing fields: `action` + `subaction` for lifecycle families
-- Response behavior field: `response_mode` (`path|inline|both|auto_inline`, default `path`; `auto_inline`/`auto-inline` may be requested as an alias for inline and `auto-inline` is also emitted when path-mode payloads are small enough to inline automatically)
+- Response behavior field: `response_mode` (`path|inline|both|auto_inline`, default `path`; `auto_inline`/`auto-inline` selects threshold-based automatic inlining)
 - Resources: `axon://schema/mcp-tool`, `ui://axon/status-dashboard`
 - MCP Apps capability is enabled so compatible hosts can render the status dashboard widget
 
@@ -156,13 +156,15 @@ Use CLI-identical action names:
 - `doctor`, `domains`, `sources`, `stats`
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
-- `scrape`, `research`, `ask`, `screenshot`, `help`, `status`, `elicit_demo`
+- `scrape`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
 - `acp` (subactions: `list_sessions|fork_session|resume_session|set_model|ext_method|ext_notification|logout`)
 
 Examples:
 - `action: "ingest", subaction: "start"`
 - `action: "extract", subaction: "list"`
 - `action: "query"`
+- `action: "evaluate"`
+- `action: "suggest"`
 - `action: "doctor"`
 
 ## Parser Rules
@@ -179,6 +181,8 @@ Direct actions:
 - `scrape`
 - `research`
 - `ask`
+- `evaluate`
+- `suggest`
 - `screenshot`
 - `elicit_demo`
 
@@ -247,7 +251,7 @@ Artifact responses written in path mode are pretty-printed JSON. The preferred i
 
 All actions support `response_mode`. Default is `path`, writing the payload to an artifact and returning a compact shape summary. Use `response_mode=inline` to get the payload directly in the response.
 
-Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `auto-inline` spelling is accepted as an alias. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
+Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `auto-inline` spelling is accepted for `auto_inline`. See [`MCP-TOOL-SCHEMA.md`](MCP-TOOL-SCHEMA.md) for the full enum definition.
 
 **Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
 
@@ -267,7 +271,7 @@ The `path` field (absolute filesystem path) is present in artifact metadata for 
 
 ### Auto-inline for Small Payloads
 
-Regardless of the requested `response_mode`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring an `artifacts.read` follow-up call. The response includes `"response_mode": "auto-inline"`, the full `data` object, and an `artifact` pointer for persistence. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable auto-inline and always use explicit `response_mode` selection.
+When `response_mode` is omitted or set to `auto_inline`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring an `artifacts.read` follow-up call. The response includes `"response_mode": "auto-inline"` and the full `data` object. Larger auto-mode payloads fall back to path metadata. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable automatic inlining.
 
 ### Shape Preview Improvements
 

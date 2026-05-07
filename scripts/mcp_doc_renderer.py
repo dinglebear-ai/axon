@@ -15,6 +15,7 @@ from mcp_schema_models import (
     RUNTIME_ENV_VARS,
     STRUCT_TO_ACTION,
     EnumDef,
+    FieldDef,
     StructDef,
 )
 
@@ -142,10 +143,10 @@ def _emit_response_policy(emit) -> None:
     emit("- Heavy operations write result artifacts to `.cache/axon-mcp/`.")
     emit("- Tool response returns compact metadata only by default:")
     emit("  - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`")
-    emit("- Inline modes are capped/truncated and always include artifact pointers.")
+    emit("- Explicit `inline` and `both` modes are capped/truncated and include artifact pointers.")
     emit(
-        "- `auto_inline`/`auto-inline` may be requested as an alias for `inline`; "
-        "the server also emits `auto-inline` when a path-mode payload is small enough to inline automatically."
+        "- `response_mode=auto_inline`/`auto-inline` selects threshold-based automatic inlining: "
+        "small payloads return `auto-inline`, larger payloads return path metadata."
     )
     emit()
 
@@ -163,10 +164,21 @@ def _emit_direct_actions(
         sdef = structs.get(struct_name)
         if not sdef:
             continue
-        required = sdef.required_fields()
-        optional = [f for f in sdef.optional_fields() if f.name != "subaction"]
-        req_str = ", ".join(f"`{f.name}` ({f.display_type})" for f in required) or "--"
-        opt_str = ", ".join(f"`{f.name}`" for f in optional) or "--"
+        handler_required = HANDLER_REQUIRED_FIELDS.get(action, set())
+        required = [
+            f
+            for f in [*sdef.required_fields(), *sdef.optional_fields()]
+            if f.name in handler_required or not f.is_optional
+        ]
+        optional = [
+            f
+            for f in sdef.optional_fields()
+            if f.name != "subaction" and f.name not in handler_required
+        ]
+        req_str = ", ".join(
+            f"{_field_name_with_aliases(f)} ({f.display_type})" for f in required
+        ) or "--"
+        opt_str = ", ".join(_field_name_with_aliases(f) for f in optional) or "--"
         emit(f"| `{action}` | {req_str} | {opt_str} |")
     if "ask" in direct_actions:
         emit()
@@ -328,6 +340,19 @@ def _emit_error_semantics(emit) -> None:
 # ---------------------------------------------------------------------------
 
 
+HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
+    "ask": {"query"},
+    "evaluate": {"query"},
+    "map": {"url"},
+    "query": {"query"},
+    "research": {"query"},
+    "retrieve": {"url"},
+    "scrape": {"url"},
+    "screenshot": {"url"},
+    "search": {"query"},
+}
+
+
 def _classify_actions(
     structs: dict[str, StructDef],
 ) -> tuple[list[str], list[str]]:
@@ -349,6 +374,14 @@ def _action_to_struct(action: str) -> str:
         if act == action:
             return struct_name
     return ""
+
+
+def _field_name_with_aliases(field: FieldDef) -> str:
+    text = f"`{field.name}`"
+    if field.aliases:
+        aliases = ", ".join(f"`{alias}`" for alias in field.aliases)
+        text += f" (aliases: {aliases})"
+    return text
 
 
 def _start_requirement_summary(action: str, sdef: StructDef) -> str:

@@ -200,6 +200,11 @@ impl AxonMcpServer {
             cfg.hybrid_search_enabled = enabled;
         }
 
+        // The RMCP `#[tool]` wrapper requires a `Send` future. The evaluate
+        // service currently carries `Box<dyn Error>` through `tokio::try_join!`
+        // in the vector pipeline, making direct `.await` non-Send at this
+        // boundary. Keep that non-Send implementation isolated from the MCP
+        // tool future until the evaluate pipeline error type is widened.
         let query_for_task = query.clone();
         let result = tokio::task::spawn_blocking(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()

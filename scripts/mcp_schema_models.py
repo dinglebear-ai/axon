@@ -21,6 +21,7 @@ class FieldDef:
 
     name: str
     rust_type: str
+    aliases: list[str] = field(default_factory=list)
 
     @property
     def is_optional(self) -> bool:
@@ -151,9 +152,6 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
 
 # Runtime env vars -- not in schema.rs, hardcoded here.
 RUNTIME_ENV_VARS: list[str] = [
-    "AXON_PG_URL",
-    "AXON_REDIS_URL",
-    "AXON_AMQP_URL",
     "QDRANT_URL",
     "TEI_URL",
     "OPENAI_BASE_URL",

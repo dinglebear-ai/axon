@@ -50,31 +50,31 @@ For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canon
 - Heavy operations write result artifacts to `.cache/axon-mcp/`.
 - Tool response returns compact metadata only by default:
   - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`
-- Inline modes are capped/truncated and always include artifact pointers.
-- `auto_inline`/`auto-inline` may be requested as an alias for `inline`; the server also emits `auto-inline` when a path-mode payload is small enough to inline automatically.
+- Explicit `inline` and `both` modes are capped/truncated and include artifact pointers.
+- `response_mode=auto_inline`/`auto-inline` selects threshold-based automatic inlining: small payloads return `auto-inline`, larger payloads return path metadata.
 
 ## Direct Actions
 These actions do not require `subaction`:
 
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
-| `ask` | -- | `query`, `graph`, `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `ask` | `query` (string) | `graph`, `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
-| `evaluate` | -- | `query`, `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `evaluate` | `query` (aliases: `question`) (string) | `diagnostics`, `retrieval_ab`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `help` | -- | `response_mode` |
-| `map` | -- | `url`, `limit`, `offset`, `response_mode` |
-| `query` | -- | `query`, `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
-| `research` | -- | `query`, `limit`, `offset`, `search_time_range`, `response_mode` |
-| `retrieve` | -- | `url`, `max_points`, `collection`, `since`, `before`, `response_mode` |
-| `scrape` | -- | `url`, `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector` |
-| `screenshot` | -- | `url`, `full_page`, `viewport`, `output`, `response_mode` |
-| `search` | -- | `query`, `limit`, `offset`, `search_time_range`, `response_mode` |
+| `map` | `url` (string) | `limit`, `offset`, `response_mode` |
+| `query` | `query` (string) | `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `research` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
+| `retrieve` | `url` (string) | `max_points`, `collection`, `since`, `before`, `response_mode` |
+| `scrape` | `url` (string) | `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector` |
+| `screenshot` | `url` (string) | `full_page`, `viewport`, `output`, `response_mode` |
+| `search` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
 | `sources` | -- | `limit`, `offset`, `response_mode` |
 | `stats` | -- | `response_mode` |
 | `status` | -- | `response_mode` |
-| `suggest` | -- | `focus`, `limit`, `collection`, `response_mode` |
+| `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 
 Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`.
 
@@ -156,9 +156,6 @@ Implemented resource(s):
 
 ## Runtime Dependencies
 Server reads existing Axon stack vars:
-- `AXON_PG_URL`
-- `AXON_REDIS_URL`
-- `AXON_AMQP_URL`
 - `QDRANT_URL`
 - `TEI_URL`
 - `OPENAI_BASE_URL`
