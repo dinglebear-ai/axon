@@ -474,7 +474,7 @@ jobs:
 
       - name: Create CI env files for docker compose
         run: |
-          # .env — compose YAML interpolation for config/docker-compose.services.yaml
+          # .env — compose YAML interpolation for docker-compose.yaml
           {
             echo "AXON_DATA_DIR=./data"
             echo "QDRANT_URL=http://axon-qdrant:6333"
@@ -484,18 +484,10 @@ jobs:
             echo "TEI_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5"
             echo "HF_TOKEN="
           } > .env
-          # services.env — repo-root infra container env consumed by
-          # config/docker-compose.services.yaml via ../services.env.
-          {
-            echo "AXON_DATA_DIR=./data"
-            echo "TEI_HTTP_PORT=52000"
-            echo "TEI_EMBEDDING_MODEL=BAAI/bge-small-en-v1.5"
-            echo "HF_TOKEN="
-          } > services.env
-          docker compose --env-file .env -f config/docker-compose.services.yaml config >/dev/null
+          docker compose --env-file .env -f docker-compose.yaml config >/dev/null
 
       - name: Start Axon infra
-        run: docker compose --env-file .env -f config/docker-compose.services.yaml up -d axon-qdrant
+        run: docker compose --env-file .env -f docker-compose.yaml up -d axon-qdrant
 
       - name: Start TEI
         run: |
@@ -561,4 +553,4 @@ jobs:
         run: |
           kill "$(cat /tmp/axon-mcp.pid 2>/dev/null)" 2>/dev/null || true
           docker rm -f axon-tei || true
-          docker compose --env-file .env -f config/docker-compose.services.yaml down || true
+          docker compose --env-file .env -f docker-compose.yaml down || true
