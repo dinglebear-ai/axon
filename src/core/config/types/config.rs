@@ -323,7 +323,7 @@ pub struct Config {
     /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
     pub ask_hybrid_candidates: usize,
 
-    /// Maximum retry attempts per TEI embed request.
+    /// Maximum TEI embed retry attempts after the initial request.
     /// Env: `TEI_MAX_RETRIES`. TOML: `tei.max-retries`. Clamped 0–20. Default: 5.
     pub tei_max_retries: usize,
 
@@ -336,7 +336,7 @@ pub struct Config {
     pub tei_max_client_batch_size: usize,
 
     /// Parallel ingest worker lanes.
-    /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–64. Default: 2.
+    /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–16. Default: 2.
     pub ingest_lanes: usize,
 
     /// Per-document embed timeout in seconds (used by the embed pipeline).

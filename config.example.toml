@@ -78,7 +78,7 @@
 # min-relevance-score = 0.45
 
 [tei]
-# Max retry attempts per TEI request.
+# Max retry attempts after the initial TEI request.
 # Env: TEI_MAX_RETRIES
 # max-retries = 5
 
@@ -91,7 +91,7 @@
 # max-client-batch-size = 64
 
 [workers]
-# Parallel ingest worker lanes (GitHub, Reddit, YouTube).
+# Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
 # Env: AXON_INGEST_LANES
 # ingest-lanes = 2
 

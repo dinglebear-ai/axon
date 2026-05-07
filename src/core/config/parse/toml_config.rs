@@ -65,7 +65,7 @@ pub(super) struct TomlAskSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlTeiSection {
-    /// Max retry attempts per TEI request.
+    /// Max retry attempts after the initial TEI request.
     pub max_retries: Option<usize>,
     /// Per-attempt timeout in milliseconds.
     pub request_timeout_ms: Option<u64>,

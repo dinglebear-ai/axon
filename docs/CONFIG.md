@@ -137,8 +137,8 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TEI_MAX_RETRIES` | `5` | Max retry attempts per request |
-| `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 100-600000) |
+| `TEI_MAX_RETRIES` | `5` | Max retry attempts after the initial request |
+| `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
 | `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 | `TEI_HTTP_PORT` | `52000` | Host port for TEI container |
 | `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace embedding model |
@@ -182,7 +182,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_EMBED_QUEUE` | `axon.embed.jobs` | Embed job queue |
 | `AXON_INGEST_QUEUE` | `axon.ingest.jobs` | Ingest job queue |
 | `AXON_GRAPH_QUEUE` | `axon.graph.jobs` | Graph job queue |
-| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes |
+| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
 
 ### Search and research
 

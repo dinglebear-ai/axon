@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.11] - 2026-05-07
+
+### Fixed
+
+- Aligned config docs and comments with runtime behavior for TEI retry attempts and ingest worker lane clamping.
+
 ## [1.5.10] - 2026-05-07
 
 ### Changed

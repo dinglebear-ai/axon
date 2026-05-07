@@ -358,7 +358,7 @@ Watchdog and queue cap tuning:
 |---|---|---|
 | `AXON_JOB_STALE_TIMEOUT_SECS` | 300 | Heartbeat staleness before reclaim |
 | `AXON_JOB_STALE_CONFIRM_SECS` | 60 | Grace before stale rows are reclaimed |
-| `AXON_INGEST_LANES` | 2 | Concurrent ingest worker lanes |
+| `AXON_INGEST_LANES` | 2 | Concurrent ingest worker lanes (clamped 1-16) |
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | 300 | Per-document embed timeout |
 | `AXON_MAX_PENDING_CRAWL_JOBS` | 100 | Reject submission when N pending; `0` = unlimited |
 | `AXON_MAX_PENDING_EMBED_JOBS` | 50 | Same, for embed |
