@@ -323,6 +323,18 @@ pub struct Config {
     /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
     pub ask_hybrid_candidates: usize,
 
+    /// Maximum retry attempts per TEI embed request.
+    /// Env: `TEI_MAX_RETRIES`. TOML: `tei.max-retries`. Clamped 0–20. Default: 5.
+    pub tei_max_retries: usize,
+
+    /// Per-attempt timeout in milliseconds for TEI embed requests.
+    /// Env: `TEI_REQUEST_TIMEOUT_MS`. TOML: `tei.request-timeout-ms`. Clamped 1000–300_000. Default: 30_000.
+    pub tei_request_timeout_ms: u64,
+
+    /// Default client-side batch size for TEI embed requests (auto-splits on HTTP 413).
+    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 64.
+    pub tei_max_client_batch_size: usize,
+
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,
 

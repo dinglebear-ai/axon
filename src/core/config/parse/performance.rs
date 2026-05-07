@@ -71,6 +71,14 @@ pub(super) fn env_usize_opt(key: &str, min: usize, max: usize) -> Option<usize> 
         .map(|v| v.clamp(min, max))
 }
 
+/// Like `env_usize_opt` but for `u64` values. Returns `None` when the var is absent or unparseable.
+pub(super) fn env_u64_opt(key: &str, min: u64, max: u64) -> Option<u64> {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|v| v.clamp(min, max))
+}
+
 pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f64 {
     env_f64_opt(key, min, max).unwrap_or(default.clamp(min, max))
 }

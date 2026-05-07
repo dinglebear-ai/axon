@@ -105,6 +105,21 @@ impl Default for Config {
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
             ask_hybrid_candidates: 150,
+            tei_max_retries: env::var("TEI_MAX_RETRIES")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(0, 20))
+                .unwrap_or(5),
+            tei_request_timeout_ms: env::var("TEI_REQUEST_TIMEOUT_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|v| v.clamp(1000, 300_000))
+                .unwrap_or(30_000),
+            tei_max_client_batch_size: env::var("TEI_MAX_CLIENT_BATCH_SIZE")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(1, 128))
+                .unwrap_or(64),
             evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
@@ -304,6 +319,9 @@ impl fmt::Debug for Config {
             .field("hybrid_search_enabled", &self.hybrid_search_enabled)
             .field("hybrid_search_candidates", &self.hybrid_search_candidates)
             .field("ask_hybrid_candidates", &self.ask_hybrid_candidates)
+            .field("tei_max_retries", &self.tei_max_retries)
+            .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
+            .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
             .field("evaluate_retrieval_ab", &self.evaluate_retrieval_ab)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)
