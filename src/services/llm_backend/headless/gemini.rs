@@ -1,10 +1,9 @@
-use super::HeadlessAgent;
 use super::common::{
     HeadlessCommandRequest, HeadlessCommandSpec, PromptTransport, append_bounded_tail,
     env_or_default, redacted_stderr_tail,
 };
-use crate::services::acp::apply_env_allowlist;
-use crate::services::acp_llm::{AcpCompletionRequest, AcpCompletionResponse};
+use super::env::apply_env_allowlist;
+use crate::services::llm_backend::{CompletionRequest, CompletionResponse};
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 use std::fs;
@@ -20,6 +19,7 @@ const GEMINI_AUTH_FILES: &[&str] = &[
     "gemini-credentials.json",
     "google_accounts.json",
 ];
+const DEFAULT_COMPLETION_TIMEOUT_SECS: u64 = 300;
 
 pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec, String> {
     let args = vec![
@@ -37,7 +37,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
             .unwrap_or_else(|| DEFAULT_GEMINI_MODEL.to_string()),
     ];
     let spec = HeadlessCommandSpec {
-        agent: HeadlessAgent::Gemini,
+        agent: "gemini",
         program: env_or_default("AXON_HEADLESS_GEMINI_CMD", "gemini"),
         args,
         prompt_transport: PromptTransport::Stdin,
@@ -47,17 +47,38 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
     Ok(spec)
 }
 
-pub fn safe_posture_available() -> bool {
-    true
+pub fn validate_command() -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let req = HeadlessCommandRequest::new(None, None);
+    let spec = build_command(&req)?;
+    if spec.program.contains('/') || spec.program.contains('\\') {
+        let path = Path::new(&spec.program);
+        let metadata = fs::symlink_metadata(path)
+            .map_err(|err| format!("failed to inspect AXON_HEADLESS_GEMINI_CMD: {err}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("AXON_HEADLESS_GEMINI_CMD must not point to a symlink".into());
+        }
+        if !metadata.is_file() {
+            return Err("AXON_HEADLESS_GEMINI_CMD must point to an executable file".into());
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o111 == 0 {
+                return Err("AXON_HEADLESS_GEMINI_CMD is not executable".into());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn complete_streaming<F>(
-    req: AcpCompletionRequest,
+    req: CompletionRequest,
     mut on_delta: F,
-) -> Result<AcpCompletionResponse, Box<dyn StdError>>
+) -> Result<CompletionResponse, Box<dyn StdError + Send + Sync>>
 where
-    F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+    F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
 {
+    validate_command()?;
     let command_req = HeadlessCommandRequest::new(req.model.clone(), req.system_prompt.clone());
     let spec = build_command(&command_req)?;
     let gemini_home = prepare_gemini_home()?;
@@ -102,19 +123,30 @@ where
         .ok_or("failed to open Gemini headless stderr")?;
     let stderr_task = tokio::spawn(async move { read_bounded_stderr(stderr).await });
 
+    let timeout = completion_timeout();
     let mut parser = GeminiStreamState::default();
     let mut lines = BufReader::new(stdout).lines();
-    let stream_result: Result<(), Box<dyn StdError>> = loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                if let Err(err) = parser.handle_line(&line, &mut on_delta) {
-                    break Err(err);
+    let stream_result: Result<(), Box<dyn StdError + Send + Sync>> =
+        tokio::time::timeout(timeout, async {
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => {
+                        if let Err(err) = parser.handle_line(&line, &mut on_delta) {
+                            break Err(err);
+                        }
+                    }
+                    Ok(None) => break Ok(()),
+                    Err(err) => break Err(Box::new(err) as Box<dyn StdError + Send + Sync>),
                 }
             }
-            Ok(None) => break Ok(()),
-            Err(err) => break Err(Box::new(err) as Box<dyn StdError>),
-        }
-    };
+        })
+        .await
+        .map_err(|_| {
+            format!(
+                "Gemini headless timed out after {} seconds",
+                timeout.as_secs()
+            )
+        })?;
     if let Err(err) = stream_result {
         let _ = child.kill().await;
         let _ = child.wait().await;
@@ -140,7 +172,7 @@ where
     }
 
     let text = parser.finish()?;
-    Ok(AcpCompletionResponse { text, usage: None })
+    Ok(CompletionResponse { text, usage: None })
 }
 
 fn joined_prompt(system_prompt: Option<&str>, user_prompt: &str) -> String {
@@ -165,7 +197,7 @@ async fn read_bounded_stderr(
     }
 }
 
-fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError>> {
+fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
     let temp = tempfile::Builder::new()
         .prefix("axon-gemini-headless-")
         .tempdir()
@@ -190,13 +222,36 @@ fn prepare_gemini_home() -> Result<TempDir, Box<dyn StdError>> {
     Ok(temp)
 }
 
-fn gemini_source_home() -> Result<PathBuf, Box<dyn StdError>> {
+fn gemini_source_home() -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
     if let Some(path) = non_empty_env("AXON_HEADLESS_GEMINI_HOME") {
-        return Ok(PathBuf::from(path));
+        return validate_source_home(PathBuf::from(path));
     }
-    non_empty_env("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| "HOME is required to locate Gemini CLI auth files".into())
+    let home = non_empty_env("HOME").map(PathBuf::from).ok_or_else(
+        || -> Box<dyn StdError + Send + Sync> {
+            "HOME is required to locate Gemini CLI auth files".into()
+        },
+    )?;
+    validate_source_home(home)
+}
+
+fn validate_source_home(path: PathBuf) -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
+    let metadata = fs::symlink_metadata(&path).map_err(|err| {
+        format!(
+            "failed to inspect Gemini source home {}: {err}",
+            path.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "Gemini source home must not be a symlink: {}",
+            path.display()
+        )
+        .into());
+    }
+    if !metadata.is_dir() {
+        return Err(format!("Gemini source home must be a directory: {}", path.display()).into());
+    }
+    Ok(path)
 }
 
 fn non_empty_env(var_name: &str) -> Option<String> {
@@ -206,7 +261,16 @@ fn non_empty_env(var_name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn write_isolated_settings(path: &Path) -> Result<(), Box<dyn StdError>> {
+fn completion_timeout() -> std::time::Duration {
+    let secs = std::env::var("AXON_LLM_COMPLETION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_COMPLETION_TIMEOUT_SECS);
+    std::time::Duration::from_secs(secs)
+}
+
+fn write_isolated_settings(path: &Path) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let settings = json!({
         "admin": {
             "mcp": { "enabled": false },
@@ -230,9 +294,13 @@ struct GeminiStreamState {
 }
 
 impl GeminiStreamState {
-    fn handle_line<F>(&mut self, line: &str, on_delta: &mut F) -> Result<(), Box<dyn StdError>>
+    fn handle_line<F>(
+        &mut self,
+        line: &str,
+        on_delta: &mut F,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+        F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
     {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -263,7 +331,7 @@ impl GeminiStreamState {
         Ok(())
     }
 
-    fn handle_result(&mut self, value: &Value) -> Result<(), Box<dyn StdError>> {
+    fn handle_result(&mut self, value: &Value) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if value.get("status").and_then(Value::as_str) != Some("success") {
             return Err(format!("Gemini headless returned unsuccessful result: {value}").into());
         }
@@ -283,9 +351,13 @@ impl GeminiStreamState {
         Ok(())
     }
 
-    fn push_delta<F>(&mut self, delta: &str, on_delta: &mut F) -> Result<(), Box<dyn StdError>>
+    fn push_delta<F>(
+        &mut self,
+        delta: &str,
+        on_delta: &mut F,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
+        F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send,
     {
         if delta.is_empty() {
             return Ok(());
@@ -294,7 +366,7 @@ impl GeminiStreamState {
         on_delta(delta)
     }
 
-    fn finish(self) -> Result<String, Box<dyn StdError>> {
+    fn finish(self) -> Result<String, Box<dyn StdError + Send + Sync>> {
         if !self.saw_success {
             return Err("Gemini headless stream ended without a success result".into());
         }

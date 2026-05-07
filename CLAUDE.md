@@ -185,8 +185,7 @@ High-level subsystem map:
   - CLI commands call `crates/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
   - Each service function returns a typed result struct (defined in `crates/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
-  - ACP orchestration lives in `crates/services/acp/` (session lifecycle, permission bridge, adapter subprocess)
-  - ACP-backed LLM completions (fire-and-forget, pre-warmed) live in `crates/services/acp_llm/` — used by ask synthesis, research, extract fallback; see `docs/ACP.md` for full protocol reference
+  - Gemini headless LLM completions live in `crates/services/llm_backend/` — used by ask synthesis, research, evaluate, suggest, debug, and extract fallback
 - MCP server:
   - `crates/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
@@ -275,11 +274,13 @@ QDRANT_URL=http://axon-qdrant:6333
 # TEI embeddings (on axon network — container DNS)
 TEI_URL=http://axon-tei:80
 
-# LLM / ACP completion settings
-# ACP adapter is required for ask/evaluate/suggest/extract fallback/debug/research synthesis.
-AXON_ACP_ADAPTER_CMD=codex
-AXON_ACP_ADAPTER_ARGS=
-# OPENAI_MODEL is used as ACP model override (compatibility key name retained).
+# LLM / Gemini headless completion settings
+# Gemini CLI is required for ask/evaluate/suggest/extract fallback/debug/research synthesis.
+AXON_HEADLESS_GEMINI_CMD=gemini
+AXON_HEADLESS_GEMINI_HOME=
+AXON_LLM_COMPLETION_CONCURRENCY=4
+AXON_LLM_COMPLETION_TIMEOUT_SECS=300
+# OPENAI_MODEL is used as Gemini model override (compatibility key name retained).
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key-or-empty
 OPENAI_MODEL=your-model-name
@@ -350,9 +351,9 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 ### `crawl_raw()` vs `crawl()`
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
-### ACP-backed completion path
-`ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis run through ACP (`AXON_ACP_ADAPTER_CMD`).
-`OPENAI_MODEL` remains the model override knob for ACP-backed calls.
+### Gemini headless completion path
+`ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`).
+`OPENAI_MODEL` remains the model override knob for Gemini-backed calls.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

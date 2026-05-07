@@ -8,7 +8,7 @@ Reference documentation for the technology choices, architecture, and prerequisi
 |------|---------|
 | [CLAUDE.md](CLAUDE.md) | This file -- index for stack/ documentation |
 | [ARCH.md](ARCH.md) | Architecture overview -- trimodal design, worker topology, data flow |
-| [TECH.md](TECH.md) | Technology choices -- Rust, Spider, Qdrant, hybrid search, ACP |
+| [TECH.md](TECH.md) | Technology choices -- Rust, Spider, Qdrant, hybrid search, Gemini headless LLM |
 | [PRE-REQS.md](PRE-REQS.md) | Prerequisites -- tools and versions for development |
 
 ## Cross-references

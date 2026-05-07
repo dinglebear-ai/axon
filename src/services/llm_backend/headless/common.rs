@@ -1,5 +1,3 @@
-use super::HeadlessAgent;
-
 pub const STDERR_TAIL_LIMIT: usize = 4096;
 
 const FORBIDDEN_FLAGS: &[&str] = &[
@@ -21,7 +19,7 @@ pub enum PromptTransport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadlessCommandSpec {
-    pub agent: HeadlessAgent,
+    pub agent: &'static str,
     pub program: String,
     pub args: Vec<String>,
     pub prompt_transport: PromptTransport,
@@ -35,14 +33,14 @@ impl HeadlessCommandSpec {
             if joined.contains(forbidden) {
                 return Err(format!(
                     "headless {} command includes forbidden flag {forbidden}",
-                    self.agent.as_str()
+                    self.agent
                 ));
             }
         }
         if self.args.iter().any(|arg| arg == "yolo") {
             return Err(format!(
                 "headless {} command includes forbidden yolo approval mode",
-                self.agent.as_str()
+                self.agent
             ));
         }
         Ok(())
@@ -123,7 +121,7 @@ mod tests {
     #[test]
     fn headless_safety_rejects_forbidden_flags() {
         let spec = HeadlessCommandSpec {
-            agent: HeadlessAgent::Codex,
+            agent: "codex",
             program: "codex".to_string(),
             args: vec!["exec".to_string(), "--full-auto".to_string()],
             prompt_transport: PromptTransport::Stdin,

@@ -1,6 +1,5 @@
 use clap::ValueEnum;
 use std::fmt;
-use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CommandKind {
@@ -32,55 +31,6 @@ pub enum CommandKind {
     Serve,
     Setup,
     Migrate,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum AskBackend {
-    Acp,
-    #[default]
-    Headless,
-    Auto,
-}
-
-impl AskBackend {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Acp => "acp",
-            Self::Headless => "headless",
-            Self::Auto => "auto",
-        }
-    }
-
-    #[must_use]
-    pub fn uses_acp(self) -> bool {
-        matches!(self, Self::Acp)
-    }
-
-    #[must_use]
-    pub fn uses_headless(self) -> bool {
-        matches!(self, Self::Headless | Self::Auto)
-    }
-}
-
-impl fmt::Display for AskBackend {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl FromStr for AskBackend {
-    type Err = String;
-
-    fn from_str(raw: &str) -> Result<Self, Self::Err> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "acp" => Ok(Self::Acp),
-            "headless" => Ok(Self::Headless),
-            "auto" => Ok(Self::Auto),
-            other => Err(format!("unknown ask backend {other:?}")),
-        }
-    }
 }
 
 impl CommandKind {

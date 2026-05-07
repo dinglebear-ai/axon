@@ -119,40 +119,12 @@ fn load_dotenv() {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ACP sessions consume one spawn_blocking thread each for up to 300s (ACP_ADAPTER_TIMEOUT).
-    // max_blocking_threads caps the blocking thread pool to prevent silent exhaustion that
-    // would starve DB queries and file I/O. Logical ACP session concurrency is controlled
-    // separately by AXON_ACP_MAX_CONCURRENT_SESSIONS (default 8) — tune that env var to
-    // limit simultaneous ACP sessions. AXON_MAX_BLOCKING_THREADS only caps the Tokio
-    // blocking thread pool capacity; set it high enough to serve blocking-thread consumers
-    // (ACP sessions, file I/O, DB) without exhaustion.
-    // See: docs/reports/acp-performance-scalability-analysis-2026-03-08.md FINDING-6
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .max_blocking_threads(acp_blocking_thread_limit())
-        // ACP session setup future exceeds Tokio's default 2 MB worker stack on debug builds —
-        // we hit "thread '<unnamed>' has overflowed its stack" during ACP init before this
-        // bump. Memory cost: 8 MB × `tokio::runtime` worker count (default = num_cpus). On a
-        // 16-core homelab box that's ~128 MB virtual reservation per process; the OS only
-        // commits pages actually touched, so resident set growth is much smaller.
         .thread_stack_size(8 * 1024 * 1024)
         .build()
         .expect("failed to build tokio runtime");
     rt.block_on(async_main())
-}
-
-fn acp_blocking_thread_limit() -> usize {
-    // Default: 64 blocking threads for ACP + other blocking work (file I/O, DB).
-    // This caps Tokio's blocking thread pool — NOT the logical ACP session limit.
-    // Tune AXON_ACP_MAX_CONCURRENT_SESSIONS (default 8) to control how many ACP
-    // sessions run simultaneously. Tune AXON_MAX_BLOCKING_THREADS to size the
-    // blocking thread pool for all blocking consumers. For homelab single-user use,
-    // 16–32 blocking threads is typically sufficient.
-    std::env::var("AXON_MAX_BLOCKING_THREADS")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&v| v > 0) // reject 0 — tokio::Builder::max_blocking_threads panics on 0
-        .unwrap_or(64)
 }
 
 async fn async_main() -> Result<(), Box<dyn std::error::Error>> {

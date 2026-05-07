@@ -99,17 +99,6 @@ fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
-    if cfg.ask_backend.uses_acp()
-        && cfg
-            .acp_adapter_cmd
-            .as_deref()
-            .is_none_or(|s| s.trim().is_empty())
-    {
-        return Err(anyhow::anyhow!(
-            "research requires AXON_ACP_ADAPTER_CMD — set it in .env (run 'axon doctor' to check service connectivity)"
-        )
-        .into());
-    }
     Ok(())
 }
 
@@ -185,25 +174,20 @@ fn print_extraction_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::{AskBackend, CommandKind};
+    use crate::core::config::CommandKind;
 
-    fn make_research_cfg(
-        tavily_key: &str,
-        adapter_cmd: Option<&str>,
-        openai_model: &str,
-    ) -> Config {
+    fn make_research_cfg(tavily_key: &str, openai_model: &str) -> Config {
         let mut cfg = Config::test_default();
         cfg.command = CommandKind::Research;
         cfg.positional = vec!["test query".to_string()];
         cfg.tavily_api_key = tavily_key.to_string();
-        cfg.acp_adapter_cmd = adapter_cmd.map(ToString::to_string);
         cfg.openai_model = openai_model.to_string();
         cfg
     }
 
     #[tokio::test]
     async fn test_run_research_rejects_empty_tavily_key() {
-        let cfg = make_research_cfg("", Some("codex"), "gpt-4o-mini");
+        let cfg = make_research_cfg("", "gpt-4o-mini");
         let err = run_research(&cfg).await.unwrap_err();
         assert!(
             err.to_string().contains("TAVILY_API_KEY"),
@@ -212,45 +196,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_run_research_rejects_empty_acp_adapter() {
-        let mut cfg = make_research_cfg("tvly-key", None, "gpt-4o-mini");
-        cfg.ask_backend = AskBackend::Acp;
-        let err = run_research(&cfg).await.unwrap_err();
-        assert!(
-            err.to_string().contains("AXON_ACP_ADAPTER_CMD"),
-            "expected AXON_ACP_ADAPTER_CMD error, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_run_research_allows_headless_without_acp_adapter() {
-        let mut cfg = make_research_cfg("tvly-key", None, "");
-        cfg.ask_backend = AskBackend::Headless;
+    async fn test_run_research_allows_gemini_without_adapter() {
+        let mut cfg = make_research_cfg("tvly-key", "");
         cfg.positional = vec![];
         cfg.query = None;
         let err = run_research(&cfg).await.unwrap_err();
         assert!(
             err.to_string().contains("query"),
-            "expected query validation after headless ACP skip, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_run_research_allows_auto_without_acp_adapter() {
-        let mut cfg = make_research_cfg("tvly-key", None, "");
-        cfg.ask_backend = AskBackend::Auto;
-        cfg.positional = vec![];
-        cfg.query = None;
-        let err = run_research(&cfg).await.unwrap_err();
-        assert!(
-            err.to_string().contains("query"),
-            "expected query validation after auto ACP skip, got: {err}"
+            "expected query validation after Gemini prereq skip, got: {err}"
         );
     }
 
     #[tokio::test]
     async fn test_run_research_rejects_missing_query() {
-        let mut cfg = make_research_cfg("tvly-key", Some("codex"), "gpt-4o-mini");
+        let mut cfg = make_research_cfg("tvly-key", "gpt-4o-mini");
         cfg.positional = vec![];
         cfg.query = None;
         let err = run_research(&cfg).await.unwrap_err();
@@ -262,7 +221,7 @@ mod tests {
 
     #[test]
     fn research_cfg_depth_defaults_to_none() {
-        let cfg = make_research_cfg("tvly-key", Some("codex"), "gpt-4o-mini");
+        let cfg = make_research_cfg("tvly-key", "gpt-4o-mini");
         assert!(
             cfg.research_depth.is_none(),
             "research_depth should default to None"

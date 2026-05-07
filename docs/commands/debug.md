@@ -19,8 +19,8 @@ axon debug [context text ...] [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required — debug fails fast without it. |
-| `OPENAI_MODEL` | Model name passed to the ACP adapter for troubleshooting guidance. Required. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
+| `OPENAI_MODEL` | Optional Gemini model override for troubleshooting guidance. |
 
 ## Flags
 
@@ -45,6 +45,5 @@ axon debug "qdrant timeout after restart" --json
 
 ## Notes
 
-- Fails fast if `AXON_ACP_ADAPTER_CMD` is unset or empty.
-- Fails fast if `OPENAI_MODEL` is unset or empty.
-- LLM completions go through the ACP adapter subprocess (`AXON_ACP_ADAPTER_CMD`), not directly to an OpenAI-compatible HTTP endpoint.
+- LLM completions go through Gemini headless.
+- `OPENAI_MODEL` optionally overrides the default Gemini model.

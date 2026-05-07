@@ -1,14 +1,14 @@
 use std::error::Error as StdError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcpCompletionRequest {
+pub struct CompletionRequest {
     pub system_prompt: Option<String>,
     pub user_prompt: String,
     pub model: Option<String>,
     pub stream: bool,
 }
 
-impl AcpCompletionRequest {
+impl CompletionRequest {
     #[must_use]
     pub fn new(user_prompt: impl Into<String>) -> Self {
         Self {
@@ -39,60 +39,50 @@ impl AcpCompletionRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcpUsageSnapshot {
+pub struct UsageSnapshot {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
 }
 
-impl From<agent_client_protocol::Usage> for AcpUsageSnapshot {
-    fn from(value: agent_client_protocol::Usage) -> Self {
-        Self {
-            prompt_tokens: value.input_tokens,
-            completion_tokens: value.output_tokens,
-            total_tokens: value.total_tokens,
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionResponse {
+    pub text: String,
+    pub usage: Option<UsageSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcpCompletionResponse {
+pub struct CompletionTurnResult {
     pub text: String,
-    pub usage: Option<AcpUsageSnapshot>,
+    pub usage: Option<UsageSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AcpCompletionTurnResult {
-    pub text: String,
-    pub usage: Option<AcpUsageSnapshot>,
-}
-
-#[async_trait::async_trait(?Send)]
-pub trait AcpCompletionRunner {
+#[async_trait::async_trait]
+pub trait CompletionRunner {
     async fn complete_text(
         &self,
-        req: AcpCompletionRequest,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>;
+        req: CompletionRequest,
+    ) -> Result<CompletionTurnResult, Box<dyn StdError + Send + Sync>>;
 
     async fn complete_streaming<F>(
         &self,
-        req: AcpCompletionRequest,
+        req: CompletionRequest,
         on_delta: &mut F,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn StdError>>
+    ) -> Result<CompletionTurnResult, Box<dyn StdError + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send;
+        F: FnMut(&str) -> Result<(), Box<dyn StdError + Send + Sync>> + Send;
 }
 
 #[must_use]
-pub fn extract_completion_result(turn_result: AcpCompletionTurnResult) -> AcpCompletionResponse {
-    AcpCompletionResponse {
+pub fn extract_completion_result(turn_result: CompletionTurnResult) -> CompletionResponse {
+    CompletionResponse {
         text: turn_result.text,
         usage: turn_result.usage,
     }
 }
 
 /// Ensure `req.stream` matches the expected mode.
-pub fn normalize_stream_flag(mut req: AcpCompletionRequest, stream: bool) -> AcpCompletionRequest {
+pub fn normalize_stream_flag(mut req: CompletionRequest, stream: bool) -> CompletionRequest {
     req.stream = stream;
     req
 }

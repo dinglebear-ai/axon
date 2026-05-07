@@ -221,12 +221,6 @@ Demo elicitation prompt — exercises the MCP elicitation request path end to en
 { "action": "elicit_demo", "message": "Pick a focus topic" }
 ```
 
-### acp
-
-Manage ACP adapter sessions (advanced). Subactions: `list_sessions`,
-`fork_session`, `resume_session`, `set_model`, `ext_method`, `ext_notification`,
-`logout`. See `src/mcp/server/handlers_acp.rs` for the wire contract.
-
 ## Lifecycle action families
 
 These actions require a `subaction`. All support: `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`.

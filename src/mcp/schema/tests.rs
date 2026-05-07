@@ -27,6 +27,16 @@ fn parse_query_action_no_fields() {
 }
 
 #[test]
+fn parse_rejects_removed_acp_action() {
+    let raw = obj(json!({
+        "action": "acp",
+        "subaction": "list_sessions"
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_err(), "removed acp action must not parse");
+}
+
+#[test]
 fn parse_query_action_with_all_optional_fields() {
     let raw = obj(json!({
         "action": "query",

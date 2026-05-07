@@ -2,7 +2,7 @@
 
 Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query indexed content via the MCP `axon` tool or the `axon` CLI.
 
-Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and an ACP-backed LLM (Codex / Claude / Gemini) for `ask`, `research`, and extract fallback.
+Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and an Gemini headless LLM for `ask`, `research`, and extract fallback.
 
 ## Installation
 

@@ -287,8 +287,6 @@ fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractW
         openai_base_url: cfg.openai_base_url.clone(),
         openai_api_key: cfg.openai_api_key.clone(),
         openai_model: cfg.openai_model.clone(),
-        acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
-        acp_adapter_args: cfg.acp_adapter_args.clone(),
         custom_headers: cfg.custom_headers.clone(),
         render_mode: cfg.render_mode,
         chrome_remote_url: cfg.chrome_remote_url.clone(),

@@ -118,7 +118,6 @@ rmcp = { version = "1.1.0", features = [
   "elicitation",
 ] }
 html5gum = "0.8"
-agent-client-protocol = { version = "0.10.4", features = ["unstable"] }
 libc = "0.2"
 mime_guess = "2"
 rust-embed = "8"

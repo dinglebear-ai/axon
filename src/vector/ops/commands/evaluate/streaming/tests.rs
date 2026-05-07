@@ -1,9 +1,7 @@
 use super::*;
 use crate::core::config::Config;
 use crate::core::http::http_client;
-use crate::services::acp_llm::{
-    AcpCompletionRequest, AcpCompletionRunner, AcpCompletionTurnResult,
-};
+use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::sync::{Arc, Mutex};
 
 use super::super::super::streaming::{
@@ -20,13 +18,13 @@ fn build_parallel_futures_with_runners<'a, RR, BR>(
     rag_runner: &'a RR,
     baseline_runner: &'a BR,
 ) -> (
-    impl Future<Output = Result<(String, u128), Box<dyn Error>>> + 'a,
-    impl Future<Output = Result<(String, u128), Box<dyn Error>>> + 'a,
+    impl Future<Output = Result<(String, u128), Box<dyn Error + Send + Sync>>> + 'a,
+    impl Future<Output = Result<(String, u128), Box<dyn Error + Send + Sync>>> + 'a,
     mpsc::UnboundedReceiver<TaggedToken>,
 )
 where
-    RR: AcpCompletionRunner + ?Sized + 'a,
-    BR: AcpCompletionRunner + ?Sized + 'a,
+    RR: CompletionRunner + ?Sized + 'a,
+    BR: CompletionRunner + ?Sized + 'a,
 {
     let (tx, rx) = mpsc::unbounded_channel::<TaggedToken>();
     let rag_tx = tx.clone();
@@ -59,7 +57,7 @@ where
                 fallback
             }
         };
-        Ok::<(String, u128), Box<dyn Error>>((answer, started.elapsed().as_millis()))
+        Ok::<(String, u128), Box<dyn Error + Send + Sync>>((answer, started.elapsed().as_millis()))
     };
 
     let baseline_future = async move {
@@ -87,7 +85,7 @@ where
                 fallback
             }
         };
-        Ok::<(String, u128), Box<dyn Error>>((answer, started.elapsed().as_millis()))
+        Ok::<(String, u128), Box<dyn Error + Send + Sync>>((answer, started.elapsed().as_millis()))
     };
 
     let _ = client;
@@ -96,7 +94,7 @@ where
 
 #[derive(Clone)]
 struct MockRunner {
-    observed: Arc<Mutex<Vec<AcpCompletionRequest>>>,
+    observed: Arc<Mutex<Vec<CompletionRequest>>>,
     stream_deltas: Vec<String>,
     stream_result: Result<String, String>,
     text_result: Result<String, String>,
@@ -122,15 +120,15 @@ impl MockRunner {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl AcpCompletionRunner for MockRunner {
+#[async_trait::async_trait]
+impl CompletionRunner for MockRunner {
     async fn complete_text(
         &self,
-        req: AcpCompletionRequest,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>> {
+        req: CompletionRequest,
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>> {
         self.observed.lock().expect("lock poisoned").push(req);
         match &self.text_result {
-            Ok(text) => Ok(AcpCompletionTurnResult {
+            Ok(text) => Ok(CompletionTurnResult {
                 text: text.clone(),
                 usage: None,
             }),
@@ -140,18 +138,18 @@ impl AcpCompletionRunner for MockRunner {
 
     async fn complete_streaming<F>(
         &self,
-        req: AcpCompletionRequest,
+        req: CompletionRequest,
         on_delta: &mut F,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>>
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn Error>> + Send,
+        F: FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send,
     {
         self.observed.lock().expect("lock poisoned").push(req);
         for delta in &self.stream_deltas {
             on_delta(delta)?;
         }
         match &self.stream_result {
-            Ok(text) => Ok(AcpCompletionTurnResult {
+            Ok(text) => Ok(CompletionTurnResult {
                 text: text.clone(),
                 usage: None,
             }),
@@ -169,7 +167,7 @@ async fn build_parallel_futures_with_runners_preserves_tagged_stream_tokens() {
     let (rag_future, baseline_future, mut rx) = build_parallel_futures_with_runners(
         &cfg,
         client,
-        "What is ACP?",
+        "What is RAG?",
         "Indexed context",
         &rag_runner,
         &baseline_runner,
@@ -201,7 +199,7 @@ async fn build_parallel_futures_with_runners_tags_fallback_text_when_streaming_f
     let (rag_future, baseline_future, mut rx) = build_parallel_futures_with_runners(
         &cfg,
         client,
-        "What is ACP?",
+        "What is RAG?",
         "Indexed context",
         &rag_runner,
         &baseline_runner,

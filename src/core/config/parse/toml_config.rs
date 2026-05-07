@@ -1,4 +1,3 @@
-use super::super::types::AskBackend;
 use crate::core::paths::axon_config_path;
 use serde::Deserialize;
 use std::io::Read;
@@ -55,8 +54,6 @@ pub(super) struct TomlSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskSection {
-    /// Security-sensitive ask synthesis backend. Default: headless.
-    pub backend: Option<AskBackend>,
     /// Max chunks returned per ask query (clamped 3–40).
     pub chunk_limit: Option<usize>,
     /// Max candidate chunks fetched before scoring (clamped 8–300).
@@ -182,7 +179,7 @@ fn resolve_config_path() -> Result<Option<ResolvedConfigPath>, String> {
 
 fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
     // Reject symlinks: ~/.axon/config.toml controls service URLs (Qdrant,
-    // TEI, Chrome CDP, OpenAI base) and ACP adapter commands. A planted
+    // TEI, Chrome CDP, OpenAI base). A planted
     // symlink under a permissive ~/.axon would let a local attacker
     // redirect those baseline endpoints. `read_to_string` follows symlinks
     // by default — we lstat first.
@@ -355,12 +352,6 @@ mod tests {
         assert_eq!(cfg.ask.chunk_limit, Some(5));
         assert_eq!(cfg.ask.candidate_limit, Some(50));
         assert!(cfg.ask.min_relevance_score.is_some());
-    }
-
-    #[test]
-    fn valid_toml_parses_ask_backend() {
-        let cfg = load_toml_config_from_str("[ask]\nbackend = \"headless\"").unwrap();
-        assert_eq!(cfg.ask.backend, Some(AskBackend::Headless));
     }
 
     #[test]

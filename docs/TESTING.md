@@ -87,16 +87,10 @@ tracked local compose stack.
 
 ### Rust: `crates/services/`
 
-Integration tests under `tests/` cover the ACP and services layer end-to-end:
+Integration tests under `tests/` cover the LLM backend and services layer end-to-end:
 
 | File | Tests | What is covered |
 |------|-------|----------------|
-| `tests/services_acp_spawn_env.rs` | 4 | `spawn_adapter()` env-stripping regression (see below) |
-| `tests/services_acp_lifecycle.rs` | 11 | ACP session lifecycle (start, query, cancel, shutdown) |
-| `tests/services_acp_event_mapping.rs` | 12 | ACP event type mapping and serialization |
-| `tests/services_acp_security.rs` | 12 | ACP security model (SEC-7 session-scoped permission routing) |
-| `tests/services_acp_smoke.rs` | 3 | ACP compile-time smoke tests |
-| `tests/services_acp_bridge_event_serialize.rs` | 7 | Bridge event serialization round-trips |
 | `tests/services_discovery_services.rs` | 16 | Service discovery contracts |
 | `tests/services_lifecycle_services.rs` | 16 | Service lifecycle state machine |
 | `tests/services_query_services.rs` | 13 | Query service dispatch |
@@ -112,7 +106,6 @@ WebSocket and execute-path tests:
 | `tests/web_ws_async_fire_and_forget.rs` | 9 | Async WS fire-and-forget execution paths |
 | `tests/web_ws_override_mapping.rs` | 19 | WS mode and flag override mapping |
 | `crates/web/execute/tests/ws_protocol_tests.rs` | (inline) | WS protocol frame encode/decode |
-| `crates/web/execute/tests/acp_ws_event_tests.rs` | (inline) | ACP WS event types |
 | `crates/web/execute/tests/ws_event_v2_tests.rs` | (inline) | WS event v2 serialization |
 
 ### Rust: CLI and MCP contracts
@@ -147,19 +140,6 @@ New TypeScript test files added in v0.11.1:
 | `api/workspace-route.test.ts` | `/api/workspace` route handler |
 | `pulse-chat-api-lib.test.ts` | Pulse chat API library — streaming, message assembly |
 | `pulse-session-store.test.ts` | Pulse session store — persistence, hydration, eviction |
-| `use-axon-acp-editor.test.ts` | `useAxonAcpEditor` hook — `<axon:editor>` XML block wiring to PlateJS |
-
-## ACP Regression Tests (`spawn_adapter` env stripping)
-
-`tests/services_acp_spawn_env.rs` covers a critical regression: `spawn_adapter()` must not leak
-specific environment variables to the child `claude-agent-acp` process.
-
-**Background:** When axon runs inside a Claude Code session, `CLAUDECODE=1` is set in the environment.
-If inherited by the ACP adapter, the inner `claude` CLI detects a nested session and exits 1
-("Claude Code cannot be launched inside another Claude Code session"), causing
-"Query closed before response received" in Pulse Chat.
-`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` point at Axon's local LLM proxy — if
-inherited, the claude/codex adapters would use the wrong endpoint and authentication scheme.
 
 **Tests:**
 
@@ -186,14 +166,13 @@ production code:
 - `crates/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
   test builds. It lets httpmock-based tests reach `127.0.0.1` while keeping
   `validate_url()` loopback blocking active by default.
-- `crates/services/acp/session_cache.rs` has dummy ACP handles and responder
   maps inside its test module so cache eviction and replay-buffer behavior can
   be tested without spawning real adapters.
 
 These patterns are acceptable only because they are compile-time test scoped.
 New tests that need a bypass should keep it behind `#[cfg(test)]` or a dedicated
 test-helper feature, and production paths should continue to go through the
-normal SSRF and ACP validation boundaries.
+normal SSRF and LLM backend validation boundaries.
 
 ## Validation Commands
 
@@ -296,9 +275,6 @@ just coverage-branch
 - If unset, test resolver falls back to `.env` and then defaults.
 - Ensure credentials in local `.env` match running Postgres.
 
-### `spawn_adapter` ACP tests failing on "unsafe_code"
-- Cause: Whole-crate `deny(unsafe_code)` applies before the file-level `allow`.
-- Fix: ensure `#![allow(unsafe_code)]` is present at the top of `tests/services_acp_spawn_env.rs` (not inside a module). This is intentional — do not remove it.
 
 ## Pull Request Checklist (Testing)
 - Ran `just test` after code changes.

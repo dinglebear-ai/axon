@@ -54,7 +54,7 @@ All MCP handlers call through the services layer (`crates/services/`), never dir
 
 ```
 MCP handler -> services::query() -> vector::ops::search() -> Qdrant
-MCP handler -> services::ask()   -> vector::ops::ask()    -> Qdrant + ACP
+MCP handler -> services::ask()   -> vector::ops::ask()    -> Qdrant + Gemini headless
 CLI handler -> services::query() -> (same path)
 Web route   -> services::query() -> (same path)
 ```
@@ -179,19 +179,9 @@ Query
 
 Named-mode collections (new) support hybrid search. Legacy unnamed-mode collections fall back to dense-only. The `VectorMode` is cached per-process -- restart workers after collection migration.
 
-## ACP completion pattern
+## Gemini headless completion pattern
 
-Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Agent Client Protocol (ACP):
-
-```
-1. Service function prepares prompt + context
-2. ACP adapter spawned as subprocess (configured via AXON_ACP_ADAPTER_CMD)
-3. Adapter communicates with LLM provider
-4. Response streamed back through ACP protocol
-5. Service function parses and returns typed result
-```
-
-Pre-warming (`AXON_ACP_PREWARM=true`) eliminates cold-start latency by spawning the adapter at server startup.
+Operations requiring LLM synthesis (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) call the typed `services::llm_backend` facade. The backend launches Gemini headless with an isolated temporary HOME, an allowlisted environment, timeout enforcement, and a concurrency semaphore.
 
 ## See also
 

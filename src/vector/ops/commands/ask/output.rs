@@ -1,7 +1,6 @@
 use crate::core::config::Config;
 use crate::core::http::http_client;
 use crate::core::logging::log_warn;
-use crate::services::acp_llm::WarmAcpSession;
 use std::error::Error;
 use std::time::Instant;
 
@@ -25,7 +24,6 @@ pub(crate) async fn ask_llm_answer(
     cfg: &Config,
     query: &str,
     context: &str,
-    warm: Option<WarmAcpSession>,
 ) -> Result<AskLlmCompletion, Box<dyn Error>> {
     let client = http_client()?;
     let llm_started = Instant::now();
@@ -38,8 +36,7 @@ pub(crate) async fn ask_llm_answer(
     // into Option<(String, Option<Instant>)> + Option<String> here so the !Send
     // error never crosses the await boundary that follows.
     let (streamed_ok, streamed_err): (Option<(String, Option<Instant>)>, Option<String>) = {
-        let result =
-            ask_llm_streaming_ttft(cfg, client, query, context, stream_to_stdout, warm).await;
+        let result = ask_llm_streaming_ttft(cfg, client, query, context, stream_to_stdout).await;
         match result {
             Ok(pair) => (Some(pair), None),
             Err(e) => (None, Some(e.to_string())),

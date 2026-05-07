@@ -29,7 +29,7 @@ axon debug   # doctor + LLM-assisted troubleshooting
 | TEI | scrape, crawl, embed, query, ask |
 | Chrome | Chrome render mode |
 | Tavily | search, research |
-| LLM/ACP | ask, extract, research |
+| LLM/Gemini | ask, extract, research |
 
 ## Common fixes
 

@@ -1,14 +1,12 @@
 use super::*;
 use crate::core::config::Config;
-use crate::services::acp_llm::{
-    AcpCompletionRequest, AcpCompletionRunner, AcpCompletionTurnResult,
-};
+use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[derive(Clone)]
 struct MockRunner {
-    observed: Arc<Mutex<Vec<AcpCompletionRequest>>>,
+    observed: Arc<Mutex<Vec<CompletionRequest>>>,
     stream_deltas: Vec<String>,
     stream_result: Result<String, String>,
     text_result: Result<String, String>,
@@ -34,15 +32,15 @@ impl MockRunner {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl AcpCompletionRunner for MockRunner {
+#[async_trait::async_trait]
+impl CompletionRunner for MockRunner {
     async fn complete_text(
         &self,
-        req: AcpCompletionRequest,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>> {
+        req: CompletionRequest,
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>> {
         self.observed.lock().expect("lock poisoned").push(req);
         match &self.text_result {
-            Ok(text) => Ok(AcpCompletionTurnResult {
+            Ok(text) => Ok(CompletionTurnResult {
                 text: text.clone(),
                 usage: None,
             }),
@@ -52,18 +50,18 @@ impl AcpCompletionRunner for MockRunner {
 
     async fn complete_streaming<F>(
         &self,
-        req: AcpCompletionRequest,
+        req: CompletionRequest,
         on_delta: &mut F,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>>
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn Error>> + Send,
+        F: FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send,
     {
         self.observed.lock().expect("lock poisoned").push(req);
         for delta in &self.stream_deltas {
             on_delta(delta)?;
         }
         match &self.stream_result {
-            Ok(text) => Ok(AcpCompletionTurnResult {
+            Ok(text) => Ok(CompletionTurnResult {
                 text: text.clone(),
                 usage: None,
             }),
@@ -169,7 +167,7 @@ fn test_process_sse_line_emits_tagged_token() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn ask_llm_streaming_with_runner_builds_acp_request_and_collects_tokens() {
+async fn ask_llm_streaming_with_runner_builds_completion_request_and_collects_tokens() {
     let cfg = Config::test_default();
     let runner = MockRunner::with_streaming(&["hello ", "there"], "hello there");
 
@@ -182,7 +180,7 @@ async fn ask_llm_streaming_with_runner_builds_acp_request_and_collects_tokens() 
     assert_eq!(observed.len(), 1);
     assert_eq!(
         observed[0],
-        AcpCompletionRequest::new("Question: How?\n\nContext:\nContext block")
+        CompletionRequest::new("Question: How?\n\nContext:\nContext block")
             .system_prompt(ASK_RAG_SYSTEM_PROMPT)
             .model("test-model")
             .stream(true)
@@ -190,7 +188,7 @@ async fn ask_llm_streaming_with_runner_builds_acp_request_and_collects_tokens() 
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn ask_llm_streaming_with_runner_omits_blank_model_for_acp_only_config() {
+async fn ask_llm_streaming_with_runner_omits_blank_model_for_completion_only_config() {
     let mut cfg = Config::test_default();
     cfg.openai_model.clear();
     let runner = MockRunner::with_streaming(&["hello"], "hello");
@@ -203,14 +201,14 @@ async fn ask_llm_streaming_with_runner_omits_blank_model_for_acp_only_config() {
     let observed = runner.observed.lock().expect("lock poisoned");
     assert_eq!(
         observed[0],
-        AcpCompletionRequest::new("Question: How?\n\nContext:\nContext block")
+        CompletionRequest::new("Question: How?\n\nContext:\nContext block")
             .system_prompt(ASK_RAG_SYSTEM_PROMPT)
             .stream(true)
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn baseline_llm_non_streaming_with_runner_builds_acp_request() {
+async fn baseline_llm_non_streaming_with_runner_builds_completion_request() {
     let cfg = Config::test_default();
     let runner = MockRunner::with_text("baseline answer");
 
@@ -223,7 +221,7 @@ async fn baseline_llm_non_streaming_with_runner_builds_acp_request() {
     assert_eq!(observed.len(), 1);
     assert_eq!(
         observed[0],
-        AcpCompletionRequest::new("What changed?")
+        CompletionRequest::new("What changed?")
             .system_prompt(BASELINE_SYSTEM_PROMPT)
             .model("test-model")
             .stream(false)
@@ -231,7 +229,7 @@ async fn baseline_llm_non_streaming_with_runner_builds_acp_request() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn judge_llm_non_streaming_with_runner_builds_acp_request() {
+async fn judge_llm_non_streaming_with_runner_builds_completion_request() {
     let cfg = Config::test_default();
     let runner = MockRunner::with_text("judge answer");
     let judge_ctx = JudgeContext {
@@ -282,7 +280,7 @@ async fn judge_llm_non_streaming_with_runner_builds_acp_request() {
     assert_eq!(observed.len(), 1);
     assert_eq!(
         observed[0],
-        AcpCompletionRequest::new(judge_user_msg(&judge_ctx))
+        CompletionRequest::new(judge_user_msg(&judge_ctx))
             .system_prompt(judge_system_prompt())
             .model("test-model")
             .stream(false)

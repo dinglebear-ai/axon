@@ -82,11 +82,11 @@ Both fields are present on `SessionFile` (scanner), `SessionSummary` (frontend i
 
 ## SessionFallback Event
 
-When Pulse chat (ACP bridge) attempts to resume a session by ID and the ACP adapter fails to load it (e.g. the session file no longer exists or the adapter cannot parse it), the bridge falls back to creating a **new session** and emits a `SessionFallback` event.
+When Pulse chat (Gemini headless completion path) attempts to resume a session by ID and the Gemini CLI fails to load it (e.g. the session file no longer exists or the adapter cannot parse it), the bridge falls back to creating a **new session** and emits a `SessionFallback` event.
 
 ### Rust wire shape
 
-Emitted from `crates/services/acp/session.rs` via `AcpBridgeEvent::SessionFallback` and serialized by `crates/services/types/acp.rs`:
+Emitted from `crates/services/llm_backend/headless/gemini.rs` via `LLM completion error` and serialized by `crates/services/llm_backend/types.rs`:
 
 ```json
 {
@@ -101,7 +101,7 @@ Emitted from `crates/services/acp/session.rs` via `AcpBridgeEvent::SessionFallba
 The event is handled in two places in the Pulse stream pipeline:
 
 - **`/api/pulse/chat/route.ts`**: on receiving `session_fallback` from the Rust WS bridge, emits `{ type: 'session_fallback', newSessionId }` downstream to the client.
-- **`hooks/use-axon-acp.ts`**: exposes an `onSessionFallback(oldId, newId)` callback; `axon-shell.tsx` currently passes `undefined` (no custom handler), so the fallback is a silent session swap.
+- **`web event consumers`**: exposes an `onSessionFallback(oldId, newId)` callback; `axon-shell.tsx` currently passes `undefined` (no custom handler), so the fallback is a silent session swap.
 - **`lib/pulse/chat-api.ts`**: the `ChatStreamEvent` union type includes `{ type: 'session_fallback'; newSessionId: string }`, and `chat-stream.ts` also models it.
 
 The fallback is **graceful** — the user continues into a new session rather than seeing an error. The `old_session_id` is available if the caller needs to log or surface the swap.

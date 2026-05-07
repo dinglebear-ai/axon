@@ -9,8 +9,7 @@ use super::super::super::cli::GlobalArgs;
 use super::super::super::types::Config;
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
-    env_bool, env_port, parse_csv_env, parse_origin_allowlist, resolve_ask_adapter_args,
-    resolve_ask_adapter_cmd, resolve_mcp_transport, validate_custom_headers,
+    env_port, parse_csv_env, parse_origin_allowlist, resolve_mcp_transport, validate_custom_headers,
 };
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
@@ -166,17 +165,6 @@ fn populate_services_and_ask_basics(
         .clone()
         .or_else(|| env::var("OPENAI_MODEL").ok())
         .unwrap_or_default();
-    cfg.acp_adapter_cmd = resolve_ask_adapter_cmd();
-    cfg.acp_adapter_args = resolve_ask_adapter_args();
-    cfg.acp_prewarm = env_bool("AXON_ACP_PREWARM", true);
-    cfg.acp_ws_url = env::var("AXON_ACP_WS_URL")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v: &String| !v.is_empty());
-    cfg.acp_ws_token = env::var("AXON_ACP_WS_TOKEN")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v: &String| !v.is_empty());
     cfg.tavily_api_key = env::var("TAVILY_API_KEY").ok().unwrap_or_default();
     cfg.mcp_allowed_origins = env::var("AXON_MCP_ALLOWED_ORIGINS")
         .ok()

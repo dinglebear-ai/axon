@@ -31,7 +31,7 @@ The MCP server reads existing Axon stack variables at startup:
 | `TEI_URL` | Embedding generation |
 | `OPENAI_BASE_URL` | LLM provider (legacy path) |
 | `OPENAI_API_KEY` | LLM auth |
-| `OPENAI_MODEL` | Model override for ACP completions |
+| `OPENAI_MODEL` | Model override for Gemini headless completions |
 | `TAVILY_API_KEY` | Web search and research |
 | `AXON_LITE` | Enable lite mode (SQLite-backed, default) |
 | `AXON_COLLECTION` | Default Qdrant collection |

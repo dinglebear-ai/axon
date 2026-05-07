@@ -26,7 +26,6 @@ mcp/
 │   ├── handlers_crawl_extract.rs   # crawl + extract action handlers
 │   ├── handlers_embed_ingest.rs    # embed + ingest action handlers
 │   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research
-│   ├── handlers_acp.rs             # acp action handlers
 │   ├── handlers_elicit.rs          # elicitation prompts
 │   ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
 │   ├── handlers_system/

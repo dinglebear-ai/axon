@@ -30,7 +30,6 @@ crates/
 │       ├── handlers_embed_ingest.rs
 │       ├── handlers_query.rs        # query/retrieve/search/map/scrape/ask/research/screenshot
 │       ├── handlers_system.rs       # doctor/domains/sources/stats/status/artifacts/help
-│       ├── handlers_acp.rs          # acp action handlers
 │       ├── handlers_elicit.rs       # elicit_demo handler
 │       ├── artifacts/               # Artifact storage helpers
 │       └── handlers_system/         # Sub-handlers (e.g. screenshot.rs)

@@ -239,7 +239,7 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) openai_api_key: Option<String>,
 
-    /// LLM model name for ACP completion (overrides OPENAI_MODEL)
+    /// LLM model name for Gemini headless completion (overrides OPENAI_MODEL)
     #[arg(global = true, long)]
     pub(in crate::core::config) openai_model: Option<String>,
 
@@ -370,7 +370,7 @@ pub(in crate::core::config) struct GlobalArgs {
     pub(in crate::core::config) log_level: Option<String>,
 
     /// Route `axon ask` through a running `axon serve` HTTP endpoint instead of running
-    /// ACP synthesis in-process. Reuses the server's WarmSessionPool so cold ACP startup
+    /// Gemini synthesis in-process. Reuses the server URL path when configured so LLM startup
     /// (~45s) is paid once at server boot, not on every invocation. Example:
     /// `--server-url http://127.0.0.1:8001`. Env: `AXON_ASK_SERVER_URL`.
     ///

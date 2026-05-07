@@ -1,7 +1,7 @@
-use crate::core::config::{AskBackend, Config};
+use crate::core::config::Config;
 use crate::core::logging::log_warn;
-use crate::services::acp_llm::{self, AcpCompletionRequest};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
+use crate::services::llm_backend::{self, CompletionRequest};
 use crate::services::types::{ResearchResult, SearchOptions, SearchResult, ServiceTimeRange};
 use spider_agent::{Agent, SearchOptions as SpiderSearchOptions, TimeRange, TokenUsage};
 use std::collections::hash_map::DefaultHasher;
@@ -139,31 +139,6 @@ pub async fn research_payload(
     if cfg.tavily_api_key.is_empty() {
         return Err("research requires TAVILY_API_KEY — set it in .env".into());
     }
-    if cfg.ask_backend.uses_acp()
-        && cfg
-            .acp_adapter_cmd
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .is_empty()
-    {
-        return Err("research requires AXON_ACP_ADAPTER_CMD — set it in .env".into());
-    }
-    // Only explicit ACP mode warms an adapter. Headless/auto use the canonical
-    // short-lived CLI path for synthesis.
-    let warm_opt = match cfg.ask_backend {
-        AskBackend::Headless | AskBackend::Auto => None,
-        AskBackend::Acp => match acp_llm::warm_session(cfg, tx.clone()) {
-            Ok(w) => Some(w),
-            Err(e) => {
-                log_warn(&format!(
-                    "ACP warm session failed (synthesis will use cold path): {e}"
-                ));
-                None
-            }
-        },
-    };
-
     let agent = Agent::builder()
         .with_search_tavily(&cfg.tavily_api_key)
         .build()?;
@@ -211,7 +186,7 @@ pub async fn research_payload(
         },
     )
     .await;
-    let (summary, usage) = synthesize_warm(warm_opt, query, &extractions, cfg, tx.clone()).await;
+    let (summary, usage) = synthesize(query, &extractions, cfg, tx.clone()).await;
 
     let search_results_json = page
         .iter()
@@ -243,13 +218,9 @@ pub async fn research_payload(
     }))
 }
 
-/// Synthesize extracted content via a pre-warmed ACP session, streaming tokens
-/// back through `tx` as [`ServiceEvent::SynthesisDelta`] events.
-///
-/// Using a pre-warmed session eliminates the adapter cold-start cost because
-/// subprocess spawn + session initialization overlapped with the Tavily search.
-async fn synthesize_warm(
-    warm_opt: Option<acp_llm::WarmAcpSession>,
+/// Synthesize extracted content through Gemini headless and stream tokens back
+/// through `tx` as [`ServiceEvent::SynthesisDelta`] events.
+async fn synthesize(
     query: &str,
     extractions: &[serde_json::Value],
     cfg: &Config,
@@ -259,7 +230,7 @@ async fn synthesize_warm(
         return (None, TokenUsage::default());
     }
     let context = build_synthesis_context(extractions);
-    let mut req = AcpCompletionRequest::new(format!(
+    let mut req = CompletionRequest::new(format!(
         "Topic: {query}\n\nUntrusted sources:{context}\n\nProvide a comprehensive plain-text summary of the findings, citing sources where appropriate. Do not wrap the response in JSON."
     ))
     .system_prompt(
@@ -268,12 +239,7 @@ async fn synthesize_warm(
     if !cfg.openai_model.trim().is_empty() {
         req = req.model(cfg.openai_model.clone());
     }
-    let completion = if let Some(warm) = warm_opt {
-        warm.complete_streaming(req, synthesis_delta_handler(tx))
-            .await
-    } else {
-        complete_synthesis_cold(cfg, req, tx).await
-    };
+    let completion = llm_backend::complete_streaming(req, synthesis_delta_handler(tx)).await;
     match completion {
         Ok(response) => parse_synthesis_response(response),
         Err(e) => {
@@ -288,7 +254,7 @@ async fn synthesize_warm(
 
 fn synthesis_delta_handler(
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> impl FnMut(&str) -> Result<(), Box<dyn Error>> + Send {
+) -> impl FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send {
     move |delta| {
         if let Some(ref sender) = tx
             && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
@@ -299,31 +265,6 @@ fn synthesis_delta_handler(
         }
         Ok(())
     }
-}
-
-async fn complete_synthesis_cold(
-    cfg: &Config,
-    req: AcpCompletionRequest,
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<acp_llm::AcpCompletionResponse, Box<dyn Error>> {
-    let cfg = cfg.clone();
-    tokio::task::spawn_blocking(move || -> Result<acp_llm::AcpCompletionResponse, String> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| format!("failed to build research synthesis runtime: {err}"))?;
-        rt.block_on(acp_llm::complete_streaming(
-            &cfg,
-            req,
-            synthesis_delta_handler(tx),
-        ))
-        .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| -> Box<dyn Error> {
-        format!("failed to join research synthesis task: {err}").into()
-    })?
-    .map_err(|err| -> Box<dyn Error> { err.into() })
 }
 
 fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {
@@ -343,7 +284,7 @@ fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {
 }
 
 fn parse_synthesis_response(
-    response: acp_llm::AcpCompletionResponse,
+    response: llm_backend::CompletionResponse,
 ) -> (Option<String>, TokenUsage) {
     #[derive(serde::Deserialize)]
     struct SynthesisJson {
@@ -572,7 +513,7 @@ mod tests {
 
     #[test]
     fn parse_synthesis_response_accepts_json_summary_for_compatibility() {
-        let (summary, usage) = parse_synthesis_response(acp_llm::AcpCompletionResponse {
+        let (summary, usage) = parse_synthesis_response(llm_backend::CompletionResponse {
             text: r#"{"summary":"JSON summary text"}"#.to_string(),
             usage: None,
         });
@@ -582,9 +523,9 @@ mod tests {
 
     #[test]
     fn parse_synthesis_response_accepts_plain_text_contract() {
-        let (summary, usage) = parse_synthesis_response(acp_llm::AcpCompletionResponse {
+        let (summary, usage) = parse_synthesis_response(llm_backend::CompletionResponse {
             text: "Plain text summary.".to_string(),
-            usage: Some(acp_llm::AcpUsageSnapshot {
+            usage: Some(llm_backend::UsageSnapshot {
                 prompt_tokens: 10,
                 completion_tokens: 5,
                 total_tokens: 15,

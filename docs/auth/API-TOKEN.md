@@ -19,8 +19,6 @@ created, when it is required, and what fails without it.
 |-------|------|---------|-----------|---------|
 | `AXON_MCP_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
 | Web panel password | Auto-generated, file-backed | `axon serve` web UI (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
-| `AXON_ACP_AUTH_TOKEN` | Env-set | ACP adapter handshake (Claude Code / Codex / Gemini) | Only when the adapter advertises auth methods | [ACP adapter auth token](#acp-adapter-auth-token) |
-| `AXON_ACP_WS_TOKEN` | Env-set bearer | Remote ACP WS gateway (`AXON_ACP_WS_URL`) | Only when `AXON_ACP_WS_URL` points at a server that requires auth | [ACP WS gateway token](#acp-ws-gateway-token) |
 
 User-supplied third-party credentials (Tavily, OpenAI, GitHub, Reddit) are
 **not** axon-issued tokens — see [Third-party credentials](#third-party-credentials)
@@ -109,60 +107,6 @@ There is no in-product rotation API.
 rm ~/.axon/panel-password
 axon serve
 # Axon web panel password: <new-token>
-```
-
----
-
-## ACP adapter auth token
-
-**Variable:** `AXON_ACP_AUTH_TOKEN`
-**Source:** `crates/services/acp/session.rs`
-
-Used during the handshake with an ACP adapter subprocess (Claude Code,
-Codex CLI, Gemini CLI). Most adapters do not advertise authentication
-methods, so this variable is unused most of the time.
-
-| Property | Value |
-|----------|-------|
-| Storage | Process environment |
-| When required | Only if the adapter's `Initialize` response includes one or more `auth_methods`. Axon authenticates with the **first** advertised method using this token. |
-| Failure mode | If the adapter advertises auth methods but `AXON_ACP_AUTH_TOKEN` is unset/empty, the session fails with `ACP: adapter requires authentication but AXON_ACP_AUTH_TOKEN is not set`. |
-| Issuance | Not issued by Axon. The token is whatever credential the adapter expects (typically vendor-supplied). |
-
-### Setting it
-
-Only set this when an adapter requires it — most users will leave it
-unset. See `docs/ACP.md` for adapter-specific setup.
-
-```bash
-# .env (only if adapter requires it)
-AXON_ACP_AUTH_TOKEN=...
-```
-
----
-
-## ACP WS gateway token
-
-**Variable:** `AXON_ACP_WS_TOKEN`
-**Source:** `crates/core/config/parse/build_config.rs` (read into
-`Config::acp_ws_token`)
-
-Used **only** when `AXON_ACP_WS_URL` is set: the `acp_llm` completion
-gateway then routes through that remote WebSocket server instead of
-spawning a local adapter subprocess. The token is sent as a bearer
-credential on the WS upgrade.
-
-| Property | Value |
-|----------|-------|
-| Storage | Process environment |
-| When required | Only when `AXON_ACP_WS_URL` is set and the remote server requires auth. Default deployments use a local subprocess and ignore this variable entirely. |
-| Issuance | Not issued by Axon — the token is whatever the remote WS gateway expects. |
-| Failure mode | The remote gateway rejects the WS handshake when the token is missing or wrong. |
-
-```bash
-# .env — only when routing acp_llm through a remote WS gateway
-AXON_ACP_WS_URL=wss://acp.example.com/acp
-AXON_ACP_WS_TOKEN=...
 ```
 
 ---

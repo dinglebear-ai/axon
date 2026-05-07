@@ -1,24 +1,23 @@
-use axon::core::config::{AskBackend, Config};
-use axon::services::acp_llm::{
-    AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
-    AcpUsageSnapshot, complete_streaming_with_runner, complete_text, complete_text_with_runner,
+use axon::services::llm_backend::{
+    CompletionRequest, CompletionResponse, CompletionRunner, CompletionTurnResult, UsageSnapshot,
+    complete_streaming_with_runner, complete_text_with_runner,
 };
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 struct FakeCompletionRunner {
-    captured_requests: Arc<Mutex<Vec<AcpCompletionRequest>>>,
-    result: AcpCompletionTurnResult,
+    captured_requests: Arc<Mutex<Vec<CompletionRequest>>>,
+    result: CompletionTurnResult,
     deltas: Vec<String>,
 }
 
-#[async_trait::async_trait(?Send)]
-impl AcpCompletionRunner for FakeCompletionRunner {
+#[async_trait::async_trait]
+impl CompletionRunner for FakeCompletionRunner {
     async fn complete_text(
         &self,
-        req: AcpCompletionRequest,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>> {
+        req: CompletionRequest,
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>> {
         self.captured_requests
             .lock()
             .expect("lock request capture")
@@ -28,11 +27,11 @@ impl AcpCompletionRunner for FakeCompletionRunner {
 
     async fn complete_streaming<F>(
         &self,
-        req: AcpCompletionRequest,
+        req: CompletionRequest,
         on_delta: &mut F,
-    ) -> Result<AcpCompletionTurnResult, Box<dyn Error>>
+    ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>>
     where
-        F: FnMut(&str) -> Result<(), Box<dyn Error>> + Send,
+        F: FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send,
     {
         self.captured_requests
             .lock()
@@ -46,8 +45,8 @@ impl AcpCompletionRunner for FakeCompletionRunner {
 }
 
 #[test]
-fn services_acp_llm_request_shape_supports_system_user_model_and_stream_toggle() {
-    let req = AcpCompletionRequest::new("user prompt")
+fn services_llm_backend_request_shape_supports_system_user_model_and_stream_toggle() {
+    let req = CompletionRequest::new("user prompt")
         .system_prompt("system prompt")
         .model("llama3.1")
         .stream(true);
@@ -59,13 +58,13 @@ fn services_acp_llm_request_shape_supports_system_user_model_and_stream_toggle()
 }
 
 #[tokio::test]
-async fn services_acp_llm_complete_text_with_runner_extracts_turn_result_text() {
+async fn services_llm_backend_complete_text_with_runner_extracts_turn_result_text() {
     let captured_requests = Arc::new(Mutex::new(Vec::new()));
     let runner = FakeCompletionRunner {
         captured_requests: Arc::clone(&captured_requests),
-        result: AcpCompletionTurnResult {
+        result: CompletionTurnResult {
             text: "final answer".to_string(),
-            usage: Some(AcpUsageSnapshot {
+            usage: Some(UsageSnapshot {
                 prompt_tokens: 12,
                 completion_tokens: 34,
                 total_tokens: 46,
@@ -74,7 +73,7 @@ async fn services_acp_llm_complete_text_with_runner_extracts_turn_result_text() 
         deltas: vec![],
     };
 
-    let req = AcpCompletionRequest::new("user prompt")
+    let req = CompletionRequest::new("user prompt")
         .system_prompt("system prompt")
         .model("llama3.1")
         .stream(true);
@@ -85,9 +84,9 @@ async fn services_acp_llm_complete_text_with_runner_extracts_turn_result_text() 
 
     assert_eq!(
         response,
-        AcpCompletionResponse {
+        CompletionResponse {
             text: "final answer".to_string(),
-            usage: Some(AcpUsageSnapshot {
+            usage: Some(UsageSnapshot {
                 prompt_tokens: 12,
                 completion_tokens: 34,
                 total_tokens: 46,
@@ -105,12 +104,12 @@ async fn services_acp_llm_complete_text_with_runner_extracts_turn_result_text() 
 }
 
 #[tokio::test]
-async fn services_acp_llm_complete_streaming_with_runner_normalizes_stream_and_propagates_delta_errors()
+async fn services_llm_backend_complete_streaming_with_runner_normalizes_stream_and_propagates_delta_errors()
  {
     let captured_requests = Arc::new(Mutex::new(Vec::new()));
     let runner = FakeCompletionRunner {
         captured_requests: Arc::clone(&captured_requests),
-        result: AcpCompletionTurnResult {
+        result: CompletionTurnResult {
             text: "final answer".to_string(),
             usage: None,
         },
@@ -118,7 +117,7 @@ async fn services_acp_llm_complete_streaming_with_runner_normalizes_stream_and_p
     };
 
     let mut seen_deltas = Vec::new();
-    let req = AcpCompletionRequest::new("user prompt")
+    let req = CompletionRequest::new("user prompt")
         .system_prompt("system prompt")
         .model("llama3.1")
         .stream(false);
@@ -139,18 +138,4 @@ async fn services_acp_llm_complete_streaming_with_runner_normalizes_stream_and_p
     let captured = captured_requests.lock().expect("request capture lock");
     assert_eq!(captured.len(), 1);
     assert!(captured[0].stream);
-}
-
-#[tokio::test]
-async fn services_acp_llm_complete_text_requires_adapter_config() {
-    let cfg = Config {
-        acp_adapter_cmd: None,
-        ask_backend: AskBackend::Acp,
-        ..Config::default()
-    };
-    let err = complete_text(&cfg, AcpCompletionRequest::new("user prompt"))
-        .await
-        .expect_err("missing adapter config should fail");
-
-    assert!(err.to_string().contains("AXON_ACP_ADAPTER_CMD"));
 }

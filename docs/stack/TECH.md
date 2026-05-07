@@ -28,7 +28,6 @@
 | `tree-sitter-*` | various | AST-based code chunking (Rust, Python, JS, TS, Go, Bash) |
 | `octocrab` | 0.49 | GitHub API client |
 | `bollard` | 0.20 | Docker API client |
-| `agent-client-protocol` | 0.10+ | ACP adapter protocol |
 
 ### Infrastructure
 
@@ -105,16 +104,15 @@ Features explicitly NOT enabled:
 - `balance`: silently throttles with zero logging
 - `glob`: causes budget-aware `is_allowed()` to reject first URL with `with_limit(1)`
 
-## ACP (Agent Client Protocol)
+## Gemini Headless LLM
 
-LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use ACP:
+LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/services/llm_backend/`:
 
-- Adapter subprocess spawned via `AXON_ACP_ADAPTER_CMD` (e.g., `claude`, `codex`, `gemini`)
-- Pre-warming eliminates cold-start latency (~45s)
-- `OPENAI_MODEL` controls the model used for completions
-- Max concurrent sessions: 8 (configurable)
-- Per-turn timeout: 5 minutes (configurable)
-- Remote ACP: route completions through a remote `axon serve` WebSocket
+- `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
+- `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.
+- `OPENAI_MODEL` controls the Gemini model override.
+- `AXON_LLM_COMPLETION_CONCURRENCY` caps concurrent completions.
+- `AXON_LLM_COMPLETION_TIMEOUT_SECS` caps each completion request.
 
 ## Build tooling
 

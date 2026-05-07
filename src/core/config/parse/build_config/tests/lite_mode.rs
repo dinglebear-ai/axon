@@ -1,4 +1,4 @@
-//! AXON_LITE / MCP origin / URL-required / ACP env tests.
+//! AXON_LITE / MCP origin / URL-required env tests.
 //! Test BODIES unchanged from the previous flat `mod tests` (bead 2j9.6).
 
 #![allow(clippy::needless_pass_by_value)]
@@ -113,57 +113,5 @@ fn into_config_errors_when_tei_url_missing() {
         if let Some(val) = orig_tei_url {
             env::set_var("TEI_URL", val);
         }
-    }
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn into_config_reads_acp_ws_url_from_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    unsafe {
-        env::set_var("AXON_ACP_WS_URL", "https://axon.example.com:49000");
-    }
-    let cli = Cli::parse_from([
-        "axon",
-        "--qdrant-url",
-        "http://127.0.0.1:53333",
-        "--tei-url",
-        "http://127.0.0.1:52000",
-        "status",
-    ]);
-    let cfg = into_config(cli).expect("status config should parse");
-    assert_eq!(
-        cfg.acp_ws_url.as_deref(),
-        Some("https://axon.example.com:49000"),
-        "acp_ws_url should be populated from AXON_ACP_WS_URL"
-    );
-    unsafe {
-        env::remove_var("AXON_ACP_WS_URL");
-    }
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn into_config_reads_acp_ws_token_from_env() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    unsafe {
-        env::set_var("AXON_ACP_WS_TOKEN", "supersecret");
-    }
-    let cli = Cli::parse_from([
-        "axon",
-        "--qdrant-url",
-        "http://127.0.0.1:53333",
-        "--tei-url",
-        "http://127.0.0.1:52000",
-        "status",
-    ]);
-    let cfg = into_config(cli).expect("status config should parse");
-    assert_eq!(
-        cfg.acp_ws_token.as_deref(),
-        Some("supersecret"),
-        "acp_ws_token should be populated from AXON_ACP_WS_TOKEN"
-    );
-    unsafe {
-        env::remove_var("AXON_ACP_WS_TOKEN");
     }
 }

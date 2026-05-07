@@ -1,14 +1,13 @@
-use crate::core::config::{AskBackend, Config};
+use crate::core::config::Config;
 use crate::core::http::normalize_url;
-use crate::core::logging::log_warn;
-use crate::services::acp_llm::{self, AcpCompletionRequest};
+use crate::services::llm_backend::CompletionRequest;
 use crate::vector::ops::{input, qdrant};
 use spider::url::Url;
 use std::collections::HashSet;
 use std::error::Error;
 
 #[cfg(test)]
-use crate::services::acp_llm::AcpCompletionRunner;
+use crate::services::llm_backend::{self, CompletionRunner};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Suggestion {
@@ -236,8 +235,8 @@ ALREADY_INDEXED_URLS (sample — more may be indexed):\n{}",
     user_prompt
 }
 
-fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> AcpCompletionRequest {
-    let req = AcpCompletionRequest::new(user_prompt)
+fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> CompletionRequest {
+    let req = CompletionRequest::new(user_prompt)
         .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
         .stream(false);
     if cfg.openai_model.trim().is_empty() {
@@ -251,26 +250,23 @@ fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> AcpCompl
 async fn request_suggestions_from_runner<R>(
     runner: &R,
     user_prompt: &str,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    let req = AcpCompletionRequest::new(user_prompt)
+    let req = CompletionRequest::new(user_prompt)
         .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
         .stream(false);
-    let response = acp_llm::complete_text_with_runner(runner, req).await?;
+    let response = llm_backend::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
 }
 
 async fn request_suggestions_from_llm(
     cfg: &Config,
     user_prompt: &str,
-    warm: Option<acp_llm::WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
     let req = build_suggest_completion_request(cfg, user_prompt);
-    // Delegate to run_text_completion which handles warm/cold dispatch and ensures
-    // the cold path is confined to a spawn_blocking thread (keeping this future Send).
-    super::streaming::run_text_completion(cfg, req, warm).await
+    super::streaming::run_text_completion(cfg, req).await
 }
 
 fn filter_new_suggestions(
@@ -339,22 +335,9 @@ async fn discover_suggestions_with_context(
     focus: &str,
     desired: usize,
 ) -> Result<(Vec<Suggestion>, Vec<String>, String, SuggestPromptContext), Box<dyn Error>> {
-    // Start warming before Qdrant calls so cold-start overlaps with retrieval.
-    let warm = match cfg.ask_backend {
-        AskBackend::Headless | AskBackend::Auto => None,
-        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
-            Ok(w) => Some(w),
-            Err(e) => {
-                log_warn(&format!(
-                    "suggest: warm session failed to start, using cold path: {e}"
-                ));
-                None
-            }
-        },
-    };
     let ctx = build_suggest_prompt_context(cfg, focus, desired).await?;
     let user_prompt = build_suggest_user_prompt(&ctx);
-    let content = request_suggestions_from_llm(cfg, &user_prompt, warm).await?;
+    let content = request_suggestions_from_llm(cfg, &user_prompt).await?;
     let (accepted, rejected_existing) =
         filter_new_suggestions(&content, &ctx.indexed_lookup, desired);
     Ok((accepted, rejected_existing, content, ctx))
@@ -379,25 +362,23 @@ mod tests {
         already_indexed, filter_new_suggestions, parse_suggestions_from_llm,
         request_suggestions_from_runner,
     };
-    use crate::services::acp_llm::{
-        AcpCompletionRequest, AcpCompletionRunner, AcpCompletionTurnResult,
-    };
+    use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
     use std::collections::HashSet;
     use std::error::Error;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
     struct FakeCompletionRunner {
-        captured_requests: Arc<Mutex<Vec<AcpCompletionRequest>>>,
-        result: AcpCompletionTurnResult,
+        captured_requests: Arc<Mutex<Vec<CompletionRequest>>>,
+        result: CompletionTurnResult,
     }
 
-    #[async_trait::async_trait(?Send)]
-    impl AcpCompletionRunner for FakeCompletionRunner {
+    #[async_trait::async_trait]
+    impl CompletionRunner for FakeCompletionRunner {
         async fn complete_text(
             &self,
-            req: AcpCompletionRequest,
-        ) -> Result<AcpCompletionTurnResult, Box<dyn Error>> {
+            req: CompletionRequest,
+        ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>> {
             self.captured_requests
                 .lock()
                 .expect("lock request capture")
@@ -407,11 +388,11 @@ mod tests {
 
         async fn complete_streaming<F>(
             &self,
-            _req: AcpCompletionRequest,
+            _req: CompletionRequest,
             _on_delta: &mut F,
-        ) -> Result<AcpCompletionTurnResult, Box<dyn Error>>
+        ) -> Result<CompletionTurnResult, Box<dyn Error + Send + Sync>>
         where
-            F: FnMut(&str) -> Result<(), Box<dyn Error>> + Send,
+            F: FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send,
         {
             unreachable!("suggestions request path should use complete_text")
         }
@@ -474,8 +455,8 @@ mod tests {
         let captured_requests = Arc::new(Mutex::new(Vec::new()));
         let runner = FakeCompletionRunner {
             captured_requests: Arc::clone(&captured_requests),
-            result: AcpCompletionTurnResult {
-                text: r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"ACP gateway text"}]}"#.to_string(),
+            result: CompletionTurnResult {
+                text: r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"Gemini headless text"}]}"#.to_string(),
                 usage: None,
             },
         };
@@ -486,7 +467,7 @@ mod tests {
 
         assert_eq!(
             response,
-            r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"ACP gateway text"}]}"#
+            r#"{"suggestions":[{"url":"https://docs.example.com/guide","reason":"Gemini headless text"}]}"#
         );
 
         let captured = captured_requests.lock().expect("request capture lock");

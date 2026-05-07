@@ -81,9 +81,6 @@ struct LiteConfigSnapshot {
     qdrant_url: Option<String>,
     openai_base_url: Option<String>,
     openai_model: Option<String>,
-    acp_adapter_cmd: Option<String>,
-    acp_adapter_args: Option<String>,
-    acp_ws_url: Option<String>,
     ask_diagnostics: Option<bool>,
     ask_graph: Option<bool>,
     ask_max_context_chars: Option<usize>,
@@ -197,12 +194,6 @@ impl LiteConfigSnapshot {
                 &mut process_fallback_fields,
             ),
             openai_model: Some(cfg.openai_model.clone()),
-            acp_adapter_cmd: cfg.acp_adapter_cmd.clone(),
-            acp_adapter_args: cfg.acp_adapter_args.clone(),
-            acp_ws_url: cfg
-                .acp_ws_url
-                .as_deref()
-                .and_then(|url| endpoint_snapshot("acp_ws_url", url, &mut process_fallback_fields)),
             ask_diagnostics: Some(cfg.ask_diagnostics),
             ask_graph: Some(cfg.ask_graph),
             ask_max_context_chars: Some(cfg.ask_max_context_chars),
@@ -372,9 +363,6 @@ impl LiteConfigSnapshot {
             backfill_concurrency_limit,
             request_timeout_ms,
             sessions_project,
-            acp_adapter_cmd,
-            acp_adapter_args,
-            acp_ws_url,
             max_page_bytes,
             chrome_wait_for_selector,
             root_selector,

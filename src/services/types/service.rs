@@ -1,5 +1,5 @@
 //! Generic service result types used by query, scrape, system, and other
-//! non-ACP service modules.
+//! non-entrypoint service modules.
 
 // ── Options / pagination ─────────────────────────────────────────────────────
 
@@ -328,8 +328,6 @@ pub struct AskTiming {
     pub total: u128,
     // Populated only when ask_diagnostics=true; otherwise omitted via skip_serializing_if.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub warm_session_ready_ms: Option<u128>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tei_embed_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub qdrant_primary_ms: Option<u128>,
@@ -347,10 +345,6 @@ pub struct AskTiming {
     pub llm_ttft_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_total_ms: Option<u128>,
-    /// Origin variant of the warm session: `Pool` / `FreshSpawn` /
-    /// `EventChannelBypass` / `FailedFallback`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub llm_warm_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub streamed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
