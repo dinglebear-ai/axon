@@ -16,7 +16,9 @@ mod tests;
 use super::super::cli::Cli;
 use super::super::types::{CommandKind, Config};
 use super::excludes;
-use super::helpers::{default_sqlite_path, env_bool, parse_viewport, validate_collection_name};
+use super::helpers::{
+    default_sqlite_path, env_bool, parse_viewport, read_env, validate_collection_name,
+};
 // AXON_MCP_TRANSPORT is documented as a known knob in docs/CONFIG.md and is referenced
 // inside `config_literal::build` (via `resolve_mcp_transport`) so the
 // `cargo xtask check-mcp-http` grep keeps finding the canonical knob name.
@@ -55,10 +57,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     // Validate the final resolved name regardless of source: it gets
     // interpolated into Qdrant URL paths via format!() with no
     // percent-encoding (CWE-22 — bd axon_rust-d71.6 / H2).
+    // Use read_env (trims + filters empty) so a stray `AXON_COLLECTION=""`
+    // or `AXON_COLLECTION="   "` falls through to TOML / default rather
+    // than failing collection-name validation with an empty name.
     let collection = global
         .collection
         .clone()
-        .or_else(|| env::var("AXON_COLLECTION").ok())
+        .or_else(|| read_env("AXON_COLLECTION"))
         .or_else(|| toml.search.collection.clone())
         .unwrap_or_else(|| "cortex".to_string());
     validate_collection_name(&collection)?;

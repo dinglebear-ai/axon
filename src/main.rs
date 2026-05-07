@@ -39,12 +39,39 @@ fn load_dotenv() {
     }
 
     if let Some(home_env) = axon::core::paths::axon_home_dir().map(|d| d.join(".env")) {
-        match dotenvy::from_path(&home_env) {
-            Ok(_) => return,
-            Err(dotenvy::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+        // Reject symlinks under ~/.axon/ — this directory holds secrets and
+        // we do not want a planted symlink redirecting us to attacker-controlled
+        // env. Bare `dotenvy::from_path` follows symlinks via `File::open`.
+        match std::fs::symlink_metadata(&home_env) {
+            Ok(md) if md.file_type().is_symlink() => {
+                eprintln!(
+                    "warning: refusing to load symlinked .env at {} (potential symlink attack)",
+                    home_env.display()
+                );
+            }
+            Ok(_) => match dotenvy::from_path(&home_env) {
+                Ok(_) => return,
+                Err(dotenvy::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(dotenvy::Error::Io(ref e))
+                    if e.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
+                    eprintln!(
+                        "error: cannot read {} ({e}); refusing to fall through to repo-root .env to avoid masking production secrets",
+                        home_env.display()
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "warning: failed to load .env from {}: {e}",
+                        home_env.display()
+                    );
+                }
+            },
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 eprintln!(
-                    "warning: failed to load .env from {}: {e}",
+                    "warning: failed to stat .env at {}: {e}",
                     home_env.display()
                 );
             }

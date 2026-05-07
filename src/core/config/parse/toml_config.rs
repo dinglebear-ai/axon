@@ -143,6 +143,37 @@ fn resolve_config_path() -> Result<Option<ResolvedConfigPath>, String> {
 }
 
 fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
+    // Reject symlinks: ~/.axon/config.toml controls service URLs (Qdrant,
+    // TEI, Chrome CDP, OpenAI base) and ACP adapter commands. A planted
+    // symlink under a permissive ~/.axon would let a local attacker
+    // redirect those baseline endpoints. `read_to_string` follows symlinks
+    // by default — we lstat first.
+    match std::fs::symlink_metadata(path) {
+        Ok(md) if md.file_type().is_symlink() => {
+            return Err(format!(
+                "axon: error: refusing to load symlinked config file '{}' (potential symlink attack)",
+                path.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
+            return Ok(TomlConfig::default());
+        }
+        Err(e) if explicit => {
+            return Err(format!(
+                "axon: error: cannot read config file '{}': {e}",
+                path.display()
+            ));
+        }
+        Err(e) => {
+            eprintln!(
+                "axon: warning: cannot read config file '{}': {e}",
+                path.display()
+            );
+            return Ok(TomlConfig::default());
+        }
+    }
+
     let contents = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {

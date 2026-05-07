@@ -81,6 +81,42 @@ pub fn path_basename<'a>(path: &'a str, fallback: &'a str) -> &'a str {
         .unwrap_or(fallback)
 }
 
+/// Create a directory tree (recursive) with mode 0o700 on Unix.
+///
+/// Tightens permissions to 0o700 if the directory already exists with a
+/// looser mode. Use for any directory under `~/.axon/` that may hold
+/// secrets or sensitive runtime state (sqlite jobs.db + WAL/SHM, logs,
+/// MCP artifacts, scraped output).
+///
+/// Falls back to plain `create_dir_all` on non-Unix targets where the
+/// 0o700 concept does not apply (Windows uses ACLs).
+pub fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+        let metadata = std::fs::metadata(path)?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode != 0o700 {
+            tracing::warn!(
+                path = %path.display(),
+                mode = format_args!("{mode:o}"),
+                "tightening directory permissions to 0700"
+            );
+            std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -125,32 +125,7 @@ fn resolve_setup_config_path() -> io::Result<ConfigPath> {
     })
 }
 
-pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(path)?;
-        let metadata = std::fs::metadata(path)?;
-        let mode = metadata.permissions().mode() & 0o777;
-        if mode != 0o700 {
-            tracing::warn!(
-                path = %path.display(),
-                mode = format_args!("{mode:o}"),
-                "setup: tightening ~/.axon directory permissions to 0700"
-            );
-            std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
-        }
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        std::fs::create_dir_all(path)
-    }
-}
+pub use crate::core::paths::ensure_private_dir;
 
 fn create_private_file(path: &Path, contents: &str) -> io::Result<()> {
     use std::io::Write as _;

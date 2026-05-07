@@ -11,9 +11,20 @@ use sqlx::{
 pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     if path != ":memory:"
         && let Some(parent) = std::path::Path::new(path).parent()
-        && let Err(e) = tokio::fs::create_dir_all(parent).await
+        && !parent.as_os_str().is_empty()
     {
-        tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
+        // Use ensure_private_dir (mode 0o700) so SQLite WAL/SHM files —
+        // which inherit umask defaults and may contain credential
+        // snapshots from job payloads — are not group/world-readable
+        // on multi-user hosts.
+        let parent_buf = parent.to_path_buf();
+        if let Err(e) =
+            tokio::task::spawn_blocking(move || crate::core::paths::ensure_private_dir(&parent_buf))
+                .await
+                .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
+        {
+            tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
+        }
     }
 
     let connect_str = if path == ":memory:" {

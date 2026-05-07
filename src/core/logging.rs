@@ -243,7 +243,10 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
                 .map(|d| d.join("logs"))
                 .unwrap_or_else(|| PathBuf::from("logs"))
         });
-    std::fs::create_dir_all(&log_dir).ok();
+    // Use ensure_private_dir (0o700) so axon.log + rotated archives —
+    // which include redacted Config dumps and may include service URLs
+    // in error messages — are not world-readable on multi-user hosts.
+    super::paths::ensure_private_dir(&log_dir).ok();
 
     let log_file_name = std::env::var("AXON_LOG_FILE").unwrap_or_else(|_| "axon.log".to_string());
 

@@ -64,7 +64,13 @@ fn fallback_artifact_root() -> PathBuf {
 }
 
 async fn ensure_dir(path: &Path) -> Result<(), std::io::Error> {
-    tokio::fs::create_dir_all(path).await
+    // Use ensure_private_dir (0o700). MCP artifacts may include scraped
+    // page content, search results, and ask answers — all derived from
+    // user prompts that may contain sensitive context.
+    let path_buf = path.to_path_buf();
+    tokio::task::spawn_blocking(move || crate::core::paths::ensure_private_dir(&path_buf))
+        .await
+        .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
 }
 
 async fn is_writable(path: &Path) -> bool {
