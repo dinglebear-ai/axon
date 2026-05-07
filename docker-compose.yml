@@ -11,10 +11,17 @@ services:
         required: false
       - path: .env
         required: false
+    environment:
+      # Override host-side URLs with docker-internal service DNS.
+      QDRANT_URL: http://axon-qdrant:6333
+      TEI_URL: http://axon-tei:80
+      AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
+      AXON_MCP_HTTP_HOST: "0.0.0.0"
+      AXON_MCP_HTTP_PORT: "${AXON_MCP_HTTP_PORT:-8001}"
     ports:
-      - "${AXON_MCP_HTTP_PORT:-8001}:8001/tcp"
+      - "127.0.0.1:${AXON_MCP_HTTP_PORT:-8001}:8001/tcp"
     networks:
-      - jakenet
+      - axon
 
     deploy:
       resources:
@@ -23,6 +30,6 @@ services:
           cpus: '1.0'
 
 networks:
-  jakenet:
-    name: ${DOCKER_NETWORK:-jakenet}
+  axon:
+    name: axon
     external: true
