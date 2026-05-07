@@ -1,0 +1,5 @@
+short-keyword|rust borrow checker
+nl-canonical|How does Qdrant reciprocal rank fusion combine dense and sparse BM42 vectors during hybrid search, and what happens when the sparse vector is empty?
+multi-clause|What's the difference between tokio::join! and tokio::spawn for concurrent HTTP calls and when should each be used?
+code-related|How do I add an extension to a Rust trait without violating coherence rules?
+factual-recall|What is the default value of AXON_ASK_HYBRID_CANDIDATES?

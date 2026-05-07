@@ -150,3 +150,10 @@ dev:
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
     docker compose -f config/docker-compose.services.yaml up -d --wait axon-qdrant axon-tei axon-chrome
     "$AXON_BIN" mcp
+
+# ── Perf bench ────────────────────────────────────────────────────────────────
+
+# Run the ask perf bench harness. Defaults: 30 runs, both cold+warm modes.
+# See docs/perf/README.md for sample-size guidance and prereqs.
+bench-ask runs="30" mode="both":
+    @bash scripts/bench-ask.sh --runs {{runs}} --mode {{mode}}
