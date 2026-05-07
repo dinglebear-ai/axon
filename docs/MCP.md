@@ -72,7 +72,7 @@ HTTP transport uses:
 
 ## MCP Server Store
 
-The Web UI MCP settings page writes MCP server definitions to `/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`) and falls back to `~/.config/axon/mcp.json` when unset. These definitions are used by MCP clients and server configuration flows.
+The Web UI MCP settings page writes MCP server definitions to `${AXON_DATA_DIR}/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`) and falls back to `~/.config/axon/mcp.json` when unset. These definitions are used by MCP clients and server configuration flows.
 
 ### Config File Examples
 

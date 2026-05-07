@@ -35,7 +35,9 @@ impl LlmBackendConfig {
             gemini_model: non_empty(cfg.headless_gemini_model.clone())
                 .or_else(|| gemini_compatible_model(&cfg.openai_model)),
             gemini_home: cfg.headless_gemini_home.clone(),
-            completion_concurrency: cfg.llm_completion_concurrency.max(1),
+            completion_concurrency: cfg
+                .llm_completion_concurrency
+                .clamp(1, tokio::sync::Semaphore::MAX_PERMITS),
             completion_timeout_secs: cfg.llm_completion_timeout_secs.max(1),
             configured: true,
         }

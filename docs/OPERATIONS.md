@@ -312,7 +312,7 @@ tail -f "${AXON_DATA_DIR:-$HOME/.axon}/logs/axon.log"
 RUST_LOG=info,crates::jobs::lite=debug just dev
 ```
 
-`tracing` filters honor `RUST_LOG`. CDP/Gemini decoder noise is suppressed by
+`tracing` filters honor `RUST_LOG`. CDP decoder noise is suppressed by
 `init_tracing`.
 
 ### Container logs

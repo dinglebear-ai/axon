@@ -155,5 +155,5 @@ dev:
 
 # Run the ask perf bench harness. Defaults: 30 runs, both cold+warm modes.
 # See docs/perf/README.md for sample-size guidance and prereqs.
-bench-ask runs="30" mode="both":
+bench-ask runs="30" mode="cold":
     @bash scripts/bench-ask.sh --runs {{runs}} --mode {{mode}}

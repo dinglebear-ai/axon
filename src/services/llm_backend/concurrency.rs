@@ -12,6 +12,7 @@ static COMPLETION_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 fn parse_completion_concurrency_limit(raw: Option<&str>) -> usize {
     raw.and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
+        .map(|value| value.min(Semaphore::MAX_PERMITS))
         .unwrap_or(DEFAULT_LLM_COMPLETION_CONCURRENCY)
 }
 
@@ -19,7 +20,7 @@ pub async fn acquire_completion_permit(
     limit: usize,
 ) -> Result<OwnedSemaphorePermit, Box<dyn StdError + Send + Sync>> {
     COMPLETION_SEMAPHORE
-        .get_or_init(|| Arc::new(Semaphore::new(limit.max(1))))
+        .get_or_init(|| Arc::new(Semaphore::new(limit.clamp(1, Semaphore::MAX_PERMITS))))
         .clone()
         .acquire_owned()
         .await
@@ -38,5 +39,14 @@ mod tests {
     #[test]
     fn completion_concurrency_rejects_zero() {
         assert_eq!(parse_completion_concurrency_limit(Some("0")), 4);
+    }
+
+    #[test]
+    fn completion_concurrency_clamps_to_semaphore_max() {
+        let huge = (Semaphore::MAX_PERMITS + 1).to_string();
+        assert_eq!(
+            parse_completion_concurrency_limit(Some(&huge)),
+            Semaphore::MAX_PERMITS
+        );
     }
 }

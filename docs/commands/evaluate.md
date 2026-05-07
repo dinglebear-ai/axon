@@ -22,7 +22,7 @@ axon evaluate --query "<question>" [FLAGS]
 |----------|-------------|
 | `<question>` | Evaluation question (positional, or via `--query`). |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|

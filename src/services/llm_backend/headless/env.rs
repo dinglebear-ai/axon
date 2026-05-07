@@ -15,6 +15,8 @@ const ALLOWED_ENV_KEYS: &[&str] = &[
     "XDG_CONFIG_HOME",
     "XDG_DATA_HOME",
     "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_API_KEY",
+    "GOOGLE_CLOUD_LOCATION",
     "GOOGLE_CLOUD_PROJECT",
     "GOOGLE_GENAI_USE_VERTEXAI",
     "GEMINI_API_KEY",
@@ -74,11 +76,15 @@ mod tests {
             ("PATH", "/usr/bin"),
             ("OPENAI_API_KEY", "secret"),
             ("GEMINI_API_KEY", "gemini"),
+            ("GOOGLE_API_KEY", "google"),
+            ("GOOGLE_CLOUD_LOCATION", "us-central1"),
         ]);
         assert_eq!(
             captured,
             vec![
                 ("PATH", OsString::from("/usr/bin")),
+                ("GOOGLE_API_KEY", OsString::from("google")),
+                ("GOOGLE_CLOUD_LOCATION", OsString::from("us-central1")),
                 ("GEMINI_API_KEY", OsString::from("gemini")),
             ]
         );

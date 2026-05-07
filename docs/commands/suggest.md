@@ -19,7 +19,7 @@ axon suggest --query "<focus>" [FLAGS]
 |----------|-------------|
 | `[focus]` | Optional focus text for suggestions (also accepted via `--query`). |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|

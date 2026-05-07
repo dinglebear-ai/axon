@@ -19,7 +19,7 @@ axon research --query "<query>" [FLAGS]
 |----------|-------------|
 | `<query>` | Research query text (or use `--query`) |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|

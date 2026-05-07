@@ -19,7 +19,7 @@ axon ask --query "<question>" [FLAGS]
 |----------|-------------|
 | `<question>` | Question to answer (positional, or via `--query`) |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|

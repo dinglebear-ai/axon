@@ -15,7 +15,7 @@ axon debug [context text ...] [FLAGS]
 |----------|-------------|
 | `[context text ...]` | Optional operator context appended to the LLM prompt. |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
