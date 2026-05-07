@@ -479,7 +479,10 @@ pub struct Config {
     /// instead of running ACP synthesis in-process. Reuses the server's WarmSessionPool so cold
     /// ACP startup (~45s) is paid once at server boot. Flag: `--server-url`,
     /// env: `AXON_ASK_SERVER_URL`. When unset, ask runs in-process.
-    pub server_url: Option<String>,
+    ///
+    /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
+    /// rejected at config-build time rather than at request time.
+    pub server_url: Option<reqwest::Url>,
 
     /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,

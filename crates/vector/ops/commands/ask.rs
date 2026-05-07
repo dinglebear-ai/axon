@@ -41,18 +41,17 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let warm_started = std::time::Instant::now();
     let warm = match acp_llm::warm_session(cfg, None) {
         Ok(w) => {
-            // The warm-pool checkout returns immediately on cache hit; cold spawns
-            // also return quickly because adapter init is asynchronous (see
-            // spawn_warm_session / spawn_eager). Either way, this slot reflects
-            // the synchronous portion of warm-session acquisition.
-            timing.set_warm_path(w.from_pool());
+            // Capture origin (Pool / FreshSpawn / EventChannelBypass) at session
+            // construction; the slot reflects the synchronous portion of warm-
+            // session acquisition.
+            timing.set_warm_path(w.origin().as_str());
             Some(w)
         }
         Err(e) => {
             log_warn(&format!(
                 "ask: warm session failed to start, using cold path: {e}"
             ));
-            timing.set_warm_path(false);
+            timing.set_warm_path("FailedFallback");
             None
         }
     };
@@ -62,19 +61,35 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let llm = output::ask_llm_answer(cfg, query, &ctx.context, warm)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
-    timing.set(AskTimingSlot::LlmTotal, llm.llm_total_ms);
-    if let Some(ttft_at) = llm.ttft_first_token_at {
-        // TTFT is measured from request_start (= ask_started, the
-        // outermost-observable entry point in the ask service). This includes
-        // any ACP cold-start tax incurred during warm_session and retrieval.
-        let ttft_ms = ttft_at
-            .saturating_duration_since(timing.request_start)
-            .as_millis();
-        timing.set_ttft(ttft_ms);
-    }
+    let (answer_text, llm_total_ms) = match &llm {
+        output::AskLlmCompletion::Streamed {
+            answer,
+            ttft_at,
+            llm_total_ms,
+        } => {
+            timing.set_streamed(true);
+            // TTFT must be measured from the outer ask request_start so the ACP
+            // cold-start tax incurred by warm_session and retrieval is included;
+            // a TTFT measured from the LLM call would understate user-visible
+            // latency by the entire pre-LLM pipeline.
+            if let Some(start) = timing.request_start() {
+                let ttft_ms = ttft_at.saturating_duration_since(start).as_millis();
+                timing.set_ttft(ttft_ms);
+            }
+            (answer.as_str(), *llm_total_ms)
+        }
+        output::AskLlmCompletion::Fallback {
+            answer,
+            llm_total_ms,
+        } => {
+            timing.set_streamed(false);
+            (answer.as_str(), *llm_total_ms)
+        }
+    };
+    timing.set(AskTimingSlot::LlmTotal, llm_total_ms);
 
     let normalize_started = std::time::Instant::now();
-    let answer = normalize_ask_answer(cfg, query, &llm.answer, &ctx.context);
+    let answer = normalize_ask_answer(cfg, query, answer_text, &ctx.context);
     timing.record(AskTimingSlot::Normalize, normalize_started);
 
     let total_elapsed_ms = ask_started.elapsed().as_millis();
@@ -104,18 +119,15 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             ctx.retrieval_elapsed_ms,
             ctx.context_elapsed_ms,
             ctx.graph_elapsed_ms,
-            llm.llm_total_ms,
+            llm_total_ms,
             total_elapsed_ms,
             &timing,
         ),
     }))
 }
 
-/// Build the `timing_ms` JSON object. The legacy 5-bucket shape
-/// (`retrieval` / `context_build` / `graph` / `llm` / `total`) is always
-/// present for back-compat; sub-stage fields populate only when
-/// `cfg.ask_diagnostics` is true (otherwise omitted via `skip_serializing_if`
-/// at the typed boundary in `crates/services/types/service.rs`).
+/// Back-compat: legacy 5-bucket shape always present; sub-stage fields populate
+/// only when `cfg.ask_diagnostics` is true.
 fn build_timing_json(
     retrieval_ms: u128,
     context_ms: u128,
@@ -136,40 +148,46 @@ fn build_timing_json(
     obj.insert("llm".into(), ms(llm_ms));
     obj.insert("total".into(), ms(total_ms));
 
-    if let Some(v) = timing.warm_session_ready_ms {
+    let Some(e) = timing.enabled() else {
+        return serde_json::Value::Object(obj);
+    };
+    if let Some(v) = e.warm_session_ready_ms {
         obj.insert("warm_session_ready_ms".into(), ms(v));
     }
-    if let Some(v) = timing.tei_embed_ms {
+    if let Some(v) = e.tei_embed_ms {
         obj.insert("tei_embed_ms".into(), ms(v));
     }
-    if let Some(v) = timing.qdrant_primary_ms {
+    if let Some(v) = e.qdrant_primary_ms {
         obj.insert("qdrant_primary_ms".into(), ms(v));
     }
-    if let Some(v) = timing.qdrant_secondary_ms {
+    if let Some(v) = e.qdrant_secondary_ms {
         obj.insert("qdrant_secondary_ms".into(), ms(v));
     }
-    if let Some(v) = timing.rerank_ms {
+    if let Some(v) = e.rerank_ms {
         obj.insert("rerank_ms".into(), ms(v));
     }
-    if let Some(v) = timing.top_select_ms {
+    if let Some(v) = e.top_select_ms {
         obj.insert("top_select_ms".into(), ms(v));
     }
-    if let Some(v) = timing.full_doc_fetch_ms {
+    if let Some(v) = e.full_doc_fetch_ms {
         obj.insert("full_doc_fetch_ms".into(), ms(v));
     }
-    if let Some(v) = timing.supplemental_ms {
+    if let Some(v) = e.supplemental_ms {
         obj.insert("supplemental_ms".into(), ms(v));
     }
-    if let Some(v) = timing.llm_ttft_ms {
+    if let Some(v) = e.llm_ttft_ms {
         obj.insert("llm_ttft_ms".into(), ms(v));
     }
-    if let Some(v) = timing.llm_total_ms {
+    if let Some(v) = e.llm_total_ms {
         obj.insert("llm_total_ms".into(), ms(v));
     }
-    if let Some(v) = timing.llm_warm_path {
-        obj.insert("llm_warm_path".into(), v.into());
+    if let Some(v) = e.llm_warm_path.as_ref() {
+        obj.insert("llm_warm_path".into(), v.clone().into());
     }
-    if let Some(v) = timing.normalize_ms {
+    if let Some(v) = e.streamed {
+        obj.insert("streamed".into(), v.into());
+    }
+    if let Some(v) = e.normalize_ms {
         obj.insert("normalize_ms".into(), ms(v));
     }
     serde_json::Value::Object(obj)

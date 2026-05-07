@@ -7,7 +7,7 @@ pub(super) async fn build_judge_reference(
     cfg: &Config,
     question: &str,
 ) -> Result<(String, usize), Box<dyn Error>> {
-    let mut ask_timing = super::super::ask::AskTiming::new(false, std::time::Instant::now());
+    let mut ask_timing = super::super::ask::AskTiming::disabled();
     let ctx = super::super::ask::build_ask_context(cfg, question, &mut ask_timing).await?;
     let ref_count = ctx.chunks_selected + ctx.full_docs_selected + ctx.supplemental_count;
     if ref_count == 0 || ctx.context.trim().is_empty() {

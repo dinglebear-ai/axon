@@ -15,7 +15,7 @@ pub use types::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, extract_completion_result, normalize_stream_flag,
 };
-pub use warm::{WarmAcpSession, warm_session};
+pub use warm::{WarmAcpSession, WarmAcpSessionOrigin, warm_session};
 
 use std::error::Error as StdError;
 use std::sync::{Arc, Mutex, OnceLock};

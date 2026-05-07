@@ -1,6 +1,6 @@
 use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::crates::core::config::Config;
-use crate::crates::core::logging::log_debug;
+use crate::crates::core::logging::{log_debug, log_warn};
 use crate::crates::services::error::ServiceError;
 use crate::crates::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateScorePolicy, authoritative_ratio, build_candidates_from_hits,
@@ -64,13 +64,9 @@ pub(super) fn apply_mode_aware_rerank(
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
-/// attaching context JSON unconditionally on the error path so operators can
-/// see the collection / Qdrant URL / query-length context that produced the
-/// failure. The cost is one small JSON object per failure, and every failure
-/// already costs at least a Qdrant round-trip — the marginal cost is
-/// negligible. The legacy `cfg.ask_diagnostics` flag still gates verbose
-/// **success-path** payloads elsewhere (see `ask.rs` and
-/// `evaluate/display.rs`). (bd axon_rust-d71.35)
+/// attaching collection / Qdrant URL / query-length context unconditionally so
+/// operators can diagnose the failure. The legacy `cfg.ask_diagnostics` flag
+/// still gates verbose success-path payloads elsewhere.
 fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> anyhow::Error {
     let diagnostics = serde_json::json!({
         "stage": "ask_vector_search_dispatch",
@@ -159,7 +155,7 @@ pub(super) async fn retrieve_ask_candidates(
                 let secondary = build_candidates_from_hits(kw_hits, &build_policy);
                 retrieved_candidates = merge_candidates(retrieved_candidates, secondary.candidates);
             }
-            Err(e) => log_debug(&format!(
+            Err(e) => log_warn(&format!(
                 "ask: keyword search failed (continuing with NL only): {e}"
             )),
         }
@@ -233,10 +229,10 @@ struct DispatchOutcome<'a> {
         Option<Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>>,
 }
 
-/// Build the primary (NL) and optional secondary (keyword) Qdrant search
-/// requests, dispatch them in parallel via `tokio::join!` when dual-embedding
-/// is active (sequential dispatch burned ~2-3s per ask — bd axon_rust-d71.3 /
-/// C3), and record the combined wall-clock into the ask timing accumulator.
+/// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches
+/// in parallel and record per-arm wall-clock latency so `qdrant_secondary_ms`
+/// reflects the secondary arm's true round-trip rather than the combined join
+/// window (the previous approach made the two timing slots indistinguishable).
 #[allow(clippy::too_many_arguments)]
 async fn run_qdrant_dispatch<'a>(
     cfg: &'a Config,
@@ -253,31 +249,35 @@ async fn run_qdrant_dispatch<'a>(
         qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
             .map_err(|e| anyhow!("build ask vector search request: {e}"))?
             .with_candidates_override(Some(hybrid_candidates));
-    let qdrant_started = std::time::Instant::now();
-    let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
-    let (primary_res, secondary_res) = if use_dual && !ask_vectors.is_empty() {
+    let primary_fut = async {
+        let t = std::time::Instant::now();
+        let r = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
+        (r, t.elapsed().as_millis())
+    };
+    let (primary_pair, secondary_pair) = if use_dual && !ask_vectors.is_empty() {
         let vecq_kw = ask_vectors.remove(0);
         let secondary_request =
             qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
                 .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
                 .with_candidates_override(Some(hybrid_candidates));
-        let secondary_fut = qdrant::dispatch_vector_search_request(cfg, &secondary_request);
+        let secondary_fut = async {
+            let t = std::time::Instant::now();
+            let r = qdrant::dispatch_vector_search_request(cfg, &secondary_request).await;
+            (r, t.elapsed().as_millis())
+        };
         let (p, s) = tokio::join!(primary_fut, secondary_fut);
         (p, Some(s))
     } else {
         (primary_fut.await, None)
     };
-    // tokio::join! only exposes the wall-clock from launching the primary
-    // future to having both responses; that combined window is the only
-    // meaningful Qdrant-roundtrip metric available here. Record it against
-    // `qdrant_primary_ms`; `qdrant_secondary_ms` reflects whether a secondary
-    // dispatch ran (0 = no secondary).
-    let qdrant_elapsed_ms = qdrant_started.elapsed().as_millis();
-    timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
-    timing.set(
-        AskTimingSlot::QdrantSecondary,
-        if use_dual { qdrant_elapsed_ms } else { 0 },
-    );
+    // Per-arm latency: each branch records its own elapsed time; the secondary
+    // slot is only set when a dual-embedding dispatch actually ran.
+    let (primary_res, primary_ms) = primary_pair;
+    timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
+    let secondary_res = secondary_pair.map(|(res, ms)| {
+        timing.set(AskTimingSlot::QdrantSecondary, ms);
+        res
+    });
     Ok(DispatchOutcome {
         primary_request,
         primary_res,

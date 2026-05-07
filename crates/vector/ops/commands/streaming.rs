@@ -270,9 +270,8 @@ struct StreamProcessorState {
     first_sources_pos: Option<usize>,
     sources_search_from: usize,
     repeat_guard_triggered: bool,
-    /// Wall-clock when the first non-empty delta arrived. Used by ask-timing
-    /// instrumentation (bd axon_rust-nm9) to compute TTFT relative to a
-    /// caller-supplied request start.
+    /// Wall-clock when the first non-empty delta arrived; ask-timing computes
+    /// TTFT relative to a caller-supplied request start.
     first_token_at: Option<std::time::Instant>,
 }
 
@@ -309,9 +308,8 @@ fn process_one_delta(
 
 /// Same as [`run_streaming_completion`] but additionally returns the absolute
 /// wall-clock instant when the first non-empty token delta arrived (`None` if
-/// streaming produced no payload before fallback). Used by ask-timing
-/// instrumentation (bd axon_rust-nm9). Callers compute TTFT relative to their
-/// own request-start. Mirrors the warm/cold split exactly.
+/// streaming produced no payload before fallback). Callers compute TTFT
+/// relative to their own request-start.
 pub(crate) async fn run_streaming_completion_ttft(
     cfg: &Config,
     req: AcpCompletionRequest,
@@ -466,7 +464,7 @@ pub(crate) async fn ask_llm_streaming(
 
 /// TTFT-aware variant of [`ask_llm_streaming`]. Returns the absolute wall-clock
 /// `Instant` of the first non-empty token delta alongside the answer text. The
-/// caller computes TTFT relative to its own request-start. (bd axon_rust-nm9)
+/// caller computes TTFT relative to its own request-start.
 pub(crate) async fn ask_llm_streaming_ttft(
     cfg: &Config,
     _client: &reqwest::Client,

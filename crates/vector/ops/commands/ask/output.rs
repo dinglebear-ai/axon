@@ -8,17 +8,18 @@ use std::time::Instant;
 
 use super::super::streaming::{ask_llm_non_streaming, ask_llm_streaming_ttft};
 
-/// Outcome of one ask LLM round-trip with sub-stage timings (bd axon_rust-nm9).
-/// `ttft_first_token_at` is the absolute `Instant` of the first non-empty
-/// streaming delta; `None` if streaming failed and the non-streaming fallback
-/// was used. The caller computes the TTFT delta relative to its request-start
-/// (typically captured at CLI entry).
-pub(crate) struct AskLlmAnswer {
-    pub answer: String,
-    pub llm_total_ms: u128,
-    #[allow(dead_code)] // reason: surfaced for future diagnostics; legacy callers ignored this
-    pub streamed_ok: bool,
-    pub ttft_first_token_at: Option<Instant>,
+/// Outcome of one ask LLM round-trip — sum type so callers cannot reach for a
+/// `ttft_at` field that exists only on the streaming path.
+pub(crate) enum AskLlmCompletion {
+    Streamed {
+        answer: String,
+        ttft_at: Instant,
+        llm_total_ms: u128,
+    },
+    Fallback {
+        answer: String,
+        llm_total_ms: u128,
+    },
 }
 
 pub(crate) async fn ask_llm_answer(
@@ -26,7 +27,7 @@ pub(crate) async fn ask_llm_answer(
     query: &str,
     context: &str,
     warm: Option<WarmAcpSession>,
-) -> Result<AskLlmAnswer, Box<dyn Error>> {
+) -> Result<AskLlmCompletion, Box<dyn Error>> {
     let client = http_client()?;
     let llm_started = Instant::now();
     // Stream tokens to stdout only when writing to an interactive terminal and
@@ -34,30 +35,38 @@ pub(crate) async fn ask_llm_answer(
     // (no terminal) correctly get false here — no protocol corruption.
     let stream_to_stdout = !cfg.json_output && std::io::stdout().is_terminal();
 
-    let (answer_opt, ttft_at, streamed_ok) = {
-        let streamed =
+    // The error type from streaming is `Box<dyn StdError>` (!Send). Collapse it
+    // into Option<(String, Option<Instant>)> + Option<String> here so the !Send
+    // error never crosses the await boundary that follows.
+    let (streamed_ok, streamed_err): (Option<(String, Option<Instant>)>, Option<String>) = {
+        let result =
             ask_llm_streaming_ttft(cfg, client, query, context, stream_to_stdout, warm).await;
-        match streamed {
-            Ok((ans, ttft)) => (Some(ans), ttft, true),
-            Err(e) => {
-                log_warn(&format!(
-                    "streaming failed, falling back to non-streaming: {e}"
-                ));
-                (None, None, false)
-            }
+        match result {
+            Ok(pair) => (Some(pair), None),
+            Err(e) => (None, Some(e.to_string())),
         }
     };
 
-    let answer = if let Some(ans) = answer_opt {
-        ans
-    } else {
-        ask_llm_non_streaming(cfg, client, query, context).await?
-    };
+    if let Some(err_msg) = streamed_err {
+        log_warn(&format!(
+            "ask: streaming failed, falling back to non-streaming: {err_msg}"
+        ));
+        let answer = ask_llm_non_streaming(cfg, client, query, context).await?;
+        return Ok(AskLlmCompletion::Fallback {
+            answer,
+            llm_total_ms: llm_started.elapsed().as_millis(),
+        });
+    }
 
-    Ok(AskLlmAnswer {
-        answer,
-        llm_total_ms: llm_started.elapsed().as_millis(),
-        streamed_ok,
-        ttft_first_token_at: ttft_at,
-    })
+    match streamed_ok.expect("streamed_err handled above") {
+        (answer, Some(ttft_at)) => Ok(AskLlmCompletion::Streamed {
+            answer,
+            ttft_at,
+            llm_total_ms: llm_started.elapsed().as_millis(),
+        }),
+        (answer, None) => Ok(AskLlmCompletion::Fallback {
+            answer,
+            llm_total_ms: llm_started.elapsed().as_millis(),
+        }),
+    }
 }

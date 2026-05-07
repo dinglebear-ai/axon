@@ -232,6 +232,7 @@ fn ask_result_exposes_typed_answer() {
             llm_ttft_ms: None,
             llm_total_ms: None,
             llm_warm_path: None,
+            streamed: None,
             normalize_ms: None,
         },
     };
