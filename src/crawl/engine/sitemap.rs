@@ -36,6 +36,13 @@ fn should_retry_status(status: reqwest::StatusCode) -> bool {
     status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
+fn request_timeout_secs(cfg: &Config) -> u64 {
+    cfg.request_timeout_ms
+        .unwrap_or(30_000)
+        .div_ceil(1000)
+        .max(1)
+}
+
 pub(crate) async fn fetch_text_with_retry(
     client: &reqwest::Client,
     url: &str,
@@ -252,8 +259,7 @@ pub async fn discover_sitemap_urls(
     let mut queue = sitemap_seed_queue(&scheme, &host);
     let seeded_default_sitemaps = queue.len();
 
-    let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs, None).map_err(|e| {
+    let client = build_client(request_timeout_secs(cfg), None).map_err(|e| {
         format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
     })?;
     let robots_declared_sitemaps =
@@ -374,8 +380,7 @@ async fn fetch_and_convert_backfill_url(
     let Some(html) = fetch_text_with_retry(&http, &url, retries, backoff).await else {
         return (url, None);
     };
-    let md = to_markdown(&html, selector_config.as_ref());
-    let trimmed = md.trim().to_string();
+    let trimmed = to_markdown(&html, selector_config.as_ref());
     let markdown_chars = trimmed.len();
     let is_thin = markdown_chars < min_chars;
     let dropped = is_thin && drop_thin;
@@ -469,8 +474,7 @@ pub(crate) async fn append_candidate_backfill(
             )
         })?;
 
-    let timeout_secs = cfg.request_timeout_ms.unwrap_or(30_000) / 1000;
-    let client = build_client(timeout_secs, None)
+    let client = build_client(request_timeout_secs(cfg), None)
         .map_err(|e| format!("failed to build HTTP client for backfill: {e}"))?;
     let mut manifest = open_append_manifest(&manifest_path).await.map_err(|e| {
         format!(
@@ -652,5 +656,26 @@ mod tests {
             .is_none(),
             "unrelated domain should never be in scope"
         );
+    }
+
+    #[test]
+    fn request_timeout_secs_rounds_up_with_minimum_one_second() {
+        let cfg = Config {
+            request_timeout_ms: Some(1),
+            ..Config::default()
+        };
+        assert_eq!(request_timeout_secs(&cfg), 1);
+
+        let cfg = Config {
+            request_timeout_ms: Some(999),
+            ..Config::default()
+        };
+        assert_eq!(request_timeout_secs(&cfg), 1);
+
+        let cfg = Config {
+            request_timeout_ms: Some(1_001),
+            ..Config::default()
+        };
+        assert_eq!(request_timeout_secs(&cfg), 2);
     }
 }

@@ -9,12 +9,15 @@ use crate::vector::ops::tei::EmbedProgress;
 pub(super) fn spawn_crawl_progress_persister(
     pool: &SqlitePool,
     id: uuid::Uuid,
+    output_dir: std::path::PathBuf,
 ) -> (mpsc::Sender<CrawlSummary>, tokio::task::JoinHandle<()>) {
     let pool = pool.clone();
     let (tx, mut rx) = mpsc::channel::<CrawlSummary>(32);
     let task = tokio::spawn(async move {
         while let Some(summary) = rx.recv().await {
             let progress = serde_json::json!({
+                "output_dir": output_dir,
+                "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
                 "md_created": summary.markdown_files,
                 "thin_md": summary.thin_pages,

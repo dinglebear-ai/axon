@@ -1,16 +1,12 @@
 use super::{CrawlSummary, canonicalize_url_for_dedupe};
 use crate::core::config::Config;
-use crate::core::content::{
-    BOILERPLATE_SELECTORS, build_selector_config, build_transform_config,
-    clean_markdown_whitespace, url_to_filename,
-};
+use crate::core::content::{build_selector_config, bytes_to_markdown, url_to_filename};
 use crate::core::logging::{log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
 use futures_util::stream::{self, StreamExt};
 use sha2::{Digest, Sha256};
 use spider::page::Page;
 use spider::website::Website;
-use spider_transformations::transformation::content::{TransformInput, transform_content_input};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -103,18 +99,8 @@ async fn fetch_url_with_chrome(cfg: &Config, url: &str, min_chars: usize) -> Opt
         return None;
     }
 
-    let transform_cfg = build_transform_config();
     let sel_cfg = build_selector_config(cfg);
-    let input = TransformInput {
-        url: None,
-        content: page.get_html_bytes_u8(),
-        screenshot_bytes: None,
-        encoding: None,
-        selector_config: sel_cfg.as_ref(),
-        ignore_tags: Some(BOILERPLATE_SELECTORS),
-    };
-    let markdown = transform_content_input(input, transform_cfg);
-    let trimmed = clean_markdown_whitespace(markdown.trim());
+    let trimmed = bytes_to_markdown(page.get_html_bytes_u8(), sel_cfg.as_ref());
 
     if trimmed.len() < min_chars {
         return None;

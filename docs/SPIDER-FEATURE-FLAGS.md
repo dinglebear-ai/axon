@@ -35,7 +35,7 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 |------|----------|----------------------|
 | `basic` | Core | Meta-feature — enables core crawl engine. Used everywhere spider is imported (`crates/crawl/engine/`, `crates/crawl/engine/collector.rs`, etc.) |
 | `regex` | Core | URL blacklist/whitelist pattern matching. Powers `--exclude-path-prefix` and `--url-whitelist` flags in crawl config |
-| `sitemap` | Core | `append_sitemap_backfill()` in `crates/crawl/engine/`. Drives `--discover-sitemaps` and `--sitemap-since-days` flags; max sitemap cap is currently fixed at 512 in runtime |
+| `sitemap` | Core | `append_sitemap_backfill()` in `src/crawl/engine/`. Drives `--discover-sitemaps` and `--sitemap-since-days` flags before sync inline embed or async dependent embed handoff |
 | `simd` | Core | SIMD-accelerated JSON/text parsing. Performance optimization — no direct call site; implicit via spider internals |
 | `chrome` | Chrome / Browser | `RenderMode::Chrome` and `RenderMode::AutoSwitch` paths in `crates/crawl/engine/runtime.rs`. Imports `spider::features::chrome_common::{RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector}` |
 | `chrome_stealth` | Chrome / Browser | Passed to `spider::website::Website` in `configure_website()` in `crates/crawl/engine/`. Enables headless detection evasion |
@@ -76,13 +76,13 @@ Used in two files for HTML→Markdown content transformation:
 
 | `glob` | — | Removed — caused BudgetExceeded on first URL when using `with_limit(1)`. Do NOT re-enable. See CLAUDE.md gotchas. |
 
-| `fs` | — | Project uses Qdrant + Postgres instead of disk FS |
+| `fs` | — | Project uses lite SQLite jobs plus Qdrant vector storage, not spider disk FS |
 | `sitemap` | ✅ | Sitemap discovery + backfill |
 | `time` | ✅ | Timing/duration tracking for crawl operations |
 | `encoding` | — | |
 | `serde` | — | Project uses its own serde deps directly |
 | `sync` | — | |
-| `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Powers mid-crawl cancellation |
+| `control` | ✅ | Runtime crawl control — pause/resume/shutdown. Lite crawl cancellation sends Spider shutdown for the active crawl target before returning canceled |
 | `full_resources` | — | |
 | `cookies` | — | |
 | `spoof` | — | `chrome_stealth` covers bot-evasion needs |
@@ -106,7 +106,7 @@ Used in two files for HTML→Markdown content transformation:
 
 | Flag | Status | Notes |
 |------|--------|-------|
-| `disk` | — | Project uses Qdrant vector store + Postgres, not spider disk cache |
+| `disk` | — | Project uses lite SQLite jobs plus Qdrant vector storage, not spider disk cache |
 | `disk_native_tls` | — | |
 | `disk_aws` | — | |
 

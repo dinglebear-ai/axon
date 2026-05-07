@@ -121,7 +121,8 @@ All four job runners (`crawl`, `embed`, `extract`, `ingest`) accept an `Option<C
 
 `LiteBackend::cancel_job` calls `CancelStore::cancel`, which (a) flips the SQLite row to `canceled` and (b) fires the in-memory token. Each runner observes the token at its safe interruption points:
 
-- **crawl / embed**: top-level `tokio::select!` between `token.cancelled()` and the engine future. Cancel returns immediately; in-flight network IO inside the engine continues briefly but its result is dropped.
+- **crawl**: top-level `tokio::select!` between `token.cancelled()` and the engine future. On cancel, the runner sends `spider::utils::shutdown("{job_id}{url}")` to the active Spider control target, waits briefly for drain, and returns canceled. The row remains `canceled`; any progress JSON already persisted by the crawl progress task is kept.
+- **embed**: top-level `tokio::select!` between `token.cancelled()` and the engine future. Cancel returns immediately; in-flight network IO inside the engine may continue briefly but its result is dropped.
 - **extract**: per-URL check before each iteration plus a `select!` around the per-URL extract future.
 - **ingest**: Reddit consumes the token natively (mid-loop); GitHub / YouTube / Sessions are wrapped in `tokio::select!` at the runner boundary.
 

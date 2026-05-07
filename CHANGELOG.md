@@ -15,6 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ask: AXON_ASK_HYBRID_CANDIDATES default lowered 150 → 100 (Qdrant RRF rank-stable at 2x final K; ask_candidate_limit=50 → prefetch=100 is sufficient).
 
+## [1.8.1] - 2026-05-07
+
+### Fixed
+
+- crawl: run sitemap backfill before embedding in both synchronous and lite-worker paths, while preserving primary crawl embedding when backfill fails.
+- crawl: honor cancellation across primary crawl shutdown, sitemap backfill, and dependent embedding so canceled jobs do not enqueue stale embed work.
+- crawl: restrict markdown cache reuse to safe `markdown.old` archive paths and reject absolute or traversal paths from previous manifests.
+- chunking: share HTML-to-markdown conversion policy across primary crawl, Chrome refetch, and inline CDP render paths.
+
+### Tests
+
+- Added cache-reuse path validation and copied-archive coverage, crawl result JSON output-path coverage, sitemap timeout coverage, and inline Chrome selector-config coverage.
+
 ## [1.6.2] - 2026-05-07
 
 ### Fixed
