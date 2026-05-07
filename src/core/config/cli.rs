@@ -44,7 +44,7 @@ pub(super) enum CliCommand {
     /// Semantic vector search over the Qdrant index
     Query(QueryArgs),
     /// Fetch stored document chunks from Qdrant by URL
-    Retrieve(UrlArg),
+    Retrieve(RetrieveArgs),
     /// RAG: retrieve relevant context, then answer with LLM
     Ask(AskArgs),
     /// RAG vs baseline with independent LLM judge scoring
@@ -211,6 +211,15 @@ pub(super) enum WatchSubcommand {
 pub(super) struct UrlArg {
     #[arg(value_name = "URL")]
     pub(super) value: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct RetrieveArgs {
+    #[arg(value_name = "URL")]
+    pub(super) value: Option<String>,
+    /// Maximum chunks to fetch for this document before reconstruction.
+    #[arg(long, value_name = "N")]
+    pub(super) max_points: Option<usize>,
 }
 
 #[derive(Debug, Args)]
@@ -394,6 +403,21 @@ mod tests {
         assert!(
             result.is_ok(),
             "migrate --from --to should parse: {result:?}"
+        );
+    }
+
+    #[test]
+    fn parse_retrieve_max_points_flag() {
+        let result = Cli::try_parse_from([
+            "axon",
+            "retrieve",
+            "https://example.com/docs",
+            "--max-points",
+            "25",
+        ]);
+        assert!(
+            result.is_ok(),
+            "retrieve --max-points should parse: {result:?}"
         );
     }
 

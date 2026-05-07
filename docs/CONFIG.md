@@ -297,6 +297,16 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | -- | Max bytes per local file embedding request via MCP |
 
+### Ask cache
+
+The `[ask.cache]` section in `~/.axon/config.toml` controls the optional
+process-local full-document cache used by ask retrieval. It is disabled by
+default and only useful for long-lived `axon serve` / `axon mcp` processes.
+`max-capacity-bytes` limits the summed `chunk_text` bytes retained in memory;
+`ttl-secs` is capped at 300 seconds as a security backstop. When enabled in
+`serve` or `mcp`, startup enforces `RLIMIT_CORE=0` to avoid core files
+containing cached source text.
+
 ### Output and CLI
 
 | Variable | Default | Description |

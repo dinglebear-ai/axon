@@ -3,13 +3,13 @@ use crate::services::error::{ServiceError, diagnostics_from_error};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{
     AskResult, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveOptions, RetrieveResult,
-    SuggestResult, Suggestion,
+    ServiceRetrieveVariantError, SuggestResult, Suggestion,
 };
 use crate::vector::ops::commands::ask::ask_payload;
 use crate::vector::ops::commands::discover_crawl_suggestions;
 use crate::vector::ops::commands::evaluate_payload;
 use crate::vector::ops::commands::query_results;
-use crate::vector::ops::qdrant::retrieve_result;
+use crate::vector::ops::qdrant::{DirectRetrieveResult, retrieve_result};
 use std::error::Error;
 use tokio::sync::mpsc;
 
@@ -46,6 +46,34 @@ pub fn map_retrieve_result(chunk_count: usize, content: String) -> RetrieveResul
         } else {
             content
         },
+        requested_url: None,
+        matched_url: None,
+        truncated: false,
+        warnings: Vec::new(),
+        variant_errors: Vec::new(),
+    }
+}
+
+pub fn map_direct_retrieve_result(result: DirectRetrieveResult) -> RetrieveResult {
+    RetrieveResult {
+        chunk_count: result.chunk_count,
+        content: if result.chunk_count == 0 {
+            String::new()
+        } else {
+            result.content
+        },
+        requested_url: Some(result.requested_url),
+        matched_url: result.matched_url,
+        truncated: result.truncated,
+        warnings: result.warnings,
+        variant_errors: result
+            .variant_errors
+            .into_iter()
+            .map(|err| ServiceRetrieveVariantError {
+                url: err.url,
+                error: err.error,
+            })
+            .collect(),
     }
 }
 
@@ -112,10 +140,10 @@ pub async fn retrieve(
     url: &str,
     opts: RetrieveOptions,
 ) -> Result<RetrieveResult, Box<dyn Error>> {
-    let (chunk_count, content) = retrieve_result(cfg, url, opts.max_points)
+    let result = retrieve_result(cfg, url, opts.max_points)
         .await
         .map_err(|e| -> Box<dyn Error> { format!("retrieve failed for {url}: {e}").into() })?;
-    Ok(map_retrieve_result(chunk_count, content))
+    Ok(map_direct_retrieve_result(result))
 }
 
 /// RAG ask: retrieve relevant context, then answer with LLM.
@@ -243,6 +271,7 @@ mod tests {
         let result = map_retrieve_result(0, "some content".to_string());
         assert_eq!(result.chunk_count, 0);
         assert_eq!(result.content, "");
+        assert_eq!(result.requested_url, None);
     }
 
     #[test]
@@ -250,6 +279,43 @@ mod tests {
         let result = map_retrieve_result(5, "hello".to_string());
         assert_eq!(result.chunk_count, 5);
         assert_eq!(result.content, "hello");
+    }
+
+    #[test]
+    fn map_retrieve_result_serializes_legacy_shape_when_metadata_absent() {
+        let result = map_retrieve_result(5, "hello".to_string());
+        let value = serde_json::to_value(result).expect("retrieve result serializes");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "chunk_count": 5,
+                "content": "hello"
+            })
+        );
+    }
+
+    #[test]
+    fn map_direct_retrieve_preserves_metadata() {
+        let result = map_direct_retrieve_result(DirectRetrieveResult {
+            requested_url: "example.com/docs".to_string(),
+            matched_url: Some("https://example.com/docs".to_string()),
+            chunk_count: 2,
+            content: "hello".to_string(),
+            truncated: true,
+            warnings: vec!["partial result".to_string()],
+            variant_errors: vec![crate::vector::ops::qdrant::RetrieveVariantError {
+                url: "https://example.com/docs/".to_string(),
+                error: "timeout".to_string(),
+            }],
+        });
+        assert_eq!(result.requested_url.as_deref(), Some("example.com/docs"));
+        assert_eq!(
+            result.matched_url.as_deref(),
+            Some("https://example.com/docs")
+        );
+        assert!(result.truncated);
+        assert_eq!(result.warnings, vec!["partial result"]);
+        assert_eq!(result.variant_errors[0].url, "https://example.com/docs/");
     }
 
     // ── map_suggest_payload ───────────────────────────────────────────────────
@@ -414,7 +480,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_reports_typed_diagnostics_payload_when_enabled() {
+    async fn query_reports_typed_diagnostics_payload_without_ask_diagnostics() {
         use httpmock::Method::POST;
         use httpmock::MockServer;
 
@@ -441,7 +507,7 @@ mod tests {
         cfg.tei_url = tei.base_url();
         cfg.qdrant_url = qdrant.base_url();
         cfg.collection = "diag_test_collection".to_string();
-        cfg.ask_diagnostics = true;
+        cfg.ask_diagnostics = false;
 
         let err = query(
             &cfg,
@@ -455,9 +521,18 @@ mod tests {
         .expect_err("query should fail when collection is missing");
 
         let diag = diagnostics_from_error(err.as_ref())
-            .expect("diagnostics payload should be attached when ask_diagnostics=true");
+            .expect("diagnostics payload should be attached without ask_diagnostics");
         assert_eq!(diag["stage"], "query_vector_search_dispatch");
         assert_eq!(diag["collection"], "diag_test_collection");
+        assert_eq!(
+            diag["qdrant_url"],
+            reqwest::Url::parse(&qdrant.base_url()).unwrap().to_string()
+        );
+        assert_eq!(diag["query_len"], "diagnostics regression test query".len());
+        assert_eq!(diag["mode"]["hybrid_search_enabled"], true);
+        assert_eq!(diag["search_context"]["command"], "query");
+        assert_eq!(diag["search_context"]["request_limit"], 80);
+        assert_eq!(diag["search_context"]["sparse_query_empty"], false);
         assert!(diag["error"].as_str().unwrap_or("").contains("404"));
     }
 }

@@ -27,6 +27,8 @@ This document captures the security controls present in the Axon code base today
 - Secret leakage through commits, logs, and `Debug` impls
 - MCP HTTP transport authentication and origin/host validation
 - Local admin web panel access control
+- Heap exposure from the optional ask full-document cache in long-lived
+  `serve`/`mcp` processes
 
 **Out of scope:**
 
@@ -201,6 +203,19 @@ Do **not** add new secret fields without extending this impl. The compiler will 
 - Library code uses `log_info` / `log_warn` / `log_done` from `crates/core/logging.rs`. Never `println!` from a library — it bypasses log targets and rotation.
 - `redact_url()` in `crates/core/content.rs` strips `username:password@` from URLs before logging.
 - The MCP server returns deterministic error messages and never echoes secret env values back to callers.
+
+### 7.4 Ask full-document cache
+
+The optional `[ask.cache]` cache stores full-document Qdrant chunks in the
+process heap for the ask retrieval path. Cached values include `chunk_text`;
+logs deliberately omit that text and only use source identifiers and counters.
+
+The cache is disabled by default and is useful only in long-lived `axon serve`
+or `axon mcp` processes. When enabled for those modes, startup enforces
+`RLIMIT_CORE=0` before initializing the daemon so a crash does not write cached
+source text to a core file. This guard does not encrypt heap memory and does
+not protect against a compromised process; it only removes the core-dump leak
+path.
 
 ---
 

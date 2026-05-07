@@ -27,6 +27,11 @@ pub struct Config {
     /// Maximum number of results returned by `query`/`search` commands. Flag: `--limit`.
     pub search_limit: usize,
 
+    /// Maximum chunks fetched by `retrieve` before reconstructing the document.
+    /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
+    /// (use the retrieve service ceiling).
+    pub retrieve_max_points: Option<usize>,
+
     /// Maximum pages to crawl (0 = uncapped). Flag: `--max-pages`.
     pub max_pages: u32,
 

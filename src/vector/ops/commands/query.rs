@@ -31,21 +31,20 @@ pub async fn query_results(
     let hits = qdrant::dispatch_vector_search_request(cfg, &request)
         .await
         .map_err(|e| -> Box<dyn Error> {
-            if cfg.ask_diagnostics {
-                let diagnostics = serde_json::json!({
-                    "stage": "query_vector_search_dispatch",
-                    "collection": cfg.collection,
-                    "qdrant_url": cfg.qdrant_url,
-                    "query_len": query.len(),
-                    "error": e.to_string(),
-                });
-                Box::new(ServiceError::with_diagnostics(
-                    format!("vector search dispatch: {e}"),
-                    diagnostics,
-                ))
-            } else {
-                Box::new(ServiceError::new(format!("vector search dispatch: {e}")))
-            }
+            Box::new(ServiceError::vector_dispatch_failure(
+                "query_vector_search_dispatch",
+                cfg,
+                query.len(),
+                serde_json::json!({
+                    "command": "query",
+                    "request_limit": request.limit,
+                    "fetch_limit": fetch_limit,
+                    "candidates_override": request.candidates_override,
+                    "sparse_query_empty": request.sparse.as_ref().is_none_or(|sv| sv.is_empty()),
+                    "has_filter": request.filter.is_some(),
+                }),
+                e.as_ref(),
+            ))
         })?;
     let query_tokens = ranking::tokenize_query(query);
     let build_policy = CandidateBuildPolicy {

@@ -12,7 +12,9 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
         log_info(&format!("command=retrieve url={target}"));
     }
 
-    let opts = RetrieveOptions { max_points: None };
+    let opts = RetrieveOptions {
+        max_points: cfg.retrieve_max_points,
+    };
     let result = query_svc::retrieve(cfg, target, opts).await?;
 
     if result.chunk_count == 0 {

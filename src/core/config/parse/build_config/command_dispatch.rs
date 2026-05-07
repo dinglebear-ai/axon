@@ -36,6 +36,7 @@ pub(super) struct DispatchOutput {
     pub mcp_transport: Option<McpTransport>,
     pub mcp_transport_default: McpTransport,
     pub map_fallback: MapFallback,
+    pub retrieve_max_points: Option<usize>,
 }
 
 impl DispatchOutput {
@@ -68,6 +69,7 @@ impl DispatchOutput {
             mcp_transport: None,
             mcp_transport_default: McpTransport::Http,
             map_fallback: MapFallback::Structure,
+            retrieve_max_points: None,
         }
     }
 }
@@ -136,6 +138,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             set_simple(&mut out, CommandKind::Query, args.value);
         }
         CliCommand::Retrieve(args) => {
+            out.retrieve_max_points = args.max_points;
             set_simple(
                 &mut out,
                 CommandKind::Retrieve,

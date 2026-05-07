@@ -13,6 +13,9 @@ pub use client::{qdrant_delete_stale_domain_urls, qdrant_indexed_urls, qdrant_ur
 pub(crate) use commands::{VectorSearchRequest, dispatch_vector_search_request};
 pub use commands::{dedupe_payload, domains_payload, retrieve_result, sources_payload};
 pub(crate) use dual_search::{DualSearchArm, DualSearchResult, qdrant_dual_search};
+pub(crate) use types::DirectRetrieveResult;
+#[cfg(test)]
+pub(crate) use types::RetrieveVariantError;
 pub use types::{QdrantPayload, QdrantPoint, QdrantSearchHit};
 pub use utils::{
     base_url, payload_text_typed, payload_url_typed, qdrant_base, query_snippet,

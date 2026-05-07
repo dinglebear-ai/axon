@@ -1,7 +1,9 @@
 //! Tests for the document-chunk cache.
 
-use super::doc_cache::{DocCache, DocCacheConfig, DocCacheKey};
+use super::doc_cache::{DocCache, DocCacheConfig, DocCacheKey, doc_cache_for_config};
+use super::enforce_core_dump_disabled_for_ask_cache;
 use super::generation::{bump_generation, current_generation};
+use crate::core::config::Config;
 use crate::vector::ops::qdrant::{QdrantPayload, QdrantPoint};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -219,6 +221,42 @@ async fn byte_weigher_evicts_under_capacity_pressure() {
         stats.evicted() > 0,
         "byte-weigher must trigger evictions under capacity pressure"
     );
+}
+
+#[test]
+fn process_cache_registry_is_keyed_by_configured_capacity_and_ttl() {
+    let a = doc_cache_for_config(DocCacheConfig {
+        max_capacity_bytes: 4096,
+        ttl_secs: 1,
+    });
+    let b = doc_cache_for_config(DocCacheConfig {
+        max_capacity_bytes: 8192,
+        ttl_secs: 2,
+    });
+    let a_again = doc_cache_for_config(DocCacheConfig {
+        max_capacity_bytes: 4096,
+        ttl_secs: 1,
+    });
+
+    assert!(Arc::ptr_eq(&a, &a_again), "same config must reuse cache");
+    assert!(
+        !Arc::ptr_eq(&a, &b),
+        "different configured capacity/TTL must use a different cache"
+    );
+    assert_eq!(a.config().max_capacity_bytes, 4096);
+    assert_eq!(a.config().effective_ttl_secs(), 1);
+    assert_eq!(b.config().max_capacity_bytes, 8192);
+    assert_eq!(b.config().effective_ttl_secs(), 2);
+}
+
+#[test]
+fn core_dump_guard_is_noop_when_cache_disabled() {
+    let cfg = Config {
+        ask_cache_enabled: false,
+        ..Config::default()
+    };
+
+    enforce_core_dump_disabled_for_ask_cache(&cfg).expect("disabled cache must not alter limits");
 }
 
 #[tokio::test]

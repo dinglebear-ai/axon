@@ -67,17 +67,25 @@ pub(super) fn apply_mode_aware_rerank(
 /// attaching collection / Qdrant URL / query-length context unconditionally so
 /// operators can diagnose the failure. The legacy `cfg.ask_diagnostics` flag
 /// still gates verbose success-path payloads elsewhere.
-fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> anyhow::Error {
-    let diagnostics = serde_json::json!({
-        "stage": "ask_vector_search_dispatch",
-        "collection": cfg.collection,
-        "qdrant_url": cfg.qdrant_url,
-        "query_len": query.len(),
-        "error": err.to_string(),
-    });
-    anyhow::Error::new(ServiceError::with_diagnostics(
-        format!("vector search dispatch: {err}"),
-        diagnostics,
+fn dispatch_error(
+    cfg: &Config,
+    query: &str,
+    request: &qdrant::VectorSearchRequest<'_>,
+    err: &dyn std::error::Error,
+) -> anyhow::Error {
+    anyhow::Error::new(ServiceError::vector_dispatch_failure(
+        "ask_vector_search_dispatch",
+        cfg,
+        query.len(),
+        serde_json::json!({
+            "command": "ask",
+            "arm": "primary",
+            "request_limit": request.limit,
+            "candidates_override": request.candidates_override,
+            "sparse_query_empty": request.sparse.as_ref().is_none_or(|sv| sv.is_empty()),
+            "has_filter": request.filter.is_some(),
+        }),
+        err,
     ))
 }
 
@@ -133,7 +141,7 @@ pub(super) async fn retrieve_ask_candidates(
     )
     .await?;
 
-    let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
+    let hits = primary_res.map_err(|e| dispatch_error(cfg, query, &primary_request, e.as_ref()))?;
     let vector_mode = get_or_fetch_vector_mode(cfg)
         .await
         .map_err(|e| anyhow!("vector mode probe after ask dispatch: {e}"))?;

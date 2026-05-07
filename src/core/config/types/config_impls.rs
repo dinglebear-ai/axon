@@ -17,6 +17,7 @@ impl Default for Config {
             url_glob: Vec::new(),
             query: None,
             search_limit: 10,
+            retrieve_max_points: None,
             max_pages: 0,
             max_depth: 5,
             include_subdomains: false,
@@ -224,6 +225,7 @@ impl fmt::Debug for Config {
             .field("url_glob", &self.url_glob)
             .field("query", &self.query)
             .field("search_limit", &self.search_limit)
+            .field("retrieve_max_points", &self.retrieve_max_points)
             .field("max_pages", &self.max_pages)
             .field("max_depth", &self.max_depth)
             .field("include_subdomains", &self.include_subdomains)
