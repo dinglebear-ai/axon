@@ -1,6 +1,7 @@
 use super::super::cli::{Cli, CliCommand};
 use super::super::types::{
-    CommandKind, Config, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
+    AskBackend, CommandKind, Config, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort,
+    RedditTime,
 };
 use super::docker::normalize_local_service_url;
 use super::excludes;
@@ -234,6 +235,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let toml = load_toml_config()?;
 
     let lite_mode = global.lite || env_bool("AXON_LITE", false);
+    let ask_backend = resolve_ask_backend(toml.ask.backend);
 
     let sqlite_path = global
         .sqlite_path
@@ -380,6 +382,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
             .map(|raw| parse_origin_allowlist(&raw))
             .unwrap_or_default(),
         ask_diagnostics,
+        ask_backend,
         ask_graph: global.graph,
         evaluate_responses_mode,
         evaluate_retrieval_ab,
@@ -581,6 +584,16 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     }
 
     Ok(cfg)
+}
+
+fn resolve_ask_backend(toml_backend: Option<AskBackend>) -> AskBackend {
+    match env::var("AXON_ASK_BACKEND") {
+        Ok(raw) if !raw.trim().is_empty() => raw.parse::<AskBackend>().unwrap_or_else(|err| {
+            eprintln!("axon: warning: {err}; falling back to ask backend acp");
+            AskBackend::Acp
+        }),
+        _ => toml_backend.unwrap_or_default(),
+    }
 }
 
 #[cfg(test)]
@@ -987,6 +1000,23 @@ mod tests {
     #[allow(unsafe_code)]
     #[serial_test::serial]
     #[test]
+    fn ask_backend_env_parses_case_insensitively() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_BACKEND").ok();
+        unsafe { env::set_var("AXON_ASK_BACKEND", "HeAdLeSs") };
+        let backend = resolve_ask_backend(Some(AskBackend::Acp));
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_BACKEND", v),
+                None => env::remove_var("AXON_ASK_BACKEND"),
+            }
+        }
+        assert_eq!(backend, AskBackend::Headless);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
     fn server_url_rejects_malformed_values() {
         let _guard = ENV_LOCK.lock().unwrap();
         let saved = env::var("AXON_ASK_SERVER_URL").ok();
@@ -1001,6 +1031,23 @@ mod tests {
             }
         }
         assert!(err.contains("invalid --server-url / AXON_ASK_SERVER_URL"));
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn ask_backend_unknown_env_falls_back_to_acp() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_BACKEND").ok();
+        unsafe { env::set_var("AXON_ASK_BACKEND", "danger") };
+        let backend = resolve_ask_backend(Some(AskBackend::Headless));
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_BACKEND", v),
+                None => env::remove_var("AXON_ASK_BACKEND"),
+            }
+        }
+        assert_eq!(backend, AskBackend::Acp);
     }
 
     #[allow(unsafe_code)]
@@ -1023,5 +1070,22 @@ mod tests {
             cfg.unwrap().server_url.unwrap().as_str(),
             "http://127.0.0.1:8001/base"
         );
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn ask_backend_toml_wins_over_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_BACKEND").ok();
+        unsafe { env::remove_var("AXON_ASK_BACKEND") };
+        let backend = resolve_ask_backend(Some(AskBackend::Headless));
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_BACKEND", v),
+                None => env::remove_var("AXON_ASK_BACKEND"),
+            }
+        }
+        assert_eq!(backend, AskBackend::Headless);
     }
 }

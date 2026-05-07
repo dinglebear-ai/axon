@@ -1,4 +1,4 @@
-use crate::crates::core::config::Config;
+use crate::crates::core::config::{AskBackend, Config};
 use crate::crates::core::logging::{log_info, log_warn};
 use crate::crates::services::acp_llm;
 
@@ -14,14 +14,19 @@ pub(crate) use normalize::normalize_ask_answer;
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        cfg.acp_adapter_cmd
-            .as_deref()
-            .is_some_and(|program| !program.trim().is_empty()),
-        "ask/evaluate requires an ACP adapter — set AXON_ASK_AGENT=claude|codex|gemini \
-         (uses the AXON_ACP_<AGENT>_ADAPTER_CMD you already have configured) \
-         or set AXON_ACP_ADAPTER_CMD directly"
-    );
+    if cfg.ask_backend == AskBackend::Headless {
+        crate::crates::services::llm_backend::headless::dispatch::validate_selected_agent()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    } else {
+        anyhow::ensure!(
+            cfg.acp_adapter_cmd
+                .as_deref()
+                .is_some_and(|program| !program.trim().is_empty()),
+            "ask/evaluate requires an ACP adapter — set AXON_ASK_AGENT=claude|codex|gemini \
+             (uses the AXON_ACP_<AGENT>_ADAPTER_CMD you already have configured) \
+             or set AXON_ACP_ADAPTER_CMD directly"
+        );
+    }
     Ok(())
 }
 
@@ -39,21 +44,27 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     // Start warming the ACP adapter before context retrieval so the cold-start
     // overlaps with Qdrant queries instead of running sequentially after them.
     let warm_started = std::time::Instant::now();
-    let warm = match acp_llm::warm_session(cfg, None) {
-        Ok(w) => {
-            // Capture origin (Pool / FreshSpawn / EventChannelBypass) at session
-            // construction; the slot reflects the synchronous portion of warm-
-            // session acquisition.
-            timing.set_warm_path(w.origin().as_str());
-            Some(w)
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "ask: warm session failed to start, using cold path: {e}"
-            ));
-            timing.set_warm_path("FailedFallback");
+    let warm = match cfg.ask_backend {
+        AskBackend::Headless => {
+            timing.set_warm_path("HeadlessNoWarm");
             None
         }
+        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+            Ok(w) => {
+                // Capture origin (Pool / FreshSpawn / EventChannelBypass) at session
+                // construction; the slot reflects the synchronous portion of warm-
+                // session acquisition.
+                timing.set_warm_path(w.origin().as_str());
+                Some(w)
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "ask: warm session failed to start, using cold path: {e}"
+                ));
+                timing.set_warm_path("FailedFallback");
+                None
+            }
+        },
     };
     timing.record(AskTimingSlot::WarmSessionReady, warm_started);
 

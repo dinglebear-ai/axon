@@ -128,7 +128,7 @@ const ACP_ENV_ALLOWLIST: &[&str] = &[
 
 /// Clear all inherited env vars from `cmd`, then re-inject only the keys in
 /// [`ACP_ENV_ALLOWLIST`] that are present in the parent environment.
-fn apply_env_allowlist(cmd: &mut tokio::process::Command) {
+pub(crate) fn apply_env_allowlist(cmd: &mut tokio::process::Command) {
     cmd.env_clear();
     for key in ACP_ENV_ALLOWLIST {
         if let Ok(val) = std::env::var(key) {

@@ -2,6 +2,7 @@ mod display;
 mod scoring;
 mod streaming;
 
+use crate::crates::core::config::AskBackend;
 use crate::crates::core::config::Config;
 use crate::crates::core::http::http_client;
 use crate::crates::core::logging::log_warn;
@@ -90,17 +91,8 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let eval_started = Instant::now();
     // Start warm sessions for all three LLM calls so their adapter cold-starts
     // overlap with retrieval work. warm1 → rag answer, warm2 → baseline, warm3 → judge.
-    let make_warm = |label: &'static str| match acp_llm::warm_session(&derived, None) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            log_warn(&format!(
-                "evaluate: {label} warm session failed to start: {e}"
-            ));
-            None
-        }
-    };
-    let warm1 = make_warm("rag");
-    let warm2 = make_warm("baseline");
+    let warm1 = maybe_warm_evaluate_session(&derived, "rag");
+    let warm2 = maybe_warm_evaluate_session(&derived, "baseline");
 
     let ctx = build_evaluate_ask_context(&derived, &query).await?;
     let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
@@ -131,7 +123,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     };
     let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);
     let research_started = Instant::now();
-    let warm3 = make_warm("judge");
+    let warm3 = maybe_warm_evaluate_session(&derived, "judge");
     let (judge_reference, ref_chunk_count) = build_judge_reference(&derived, &query)
         .await
         .unwrap_or_else(|e| {
@@ -221,6 +213,24 @@ async fn build_evaluate_ask_context(
     Ok(build_ask_context(cfg, query, &mut timing).await?)
 }
 
+fn maybe_warm_evaluate_session(
+    cfg: &Config,
+    label: &'static str,
+) -> Option<acp_llm::WarmAcpSession> {
+    match cfg.ask_backend {
+        AskBackend::Headless => None,
+        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                log_warn(&format!(
+                    "evaluate: {label} warm session failed to start: {e}"
+                ));
+                None
+            }
+        },
+    }
+}
+
 /// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
 /// not surfaced from the evaluate path, so this helper produces a disabled
 /// AskTiming accumulator (no Instant probes fire).
@@ -232,7 +242,10 @@ fn disabled_ask_timing() -> super::ask::AskTiming {
 mod tests {
     use super::display::{build_side_by_side_frame, wrap_fixed_width};
     use super::evaluate_query;
-    use super::scoring::{build_suggestion_focus, rag_underperformed, score_totals_from_analysis};
+    use super::scoring::{
+        build_suggestion_focus, rag_underperformed, score_totals_from_analysis,
+        structured_scores_from_analysis,
+    };
     use crate::crates::core::config::Config;
 
     #[test]
@@ -268,6 +281,31 @@ mod tests {
 ## Accuracy        RAG: 5/5 | Baseline: 3/5
 ## Relevance       RAG: 5/5 | Baseline: 4/5";
         assert!(!rag_underperformed(analysis));
+    }
+
+    #[test]
+    fn structured_scores_parse_expected_axes() {
+        let analysis = "\
+## Accuracy        RAG: 5/5 | Baseline: 3/5
+## Relevance       RAG: 4/5 | Baseline: 4/5
+## Completeness    RAG: 5/5 | Baseline: 2/5
+## Specificity     RAG: 4/5 | Baseline: 3/5
+## Verdict
+RAG is better.";
+        let scores = structured_scores_from_analysis(analysis);
+        assert_eq!(scores.status, "parsed");
+        assert_eq!(scores.axes.len(), 4);
+        assert_eq!(scores.rag_total, Some(18.0));
+        assert_eq!(scores.baseline_total, Some(12.0));
+        assert_eq!(scores.winner, Some("rag"));
+    }
+
+    #[test]
+    fn structured_scores_reports_parse_failure_explicitly() {
+        let scores = structured_scores_from_analysis("judge returned prose only");
+        assert_eq!(scores.status, "parse_failed");
+        assert!(scores.axes.is_empty());
+        assert_eq!(scores.winner, None);
     }
 
     #[test]

@@ -3,6 +3,7 @@
 // subsystem-level env reads are added). Suppress dead_code for the whole module.
 #![allow(dead_code)]
 
+use super::super::types::AskBackend;
 use crate::crates::core::paths::axon_config_path;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -58,6 +59,8 @@ pub(super) struct TomlSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskSection {
+    /// Security-sensitive ask synthesis backend. Default: ACP.
+    pub backend: Option<AskBackend>,
     /// Max chunks returned per ask query (clamped 3–40).
     pub chunk_limit: Option<usize>,
     /// Max candidate chunks fetched before scoring (clamped 8–300).
@@ -264,6 +267,12 @@ mod tests {
         assert_eq!(cfg.ask.chunk_limit, Some(5));
         assert_eq!(cfg.ask.candidate_limit, Some(50));
         assert!(cfg.ask.min_relevance_score.is_some());
+    }
+
+    #[test]
+    fn valid_toml_parses_ask_backend() {
+        let cfg = load_toml_config_from_str("[ask]\nbackend = \"headless\"").unwrap();
+        assert_eq!(cfg.ask.backend, Some(AskBackend::Headless));
     }
 
     #[test]

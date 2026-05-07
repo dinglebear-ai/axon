@@ -44,7 +44,7 @@ To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 | Section | Keys |
 |---------|------|
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates` |
-| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` |
+| `[ask]` | `backend`, `chunk-limit`, `candidate-limit`, `min-relevance-score` |
 
 **Phase 2 (planned) — parsed but env-only for now** (key is accepted in the file and validated, but the env var is still what the binary reads; use the env var shown in the table below):
 
@@ -54,7 +54,7 @@ To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS` |
 
-URLs, API keys, secrets, and security settings belong in `.env` — not in `config.toml`. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, and secrets belong in `.env` — not in `config.toml`. `ask.backend` is the only wired security-sensitive ask selector currently accepted in TOML; prefer `AXON_ASK_BACKEND` for machine-local experiments. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -125,6 +125,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `OPENAI_BASE_URL` | -- | OpenAI-compatible base URL (legacy) |
 | `OPENAI_API_KEY` | -- | API key for LLM provider |
 | `OPENAI_MODEL` | -- | Model override for ACP-backed completions |
+| `AXON_ASK_BACKEND` | `acp` | Ask synthesis backend (`acp`, `headless`, or `auto`). Env wins over `[ask] backend`; unknown env values warn and fall back to `acp`. |
 | `AXON_ASK_AGENT` | `claude` | Which ACP agent handles ask/research (`claude`, `codex`, or `gemini`) |
 | `AXON_ACP_ADAPTER_CMD` | -- | Global ACP adapter command override (overrides per-agent vars) |
 | `AXON_ACP_ADAPTER_ARGS` | -- | Global ACP adapter args (overrides per-agent vars) |

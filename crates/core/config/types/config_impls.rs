@@ -1,7 +1,7 @@
 use super::config::Config;
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    AskBackend, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
+    RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
 use std::env;
@@ -91,6 +91,7 @@ impl Default for Config {
             tavily_api_key: String::new(),
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
+            ask_backend: AskBackend::Acp,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 120_000,
@@ -296,6 +297,7 @@ impl fmt::Debug for Config {
             .field("tavily_api_key", &"[REDACTED]")
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)
+            .field("ask_backend", &self.ask_backend)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)

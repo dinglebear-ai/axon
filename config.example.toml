@@ -63,6 +63,12 @@
 # collection = "cortex"
 
 [ask]
+# [wired] Security-sensitive ask synthesis backend.
+# Default: acp. Env override: AXON_ASK_BACKEND.
+# Valid values: "acp", "headless", "auto".
+# `headless` is opt-in and must pass the synthesis-only no-tool contract.
+# backend = "acp"
+
 # [wired] Max chunks returned per ask query (clamped 3–40).
 # Env: AXON_ASK_CHUNK_LIMIT
 # chunk-limit = 10
