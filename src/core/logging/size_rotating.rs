@@ -36,7 +36,7 @@ impl SizeRotatingFile {
         max_bytes: u64,
         max_files: usize,
     ) -> io::Result<Self> {
-        std::fs::create_dir_all(&dir)?;
+        crate::core::paths::ensure_private_dir(&dir)?;
         let path = dir.join(&file_name);
         let current = OpenOptions::new().create(true).append(true).open(&path)?;
         let current_size = current.metadata().map(|m| m.len()).unwrap_or(0);

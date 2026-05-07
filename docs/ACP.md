@@ -822,7 +822,7 @@ tokio::spawn(async move {
 
 **Cache key matching:** First user request matches if it uses the same agent, MCP servers, and capability flags. Different MCP configuration = cache miss = fresh spawn.
 
-**Working directory:** `AXON_DATA_DIR/axon/prewarm` (created if absent)
+**Working directory:** `$AXON_DATA_DIR/prewarm` (default: `~/.axon/prewarm`; created if absent)
 
 **Failure behavior:** Non-fatal — if prewarm fails, first user request cold-starts normally.
 

@@ -137,7 +137,7 @@ async fn try_enqueue_embed_handoff(
         input: markdown_dir,
         config_json: lite_config_snapshot_json(effective_cfg).map_err(lift_err)?,
     };
-    match enqueue_job(pool, &payload).await {
+    match enqueue_job(pool, &payload, effective_cfg).await {
         Ok(eid) => {
             if let Some(notify) = &embed_notify {
                 notify.notify_one();

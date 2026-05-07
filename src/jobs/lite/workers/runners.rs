@@ -196,6 +196,7 @@ mod tests {
                 urls: vec!["https://example.invalid/".into()],
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue");

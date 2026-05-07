@@ -90,15 +90,15 @@ docker compose --env-file .env -f config/docker-compose.services.yaml ps
 
 ## Data volumes
 
-All persistent data uses `${AXON_DATA_DIR:-./data}/axon/...`:
+All persistent data uses `${AXON_DATA_DIR:-~/.axon}/...` (flat layout — no nested `axon/` subdir):
 
 | Volume | Content |
 |--------|---------|
-| `$AXON_DATA_DIR/axon/jobs.db` | SQLite job database |
-| `$AXON_DATA_DIR/axon/qdrant` | Qdrant vector storage |
-| `$AXON_DATA_DIR/axon/tei-data` | TEI model cache |
-| `$AXON_DATA_DIR/axon/artifacts` | MCP response artifacts |
-| `$AXON_DATA_DIR/axon/output` | CLI output files |
+| `$AXON_DATA_DIR/jobs.db` | SQLite job database |
+| `$AXON_DATA_DIR/qdrant` | Qdrant vector storage |
+| `$AXON_DATA_DIR/tei-data` | TEI model cache |
+| `$AXON_DATA_DIR/artifacts` | MCP response artifacts |
+| `$AXON_DATA_DIR/output` | CLI output files |
 
 ## See also
 

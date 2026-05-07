@@ -65,10 +65,34 @@ pub(super) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usiz
 /// Like `env_usize_clamped` but returns `None` when the var is absent or unparseable,
 /// so TOML and hardcoded defaults can be consulted.
 pub(super) fn env_usize_opt(key: &str, min: usize, max: usize) -> Option<usize> {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .map(|v| v.clamp(min, max))
+    env::var(key).ok().and_then(|v| match v.parse::<usize>() {
+        Ok(parsed) => Some(parsed.clamp(min, max)),
+        Err(e) => {
+            tracing::warn!(
+                env_key = key,
+                raw = %v,
+                error = %e,
+                "axon: env var present but unparseable"
+            );
+            None
+        }
+    })
+}
+
+/// Like `env_usize_opt` but for `u64` values. Returns `None` when the var is absent or unparseable.
+pub(super) fn env_u64_opt(key: &str, min: u64, max: u64) -> Option<u64> {
+    env::var(key).ok().and_then(|v| match v.parse::<u64>() {
+        Ok(parsed) => Some(parsed.clamp(min, max)),
+        Err(e) => {
+            tracing::warn!(
+                env_key = key,
+                raw = %v,
+                error = %e,
+                "axon: env var present but unparseable"
+            );
+            None
+        }
+    })
 }
 
 pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f64 {
@@ -77,8 +101,16 @@ pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f6
 
 /// Like `env_f64_clamped` but returns `None` when the var is absent or unparseable.
 pub(super) fn env_f64_opt(key: &str, min: f64, max: f64) -> Option<f64> {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok())
-        .map(|v| v.clamp(min, max))
+    env::var(key).ok().and_then(|v| match v.parse::<f64>() {
+        Ok(parsed) => Some(parsed.clamp(min, max)),
+        Err(e) => {
+            tracing::warn!(
+                env_key = key,
+                raw = %v,
+                error = %e,
+                "axon: env var present but unparseable"
+            );
+            None
+        }
+    })
 }

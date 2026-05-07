@@ -34,10 +34,10 @@ const FILE_SPECS: &[FileSpec] = &[
         )],
     ),
     (
-        "src/core/config/parse/build_config.rs",
+        "src/core/config/parse/build_config/config_literal.rs",
         &[(
             "resolve_mcp_transport(mcp_transport, mcp_transport_default)",
-            "ERROR: MCP transport resolver not wired into config build in src/core/config/parse/build_config.rs",
+            "ERROR: MCP transport resolver not wired into config build in src/core/config/parse/build_config/config_literal.rs",
         )],
     ),
     (
@@ -91,7 +91,7 @@ mod tests {
         )
         .unwrap();
 
-        let build_cfg = root.join("src/core/config/parse/build_config.rs");
+        let build_cfg = root.join("src/core/config/parse/build_config/config_literal.rs");
         fs::create_dir_all(build_cfg.parent().unwrap()).unwrap();
         fs::write(
             &build_cfg,
@@ -147,7 +147,7 @@ mod tests {
             vec![
                 "src/cli/commands/mcp.rs",
                 "src/core/config/cli.rs",
-                "src/core/config/parse/build_config.rs",
+                "src/core/config/parse/build_config/config_literal.rs",
                 "src/core/config/parse/helpers.rs",
             ]
         );

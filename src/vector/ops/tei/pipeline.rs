@@ -318,7 +318,8 @@ pub(super) async fn run_embed_pipeline(
     let docs_total = prepared.len();
     let pipeline_start = Instant::now();
     log_info(&format!("embed_pipeline docs={}", docs_total));
-    let doc_timeout_secs = env_usize_clamped("AXON_EMBED_DOC_TIMEOUT_SECS", 300, 10, 7200) as u64;
+    // Sourced from Config (env > TOML > default), already clamped 30..=3600.
+    let doc_timeout_secs = cfg.embed_doc_timeout_secs;
     let doc_concurrency = env_usize_clamped(
         "AXON_EMBED_DOC_CONCURRENCY",
         std::thread::available_parallelism()

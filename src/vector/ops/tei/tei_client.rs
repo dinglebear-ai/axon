@@ -9,6 +9,8 @@ use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
+const TEI_MAX_BACKOFF_MS: u64 = 60_000;
+
 /// Instruction prefix for Qwen3-Embedding asymmetric query encoding.
 ///
 /// Prepend this to every query text before calling `tei_embed`.
@@ -87,36 +89,12 @@ pub(crate) async fn tei_embed_kind(
     tei_embed_typed(cfg, &typed).await
 }
 
-const TEI_MAX_RETRIES_DEFAULT: usize = 5;
-const TEI_REQUEST_TIMEOUT_MS_DEFAULT: u64 = 30_000;
-const TEI_REQUEST_TIMEOUT_MS_MIN: u64 = 100;
-const TEI_REQUEST_TIMEOUT_MS_MAX: u64 = 600_000;
-const TEI_MAX_BACKOFF_MS: u64 = 60_000;
-
 /// Global process-wide limit on concurrent in-flight TEI /embed requests.
 /// Prevents thundering-herd TCP saturation when multiple embed workers run in parallel.
 /// Each permit covers one batch sent to TEI; the permit is held until the response returns.
 /// Tunable via AXON_TEI_MAX_CONCURRENT (default 8, range 1–64).
 static TEI_CONCURRENCY: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(env_usize_clamped("AXON_TEI_MAX_CONCURRENT", 8, 1, 64)));
-
-// ── Cached env vars for hot-path embed operations ──────────────────────────
-// These are read once at process startup via LazyLock instead of calling
-// std::env::var() (which acquires a global lock) on every batch invocation.
-
-static TEI_BATCH_SIZE: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("TEI_MAX_CLIENT_BATCH_SIZE", 64, 1, 128));
-
-static TEI_MAX_ATTEMPTS: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("TEI_MAX_RETRIES", TEI_MAX_RETRIES_DEFAULT, 1, 20));
-
-static TEI_TIMEOUT_MS: LazyLock<u64> = LazyLock::new(|| {
-    std::env::var("TEI_REQUEST_TIMEOUT_MS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .map(|v| v.clamp(TEI_REQUEST_TIMEOUT_MS_MIN, TEI_REQUEST_TIMEOUT_MS_MAX))
-        .unwrap_or(TEI_REQUEST_TIMEOUT_MS_DEFAULT)
-});
 
 fn retry_delay(attempt: usize) -> Duration {
     let base_ms = 1000_u64.saturating_mul(2u64.saturating_pow(attempt as u32 - 1));
@@ -276,10 +254,14 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     let client = http_client()?;
     let mut vectors = Vec::new();
 
-    let batch_size = *TEI_BATCH_SIZE;
+    let batch_size = cfg.tei_max_client_batch_size.clamp(1, 128);
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
-    let max_attempts = *TEI_MAX_ATTEMPTS;
-    let request_timeout_ms = *TEI_TIMEOUT_MS;
+    // tei_max_retries is the number of RETRY attempts after the initial request,
+    // so total attempts = retries + 1. Default 5 retries → 6 attempts max.
+    // .max(1) on the sum ensures at least one request even if a future config
+    // shape allowed retries to underflow.
+    let max_attempts = cfg.tei_max_retries.saturating_add(1).max(1);
+    let request_timeout_ms = cfg.tei_request_timeout_ms.clamp(1000, 300_000);
     let safe_embed_url = redact_url_for_log(&embed_url);
 
     log_debug(&format!(

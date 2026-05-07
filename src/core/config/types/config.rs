@@ -323,6 +323,50 @@ pub struct Config {
     /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
     pub ask_hybrid_candidates: usize,
 
+    /// Maximum TEI embed retry attempts after the initial request.
+    /// Env: `TEI_MAX_RETRIES`. TOML: `tei.max-retries`. Clamped 0–20. Default: 5.
+    pub tei_max_retries: usize,
+
+    /// Per-attempt timeout in milliseconds for TEI embed requests.
+    /// Env: `TEI_REQUEST_TIMEOUT_MS`. TOML: `tei.request-timeout-ms`. Clamped 1000–300_000. Default: 30_000.
+    pub tei_request_timeout_ms: u64,
+
+    /// Default client-side batch size for TEI embed requests (auto-splits on HTTP 413).
+    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 64.
+    pub tei_max_client_batch_size: usize,
+
+    /// Parallel ingest worker lanes.
+    /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–16. Default: 2.
+    pub ingest_lanes: usize,
+
+    /// Per-document embed timeout in seconds (used by the embed pipeline).
+    /// Env: `AXON_EMBED_DOC_TIMEOUT_SECS`. TOML: `workers.embed-doc-timeout-secs`. Clamped 30–3600. Default: 300.
+    pub embed_doc_timeout_secs: u64,
+
+    /// Crawl queue cap (0 = unlimited).
+    /// Env: `AXON_MAX_PENDING_CRAWL_JOBS`. TOML: `workers.max-pending-crawl-jobs`. Clamped 0–10_000. Default: 100.
+    pub max_pending_crawl_jobs: usize,
+
+    /// Embed queue cap (0 = unlimited).
+    /// Env: `AXON_MAX_PENDING_EMBED_JOBS`. TOML: `workers.max-pending-embed-jobs`. Clamped 0–10_000. Default: 50.
+    pub max_pending_embed_jobs: usize,
+
+    /// Extract queue cap (0 = unlimited).
+    /// Env: `AXON_MAX_PENDING_EXTRACT_JOBS`. TOML: `workers.max-pending-extract-jobs`. Clamped 0–10_000. Default: 50.
+    pub max_pending_extract_jobs: usize,
+
+    /// Ingest queue cap (0 = unlimited).
+    /// Env: `AXON_MAX_PENDING_INGEST_JOBS`. TOML: `workers.max-pending-ingest-jobs`. Clamped 0–10_000. Default: 50.
+    pub max_pending_ingest_jobs: usize,
+
+    /// HNSW `ef` for named-mode (dense+sparse) collection searches.
+    /// Env: `AXON_HNSW_EF_SEARCH`. TOML: `search.hnsw-ef`. Clamped 32–512. Default: 128.
+    pub hnsw_ef_search: usize,
+
+    /// HNSW `ef` for legacy unnamed-mode collection searches.
+    /// Env: `AXON_HNSW_EF_SEARCH_LEGACY`. TOML: `search.hnsw-ef-legacy`. Clamped 16–256. Default: 64.
+    pub hnsw_ef_search_legacy: usize,
+
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
     pub cron_every_seconds: Option<u64>,
 

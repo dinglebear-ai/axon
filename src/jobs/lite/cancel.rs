@@ -56,6 +56,7 @@ impl Default for CancelStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::config::Config;
     use crate::jobs::backend::JobPayload;
     use crate::jobs::lite::ops::enqueue_job;
     use crate::jobs::lite::store::open_sqlite_pool;
@@ -70,6 +71,7 @@ mod tests {
                 url: "https://example.com".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .unwrap();

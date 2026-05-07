@@ -41,7 +41,7 @@ pub async fn start_extract_job(
         .map(|p| serde_json::json!({ "prompt": p }).to_string())
         .unwrap_or_else(|| "{}".to_string());
     Ok(
-        crate::jobs::lite::ops::enqueue_job(&pool, &JobPayload::Extract { urls, config_json })
+        crate::jobs::lite::ops::enqueue_job(&pool, &JobPayload::Extract { urls, config_json }, cfg)
             .await?,
     )
 }

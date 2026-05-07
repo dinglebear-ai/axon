@@ -138,9 +138,14 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
     pub(in crate::core::config) embed: bool,
 
-    /// Qdrant collection name (default: cortex)
-    #[arg(global = true, long, env = "AXON_COLLECTION", default_value = "cortex")]
-    pub(in crate::core::config) collection: String,
+    /// Qdrant collection name (default: cortex; env: `AXON_COLLECTION`; toml: `search.collection`).
+    ///
+    /// Resolution priority is handled explicitly in `into_config`:
+    /// CLI flag (this option) > env > TOML > "cortex". The flag itself is
+    /// `Option<String>` with no clap default and no `env=` attribute so the
+    /// "user actually passed --collection" case is detectable.
+    #[arg(global = true, long)]
+    pub(in crate::core::config) collection: Option<String>,
 
     /// Concurrent connections for batch operations (1-512)
     #[arg(global = true, long, default_value_t = 16)]

@@ -41,7 +41,7 @@ pub fn client_context_name() -> &'static str {
 /// Return the artifact root directory.
 ///
 /// Resolution order: `AXON_MCP_ARTIFACT_DIR` env var, then
-/// `axon_data_base_dir()/axon/artifacts` (`AXON_DATA_DIR` → `$HOME/.local/share`).
+/// `axon_data_base_dir()/artifacts` (`AXON_DATA_DIR` → `$HOME/.axon`).
 /// The context subdirectory (from `client_context_name()`) is always appended.
 ///
 /// Not cached with `OnceLock` because tests mutate env vars between runs
@@ -53,7 +53,7 @@ pub fn artifact_root() -> PathBuf {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| axon_data_base_dir().join("axon/artifacts"));
+        .unwrap_or_else(|| axon_data_base_dir().join("artifacts"));
     base.join(client_context_name())
 }
 
@@ -64,7 +64,10 @@ fn fallback_artifact_root() -> PathBuf {
 }
 
 async fn ensure_dir(path: &Path) -> Result<(), std::io::Error> {
-    tokio::fs::create_dir_all(path).await
+    // Use ensure_private_dir (0o700). MCP artifacts may include scraped
+    // page content, search results, and ask answers — all derived from
+    // user prompts that may contain sensitive context.
+    crate::core::paths::ensure_private_dir_async(path.to_path_buf()).await
 }
 
 async fn is_writable(path: &Path) -> bool {
@@ -78,17 +81,39 @@ async fn is_writable(path: &Path) -> bool {
             let _ = tokio::fs::remove_file(&probe).await;
             true
         }
-        Err(_) => false,
+        Err(e) => {
+            tracing::debug!(
+                path = %path.display(),
+                error = %e,
+                "mcp: artifact root write probe failed"
+            );
+            false
+        }
     }
 }
 
 pub async fn ensure_artifact_root() -> Result<PathBuf, ErrorData> {
     let root = artifact_root();
-    if ensure_dir(&root).await.is_ok() && is_writable(&root).await {
+    let primary_result = ensure_dir(&root).await;
+    if primary_result.is_ok() && is_writable(&root).await {
         return Ok(root);
     }
     let fallback = fallback_artifact_root();
     if fallback != root {
+        if let Err(e) = &primary_result {
+            tracing::warn!(
+                primary = %root.display(),
+                error = %e,
+                fallback = %fallback.display(),
+                "mcp: primary artifact root unusable, falling back to /tmp"
+            );
+        } else {
+            tracing::warn!(
+                primary = %root.display(),
+                fallback = %fallback.display(),
+                "mcp: primary artifact root is not writable, falling back to /tmp"
+            );
+        }
         if let Err(fallback_err) = ensure_dir(&fallback).await {
             return Err(internal_error(format!(
                 "artifact dir '{}' is not writable; fallback '{}' also failed ({fallback_err})",

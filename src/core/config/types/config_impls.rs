@@ -4,7 +4,6 @@ use super::enums::{
     RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
-use std::env;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -50,9 +49,7 @@ impl Default for Config {
             batch_concurrency: 16,
             wait: false,
             lite_mode: false,
-            sqlite_path: crate::core::paths::axon_data_base_dir()
-                .join("axon")
-                .join("jobs.db"),
+            sqlite_path: crate::core::paths::axon_data_base_dir().join("jobs.db"),
             yes: false,
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,
@@ -107,17 +104,22 @@ impl Default for Config {
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
             ask_hybrid_candidates: 150,
+            tei_max_retries: 5,
+            tei_request_timeout_ms: 30_000,
+            tei_max_client_batch_size: 64,
+            ingest_lanes: 2,
+            embed_doc_timeout_secs: 300,
+            max_pending_crawl_jobs: 100,
+            max_pending_embed_jobs: 50,
+            max_pending_extract_jobs: 50,
+            max_pending_ingest_jobs: 50,
+            hnsw_ef_search: 128,
+            hnsw_ef_search_legacy: 64,
             evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
-            watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(300),
-            watchdog_confirm_secs: env::var("AXON_JOB_STALE_CONFIRM_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60),
+            watchdog_stale_timeout_secs: 300,
+            watchdog_confirm_secs: 60,
             json_output: false,
             reclaimed_status_only: false,
             active_status_only: false,
@@ -178,10 +180,12 @@ impl Config {
 impl Config {
     /// A minimal Config used by LiteBackend — lite mode enabled, no external services required.
     pub fn default_lite() -> Self {
-        Self {
+        let mut cfg = Self {
             lite_mode: true,
             ..Default::default()
-        }
+        };
+        crate::core::config::parse::tuning::apply_default_lite_tuning(&mut cfg);
+        cfg
     }
 }
 
@@ -306,6 +310,17 @@ impl fmt::Debug for Config {
             .field("hybrid_search_enabled", &self.hybrid_search_enabled)
             .field("hybrid_search_candidates", &self.hybrid_search_candidates)
             .field("ask_hybrid_candidates", &self.ask_hybrid_candidates)
+            .field("tei_max_retries", &self.tei_max_retries)
+            .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
+            .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
+            .field("ingest_lanes", &self.ingest_lanes)
+            .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
+            .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
+            .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)
+            .field("max_pending_extract_jobs", &self.max_pending_extract_jobs)
+            .field("max_pending_ingest_jobs", &self.max_pending_ingest_jobs)
+            .field("hnsw_ef_search", &self.hnsw_ef_search)
+            .field("hnsw_ef_search_legacy", &self.hnsw_ef_search_legacy)
             .field("evaluate_retrieval_ab", &self.evaluate_retrieval_ab)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)

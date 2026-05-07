@@ -1,10 +1,6 @@
-// Phase 1: several TomlConfig fields are parsed and validated by serde but not yet
-// wired into Config (they will be connected in follow-up beads as Config fields or
-// subsystem-level env reads are added). Suppress dead_code for the whole module.
-#![allow(dead_code)]
-
 use crate::core::paths::axon_config_path;
 use serde::Deserialize;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// TOML configuration — tuning knobs only, safe to commit to source control.
@@ -66,13 +62,10 @@ pub(super) struct TomlAskSection {
     pub min_relevance_score: Option<f64>,
 }
 
-// Phase 1: TEI and worker fields are parsed by serde but not yet wired into Config
-// (those fields are read directly from env by their subsystems). See #![allow(dead_code)]
-// at module level. Per-struct allows are omitted — the module attribute covers them.
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlTeiSection {
-    /// Max retry attempts per TEI request.
+    /// Max retry attempts after the initial TEI request.
     pub max_retries: Option<usize>,
     /// Per-attempt timeout in milliseconds.
     pub request_timeout_ms: Option<u64>,
@@ -89,6 +82,12 @@ pub(super) struct TomlWorkersSection {
     pub embed_doc_timeout_secs: Option<u64>,
     /// Crawl queue cap (0 = unlimited).
     pub max_pending_crawl_jobs: Option<usize>,
+    /// Embed queue cap (0 = unlimited).
+    pub max_pending_embed_jobs: Option<usize>,
+    /// Extract queue cap (0 = unlimited).
+    pub max_pending_extract_jobs: Option<usize>,
+    /// Ingest queue cap (0 = unlimited).
+    pub max_pending_ingest_jobs: Option<usize>,
 }
 
 /// Load TOML config from the first found path:
@@ -145,13 +144,59 @@ fn resolve_config_path() -> Result<Option<ResolvedConfigPath>, String> {
 }
 
 fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
-    let contents = match std::fs::read_to_string(path) {
+    // Reject symlinks: ~/.axon/config.toml controls service URLs (Qdrant,
+    // TEI, Chrome CDP, OpenAI base) and ACP adapter commands. A planted
+    // symlink under a permissive ~/.axon would let a local attacker
+    // redirect those baseline endpoints. `read_to_string` follows symlinks
+    // by default — we lstat first.
+    match std::fs::symlink_metadata(path) {
+        Ok(md) if md.file_type().is_symlink() => {
+            return Err(format!(
+                "axon: error: refusing to load symlinked config file '{}' (potential symlink attack)",
+                path.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
+            return Ok(TomlConfig::default());
+        }
+        Err(e)
+            if explicit
+                || matches!(
+                    e.kind(),
+                    std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::IsADirectory
+                        | std::io::ErrorKind::NotADirectory
+                ) =>
+        {
+            return Err(format!(
+                "axon: error: cannot read config file '{}': {e}",
+                path.display()
+            ));
+        }
+        Err(e) => {
+            eprintln!(
+                "axon: warning: cannot read config file '{}': {e}",
+                path.display()
+            );
+            return Ok(TomlConfig::default());
+        }
+    }
+
+    let contents = match read_config_file_no_follow(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
             return Ok(TomlConfig::default());
         }
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            // File exists but is unreadable — return Err so the caller can hard-fail.
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::PermissionDenied
+                    | std::io::ErrorKind::IsADirectory
+                    | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            // File exists but is unreadable/mis-typed — return Err so the caller can hard-fail.
             // Silent fallback would hide a misconfiguration the user must fix.
             return Err(format!(
                 "axon: error: cannot read config file '{}': {e}",
@@ -181,6 +226,24 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
     })
 }
 
+#[cfg(unix)]
+fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+#[cfg(not(unix))]
+fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
+    std::fs::read_to_string(path)
+}
+
 #[cfg(test)]
 pub(super) fn load_toml_config_from_str(s: &str) -> Result<TomlConfig, toml::de::Error> {
     toml::from_str(s)
@@ -203,6 +266,31 @@ mod tests {
         let cfg = load_from_path(path, false).unwrap();
         assert!(cfg.search.hybrid_enabled.is_none());
         assert!(cfg.ask.chunk_limit.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn load_from_path_rejects_symlinked_config() {
+        // Plant a symlink at a config path pointing at a real TOML file.
+        // load_from_path must refuse to follow the symlink even though
+        // the target parses cleanly — a symlink under ~/.axon/ would let
+        // a local attacker redirect [services] URLs / adapter cmds.
+        let target = NamedTempFile::new().unwrap();
+        writeln!(target.as_file(), "[ask]\nchunk-limit = 5").unwrap();
+        let link =
+            std::env::temp_dir().join(format!("axon-symlink-test-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(target.path(), &link).expect("create symlink");
+        let result = load_from_path(&link, true);
+        let _ = std::fs::remove_file(&link);
+        let err = match result {
+            Ok(_) => panic!("symlinked config must be rejected, got Ok"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("symlinked config file") || err.contains("symlink attack"),
+            "error should mention symlink rejection, got: {err}"
+        );
     }
 
     #[test]
@@ -250,6 +338,35 @@ mod tests {
         assert!(
             result.err().unwrap().contains("parse error"),
             "error message should mention 'parse error'"
+        );
+    }
+
+    #[test]
+    fn load_from_path_rejects_directory_config_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = load_from_path(dir.path(), false);
+        let err = match result {
+            Ok(_) => panic!("directory config path should hard-fail"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("cannot read config file"),
+            "error should mention unreadable config, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_from_path_rejects_not_a_directory_config_path() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path().join("config.toml");
+        let result = load_from_path(&path, false);
+        let err = match result {
+            Ok(_) => panic!("NotADirectory config path should hard-fail"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("cannot read config file"),
+            "error should mention unreadable config, got: {err}"
         );
     }
 

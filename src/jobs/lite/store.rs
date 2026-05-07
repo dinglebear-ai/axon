@@ -11,9 +11,33 @@ use sqlx::{
 pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     if path != ":memory:"
         && let Some(parent) = std::path::Path::new(path).parent()
-        && let Err(e) = tokio::fs::create_dir_all(parent).await
+        && !parent.as_os_str().is_empty()
     {
-        tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
+        // Use ensure_private_dir (mode 0o700) so SQLite WAL/SHM files —
+        // which inherit umask defaults and may contain credential
+        // snapshots from job payloads — are not group/world-readable
+        // on multi-user hosts.
+        //
+        // Failure policy: if the parent is under ~/.axon/, hard-fail —
+        // SQLite would otherwise create the dir at default umask
+        // and silently expose secrets. For paths the operator chose
+        // explicitly (AXON_SQLITE_PATH=/var/lib/axon/...), warn-and-
+        // continue so non-secret operator-managed locations still work.
+        if let Err(e) = crate::core::paths::ensure_private_dir_async(parent.to_path_buf()).await {
+            let parent_under_axon_home =
+                crate::core::paths::axon_home_dir().is_some_and(|home| parent.starts_with(&home));
+            if parent_under_axon_home {
+                return Err(sqlx::Error::Configuration(
+                    format!(
+                        "lite: refusing to open SQLite at {} because parent dir {} could not be created at 0o700: {e}",
+                        path,
+                        parent.display()
+                    )
+                    .into(),
+                ));
+            }
+            tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir at 0o700");
+        }
     }
 
     let connect_str = if path == ":memory:" {

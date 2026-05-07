@@ -1,50 +1,10 @@
-use std::sync::LazyLock;
-
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::core::config::Config;
 use crate::jobs::backend::JobPayload;
 use crate::jobs::error::JobError;
 use crate::jobs::lite::store::now_ms;
-
-/// Parse a queue cap env var once at process start. Returns `None` if unset
-/// or unparseable; `Some(0)` means explicitly unlimited; `Some(n)` is the cap.
-///
-/// On a parse failure, logs a `tracing::warn!` so misconfiguration is visible
-/// rather than silently disabling the cap.
-fn parse_cap_env(name: &'static str) -> Option<u64> {
-    match std::env::var(name) {
-        Ok(raw) => match raw.parse::<u64>() {
-            Ok(v) => Some(v),
-            Err(e) => {
-                tracing::warn!(
-                    env_var = name,
-                    raw = %raw,
-                    error = %e,
-                    "queue cap env var is set but not a valid u64; treating as unset"
-                );
-                None
-            }
-        },
-        Err(_) => None,
-    }
-}
-
-/// `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, `0` = unlimited).
-static CRAWL_CAP: LazyLock<u64> =
-    LazyLock::new(|| parse_cap_env("AXON_MAX_PENDING_CRAWL_JOBS").unwrap_or(100));
-
-/// `AXON_MAX_PENDING_EMBED_JOBS` (default 50, `0` = unlimited).
-static EMBED_CAP: LazyLock<u64> =
-    LazyLock::new(|| parse_cap_env("AXON_MAX_PENDING_EMBED_JOBS").unwrap_or(50));
-
-/// `AXON_MAX_PENDING_EXTRACT_JOBS` (default 50, `0` = unlimited).
-static EXTRACT_CAP: LazyLock<u64> =
-    LazyLock::new(|| parse_cap_env("AXON_MAX_PENDING_EXTRACT_JOBS").unwrap_or(50));
-
-/// `AXON_MAX_PENDING_INGEST_JOBS` (default 50, `0` = unlimited).
-static INGEST_CAP: LazyLock<u64> =
-    LazyLock::new(|| parse_cap_env("AXON_MAX_PENDING_INGEST_JOBS").unwrap_or(50));
 
 /// Check whether the pending job count for a given queue is at or above the configured cap.
 ///
@@ -87,14 +47,29 @@ pub(super) async fn check_pending_cap_for(
 }
 
 /// Insert a new job row with status='pending'. Returns the new job's UUID.
-pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid, JobError> {
+///
+/// Pending-queue caps are sourced from `cfg.max_pending_{crawl,embed,extract,ingest}_jobs`
+/// (priority CLI flag > env > TOML > default). Pass `&Config::default_lite()` from
+/// tests to use the built-in defaults (100/50/50/50) — those are well above any
+/// reasonable test fixture so production caps don't accidentally fail tests.
+pub async fn enqueue_job(
+    pool: &SqlitePool,
+    payload: &JobPayload,
+    cfg: &Config,
+) -> Result<Uuid, JobError> {
     let id = Uuid::new_v4();
     let now = now_ms();
     let id_str = id.to_string();
 
     match payload {
         JobPayload::Crawl { url, config_json } => {
-            check_pending_cap_for(pool, "axon_crawl_jobs", "crawl", *CRAWL_CAP).await?;
+            check_pending_cap_for(
+                pool,
+                "axon_crawl_jobs",
+                "crawl",
+                cfg.max_pending_crawl_jobs as u64,
+            )
+            .await?;
             sqlx::query(
                 "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at) \
                  VALUES (?, 'pending', ?, ?, ?, ?)",
@@ -108,7 +83,13 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
             .await?;
         }
         JobPayload::Embed { input, config_json } => {
-            check_pending_cap_for(pool, "axon_embed_jobs", "embed", *EMBED_CAP).await?;
+            check_pending_cap_for(
+                pool,
+                "axon_embed_jobs",
+                "embed",
+                cfg.max_pending_embed_jobs as u64,
+            )
+            .await?;
             sqlx::query(
                 "INSERT INTO axon_embed_jobs (id, status, input_text, config_json, created_at, updated_at) \
                  VALUES (?, 'pending', ?, ?, ?, ?)",
@@ -122,7 +103,13 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
             .await?;
         }
         JobPayload::Extract { urls, config_json } => {
-            check_pending_cap_for(pool, "axon_extract_jobs", "extract", *EXTRACT_CAP).await?;
+            check_pending_cap_for(
+                pool,
+                "axon_extract_jobs",
+                "extract",
+                cfg.max_pending_extract_jobs as u64,
+            )
+            .await?;
             let urls_json =
                 serde_json::to_string(urls).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
             sqlx::query(
@@ -142,7 +129,13 @@ pub async fn enqueue_job(pool: &SqlitePool, payload: &JobPayload) -> Result<Uuid
             source_type,
             config_json,
         } => {
-            check_pending_cap_for(pool, "axon_ingest_jobs", "ingest", *INGEST_CAP).await?;
+            check_pending_cap_for(
+                pool,
+                "axon_ingest_jobs",
+                "ingest",
+                cfg.max_pending_ingest_jobs as u64,
+            )
+            .await?;
             sqlx::query(
                 "INSERT INTO axon_ingest_jobs (id, status, target, source_type, config_json, created_at, updated_at) \
                  VALUES (?, 'pending', ?, ?, ?, ?, ?)",

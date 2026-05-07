@@ -14,6 +14,25 @@ pub use overrides::ConfigOverrides;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::io::Write as _;
+
+    #[allow(unsafe_code)]
+    fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {
+        let saved: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| ((*k).to_string(), env::var(k).ok()))
+            .collect();
+        body();
+        for (k, v) in saved {
+            unsafe {
+                match v {
+                    Some(val) => env::set_var(&k, val),
+                    None => env::remove_var(&k),
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_command_kind_research_as_str() {
@@ -79,6 +98,70 @@ mod tests {
         assert_eq!(cfg.batch_concurrency, 16);
         assert_eq!(cfg.watchdog_stale_timeout_secs, 300);
         assert_eq!(cfg.watchdog_confirm_secs, 60);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn config_default_ignores_env_tuning_knobs() {
+        with_env_saved(
+            &[
+                "TEI_MAX_RETRIES",
+                "AXON_INGEST_LANES",
+                "AXON_HNSW_EF_SEARCH",
+            ],
+            || {
+                unsafe {
+                    env::set_var("TEI_MAX_RETRIES", "19");
+                    env::set_var("AXON_INGEST_LANES", "12");
+                    env::set_var("AXON_HNSW_EF_SEARCH", "256");
+                }
+
+                let cfg = Config::default();
+
+                assert_eq!(cfg.tei_max_retries, 5);
+                assert_eq!(cfg.ingest_lanes, 2);
+                assert_eq!(cfg.hnsw_ef_search, 128);
+            },
+        );
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn config_default_lite_applies_toml_tuning_when_env_unset() {
+        with_env_saved(
+            &[
+                "AXON_CONFIG_PATH",
+                "TEI_MAX_RETRIES",
+                "AXON_INGEST_LANES",
+                "AXON_HNSW_EF_SEARCH",
+            ],
+            || {
+                let mut file = tempfile::Builder::new()
+                    .suffix(".toml")
+                    .tempfile()
+                    .expect("temp config");
+                writeln!(
+                    file,
+                    "[tei]\nmax-retries = 4\n[workers]\ningest-lanes = 6\n[search]\nhnsw-ef = 300"
+                )
+                .expect("write config");
+                unsafe {
+                    env::set_var("AXON_CONFIG_PATH", file.path());
+                    env::remove_var("TEI_MAX_RETRIES");
+                    env::remove_var("AXON_INGEST_LANES");
+                    env::remove_var("AXON_HNSW_EF_SEARCH");
+                }
+
+                let cfg = Config::default_lite();
+
+                assert!(cfg.lite_mode);
+                assert_eq!(cfg.tei_max_retries, 4);
+                assert_eq!(cfg.ingest_lanes, 6);
+                assert_eq!(cfg.hnsw_ef_search, 300);
+            },
+        );
     }
 
     #[test]

@@ -21,7 +21,6 @@ apps/web/hooks/ws-messages/provider.ts  # expires: 2026-06-09 | owner: jmagar | 
 # Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30; tracked by axon_rust-cr5.7.6)
 src/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
 src/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
-src/core/config/parse/build_config.rs  # expires: 2026-06-09 | owner: jmagar | split: build_config/{crawl,embed,jobs}.rs
 src/services/system.rs  # expires: 2026-06-09 | owner: jmagar | split: system/{health,metrics,diagnostics}.rs
 src/crawl/engine/sitemap.rs  # expires: 2026-06-09 | owner: jmagar | split: sitemap/{discover,backfill,filter}.rs
 src/core/logging.rs  # expires: 2026-06-09 | owner: jmagar | split: logging/{format,output,init}.rs

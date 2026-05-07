@@ -12,14 +12,14 @@ pub fn axon_data_dir() -> Option<PathBuf> {
 }
 
 /// Returns the base data directory for Axon, falling back through:
-/// `AXON_DATA_DIR` → `$HOME/.local/share` → `.cache/axon-rust/data`.
+/// `AXON_DATA_DIR` → `$HOME/.axon` → `.cache/axon-rust/data`.
 ///
 /// Used by subsystems that need a persistent writable directory
 /// (prewarm, assistant mode, etc.).
 pub fn axon_data_base_dir() -> PathBuf {
     axon_data_dir().unwrap_or_else(|| {
         valid_home_path()
-            .map(|home| home.join(".local").join("share"))
+            .map(|home| home.join(".axon"))
             .unwrap_or_else(|| PathBuf::from(".cache/axon-rust/data"))
     })
 }
@@ -81,9 +81,112 @@ pub fn path_basename<'a>(path: &'a str, fallback: &'a str) -> &'a str {
         .unwrap_or(fallback)
 }
 
+/// Create a directory tree (recursive) with mode 0o700 on Unix.
+///
+/// Tightens permissions to 0o700 if the directory already exists with a
+/// looser mode. Use for any directory under `~/.axon/` that may hold
+/// secrets or sensitive runtime state (sqlite jobs.db + WAL/SHM, logs,
+/// MCP artifacts, scraped output).
+///
+/// Falls back to plain `create_dir_all` on non-Unix targets where the
+/// 0o700 concept does not apply (Windows uses ACLs).
+pub fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+        let metadata = std::fs::metadata(path)?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode != 0o700 {
+            // Tighten before logging so a chmod failure surfaces as Err
+            // and the log line never lies about a state that didn't
+            // happen. (`?` propagates EPERM/EACCES; the caller decides
+            // whether to hard-fail or warn-and-continue.)
+            std::fs::set_permissions(path, PermissionsExt::from_mode(0o700))?;
+            tracing::warn!(
+                path = %path.display(),
+                from_mode = format_args!("{mode:o}"),
+                "tightened directory permissions to 0700"
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+    }
+}
+
+/// Async wrapper around `ensure_private_dir`: runs the blocking filesystem
+/// calls on the tokio blocking pool and folds `JoinError` into `io::Error`.
+///
+/// Used by callers that need to create a 0o700 directory from an async
+/// context (lite-mode SQLite parent dir, MCP artifact root, etc.).
+pub async fn ensure_private_dir_async(path: PathBuf) -> std::io::Result<()> {
+    tokio::task::spawn_blocking(move || ensure_private_dir(&path))
+        .await
+        .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_creates_with_0700_when_absent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("secrets");
+        ensure_private_dir(&target).expect("create");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "fresh dir should be 0o700");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_tightens_loose_mode_to_0700() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("loose");
+        std::fs::create_dir(&target).expect("mkdir");
+        std::fs::set_permissions(&target, PermissionsExt::from_mode(0o755)).expect("chmod 0755");
+        ensure_private_dir(&target).expect("tighten");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "existing dir at 0o755 must be tightened to 0o700"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_private_dir_is_idempotent_when_already_0700() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("already");
+        ensure_private_dir(&target).expect("first");
+        ensure_private_dir(&target).expect("second");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_private_dir_async_creates_with_0700_when_absent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("async-secrets");
+        ensure_private_dir_async(target.clone())
+            .await
+            .expect("create async");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+    }
 
     #[test]
     fn path_basename_extracts_filename() {
@@ -128,6 +231,20 @@ mod tests {
     #[allow(unsafe_code)]
     #[serial_test::serial]
     #[test]
+    fn axon_home_dir_returns_none_when_home_is_whitespace() {
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", "   ") };
+        let result = axon_home_dir();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        assert_eq!(result, None);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
     fn axon_data_base_dir_uses_home_when_home_is_valid() {
         let saved_home = std::env::var("HOME").ok();
         let saved_data = std::env::var("AXON_DATA_DIR").ok();
@@ -144,7 +261,7 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
             None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
         }
-        assert_eq!(result, PathBuf::from("/home/testuser/.local/share"));
+        assert_eq!(result, PathBuf::from("/home/testuser/.axon"));
     }
 
     #[allow(unsafe_code)]
