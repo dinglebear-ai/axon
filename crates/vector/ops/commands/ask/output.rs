@@ -16,6 +16,7 @@ use super::super::streaming::{ask_llm_non_streaming, ask_llm_streaming_ttft};
 pub(crate) struct AskLlmAnswer {
     pub answer: String,
     pub llm_total_ms: u128,
+    #[allow(dead_code)] // reason: surfaced for future diagnostics; legacy callers ignored this
     pub streamed_ok: bool,
     pub ttft_first_token_at: Option<Instant>,
 }
