@@ -229,10 +229,25 @@ struct DispatchOutcome<'a> {
         Option<Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>>,
 }
 
-/// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches
-/// in parallel and record per-arm wall-clock latency so `qdrant_secondary_ms`
-/// reflects the secondary arm's true round-trip rather than the combined join
-/// window (the previous approach made the two timing slots indistinguishable).
+/// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches.
+///
+/// Tries the batch path (`/points/query/batch`) first when both arms are
+/// available; this saves the second TLS+TCP handshake/header round-trip on
+/// every ask. On any batch failure (transport error, 5xx after retries,
+/// VectorMode::Unnamed which the batch helper intentionally rejects) the
+/// dispatch falls back to the existing parallel-single (`tokio::join!`) path
+/// so retrieval cannot be silently disabled by a transient batch hiccup.
+///
+/// Timing semantics:
+/// - **Batch path**: Qdrant's `/points/query/batch` returns only one
+///   aggregate `time` field; per-arm timings are unavailable. We record the
+///   batch wall-clock under [`AskTimingSlot::QdrantPrimary`] as the only
+///   meaningful signal and leave [`AskTimingSlot::QdrantSecondary`] as None.
+///   Operators reading diagnostics should read `qdrant_primary_ms` as the
+///   aggregate dispatch ms when `qdrant_secondary_ms` is None.
+/// - **Fallback path**: each arm is timed independently as before.
+///
+/// (bd axon_rust-j2c)
 #[allow(clippy::too_many_arguments)]
 async fn run_qdrant_dispatch<'a>(
     cfg: &'a Config,
@@ -249,38 +264,89 @@ async fn run_qdrant_dispatch<'a>(
         qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
             .map_err(|e| anyhow!("build ask vector search request: {e}"))?
             .with_candidates_override(Some(hybrid_candidates));
-    let primary_fut = async {
+
+    // No secondary arm — single dispatch, classic timing.
+    if !use_dual || ask_vectors.is_empty() {
         let t = std::time::Instant::now();
-        let r = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
-        (r, t.elapsed().as_millis())
+        let primary_res = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
+        timing.set(AskTimingSlot::QdrantPrimary, t.elapsed().as_millis());
+        return Ok(DispatchOutcome {
+            primary_request,
+            primary_res,
+            secondary_res: None,
+        });
+    }
+
+    let vecq_kw = ask_vectors.remove(0);
+    let secondary_request =
+        qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
+            .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
+            .with_candidates_override(Some(hybrid_candidates));
+
+    // Try batch path first.
+    let primary_sparse_default = primary_request.sparse.clone().unwrap_or_default();
+    let secondary_sparse_default = secondary_request.sparse.clone().unwrap_or_default();
+    let primary_arm = qdrant::DualSearchArm {
+        dense: primary_request.dense,
+        sparse: &primary_sparse_default,
+        filter: primary_request.filter.as_ref(),
     };
-    let (primary_pair, secondary_pair) = if use_dual && !ask_vectors.is_empty() {
-        let vecq_kw = ask_vectors.remove(0);
-        let secondary_request =
-            qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
-                .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
-                .with_candidates_override(Some(hybrid_candidates));
-        let secondary_fut = async {
-            let t = std::time::Instant::now();
-            let r = qdrant::dispatch_vector_search_request(cfg, &secondary_request).await;
-            (r, t.elapsed().as_millis())
-        };
-        let (p, s) = tokio::join!(primary_fut, secondary_fut);
-        (p, Some(s))
-    } else {
-        (primary_fut.await, None)
+    let secondary_arm = qdrant::DualSearchArm {
+        dense: secondary_request.dense,
+        sparse: &secondary_sparse_default,
+        filter: secondary_request.filter.as_ref(),
     };
-    // Per-arm latency: each branch records its own elapsed time; the secondary
-    // slot is only set when a dual-embedding dispatch actually ran.
-    let (primary_res, primary_ms) = primary_pair;
-    timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
-    let secondary_res = secondary_pair.map(|(res, ms)| {
-        timing.set(AskTimingSlot::QdrantSecondary, ms);
-        res
-    });
-    Ok(DispatchOutcome {
-        primary_request,
-        primary_res,
-        secondary_res,
-    })
+    let batch_started = std::time::Instant::now();
+    match qdrant::qdrant_dual_search(
+        cfg,
+        primary_arm,
+        secondary_arm,
+        candidate_limit,
+        Some(hybrid_candidates),
+    )
+    .await
+    {
+        Ok(qdrant::DualSearchResult { primary, secondary }) => {
+            // Per-arm timing is unavailable on the batch path: Qdrant only
+            // returns one aggregate `time` field. Record the wall-clock under
+            // QdrantPrimary and leave QdrantSecondary unset to signal the
+            // batch path to operators reading diagnostics.
+            timing.set(
+                AskTimingSlot::QdrantPrimary,
+                batch_started.elapsed().as_millis(),
+            );
+            Ok(DispatchOutcome {
+                primary_request,
+                primary_res: Ok(primary),
+                secondary_res: Some(Ok(secondary)),
+            })
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "ask: qdrant batch dual-search failed, falling back to parallel-single: {e}"
+            ));
+            // Fallback: parallel-single via tokio::join!. Per-arm timing is
+            // captured here so the fallback path retains the existing diag
+            // shape (both QdrantPrimary and QdrantSecondary populated).
+            let primary_fut = async {
+                let t = std::time::Instant::now();
+                let r = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
+                (r, t.elapsed().as_millis())
+            };
+            let secondary_fut = async {
+                let t = std::time::Instant::now();
+                let r = qdrant::dispatch_vector_search_request(cfg, &secondary_request).await;
+                (r, t.elapsed().as_millis())
+            };
+            let ((primary_res, primary_ms), (secondary_res, secondary_ms)) =
+                tokio::join!(primary_fut, secondary_fut);
+            timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
+            timing.set(AskTimingSlot::QdrantSecondary, secondary_ms);
+            Ok(DispatchOutcome {
+                primary_request,
+                primary_res,
+                secondary_res: Some(secondary_res),
+            })
+        }
+    }
 }
