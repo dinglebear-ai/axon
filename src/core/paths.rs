@@ -175,6 +175,19 @@ mod tests {
         assert_eq!(mode, 0o700);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ensure_private_dir_async_creates_with_0700_when_absent() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let target = tmp.path().join("async-secrets");
+        ensure_private_dir_async(target.clone())
+            .await
+            .expect("create async");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+    }
+
     #[test]
     fn path_basename_extracts_filename() {
         assert_eq!(path_basename("/usr/bin/claude", "default"), "claude");
@@ -207,6 +220,20 @@ mod tests {
     fn axon_home_dir_returns_none_when_home_unset() {
         let saved = std::env::var("HOME").ok();
         unsafe { std::env::remove_var("HOME") };
+        let result = axon_home_dir();
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        assert_eq!(result, None);
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_home_dir_returns_none_when_home_is_whitespace() {
+        let saved = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", "   ") };
         let result = axon_home_dir();
         match saved {
             Some(v) => unsafe { std::env::set_var("HOME", v) },

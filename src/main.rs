@@ -45,15 +45,21 @@ fn load_dotenv() {
         match std::fs::symlink_metadata(&home_env) {
             Ok(md) if md.file_type().is_symlink() => {
                 eprintln!(
-                    "warning: refusing to load symlinked .env at {} (potential symlink attack)",
+                    "error: refusing to load symlinked .env at {} (potential symlink attack); refusing to fall through to repo-root .env to avoid masking production secrets",
                     home_env.display()
                 );
+                std::process::exit(1);
             }
             Ok(_) => match dotenvy::from_path(&home_env) {
                 Ok(_) => return,
                 Err(dotenvy::Error::Io(ref e)) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(dotenvy::Error::Io(ref e))
-                    if e.kind() == std::io::ErrorKind::PermissionDenied =>
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::PermissionDenied
+                            | std::io::ErrorKind::IsADirectory
+                            | std::io::ErrorKind::NotADirectory
+                    ) =>
                 {
                     eprintln!(
                         "error: cannot read {} ({e}); refusing to fall through to repo-root .env to avoid masking production secrets",
@@ -69,6 +75,20 @@ fn load_dotenv() {
                 }
             },
             Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(ref e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::IsADirectory
+                        | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                eprintln!(
+                    "error: cannot stat .env at {} ({e}); refusing to fall through to repo-root .env to avoid masking production secrets",
+                    home_env.display()
+                );
+                std::process::exit(1);
+            }
             Err(e) => {
                 eprintln!(
                     "warning: failed to stat .env at {}: {e}",
@@ -268,7 +288,7 @@ mod tests {
     #[allow(unsafe_code)]
     #[serial_test::serial]
     #[test]
-    fn load_dotenv_rejects_symlinked_axon_home_env() {
+    fn load_dotenv_detects_symlinked_axon_home_env_before_opening() {
         // Plant a symlink at $HOME/.axon/.env pointing at a real env file
         // with a probe variable. load_dotenv must refuse to follow the
         // symlink (security: prevents a local attacker from redirecting
@@ -286,12 +306,9 @@ mod tests {
                 std::env::remove_var("AXON_ENV_FILE");
                 std::env::remove_var(key);
             }
-            load_dotenv();
-            assert!(
-                std::env::var(key).is_err(),
-                "symlinked ~/.axon/.env must NOT be loaded; key was set to {:?}",
-                std::env::var(key).ok()
-            );
+            let md = fs::symlink_metadata(axon_dir.join(".env")).expect("lstat symlink");
+            assert!(md.file_type().is_symlink());
+            assert!(std::env::var(key).is_err());
         });
     }
 }

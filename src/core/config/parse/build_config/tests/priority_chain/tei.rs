@@ -232,6 +232,63 @@ fn toml_tei_max_client_batch_size_wins_over_default() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn toml_tei_request_timeout_ms_clamps_upper_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[tei]\nrequest-timeout-ms = 999999").unwrap();
+    let mut got = 0u64;
+    with_env_saved(&["AXON_CONFIG_PATH", "TEI_REQUEST_TIMEOUT_MS"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("TEI_REQUEST_TIMEOUT_MS");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .tei_request_timeout_ms;
+    });
+    assert_eq!(got, 300_000);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_tei_max_client_batch_size_clamps_lower_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[tei]\nmax-client-batch-size = 0").unwrap();
+    let mut got = 0usize;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "TEI_MAX_CLIENT_BATCH_SIZE"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("TEI_MAX_CLIENT_BATCH_SIZE");
+            got = into_config(cli_with_services(&["status"]))
+                .unwrap()
+                .tei_max_client_batch_size;
+        },
+    );
+    assert_eq!(got, 1);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn env_out_of_range_tei_max_retries_shadows_toml_and_clamps() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[tei]\nmax-retries = 3").unwrap();
+    let mut got = 0usize;
+    with_env_saved(&["AXON_CONFIG_PATH", "TEI_MAX_RETRIES"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        env::set_var("TEI_MAX_RETRIES", "999");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .tei_max_retries;
+    });
+    assert_eq!(got, 20, "parsed env values win even when clamped");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn env_wins_over_toml_for_tei_max_client_batch_size() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

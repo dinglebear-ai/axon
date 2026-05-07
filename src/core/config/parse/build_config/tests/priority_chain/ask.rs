@@ -69,6 +69,42 @@ fn env_wins_over_toml_for_ask_chunk_limit() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn toml_ask_chunk_limit_clamps_lower_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\nchunk-limit = 1").unwrap();
+    let mut got = 0usize;
+    with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("AXON_ASK_CHUNK_LIMIT");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .ask_chunk_limit;
+    });
+    assert_eq!(got, 3);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_chunk_limit_clamps_upper_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\nchunk-limit = 999").unwrap();
+    let mut got = 0usize;
+    with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("AXON_ASK_CHUNK_LIMIT");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .ask_chunk_limit;
+    });
+    assert_eq!(got, 40);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn toml_hybrid_disabled_wins_over_default() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
@@ -163,6 +199,48 @@ fn toml_ask_candidate_limit_wins_over_default() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
+fn toml_ask_candidate_limit_clamps_lower_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\ncandidate-limit = 1").unwrap();
+    let mut got = 0usize;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_ASK_CANDIDATE_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
+            got = into_config(cli_with_services(&["status"]))
+                .unwrap()
+                .ask_candidate_limit;
+        },
+    );
+    assert_eq!(got, 8);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_candidate_limit_clamps_upper_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\ncandidate-limit = 999").unwrap();
+    let mut got = 0usize;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_ASK_CANDIDATE_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
+            got = into_config(cli_with_services(&["status"]))
+                .unwrap()
+                .ask_candidate_limit;
+        },
+    );
+    assert_eq!(got, 300);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
 fn toml_ask_min_relevance_score_wins_over_default() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
@@ -190,4 +268,46 @@ fn toml_ask_min_relevance_score_wins_over_default() {
         (score - 0.7).abs() < 1e-10,
         "TOML min-relevance-score=0.7 should override the default (0.45), got {score}"
     );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_min_relevance_score_clamps_lower_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\nmin-relevance-score = -9.0").unwrap();
+    let mut got = 0.0f64;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_ASK_MIN_RELEVANCE_SCORE"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_MIN_RELEVANCE_SCORE");
+            got = into_config(cli_with_services(&["status"]))
+                .unwrap()
+                .ask_min_relevance_score;
+        },
+    );
+    assert!((got - -1.0).abs() < 1e-10, "got {got}");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_min_relevance_score_clamps_upper_bound() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[ask]\nmin-relevance-score = 9.0").unwrap();
+    let mut got = 0.0f64;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_ASK_MIN_RELEVANCE_SCORE"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_MIN_RELEVANCE_SCORE");
+            got = into_config(cli_with_services(&["status"]))
+                .unwrap()
+                .ask_min_relevance_score;
+        },
+    );
+    assert!((got - 2.0).abs() < 1e-10, "got {got}");
 }

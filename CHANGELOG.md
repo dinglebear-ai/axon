@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.10] - 2026-05-07
+
+### Changed
+
+- Made `Config::default()` pure by moving env/TOML tuning resolution into a shared config path used by `into_config()` and `Config::default_lite()`.
+- Hardened config and secret loading: `~/.axon/.env` symlinks and directory/not-directory errors now hard-fail before repo `.env` fallback, and TOML config reads reject directory/not-directory cases and use no-follow opens on Unix.
+- Added warnings for malformed numeric env tuning values and MCP artifact fallback diagnostics.
+
+### Tests
+
+- Added boundary clamp coverage for TEI, worker, search, and ask tuning knobs.
+- Added integration coverage for the `~/.axon/.env` plus `~/.axon/config.toml` startup pipeline and hard-fail secret-loading cases.
+
 ## [1.5.9] - 2026-05-06
 
 ### Changed

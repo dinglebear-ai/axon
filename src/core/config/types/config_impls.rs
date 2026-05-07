@@ -4,7 +4,6 @@ use super::enums::{
     RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
-use std::env;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -105,72 +104,22 @@ impl Default for Config {
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
             ask_hybrid_candidates: 150,
-            tei_max_retries: env::var("TEI_MAX_RETRIES")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(0, 20))
-                .unwrap_or(5),
-            tei_request_timeout_ms: env::var("TEI_REQUEST_TIMEOUT_MS")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|v| v.clamp(1000, 300_000))
-                .unwrap_or(30_000),
-            tei_max_client_batch_size: env::var("TEI_MAX_CLIENT_BATCH_SIZE")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(1, 128))
-                .unwrap_or(64),
-            ingest_lanes: env::var("AXON_INGEST_LANES")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(1, 64))
-                .unwrap_or(2),
-            embed_doc_timeout_secs: env::var("AXON_EMBED_DOC_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|v| v.clamp(30, 3600))
-                .unwrap_or(300),
-            max_pending_crawl_jobs: env::var("AXON_MAX_PENDING_CRAWL_JOBS")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(0, 10_000))
-                .unwrap_or(100),
-            max_pending_embed_jobs: env::var("AXON_MAX_PENDING_EMBED_JOBS")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(0, 10_000))
-                .unwrap_or(50),
-            max_pending_extract_jobs: env::var("AXON_MAX_PENDING_EXTRACT_JOBS")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(0, 10_000))
-                .unwrap_or(50),
-            max_pending_ingest_jobs: env::var("AXON_MAX_PENDING_INGEST_JOBS")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(0, 10_000))
-                .unwrap_or(50),
-            hnsw_ef_search: env::var("AXON_HNSW_EF_SEARCH")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(32, 512))
-                .unwrap_or(128),
-            hnsw_ef_search_legacy: env::var("AXON_HNSW_EF_SEARCH_LEGACY")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .map(|v| v.clamp(16, 256))
-                .unwrap_or(64),
+            tei_max_retries: 5,
+            tei_request_timeout_ms: 30_000,
+            tei_max_client_batch_size: 64,
+            ingest_lanes: 2,
+            embed_doc_timeout_secs: 300,
+            max_pending_crawl_jobs: 100,
+            max_pending_embed_jobs: 50,
+            max_pending_extract_jobs: 50,
+            max_pending_ingest_jobs: 50,
+            hnsw_ef_search: 128,
+            hnsw_ef_search_legacy: 64,
             evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
-            watchdog_stale_timeout_secs: env::var("AXON_JOB_STALE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(300),
-            watchdog_confirm_secs: env::var("AXON_JOB_STALE_CONFIRM_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60),
+            watchdog_stale_timeout_secs: 300,
+            watchdog_confirm_secs: 60,
             json_output: false,
             reclaimed_status_only: false,
             active_status_only: false,
@@ -231,10 +180,12 @@ impl Config {
 impl Config {
     /// A minimal Config used by LiteBackend — lite mode enabled, no external services required.
     pub fn default_lite() -> Self {
-        Self {
+        let mut cfg = Self {
             lite_mode: true,
             ..Default::default()
-        }
+        };
+        crate::core::config::parse::tuning::apply_default_lite_tuning(&mut cfg);
+        cfg
     }
 }
 

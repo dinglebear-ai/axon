@@ -1,5 +1,6 @@
 use crate::core::paths::axon_config_path;
 use serde::Deserialize;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// TOML configuration — tuning knobs only, safe to commit to source control.
@@ -159,7 +160,15 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
             return Ok(TomlConfig::default());
         }
-        Err(e) if explicit => {
+        Err(e)
+            if explicit
+                || matches!(
+                    e.kind(),
+                    std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::IsADirectory
+                        | std::io::ErrorKind::NotADirectory
+                ) =>
+        {
             return Err(format!(
                 "axon: error: cannot read config file '{}': {e}",
                 path.display()
@@ -174,13 +183,20 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
         }
     }
 
-    let contents = match std::fs::read_to_string(path) {
+    let contents = match read_config_file_no_follow(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !explicit => {
             return Ok(TomlConfig::default());
         }
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            // File exists but is unreadable — return Err so the caller can hard-fail.
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::PermissionDenied
+                    | std::io::ErrorKind::IsADirectory
+                    | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            // File exists but is unreadable/mis-typed — return Err so the caller can hard-fail.
             // Silent fallback would hide a misconfiguration the user must fix.
             return Err(format!(
                 "axon: error: cannot read config file '{}': {e}",
@@ -208,6 +224,24 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
             path.display()
         )
     })
+}
+
+#[cfg(unix)]
+fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
+}
+
+#[cfg(not(unix))]
+fn read_config_file_no_follow(path: &Path) -> Result<String, std::io::Error> {
+    std::fs::read_to_string(path)
 }
 
 #[cfg(test)]
@@ -304,6 +338,35 @@ mod tests {
         assert!(
             result.err().unwrap().contains("parse error"),
             "error message should mention 'parse error'"
+        );
+    }
+
+    #[test]
+    fn load_from_path_rejects_directory_config_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = load_from_path(dir.path(), false);
+        let err = match result {
+            Ok(_) => panic!("directory config path should hard-fail"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("cannot read config file"),
+            "error should mention unreadable config, got: {err}"
+        );
+    }
+
+    #[test]
+    fn load_from_path_rejects_not_a_directory_config_path() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path().join("config.toml");
+        let result = load_from_path(&path, false);
+        let err = match result {
+            Ok(_) => panic!("NotADirectory config path should hard-fail"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("cannot read config file"),
+            "error should mention unreadable config, got: {err}"
         );
     }
 
