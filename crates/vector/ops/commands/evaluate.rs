@@ -213,7 +213,6 @@ fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
     super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
 }
 
-
 /// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
 /// not surfaced from the evaluate path, so this helper produces a disabled
 /// AskTiming accumulator (no Instant probes fire). (bd axon_rust-nm9)
