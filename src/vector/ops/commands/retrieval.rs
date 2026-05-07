@@ -1,6 +1,12 @@
+use crate::core::config::Config;
+use crate::services::error::ServiceError;
+use crate::vector::ops::tei;
+use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
 use crate::vector::ops::{qdrant, ranking};
+use serde_json::{Value, json};
 use spider::url::Url;
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 
 #[derive(Clone)]
 pub(crate) struct RetrievedCandidate {
@@ -21,6 +27,102 @@ pub(crate) struct CandidateScorePolicy<'a> {
     pub(crate) authoritative_boost: f64,
     pub(crate) min_relevance_score: Option<f64>,
     pub(crate) require_topical_overlap: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct VectorDispatchContext {
+    pub(crate) stage: &'static str,
+    pub(crate) command: &'static str,
+    pub(crate) arm: &'static str,
+    pub(crate) fetch_limit: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct VectorModeMetadata {
+    pub(crate) vector_mode: VectorMode,
+    pub(crate) sparse_was_empty: bool,
+    pub(crate) rrf_mode: bool,
+}
+
+pub(crate) struct TypedRetrievalResult {
+    pub(crate) retrieved_candidates: Vec<RetrievedCandidate>,
+    pub(crate) reranked_candidates: Vec<RetrievedCandidate>,
+}
+
+pub(crate) async fn embed_retrieval_inputs(
+    cfg: &Config,
+    inputs: &[tei::EmbedInput],
+    context: &'static str,
+) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+    tei::tei_embed_typed(cfg, inputs)
+        .await
+        .map_err(|e| format!("{context}: {e}").into())
+}
+
+pub(crate) async fn vector_mode_metadata(
+    cfg: &Config,
+    request: &qdrant::VectorSearchRequest<'_>,
+) -> anyhow::Result<VectorModeMetadata> {
+    let vector_mode = get_or_fetch_vector_mode(cfg)
+        .await
+        .map_err(|e| anyhow::anyhow!("vector mode probe after retrieval dispatch: {e}"))?;
+    let sparse_was_empty = request.sparse.as_ref().is_none_or(|sv| sv.is_empty());
+    Ok(VectorModeMetadata {
+        vector_mode,
+        sparse_was_empty,
+        rrf_mode: matches!(vector_mode, VectorMode::Named)
+            && cfg.hybrid_search_enabled
+            && !sparse_was_empty,
+    })
+}
+
+pub(crate) async fn dispatch_vector_search_with_diagnostics(
+    cfg: &Config,
+    request: &qdrant::VectorSearchRequest<'_>,
+    query: &str,
+    context: VectorDispatchContext,
+) -> Result<Vec<qdrant::QdrantSearchHit>, Box<dyn Error + Send + Sync>> {
+    qdrant::dispatch_vector_search_request(cfg, request)
+        .await
+        .map_err(|err| {
+            Box::new(ServiceError::vector_dispatch_failure(
+                context.stage,
+                cfg,
+                query.len(),
+                vector_search_context(request, context),
+                err.as_ref(),
+            )) as Box<dyn Error + Send + Sync>
+        })
+}
+
+pub(crate) fn vector_search_context(
+    request: &qdrant::VectorSearchRequest<'_>,
+    context: VectorDispatchContext,
+) -> Value {
+    json!({
+        "command": context.command,
+        "arm": context.arm,
+        "request_limit": request.limit,
+        "fetch_limit": context.fetch_limit,
+        "candidates_override": request.candidates_override,
+        "sparse_query_empty": request.sparse.as_ref().is_none_or(|sv| sv.is_empty()),
+        "has_filter": request.filter.is_some(),
+    })
+}
+
+pub(crate) fn build_typed_retrieval_result(
+    hits: Vec<qdrant::QdrantSearchHit>,
+    query_tokens: &[String],
+    build_policy: &CandidateBuildPolicy,
+    score_policy: &CandidateScorePolicy<'_>,
+) -> TypedRetrievalResult {
+    let built = build_candidates_from_hits(hits, build_policy);
+    let reranked_candidates =
+        score_and_filter_candidates(&built.candidates, query_tokens, score_policy);
+    TypedRetrievalResult {
+        retrieved_candidates: built.candidates,
+        reranked_candidates,
+    }
 }
 
 pub(crate) fn build_candidates_from_hits(

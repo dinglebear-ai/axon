@@ -11,7 +11,7 @@ mod text_embed;
 pub(crate) use tei_client::QUERY_INSTRUCTION;
 #[cfg(test)]
 pub(crate) use tei_client::prepend_query_instruction;
-pub(crate) use tei_client::{EmbedInput, EmbedKind, tei_embed_kind, tei_embed_typed};
+pub(crate) use tei_client::{EmbedInput, tei_embed_typed};
 
 // Re-export the embed API for crate callers.
 pub(crate) use text_embed::embed_prepared_docs;

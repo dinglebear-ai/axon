@@ -1,13 +1,14 @@
 use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_warn};
-use crate::services::error::ServiceError;
 use crate::vector::ops::commands::retrieval::{
-    CandidateBuildPolicy, CandidateScorePolicy, authoritative_ratio, build_candidates_from_hits,
-    candidate_has_topical_overlap, candidates_only, merge_candidates, query_allows_low_signal,
-    score_and_filter_candidates, top_domains,
+    CandidateBuildPolicy, CandidateScorePolicy, VectorDispatchContext, authoritative_ratio,
+    build_candidates_from_hits, candidate_has_topical_overlap, candidates_only,
+    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, merge_candidates,
+    query_allows_low_signal, score_and_filter_candidates, top_domains, vector_mode_metadata,
 };
-use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
+#[cfg(test)]
+use crate::vector::ops::tei::qdrant_store::VectorMode;
 use crate::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
 
@@ -28,6 +29,7 @@ pub(super) struct RerankParams<'a> {
     pub(super) min_relevance_score: f64,
 }
 
+#[cfg(test)]
 pub(super) fn is_rrf_mode(
     vector_mode: VectorMode,
     hybrid_search_enabled: bool,
@@ -63,32 +65,6 @@ pub(super) fn apply_mode_aware_rerank(
     score_and_filter_candidates(candidates, query_tokens, &score_policy)
 }
 
-/// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
-/// attaching collection / Qdrant URL / query-length context unconditionally so
-/// operators can diagnose the failure. The legacy `cfg.ask_diagnostics` flag
-/// still gates verbose success-path payloads elsewhere.
-fn dispatch_error(
-    cfg: &Config,
-    query: &str,
-    request: &qdrant::VectorSearchRequest<'_>,
-    err: &dyn std::error::Error,
-) -> anyhow::Error {
-    anyhow::Error::new(ServiceError::vector_dispatch_failure(
-        "ask_vector_search_dispatch",
-        cfg,
-        query.len(),
-        serde_json::json!({
-            "command": "ask",
-            "arm": "primary",
-            "request_limit": request.limit,
-            "candidates_override": request.candidates_override,
-            "sparse_query_empty": request.sparse.as_ref().is_none_or(|sv| sv.is_empty()),
-            "has_filter": request.filter.is_some(),
-        }),
-        err,
-    ))
-}
-
 #[tracing::instrument(
     name = "ask.retrieve",
     skip(cfg, query),
@@ -115,9 +91,9 @@ pub(super) async fn retrieve_ask_candidates(
     }
 
     let tei_started = std::time::Instant::now();
-    let mut ask_vectors = tei::tei_embed_typed(cfg, &embed_inputs)
+    let mut ask_vectors = embed_retrieval_inputs(cfg, &embed_inputs, "TEI embed for ask query")
         .await
-        .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
+        .map_err(|e| anyhow!("{e}"))?;
     timing.record(AskTimingSlot::TeiEmbed, tei_started);
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
@@ -141,15 +117,9 @@ pub(super) async fn retrieve_ask_candidates(
     )
     .await?;
 
-    let hits = primary_res.map_err(|e| dispatch_error(cfg, query, &primary_request, e.as_ref()))?;
-    let vector_mode = get_or_fetch_vector_mode(cfg)
-        .await
-        .map_err(|e| anyhow!("vector mode probe after ask dispatch: {e}"))?;
-    let sparse_was_empty = primary_request
-        .sparse
-        .as_ref()
-        .is_none_or(|sv| sv.is_empty());
-    let rrf_mode = is_rrf_mode(vector_mode, cfg.hybrid_search_enabled, sparse_was_empty);
+    let hits = primary_res.map_err(|e| anyhow!("{e}"))?;
+    let mode = vector_mode_metadata(cfg, &primary_request).await?;
+    let rrf_mode = mode.rrf_mode;
 
     let build_policy = CandidateBuildPolicy { allow_low_signal };
     let primary = build_candidates_from_hits(hits, &build_policy);
@@ -275,9 +245,9 @@ async fn run_qdrant_dispatch<'a>(
 
     // No secondary arm — single dispatch, classic timing.
     if !use_dual || ask_vectors.is_empty() {
-        let t = std::time::Instant::now();
-        let primary_res = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
-        timing.set(AskTimingSlot::QdrantPrimary, t.elapsed().as_millis());
+        let (primary_res, primary_ms) =
+            dispatch_ask_arm(cfg, &primary_request, query, "primary").await;
+        timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
         return Ok(DispatchOutcome {
             primary_request,
             primary_res,
@@ -333,21 +303,15 @@ async fn run_qdrant_dispatch<'a>(
             log_warn(&format!(
                 "ask: qdrant batch dual-search failed, falling back to parallel-single: {e}"
             ));
-            // Fallback: parallel-single via tokio::join!. Per-arm timing is
-            // captured here so the fallback path retains the existing diag
-            // shape (both QdrantPrimary and QdrantSecondary populated).
-            let primary_fut = async {
-                let t = std::time::Instant::now();
-                let r = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
-                (r, t.elapsed().as_millis())
-            };
-            let secondary_fut = async {
-                let t = std::time::Instant::now();
-                let r = qdrant::dispatch_vector_search_request(cfg, &secondary_request).await;
-                (r, t.elapsed().as_millis())
-            };
             let ((primary_res, primary_ms), (secondary_res, secondary_ms)) =
-                tokio::join!(primary_fut, secondary_fut);
+                fallback_parallel_dispatch(
+                    cfg,
+                    &primary_request,
+                    query,
+                    &secondary_request,
+                    keyword_query,
+                )
+                .await;
             timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
             timing.set(AskTimingSlot::QdrantSecondary, secondary_ms);
             Ok(DispatchOutcome {
@@ -357,4 +321,44 @@ async fn run_qdrant_dispatch<'a>(
             })
         }
     }
+}
+
+async fn fallback_parallel_dispatch(
+    cfg: &Config,
+    primary_request: &qdrant::VectorSearchRequest<'_>,
+    query: &str,
+    secondary_request: &qdrant::VectorSearchRequest<'_>,
+    keyword_query: &str,
+) -> (TimedSearchResult, TimedSearchResult) {
+    tokio::join!(
+        dispatch_ask_arm(cfg, primary_request, query, "primary"),
+        dispatch_ask_arm(cfg, secondary_request, keyword_query, "secondary")
+    )
+}
+
+type TimedSearchResult = (
+    Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
+    u128,
+);
+
+async fn dispatch_ask_arm(
+    cfg: &Config,
+    request: &qdrant::VectorSearchRequest<'_>,
+    query: &str,
+    arm: &'static str,
+) -> TimedSearchResult {
+    let t = std::time::Instant::now();
+    let result = dispatch_vector_search_with_diagnostics(
+        cfg,
+        request,
+        query,
+        VectorDispatchContext {
+            stage: "ask_vector_search_dispatch",
+            command: "ask",
+            arm,
+            fetch_limit: None,
+        },
+    )
+    .await;
+    (result, t.elapsed().as_millis())
 }
