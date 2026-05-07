@@ -513,6 +513,7 @@ jobs:
 
       - name: Seed retrieve fixture
         env:
+          AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
           AXON_EMBED_STRICT_PREDELETE: "false"
@@ -520,6 +521,7 @@ jobs:
 
       - name: Start axon MCP HTTP server
         env:
+          AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
         run: |
@@ -537,6 +539,7 @@ jobs:
 
       - name: Run MCP mcporter smoke script
         env:
+          AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
         run: ./scripts/test-mcp-tools-mcporter.sh
