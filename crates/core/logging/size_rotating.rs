@@ -157,7 +157,7 @@ mod tests {
         let mut w = SizeRotatingFile::new(tmp.path().to_path_buf(), "axon.log".to_string(), 0, 3)
             .expect("open");
         for _ in 0..10 {
-            w.write_all(&vec![b'x'; 1024]).expect("write");
+            w.write_all(&[b'x'; 1024]).expect("write");
         }
         w.flush().expect("flush");
         assert!(tmp.path().join("axon.log").exists());
@@ -169,10 +169,10 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut w = SizeRotatingFile::new(tmp.path().to_path_buf(), "axon.log".to_string(), 50, 0)
             .expect("open");
-        w.write_all(&vec![b'x'; 80]).expect("write");
+        w.write_all(&[b'x'; 80]).expect("write");
         w.flush().expect("flush");
         // Trigger rotation on next write
-        w.write_all(&vec![b'y'; 10]).expect("write");
+        w.write_all(&[b'y'; 10]).expect("write");
         w.flush().expect("flush");
         drop(w);
 
@@ -188,7 +188,7 @@ mod tests {
             let mut w =
                 SizeRotatingFile::new(tmp.path().to_path_buf(), "axon.log".to_string(), 100, 2)
                     .expect("open");
-            w.write_all(&vec![b'a'; 50]).expect("write");
+            w.write_all(&[b'a'; 50]).expect("write");
             w.flush().expect("flush");
         }
         // Second session: should pick up size from existing file and rotate
@@ -197,7 +197,7 @@ mod tests {
             let mut w =
                 SizeRotatingFile::new(tmp.path().to_path_buf(), "axon.log".to_string(), 100, 2)
                     .expect("open");
-            w.write_all(&vec![b'b'; 80]).expect("write");
+            w.write_all(&[b'b'; 80]).expect("write");
             w.flush().expect("flush");
         }
         assert!(tmp.path().join("axon.log").exists());

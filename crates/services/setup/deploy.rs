@@ -302,8 +302,6 @@ mod tests {
     #[test]
     fn compose_rendering_is_private_by_default_and_public_on_opt_in() {
         let private = render_compose(false);
-        assert!(private.contains("- services.env"));
-        assert!(!private.contains("../services.env"));
         assert!(private.contains("127.0.0.1:53333:6333"));
         assert!(private.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
         assert!(private.contains("127.0.0.1:6000:6000"));
@@ -344,9 +342,8 @@ mod tests {
 
     #[test]
     fn bundled_assets_cover_compose_references() {
-        assert!(DOCKER_COMPOSE_SERVICES.contains("services.env"));
         assert!(!SERVICES_ENV.trim().is_empty());
-        assert!(DOCKER_COMPOSE_SERVICES.contains("./qdrant/production.yaml"));
+        assert!(DOCKER_COMPOSE_SERVICES.contains("./config/qdrant/production.yaml"));
         assert!(QDRANT_PRODUCTION_YAML.contains("http_port: 6333"));
         assert!(DOCKER_COMPOSE_SERVICES.contains("chrome/Dockerfile"));
         assert!(CHROME_DOCKERFILE.contains("FROM "));

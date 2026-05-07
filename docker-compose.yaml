@@ -1,13 +1,10 @@
-name: axon-services
+name: axon
 
-# Infrastructure services: qdrant, tei, chrome.
-#   docker compose --env-file .env -f config/docker-compose.services.yaml up -d
+# Full axon stack: axon (HTTP), qdrant, tei, chrome.
+#   docker compose --env-file .env up -d
+# Reads URLs/secrets/tuning knobs from the repo-root .env file via interpolation.
 
 x-common-service: &common-service
-  env_file:
-    # Paths in env_file are resolved relative to this compose file.
-    # Keep the secrets file at the repository root alongside .env.
-    - ../services.env
   networks:
     - axon
   restart: unless-stopped
@@ -25,6 +22,48 @@ x-common-service: &common-service
       compress: "true"
 
 services:
+  axon:
+    <<: *common-service
+    image: axon:local
+    container_name: axon
+    build:
+      context: .
+      dockerfile: config/Dockerfile
+    user: "1000:1000"
+    env_file:
+      - ./.env
+    environment:
+      # Container-internal service DNS (overrides any host-side values in .env).
+      QDRANT_URL: http://axon-qdrant:6333
+      TEI_URL: http://axon-tei:80
+      AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
+      # Bind to all interfaces inside the container; host port-publishing is
+      # how external traffic reaches it. Non-loopback bind requires a token.
+      AXON_MCP_HTTP_HOST: 0.0.0.0
+      AXON_MCP_HTTP_PORT: "8001"
+      # ~/.axon canonical layout inside the container.
+      HOME: /home/axon
+      AXON_DATA_DIR: /home/axon/.axon
+    volumes:
+      # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
+      - ${AXON_HOME:-~/.axon}:/home/axon/.axon
+    ports:
+      - "127.0.0.1:8001:8001"
+    command: ["serve"]
+    depends_on:
+      axon-qdrant:
+        condition: service_healthy
+      axon-tei:
+        condition: service_healthy
+      axon-chrome:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/mcp -X POST -H 'Content-Type: application/json' -H \"Authorization: Bearer ${AXON_MCP_HTTP_TOKEN:-}\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   axon-qdrant:
     <<: *common-service
     image: qdrant/qdrant:v1.13.1
@@ -34,7 +73,7 @@ services:
       - "127.0.0.1:53334:6334"  # gRPC
     volumes:
       - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
-      - ./qdrant/production.yaml:/qdrant/config/production.yaml:ro
+      - ./config/qdrant/production.yaml:/qdrant/config/production.yaml:ro
     deploy:
       resources:
         limits:
@@ -115,9 +154,8 @@ services:
     # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
     container_name: axon-chrome
     build:
-      context: .
+      context: ./config
       dockerfile: chrome/Dockerfile
-    env_file: []  # no app secrets needed in the browser container
     shm_size: "2gb"
     ports:
       - "127.0.0.1:9222:9222"  # CDP proxy

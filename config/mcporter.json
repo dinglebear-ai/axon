@@ -19,14 +19,20 @@
       "args": [
         "shadcn@latest",
         "mcp"
-      ]
+      ],
+      "env": {
+        "npm_config_cache": "${HOME}/.cache/axon-mcporter-npm"
+      }
     },
     "context7": {
       "command": "npx",
       "args": [
         "-y",
         "@upstash/context7-mcp"
-      ]
+      ],
+      "env": {
+        "npm_config_cache": "${HOME}/.cache/axon-mcporter-npm"
+      }
     }
   },
   "imports": []

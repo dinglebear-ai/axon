@@ -1,4 +1,5 @@
 use super::super::common::{internal_error, invalid_params};
+use crate::crates::core::paths::axon_data_base_dir;
 use rmcp::ErrorData;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -40,8 +41,8 @@ pub fn client_context_name() -> &'static str {
 /// Return the artifact root directory.
 ///
 /// Resolution order: `AXON_MCP_ARTIFACT_DIR` env var, then
-/// `AXON_DATA_DIR/axon/artifacts`, then `.cache/axon-mcp`. The context
-/// subdirectory (from `client_context_name()`) is always appended.
+/// `axon_data_base_dir()/axon/artifacts` (`AXON_DATA_DIR` → `$HOME/.local/share`).
+/// The context subdirectory (from `client_context_name()`) is always appended.
 ///
 /// Not cached with `OnceLock` because tests mutate env vars between runs
 /// in the same process. The env reads are cheap relative to the disk I/O
@@ -52,14 +53,7 @@ pub fn artifact_root() -> PathBuf {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var("AXON_DATA_DIR")
-                .ok()
-                .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
-                .map(|d| PathBuf::from(d).join("axon/artifacts"))
-        })
-        .unwrap_or_else(|| PathBuf::from(".cache/axon-mcp"));
+        .unwrap_or_else(|| axon_data_base_dir().join("axon/artifacts"));
     base.join(client_context_name())
 }
 
