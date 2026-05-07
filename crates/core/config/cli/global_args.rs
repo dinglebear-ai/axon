@@ -368,4 +368,11 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     /// or crate=level). Applied before tracing init; does not override an explicit RUST_LOG.
     #[arg(global = true, long, env = "AXON_LOG_LEVEL")]
     pub(in crate::crates::core::config) log_level: Option<String>,
+
+    /// Route `axon ask` through a running `axon serve` HTTP endpoint instead of running
+    /// ACP synthesis in-process. Reuses the server's WarmSessionPool so cold ACP startup
+    /// (~45s) is paid once at server boot, not on every invocation. Example:
+    /// `--server-url http://127.0.0.1:8001`. Env: `AXON_ASK_SERVER_URL`.
+    #[arg(global = true, long, env = "AXON_ASK_SERVER_URL")]
+    pub(in crate::crates::core::config) server_url: Option<String>,
 }

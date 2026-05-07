@@ -9,6 +9,7 @@ mod retrieval;
 #[cfg(test)]
 mod tests;
 
+use super::AskTiming;
 use build::build_context_from_candidates;
 use retrieval::retrieve_ask_candidates;
 
@@ -29,8 +30,12 @@ pub(crate) struct AskContext {
     pub authoritative_ratio: f64,
 }
 
-pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskContext> {
-    let retrieval = retrieve_ask_candidates(cfg, query).await?;
+pub(crate) async fn build_ask_context(
+    cfg: &Config,
+    query: &str,
+    timing: &mut AskTiming,
+) -> Result<AskContext> {
+    let retrieval = retrieve_ask_candidates(cfg, query, timing).await?;
     let query_tokens = crate::crates::vector::ops::ranking::tokenize_query(query);
     let built = build_context_from_candidates(
         cfg,
@@ -39,6 +44,7 @@ pub(crate) async fn build_ask_context(cfg: &Config, query: &str) -> Result<AskCo
         &retrieval.top_full_doc_indices,
         retrieval.min_supplemental_score,
         &query_tokens,
+        timing,
     )
     .await?;
 

@@ -460,6 +460,12 @@ pub struct Config {
     /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
     pub quiet: bool,
 
+    /// When set, `axon ask` POSTs to `<server_url>/v1/ask` on a running `axon serve` instance
+    /// instead of running ACP synthesis in-process. Reuses the server's WarmSessionPool so cold
+    /// ACP startup (~45s) is paid once at server boot. Flag: `--server-url`,
+    /// env: `AXON_ASK_SERVER_URL`. When unset, ask runs in-process.
+    pub server_url: Option<String>,
+
     /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,
 }

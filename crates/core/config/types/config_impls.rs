@@ -151,6 +151,7 @@ impl Default for Config {
             custom_headers: vec![],
             quiet: false,
             log_level: None,
+            server_url: None,
         }
     }
 }
@@ -365,6 +366,7 @@ impl fmt::Debug for Config {
                     .collect::<Vec<_>>(),
             )
             .field("quiet", &self.quiet)
+            .field("server_url", &self.server_url)
             .finish()
     }
 }

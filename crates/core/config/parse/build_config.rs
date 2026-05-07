@@ -483,6 +483,10 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         custom_headers: validate_custom_headers(global.custom_headers)?,
         quiet: global.quiet,
         log_level: global.log_level,
+        server_url: global
+            .server_url
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
     };
 
     // Validate output path parent exists when explicitly set

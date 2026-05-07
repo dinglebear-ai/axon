@@ -1,3 +1,4 @@
+use super::super::timing::{AskTiming, AskTimingSlot};
 use super::heuristics::{push_context_entry, should_inject_supplemental};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
@@ -46,6 +47,7 @@ pub(super) async fn build_context_from_candidates(
     top_full_doc_indices: &[usize],
     min_supplemental_score: Option<f64>,
     query_tokens: &[String],
+    timing: &mut AskTiming,
 ) -> Result<BuiltAskContext> {
     let ask_tuning = cfg.ask_config();
     let max_context_chars = ask_tuning.ask_max_context_chars;
@@ -73,6 +75,7 @@ pub(super) async fn build_context_from_candidates(
     );
 
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
+    let full_doc_fetch_started = std::time::Instant::now();
     let fetched_docs = fetch_full_docs(
         cfg,
         reranked,
@@ -83,6 +86,7 @@ pub(super) async fn build_context_from_candidates(
         doc_fetch_concurrency,
     )
     .await?;
+    timing.record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
     // Map URL → rerank_score for sort-by-score in the flattened context.
     let url_to_score: std::collections::HashMap<String, f64> = top_full_doc_indices
         .iter()

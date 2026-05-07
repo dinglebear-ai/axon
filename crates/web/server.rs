@@ -1,4 +1,5 @@
 use super::auth::{PanelPassword, init_panel_password};
+use crate::crates::services::query as query_svc;
 use crate::crates::services::setup::{self, config_store};
 use axum::{
     Json, Router,
@@ -94,6 +95,7 @@ pub(crate) fn router(
         .route("/api/panel/ops", get(ops))
         .route("/api/panel/setup/targets", get(setup_targets))
         .route("/api/panel/setup/deploy", post(setup_deploy))
+        .route("/v1/ask", post(v1_ask))
         .fallback(super::static_assets::serve_static)
         .with_state((state, cfg))
 }
@@ -201,6 +203,90 @@ async fn setup_deploy(
     match setup::deploy_remote(req).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+    }
+}
+
+/// Request body for `POST /v1/ask`. Mirrors the subset of `Config` fields that
+/// `axon ask` overrides on a per-invocation basis.
+#[derive(Deserialize)]
+struct AskRequestBody {
+    query: String,
+    #[serde(default)]
+    collection: Option<String>,
+    #[serde(default)]
+    since: Option<String>,
+    #[serde(default)]
+    before: Option<String>,
+    #[serde(default)]
+    diagnostics: Option<bool>,
+    #[serde(default)]
+    graph: Option<bool>,
+    #[serde(default)]
+    hybrid_search: Option<bool>,
+}
+
+async fn v1_ask(
+    State((_, cfg)): State<(AppState, Arc<crate::crates::core::config::Config>)>,
+    headers: HeaderMap,
+    Json(req): Json<AskRequestBody>,
+) -> impl IntoResponse {
+    if !ask_authorized(&headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    if req.query.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, "query is required").into_response();
+    }
+
+    let mut req_cfg = (*cfg).clone();
+    if let Some(c) = req.collection {
+        req_cfg.collection = c;
+    }
+    if let Some(s) = req.since {
+        req_cfg.since = Some(s);
+    }
+    if let Some(b) = req.before {
+        req_cfg.before = Some(b);
+    }
+    if let Some(d) = req.diagnostics {
+        req_cfg.ask_diagnostics = d;
+    }
+    if let Some(g) = req.graph {
+        req_cfg.ask_graph = g;
+    }
+    if let Some(h) = req.hybrid_search {
+        req_cfg.hybrid_search_enabled = h;
+    }
+
+    match query_svc::ask(&req_cfg, &req.query, None).await {
+        Ok(result) => Json(result).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+    }
+}
+
+/// Authorize `/v1/ask`. When `AXON_MCP_HTTP_TOKEN` is set, require it as a
+/// `Bearer` or `x-api-key` header. When unset, allow the request — matching the
+/// MCP HTTP server's loopback-only convention (binding to non-loopback hosts
+/// without a token is rejected at startup elsewhere).
+fn ask_authorized(headers: &HeaderMap) -> bool {
+    let configured = std::env::var("AXON_MCP_HTTP_TOKEN")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let Some(expected) = configured else {
+        return true;
+    };
+    let bearer = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::to_string);
+    let api_key = headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    match bearer.or(api_key) {
+        Some(token) => token == expected,
+        None => false,
     }
 }
 

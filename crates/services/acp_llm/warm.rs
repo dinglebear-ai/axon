@@ -22,6 +22,20 @@ use super::types::{AcpCompletionRequest, AcpCompletionResponse};
 /// cold-start overlaps with other work (e.g. a Tavily search).
 pub struct WarmAcpSession {
     pub(super) handle: AcpConnectionHandle,
+    /// True when this session was checked out from the pre-warmed pool (cache
+    /// hit). False when freshly spawned (cold path). Used by ask-timing
+    /// instrumentation as the canonical warm-vs-cold signal — see bd
+    /// `axon_rust-nm9`.
+    pub(super) from_pool: bool,
+}
+
+impl WarmAcpSession {
+    /// True when this session was checked out from the warm pool (cache hit),
+    /// false when freshly spawned. The signal is captured at session creation
+    /// and remains valid for the lifetime of the handle.
+    pub fn from_pool(&self) -> bool {
+        self.from_pool
+    }
 }
 
 /// Spawn a fresh warm ACP session without consulting the pool.
@@ -67,7 +81,10 @@ pub(super) fn spawn_warm_session(
         "acp_llm: spawn_eager returned in {}ms (adapter init continues in background)",
         t.elapsed().as_millis()
     ));
-    Ok(WarmAcpSession { handle })
+    Ok(WarmAcpSession {
+        handle,
+        from_pool: false,
+    })
 }
 
 /// Start warming an ACP adapter session in the background.

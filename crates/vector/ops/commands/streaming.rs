@@ -270,6 +270,10 @@ struct StreamProcessorState {
     first_sources_pos: Option<usize>,
     sources_search_from: usize,
     repeat_guard_triggered: bool,
+    /// Wall-clock when the first non-empty delta arrived. Used by ask-timing
+    /// instrumentation (bd axon_rust-nm9) to compute TTFT relative to a
+    /// caller-supplied request start.
+    first_token_at: Option<std::time::Instant>,
 }
 
 fn process_one_delta(
@@ -280,6 +284,10 @@ fn process_one_delta(
 ) -> Result<(), Box<dyn Error>> {
     if state.repeat_guard_triggered {
         return Err(REPEAT_GUARD_STOP.into());
+    }
+    // Record TTFT on the first non-empty delta — before any further work.
+    if state.first_token_at.is_none() && !delta.is_empty() {
+        state.first_token_at = Some(std::time::Instant::now());
     }
     process_stream_delta(
         delta,
@@ -297,6 +305,64 @@ fn process_one_delta(
     }
     state.sources_search_from = state.answer.len().saturating_sub(15);
     Ok(())
+}
+
+/// Same as [`run_streaming_completion`] but additionally returns the absolute
+/// wall-clock instant when the first non-empty token delta arrived (`None` if
+/// streaming produced no payload before fallback). Used by ask-timing
+/// instrumentation (bd axon_rust-nm9). Callers compute TTFT relative to their
+/// own request-start. Mirrors the warm/cold split exactly.
+pub(crate) async fn run_streaming_completion_ttft(
+    cfg: &Config,
+    req: AcpCompletionRequest,
+    print_tokens: bool,
+    tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
+    warm: Option<WarmAcpSession>,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
+    if let Some(w) = warm {
+        let mut state = StreamProcessorState::default();
+        let stream_result = w
+            .complete_streaming(req, |delta| {
+                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
+            })
+            .await;
+        let fallback_text = match stream_result {
+            Ok(r) => r.text,
+            Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
+            Err(e) => return Err(e),
+        };
+        let ttft = state.first_token_at;
+        let answer = finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text)?;
+        return Ok((answer, ttft));
+    }
+    // Cold path: !Send confined to spawn_blocking.
+    let cfg = cfg.clone();
+    let (answer, ttft) = tokio::task::spawn_blocking(
+        move || -> Result<(String, Option<std::time::Instant>), String> {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| format!("acp cold runtime: {e}"))?;
+            let mut state = StreamProcessorState::default();
+            let stream_result = rt.block_on(acp_llm::complete_streaming(&cfg, req, |delta| {
+                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
+            }));
+            let fallback_text = match stream_result {
+                Ok(r) => r.text,
+                Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
+                Err(e) => return Err(e.to_string()),
+            };
+            let ttft = state.first_token_at;
+            let answer =
+                finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text)
+                    .map_err(|e| e.to_string())?;
+            Ok((answer, ttft))
+        },
+    )
+    .await
+    .map_err(|e| -> Box<dyn Error> { format!("acp cold task panicked: {e}").into() })?
+    .map_err(|e| -> Box<dyn Error> { e.into() })?;
+    Ok((answer, ttft))
 }
 
 /// Run a streaming LLM completion, using a pre-warmed session when available.
@@ -389,6 +455,27 @@ pub(crate) async fn ask_llm_streaming(
     warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
     run_streaming_completion(
+        cfg,
+        ask_completion_request(cfg, query, context, true),
+        print_tokens,
+        None,
+        warm,
+    )
+    .await
+}
+
+/// TTFT-aware variant of [`ask_llm_streaming`]. Returns the absolute wall-clock
+/// `Instant` of the first non-empty token delta alongside the answer text. The
+/// caller computes TTFT relative to its own request-start. (bd axon_rust-nm9)
+pub(crate) async fn ask_llm_streaming_ttft(
+    cfg: &Config,
+    _client: &reqwest::Client,
+    query: &str,
+    context: &str,
+    print_tokens: bool,
+    warm: Option<WarmAcpSession>,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
+    run_streaming_completion_ttft(
         cfg,
         ask_completion_request(cfg, query, context, true),
         print_tokens,

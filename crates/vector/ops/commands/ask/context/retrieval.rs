@@ -1,3 +1,4 @@
+use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_debug;
 use crate::crates::services::error::ServiceError;
@@ -89,7 +90,11 @@ fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> any
     skip(cfg, query),
     fields(collection = %cfg.collection, query_len = query.len())
 )]
-pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
+pub(super) async fn retrieve_ask_candidates(
+    cfg: &Config,
+    query: &str,
+    timing: &mut AskTiming,
+) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let ask_tuning = cfg.ask_config();
     let query_forms = super::query_rewrite::build_query_forms(query);
@@ -105,9 +110,11 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         embed_inputs.push(tei::EmbedInput::document(query_forms.keyword_query.clone()));
     }
 
+    let tei_started = std::time::Instant::now();
     let mut ask_vectors = tei::tei_embed_typed(cfg, &embed_inputs)
         .await
         .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
+    timing.record(AskTimingSlot::TeiEmbed, tei_started);
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
@@ -120,6 +127,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         qdrant::VectorSearchRequest::from_query(cfg, &vecq, query, ask_tuning.ask_candidate_limit)
             .map_err(|e| anyhow!("build ask vector search request: {e}"))?
             .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
+    let qdrant_started = std::time::Instant::now();
     let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
     let (primary_res, secondary_res) = if query_forms.use_dual && !ask_vectors.is_empty() {
         let vecq_kw = ask_vectors.remove(0);
@@ -137,6 +145,23 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
     } else {
         (primary_fut.await, None)
     };
+    // Both dispatches run via tokio::join! when dual-embed is active; the
+    // wall-clock from launching the primary future to having both responses
+    // is the only meaningful Qdrant-roundtrip metric we can capture here.
+    // Record the combined wall-clock as `qdrant_primary_ms` (always populated)
+    // and a separate `qdrant_secondary_ms` of 0 when no secondary ran.
+    let qdrant_elapsed_ms = qdrant_started.elapsed().as_millis();
+    if query_forms.use_dual {
+        // With join!, we cannot separate primary vs secondary completion times
+        // from the parent future. Record the joined wall-clock against
+        // `qdrant_primary_ms`; `qdrant_secondary_ms` reflects whether a
+        // secondary dispatch ran (0 means "no secondary").
+        timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
+        timing.set(AskTimingSlot::QdrantSecondary, qdrant_elapsed_ms);
+    } else {
+        timing.set(AskTimingSlot::QdrantPrimary, qdrant_elapsed_ms);
+        timing.set(AskTimingSlot::QdrantSecondary, 0);
+    }
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
     let vector_mode = get_or_fetch_vector_mode(cfg)
@@ -175,6 +200,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         authoritative_boost: ask_tuning.ask_authoritative_boost,
         min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
+    let rerank_started = std::time::Instant::now();
     let reranked_candidates = apply_mode_aware_rerank(
         rrf_mode,
         &retrieved_candidates,
@@ -182,6 +208,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         &rerank_params,
     );
     let reranked = candidates_only(&reranked_candidates);
+    timing.record(AskTimingSlot::Rerank, rerank_started);
     if reranked.is_empty() {
         if rrf_mode {
             return Err(anyhow!("No candidates passed topical overlap"));
@@ -198,11 +225,13 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         reranked.len(),
         reranked.len().min(ask_tuning.ask_chunk_limit),
     ));
+    let top_select_started = std::time::Instant::now();
     let (top_chunk_indices, top_full_doc_indices) = super::build::select_context_indices(
         &reranked,
         ask_tuning.ask_chunk_limit,
         ask_tuning.ask_full_docs,
     );
+    timing.record(AskTimingSlot::TopSelect, top_select_started);
 
     Ok(AskRetrieval {
         top_chunk_indices,

@@ -155,7 +155,8 @@ pub fn try_checkout(cfg: &Config) -> Option<WarmAcpSession> {
     if pool.cfg_key != CfgKey::from_config(cfg) {
         return None;
     }
-    let (session, age) = pool.pop_fresh()?;
+    let (mut session, age) = pool.pop_fresh()?;
+    session.from_pool = true;
     let remaining = pool.len();
     log_info(&format!(
         "warm pool: checkout age={}ms pool_remaining={}",
