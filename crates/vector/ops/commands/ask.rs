@@ -125,7 +125,9 @@ fn build_timing_json(
     timing: &AskTiming,
 ) -> serde_json::Value {
     fn ms(v: u128) -> serde_json::Value {
-        serde_json::Value::Number(serde_json::Number::from(u64::try_from(v).unwrap_or(u64::MAX)))
+        serde_json::Value::Number(serde_json::Number::from(
+            u64::try_from(v).unwrap_or(u64::MAX),
+        ))
     }
     let mut obj = serde_json::Map::new();
     obj.insert("retrieval".into(), ms(retrieval_ms));

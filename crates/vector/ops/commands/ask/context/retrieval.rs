@@ -249,9 +249,10 @@ async fn run_qdrant_dispatch<'a>(
     hybrid_candidates: usize,
     timing: &mut AskTiming,
 ) -> Result<DispatchOutcome<'a>> {
-    let primary_request = qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
-        .map_err(|e| anyhow!("build ask vector search request: {e}"))?
-        .with_candidates_override(Some(hybrid_candidates));
+    let primary_request =
+        qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
+            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
+            .with_candidates_override(Some(hybrid_candidates));
     let qdrant_started = std::time::Instant::now();
     let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
     let (primary_res, secondary_res) = if use_dual && !ask_vectors.is_empty() {
@@ -283,4 +284,3 @@ async fn run_qdrant_dispatch<'a>(
         secondary_res,
     })
 }
-
