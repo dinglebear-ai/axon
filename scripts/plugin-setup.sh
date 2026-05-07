@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# SessionStart hook — deploys axon MCP HTTP server via systemd or docker compose
+# SessionStart hook — deploys axon MCP HTTP server as a systemd user service
 set -euo pipefail
 
 # ── Config from userConfig ────────────────────────────────────────────────────
-USE_DOCKER="${CLAUDE_PLUGIN_OPTION_USE_DOCKER:-false}"
 API_TOKEN="${CLAUDE_PLUGIN_OPTION_API_TOKEN:?API token is required}"
 QDRANT_URL="${CLAUDE_PLUGIN_OPTION_QDRANT_URL:-http://localhost:53333}"
 TEI_URL="${CLAUDE_PLUGIN_OPTION_TEI_URL:-http://localhost:52000}"
@@ -19,8 +18,6 @@ MCP_PORT="${CLAUDE_PLUGIN_OPTION_MCP_PORT:-8001}"
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ENV_FILE="${CLAUDE_PLUGIN_DATA}/axon.env"
 UNIT_FILE="${HOME}/.config/systemd/user/axon-mcp.service"
-COMPOSE_DIR="${CLAUDE_PLUGIN_DATA}"
-COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,31 +84,7 @@ EOF
     systemctl --user start axon-mcp
   fi
 
-  echo "axon: systemd service running on ${MCP_HOST}:${MCP_PORT}"
-}
-
-setup_docker() {
-  mkdir -p "${COMPOSE_DIR}"
-
-  # Refresh compose file if plugin updated
-  if ! diff -q "${CLAUDE_PLUGIN_ROOT}/docker-compose.yml" "${COMPOSE_FILE}" >/dev/null 2>&1; then
-    cp "${CLAUDE_PLUGIN_ROOT}/docker-compose.yml" "${COMPOSE_FILE}"
-  fi
-
-  # Container must bind all interfaces so the port mapping is reachable
-  MCP_HOST="0.0.0.0"
-  write_env || true
-  # Docker compose reads .env from its working directory
-  cp "${ENV_FILE}" "${COMPOSE_DIR}/.env"
-
-  cd "${COMPOSE_DIR}"
-  if docker compose ps --quiet axon-mcp 2>/dev/null | grep -q .; then
-    docker compose up -d --force-recreate
-  else
-    docker compose up -d
-  fi
-
-  echo "axon: docker container running on ${MCP_HOST}:${MCP_PORT}"
+  echo "axon: MCP HTTP server running on ${MCP_HOST}:${MCP_PORT}"
 }
 
 link_binary() {
@@ -121,9 +94,4 @@ link_binary() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 link_binary
-
-if [[ "${USE_DOCKER}" == "true" ]]; then
-  setup_docker
-else
-  setup_systemd
-fi
+setup_systemd

@@ -26,16 +26,10 @@
   "hooks": "./plugins/hooks/hooks.json",
   "mcpServers": "./plugins/.mcp.json",
   "userConfig": {
-    "use_docker": {
-      "type": "boolean",
-      "title": "Deploy with Docker",
-      "description": "True: run via docker compose (builds from source). False: install as a systemd user service using the bundled binary.",
-      "default": false
-    },
     "api_token": {
       "type": "string",
       "title": "API token",
-      "description": "Bearer token for MCP authentication (AXON_MCP_HTTP_TOKEN). Required in docker mode; optional in systemd mode when binding to 127.0.0.1.",
+      "description": "Bearer token for MCP authentication (AXON_MCP_HTTP_TOKEN).",
       "sensitive": true,
       "required": true
     },
