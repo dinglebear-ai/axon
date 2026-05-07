@@ -22,6 +22,20 @@ fn previous_markdown_path_resolves_manifest_markdown_under_archive_root() {
 }
 
 #[test]
+fn previous_markdown_path_rejects_empty_archive_relative_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let markdown_dir = tmp.path().join("markdown");
+    assert_eq!(
+        previous_markdown_path(&markdown_dir, &entry("markdown")),
+        None
+    );
+    assert_eq!(
+        previous_markdown_path(&markdown_dir, &entry("markdown/")),
+        None
+    );
+}
+
+#[test]
 fn previous_markdown_path_rejects_absolute_paths() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let markdown_dir = tmp.path().join("markdown");

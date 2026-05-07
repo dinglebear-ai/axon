@@ -168,10 +168,21 @@ mod tests {
             Err(err) => {
                 let msg = err.to_string();
                 assert!(
-                    !msg.contains("AXON_ACP_ADAPTER_CMD") && !msg.contains("OPENAI_MODEL"),
+                    is_expected_external_headless_error(&msg),
                     "{context}: {msg}"
                 );
             }
         }
+    }
+
+    fn is_expected_external_headless_error(msg: &str) -> bool {
+        [
+            "failed to spawn Gemini headless command",
+            "Gemini headless exited with",
+            "AXON_ASK_AGENT=gemini is unavailable for headless backend",
+            "HOME is required to locate Gemini CLI auth files",
+        ]
+        .iter()
+        .any(|expected| msg.contains(expected))
     }
 }

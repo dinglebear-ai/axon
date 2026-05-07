@@ -17,6 +17,9 @@ fn previous_markdown_path(
 
     let output_dir = markdown_dir.parent()?;
     let markdown_relative = relative.strip_prefix("markdown").ok()?;
+    if markdown_relative.as_os_str().is_empty() || markdown_relative.file_name().is_none() {
+        return None;
+    }
     if markdown_relative
         .components()
         .any(|component| !matches!(component, std::path::Component::Normal(_)))
@@ -121,5 +124,4 @@ pub async fn append_manifest_entry(
 }
 
 #[cfg(test)]
-#[path = "manifest_tests.rs"]
 mod tests;

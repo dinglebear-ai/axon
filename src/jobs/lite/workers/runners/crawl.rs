@@ -89,8 +89,6 @@ pub async fn run_crawl_job_lite(
     )
     .await?;
 
-    ensure_crawl_not_cancelled(pool, id, cancel_token.as_ref(), &id_str, &url).await?;
-
     let (embed_job_id, embed_deferred) = try_enqueue_embed_handoff(
         pool,
         &effective_cfg,
