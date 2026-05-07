@@ -94,6 +94,7 @@ impl Default for Config {
             ask_candidate_limit: 150,
             ask_chunk_limit: 10,
             ask_full_docs: 4,
+            ask_full_docs_explicit: false,
             ask_backfill_chunks: 3,
             ask_doc_fetch_concurrency: 4,
             ask_doc_chunk_limit: 192,
@@ -103,7 +104,14 @@ impl Default for Config {
             ask_min_citations_nontrivial: 2,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
-            ask_hybrid_candidates: 150,
+            ask_hybrid_candidates: 100,
+            ask_cache_enabled: false,
+            ask_cache_max_capacity_bytes: 256 * 1024 * 1024,
+            ask_cache_ttl_secs: 300,
+            ask_fulldoc_skip_enabled: false,
+            ask_fulldoc_skip_min_urls: 3,
+            ask_fulldoc_skip_min_chars: 4000,
+            ask_fulldoc_skip_score_delta: 0.15,
             tei_max_retries: 5,
             tei_request_timeout_ms: 30_000,
             tei_max_client_batch_size: 64,
@@ -153,6 +161,7 @@ impl Default for Config {
             custom_headers: vec![],
             quiet: false,
             log_level: None,
+            server_url: None,
         }
     }
 }
@@ -297,6 +306,7 @@ impl fmt::Debug for Config {
             .field("ask_candidate_limit", &self.ask_candidate_limit)
             .field("ask_chunk_limit", &self.ask_chunk_limit)
             .field("ask_full_docs", &self.ask_full_docs)
+            .field("ask_full_docs_explicit", &self.ask_full_docs_explicit)
             .field("ask_backfill_chunks", &self.ask_backfill_chunks)
             .field("ask_doc_fetch_concurrency", &self.ask_doc_fetch_concurrency)
             .field("ask_doc_chunk_limit", &self.ask_doc_chunk_limit)
@@ -380,6 +390,21 @@ impl fmt::Debug for Config {
                     .collect::<Vec<_>>(),
             )
             .field("quiet", &self.quiet)
+            .field(
+                "server_url",
+                &self.server_url.as_ref().map(|url| {
+                    if url.password().is_some() || !url.username().is_empty() {
+                        format!(
+                            "{}://[REDACTED]@{}{}",
+                            url.scheme(),
+                            url.host_str().unwrap_or(""),
+                            url.path()
+                        )
+                    } else {
+                        url.to_string()
+                    }
+                }),
+            )
             .finish()
     }
 }

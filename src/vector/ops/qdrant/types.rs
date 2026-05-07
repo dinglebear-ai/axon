@@ -48,6 +48,15 @@ pub(crate) struct QdrantQueryResponse {
     pub(crate) result: QdrantQueryResult,
 }
 
+/// Response from `/points/query/batch` — `result` is a positionally-aligned
+/// array of per-query result shapes (each identical to `/points/query`'s
+/// `{"points": [...]}`). Used by [`qdrant_dual_search`] (bd axon_rust-j2c).
+#[derive(Debug, Deserialize)]
+pub(crate) struct QdrantBatchQueryResponse {
+    #[serde(default)]
+    pub(crate) result: Vec<QdrantQueryResult>,
+}
+
 pub(crate) const RETRIEVE_MAX_POINTS_CEILING: usize = 500;
 
 #[cfg(test)]

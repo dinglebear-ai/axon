@@ -22,6 +22,32 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.hybrid_search_enabled = hybrid_search_enabled(toml);
     cfg.hybrid_search_candidates = hybrid_search_candidates(toml);
     cfg.ask_hybrid_candidates = ask_hybrid_candidates(toml);
+    cfg.ask_cache_enabled = toml.ask.cache.enabled.unwrap_or(false);
+    cfg.ask_cache_max_capacity_bytes = toml
+        .ask
+        .cache
+        .max_capacity_bytes
+        .unwrap_or(256 * 1024 * 1024);
+    cfg.ask_cache_ttl_secs = toml.ask.cache.ttl_secs.unwrap_or(300).min(300);
+    cfg.ask_fulldoc_skip_enabled = toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(false);
+    cfg.ask_fulldoc_skip_min_urls = toml
+        .ask
+        .adaptive
+        .fulldoc_skip_min_urls
+        .map(|v| v.clamp(1, 50))
+        .unwrap_or(3);
+    cfg.ask_fulldoc_skip_min_chars = toml
+        .ask
+        .adaptive
+        .fulldoc_skip_min_chars
+        .map(|v| v.clamp(500, 200_000))
+        .unwrap_or(4000);
+    cfg.ask_fulldoc_skip_score_delta = toml
+        .ask
+        .adaptive
+        .fulldoc_skip_score_delta
+        .map(|v| v.clamp(0.0, 1.0))
+        .unwrap_or(0.15);
     cfg.tei_max_retries = tei_max_retries(toml);
     cfg.tei_request_timeout_ms = tei_request_timeout_ms(toml);
     cfg.tei_max_client_batch_size = tei_max_client_batch_size(toml);

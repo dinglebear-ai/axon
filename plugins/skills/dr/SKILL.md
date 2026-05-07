@@ -1,10 +1,10 @@
 ---
-name: doctor
+name: dr
 description: Use when the user wants to check if axon services are healthy, diagnose connectivity problems, verify Qdrant/TEI/Chrome are reachable, troubleshoot why axon isn't working, or run a health check. Triggers on "axon doctor", "check axon health", "is axon working", "troubleshoot axon", "why is axon failing", "check services", "health check", "can axon connect to". Always run this first when something seems broken.
 allowed-tools: mcp__plugin_axon_axon__axon
 ---
 
-# axon-doctor
+# axon-dr
 
 Pings all axon dependencies and reports their health. Run this first when anything isn't working.
 

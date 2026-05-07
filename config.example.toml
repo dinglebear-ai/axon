@@ -48,7 +48,7 @@
 # Hybrid prefetch window for the ask pipeline (clamped 10–500).
 # Wider than hybrid-candidates to give reranking more material.
 # Env: AXON_ASK_HYBRID_CANDIDATES
-# ask-hybrid-candidates = 150
+# ask-hybrid-candidates = 100
 
 # HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
 # Higher = better recall, more RAM/CPU.
@@ -76,6 +76,58 @@
 # Lower = more results, more noise. Higher = stricter but may miss relevant chunks.
 # Env: AXON_ASK_MIN_RELEVANCE_SCORE
 # min-relevance-score = 0.45
+
+[ask.cache]
+# [wired] In-process document-chunk cache for the ask full-doc fetch path.
+# Process-local: only useful in long-lived parents (`axon serve`, `axon mcp`).
+# CLI one-shots see zero hit rate by definition. Default: disabled.
+# (bd axon_rust-pmc)
+# enabled = false
+
+# [wired] Max bytes (summed `chunk_text` length across cached entries).
+# Default: 268_435_456 (256 MiB).
+# max-capacity-bytes = 268435456
+
+# [wired] Time-to-live for cached entries, in seconds. Hard-capped at 300s
+# (security primitive bounding staleness of deleted content). Default: 300.
+# ttl-secs = 300
+
+[ask.adaptive]
+# Adaptive ask heuristics. (bd axon_rust-30y)
+#
+# Full-doc fetch skip gate: when the reranked top-K already covers enough
+# unique URLs, chunk bytes, and quality, the full-doc backfill stage is
+# elided entirely. Saves the second-largest cost in `ask` after LLM
+# generation on queries where chunks alone are already sufficient.
+#
+# Mode-aware quality floor (per crates/vector/CLAUDE.md Ranking Pipeline):
+#  - Cosine paths (Unnamed / dense-only Named): every top-K score must
+#    satisfy `>= ask_min_relevance_score + fulldoc-skip-score-delta`.
+#  - RRF path (Named + hybrid + non-empty sparse): every top-K score must
+#    sit in the top quartile (P75) of all reranked candidates. The
+#    `score-delta` knob is intentionally ignored because rank-fusion
+#    output is unitless.
+#
+# Diagnostics surface the result as `full_doc_fetch_skipped: bool` and
+# `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" |
+# "insufficient_chars" | "low_top_scores" | "empty_top_k"`.
+#
+# Default: disabled. Validate against `axon evaluate` golden set before
+# enabling — quality gate is "no regression > 1pp on accuracy / relevance /
+# completeness".
+# fulldoc-skip-enabled = false
+
+# [wired] Minimum unique URLs required in reranked top-K (clamped 1–50).
+# Default: 3.
+# fulldoc-skip-min-urls = 3
+
+# [wired] Minimum total chunk_text bytes summed across reranked top-K
+# (clamped 500–200_000). Default: 4000.
+# fulldoc-skip-min-chars = 4000
+
+# [wired] Cosine-mode score floor offset on top of `ask_min_relevance_score`
+# (clamped 0.0–1.0). Default: 0.15. Ignored on the RRF path.
+# fulldoc-skip-score-delta = 0.15
 
 [tei]
 # Max retry attempts after the initial TEI request.

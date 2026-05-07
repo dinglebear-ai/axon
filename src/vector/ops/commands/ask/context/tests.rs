@@ -4,7 +4,9 @@ use super::heuristics::{
     candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
     url_matches_domain_list,
 };
+use super::query_rewrite::{QueryComplexity, build_query_forms};
 use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
+use super::{FullDocsSource, resolve_ask_full_docs};
 use crate::core::config::Config;
 use crate::vector::ops::commands::retrieval::RetrievedCandidate;
 use crate::vector::ops::ranking::AskCandidate;
@@ -329,4 +331,59 @@ fn authoritative_domains_match_exact_and_suffix_hosts() {
         "https://medium.com/some-post",
         &allow
     ));
+}
+
+// ---- Adaptive ask_full_docs resolver (bd axon_rust-721) ----
+
+#[test]
+fn simple_query_uses_2_full_docs_when_user_default() {
+    // cfg.ask_full_docs is left at its hardcoded default (4) and not pinned
+    // (ask_full_docs_explicit=false). A simple query should flip to the
+    // adaptive value of 2.
+    let (resolved, source) = resolve_ask_full_docs(4, false, QueryComplexity::Simple);
+    assert_eq!(resolved, 2);
+    assert_eq!(source.as_str(), "adaptive_simple");
+}
+
+#[test]
+fn complex_query_uses_3_full_docs_when_user_default() {
+    let (resolved, source) = resolve_ask_full_docs(4, false, QueryComplexity::Complex);
+    assert_eq!(resolved, 3);
+    assert_eq!(source.as_str(), "adaptive_complex");
+}
+
+#[test]
+fn user_explicit_override_wins_over_adaptive() {
+    // The user pinned AXON_ASK_FULL_DOCS=10. Even on a simple query the
+    // resolver must defer to the explicit value.
+    let (resolved, source) = resolve_ask_full_docs(10, true, QueryComplexity::Simple);
+    assert_eq!(resolved, 10);
+    assert_eq!(source.as_str(), "user_override");
+
+    // And on a complex query.
+    let (resolved, source) = resolve_ask_full_docs(7, true, QueryComplexity::Complex);
+    assert_eq!(resolved, 7);
+    assert_eq!(source.as_str(), "user_override");
+}
+
+#[test]
+fn complexity_hint_matches_use_dual_signal() {
+    // Single-token / keyword-shaped queries: use_dual=false → Simple.
+    let simple = build_query_forms("rust");
+    assert!(!simple.use_dual);
+    assert_eq!(simple.complexity_hint, QueryComplexity::Simple);
+
+    // Multi-keyword NL question that survives stop-word stripping:
+    // use_dual=true → Complex.
+    let complex = build_query_forms("how do PreToolUse hook fields work in Claude Code");
+    assert!(complex.use_dual);
+    assert_eq!(complex.complexity_hint, QueryComplexity::Complex);
+}
+
+#[test]
+fn full_docs_source_strings_are_stable() {
+    // The diagnostic surface is a public contract — guard against typos.
+    assert_eq!(FullDocsSource::UserOverride.as_str(), "user_override");
+    assert_eq!(FullDocsSource::AdaptiveSimple.as_str(), "adaptive_simple");
+    assert_eq!(FullDocsSource::AdaptiveComplex.as_str(), "adaptive_complex");
 }

@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::warm::WarmAcpSession;
+use super::warm::{WarmAcpSession, WarmAcpSessionOrigin};
 use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
 
@@ -155,7 +155,8 @@ pub fn try_checkout(cfg: &Config) -> Option<WarmAcpSession> {
     if pool.cfg_key != CfgKey::from_config(cfg) {
         return None;
     }
-    let (session, age) = pool.pop_fresh()?;
+    let (mut session, age) = pool.pop_fresh()?;
+    session.origin = WarmAcpSessionOrigin::Pool;
     let remaining = pool.len();
     log_info(&format!(
         "warm pool: checkout age={}ms pool_remaining={}",

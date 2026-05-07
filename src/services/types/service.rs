@@ -296,6 +296,35 @@ pub struct AskTiming {
     pub graph: u128,
     pub llm: u128,
     pub total: u128,
+    // Populated only when ask_diagnostics=true; otherwise omitted via skip_serializing_if.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warm_session_ready_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tei_embed_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qdrant_primary_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qdrant_secondary_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_select_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_doc_fetch_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_ttft_ms: Option<u128>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_total_ms: Option<u128>,
+    /// Origin variant of the warm session: `Pool` / `FreshSpawn` /
+    /// `EventChannelBypass` / `FailedFallback`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm_warm_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streamed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalize_ms: Option<u128>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

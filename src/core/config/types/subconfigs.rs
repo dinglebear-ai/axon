@@ -124,7 +124,7 @@ impl Default for AskConfig {
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
             ask_diagnostics: false,
-            ask_hybrid_candidates: 150,
+            ask_hybrid_candidates: 100,
         }
     }
 }
@@ -312,6 +312,7 @@ mod tests {
         let c = AskConfig::default();
         assert_eq!(c.ask_max_context_chars, 120_000);
         assert_eq!(c.ask_candidate_limit, 150);
+        assert_eq!(c.ask_hybrid_candidates, 100);
         assert!((c.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert_eq!(c.ask_min_citations_nontrivial, 2);
         assert!(c.ask_authoritative_domains.is_empty());

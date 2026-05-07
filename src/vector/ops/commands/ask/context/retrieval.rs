@@ -1,5 +1,6 @@
+use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::core::config::Config;
-use crate::core::logging::log_debug;
+use crate::core::logging::{log_debug, log_warn};
 use crate::services::error::ServiceError;
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateScorePolicy, authoritative_ratio, build_candidates_from_hits,
@@ -63,13 +64,9 @@ pub(super) fn apply_mode_aware_rerank(
 }
 
 /// Map a primary `dispatch_vector_search` failure to an `anyhow::Error`,
-/// attaching context JSON unconditionally on the error path so operators can
-/// see the collection / Qdrant URL / query-length context that produced the
-/// failure. The cost is one small JSON object per failure, and every failure
-/// already costs at least a Qdrant round-trip — the marginal cost is
-/// negligible. The legacy `cfg.ask_diagnostics` flag still gates verbose
-/// **success-path** payloads elsewhere (see `ask.rs` and
-/// `evaluate/display.rs`). (bd axon_rust-d71.35)
+/// attaching collection / Qdrant URL / query-length context unconditionally so
+/// operators can diagnose the failure. The legacy `cfg.ask_diagnostics` flag
+/// still gates verbose success-path payloads elsewhere.
 fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> anyhow::Error {
     let diagnostics = serde_json::json!({
         "stage": "ask_vector_search_dispatch",
@@ -89,7 +86,11 @@ fn dispatch_error(cfg: &Config, query: &str, err: &dyn std::error::Error) -> any
     skip(cfg, query),
     fields(collection = %cfg.collection, query_len = query.len())
 )]
-pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result<AskRetrieval> {
+pub(super) async fn retrieve_ask_candidates(
+    cfg: &Config,
+    query: &str,
+    timing: &mut AskTiming,
+) -> Result<AskRetrieval> {
     let retrieval_started = std::time::Instant::now();
     let ask_tuning = cfg.ask_config();
     let query_forms = super::query_rewrite::build_query_forms(query);
@@ -105,38 +106,32 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         embed_inputs.push(tei::EmbedInput::document(query_forms.keyword_query.clone()));
     }
 
+    let tei_started = std::time::Instant::now();
     let mut ask_vectors = tei::tei_embed_typed(cfg, &embed_inputs)
         .await
         .map_err(|e| anyhow!("TEI embed for ask query: {e}"))?;
+    timing.record(AskTimingSlot::TeiEmbed, tei_started);
     if ask_vectors.is_empty() {
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
     let vecq = ask_vectors.remove(0);
 
-    // Run primary (NL) and secondary (keyword) dispatches in parallel when dual-embedding
-    // is active. They are independent Qdrant queries; awaiting them sequentially burned
-    // ~2-3s per ask (bd axon_rust-d71.3 / C3).
-    let primary_request =
-        qdrant::VectorSearchRequest::from_query(cfg, &vecq, query, ask_tuning.ask_candidate_limit)
-            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
-            .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
-    let primary_fut = qdrant::dispatch_vector_search_request(cfg, &primary_request);
-    let (primary_res, secondary_res) = if query_forms.use_dual && !ask_vectors.is_empty() {
-        let vecq_kw = ask_vectors.remove(0);
-        let secondary_request = qdrant::VectorSearchRequest::from_query(
-            cfg,
-            &vecq_kw,
-            &query_forms.keyword_query,
-            ask_tuning.ask_candidate_limit,
-        )
-        .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
-        .with_candidates_override(Some(ask_tuning.ask_hybrid_candidates));
-        let secondary_fut = qdrant::dispatch_vector_search_request(cfg, &secondary_request);
-        let (p, s) = tokio::join!(primary_fut, secondary_fut);
-        (p, Some(s))
-    } else {
-        (primary_fut.await, None)
-    };
+    let DispatchOutcome {
+        primary_request,
+        primary_res,
+        secondary_res,
+    } = run_qdrant_dispatch(
+        cfg,
+        query,
+        &vecq,
+        &mut ask_vectors,
+        &query_forms.keyword_query,
+        query_forms.use_dual,
+        ask_tuning.ask_candidate_limit,
+        ask_tuning.ask_hybrid_candidates,
+        timing,
+    )
+    .await?;
 
     let hits = primary_res.map_err(|e| dispatch_error(cfg, query, e.as_ref()))?;
     let vector_mode = get_or_fetch_vector_mode(cfg)
@@ -160,7 +155,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
                 let secondary = build_candidates_from_hits(kw_hits, &build_policy);
                 retrieved_candidates = merge_candidates(retrieved_candidates, secondary.candidates);
             }
-            Err(e) => log_debug(&format!(
+            Err(e) => log_warn(&format!(
                 "ask: keyword search failed (continuing with NL only): {e}"
             )),
         }
@@ -175,6 +170,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         authoritative_boost: ask_tuning.ask_authoritative_boost,
         min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
+    let rerank_started = std::time::Instant::now();
     let reranked_candidates = apply_mode_aware_rerank(
         rrf_mode,
         &retrieved_candidates,
@@ -182,6 +178,7 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         &rerank_params,
     );
     let reranked = candidates_only(&reranked_candidates);
+    timing.record(AskTimingSlot::Rerank, rerank_started);
     if reranked.is_empty() {
         if rrf_mode {
             return Err(anyhow!("No candidates passed topical overlap"));
@@ -198,11 +195,13 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
         reranked.len(),
         reranked.len().min(ask_tuning.ask_chunk_limit),
     ));
+    let top_select_started = std::time::Instant::now();
     let (top_chunk_indices, top_full_doc_indices) = super::build::select_context_indices(
         &reranked,
         ask_tuning.ask_chunk_limit,
         ask_tuning.ask_full_docs,
     );
+    timing.record(AskTimingSlot::TopSelect, top_select_started);
 
     Ok(AskRetrieval {
         top_chunk_indices,
@@ -221,4 +220,133 @@ pub(super) async fn retrieve_ask_candidates(cfg: &Config, query: &str) -> Result
             )
         },
     })
+}
+
+struct DispatchOutcome<'a> {
+    primary_request: qdrant::VectorSearchRequest<'a>,
+    primary_res: Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
+    secondary_res:
+        Option<Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>>,
+}
+
+/// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches.
+///
+/// Tries the batch path (`/points/query/batch`) first when both arms are
+/// available; this saves the second TLS+TCP handshake/header round-trip on
+/// every ask. On any batch failure (transport error, 5xx after retries,
+/// VectorMode::Unnamed which the batch helper intentionally rejects) the
+/// dispatch falls back to the existing parallel-single (`tokio::join!`) path
+/// so retrieval cannot be silently disabled by a transient batch hiccup.
+///
+/// Timing semantics:
+/// - **Batch path**: Qdrant's `/points/query/batch` returns only one
+///   aggregate `time` field; per-arm timings are unavailable. We record the
+///   batch wall-clock under [`AskTimingSlot::QdrantPrimary`] as the only
+///   meaningful signal and leave [`AskTimingSlot::QdrantSecondary`] as None.
+///   Operators reading diagnostics should read `qdrant_primary_ms` as the
+///   aggregate dispatch ms when `qdrant_secondary_ms` is None.
+/// - **Fallback path**: each arm is timed independently as before.
+///
+/// (bd axon_rust-j2c)
+#[allow(clippy::too_many_arguments)]
+async fn run_qdrant_dispatch<'a>(
+    cfg: &'a Config,
+    query: &'a str,
+    vecq: &'a [f32],
+    ask_vectors: &mut Vec<Vec<f32>>,
+    keyword_query: &'a str,
+    use_dual: bool,
+    candidate_limit: usize,
+    hybrid_candidates: usize,
+    timing: &mut AskTiming,
+) -> Result<DispatchOutcome<'a>> {
+    let primary_request =
+        qdrant::VectorSearchRequest::from_query(cfg, vecq, query, candidate_limit)
+            .map_err(|e| anyhow!("build ask vector search request: {e}"))?
+            .with_candidates_override(Some(hybrid_candidates));
+
+    // No secondary arm — single dispatch, classic timing.
+    if !use_dual || ask_vectors.is_empty() {
+        let t = std::time::Instant::now();
+        let primary_res = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
+        timing.set(AskTimingSlot::QdrantPrimary, t.elapsed().as_millis());
+        return Ok(DispatchOutcome {
+            primary_request,
+            primary_res,
+            secondary_res: None,
+        });
+    }
+
+    let vecq_kw = ask_vectors.remove(0);
+    let secondary_request =
+        qdrant::VectorSearchRequest::from_query(cfg, &vecq_kw, keyword_query, candidate_limit)
+            .map_err(|e| anyhow!("build ask keyword vector search request: {e}"))?
+            .with_candidates_override(Some(hybrid_candidates));
+
+    // Try batch path first.
+    let primary_sparse_default = primary_request.sparse.clone().unwrap_or_default();
+    let secondary_sparse_default = secondary_request.sparse.clone().unwrap_or_default();
+    let primary_arm = qdrant::DualSearchArm {
+        dense: primary_request.dense,
+        sparse: &primary_sparse_default,
+        filter: primary_request.filter.as_ref(),
+    };
+    let secondary_arm = qdrant::DualSearchArm {
+        dense: secondary_request.dense,
+        sparse: &secondary_sparse_default,
+        filter: secondary_request.filter.as_ref(),
+    };
+    let batch_started = std::time::Instant::now();
+    match qdrant::qdrant_dual_search(
+        cfg,
+        primary_arm,
+        secondary_arm,
+        candidate_limit,
+        Some(hybrid_candidates),
+    )
+    .await
+    {
+        Ok(qdrant::DualSearchResult { primary, secondary }) => {
+            // Per-arm timing is unavailable on the batch path: Qdrant only
+            // returns one aggregate `time` field. Record the wall-clock under
+            // QdrantPrimary and leave QdrantSecondary unset to signal the
+            // batch path to operators reading diagnostics.
+            timing.set(
+                AskTimingSlot::QdrantPrimary,
+                batch_started.elapsed().as_millis(),
+            );
+            Ok(DispatchOutcome {
+                primary_request,
+                primary_res: Ok(primary),
+                secondary_res: Some(Ok(secondary)),
+            })
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "ask: qdrant batch dual-search failed, falling back to parallel-single: {e}"
+            ));
+            // Fallback: parallel-single via tokio::join!. Per-arm timing is
+            // captured here so the fallback path retains the existing diag
+            // shape (both QdrantPrimary and QdrantSecondary populated).
+            let primary_fut = async {
+                let t = std::time::Instant::now();
+                let r = qdrant::dispatch_vector_search_request(cfg, &primary_request).await;
+                (r, t.elapsed().as_millis())
+            };
+            let secondary_fut = async {
+                let t = std::time::Instant::now();
+                let r = qdrant::dispatch_vector_search_request(cfg, &secondary_request).await;
+                (r, t.elapsed().as_millis())
+            };
+            let ((primary_res, primary_ms), (secondary_res, secondary_ms)) =
+                tokio::join!(primary_fut, secondary_fut);
+            timing.set(AskTimingSlot::QdrantPrimary, primary_ms);
+            timing.set(AskTimingSlot::QdrantSecondary, secondary_ms);
+            Ok(DispatchOutcome {
+                primary_request,
+                primary_res,
+                secondary_res: Some(secondary_res),
+            })
+        }
+    }
 }

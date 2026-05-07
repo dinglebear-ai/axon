@@ -311,3 +311,49 @@ fn toml_ask_min_relevance_score_clamps_upper_bound() {
     );
     assert!((got - 2.0).abs() < 1e-10, "got {got}");
 }
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn server_url_trims_and_ignores_empty_values() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut got = false;
+    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_ASK_SERVER_URL", "   ");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .server_url
+            .is_none();
+    });
+    assert!(got);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn server_url_rejects_malformed_values() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut err = String::new();
+    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_ASK_SERVER_URL", "://not-a-url");
+        err = into_config(cli_with_services(&["status"])).unwrap_err();
+    });
+    assert!(err.contains("invalid --server-url / AXON_ASK_SERVER_URL"));
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn server_url_accepts_trimmed_values() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut got = String::new();
+    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_ASK_SERVER_URL", "  http://127.0.0.1:8001/base  ");
+        got = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .server_url
+            .unwrap()
+            .to_string();
+    });
+    assert_eq!(got, "http://127.0.0.1:8001/base");
+}

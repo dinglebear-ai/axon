@@ -60,6 +60,40 @@ pub(super) struct TomlAskSection {
     pub candidate_limit: Option<usize>,
     /// Minimum relevance score threshold (clamped -1.0–2.0).
     pub min_relevance_score: Option<f64>,
+    /// In-process document-chunk cache for the ask full-doc fetch path.
+    /// Only useful in long-lived parents (`axon serve`, `axon mcp`).
+    /// (bd axon_rust-pmc)
+    #[serde(default)]
+    pub cache: TomlAskCacheSection,
+    /// Adaptive ask heuristics — currently the full-doc fetch skip gate.
+    /// Opt-in until validated against the `axon evaluate` golden set.
+    /// (bd axon_rust-30y)
+    #[serde(default)]
+    pub adaptive: TomlAskAdaptiveSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAskCacheSection {
+    /// Enable the cache. Default: false.
+    pub enabled: Option<bool>,
+    /// Max bytes (summed `chunk_text` length). Default: 268_435_456 (256 MiB).
+    pub max_capacity_bytes: Option<u64>,
+    /// TTL in seconds. Capped at 300s. Default: 300.
+    pub ttl_secs: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAskAdaptiveSection {
+    /// Enable the adaptive full-doc fetch skip gate. Default: false (opt-in).
+    pub fulldoc_skip_enabled: Option<bool>,
+    /// Minimum unique URLs required in reranked top-K. Default: 3.
+    pub fulldoc_skip_min_urls: Option<usize>,
+    /// Minimum total chunk_text bytes summed across reranked top-K. Default: 4000.
+    pub fulldoc_skip_min_chars: Option<usize>,
+    /// Cosine-mode score floor offset on top of `ask_min_relevance_score`. Default: 0.15.
+    pub fulldoc_skip_score_delta: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]

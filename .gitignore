@@ -125,3 +125,8 @@ specs/.current-spec
 
 # Personal local cheatsheet (never commit)
 CLAUDE.md.local
+
+# ── Bench artifacts (numerical-only — but never commit) ──────────────────────
+docs/perf/results-*.json
+docs/perf/results-*.txt
+.worktrees

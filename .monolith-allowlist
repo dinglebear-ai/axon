@@ -30,3 +30,4 @@ src/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | split: 
 src/services/types/acp.rs  # expires: 2026-06-09 | owner: jmagar | split: types/acp/{sse,headers,auth}.rs
 src/services/acp/session.rs  # expires: 2026-06-09 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs
 src/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs
+src/vector/ops/commands/streaming.rs  # expires: 2026-06-09 | owner: jmagar | split: streaming/{base,ttft,evaluate}.rs (bd axon_rust-nm9)

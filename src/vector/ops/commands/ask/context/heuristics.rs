@@ -1,13 +1,131 @@
+use crate::core::config::Config;
 #[cfg(test)]
 use crate::vector::ops::ranking;
+use crate::vector::ops::ranking::AskCandidate;
 #[cfg(test)]
 use spider::url::Url;
 #[cfg(test)]
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub(super) const SUPPLEMENTAL_CONTEXT_BUDGET_PCT: usize = 85;
 pub(super) const SUPPLEMENTAL_MIN_TOP_CHUNKS_FOR_COVERAGE: usize = 6;
 pub(super) const SUPPLEMENTAL_RELEVANCE_BONUS: f64 = 0.0;
+
+/// Outcome of the adaptive full-doc fetch skip gate.
+///
+/// `reason` is a static string suitable for diagnostics emission. Possible
+/// values:
+/// - `"disabled"`           — gate disabled by config (`fulldoc-skip-enabled = false`).
+/// - `"empty_top_k"`        — reranked top-K was empty.
+/// - `"insufficient_urls"`  — fewer unique URLs than `fulldoc_skip_min_urls`.
+/// - `"insufficient_chars"` — chunk byte sum below `fulldoc_skip_min_chars`.
+/// - `"low_top_scores"`     — at least one top-K score under the mode-aware floor.
+/// - `"ok_skip"`            — all conditions satisfied; full-doc fetch is elided.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SkipDecision {
+    pub(super) skip: bool,
+    pub(super) reason: &'static str,
+}
+
+impl SkipDecision {
+    const fn skip() -> Self {
+        Self {
+            skip: true,
+            reason: "ok_skip",
+        }
+    }
+    const fn keep(reason: &'static str) -> Self {
+        Self {
+            skip: false,
+            reason,
+        }
+    }
+}
+
+/// Returns true when the reranked top-K already provides sufficient coverage
+/// and the `fetch_full_docs(...)` stage can be safely elided.
+///
+/// Mode-aware threshold (per `crates/vector/CLAUDE.md` Ranking Pipeline contract):
+/// - **Cosine path** (Unnamed legacy / dense-only Named): every score in top-K
+///   must be `>= cfg.ask_min_relevance_score + cfg.ask_fulldoc_skip_score_delta`.
+/// - **RRF path** (Named with `dense + bm42`, hybrid enabled, non-empty sparse):
+///   rerank scores are rank-fusion output (unitless). Use a rank-based gate —
+///   every score in top-K must be `>= P75` of all reranked candidate scores.
+///
+/// Coverage check (both modes):
+/// - Unique URLs in top-K `>= cfg.ask_fulldoc_skip_min_urls`.
+/// - Total `chunk_text` bytes summed across top-K `>= cfg.ask_fulldoc_skip_min_chars`.
+///
+/// Default-disabled: when `cfg.ask_fulldoc_skip_enabled == false`, returns
+/// `SkipDecision { skip: false, reason: "disabled" }` immediately so the
+/// classic full-doc fetch path runs unmodified. (bd axon_rust-30y)
+pub(super) fn should_skip_full_doc_fetch(
+    cfg: &Config,
+    reranked: &[AskCandidate],
+    is_rrf_mode: bool,
+) -> SkipDecision {
+    if !cfg.ask_fulldoc_skip_enabled {
+        return SkipDecision::keep("disabled");
+    }
+
+    // Determine the top-K window. We mirror `ask_chunk_limit` here so the gate
+    // reasons over the same slice that `select_diverse_candidates` will pick
+    // for top chunks. Falls back to the full reranked list when the limit is
+    // larger than the candidate count.
+    let top_k = cfg.ask_chunk_limit.min(reranked.len());
+    if top_k == 0 {
+        return SkipDecision::keep("empty_top_k");
+    }
+    let top = &reranked[..top_k];
+
+    // Coverage check: unique URLs.
+    let unique_urls: HashSet<&str> = top.iter().map(|c| c.url.as_str()).collect();
+    if unique_urls.len() < cfg.ask_fulldoc_skip_min_urls {
+        return SkipDecision::keep("insufficient_urls");
+    }
+
+    // Coverage check: total chunk_text bytes.
+    let total_chars: usize = top.iter().map(|c| c.chunk_text.len()).sum();
+    if total_chars < cfg.ask_fulldoc_skip_min_chars {
+        return SkipDecision::keep("insufficient_chars");
+    }
+
+    // Mode-aware quality floor.
+    let floor = if is_rrf_mode {
+        // Rank-based gate: P75 of ALL reranked scores. Top-quartile floor.
+        rank_p75_floor(reranked)
+    } else {
+        cfg.ask_min_relevance_score + cfg.ask_fulldoc_skip_score_delta
+    };
+
+    let any_below = top.iter().any(|c| c.rerank_score < floor);
+    if any_below {
+        return SkipDecision::keep("low_top_scores");
+    }
+
+    SkipDecision::skip()
+}
+
+/// Compute the 75th-percentile floor on `rerank_score` across `candidates`.
+/// Used as the rank-based quality threshold for the RRF skip gate where
+/// absolute scores are unitless (rank-fusion output, not cosine).
+///
+/// Uses `partial_cmp` and treats NaN as the smallest value so a stray NaN
+/// can't masquerade as a top-quartile score and let the gate fire spuriously.
+fn rank_p75_floor(candidates: &[AskCandidate]) -> f64 {
+    if candidates.is_empty() {
+        return f64::INFINITY; // gate cannot pass on empty set
+    }
+    let mut scores: Vec<f64> = candidates.iter().map(|c| c.rerank_score).collect();
+    scores.sort_by(|a: &f64, b: &f64| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Less));
+    // P75 index: ceil(0.75 * (n - 1)) lets us pick the boundary score whose
+    // rank is at the start of the top quartile. With n=4 this picks index 2
+    // (the third-best), which is the natural "top quartile floor".
+    let n = scores.len();
+    let idx = ((n as f64 - 1.0) * 0.75).ceil() as usize;
+    scores[idx.min(n - 1)]
+}
 
 pub(super) fn push_context_entry(
     entries: &mut Vec<(f64, String)>,
@@ -76,7 +194,7 @@ fn host_from_url(url: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) -> Vec<String> {
+pub(super) fn top_domains(candidates: &[AskCandidate], limit: usize) -> Vec<String> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     for candidate in candidates {
         if let Some(host) = host_from_url(&candidate.url) {
@@ -95,7 +213,7 @@ pub(super) fn top_domains(candidates: &[ranking::AskCandidate], limit: usize) ->
 }
 
 #[cfg(test)]
-pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains: &[String]) -> f64 {
+pub(super) fn authoritative_ratio(candidates: &[AskCandidate], domains: &[String]) -> f64 {
     if candidates.is_empty() || domains.is_empty() {
         return 0.0;
     }
@@ -107,10 +225,7 @@ pub(super) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains:
 }
 
 #[cfg(test)]
-fn candidate_topical_overlap_count(
-    candidate: &ranking::AskCandidate,
-    query_tokens: &[String],
-) -> usize {
+fn candidate_topical_overlap_count(candidate: &AskCandidate, query_tokens: &[String]) -> usize {
     query_tokens
         .iter()
         .filter(|token| {
@@ -122,7 +237,7 @@ fn candidate_topical_overlap_count(
 
 #[cfg(test)]
 pub(super) fn candidate_has_topical_overlap(
-    candidate: &ranking::AskCandidate,
+    candidate: &AskCandidate,
     query_tokens: &[String],
 ) -> bool {
     if query_tokens.is_empty() {
@@ -144,12 +259,8 @@ mod tests {
     use crate::vector::ops::ranking;
     use std::collections::HashSet;
 
-    fn make_candidate(
-        url: &str,
-        url_tokens: &[&str],
-        chunk_tokens: &[&str],
-    ) -> ranking::AskCandidate {
-        ranking::AskCandidate {
+    fn make_candidate(url: &str, url_tokens: &[&str], chunk_tokens: &[&str]) -> AskCandidate {
+        AskCandidate {
             score: 0.5,
             url: url.to_string(),
             path: String::new(),
@@ -542,5 +653,195 @@ mod tests {
         let candidate = make_candidate("https://example.com", &[], &["rust"]);
         let tokens = vec!["rust".to_string()];
         assert!(candidate_has_topical_overlap(&candidate, &tokens));
+    }
+
+    // ── should_skip_full_doc_fetch ────────────────────────────────────────────
+    //
+    // Mode-aware adaptive skip gate (bd axon_rust-30y). Each test sets
+    // `cfg.ask_fulldoc_skip_enabled = true` unless explicitly testing the
+    // disabled path. `ask_chunk_limit` is the gate's top-K window — set it
+    // small so each test can keep its candidate slice tight.
+
+    fn make_skip_candidate(url: &str, chunk_text: &str, rerank_score: f64) -> AskCandidate {
+        AskCandidate {
+            score: rerank_score,
+            url: url.to_string(),
+            path: String::new(),
+            chunk_text: chunk_text.to_string(),
+            url_tokens: HashSet::new(),
+            chunk_tokens: HashSet::new(),
+            rerank_score,
+        }
+    }
+
+    fn skip_test_config() -> Config {
+        let mut cfg = Config::default_lite();
+        cfg.ask_fulldoc_skip_enabled = true;
+        cfg.ask_fulldoc_skip_min_urls = 3;
+        cfg.ask_fulldoc_skip_min_chars = 4000;
+        cfg.ask_fulldoc_skip_score_delta = 0.15;
+        cfg.ask_min_relevance_score = 0.45;
+        cfg.ask_chunk_limit = 4; // small top-K window for terse fixtures
+        cfg
+    }
+
+    fn long_chunk(prefix: &str, n: usize) -> String {
+        // Generate `n` ASCII bytes so chunk_text.len() == n. Each candidate
+        // contributing 2000 chars × 3 candidates clears the 4000-char gate.
+        let mut s = String::with_capacity(n + prefix.len());
+        s.push_str(prefix);
+        while s.len() < n {
+            s.push('x');
+        }
+        s.truncate(n);
+        s
+    }
+
+    #[test]
+    fn skip_gate_returns_true_when_all_three_conditions_met_cosine() {
+        let cfg = skip_test_config();
+        // 3 unique URLs, totals well over 4000 chars, scores all >= 0.60.
+        let reranked = vec![
+            make_skip_candidate("https://a.com/1", &long_chunk("a", 2000), 0.80),
+            make_skip_candidate("https://b.com/1", &long_chunk("b", 2000), 0.75),
+            make_skip_candidate("https://c.com/1", &long_chunk("c", 2000), 0.62),
+        ];
+        let dec = should_skip_full_doc_fetch(&cfg, &reranked, /*is_rrf*/ false);
+        assert!(dec.skip, "expected skip with reason ok_skip; got {dec:?}");
+        assert_eq!(dec.reason, "ok_skip");
+    }
+
+    #[test]
+    fn skip_gate_returns_false_when_too_few_unique_urls() {
+        let cfg = skip_test_config();
+        // Two distinct chunks that share the same URL → only 2 unique URLs
+        // across 3 candidates (same exact URL string twice + one other).
+        let reranked = vec![
+            make_skip_candidate("https://a.com/page", &long_chunk("a", 2000), 0.80),
+            make_skip_candidate("https://a.com/page", &long_chunk("b", 2000), 0.75),
+            make_skip_candidate("https://b.com/page", &long_chunk("c", 2000), 0.62),
+        ];
+        let dec = should_skip_full_doc_fetch(&cfg, &reranked, false);
+        assert!(!dec.skip);
+        assert_eq!(dec.reason, "insufficient_urls");
+    }
+
+    #[test]
+    fn skip_gate_returns_false_when_chunk_chars_below_min() {
+        let cfg = skip_test_config();
+        // 3 unique URLs but each chunk only 100 chars => total 300 < 4000.
+        let reranked = vec![
+            make_skip_candidate("https://a.com/1", &long_chunk("a", 100), 0.80),
+            make_skip_candidate("https://b.com/1", &long_chunk("b", 100), 0.75),
+            make_skip_candidate("https://c.com/1", &long_chunk("c", 100), 0.62),
+        ];
+        let dec = should_skip_full_doc_fetch(&cfg, &reranked, false);
+        assert!(!dec.skip);
+        assert_eq!(dec.reason, "insufficient_chars");
+    }
+
+    #[test]
+    fn skip_gate_returns_false_when_top_score_below_threshold_cosine() {
+        let cfg = skip_test_config();
+        // URLs and chars satisfied but the third candidate scores 0.55 < 0.60 floor.
+        let reranked = vec![
+            make_skip_candidate("https://a.com/1", &long_chunk("a", 2000), 0.80),
+            make_skip_candidate("https://b.com/1", &long_chunk("b", 2000), 0.75),
+            make_skip_candidate("https://c.com/1", &long_chunk("c", 2000), 0.55),
+        ];
+        let dec = should_skip_full_doc_fetch(&cfg, &reranked, false);
+        assert!(!dec.skip);
+        assert_eq!(dec.reason, "low_top_scores");
+    }
+
+    #[test]
+    fn skip_gate_uses_rank_based_threshold_in_rrf_mode() {
+        let cfg = skip_test_config();
+        // 20 candidates total. The top-K window (cfg.ask_chunk_limit = 4)
+        // must all sit in the top quartile, so we need 4*K = at least 16
+        // ranks below them. P75 floor = scores[ceil(19*0.75)] = scores[15]
+        // in ascending order — i.e., the top-5 cutoff. So as long as the
+        // top-K candidates are the top-5 by score they pass the gate.
+        let mut reranked: Vec<AskCandidate> = Vec::new();
+        // Top-K (input order = first 4): all >= 0.85, well above P75.
+        for (i, score) in [0.95_f64, 0.92, 0.88, 0.85].iter().enumerate() {
+            reranked.push(make_skip_candidate(
+                &format!("https://top{i}.com/p"),
+                &long_chunk("t", 2000),
+                *score,
+            ));
+        }
+        // Tail: 16 lower-ranked candidates, scores 0.10..=0.80 in steps.
+        for i in 0..16 {
+            let s = 0.10 + (i as f64 * 0.04); // 0.10, 0.14, ... up to 0.70
+            reranked.push(make_skip_candidate(
+                &format!("https://tail{i}.com/p"),
+                &long_chunk("t", 2000),
+                s,
+            ));
+        }
+
+        // Sanity check the cosine path: bump score delta so the cosine floor
+        // (0.45 + 0.50 = 0.95) makes top-K[1]=0.92 fail. Confirms the test
+        // is genuinely exercising the RRF branch (not just cosine).
+        let mut cfg_strict_cosine = cfg.clone();
+        cfg_strict_cosine.ask_fulldoc_skip_score_delta = 0.50;
+        let dec_cosine = should_skip_full_doc_fetch(&cfg_strict_cosine, &reranked, false);
+        assert!(!dec_cosine.skip, "cosine gate should keep here");
+        assert_eq!(dec_cosine.reason, "low_top_scores");
+
+        // RRF gate uses rank-based floor (ignores ask_fulldoc_skip_score_delta).
+        let dec = should_skip_full_doc_fetch(&cfg_strict_cosine, &reranked, /*is_rrf*/ true);
+        assert!(dec.skip, "rank-based gate should fire; got {dec:?}");
+        assert_eq!(dec.reason, "ok_skip");
+
+        // Degrade top-K[3] far below the bulk distribution. The new P75
+        // shifts only marginally (one score moved from 0.85 → 0.05), so the
+        // top quartile is still ~0.7 and top-K[3]=0.05 fails the gate.
+        let mut degraded = reranked.clone();
+        degraded[3].rerank_score = 0.05;
+        let dec2 = should_skip_full_doc_fetch(&cfg_strict_cosine, &degraded, true);
+        assert!(!dec2.skip);
+        assert_eq!(dec2.reason, "low_top_scores");
+    }
+
+    #[test]
+    fn skip_gate_disabled_returns_false_regardless() {
+        let mut cfg = skip_test_config();
+        cfg.ask_fulldoc_skip_enabled = false;
+        // Conditions that would otherwise fire ok_skip:
+        let reranked = vec![
+            make_skip_candidate("https://a.com/1", &long_chunk("a", 2000), 0.99),
+            make_skip_candidate("https://b.com/1", &long_chunk("b", 2000), 0.99),
+            make_skip_candidate("https://c.com/1", &long_chunk("c", 2000), 0.99),
+        ];
+        let dec_cosine = should_skip_full_doc_fetch(&cfg, &reranked, false);
+        let dec_rrf = should_skip_full_doc_fetch(&cfg, &reranked, true);
+        assert!(!dec_cosine.skip);
+        assert_eq!(dec_cosine.reason, "disabled");
+        assert!(!dec_rrf.skip);
+        assert_eq!(dec_rrf.reason, "disabled");
+    }
+
+    #[test]
+    fn skip_gate_records_reason_for_diagnostics() {
+        // Same fixtures as the targeted negative tests but assert the
+        // `reason` field directly so the diagnostic surface is regression-
+        // tested. (Reasons are exposed via AskContext.full_doc_fetch_skip_reason
+        // for the `ask` JSON diagnostics output.)
+        let cfg = skip_test_config();
+        let empty: Vec<AskCandidate> = Vec::new();
+        let dec_empty = should_skip_full_doc_fetch(&cfg, &empty, false);
+        assert!(!dec_empty.skip);
+        assert_eq!(dec_empty.reason, "empty_top_k");
+
+        let too_few = vec![make_skip_candidate(
+            "https://only.com/1",
+            &long_chunk("a", 8000),
+            0.99,
+        )];
+        let dec_few = should_skip_full_doc_fetch(&cfg, &too_few, false);
+        assert!(!dec_few.skip);
+        assert_eq!(dec_few.reason, "insufficient_urls");
     }
 }

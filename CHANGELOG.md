@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### bd-teams/ask-perf-foundation
+
+- ask: AXON_ASK_HYBRID_CANDIDATES default lowered 150 → 100 (Qdrant RRF rank-stable at 2x final K; ask_candidate_limit=50 → prefetch=100 is sufficient).
+
+## [1.6.2] - 2026-05-07
+
+### Fixed
+
+- ask: forward per-request `ask_*` overrides through `--server-url`, use a longer server request timeout, and harden bearer-token handling.
+- perf: tighten benchmark artifact validation to numeric-only values and require warm-mode benchmarks to use an explicit server URL.
+- vector: remove disabled-path timing probes, repair evaluate's disabled ask timing locals, and split Qdrant payload-index setup under the Rust file-size cap.
+
+## [1.6.1] - 2026-05-07
+
+### Fixed
+
+- http: cap shared `HTTP_CLIENT` `pool_max_idle_per_host` to 50 with a 60s idle TTL (bd axon_rust-wo1). reqwest defaults `pool_max_idle_per_host` to `usize::MAX`; under sustained dual-Qdrant + TEI load the idle pool grew unbounded. Audited `crates/vector/ops/commands/ask/context/retrieval.rs:252-352` and confirmed the dual-Qdrant `tokio::join!` fallback has no shared `Mutex`/`Semaphore`/`block_on` and `tei_embed_typed` returns vectors by value pre-join — parallelism is correct by construction.
+
+## [1.6.0] - 2026-05-07
+
+### Added
+
+- ask: adaptive `ask_full_docs` per query complexity (bd axon_rust-721). Reuses the `AskQueryForms.use_dual` signal as a coarse `QueryComplexity{Simple|Complex}` hint. Simple queries default to 2 full-doc fetches; complex (use_dual=true) queries default to 3. The user's explicit override (`AXON_ASK_FULL_DOCS` env var) still wins; tracked via new `Config::ask_full_docs_explicit` field. Diagnostics surface `detected_complexity`, `resolved_full_docs`, and `full_docs_source` (`user_override` / `adaptive_simple` / `adaptive_complex`).
+
 ## [1.5.11] - 2026-05-07
 
 ### Fixed

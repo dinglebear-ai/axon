@@ -217,7 +217,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 |----------|---------|-------------|
 | `AXON_HYBRID_SEARCH` | `true` | Enable BM42 sparse + dense RRF fusion |
 | `AXON_HYBRID_CANDIDATES` | `100` | Candidates per prefetch arm (10-500) |
-| `AXON_ASK_HYBRID_CANDIDATES` | `150` | Ask pipeline hybrid window |
+| `AXON_ASK_HYBRID_CANDIDATES` | `100` | Ask pipeline hybrid window |
 | `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
 | `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
 

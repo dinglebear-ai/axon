@@ -39,8 +39,15 @@ pub fn build_client(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
+    // Explicit connection pool sizing. reqwest defaults `pool_max_idle_per_host`
+    // to `usize::MAX`, which under sustained dual-Qdrant + TEI load on a single
+    // host can drift toward ephemeral-port pressure (Linux default range ~28K).
+    // Cap idle reuse and the idle TTL so the pool actively recycles connections
+    // instead of growing unbounded. (bd axon_rust-wo1)
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
+        .pool_max_idle_per_host(50)
+        .pool_idle_timeout(Some(Duration::from_secs(60)))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             let url_string = attempt.url().as_str().to_owned();
             match validate_url(&url_string) {

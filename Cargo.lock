@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "1.5.11"
+version = "1.6.2"
 dependencies = [
  "agent-client-protocol",
  "anyhow",
@@ -435,6 +435,7 @@ dependencies = [
  "libc",
  "log",
  "mime_guess",
+ "moka",
  "octocrab",
  "openssh",
  "openssh-sftp-client",

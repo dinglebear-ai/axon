@@ -48,7 +48,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     populate_perf_and_credentials(&mut cfg, &inputs);
     populate_services_and_ask_basics(&mut cfg, &inputs, tei_url, qdrant_url);
     populate_ask_tuning(&mut cfg, inputs.toml);
-    populate_misc(&mut cfg, &inputs, custom_headers, mcp_http_port);
+    populate_misc(&mut cfg, &inputs, custom_headers, mcp_http_port)?;
     Ok(cfg)
 }
 
@@ -200,7 +200,7 @@ fn populate_misc(
     inputs: &LiteralInputs<'_>,
     custom_headers: Vec<String>,
     mcp_http_port: u16,
-) {
+) -> Result<(), String> {
     let g = inputs.global;
     cfg.hybrid_search_enabled = cfg.hybrid_search_enabled && !g.no_hybrid_search;
     cfg.cron_every_seconds = g.cron_every_seconds.filter(|v| *v > 0);
@@ -248,6 +248,19 @@ fn populate_misc(
     cfg.custom_headers = custom_headers;
     cfg.quiet = g.quiet;
     cfg.log_level = g.log_level.clone();
+    cfg.server_url = match g
+        .server_url
+        .as_ref()
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+    {
+        Some(raw) => Some(
+            reqwest::Url::parse(raw)
+                .map_err(|e| format!("invalid --server-url / AXON_ASK_SERVER_URL '{raw}': {e}"))?,
+        ),
+        None => None,
+    };
+    Ok(())
 }
 
 fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {

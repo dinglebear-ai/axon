@@ -275,6 +275,14 @@ pub struct Config {
     /// Env: `AXON_ASK_FULL_DOCS` (clamped 1–20). Default: 4.
     pub ask_full_docs: usize,
 
+    /// True when `ask_full_docs` was set explicitly by the user (via
+    /// `AXON_ASK_FULL_DOCS` env var or a CLI flag) rather than left at the
+    /// hardcoded default. The adaptive resolver in
+    /// `build_ask_context` honours user overrides and only applies its
+    /// complexity-based default when this is `false`.
+    /// (bd axon_rust-721)
+    pub ask_full_docs_explicit: bool,
+
     /// Extra chunks added from each full-doc backfill pass.
     /// Env: `AXON_ASK_BACKFILL_CHUNKS` (clamped 0–20). Default: 3.
     pub ask_backfill_chunks: usize,
@@ -320,8 +328,48 @@ pub struct Config {
     ///
     /// Ask reranks with `ask_min_relevance_score` (default 0.45) before selecting context,
     /// so it needs a wider prefetch window than `query` (which skips reranking).
-    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
     pub ask_hybrid_candidates: usize,
+
+    /// Enable the in-process document-chunk cache for `ask` (full-doc fetch path).
+    /// Process-local cache: only useful in long-lived parents (`axon serve`, `axon mcp`).
+    /// CLI one-shots see zero hit rate. Config-only via `[ask.cache] enabled` in
+    /// `~/.axon/config.toml`. Default: false. (bd axon_rust-pmc)
+    pub ask_cache_enabled: bool,
+
+    /// Maximum bytes (summed `chunk_text` length) the doc-chunk cache may hold.
+    /// Config-only via `[ask.cache] max-capacity-bytes`. Default: 256 MiB.
+    pub ask_cache_max_capacity_bytes: u64,
+
+    /// Time-to-live for cached doc-chunk entries, in seconds. Capped at 300s
+    /// (security primitive: bounds staleness of deleted content).
+    /// Config-only via `[ask.cache] ttl-secs`. Default: 300s.
+    pub ask_cache_ttl_secs: u64,
+
+    /// Enable the adaptive full-doc fetch skip gate for `ask`. When the top-K
+    /// reranked candidates already cover enough URLs, bytes, and quality, the
+    /// full-doc backfill stage is elided entirely. Opt-in: defaults to `false`
+    /// until validated against `axon evaluate` golden set. Config-only via
+    /// `[ask.adaptive] fulldoc-skip-enabled`. (bd axon_rust-30y)
+    pub ask_fulldoc_skip_enabled: bool,
+
+    /// Minimum unique URLs required in the reranked top-K for the skip gate
+    /// to fire. Config-only via `[ask.adaptive] fulldoc-skip-min-urls`.
+    /// Default: 3.
+    pub ask_fulldoc_skip_min_urls: usize,
+
+    /// Minimum total chunk_text bytes (summed across reranked top-K) required
+    /// for the skip gate to fire. Config-only via
+    /// `[ask.adaptive] fulldoc-skip-min-chars`. Default: 4000.
+    pub ask_fulldoc_skip_min_chars: usize,
+
+    /// Cosine-mode score floor offset added on top of `ask_min_relevance_score`.
+    /// Every score in the reranked top-K must be `>= ask_min_relevance_score +
+    /// ask_fulldoc_skip_score_delta` for the gate to fire on cosine paths.
+    /// Ignored on RRF paths (rank-fusion output is unitless and uses a
+    /// rank-based gate instead). Config-only via
+    /// `[ask.adaptive] fulldoc-skip-score-delta`. Default: 0.15.
+    pub ask_fulldoc_skip_score_delta: f64,
 
     /// Maximum TEI embed retry attempts after the initial request.
     /// Env: `TEI_MAX_RETRIES`. TOML: `tei.max-retries`. Clamped 0–20. Default: 5.
@@ -504,6 +552,15 @@ pub struct Config {
     /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
     pub quiet: bool,
 
+    /// When set, `axon ask` POSTs to `<server_url>/v1/ask` on a running `axon serve` instance
+    /// instead of running ACP synthesis in-process. Reuses the server's WarmSessionPool so cold
+    /// ACP startup (~45s) is paid once at server boot. Flag: `--server-url`,
+    /// env: `AXON_ASK_SERVER_URL`. When unset, ask runs in-process.
+    ///
+    /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
+    /// rejected at config-build time rather than at request time.
+    pub server_url: Option<reqwest::Url>,
+
     /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,
 }
@@ -513,11 +570,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ask_hybrid_candidates_default_is_150() {
+    fn ask_hybrid_candidates_default_is_100() {
         let cfg = Config::default();
         assert_eq!(
-            cfg.ask_hybrid_candidates, 150,
-            "ask_hybrid_candidates must default to 150 for wider prefetch before reranking"
+            cfg.ask_hybrid_candidates, 100,
+            "ask_hybrid_candidates must default to 100 (Qdrant RRF rank-stable at 2x final K = 50)"
         );
+    }
+
+    #[test]
+    fn config_debug_redacts_server_url_credentials() {
+        let cfg = Config {
+            server_url: Some(reqwest::Url::parse("https://user:secret@example.com/v1").unwrap()),
+            ..Config::default()
+        };
+        let dbg = format!("{cfg:?}");
+        assert!(dbg.contains("[REDACTED]"));
+        assert!(!dbg.contains("user:secret"));
+        assert!(!dbg.contains("secret@example.com"));
     }
 }

@@ -9,7 +9,7 @@ use crate::services::acp_llm;
 use std::error::Error;
 use std::time::Instant;
 
-use super::ask::{build_ask_context, normalize_ask_answer};
+use super::ask::{AskContext, build_ask_context, normalize_ask_answer};
 use super::suggest::discover_crawl_suggestions;
 use display::build_evaluate_json;
 use scoring::{
@@ -102,7 +102,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let warm1 = make_warm("rag");
     let warm2 = make_warm("baseline");
 
-    let ctx = build_ask_context(&derived, &query).await?;
+    let ctx = build_evaluate_ask_context(&derived, &query).await?;
     let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
     let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) = if derived
         .evaluate_retrieval_ab
@@ -111,7 +111,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
         let mut dense_cfg = derived.clone();
         dense_cfg.hybrid_search_enabled = false;
-        let dense_ctx = build_ask_context(&dense_cfg, &query).await?;
+        let dense_ctx = build_evaluate_ask_context(&dense_cfg, &query).await?;
         let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context, warm2);
         let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
         let (rag_answer, rag_elapsed_ms) = rag;
@@ -211,6 +211,21 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
 fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
     super::ask::validate_ask_llm_config(cfg)?;
     super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
+}
+
+async fn build_evaluate_ask_context(
+    cfg: &Config,
+    query: &str,
+) -> Result<AskContext, Box<dyn Error>> {
+    let mut timing = disabled_ask_timing();
+    Ok(build_ask_context(cfg, query, &mut timing).await?)
+}
+
+/// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
+/// not surfaced from the evaluate path, so this helper produces a disabled
+/// AskTiming accumulator (no Instant probes fire).
+fn disabled_ask_timing() -> super::ask::AskTiming {
+    super::ask::AskTiming::disabled()
 }
 
 #[cfg(test)]

@@ -138,14 +138,9 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
     pub(in crate::core::config) embed: bool,
 
-    /// Qdrant collection name (default: cortex; env: `AXON_COLLECTION`; toml: `search.collection`).
-    ///
-    /// Resolution priority is handled explicitly in `into_config`:
-    /// CLI flag (this option) > env > TOML > "cortex". The flag itself is
-    /// `Option<String>` with no clap default and no `env=` attribute so the
-    /// "user actually passed --collection" case is detectable.
-    #[arg(global = true, long)]
-    pub(in crate::core::config) collection: Option<String>,
+    /// Qdrant collection name (default: cortex)
+    #[arg(global = true, long, env = "AXON_COLLECTION", default_value = "cortex")]
+    pub(in crate::core::config) collection: String,
 
     /// Concurrent connections for batch operations (1-512)
     #[arg(global = true, long, default_value_t = 16)]
@@ -373,4 +368,16 @@ pub(in crate::core::config) struct GlobalArgs {
     /// or crate=level). Applied before tracing init; does not override an explicit RUST_LOG.
     #[arg(global = true, long, env = "AXON_LOG_LEVEL")]
     pub(in crate::core::config) log_level: Option<String>,
+
+    /// Route `axon ask` through a running `axon serve` HTTP endpoint instead of running
+    /// ACP synthesis in-process. Reuses the server's WarmSessionPool so cold ACP startup
+    /// (~45s) is paid once at server boot, not on every invocation. Example:
+    /// `--server-url http://127.0.0.1:8001`. Env: `AXON_ASK_SERVER_URL`.
+    ///
+    /// Parsed into a `url::Url` at config-build time; malformed values are rejected with a
+    /// clear error before any command runs. If the resolved scheme is `http` and the host
+    /// is non-loopback, the CLI refuses to attach `AXON_MCP_HTTP_TOKEN` (cleartext-bearer
+    /// guard); set `AXON_ASK_INSECURE=1` to override.
+    #[arg(global = true, long, env = "AXON_ASK_SERVER_URL")]
+    pub(in crate::core::config) server_url: Option<String>,
 }

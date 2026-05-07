@@ -60,12 +60,13 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     // Use read_env (trims + filters empty) so a stray `AXON_COLLECTION=""`
     // or `AXON_COLLECTION="   "` falls through to TOML / default rather
     // than failing collection-name validation with an empty name.
-    let collection = global
-        .collection
-        .clone()
-        .or_else(|| read_env("AXON_COLLECTION"))
-        .or_else(|| toml.search.collection.clone())
-        .unwrap_or_else(|| "cortex".to_string());
+    let collection = if global.collection != "cortex" {
+        global.collection.clone()
+    } else {
+        read_env("AXON_COLLECTION")
+            .or_else(|| toml.search.collection.clone())
+            .unwrap_or_else(|| global.collection.clone())
+    };
     validate_collection_name(&collection)?;
 
     let lite_mode = global.lite || env_bool("AXON_LITE", false);

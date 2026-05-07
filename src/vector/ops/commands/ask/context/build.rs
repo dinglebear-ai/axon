@@ -1,6 +1,10 @@
-use super::heuristics::{push_context_entry, should_inject_supplemental};
+use super::super::timing::{AskTiming, AskTimingSlot};
+use super::heuristics::{
+    push_context_entry, should_inject_supplemental, should_skip_full_doc_fetch,
+};
 use crate::core::config::Config;
-use crate::core::logging::log_warn;
+use crate::core::logging::{log_info, log_warn};
+use crate::vector::cache::{DocCacheKey, current_generation, global_doc_cache};
 use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking};
 use anyhow::{Result, anyhow};
@@ -15,6 +19,12 @@ pub(super) struct BuiltAskContext {
     pub(super) supplemental_count: usize,
     pub(super) context_elapsed_ms: u128,
     pub(super) diagnostic_sources: Vec<String>,
+    /// True when the adaptive skip gate elided full-doc fetch this request.
+    /// (bd axon_rust-30y)
+    pub(super) full_doc_fetch_skipped: bool,
+    /// Static reason string from the skip gate; useful for diagnostics even
+    /// when the gate did not fire ("disabled", "insufficient_urls", etc.).
+    pub(super) full_doc_fetch_skip_reason: &'static str,
 }
 
 pub(super) fn select_context_indices(
@@ -46,6 +56,7 @@ pub(super) async fn build_context_from_candidates(
     top_full_doc_indices: &[usize],
     min_supplemental_score: Option<f64>,
     query_tokens: &[String],
+    timing: &mut AskTiming,
 ) -> Result<BuiltAskContext> {
     let ask_tuning = cfg.ask_config();
     let max_context_chars = ask_tuning.ask_max_context_chars;
@@ -73,16 +84,35 @@ pub(super) async fn build_context_from_candidates(
     );
 
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
-    let fetched_docs = fetch_full_docs(
-        cfg,
-        reranked,
-        top_full_doc_indices,
-        context_char_count,
-        max_context_chars,
-        doc_chunk_limit,
-        doc_fetch_concurrency,
-    )
-    .await?;
+
+    // Adaptive skip gate. `min_supplemental_score == None` is the canonical
+    // signal that retrieval ran in RRF mode (see retrieval::is_rrf_mode +
+    // AskRetrieval::min_supplemental_score). Use that to dispatch the gate's
+    // mode-aware threshold without re-threading is_rrf through the call site.
+    // (bd axon_rust-30y)
+    let is_rrf = min_supplemental_score.is_none();
+    let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
+    let full_doc_fetch_started = std::time::Instant::now();
+    let fetched_docs = if skip_decision.skip {
+        log_info(&format!(
+            "ask: skipping full-doc fetch (reason: {}; mode: {})",
+            skip_decision.reason,
+            if is_rrf { "rrf" } else { "cosine" }
+        ));
+        Vec::new()
+    } else {
+        fetch_full_docs(
+            cfg,
+            reranked,
+            top_full_doc_indices,
+            context_char_count,
+            max_context_chars,
+            doc_chunk_limit,
+            doc_fetch_concurrency,
+        )
+        .await?
+    };
+    timing.record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
     // Map URL → rerank_score for sort-by-score in the flattened context.
     let url_to_score: std::collections::HashMap<String, f64> = top_full_doc_indices
         .iter()
@@ -101,36 +131,21 @@ pub(super) async fn build_context_from_candidates(
     );
     source_idx = next_source_idx;
 
-    let mut supplemental: Vec<usize> = Vec::new();
-    let mut supplemental_count = 0usize;
-    if should_inject_supplemental(
-        context_char_count,
-        max_context_chars,
+    let supplemental_started = std::time::Instant::now();
+    let (supplemental, supplemental_count) = maybe_inject_supplemental(
+        reranked,
+        &inserted_full_doc_urls,
+        min_supplemental_score,
         full_docs_selected,
         top_chunks_selected,
-    ) {
-        let supplemental_candidate_indices = collect_supplemental_candidate_indices(
-            reranked,
-            &inserted_full_doc_urls,
-            min_supplemental_score,
-        );
-        supplemental = ranking::select_diverse_candidates_from_indices(
-            reranked,
-            &supplemental_candidate_indices,
-            backfill_limit,
-            1,
-        );
-
-        supplemental_count = append_supplemental_chunks(
-            reranked,
-            &supplemental,
-            &mut context_entries,
-            &mut context_char_count,
-            &mut source_idx,
-            separator,
-            max_context_chars,
-        );
-    }
+        backfill_limit,
+        max_context_chars,
+        separator,
+        &mut context_entries,
+        &mut context_char_count,
+        &mut source_idx,
+    );
+    timing.record(AskTimingSlot::Supplemental, supplemental_started);
 
     if context_entries.is_empty() {
         return Err(anyhow!("Failed to retrieve any context sources for ask"));
@@ -161,6 +176,8 @@ pub(super) async fn build_context_from_candidates(
         supplemental_count,
         context_elapsed_ms,
         diagnostic_sources,
+        full_doc_fetch_skipped: skip_decision.skip,
+        full_doc_fetch_skip_reason: skip_decision.reason,
     })
 }
 
@@ -232,6 +249,17 @@ async fn fetch_full_docs(
         return Ok(fetched_docs);
     }
     let cfg_arc = Arc::new(cfg.clone());
+    // Cache enable gate. The cache itself is process-global; we only consult
+    // it when `cfg.ask_cache_enabled`. Snapshot the per-collection generation
+    // once for this fetch batch so all concurrent lookups in this stream see
+    // a consistent key. (axon_rust-pmc)
+    let cache_enabled = cfg.ask_cache_enabled;
+    let collection = cfg.collection.clone();
+    let generation = if cache_enabled {
+        current_generation(&collection)
+    } else {
+        0
+    };
     // Collect owned `(order, doc_idx)` pairs before mapping to async tasks so
     // the map closure receives `(usize, usize)` (no lifetime-parameterised
     // `&usize`).  The reference pattern `|(order, &doc_idx)|` or even receiving
@@ -241,9 +269,30 @@ async fn fetch_full_docs(
     let mut fetch_stream = stream::iter(tasks.into_iter().map(|(order, doc_idx)| {
         let cfg_for_task = Arc::clone(&cfg_arc);
         let url = reranked[doc_idx].url.clone();
+        let collection = collection.clone();
         async move {
-            let points =
-                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await;
+            let points = if cache_enabled {
+                let key = DocCacheKey {
+                    collection,
+                    url: url.clone(),
+                    generation,
+                };
+                let cfg_for_fetch = Arc::clone(&cfg_for_task);
+                let url_for_fetch = url.clone();
+                global_doc_cache()
+                    .get_or_fetch(key, move || async move {
+                        qdrant::qdrant_retrieve_by_url(
+                            &cfg_for_fetch,
+                            &url_for_fetch,
+                            Some(doc_chunk_limit),
+                        )
+                        .await
+                    })
+                    .await
+                    .map(|arc| (*arc).clone())
+            } else {
+                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await
+            };
             (order, url, points)
         }
     }))
@@ -310,6 +359,54 @@ fn append_full_docs_to_context(
         source_idx += 1;
     }
     (full_docs_selected, source_idx)
+}
+
+/// Run the supplemental backfill pass when coverage is thin and budget allows.
+/// Extracted from `build_context_from_candidates` to keep that function under
+/// the monolith policy's per-function line limit.
+#[allow(clippy::too_many_arguments)]
+fn maybe_inject_supplemental(
+    reranked: &[ranking::AskCandidate],
+    inserted_full_doc_urls: &HashSet<String>,
+    min_supplemental_score: Option<f64>,
+    full_docs_selected: usize,
+    top_chunks_selected: usize,
+    backfill_limit: usize,
+    max_context_chars: usize,
+    separator: &str,
+    context_entries: &mut Vec<(f64, String)>,
+    context_char_count: &mut usize,
+    source_idx: &mut usize,
+) -> (Vec<usize>, usize) {
+    if !should_inject_supplemental(
+        *context_char_count,
+        max_context_chars,
+        full_docs_selected,
+        top_chunks_selected,
+    ) {
+        return (Vec::new(), 0);
+    }
+    let supplemental_candidate_indices = collect_supplemental_candidate_indices(
+        reranked,
+        inserted_full_doc_urls,
+        min_supplemental_score,
+    );
+    let supplemental = ranking::select_diverse_candidates_from_indices(
+        reranked,
+        &supplemental_candidate_indices,
+        backfill_limit,
+        1,
+    );
+    let supplemental_count = append_supplemental_chunks(
+        reranked,
+        &supplemental,
+        context_entries,
+        context_char_count,
+        source_idx,
+        separator,
+        max_context_chars,
+    );
+    (supplemental, supplemental_count)
 }
 
 fn append_supplemental_chunks(
