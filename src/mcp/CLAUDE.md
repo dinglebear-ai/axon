@@ -34,7 +34,7 @@ mcp/
 │   ├── artifacts.rs                # Artifact response wrapper
 │   ├── artifacts/
 │   │   ├── lifecycle.rs            # Artifact lifecycle (creation, eviction)
-│   │   ├── path.rs                 # `.cache/axon-mcp/` path helpers
+│   │   ├── path.rs                 # artifact path helpers — default `$AXON_DATA_DIR/artifacts/<context>` (`~/.axon/artifacts/<context>`)
 │   │   ├── respond.rs              # Inline-vs-path response shaping
 │   │   └── shape.rs                # Artifact response shape
 │   └── services_migration_tests.rs # Migration tests for the services-layer plumbing
@@ -133,7 +133,7 @@ This pattern is mandatory. Do not add separate MCP tools for each operation.
 
 ### `artifacts`
 - `head`, `grep`, `wc`, `read`
-- Integration: artifact files in `.cache/axon-mcp/`
+- Integration: artifact files in `$AXON_MCP_ARTIFACT_DIR` or `$AXON_DATA_DIR/artifacts/<context>` (default: `~/.axon/artifacts/<context>`)
 
 ### `help`
 - `run` (implicit direct action)
@@ -165,7 +165,7 @@ Keep payloads stable and additive. Avoid breaking field renames.
 
 Default response behavior is artifact-first:
 - `response_mode` defaults to `path`
-- Large outputs persist in `.cache/axon-mcp/`
+- Large outputs persist under `$AXON_MCP_ARTIFACT_DIR` (default: `~/.axon/artifacts/<context>`)
 - Inline responses are capped and include artifact pointers
 
 ## Configuration Model

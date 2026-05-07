@@ -231,14 +231,18 @@ just services-down
 
 ## Configuration (Two-Layer System)
 
-Axon uses two configuration layers:
+Axon uses two configuration layers, both rooted under `~/.axon/`:
 
 | Layer | File | Purpose | Secrets? |
 |-------|------|---------|---------|
 | Tuning knobs | `~/.axon/config.toml` | Search params, worker limits, TEI settings (also settable via env vars — env wins) | No — safe to commit |
-| URLs + secrets | `.env` | Service URLs, API keys, passwords | Yes — never commit |
+| URLs + secrets | `~/.axon/.env` (auto-loaded) or repo `.env` | Service URLs, API keys, passwords | Yes — never commit |
 
 **Priority:** CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
+
+`~/.axon/` is the canonical home for axon's persistent data — `jobs.db`, `output/`, `logs/`, `artifacts/`, `screenshots/`, and `chrome-diagnostics/` all live flat under it. `AXON_DATA_DIR` defaults to `~/.axon` (no nested `axon/` subdirectory). See `docs/CONFIG.md` for the full directory tree.
+
+**Migration from `~/.local/share/axon`:** axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`) or set `AXON_DATA_DIR=~/.local/share` to pin the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
 
 ```bash
 # Set up config.toml (optional — defaults are sensible)
@@ -328,7 +332,7 @@ axon --lite scrape https://example.com        # equivalent
 ```bash
 # Env vars for runtime tuning
 AXON_LITE=1                              # accepted for compatibility (lite is mandatory)
-AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/axon/jobs.db
+AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/jobs.db (i.e. ~/.axon/jobs.db)
 ```
 
 The `ServiceContext` (in `crates/services/context.rs`) is constructed at startup and carries `cfg: Arc<Config>` plus `jobs: Arc<dyn ServiceJobRuntime>`. CLI fire-and-forget callers use `ServiceContext::new(cfg)` (no in-process workers); long-running services (`serve`, `mcp`, sync `--wait true` paths) use `ServiceContext::new_with_workers(cfg)`.

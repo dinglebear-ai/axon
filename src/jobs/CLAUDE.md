@@ -39,7 +39,7 @@ LiteServiceRuntime { backend: LiteBackend::new(cfg).await? }
 ```
 
 **LiteBackend:**
-- Opens a single SQLite pool (`AXON_SQLITE_PATH` env or `$AXON_DATA_DIR/axon/jobs.db`)
+- Opens a single SQLite pool (`AXON_SQLITE_PATH` env or `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db` by default — `AXON_DATA_DIR` defaults to `~/.axon`, flat layout)
 - Spawns in-process tokio workers at startup — no external message broker needed
 - Do NOT call `open_config_pool()` before `LiteBackend::new()` — the backend opens its own pool internally
 

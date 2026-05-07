@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "axon"
-version = "1.5.8"
+version = "1.5.9"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"

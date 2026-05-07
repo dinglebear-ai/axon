@@ -83,7 +83,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Spider tuning | `url_whitelist`, `block_assets`, `max_page_bytes`, `redirect_policy_strict`, `bypass_csp`, `accept_invalid_certs`, `custom_headers` |
 | Job watchdog | `watchdog_stale_timeout_secs` (300), `watchdog_confirm_secs` (60) |
 | Web UI | `serve_port` (default 49000, env: `AXON_SERVE_PORT`) |
-| Lite mode | `lite_mode: bool` (set by `AXON_LITE=1` or `--lite`; skips PG/Redis/AMQP checks), `sqlite_path: PathBuf` (default `$AXON_DATA_DIR/axon/jobs.db`, env: `AXON_SQLITE_PATH`) |
+| Lite mode | `lite_mode: bool` (set by `AXON_LITE=1` or `--lite`; skips PG/Redis/AMQP checks), `sqlite_path: PathBuf` (default `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`, env: `AXON_SQLITE_PATH`). `axon_data_base_dir()` defaults to `~/.axon` — flat layout, no nested `axon/` subdir |
 
 **Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `crates/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
 
@@ -226,7 +226,7 @@ log_done("message")   // → tracing::info! with status = "done"
 
 **Log targets:**
 - **Console:** stderr, `WARN` level (override with `RUST_LOG`)
-- **File:** `<AXON_LOG_DIR>/<AXON_LOG_FILE>` — defaults to `$AXON_DATA_DIR/axon/logs/axon.log` (falls back to `logs/axon.log`), `INFO` level, JSON format. `AXON_LOG_FILE` is a bare filename, **not** a path.
+- **File:** `<AXON_LOG_DIR>/<AXON_LOG_FILE>` — defaults to `$AXON_DATA_DIR/logs/axon.log` (i.e. `~/.axon/logs/axon.log`; falls back to `./logs/axon.log` if no data dir is resolvable), `INFO` level, JSON format. `AXON_LOG_FILE` is a bare filename, **not** a path.
 - **Rotation:** size-based via `SizeRotatingFile` (`logging/size_rotating.rs`). When the active file exceeds `AXON_LOG_MAX_BYTES` (default 10 MiB / `10485760`), archives shift `<file>.{N-1} → <file>.N` from the top down and a fresh `<file>` is opened. `AXON_LOG_MAX_FILES` (default `3`) caps the number of archives. `max_bytes=0` disables rotation; `max_files=0` truncates without keeping any archive.
 - `tracing-appender::non_blocking` serialises writes through one worker thread; the returned `WorkerGuard` MUST be held for the process lifetime (returned by `init_tracing()`).
 - CDP noise suppressed: `chromiumoxide::conn::raw_ws::parse_errors=off`

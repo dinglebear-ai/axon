@@ -59,7 +59,7 @@ It is idempotent — safe to re-run. What it does:
 6. Checks Node.js ≥ v24 and pnpm ≥ v10; installs if missing.
 7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
 8. Creates `.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
-9. **Prompts for `AXON_DATA_DIR`** (default `~/.local/share/axon`) and pre-creates all container volume directories under it.
+9. **Prompts for `AXON_DATA_DIR`** (default `~/.axon`, flat layout — no nested `axon/` subdir) and pre-creates all container volume directories under it.
 10. Starts production infrastructure (`docker compose --env-file .env -f config/docker-compose.services.yaml up -d axon-qdrant axon-tei axon-chrome`).
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
@@ -251,7 +251,7 @@ If deploying Next.js:
 
 - Ensure web runtime sees required env vars (`OPENAI_*`, `TEI_URL`, `QDRANT_URL` as needed).
 - Validate `/api/pulse/chat` and `/api/omnibox/files` responses.
-- MCP servers configured in Web UI are stored in `${AXON_DATA_DIR}/axon/mcp.json` (fallback: `~/.config/axon/mcp.json`) and consumed by Pulse ACP.
+- MCP servers configured in Web UI are stored in `${AXON_DATA_DIR}/mcp.json` (default: `~/.axon/mcp.json`; fallback: `~/.config/axon/mcp.json`) and consumed by Pulse ACP.
 - Agent selection is strict in Pulse ACP. Adapter failures for a selected agent surface as errors (no silent fallback to another agent).
 
 ## Source Map

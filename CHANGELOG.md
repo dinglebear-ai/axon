@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.9] - 2026-05-06
+
+### Changed
+
+- Documented the canonical `~/.axon/` layout across all docs and removed `[env-only]` framing from the TOML config reference (epic `axon_rust-2j9`).
+- `config.example.toml`: dropped every `[env-only]` marker; every `[services]`, `[search]`, `[ask]`, `[tei]`, and `[workers]` key is now wired through `Config` and takes effect when set, with the env var still overriding (`axon_rust-2j9.4`).
+- `.env.example`: documented the auto-load order (`AXON_ENV_FILE` → `~/.axon/.env` → repo-root `.env` ancestor walk; first match wins).
+- `docs/CONFIG.md`: added the canonical `~/.axon/` directory tree, replaced the Phase 1 / Phase 2 / "env-only" tables with a single wired-keys table, refreshed every `$AXON_DATA_DIR/axon/...` default-path example to the flat `$AXON_DATA_DIR/...` form, and added a migration note for users coming from `~/.local/share/axon` (`axon_rust-2j9.5`).
+- `CLAUDE.md`, `README.md`, `docs/MCP.md`, `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`, `docs/ACP.md`, `docs/mcp/DEPLOY.md`, `docs/mcp/ENV.md`, `src/core/CLAUDE.md`, `src/jobs/CLAUDE.md`, `src/mcp/CLAUDE.md`: updated stale `~/.local/share/axon` and `$AXON_DATA_DIR/axon/...` references to the flat `~/.axon/` layout.
+
+### Notes
+
+- Companion to the `axon_rust-2j9` epic: bead `2j9.1` added `~/.axon/.env` autoload, `2j9.2` defaulted `AXON_DATA_DIR` to `~/.axon`, `2j9.3` flattened persistent default paths, and `2j9.4` wired every TOML key in `TomlConfig` through `Config`. This bead (`2j9.5`) is documentation only — no `.rs` source changes.
+
 ## [1.5.8] - 2026-05-06
 
 ### Changed
