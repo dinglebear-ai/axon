@@ -1,5 +1,5 @@
-use axon::crates::core::config::{AskBackend, Config};
-use axon::crates::services::acp_llm::{
+use axon::core::config::{AskBackend, Config};
+use axon::services::acp_llm::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, complete_streaming_with_runner, complete_text, complete_text_with_runner,
 };

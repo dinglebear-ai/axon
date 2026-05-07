@@ -11,12 +11,8 @@ description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted R
 authors = ["jmagar"]
 license = "MIT"
 
-[lib]
-path = "lib.rs"
-
 [[bin]]
 name = "axon"
-path = "main.rs"
 
 [dependencies]
 anyhow = "1"
@@ -168,4 +164,4 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
-module_inception = "allow"              # crates/crawl.rs: acceptable module name
+module_inception = "allow"              # src/crawl.rs: acceptable module name

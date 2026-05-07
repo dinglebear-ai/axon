@@ -83,8 +83,8 @@ def _emit_contract(emit) -> None:
     )
     emit()
     emit("Code references:")
-    emit("- `crates/mcp/schema.rs`")
-    emit("- `crates/mcp/server.rs`")
+    emit("- `src/mcp/schema.rs`")
+    emit("- `src/mcp/server.rs`")
     emit()
 
 

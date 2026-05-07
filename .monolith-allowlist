@@ -13,22 +13,21 @@
 # Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30; tracked by axon_rust-cr5.7.6)
 apps/web/app/jobs/[id]/job-detail-ui.tsx  # expires: 2026-06-09 | owner: jmagar | split: job-detail/{header,timeline,artifacts}.tsx
 apps/web/components/shell/axon-shell-state.ts  # expires: 2026-06-09 | owner: jmagar | split: shell-state/{pane,mobile,actions}.ts
-crates/cli/commands/common.rs  # expires: 2026-06-09 | owner: jmagar | split: common/{args,output,progress}.rs
-crates/jobs/refresh/url_processor.rs  # expires: 2026-06-09 | owner: jmagar | split: url_processor/{fetch,diff,schedule}.rs
+src/cli/commands/common.rs  # expires: 2026-06-09 | owner: jmagar | split: common/{args,output,progress}.rs
+src/jobs/refresh/url_processor.rs  # expires: 2026-06-09 | owner: jmagar | split: url_processor/{fetch,diff,schedule}.rs
 apps/web/hooks/ws-messages/provider.ts  # expires: 2026-06-09 | owner: jmagar | split: ws-messages/{provider,reducer,types}.ts
 
 # Oversized Rust files pending extraction sprint -- added 2026-03-23
 # Extraction sprint deadline: 2026-06-09 (extended from 2026-04-30; tracked by axon_rust-cr5.7.6)
-crates/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
-crates/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
-crates/core/config/parse/build_config.rs  # expires: 2026-06-09 | owner: jmagar | split: build_config/{crawl,embed,jobs}.rs
-crates/services/system.rs  # expires: 2026-06-09 | owner: jmagar | split: system/{health,metrics,diagnostics}.rs
-crates/crawl/engine/sitemap.rs  # expires: 2026-06-09 | owner: jmagar | split: sitemap/{discover,backfill,filter}.rs
-crates/core/logging.rs  # expires: 2026-06-09 | owner: jmagar | split: logging/{format,output,init}.rs
-crates/jobs/refresh.rs  # expires: 2026-06-09 | owner: jmagar | split: refresh/{schedule,processor,state}.rs
-crates/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | split: config/types/{crawl,embed,job}.rs
+src/crawl/scrape.rs  # expires: 2026-06-09 | owner: jmagar | split: scrape/{fetch,transform,pipeline}.rs
+src/core/config/parse.rs  # expires: 2026-06-09 | owner: jmagar | split: parse/{args,env,merge}.rs
+src/services/system.rs  # expires: 2026-06-09 | owner: jmagar | split: system/{health,metrics,diagnostics}.rs
+src/crawl/engine/sitemap.rs  # expires: 2026-06-09 | owner: jmagar | split: sitemap/{discover,backfill,filter}.rs
+src/core/logging.rs  # expires: 2026-06-09 | owner: jmagar | split: logging/{format,output,init}.rs
+src/jobs/refresh.rs  # expires: 2026-06-09 | owner: jmagar | split: refresh/{schedule,processor,state}.rs
+src/core/config/types/config.rs  # expires: 2026-06-09 | owner: jmagar | split: config/types/{crawl,embed,job}.rs
 
-crates/services/types/acp.rs  # expires: 2026-06-09 | owner: jmagar | split: types/acp/{sse,headers,auth}.rs
-crates/services/acp/session.rs  # expires: 2026-06-09 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs
-crates/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs
-crates/vector/ops/commands/streaming.rs  # expires: 2026-06-09 | owner: jmagar | split: streaming/{base,ttft,evaluate}.rs (bd axon_rust-nm9)
+src/services/types/acp.rs  # expires: 2026-06-09 | owner: jmagar | split: types/acp/{sse,headers,auth}.rs
+src/services/acp/session.rs  # expires: 2026-06-09 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs
+src/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs
+src/vector/ops/commands/streaming.rs  # expires: 2026-06-09 | owner: jmagar | split: streaming/{base,ttft,evaluate}.rs (bd axon_rust-nm9)

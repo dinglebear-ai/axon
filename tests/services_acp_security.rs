@@ -11,8 +11,8 @@
 //!   - SEC-7: PermissionResponderMap composite key isolates sessions
 #![allow(unsafe_code)]
 
-use axon::crates::services::acp::{AcpClientScaffold, validate_adapter_command};
-use axon::crates::services::types::{
+use axon::services::acp::{AcpClientScaffold, validate_adapter_command};
+use axon::services::types::{
     AcpAdapterCommand, AcpBridgeEvent, AcpSessionUpdateEvent, AcpSessionUpdateKind,
 };
 use std::collections::HashMap;

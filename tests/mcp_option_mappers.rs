@@ -1,8 +1,8 @@
-use axon::crates::mcp::schema::SearchTimeRange;
-use axon::crates::mcp::server::common::{
+use axon::mcp::schema::SearchTimeRange;
+use axon::mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
 };
-use axon::crates::services::types::{MapOptions, Pagination, RetrieveOptions, ServiceTimeRange};
+use axon::services::types::{MapOptions, Pagination, RetrieveOptions, ServiceTimeRange};
 
 // --- to_pagination ---
 

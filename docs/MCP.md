@@ -74,7 +74,7 @@ HTTP transport uses:
 
 ACP sessions (`pulse_chat`) read MCP server definitions from:
 
-- `${AXON_DATA_DIR}/axon/mcp.json` when `AXON_DATA_DIR` is set
+- `${AXON_DATA_DIR}/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`)
 - `~/.config/axon/mcp.json` fallback when `AXON_DATA_DIR` is unset
 
 The Web UI MCP settings page (`/api/mcp`) writes to this same file, so servers

@@ -36,8 +36,7 @@ Manual equivalent:
 
 ```bash
 cp .env.example .env                    # then edit
-mkdir -p "${AXON_DATA_DIR:-$HOME/.local/share}/axon"/{qdrant,output}
-mkdir -p "${AXON_DATA_DIR:-$HOME/.local/share}/tei"
+mkdir -p "${AXON_DATA_DIR:-$HOME/.axon}"/{qdrant,output,tei}
 just services-up
 ```
 
@@ -201,7 +200,7 @@ For non-interactive automation:
 The jobs database lives at:
 
 ```
-${AXON_DATA_DIR}/axon/jobs.db
+${AXON_DATA_DIR}/jobs.db          # default: ~/.axon/jobs.db
 ```
 
 Override path with `AXON_SQLITE_PATH`. Schema is auto-created at startup by
@@ -215,7 +214,7 @@ new work first (or accept that in-flight jobs will be replayed by the
 watchdog on restore).
 
 ```bash
-DB="${AXON_DATA_DIR:-$HOME/.local/share}/axon/jobs.db"
+DB="${AXON_DATA_DIR:-$HOME/.axon}/jobs.db"
 sqlite3 "$DB" ".backup '/path/to/backup/jobs-$(date -u +%Y%m%dT%H%M%SZ).db'"
 ```
 
@@ -225,9 +224,9 @@ Stop `axon mcp` / `axon serve` first, then copy:
 
 ```bash
 just stop
-cp "${AXON_DATA_DIR}/axon/jobs.db"      backup/jobs.db
-cp "${AXON_DATA_DIR}/axon/jobs.db-wal"  backup/  2>/dev/null || true
-cp "${AXON_DATA_DIR}/axon/jobs.db-shm"  backup/  2>/dev/null || true
+cp "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db"      backup/jobs.db
+cp "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db-wal"  backup/  2>/dev/null || true
+cp "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db-shm"  backup/  2>/dev/null || true
 ```
 
 Always copy `-wal` and `-shm` alongside the main file when the process was
@@ -237,9 +236,9 @@ running — they hold uncommitted writes.
 
 ```bash
 just stop
-cp backup/jobs.db      "${AXON_DATA_DIR}/axon/jobs.db"
-rm -f                  "${AXON_DATA_DIR}/axon/jobs.db-wal" \
-                       "${AXON_DATA_DIR}/axon/jobs.db-shm"
+cp backup/jobs.db      "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db"
+rm -f                  "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db-wal" \
+                       "${AXON_DATA_DIR:-$HOME/.axon}/jobs.db-shm"
 just dev
 ```
 
@@ -254,7 +253,7 @@ Qdrant data is persisted at the host bind mount declared in
 `config/docker-compose.services.yaml:36`:
 
 ```
-${AXON_DATA_DIR}/axon/qdrant
+${AXON_DATA_DIR}/qdrant          # default: ~/.axon/qdrant
 ```
 
 Two options:
@@ -300,14 +299,14 @@ This is faster for one-shot full backups and includes index state.
 
 - **stderr**, default level `WARN` (overridable with `RUST_LOG=info`)
 - **size-rotated JSON file** at `${AXON_LOG_DIR}/${AXON_LOG_FILE}` (defaults
-  to `${AXON_DATA_DIR}/axon/logs/axon.log`), `INFO` level. Rotation triggers
+  to `${AXON_DATA_DIR}/logs/axon.log` → `~/.axon/logs/axon.log`), `INFO` level. Rotation triggers
   when the active file exceeds `AXON_LOG_MAX_BYTES` (default 10 MiB);
   archives are renamed `<file>.1`, `<file>.2`, … up to `AXON_LOG_MAX_FILES`
   (default `3`). The oldest archive is pruned on each rotation.
 
 ```bash
 # tail the active log
-tail -f "${AXON_DATA_DIR:-$HOME/.local/share}/axon/logs/axon.log"
+tail -f "${AXON_DATA_DIR:-$HOME/.axon}/logs/axon.log"
 
 # noisier output for one run
 RUST_LOG=info,crates::jobs::lite=debug just dev
@@ -359,7 +358,7 @@ Watchdog and queue cap tuning:
 |---|---|---|
 | `AXON_JOB_STALE_TIMEOUT_SECS` | 300 | Heartbeat staleness before reclaim |
 | `AXON_JOB_STALE_CONFIRM_SECS` | 60 | Grace before stale rows are reclaimed |
-| `AXON_INGEST_LANES` | 2 | Concurrent ingest worker lanes |
+| `AXON_INGEST_LANES` | 2 | Concurrent ingest worker lanes (clamped 1-16) |
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | 300 | Per-document embed timeout |
 | `AXON_MAX_PENDING_CRAWL_JOBS` | 100 | Reject submission when N pending; `0` = unlimited |
 | `AXON_MAX_PENDING_EMBED_JOBS` | 50 | Same, for embed |
@@ -468,7 +467,7 @@ just stop
 just services-down
 ```
 
-Volumes (`${AXON_DATA_DIR}/axon/{qdrant,tei,...}`) are bind-mounted on the
+Volumes (`${AXON_DATA_DIR}/{qdrant,tei,...}`, default `~/.axon/{qdrant,tei,...}`) are bind-mounted on the
 host and persist across restarts.
 
 ---

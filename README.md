@@ -84,15 +84,15 @@ The stack has the following components:
 
 | Crate / Directory | Role |
 |---|---|
-| `main.rs`, `lib.rs` | Binary entry and command dispatch |
-| `crates/cli/` | Command handlers |
-| `crates/core/` | Config, HTTP safety, content transforms |
-| `crates/crawl/` | Crawl engine, render modes, sitemap backfill |
-| `crates/jobs/` | SQLite-backed job runtime, in-process worker lanes, state machine |
-| `crates/vector/` | Qdrant operations, TEI embedding, RAG |
-| `crates/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
-| `crates/mcp/` | MCP server, tool schema, action router |
-| `crates/services/` | Typed service entry points for CLI, MCP, and web |
+| `src/lib.rs`, `src/main.rs` | Binary entry and command dispatch |
+| `src/cli/` | Command handlers |
+| `src/core/` | Config, HTTP safety, content transforms |
+| `src/crawl/` | Crawl engine, render modes, sitemap backfill |
+| `src/jobs/` | SQLite-backed job runtime, in-process worker lanes, state machine |
+| `src/vector/` | Qdrant operations, TEI embedding, RAG |
+| `src/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
+| `src/mcp/` | MCP server, tool schema, action router |
+| `src/services/` | Typed service entry points for CLI, MCP, and web |
 | `apps/web/` | Next.js dashboard at port 49010 |
 | `config/docker-compose.services.yaml` | Infrastructure deployment |
 
@@ -220,7 +220,7 @@ All commands share global flags documented below. Commands listed as **async by 
 | `--openai-base-url <url>` | `OPENAI_BASE_URL` | — |
 | `--openai-api-key <key>` | `OPENAI_API_KEY` | — |
 | `--openai-model <name>` | `OPENAI_MODEL` | — |
-| `--sqlite-path <path>` | `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/axon/jobs.db` |
+| `--sqlite-path <path>` | `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) |
 
 ---
 
@@ -841,7 +841,7 @@ Per-action overrides:
 
 ### Artifact Inspection
 
-Artifact responses are stored under `.cache/axon-mcp/`. Inspect them with the `artifacts` action.
+Artifact responses are stored under `$AXON_MCP_ARTIFACT_DIR` (default: `~/.axon/artifacts/<context>`). Inspect them with the `artifacts` action.
 
 Preferred order (least to most expensive):
 
@@ -895,7 +895,7 @@ HTTP transport example:
 }
 ```
 
-MCP server config for ACP sessions is read from `${AXON_DATA_DIR}/axon/mcp.json` (or `~/.config/axon/mcp.json` as fallback). The Web UI MCP settings page writes to this same file.
+MCP server config for ACP sessions is read from `${AXON_DATA_DIR}/mcp.json` (default: `~/.axon/mcp.json`; falls back to `~/.config/axon/mcp.json`). The Web UI MCP settings page writes to this same file.
 
 ---
 
@@ -925,9 +925,9 @@ The minimum set needed to start:
 | `REDDIT_CLIENT_SECRET` | For Reddit ingest | Reddit OAuth2 app client secret |
 | `AXON_CHROME_REMOTE_URL` | For Chrome rendering | Chrome management API URL (e.g. `http://axon-chrome:6000`) |
 | `AXON_COLLECTION` | No | Default Qdrant collection name (default: `cortex`) |
-| `AXON_DATA_DIR` | No | Persistent data root (default: `./data`) |
+| `AXON_DATA_DIR` | No | Persistent data root (default: `~/.axon`, flat layout — no nested `axon/` subdir) |
 | `AXON_LITE` | No | Accepted for compatibility only. Lite is the only runtime; setting this has no effect beyond signalling intent. |
-| `AXON_SQLITE_PATH` | No | SQLite jobs database path (default: `$AXON_DATA_DIR/axon/jobs.db`) |
+| `AXON_SQLITE_PATH` | No | SQLite jobs database path (default: `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`) |
 
 > **Full reference:** See [`docs/CONFIG.md`](docs/CONFIG.md) for every environment variable, its default, and description. `docs/CONFIG.md` is the single authoritative source — when in doubt, it wins over this file.
 

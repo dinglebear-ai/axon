@@ -4,12 +4,12 @@ use agent_client_protocol::{
     SessionConfigSelectOption, SessionConfigSelectOptions, SessionNotification, SessionUpdate,
     ToolCallContent, ToolCallId, ToolCallUpdate, ToolCallUpdateFields,
 };
-use axon::crates::services::acp::{
+use axon::services::acp::{
     map_permission_request, map_permission_request_event, map_session_notification,
     map_session_notification_event, map_session_update_kind,
 };
-use axon::crates::services::events::ServiceEvent;
-use axon::crates::services::types::{AcpBridgeEvent, AcpSessionUpdateKind};
+use axon::services::events::ServiceEvent;
+use axon::services::types::{AcpBridgeEvent, AcpSessionUpdateKind};
 
 #[test]
 fn map_session_notification_agent_delta_extracts_text_and_kind() {
@@ -202,7 +202,7 @@ fn session_fallback_serializes_correctly() {
 
 #[test]
 fn unknown_session_update_produces_unknown_wire_type_not_status() {
-    use axon::crates::services::types::AcpSessionUpdateEvent;
+    use axon::services::types::AcpSessionUpdateEvent;
 
     let event = AcpBridgeEvent::SessionUpdate(AcpSessionUpdateEvent {
         session_id: "session-unknown-test".to_string(),
@@ -228,7 +228,7 @@ fn unknown_session_update_produces_unknown_wire_type_not_status() {
 
 #[test]
 fn plan_session_update_falls_through_as_status_wire_type() {
-    use axon::crates::services::types::AcpSessionUpdateEvent;
+    use axon::services::types::AcpSessionUpdateEvent;
 
     // Plan, AvailableCommandsUpdate, CurrentModeUpdate, ConfigOptionUpdate are
     // normally intercepted by the AcpBridgeEvent custom Serialize. If they
@@ -258,7 +258,7 @@ fn plan_session_update_falls_through_as_status_wire_type() {
 
 #[test]
 fn plan_update_event_uses_dedicated_wire_type() {
-    use axon::crates::services::types::AcpPlanUpdate;
+    use axon::services::types::AcpPlanUpdate;
 
     // When properly routed via AcpBridgeEvent::PlanUpdate (not SessionUpdate),
     // the wire type is "plan_update".
