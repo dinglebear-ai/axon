@@ -246,7 +246,7 @@ mod tests {
         build_suggestion_focus, rag_underperformed, score_totals_from_analysis,
         structured_scores_from_analysis,
     };
-    use crate::crates::core::config::Config;
+    use crate::crates::core::config::{AskBackend, Config};
 
     #[test]
     fn wrap_fixed_width_respects_limit() {
@@ -336,6 +336,7 @@ RAG is better.";
         cfg.openai_base_url.clear();
         cfg.openai_model.clear();
         cfg.acp_adapter_cmd = None;
+        cfg.ask_backend = AskBackend::Acp;
         cfg.query = Some("How does ACP validation work?".to_string());
 
         let err = evaluate_query(&cfg).expect_err("missing adapter should fail");

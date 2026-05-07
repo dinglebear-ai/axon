@@ -71,7 +71,7 @@ mod tests {
         assert!(cfg.ask_authoritative_domains.is_empty());
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);
         assert_eq!(cfg.ask_min_citations_nontrivial, 2);
-        assert_eq!(cfg.ask_backend, AskBackend::Acp);
+        assert_eq!(cfg.ask_backend, AskBackend::Headless);
     }
 
     #[test]

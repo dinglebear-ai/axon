@@ -64,10 +64,10 @@
 
 [ask]
 # [wired] Security-sensitive ask synthesis backend.
-# Default: acp. Env override: AXON_ASK_BACKEND.
+# Default: headless. Env override: AXON_ASK_BACKEND.
 # Valid values: "acp", "headless", "auto".
-# `headless` is opt-in and must pass the synthesis-only no-tool contract.
-# backend = "acp"
+# `headless` must pass the synthesis-only no-tool contract.
+# backend = "headless"
 
 # [wired] Max chunks returned per ask query (clamped 3–40).
 # Env: AXON_ASK_CHUNK_LIMIT

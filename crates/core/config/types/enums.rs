@@ -37,8 +37,8 @@ pub enum CommandKind {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AskBackend {
-    #[default]
     Acp,
+    #[default]
     Headless,
     Auto,
 }

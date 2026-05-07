@@ -1,4 +1,4 @@
-use axon::crates::core::config::Config;
+use axon::crates::core::config::{AskBackend, Config};
 use axon::crates::services::acp_llm::{
     AcpCompletionRequest, AcpCompletionResponse, AcpCompletionRunner, AcpCompletionTurnResult,
     AcpUsageSnapshot, complete_streaming_with_runner, complete_text, complete_text_with_runner,
@@ -145,6 +145,7 @@ async fn services_acp_llm_complete_streaming_with_runner_normalizes_stream_and_p
 async fn services_acp_llm_complete_text_requires_adapter_config() {
     let cfg = Config {
         acp_adapter_cmd: None,
+        ask_backend: AskBackend::Acp,
         ..Config::default()
     };
     let err = complete_text(&cfg, AcpCompletionRequest::new("user prompt"))

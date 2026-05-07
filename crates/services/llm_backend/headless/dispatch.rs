@@ -6,7 +6,7 @@ use super::{HeadlessAgent, claude, codex, gemini};
 
 pub fn resolve_agent() -> HeadlessAgent {
     match std::env::var("AXON_ASK_AGENT")
-        .unwrap_or_else(|_| "claude".to_string())
+        .unwrap_or_else(|_| "gemini".to_string())
         .trim()
         .to_ascii_lowercase()
         .as_str()
@@ -36,10 +36,7 @@ where
             "Codex headless is unavailable: current CLI has no proven no-tool synthesis posture"
                 .into(),
         ),
-        HeadlessAgent::Gemini => Err(
-            "Gemini headless is unavailable: current CLI has no proven no-tool synthesis posture"
-                .into(),
-        ),
+        HeadlessAgent::Gemini => gemini::complete_streaming(req, on_delta).await,
     }
 }
 

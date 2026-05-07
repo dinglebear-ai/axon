@@ -589,8 +589,8 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
 fn resolve_ask_backend(toml_backend: Option<AskBackend>) -> AskBackend {
     match env::var("AXON_ASK_BACKEND") {
         Ok(raw) if !raw.trim().is_empty() => raw.parse::<AskBackend>().unwrap_or_else(|err| {
-            eprintln!("axon: warning: {err}; falling back to ask backend acp");
-            AskBackend::Acp
+            eprintln!("axon: warning: {err}; falling back to default ask backend headless");
+            AskBackend::default()
         }),
         _ => toml_backend.unwrap_or_default(),
     }
@@ -1036,7 +1036,7 @@ mod tests {
     #[allow(unsafe_code)]
     #[serial_test::serial]
     #[test]
-    fn ask_backend_unknown_env_falls_back_to_acp() {
+    fn ask_backend_unknown_env_falls_back_to_default() {
         let _guard = ENV_LOCK.lock().unwrap();
         let saved = env::var("AXON_ASK_BACKEND").ok();
         unsafe { env::set_var("AXON_ASK_BACKEND", "danger") };
@@ -1047,7 +1047,7 @@ mod tests {
                 None => env::remove_var("AXON_ASK_BACKEND"),
             }
         }
-        assert_eq!(backend, AskBackend::Acp);
+        assert_eq!(backend, AskBackend::Headless);
     }
 
     #[allow(unsafe_code)]

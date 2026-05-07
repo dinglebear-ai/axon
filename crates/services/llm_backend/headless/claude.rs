@@ -18,6 +18,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
         "text".to_string(),
         "--output-format".to_string(),
         "stream-json".to_string(),
+        "--verbose".to_string(),
         "--include-partial-messages".to_string(),
         "--no-session-persistence".to_string(),
         "--permission-mode".to_string(),
@@ -26,7 +27,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
         String::new(),
         "--strict-mcp-config".to_string(),
         "--mcp-config".to_string(),
-        "{}".to_string(),
+        "{\"mcpServers\":{}}".to_string(),
     ];
     if let Some(model) = req.model.as_ref() {
         args.extend(["--model".to_string(), model.clone()]);
@@ -254,6 +255,12 @@ mod tests {
             spec.args
                 .windows(2)
                 .any(|w| w == ["--output-format", "stream-json"])
+        );
+        assert!(spec.args.contains(&"--verbose".to_string()));
+        assert!(
+            spec.args
+                .windows(2)
+                .any(|w| w == ["--mcp-config", "{\"mcpServers\":{}}"])
         );
         assert!(!spec.args.join(" ").contains("bypassPermissions"));
     }

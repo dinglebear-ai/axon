@@ -100,6 +100,7 @@ fn validate_ask_llm_config_rejects_missing_acp_adapter_command() {
     cfg.openai_base_url.clear();
     cfg.openai_model.clear();
     cfg.acp_adapter_cmd = None;
+    cfg.ask_backend = AskBackend::Acp;
 
     let err = validate_ask_llm_config(&cfg).expect_err("missing adapter should fail");
 
@@ -131,5 +132,30 @@ fn validate_ask_llm_config_accepts_claude_headless_without_acp_adapter() {
     assert!(
         result.is_ok(),
         "Claude headless should not require ACP adapter"
+    );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn validate_ask_llm_config_accepts_gemini_headless_without_acp_adapter() {
+    let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+    let saved = std::env::var("AXON_ASK_AGENT").ok();
+    unsafe { std::env::set_var("AXON_ASK_AGENT", "gemini") };
+    let mut cfg = Config::test_default();
+    cfg.ask_backend = AskBackend::Headless;
+    cfg.acp_adapter_cmd = None;
+
+    let result = validate_ask_llm_config(&cfg);
+    unsafe {
+        match saved {
+            Some(v) => std::env::set_var("AXON_ASK_AGENT", v),
+            None => std::env::remove_var("AXON_ASK_AGENT"),
+        }
+    }
+
+    assert!(
+        result.is_ok(),
+        "Gemini headless should not require ACP adapter"
     );
 }

@@ -91,7 +91,7 @@ impl Default for Config {
             tavily_api_key: String::new(),
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
-            ask_backend: AskBackend::Acp,
+            ask_backend: AskBackend::Headless,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 120_000,
