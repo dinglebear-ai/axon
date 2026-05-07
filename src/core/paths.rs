@@ -117,6 +117,17 @@ pub fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Async wrapper around `ensure_private_dir`: runs the blocking filesystem
+/// calls on the tokio blocking pool and folds `JoinError` into `io::Error`.
+///
+/// Used by callers that need to create a 0o700 directory from an async
+/// context (lite-mode SQLite parent dir, MCP artifact root, etc.).
+pub async fn ensure_private_dir_async(path: PathBuf) -> std::io::Result<()> {
+    tokio::task::spawn_blocking(move || ensure_private_dir(&path))
+        .await
+        .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

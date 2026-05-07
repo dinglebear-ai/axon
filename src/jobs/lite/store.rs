@@ -17,12 +17,7 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
         // which inherit umask defaults and may contain credential
         // snapshots from job payloads — are not group/world-readable
         // on multi-user hosts.
-        let parent_buf = parent.to_path_buf();
-        if let Err(e) =
-            tokio::task::spawn_blocking(move || crate::core::paths::ensure_private_dir(&parent_buf))
-                .await
-                .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
-        {
+        if let Err(e) = crate::core::paths::ensure_private_dir_async(parent.to_path_buf()).await {
             tracing::warn!(path = %parent.display(), error = %e, "lite: failed to create SQLite parent dir");
         }
     }

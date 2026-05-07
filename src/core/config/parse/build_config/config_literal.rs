@@ -222,12 +222,15 @@ fn populate_search_and_workers(cfg: &mut Config, toml: &TomlConfig) {
     cfg.max_pending_embed_jobs = max_pending(toml, "embed");
     cfg.max_pending_extract_jobs = max_pending(toml, "extract");
     cfg.max_pending_ingest_jobs = max_pending(toml, "ingest");
-    cfg.hnsw_ef_search = performance::env_usize_opt("AXON_HNSW_EF_SEARCH", 32, 512)
-        .or_else(|| toml.search.hnsw_ef.map(|v| v.clamp(32, 512)))
-        .unwrap_or(128);
-    cfg.hnsw_ef_search_legacy = performance::env_usize_opt("AXON_HNSW_EF_SEARCH_LEGACY", 16, 256)
-        .or_else(|| toml.search.hnsw_ef_legacy.map(|v| v.clamp(16, 256)))
-        .unwrap_or(64);
+    cfg.hnsw_ef_search =
+        resolve_clamped_usize("AXON_HNSW_EF_SEARCH", toml.search.hnsw_ef, 128, 32, 512);
+    cfg.hnsw_ef_search_legacy = resolve_clamped_usize(
+        "AXON_HNSW_EF_SEARCH_LEGACY",
+        toml.search.hnsw_ef_legacy,
+        64,
+        16,
+        256,
+    );
 }
 
 fn populate_misc(
@@ -315,26 +318,71 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
     ))
 }
 
+/// Resolve a usize knob: env var → TOML value (clamped) → default.
+/// All resolvers below follow this same precedence; env wins, TOML is the
+/// fallback, and the hardcoded default kicks in only when neither is set.
+fn resolve_clamped_usize(
+    env_key: &str,
+    toml_value: Option<usize>,
+    default: usize,
+    min: usize,
+    max: usize,
+) -> usize {
+    performance::env_usize_opt(env_key, min, max)
+        .or_else(|| toml_value.map(|v| v.clamp(min, max)))
+        .unwrap_or(default)
+}
+
+fn resolve_clamped_u64(
+    env_key: &str,
+    toml_value: Option<u64>,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> u64 {
+    performance::env_u64_opt(env_key, min, max)
+        .or_else(|| toml_value.map(|v| v.clamp(min, max)))
+        .unwrap_or(default)
+}
+
+fn resolve_clamped_f64(
+    env_key: &str,
+    toml_value: Option<f64>,
+    default: f64,
+    min: f64,
+    max: f64,
+) -> f64 {
+    performance::env_f64_opt(env_key, min, max)
+        .or_else(|| toml_value.map(|v| v.clamp(min, max)))
+        .unwrap_or(default)
+}
+
 fn ask_max_context_chars() -> usize {
     performance::env_usize_clamped("AXON_ASK_MAX_CONTEXT_CHARS", 120_000, 20_000, 400_000)
 }
 
 fn ask_candidate_limit(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("AXON_ASK_CANDIDATE_LIMIT", 8, 300)
-        .or_else(|| toml.ask.candidate_limit.map(|v| v.clamp(8, 300)))
-        .unwrap_or(150)
+    resolve_clamped_usize(
+        "AXON_ASK_CANDIDATE_LIMIT",
+        toml.ask.candidate_limit,
+        150,
+        8,
+        300,
+    )
 }
 
 fn ask_chunk_limit(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("AXON_ASK_CHUNK_LIMIT", 3, 40)
-        .or_else(|| toml.ask.chunk_limit.map(|v| v.clamp(3, 40)))
-        .unwrap_or(10)
+    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 10, 3, 40)
 }
 
 fn ask_min_relevance_score(toml: &TomlConfig) -> f64 {
-    performance::env_f64_opt("AXON_ASK_MIN_RELEVANCE_SCORE", -1.0, 2.0)
-        .or_else(|| toml.ask.min_relevance_score.map(|v| v.clamp(-1.0, 2.0)))
-        .unwrap_or(0.45)
+    resolve_clamped_f64(
+        "AXON_ASK_MIN_RELEVANCE_SCORE",
+        toml.ask.min_relevance_score,
+        0.45,
+        -1.0,
+        2.0,
+    )
 }
 
 fn hybrid_search_enabled(global: &GlobalArgs, toml: &TomlConfig) -> bool {
@@ -345,52 +393,64 @@ fn hybrid_search_enabled(global: &GlobalArgs, toml: &TomlConfig) -> bool {
 }
 
 fn hybrid_search_candidates(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("AXON_HYBRID_CANDIDATES", 10, 500)
-        .or_else(|| toml.search.hybrid_candidates.map(|v| v.clamp(10, 500)))
-        .unwrap_or(100)
+    resolve_clamped_usize(
+        "AXON_HYBRID_CANDIDATES",
+        toml.search.hybrid_candidates,
+        100,
+        10,
+        500,
+    )
 }
 
 fn ask_hybrid_candidates(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("AXON_ASK_HYBRID_CANDIDATES", 10, 500)
-        .or_else(|| toml.search.ask_hybrid_candidates.map(|v| v.clamp(10, 500)))
-        .unwrap_or(150)
+    resolve_clamped_usize(
+        "AXON_ASK_HYBRID_CANDIDATES",
+        toml.search.ask_hybrid_candidates,
+        150,
+        10,
+        500,
+    )
 }
 
 fn tei_max_retries(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("TEI_MAX_RETRIES", 0, 20)
-        .or_else(|| toml.tei.max_retries.map(|v| v.clamp(0, 20)))
-        .unwrap_or(5)
+    resolve_clamped_usize("TEI_MAX_RETRIES", toml.tei.max_retries, 5, 0, 20)
 }
 
 fn tei_request_timeout_ms(toml: &TomlConfig) -> u64 {
-    performance::env_u64_opt("TEI_REQUEST_TIMEOUT_MS", 1000, 300_000)
-        .or_else(|| toml.tei.request_timeout_ms.map(|v| v.clamp(1000, 300_000)))
-        .unwrap_or(30_000)
+    resolve_clamped_u64(
+        "TEI_REQUEST_TIMEOUT_MS",
+        toml.tei.request_timeout_ms,
+        30_000,
+        1000,
+        300_000,
+    )
 }
 
 fn tei_max_client_batch_size(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("TEI_MAX_CLIENT_BATCH_SIZE", 1, 128)
-        .or_else(|| toml.tei.max_client_batch_size.map(|v| v.clamp(1, 128)))
-        .unwrap_or(64)
+    resolve_clamped_usize(
+        "TEI_MAX_CLIENT_BATCH_SIZE",
+        toml.tei.max_client_batch_size,
+        64,
+        1,
+        128,
+    )
 }
 
 fn ingest_lanes(toml: &TomlConfig) -> usize {
     // Clamp to the same effective range that the runtime worker enforces
     // (1..=16) so users do not see a documented 64-lane limit that is
     // silently capped at spawn time.
-    performance::env_usize_opt("AXON_INGEST_LANES", 1, 16)
-        .or_else(|| toml.workers.ingest_lanes.map(|v| v.clamp(1, 16)))
-        .unwrap_or(2)
+    resolve_clamped_usize("AXON_INGEST_LANES", toml.workers.ingest_lanes, 2, 1, 16)
 }
 
 fn embed_doc_timeout_secs(toml: &TomlConfig) -> u64 {
-    performance::env_u64_opt("AXON_EMBED_DOC_TIMEOUT_SECS", 30, 3600)
-        .or_else(|| {
-            toml.workers
-                .embed_doc_timeout_secs
-                .map(|v| v.clamp(30, 3600))
-        })
-        .unwrap_or(300)
+    resolve_clamped_u64(
+        "AXON_EMBED_DOC_TIMEOUT_SECS",
+        toml.workers.embed_doc_timeout_secs,
+        300,
+        30,
+        3600,
+    )
 }
 
 /// Per-queue pending caps. `kind` selects between crawl/embed/extract/ingest.
@@ -419,7 +479,5 @@ fn max_pending(toml: &TomlConfig, kind: &str) -> usize {
         ),
         _ => unreachable!("unknown pending-jobs kind: {kind}"),
     };
-    performance::env_usize_opt(env_key, 0, 10_000)
-        .or(toml_value.map(|v| v.clamp(0, 10_000)))
-        .unwrap_or(default)
+    resolve_clamped_usize(env_key, toml_value, default, 0, 10_000)
 }
