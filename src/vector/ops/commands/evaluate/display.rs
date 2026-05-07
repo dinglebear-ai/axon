@@ -9,7 +9,7 @@ use crate::core::ui::{muted, primary};
 use std::error::Error;
 use std::io::Write as _;
 
-use super::scoring::extract_source_urls;
+use super::scoring::{extract_source_urls, structured_scores_from_analysis};
 use super::{EvalAnswers, EvalTiming};
 
 pub(super) fn emit_event(value: &serde_json::Value) -> Result<(), Box<dyn Error>> {
@@ -216,6 +216,7 @@ pub(super) fn build_evaluate_json(
         "rag_answer": answers.rag,
         "baseline_answer": answers.baseline,
         "analysis_answer": answers.analysis,
+        "scores": structured_scores_from_analysis(answers.analysis),
         "source_urls": source_urls,
         "crawl_suggestions": answers.crawl_suggestions.iter().map(|s| serde_json::json!({
             "url": s.url,
@@ -279,6 +280,7 @@ fn emit_events_output(
         "rag_answer": answers.rag,
         "baseline_answer": answers.baseline,
         "analysis_answer": answers.analysis,
+        "scores": structured_scores_from_analysis(answers.analysis),
         "source_urls": source_urls,
         "crawl_suggestions": answers.crawl_suggestions.iter().map(|s| serde_json::json!({
             "url": s.url,

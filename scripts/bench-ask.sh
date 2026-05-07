@@ -36,7 +36,7 @@ usage() {
 Usage: bench-ask.sh [options]
 
 Options:
-  --backend {acp|headless|all}   Backend type (default: acp; headless not yet shipped)
+  --backend {acp|headless|all}   Backend type (default: acp)
   --agent {claude|codex|gemini|all}  Agent (default: all)
   --runs N                       Sample count per (agent, prompt, mode); min 30 (default: 30)
   --mode {cold|warm|both}        Cold restarts the in-process state per run; warm reuses serve (default: both)
@@ -81,15 +81,7 @@ else
 fi
 
 case "$BACKEND" in
-    acp) ;;
-    headless)
-        echo "Error: --backend headless requires bead 6dl which is not yet shipped. Use --backend acp for now." >&2
-        exit 2
-        ;;
-    all)
-        echo "Error: --backend all requires bead 6dl (headless) which is not yet shipped. Use --backend acp for now." >&2
-        exit 2
-        ;;
+    acp|headless|all) ;;
     *) echo "Error: --backend must be one of {acp|headless|all}. Got: $BACKEND" >&2; exit 2 ;;
 esac
 
@@ -147,6 +139,12 @@ if [[ "$MODE" == "both" ]]; then
     MODES=(cold warm)
 else
     MODES=("$MODE")
+fi
+
+if [[ "$BACKEND" == "all" ]]; then
+    BACKENDS=(acp headless)
+else
+    BACKENDS=("$BACKEND")
 fi
 
 # ── Bootstrap percentile helper (jq) ─────────────────────────────────────────
@@ -249,7 +247,8 @@ validate_artifact() {
 run_one_ask() {
     local prompt_text="$1"
     local agent="$2"
-    local mode="$3"
+    local backend="$3"
+    local mode="$4"
     local extra_args=()
 
     if [[ "$mode" == "cold" ]]; then
@@ -262,7 +261,8 @@ run_one_ask() {
         extra_args+=(--server-url "$AXON_ASK_SERVER_URL")
     fi
 
-    # AXON_ACP_ADAPTER_CMD is set per-agent.
+    # AXON_ACP_ADAPTER_CMD is set per-agent for ACP cells. Headless cells
+    # select by AXON_ASK_AGENT and must fail closed when an agent is unsafe.
     local adapter
     case "$agent" in
         claude) adapter="claude-agent-acp" ;;
@@ -272,7 +272,9 @@ run_one_ask() {
     esac
 
     local out
-    if ! out=$(AXON_ACP_ADAPTER_CMD="$adapter" \
+    if ! out=$(AXON_ASK_BACKEND="$backend" \
+             AXON_ASK_AGENT="$agent" \
+             AXON_ACP_ADAPTER_CMD="$adapter" \
              "$AXON_BIN" ask "$prompt_text" --json "${extra_args[@]}" 2>/dev/null); then
         echo "{}"
         return 0
@@ -291,19 +293,20 @@ declare -a RESULTS_JSON=()
 
 while IFS='|' read -r prompt_id prompt_text || [[ -n "$prompt_id" ]]; do
     [[ -z "$prompt_id" || "$prompt_id" =~ ^# ]] && continue
-    for agent in "${AGENTS[@]}"; do
+    for backend in "${BACKENDS[@]}"; do
+      for agent in "${AGENTS[@]}"; do
         for mode in "${MODES[@]}"; do
-            echo "→ $agent / $prompt_id / $mode  (n=$RUNS)" >&2
+            echo "→ $backend / $agent / $prompt_id / $mode  (n=$RUNS)" >&2
             timings_array="[]"
             kept=0
             warmup_count=0
             target_warmup=0
-            if [[ "$mode" == "warm" ]]; then
+            if [[ "$mode" == "warm" && "$backend" == "acp" ]]; then
                 target_warmup="$WARMUP_DISCARD"
             fi
 
             for ((i=0; i<RUNS + target_warmup; i++)); do
-                t_json=$(run_one_ask "$prompt_text" "$agent" "$mode")
+                t_json=$(run_one_ask "$prompt_text" "$agent" "$backend" "$mode")
                 if [[ "$warmup_count" -lt "$target_warmup" ]]; then
                     warmup_count=$((warmup_count + 1))
                     continue
@@ -335,10 +338,11 @@ while IFS='|' read -r prompt_id prompt_text || [[ -n "$prompt_id" ]]; do
             done
 
             entry=$(jq -n \
-                --arg backend "$BACKEND" \
+                --arg backend "$backend" \
                 --arg agent "$agent" \
                 --arg prompt_id "$prompt_id" \
                 --arg mode "$mode" \
+                --arg status "$(if [[ "$kept" -gt 0 ]]; then echo measured; else echo unavailable_or_failed; fi)" \
                 --argjson samples "$kept" \
                 --argjson warmup "$target_warmup" \
                 --argjson runs_requested "$RUNS" \
@@ -348,6 +352,7 @@ while IFS='|' read -r prompt_id prompt_text || [[ -n "$prompt_id" ]]; do
                     agent: $agent,
                     prompt_id: $prompt_id,
                     mode: $mode,
+                    status: $status,
                     runs_requested: $runs_requested,
                     samples: $samples,
                     warmup_discarded: $warmup,
@@ -355,6 +360,7 @@ while IFS='|' read -r prompt_id prompt_text || [[ -n "$prompt_id" ]]; do
                 }')
             RESULTS_JSON+=("$entry")
         done
+      done
     done
 done < "$PROMPTS_FILE"
 

@@ -10,6 +10,7 @@ pub mod events;
 pub mod extract;
 pub mod ingest;
 pub mod jobs;
+pub mod llm_backend;
 pub mod map;
 pub mod migrate;
 pub mod query;

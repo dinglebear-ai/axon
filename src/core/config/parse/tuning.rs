@@ -1,9 +1,10 @@
 use super::helpers::env_bool_opt;
 use super::performance;
 use super::toml_config::{TomlConfig, load_toml_config};
-use crate::core::config::types::Config;
+use crate::core::config::types::{AskBackend, Config};
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
+    cfg.ask_backend = ask_backend(toml);
     cfg.ask_max_context_chars = ask_max_context_chars();
     cfg.ask_candidate_limit = ask_candidate_limit(toml);
     cfg.ask_chunk_limit = ask_chunk_limit(toml);
@@ -118,6 +119,16 @@ fn resolve_clamped_f64(
 
 fn ask_max_context_chars() -> usize {
     performance::env_usize_clamped("AXON_ASK_MAX_CONTEXT_CHARS", 120_000, 20_000, 400_000)
+}
+
+fn ask_backend(toml: &TomlConfig) -> AskBackend {
+    match std::env::var("AXON_ASK_BACKEND") {
+        Ok(raw) if !raw.trim().is_empty() => raw.parse::<AskBackend>().unwrap_or_else(|err| {
+            eprintln!("axon: warning: {err}; falling back to default ask backend headless");
+            AskBackend::default()
+        }),
+        _ => toml.ask.backend.unwrap_or_default(),
+    }
 }
 
 fn ask_candidate_limit(toml: &TomlConfig) -> usize {

@@ -914,10 +914,11 @@ The minimum set needed to start:
 |---|---|---|
 | `QDRANT_URL` | Yes | Qdrant REST API base URL (e.g. `http://127.0.0.1:53333`) |
 | `TEI_URL` | Yes | Text Embeddings Inference base URL (e.g. `http://127.0.0.1:52000`) |
-| `AXON_ASK_AGENT` | For ask/research | Which ACP agent handles synthesis: `claude`, `codex`, or `gemini` |
+| `AXON_ASK_BACKEND` | For ask/research | Ask synthesis backend: `headless` by default, or `acp` / `auto` |
+| `AXON_ASK_AGENT` | For ask/research | Which agent handles synthesis: `gemini` by default, or `claude` / `codex` |
 | `AXON_ACP_CLAUDE_ADAPTER_CMD` | When `AXON_ASK_AGENT=claude` | ACP adapter command (default: `claude-agent-acp`) |
 | `OPENAI_BASE_URL` | For ask/research | OpenAI-compatible API base URL |
-| `OPENAI_MODEL` | For ask/research | Model name passed to the ACP adapter |
+| `OPENAI_MODEL` | For ask/research | Model override; headless Gemini defaults to `gemini-3.1-flash-lite-preview` |
 | `TAVILY_API_KEY` | For search/research | Tavily search API key |
 | `GITHUB_TOKEN` | For GitHub ingest | GitHub personal access token (optional, raises rate limits) |
 | `REDDIT_CLIENT_ID` | For Reddit ingest | Reddit OAuth2 app client ID |

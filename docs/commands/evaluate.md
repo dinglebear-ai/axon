@@ -70,6 +70,7 @@ With `--json`, output is a pretty-printed JSON object containing:
 - `rag_answer`
 - `baseline_answer`
 - `analysis_answer`
+- `scores` (`status`, per-axis `axes`, totals, and `winner`; `parse_failed` is explicit)
 - `crawl_suggestions` (present when judge scoring indicates RAG underperformed baseline)
 - `crawl_enqueue_outcomes` (url + job_id or enqueue error, when suggestions are generated)
 - `timing_ms` (retrieval/context/rag_llm/baseline_llm/research/judge/total)

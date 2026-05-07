@@ -1,6 +1,6 @@
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    AskBackend, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
+    RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use std::path::PathBuf;
 
@@ -252,6 +252,9 @@ pub struct Config {
 
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
     pub ask_diagnostics: bool,
+
+    /// Completion backend used by `ask` synthesis. Env: `AXON_ASK_BACKEND`.
+    pub ask_backend: AskBackend,
 
     /// Enable graph-enhanced retrieval during `ask` when Neo4j is configured. Flag: `--graph`.
     pub ask_graph: bool,
