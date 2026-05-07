@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ask: AXON_ASK_HYBRID_CANDIDATES default lowered 150 → 100 (Qdrant RRF rank-stable at 2x final K; ask_candidate_limit=50 → prefetch=100 is sufficient).
 
+## [1.6.2] - 2026-05-07
+
+### Fixed
+
+- ask: forward per-request `ask_*` overrides through `--server-url`, use a longer server request timeout, and harden bearer-token handling.
+- perf: tighten benchmark artifact validation to numeric-only values and require warm-mode benchmarks to use an explicit server URL.
+- vector: remove disabled-path timing probes, repair evaluate's disabled ask timing locals, and split Qdrant payload-index setup under the Rust file-size cap.
+
 ## [1.6.1] - 2026-05-07
 
 ### Fixed

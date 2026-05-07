@@ -5,11 +5,12 @@ use crate::crates::vector::ops::qdrant::{env_usize_clamped, qdrant_base};
 use reqwest::StatusCode;
 use std::collections::HashMap;
 use std::error::Error;
-use std::future::Future;
 use std::sync::{LazyLock, RwLock};
 
+mod payload_indexes;
 #[cfg(test)]
 mod tests;
+use payload_indexes::ensure_payload_indexes;
 
 /// Describes how a Qdrant collection's vectors are configured.
 ///
@@ -261,89 +262,6 @@ fn validate_existing_dim(
             )
             .into());
         }
-    }
-    Ok(())
-}
-
-/// Creates keyword payload indexes on commonly-queried fields.
-///
-/// These indexes are required by the Qdrant `/facet` endpoint used by the
-/// `domains` and `sources` MCP actions.  The operation is idempotent --
-/// Qdrant returns HTTP 200 when the index already exists.
-///
-/// All index PUT requests are issued concurrently (they are independent
-/// and idempotent), avoiding 5 sequential round-trips on cold collection init.
-async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let client = http_client()?;
-    let index_url = format!(
-        "{}/collections/{}/index?wait=false",
-        qdrant_base(cfg),
-        cfg.collection
-    );
-
-    // Build all index requests as futures and run them concurrently.
-    let keyword_fields = [
-        "url",
-        "domain",
-        "source_type",
-        "gh_file_language",
-        "chunking_method",
-    ];
-    type IndexFut<'a> = std::pin::Pin<
-        Box<dyn Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'a>,
-    >;
-    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(keyword_fields.len() + 2);
-
-    for field in &keyword_fields {
-        let url = index_url.clone();
-        futures.push(Box::pin(async move {
-            client
-                .put(&url)
-                .json(&serde_json::json!({
-                    "field_name": field,
-                    "field_schema": "keyword"
-                }))
-                .send()
-                .await?
-                .error_for_status()?;
-            Ok(())
-        }));
-    }
-
-    // integer index for chunk_index — enables fast chunk_index==0 filtered scrolls
-    // (used by qdrant_indexed_urls and qdrant_urls_for_domain on every graph/suggest call)
-    let chunk_index_url = index_url.clone();
-    futures.push(Box::pin(async move {
-        client
-            .put(&chunk_index_url)
-            .json(&serde_json::json!({
-                "field_name": "chunk_index",
-                "field_schema": "integer"
-            }))
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }));
-
-    // datetime index for scraped_at range queries (--since / --before)
-    let datetime_url = index_url;
-    futures.push(Box::pin(async move {
-        client
-            .put(&datetime_url)
-            .json(&serde_json::json!({
-                "field_name": "scraped_at",
-                "field_schema": "datetime"
-            }))
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }));
-
-    let results = futures_util::future::join_all(futures).await;
-    for result in results {
-        result.map_err(|e| -> Box<dyn Error> { e })?;
     }
     Ok(())
 }

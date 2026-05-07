@@ -8,17 +8,61 @@
 use super::{ask_authorized, classify_ask_error};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use serial_test::serial;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
 
 const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
 
-fn clear_token() {
-    // SAFETY: serialised via `#[serial]` — no concurrent reads.
-    unsafe { std::env::remove_var(ENV_KEY) };
+struct EnvGuard {
+    prev: Option<String>,
 }
 
-fn set_token(v: &str) {
-    // SAFETY: serialised via `#[serial]`.
-    unsafe { std::env::set_var(ENV_KEY, v) };
+impl EnvGuard {
+    fn set(value: Option<&str>) -> Self {
+        let prev = std::env::var(ENV_KEY).ok();
+        match value {
+            Some(v) => unsafe { std::env::set_var(ENV_KEY, v) },
+            None => unsafe { std::env::remove_var(ENV_KEY) },
+        }
+        Self { prev }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(v) => unsafe { std::env::set_var(ENV_KEY, v) },
+            None => unsafe { std::env::remove_var(ENV_KEY) },
+        }
+    }
+}
+
+#[cfg(unix)]
+struct OsEnvGuard {
+    prev: Option<std::ffi::OsString>,
+}
+
+#[cfg(unix)]
+impl OsEnvGuard {
+    fn set_non_utf8(bytes: Vec<u8>) -> Self {
+        let prev = std::env::var_os(ENV_KEY);
+        unsafe {
+            std::env::set_var(ENV_KEY, std::ffi::OsString::from_vec(bytes));
+        }
+        Self { prev }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for OsEnvGuard {
+    fn drop(&mut self) {
+        unsafe {
+            match self.prev.take() {
+                Some(v) => std::env::set_var(ENV_KEY, v),
+                None => std::env::remove_var(ENV_KEY),
+            }
+        }
+    }
 }
 
 fn h(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
@@ -37,14 +81,14 @@ fn h(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
 #[test]
 #[serial]
 fn ask_authorized_unset_no_headers_allows() {
-    clear_token();
+    let _guard = EnvGuard::set(None);
     assert!(ask_authorized(&HeaderMap::new()));
 }
 
 #[test]
 #[serial]
 fn ask_authorized_unset_with_headers_still_allows() {
-    clear_token();
+    let _guard = EnvGuard::set(None);
     let headers = h(&[("authorization", "Bearer whatever")]);
     assert!(ask_authorized(&headers));
 }
@@ -52,56 +96,58 @@ fn ask_authorized_unset_with_headers_still_allows() {
 #[test]
 #[serial]
 fn ask_authorized_set_no_headers_denies() {
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     assert!(!ask_authorized(&HeaderMap::new()));
-    clear_token();
 }
 
 #[test]
 #[serial]
 fn ask_authorized_set_correct_bearer_allows() {
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     let headers = h(&[("authorization", "Bearer secret")]);
     assert!(ask_authorized(&headers));
-    clear_token();
+}
+
+#[test]
+#[serial]
+fn ask_authorized_set_correct_bearer_case_insensitive_allows() {
+    let _guard = EnvGuard::set(Some("secret"));
+    let headers = h(&[("authorization", "bearer secret")]);
+    assert!(ask_authorized(&headers));
 }
 
 #[test]
 #[serial]
 fn ask_authorized_set_correct_api_key_allows() {
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     let headers = h(&[("x-api-key", "secret")]);
     assert!(ask_authorized(&headers));
-    clear_token();
 }
 
 #[test]
 #[serial]
 fn ask_authorized_wrong_bearer_correct_api_key_allows() {
     // Either header alone may carry the correct token.
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     let headers = h(&[("authorization", "Bearer wrong"), ("x-api-key", "secret")]);
     assert!(ask_authorized(&headers));
-    clear_token();
 }
 
 #[test]
 #[serial]
 fn ask_authorized_wrong_bearer_alone_denies() {
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     let headers = h(&[("authorization", "Bearer wrong")]);
     assert!(!ask_authorized(&headers));
-    clear_token();
 }
 
 #[test]
 #[serial]
 fn ask_authorized_malformed_bearer_denies() {
-    set_token("secret");
+    let _guard = EnvGuard::set(Some("secret"));
     // Missing space between scheme and token: "Bearersecret"
     let headers = h(&[("authorization", "Bearersecret")]);
     assert!(!ask_authorized(&headers));
-    clear_token();
 }
 
 #[test]
@@ -109,19 +155,25 @@ fn ask_authorized_malformed_bearer_denies() {
 fn ask_authorized_set_to_whitespace_fails_closed() {
     // Operator clearly intended to enable auth — the env is set — but the
     // value is whitespace. Refuse all requests rather than fail open.
-    set_token("   ");
+    let _guard = EnvGuard::set(Some("   "));
     assert!(!ask_authorized(&HeaderMap::new()));
     let headers = h(&[("authorization", "Bearer "), ("x-api-key", "")]);
     assert!(!ask_authorized(&headers));
-    clear_token();
 }
 
 #[test]
 #[serial]
 fn ask_authorized_set_to_empty_string_fails_closed() {
-    set_token("");
+    let _guard = EnvGuard::set(Some(""));
     assert!(!ask_authorized(&HeaderMap::new()));
-    clear_token();
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn ask_authorized_non_utf8_token_fails_closed() {
+    let _guard = OsEnvGuard::set_non_utf8(vec![0xff, b'x']);
+    assert!(!ask_authorized(&HeaderMap::new()));
 }
 
 // ---- classify_ask_error ----

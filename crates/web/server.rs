@@ -11,6 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 
 /// Hard limit on `/v1/ask` request bodies. Matches the existing 64 KiB cap used
 /// by `dispatch_vector_search` so the web surface mirrors MCP behavior.
@@ -300,7 +301,7 @@ fn apply_ask_overrides(req_cfg: &mut crate::crates::core::config::Config, req: &
         req_cfg.ask_hybrid_candidates = v;
     }
     if let Some(v) = req.ask_min_relevance_score {
-        req_cfg.ask_min_relevance_score = v;
+        req_cfg.ask_min_relevance_score = v.clamp(-1.0, 2.0);
     }
     if let Some(v) = req.ask_doc_chunk_limit {
         req_cfg.ask_doc_chunk_limit = v;
@@ -321,7 +322,7 @@ fn apply_ask_overrides(req_cfg: &mut crate::crates::core::config::Config, req: &
         req_cfg.ask_authoritative_domains = v.clone();
     }
     if let Some(v) = req.ask_authoritative_boost {
-        req_cfg.ask_authoritative_boost = v;
+        req_cfg.ask_authoritative_boost = v.clamp(0.0, 10.0);
     }
 }
 
@@ -364,7 +365,15 @@ async fn v1_ask(
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
     if !ask_authorized(&headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(AskErrorBody {
+                kind: "unauthorized",
+                message: "unauthorized".to_string(),
+                diagnostics: None,
+            }),
+        )
+            .into_response();
     }
     if req.query.trim().is_empty() {
         return (
@@ -420,12 +429,12 @@ async fn v1_ask(
 /// MCP HTTP server's loopback-only convention (binding to non-loopback hosts
 /// without a token is rejected at startup elsewhere).
 fn ask_authorized(headers: &HeaderMap) -> bool {
-    let raw = std::env::var("AXON_MCP_HTTP_TOKEN").ok();
-    let configured = raw
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(String::from);
+    let raw = match std::env::var("AXON_MCP_HTTP_TOKEN") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => return false,
+    };
+    let configured = raw.as_deref().map(str::trim).filter(|v| !v.is_empty());
     let Some(expected) = configured else {
         // Distinguish "env unset" (allow) from "env set but empty/whitespace"
         // (fail closed — operator clearly meant to enable auth).
@@ -437,9 +446,20 @@ fn ask_authorized(headers: &HeaderMap) -> bool {
     let bearer = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
+        .map(str::trim)
+        .and_then(|v| {
+            let (scheme, token) = v.split_once(' ')?;
+            scheme
+                .eq_ignore_ascii_case("Bearer")
+                .then_some(token.trim())
+                .filter(|s| !s.is_empty())
+        });
     let api_key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
-    bearer == Some(expected.as_str()) || api_key == Some(expected.as_str())
+    let matches_expected = |token: &str| {
+        let token = token.trim();
+        !token.is_empty() && bool::from(token.as_bytes().ct_eq(expected.as_bytes()))
+    };
+    bearer.is_some_and(matches_expected) || api_key.is_some_and(matches_expected)
 }
 
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to

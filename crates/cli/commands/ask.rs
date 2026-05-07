@@ -1,6 +1,6 @@
 use crate::crates::cli::commands::resolve_input_text;
 use crate::crates::core::config::Config;
-use crate::crates::core::http::http_client;
+use crate::crates::core::http::build_client;
 use crate::crates::core::logging::log_info;
 use crate::crates::core::ui::{muted, primary};
 use crate::crates::services::error::diagnostics_from_error;
@@ -8,6 +8,8 @@ use crate::crates::services::query as query_svc;
 use crate::crates::services::types::AskResult;
 use std::error::Error;
 use std::net::IpAddr;
+
+const ASK_VIA_SERVER_TIMEOUT_SECS: u64 = 300;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
@@ -172,8 +174,57 @@ pub(crate) async fn ask_via_server(
         "hybrid_search".into(),
         serde_json::Value::Bool(cfg.hybrid_search_enabled),
     );
+    payload.insert(
+        "ask_chunk_limit".into(),
+        serde_json::Value::from(cfg.ask_chunk_limit),
+    );
+    payload.insert(
+        "ask_full_docs".into(),
+        serde_json::Value::from(cfg.ask_full_docs),
+    );
+    payload.insert(
+        "ask_max_context_chars".into(),
+        serde_json::Value::from(cfg.ask_max_context_chars),
+    );
+    payload.insert(
+        "ask_hybrid_candidates".into(),
+        serde_json::Value::from(cfg.ask_hybrid_candidates),
+    );
+    payload.insert(
+        "ask_min_relevance_score".into(),
+        serde_json::Value::from(cfg.ask_min_relevance_score),
+    );
+    payload.insert(
+        "ask_doc_chunk_limit".into(),
+        serde_json::Value::from(cfg.ask_doc_chunk_limit),
+    );
+    payload.insert(
+        "ask_doc_fetch_concurrency".into(),
+        serde_json::Value::from(cfg.ask_doc_fetch_concurrency),
+    );
+    payload.insert(
+        "ask_backfill_chunks".into(),
+        serde_json::Value::from(cfg.ask_backfill_chunks),
+    );
+    payload.insert(
+        "ask_candidate_limit".into(),
+        serde_json::Value::from(cfg.ask_candidate_limit),
+    );
+    payload.insert(
+        "ask_min_citations_nontrivial".into(),
+        serde_json::Value::from(cfg.ask_min_citations_nontrivial),
+    );
+    payload.insert(
+        "ask_authoritative_domains".into(),
+        serde_json::to_value(&cfg.ask_authoritative_domains)?,
+    );
+    payload.insert(
+        "ask_authoritative_boost".into(),
+        serde_json::Value::from(cfg.ask_authoritative_boost),
+    );
 
-    let client = http_client().map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+    let client = build_client(ASK_VIA_SERVER_TIMEOUT_SECS, None)
+        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
     let mut req = client.post(&endpoint).json(&payload);
     if let Ok(token) = std::env::var("AXON_MCP_HTTP_TOKEN")
         && !token.trim().is_empty()

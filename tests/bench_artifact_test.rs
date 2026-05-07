@@ -39,6 +39,9 @@ fn collect_results() -> Vec<PathBuf> {
 fn check_value(value: &Value, path: &str, violations: &mut Vec<String>) {
     match value {
         Value::String(s) => {
+            if s.parse::<f64>().is_err() {
+                violations.push(format!("non-numeric string value at `{path}`"));
+            }
             if s.len() > MAX_STRING_LEN {
                 violations.push(format!(
                     "string at `{path}` is {} chars (max {MAX_STRING_LEN})",

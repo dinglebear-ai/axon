@@ -375,7 +375,21 @@ impl fmt::Debug for Config {
                     .collect::<Vec<_>>(),
             )
             .field("quiet", &self.quiet)
-            .field("server_url", &self.server_url)
+            .field(
+                "server_url",
+                &self.server_url.as_ref().map(|url| {
+                    if url.password().is_some() || !url.username().is_empty() {
+                        format!(
+                            "{}://[REDACTED]@{}{}",
+                            url.scheme(),
+                            url.host_str().unwrap_or(""),
+                            url.path()
+                        )
+                    } else {
+                        url.to_string()
+                    }
+                }),
+            )
             .finish()
     }
 }

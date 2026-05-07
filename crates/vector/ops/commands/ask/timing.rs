@@ -89,6 +89,9 @@ impl AskTiming {
     }
 
     pub(crate) fn record(&mut self, slot: AskTimingSlot, t: Instant) {
+        if matches!(self, AskTiming::Disabled { .. }) {
+            return;
+        }
         let v = t.elapsed().as_millis();
         self.set(slot, v);
     }

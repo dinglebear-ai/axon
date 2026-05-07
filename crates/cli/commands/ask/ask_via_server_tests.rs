@@ -18,6 +18,7 @@ use crate::crates::core::http::set_allow_loopback;
 use httpmock::prelude::*;
 use serde_json::json;
 use serial_test::serial;
+use std::net::TcpListener;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
 const INSECURE_ENV: &str = "AXON_ASK_INSECURE";
@@ -210,6 +211,58 @@ async fn ask_via_server_returns_parsed_result_on_200() {
 
 #[tokio::test]
 #[serial]
+async fn ask_via_server_forwards_ask_overrides() {
+    let _lo = LoopbackGuard::new();
+    let _t = EnvGuard::set(TOKEN_ENV, None);
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/ask").json_body(json!({
+            "query": "what is rust?",
+            "collection": "test_col",
+            "diagnostics": false,
+            "graph": false,
+            "hybrid_search": true,
+            "ask_chunk_limit": 7,
+            "ask_full_docs": 2,
+            "ask_max_context_chars": 5000,
+            "ask_hybrid_candidates": 42,
+            "ask_min_relevance_score": 0.7,
+            "ask_doc_chunk_limit": 64,
+            "ask_doc_fetch_concurrency": 3,
+            "ask_backfill_chunks": 4,
+            "ask_candidate_limit": 55,
+            "ask_min_citations_nontrivial": 3,
+            "ask_authoritative_domains": ["docs.rs"],
+            "ask_authoritative_boost": 0.2
+        }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(valid_ask_result_json());
+    });
+
+    let mut cfg = test_config();
+    cfg.ask_chunk_limit = 7;
+    cfg.ask_full_docs = 2;
+    cfg.ask_max_context_chars = 5000;
+    cfg.ask_hybrid_candidates = 42;
+    cfg.ask_min_relevance_score = 0.7;
+    cfg.ask_doc_chunk_limit = 64;
+    cfg.ask_doc_fetch_concurrency = 3;
+    cfg.ask_backfill_chunks = 4;
+    cfg.ask_candidate_limit = 55;
+    cfg.ask_min_citations_nontrivial = 3;
+    cfg.ask_authoritative_domains = vec!["docs.rs".to_string()];
+    cfg.ask_authoritative_boost = 0.2;
+
+    let url = reqwest::Url::parse(&server.base_url()).unwrap();
+    let result = ask_via_server(&cfg, &url, "what is rust?").await.unwrap();
+
+    mock.assert();
+    assert_eq!(result.answer, "hello");
+}
+
+#[tokio::test]
+#[serial]
 async fn ask_via_server_401_yields_token_mismatch_hint() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, None);
@@ -273,16 +326,18 @@ async fn ask_via_server_malformed_json_yields_decode_error() {
 async fn ask_via_server_connection_refused_uses_connect_prefix() {
     let _lo = LoopbackGuard::new();
     let _t = EnvGuard::set(TOKEN_ENV, None);
-    // 127.0.0.1:1 is reserved (TCPMUX), guaranteed connection-refused on
-    // every modern Linux/macOS host.
-    let dead_url = "http://127.0.0.1:1";
+    let addr = {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.local_addr().unwrap()
+    };
+    let dead_url = format!("http://{addr}");
 
     let cfg = test_config();
-    let url = reqwest::Url::parse(dead_url).unwrap();
+    let url = reqwest::Url::parse(&dead_url).unwrap();
     let err = ask_via_server(&cfg, &url, "x").await.unwrap_err();
     let msg = err.to_string();
     assert!(msg.starts_with("connect to "), "got: {msg}");
-    assert!(msg.contains(dead_url) || msg.contains("/v1/ask"));
+    assert!(msg.contains(&dead_url) || msg.contains("/v1/ask"));
     assert!(hint_for_ask_error(&msg).unwrap().contains("axon serve"));
 }
 

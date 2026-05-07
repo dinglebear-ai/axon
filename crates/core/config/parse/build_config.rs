@@ -964,4 +964,64 @@ mod tests {
             "TOML min-relevance-score=0.7 should override the default (0.45), got {score}"
         );
     }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn server_url_trims_and_ignores_empty_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_SERVER_URL").ok();
+        unsafe {
+            env::set_var("AXON_ASK_SERVER_URL", "   ");
+        }
+        let cfg = into_config(cli_with_services(&["status"]));
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_SERVER_URL", v),
+                None => env::remove_var("AXON_ASK_SERVER_URL"),
+            }
+        }
+        assert!(cfg.unwrap().server_url.is_none());
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn server_url_rejects_malformed_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_SERVER_URL").ok();
+        unsafe {
+            env::set_var("AXON_ASK_SERVER_URL", "://not-a-url");
+        }
+        let err = into_config(cli_with_services(&["status"])).unwrap_err();
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_SERVER_URL", v),
+                None => env::remove_var("AXON_ASK_SERVER_URL"),
+            }
+        }
+        assert!(err.contains("invalid --server-url / AXON_ASK_SERVER_URL"));
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn server_url_accepts_trimmed_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let saved = env::var("AXON_ASK_SERVER_URL").ok();
+        unsafe {
+            env::set_var("AXON_ASK_SERVER_URL", "  http://127.0.0.1:8001/base  ");
+        }
+        let cfg = into_config(cli_with_services(&["status"]));
+        unsafe {
+            match saved {
+                Some(v) => env::set_var("AXON_ASK_SERVER_URL", v),
+                None => env::remove_var("AXON_ASK_SERVER_URL"),
+            }
+        }
+        assert_eq!(
+            cfg.unwrap().server_url.unwrap().as_str(),
+            "http://127.0.0.1:8001/base"
+        );
+    }
 }

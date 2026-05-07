@@ -533,4 +533,16 @@ mod tests {
             "ask_hybrid_candidates must default to 100 (Qdrant RRF rank-stable at 2x final K = 50)"
         );
     }
+
+    #[test]
+    fn config_debug_redacts_server_url_credentials() {
+        let cfg = Config {
+            server_url: Some(reqwest::Url::parse("https://user:secret@example.com/v1").unwrap()),
+            ..Config::default()
+        };
+        let dbg = format!("{cfg:?}");
+        assert!(dbg.contains("[REDACTED]"));
+        assert!(!dbg.contains("user:secret"));
+        assert!(!dbg.contains("secret@example.com"));
+    }
 }

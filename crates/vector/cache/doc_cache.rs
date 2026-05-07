@@ -141,28 +141,19 @@ impl DocCache {
         F: FnOnce() -> Fut + Send,
         Fut: Future<Output = Result<Vec<QdrantPoint>>> + Send,
     {
-        // moka's `try_get_with` flips the get/run race for us. If the entry
-        // is present, we return it (hit). If not, exactly one caller runs
-        // `fetch`; concurrent callers wait on the same future.
-        //
-        // The hit/miss accounting walks a slim window: `contains_key` then
-        // `try_get_with`. Race-y, but only by one event in counters — never
-        // by correctness. Strict accounting would need either two get calls
-        // or a dedicated init guard, neither of which are worth the cost on
-        // the hot path.
-        let was_present = self.inner.contains_key(&key);
         let result = self
             .inner
-            .try_get_with(key, async move { fetch().await.map(Arc::new) })
+            .entry(key)
+            .or_try_insert_with(async move { fetch().await.map(Arc::new) })
             .await;
         match result {
-            Ok(arc) => {
-                if was_present {
-                    self.stats.hits.fetch_add(1, Ordering::Relaxed);
-                } else {
+            Ok(entry) => {
+                if entry.is_fresh() {
                     self.stats.misses.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    self.stats.hits.fetch_add(1, Ordering::Relaxed);
                 }
-                Ok(arc)
+                Ok(entry.into_value())
             }
             Err(arc_err) => {
                 self.stats.misses.fetch_add(1, Ordering::Relaxed);

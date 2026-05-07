@@ -210,7 +210,7 @@ bootstrap_percentiles() {
 }
 
 # ── Sanitizer: strict allowlist of numerical fields ──────────────────────────
-# Walks JSON, ensures no string value > 200 chars (catches accidental text).
+# Walks JSON, ensures strings are numeric and <= 200 chars.
 # Forbids top-level forbidden keys: query, answer, chunk_text, url, source.
 validate_artifact() {
     local file="$1"
@@ -224,15 +224,20 @@ validate_artifact() {
               else f end;
         [paths(strings) as $p
          | (getpath($p)) as $v
+         | select(($v | tonumber? | not))
+         | { path: $p | join("."), value: $v }] as $non_numeric_strings
+        | [paths(strings) as $p
+         | (getpath($p)) as $v
          | select(($v | length) > 200)
          | { path: $p | join("."), len: ($v | length) }] as $long_strings
         | [paths | select(.[-1] as $k | forbidden_keys | index($k))] as $forbidden_paths
-        | { long_strings: $long_strings, forbidden_paths: $forbidden_paths }
+        | { non_numeric_strings: $non_numeric_strings, long_strings: $long_strings, forbidden_paths: $forbidden_paths }
     ' "$file")
-    local long_count forbidden_count
+    local non_numeric_count long_count forbidden_count
+    non_numeric_count=$(jq '.non_numeric_strings | length' <<<"$violations")
     long_count=$(jq '.long_strings | length' <<<"$violations")
     forbidden_count=$(jq '.forbidden_paths | length' <<<"$violations")
-    if [[ "$long_count" -gt 0 || "$forbidden_count" -gt 0 ]]; then
+    if [[ "$non_numeric_count" -gt 0 || "$long_count" -gt 0 || "$forbidden_count" -gt 0 ]]; then
         echo "Error: bench artifact validation failed:" >&2
         echo "$violations" | jq . >&2
         return 1
@@ -249,6 +254,12 @@ run_one_ask() {
 
     if [[ "$mode" == "cold" ]]; then
         extra_args+=(--no-server-url)
+    else
+        if [[ -z "${AXON_ASK_SERVER_URL:-}" ]]; then
+            echo "Error: warm mode requires AXON_ASK_SERVER_URL to point at a running axon serve instance." >&2
+            return 2
+        fi
+        extra_args+=(--server-url "$AXON_ASK_SERVER_URL")
     fi
 
     # AXON_ACP_ADAPTER_CMD is set per-agent.

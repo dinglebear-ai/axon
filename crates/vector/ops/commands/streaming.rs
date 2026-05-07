@@ -280,12 +280,13 @@ fn process_one_delta(
     delta: &str,
     print_tokens: bool,
     tagged: Option<&(UnboundedSender<TaggedToken>, &'static str)>,
+    capture_ttft: bool,
 ) -> Result<(), Box<dyn Error>> {
     if state.repeat_guard_triggered {
         return Err(REPEAT_GUARD_STOP.into());
     }
     // Record TTFT on the first non-empty delta — before any further work.
-    if state.first_token_at.is_none() && !delta.is_empty() {
+    if capture_ttft && state.first_token_at.is_none() && !delta.is_empty() {
         state.first_token_at = Some(std::time::Instant::now());
     }
     process_stream_delta(
@@ -317,11 +318,28 @@ pub(crate) async fn run_streaming_completion_ttft(
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
     warm: Option<WarmAcpSession>,
 ) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
+    run_streaming_completion_inner(cfg, req, print_tokens, tagged, warm, true).await
+}
+
+async fn run_streaming_completion_inner(
+    cfg: &Config,
+    req: AcpCompletionRequest,
+    print_tokens: bool,
+    tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
+    warm: Option<WarmAcpSession>,
+    capture_ttft: bool,
+) -> Result<(String, Option<std::time::Instant>), Box<dyn Error>> {
     if let Some(w) = warm {
         let mut state = StreamProcessorState::default();
         let stream_result = w
             .complete_streaming(req, |delta| {
-                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
+                process_one_delta(
+                    &mut state,
+                    delta,
+                    print_tokens,
+                    tagged.as_ref(),
+                    capture_ttft,
+                )
             })
             .await;
         let fallback_text = match stream_result {
@@ -343,7 +361,13 @@ pub(crate) async fn run_streaming_completion_ttft(
                 .map_err(|e| format!("acp cold runtime: {e}"))?;
             let mut state = StreamProcessorState::default();
             let stream_result = rt.block_on(acp_llm::complete_streaming(&cfg, req, |delta| {
-                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
+                process_one_delta(
+                    &mut state,
+                    delta,
+                    print_tokens,
+                    tagged.as_ref(),
+                    capture_ttft,
+                )
             }));
             let fallback_text = match stream_result {
                 Ok(r) => r.text,
@@ -375,44 +399,9 @@ async fn run_streaming_completion(
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
     warm: Option<WarmAcpSession>,
 ) -> Result<String, Box<dyn Error>> {
-    // Warm path: early return keeps the compiler from mixing Send/!Send await points.
-    if let Some(w) = warm {
-        let mut state = StreamProcessorState::default();
-        let stream_result = w
-            .complete_streaming(req, |delta| {
-                process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
-            })
-            .await;
-        let fallback_text = match stream_result {
-            Ok(r) => r.text,
-            Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
-            Err(e) => return Err(e),
-        };
-        return finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text);
-    }
-    // Cold path: acp_llm::complete_streaming is !Send. spawn_blocking confines the
-    // !Send runtime to a blocking thread, keeping this function's future Send.
-    let cfg = cfg.clone();
-    tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("acp cold runtime: {e}"))?;
-        let mut state = StreamProcessorState::default();
-        let stream_result = rt.block_on(acp_llm::complete_streaming(&cfg, req, |delta| {
-            process_one_delta(&mut state, delta, print_tokens, tagged.as_ref())
-        }));
-        let fallback_text = match stream_result {
-            Ok(r) => r.text,
-            Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
-            Err(e) => return Err(e.to_string()),
-        };
-        finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text)
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| -> Box<dyn Error> { format!("acp cold task panicked: {e}").into() })?
-    .map_err(|e| -> Box<dyn Error> { e.into() })
+    let (answer, _) =
+        run_streaming_completion_inner(cfg, req, print_tokens, tagged, warm, false).await?;
+    Ok(answer)
 }
 
 /// Run a non-streaming LLM completion, using a pre-warmed session when available.
