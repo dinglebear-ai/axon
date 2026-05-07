@@ -225,7 +225,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
 
     // Validate collection name: it gets interpolated into Qdrant URL paths via format!()
     // with no percent-encoding. Reject anything that could break out of the path or
-    // collide with reserved characters (CWE-22 — bd axon_rust-d71.6 / H2).
+    // collide with reserved characters (CWE-22).
     validate_collection_name(&global.collection)?;
 
     // Load TOML config as the base layer (lowest priority file source).
@@ -483,10 +483,19 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
         custom_headers: validate_custom_headers(global.custom_headers)?,
         quiet: global.quiet,
         log_level: global.log_level,
-        server_url: global
+        server_url: match global
             .server_url
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty()),
+            .as_ref()
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+        {
+            Some(raw) => {
+                Some(reqwest::Url::parse(raw).map_err(|e| {
+                    format!("invalid --server-url / AXON_ASK_SERVER_URL '{raw}': {e}")
+                })?)
+            }
+            None => None,
+        },
     };
 
     // Validate output path parent exists when explicitly set

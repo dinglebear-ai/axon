@@ -7,6 +7,7 @@ use crate::crates::services::error::diagnostics_from_error;
 use crate::crates::services::query as query_svc;
 use crate::crates::services::types::AskResult;
 use std::error::Error;
+use std::net::IpAddr;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
@@ -14,17 +15,25 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         "command=ask query_len={} collection={} server_url={}",
         query.len(),
         cfg.collection,
-        cfg.server_url.as_deref().unwrap_or("(in-process)")
+        cfg.server_url
+            .as_ref()
+            .map(|u| u.as_str())
+            .unwrap_or("(in-process)")
     ));
 
-    let result = if let Some(server_url) = cfg.server_url.as_deref() {
+    let result = if let Some(server_url) = cfg.server_url.as_ref() {
         match ask_via_server(cfg, server_url, &query).await {
             Ok(result) => result,
             Err(err) => {
+                let msg = err.to_string();
+                let hint = hint_for_ask_error(&msg);
                 eprintln!(
-                    "{} ask failed via server-url '{server_url}': {err}\n  hint: ensure `axon serve` is running there, or unset --server-url / AXON_ASK_SERVER_URL to fall back to in-process ask.",
+                    "{} ask failed via server-url '{server_url}': {err}",
                     muted("Error:")
                 );
+                if let Some(h) = hint {
+                    eprintln!("  hint: {h}");
+                }
                 return Err(err);
             }
         }
@@ -67,15 +76,81 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Map an `ask_via_server` error message prefix to a short user hint.
+///
+/// Returns `None` when the error class doesn't have a useful, non-noisy hint
+/// (e.g. generic 4xx client errors). Kept as a pure function so unit tests
+/// can cover the full match without parsing stderr.
+pub(crate) fn hint_for_ask_error(msg: &str) -> Option<&'static str> {
+    if msg.starts_with("connect to ") {
+        return Some(
+            "ensure `axon serve` is running there, or unset --server-url / AXON_ASK_SERVER_URL to fall back to in-process ask.",
+        );
+    }
+    if msg.starts_with("server returned 401") || msg.starts_with("server returned 403") {
+        return Some("AXON_MCP_HTTP_TOKEN does not match the server's token.");
+    }
+    if msg.starts_with("server returned 4") {
+        return None;
+    }
+    if msg.starts_with("decode AskResult") {
+        return Some(
+            "server response did not match expected schema; check axon serve version compatibility.",
+        );
+    }
+    if msg.starts_with("refusing to send AXON_MCP_HTTP_TOKEN") {
+        return Some(
+            "set AXON_ASK_INSECURE=1 to override (not recommended), or use https / a loopback host.",
+        );
+    }
+    None
+}
+
+/// Returns true when `host_str` represents a loopback destination
+/// (127.0.0.0/8, ::1, or the literal "localhost").
+fn is_loopback_host(host_str: &str) -> bool {
+    if host_str.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // Strip optional bracketed IPv6 form ("[::1]") before parsing.
+    let trimmed = host_str
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(host_str);
+    if let Ok(ip) = trimmed.parse::<IpAddr>() {
+        return ip.is_loopback();
+    }
+    false
+}
+
+/// Returns Ok(()) if it is safe to attach a bearer token to a request to `url`.
+/// Refuses cleartext-bearer over `http://` to non-loopback hosts unless the user
+/// has set `AXON_ASK_INSECURE=1`.
+pub(crate) fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), String> {
+    if url.scheme() != "http" {
+        return Ok(());
+    }
+    let host = url.host_str().unwrap_or("");
+    if is_loopback_host(host) {
+        return Ok(());
+    }
+    if std::env::var("AXON_ASK_INSECURE").ok().as_deref() == Some("1") {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to send AXON_MCP_HTTP_TOKEN over plaintext HTTP to non-loopback host '{host}'; set AXON_ASK_INSECURE=1 to override (not recommended)"
+    ))
+}
+
 /// POST the ask request to a running `axon serve` instance and deserialize the
 /// `AskResult` response. The server reuses its WarmSessionPool so ACP cold-start
 /// is paid once at server boot, not per CLI invocation.
-async fn ask_via_server(
+pub(crate) async fn ask_via_server(
     cfg: &Config,
-    server_url: &str,
+    server_url: &reqwest::Url,
     query: &str,
 ) -> Result<AskResult, Box<dyn Error>> {
-    let endpoint = format!("{}/v1/ask", server_url.trim_end_matches('/'));
+    let endpoint = format!("{}/v1/ask", server_url.as_str().trim_end_matches('/'));
     let mut payload = serde_json::Map::new();
     payload.insert("query".into(), serde_json::Value::String(query.to_string()));
     payload.insert(
@@ -103,6 +178,11 @@ async fn ask_via_server(
     if let Ok(token) = std::env::var("AXON_MCP_HTTP_TOKEN")
         && !token.trim().is_empty()
     {
+        // Cleartext-bearer guard: refuse to send the token over `http://` to a
+        // non-loopback host unless the user explicitly opts in. The check lives
+        // here (not in the type's constructor) because the token is read from
+        // env at request time, not at config-build time.
+        check_cleartext_token_allowed(server_url).map_err(|e| -> Box<dyn Error> { e.into() })?;
         req = req.bearer_auth(token.trim());
     }
 
@@ -112,7 +192,10 @@ async fn ask_via_server(
         .map_err(|e| -> Box<dyn Error> { format!("connect to {endpoint}: {e}").into() })?;
     let status = resp.status();
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<body read failed: {e}>"));
         return Err(format!("server returned {status}: {body}").into());
     }
     let result: AskResult = resp.json().await.map_err(|e| -> Box<dyn Error> {
@@ -146,3 +229,6 @@ fn print_diagnostics(diag: &Option<crate::crates::services::types::AskDiagnostic
         );
     }
 }
+
+#[cfg(test)]
+mod ask_via_server_tests;

@@ -373,6 +373,11 @@ pub(in crate::crates::core::config) struct GlobalArgs {
     /// ACP synthesis in-process. Reuses the server's WarmSessionPool so cold ACP startup
     /// (~45s) is paid once at server boot, not on every invocation. Example:
     /// `--server-url http://127.0.0.1:8001`. Env: `AXON_ASK_SERVER_URL`.
+    ///
+    /// Parsed into a `url::Url` at config-build time; malformed values are rejected with a
+    /// clear error before any command runs. If the resolved scheme is `http` and the host
+    /// is non-loopback, the CLI refuses to attach `AXON_MCP_HTTP_TOKEN` (cleartext-bearer
+    /// guard); set `AXON_ASK_INSECURE=1` to override.
     #[arg(global = true, long, env = "AXON_ASK_SERVER_URL")]
     pub(in crate::crates::core::config) server_url: Option<String>,
 }
