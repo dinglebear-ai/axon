@@ -3,7 +3,6 @@ use crate::core::http::http_client;
 use crate::core::logging::log_warn;
 use crate::services::acp_llm::WarmAcpSession;
 use std::error::Error;
-use std::io::IsTerminal as _;
 use std::time::Instant;
 
 use super::super::streaming::{ask_llm_non_streaming, ask_llm_streaming_ttft};
@@ -30,10 +29,10 @@ pub(crate) async fn ask_llm_answer(
 ) -> Result<AskLlmCompletion, Box<dyn Error>> {
     let client = http_client()?;
     let llm_started = Instant::now();
-    // Stream tokens to stdout only when writing to an interactive terminal and
-    // not in JSON output mode. MCP (stdout = JSON-RPC pipe) and web callers
-    // (no terminal) correctly get false here — no protocol corruption.
-    let stream_to_stdout = !cfg.json_output && std::io::stdout().is_terminal();
+    // Keep stdout rendering centralized in the CLI command. The streaming path
+    // still gives TTFT/fallback behavior, but token deltas printed here would be
+    // followed by the CLI's final formatted answer.
+    let stream_to_stdout = false;
 
     // The error type from streaming is `Box<dyn StdError>` (!Send). Collapse it
     // into Option<(String, Option<Instant>)> + Option<String> here so the !Send
