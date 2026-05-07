@@ -16,25 +16,44 @@ use crate::crates::services::types::{AcpBridgeEvent, AcpPromptTurnRequest, AcpSe
 use super::runner::{CompletionTurnState, compose_prompt, resolve_adapter_command};
 use super::types::{AcpCompletionRequest, AcpCompletionResponse};
 
+/// How a [`WarmAcpSession`] came to exist. Captured at construction; used by
+/// ask-timing instrumentation as the canonical warm-vs-cold signal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WarmAcpSessionOrigin {
+    /// Checked out from the pre-warmed pool (cache hit, no subprocess spawn).
+    Pool,
+    /// Freshly spawned via `spawn_warm_session` because the pool was empty or
+    /// the adapter cold-start path was selected.
+    FreshSpawn,
+    /// Spawned because the caller passed an event channel (`tx.is_some()`),
+    /// which bypasses the pool since pooled sessions have no event forwarding.
+    EventChannelBypass,
+}
+
+impl WarmAcpSessionOrigin {
+    /// Stable string label suitable for emitting into structured logs / JSON.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WarmAcpSessionOrigin::Pool => "Pool",
+            WarmAcpSessionOrigin::FreshSpawn => "FreshSpawn",
+            WarmAcpSessionOrigin::EventChannelBypass => "EventChannelBypass",
+        }
+    }
+}
+
 /// A pre-warmed ACP adapter connection ready to receive a prompt turn.
 ///
 /// Created by [`warm_session`]; the adapter subprocess starts immediately so its
 /// cold-start overlaps with other work (e.g. a Tavily search).
 pub struct WarmAcpSession {
     pub(super) handle: AcpConnectionHandle,
-    /// True when this session was checked out from the pre-warmed pool (cache
-    /// hit). False when freshly spawned (cold path). Used by ask-timing
-    /// instrumentation as the canonical warm-vs-cold signal — see bd
-    /// `axon_rust-nm9`.
-    pub(super) from_pool: bool,
+    /// Origin signal — set at construction, never recomputed.
+    pub(super) origin: WarmAcpSessionOrigin,
 }
 
 impl WarmAcpSession {
-    /// True when this session was checked out from the warm pool (cache hit),
-    /// false when freshly spawned. The signal is captured at session creation
-    /// and remains valid for the lifetime of the handle.
-    pub fn from_pool(&self) -> bool {
-        self.from_pool
+    pub fn origin(&self) -> WarmAcpSessionOrigin {
+        self.origin
     }
 }
 
@@ -83,7 +102,7 @@ pub(super) fn spawn_warm_session(
     ));
     Ok(WarmAcpSession {
         handle,
-        from_pool: false,
+        origin: WarmAcpSessionOrigin::FreshSpawn,
     })
 }
 
@@ -94,17 +113,22 @@ pub(super) fn spawn_warm_session(
 /// one-shot spawn via [`spawn_warm_session`].
 ///
 /// For callers passing an event channel (`tx.is_some()`), pool sessions are
-/// bypassed because they were created without event forwarding.
+/// bypassed because they were created without event forwarding; the resulting
+/// session is tagged `EventChannelBypass` so timing data can distinguish it
+/// from a pool-miss `FreshSpawn`.
 pub fn warm_session(
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<WarmAcpSession, Box<dyn StdError>> {
-    if tx.is_none()
-        && let Some(session) = super::pool::try_checkout(cfg)
-    {
+    let bypass = tx.is_some();
+    if !bypass && let Some(session) = super::pool::try_checkout(cfg) {
         return Ok(session);
     }
-    spawn_warm_session(cfg, tx)
+    let mut session = spawn_warm_session(cfg, tx)?;
+    if bypass {
+        session.origin = WarmAcpSessionOrigin::EventChannelBypass;
+    }
+    Ok(session)
 }
 
 impl WarmAcpSession {

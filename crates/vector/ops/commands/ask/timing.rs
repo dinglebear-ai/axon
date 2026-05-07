@@ -1,31 +1,28 @@
 //! Sub-stage timing instrumentation for the `ask` pipeline.
 //!
-//! A single [`AskTiming`] struct is threaded through the ask pipeline
-//! (`build_ask_context` → `retrieve_ask_candidates` / `build_context_from_candidates`
-//! → `ask_llm_answer` → `streaming::run_streaming_completion`). Each stage records
-//! its own bucket. The aggregator in `ask.rs` folds the struct into the JSON
-//! payload alongside the legacy 5-bucket `timing_ms` shape.
-//!
-//! Capture is gated on `cfg.ask_diagnostics`: when disabled, the struct is still
-//! threaded but every `Option<u128>` field stays `None` (and is omitted from JSON
-//! via `skip_serializing_if`). Instant probes only fire when diagnostics is on,
-//! keeping the no-diagnostics path free of instrumentation overhead.
-//!
-//! See bd `axon_rust-nm9` for design rationale.
+//! Capture is gated on `cfg.ask_diagnostics` so the no-diagnostics path stays
+//! free of `Instant` probes; that invariant is encoded in the type — the
+//! `Disabled` variant has no slots, so probes that would write to a slot are
+//! statically no-ops.
 
 use std::time::Instant;
 
 /// Mutable accumulator for ask sub-stage timings. Threaded by `&mut` through
-/// the pipeline. `request_start` is captured at the CLI entry boundary so
-/// `llm_ttft_ms` includes ACP cold-start, not just retrieval-onwards latency.
+/// the pipeline.
 #[derive(Debug, Clone)]
-pub(crate) struct AskTiming {
-    /// True when diagnostic capture is enabled; false skips Instant probes.
-    pub diagnostics_enabled: bool,
-    /// Request start time — captured at CLI dispatch boundary (run_ask), used
-    /// as the TTFT origin so the cold-start ACP tax is included.
-    pub request_start: Instant,
+pub(crate) enum AskTiming {
+    /// Diagnostics off — only carries `request_start` for the disabled-eval
+    /// path so the helper can be constructed without `Some(Instant)` plumbing.
+    Disabled { request_start: Option<Instant> },
+    /// Diagnostics on — every slot captures.
+    Enabled(Box<EnabledAskTiming>),
+}
 
+#[derive(Debug, Clone)]
+pub(crate) struct EnabledAskTiming {
+    /// Request start time captured at the CLI dispatch boundary, used as the
+    /// TTFT origin so any ACP cold-start tax is included.
+    pub request_start: Instant,
     pub warm_session_ready_ms: Option<u128>,
     pub tei_embed_ms: Option<u128>,
     pub qdrant_primary_ms: Option<u128>,
@@ -36,67 +33,99 @@ pub(crate) struct AskTiming {
     pub supplemental_ms: Option<u128>,
     pub llm_ttft_ms: Option<u128>,
     pub llm_total_ms: Option<u128>,
-    pub llm_warm_path: Option<bool>,
+    pub llm_warm_path: Option<String>,
+    pub streamed: Option<bool>,
     pub normalize_ms: Option<u128>,
 }
 
 impl AskTiming {
     pub(crate) fn new(diagnostics_enabled: bool, request_start: Instant) -> Self {
-        Self {
-            diagnostics_enabled,
-            request_start,
-            warm_session_ready_ms: None,
-            tei_embed_ms: None,
-            qdrant_primary_ms: None,
-            qdrant_secondary_ms: None,
-            rerank_ms: None,
-            top_select_ms: None,
-            full_doc_fetch_ms: None,
-            supplemental_ms: None,
-            llm_ttft_ms: None,
-            llm_total_ms: None,
-            llm_warm_path: None,
-            normalize_ms: None,
+        if diagnostics_enabled {
+            AskTiming::Enabled(Box::new(EnabledAskTiming {
+                request_start,
+                warm_session_ready_ms: None,
+                tei_embed_ms: None,
+                qdrant_primary_ms: None,
+                qdrant_secondary_ms: None,
+                rerank_ms: None,
+                top_select_ms: None,
+                full_doc_fetch_ms: None,
+                supplemental_ms: None,
+                llm_ttft_ms: None,
+                llm_total_ms: None,
+                llm_warm_path: None,
+                streamed: None,
+                normalize_ms: None,
+            }))
+        } else {
+            AskTiming::Disabled {
+                request_start: Some(request_start),
+            }
         }
     }
 
-    /// Capture-helper: records the elapsed time from `t` into `slot` only when
-    /// diagnostics is on. No-op otherwise.
-    pub(crate) fn record(&mut self, slot: AskTimingSlot, t: Instant) {
-        if !self.diagnostics_enabled {
-            return;
+    /// Disabled accumulator with no request_start (used by paths like
+    /// `evaluate` that don't emit ask sub-stage timing).
+    pub(crate) fn disabled() -> Self {
+        AskTiming::Disabled {
+            request_start: None,
         }
+    }
+
+    /// Returns the captured request-start `Instant` when one exists.
+    pub(crate) fn request_start(&self) -> Option<Instant> {
+        match self {
+            AskTiming::Disabled { request_start } => *request_start,
+            AskTiming::Enabled(e) => Some(e.request_start),
+        }
+    }
+
+    /// Borrow the enabled inner state when diagnostics is on.
+    pub(crate) fn enabled(&self) -> Option<&EnabledAskTiming> {
+        match self {
+            AskTiming::Enabled(e) => Some(e.as_ref()),
+            AskTiming::Disabled { .. } => None,
+        }
+    }
+
+    pub(crate) fn record(&mut self, slot: AskTimingSlot, t: Instant) {
         let v = t.elapsed().as_millis();
         self.set(slot, v);
     }
 
     pub(crate) fn set(&mut self, slot: AskTimingSlot, v: u128) {
-        if !self.diagnostics_enabled {
+        let AskTiming::Enabled(e) = self else {
             return;
-        }
+        };
         match slot {
-            AskTimingSlot::WarmSessionReady => self.warm_session_ready_ms = Some(v),
-            AskTimingSlot::TeiEmbed => self.tei_embed_ms = Some(v),
-            AskTimingSlot::QdrantPrimary => self.qdrant_primary_ms = Some(v),
-            AskTimingSlot::QdrantSecondary => self.qdrant_secondary_ms = Some(v),
-            AskTimingSlot::Rerank => self.rerank_ms = Some(v),
-            AskTimingSlot::TopSelect => self.top_select_ms = Some(v),
-            AskTimingSlot::FullDocFetch => self.full_doc_fetch_ms = Some(v),
-            AskTimingSlot::Supplemental => self.supplemental_ms = Some(v),
-            AskTimingSlot::LlmTotal => self.llm_total_ms = Some(v),
-            AskTimingSlot::Normalize => self.normalize_ms = Some(v),
+            AskTimingSlot::WarmSessionReady => e.warm_session_ready_ms = Some(v),
+            AskTimingSlot::TeiEmbed => e.tei_embed_ms = Some(v),
+            AskTimingSlot::QdrantPrimary => e.qdrant_primary_ms = Some(v),
+            AskTimingSlot::QdrantSecondary => e.qdrant_secondary_ms = Some(v),
+            AskTimingSlot::Rerank => e.rerank_ms = Some(v),
+            AskTimingSlot::TopSelect => e.top_select_ms = Some(v),
+            AskTimingSlot::FullDocFetch => e.full_doc_fetch_ms = Some(v),
+            AskTimingSlot::Supplemental => e.supplemental_ms = Some(v),
+            AskTimingSlot::LlmTotal => e.llm_total_ms = Some(v),
+            AskTimingSlot::Normalize => e.normalize_ms = Some(v),
         }
     }
 
-    pub(crate) fn set_warm_path(&mut self, warm_path: bool) {
-        if self.diagnostics_enabled {
-            self.llm_warm_path = Some(warm_path);
+    pub(crate) fn set_warm_path(&mut self, warm_path: impl Into<String>) {
+        if let AskTiming::Enabled(e) = self {
+            e.llm_warm_path = Some(warm_path.into());
         }
     }
 
     pub(crate) fn set_ttft(&mut self, ttft_ms: u128) {
-        if self.diagnostics_enabled {
-            self.llm_ttft_ms = Some(ttft_ms);
+        if let AskTiming::Enabled(e) = self {
+            e.llm_ttft_ms = Some(ttft_ms);
+        }
+    }
+
+    pub(crate) fn set_streamed(&mut self, streamed: bool) {
+        if let AskTiming::Enabled(e) = self {
+            e.streamed = Some(streamed);
         }
     }
 }
@@ -125,11 +154,10 @@ mod tests {
         let probe = Instant::now();
         std::thread::sleep(std::time::Duration::from_millis(2));
         t.record(AskTimingSlot::TeiEmbed, probe);
-        assert!(t.tei_embed_ms.is_none());
         t.set_ttft(42);
-        assert!(t.llm_ttft_ms.is_none());
-        t.set_warm_path(true);
-        assert!(t.llm_warm_path.is_none());
+        t.set_warm_path("Pool");
+        t.set_streamed(true);
+        assert!(t.enabled().is_none());
     }
 
     #[test]
@@ -138,10 +166,20 @@ mod tests {
         let probe = Instant::now();
         std::thread::sleep(std::time::Duration::from_millis(2));
         t.record(AskTimingSlot::TeiEmbed, probe);
-        assert!(t.tei_embed_ms.is_some_and(|v| v >= 1));
-        t.set_warm_path(false);
-        assert_eq!(t.llm_warm_path, Some(false));
+        t.set_warm_path("FreshSpawn");
         t.set_ttft(99);
-        assert_eq!(t.llm_ttft_ms, Some(99));
+        t.set_streamed(false);
+        let e = t.enabled().expect("enabled");
+        assert!(e.tei_embed_ms.is_some_and(|v| v >= 1));
+        assert_eq!(e.llm_warm_path.as_deref(), Some("FreshSpawn"));
+        assert_eq!(e.llm_ttft_ms, Some(99));
+        assert_eq!(e.streamed, Some(false));
+    }
+
+    #[test]
+    fn disabled_helper_has_no_request_start() {
+        let t = AskTiming::disabled();
+        assert!(t.request_start().is_none());
+        assert!(t.enabled().is_none());
     }
 }

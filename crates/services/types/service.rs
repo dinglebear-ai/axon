@@ -296,8 +296,7 @@ pub struct AskTiming {
     pub graph: u128,
     pub llm: u128,
     pub total: u128,
-    // Sub-stage instrumentation (bd axon_rust-nm9). Populated when
-    // AXON_ASK_DIAGNOSTICS=true; otherwise these serialize as absent.
+    // Populated only when ask_diagnostics=true; otherwise omitted via skip_serializing_if.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub warm_session_ready_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -318,8 +317,12 @@ pub struct AskTiming {
     pub llm_ttft_ms: Option<u128>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_total_ms: Option<u128>,
+    /// Origin variant of the warm session: `Pool` / `FreshSpawn` /
+    /// `EventChannelBypass` / `FailedFallback`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub llm_warm_path: Option<bool>,
+    pub llm_warm_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streamed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub normalize_ms: Option<u128>,
 }
