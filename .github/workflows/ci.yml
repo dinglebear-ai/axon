@@ -136,7 +136,7 @@ jobs:
         run: |
           set -euo pipefail
           failures=()
-          for file in $(rg -l 'ensure_schema' crates/jobs/ 2>/dev/null || true); do
+          for file in $(rg -l 'ensure_schema' src/jobs/ 2>/dev/null || true); do
             if ! rg -q 'begin_schema_migration_tx|advisory' "$file" 2>/dev/null; then
               failures+=("$file")
             fi
@@ -158,9 +158,9 @@ jobs:
           set -euo pipefail
           # This function bypasses all adapter command validation.
           # The definition in acp.rs is allowed; calls must only exist in tests/.
-          if rg -n "spawn_adapter_skip_validation" crates/ --glob '*.rs' \
-               --glob '!crates/services/acp.rs'; then
-            echo "ERROR: spawn_adapter_skip_validation called in crates/ — gate it behind #[cfg(test)] or move call to tests/"
+          if rg -n "spawn_adapter_skip_validation" src/ --glob '*.rs' \
+               --glob '!src/services/acp.rs'; then
+            echo "ERROR: spawn_adapter_skip_validation called in src/ — gate it behind #[cfg(test)] or move call to tests/"
             exit 1
           fi
           echo "OK: spawn_adapter_skip_validation not called from production code paths"

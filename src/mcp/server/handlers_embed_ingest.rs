@@ -1,0 +1,469 @@
+use super::AxonMcpServer;
+use super::common::{
+    InlineHint, invalid_params, logged_internal_error, parse_job_id, parse_limit, parse_offset,
+    respond_with_mode, validate_mcp_embed_input,
+};
+use crate::core::config::Config;
+use crate::mcp::schema::{
+    AxonToolResponse, EmbedRequest, EmbedSubaction, IngestRequest, IngestSourceType,
+    IngestSubaction, ResponseMode, SessionsIngestOptions,
+};
+use crate::services::embed::{
+    embed_cancel, embed_cleanup, embed_clear, embed_list, embed_recover, embed_start_with_context,
+    embed_status,
+};
+use crate::services::ingest::{
+    IngestSource, ingest_cancel, ingest_cleanup, ingest_clear, ingest_list, ingest_recover,
+    ingest_start_with_context, ingest_status,
+};
+use rmcp::ErrorData;
+
+fn parse_ingest_source(
+    source_type: Option<IngestSourceType>,
+    target: Option<String>,
+    sessions: Option<SessionsIngestOptions>,
+    include_source: Option<bool>,
+    cfg: &Config,
+) -> Result<IngestSource, ErrorData> {
+    let source_type =
+        source_type.ok_or_else(|| invalid_params("source_type is required for ingest.start"))?;
+    match source_type {
+        IngestSourceType::Github => {
+            let repo = target
+                .ok_or_else(|| invalid_params("target repo is required for github ingest"))?;
+            let (owner, name) =
+                crate::ingest::github::parse_github_repo(&repo).ok_or_else(|| {
+                    invalid_params(
+                        "invalid GitHub target; expected owner/repo or github.com/owner/repo",
+                    )
+                })?;
+            Ok(IngestSource::Github {
+                repo: format!("{owner}/{name}"),
+                include_source: include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
+        IngestSourceType::Reddit => {
+            let target =
+                target.ok_or_else(|| invalid_params("target is required for reddit ingest"))?;
+            validate_mcp_reddit_target(&target)?;
+            Ok(IngestSource::Reddit { target })
+        }
+        IngestSourceType::Youtube => {
+            let target =
+                target.ok_or_else(|| invalid_params("target is required for youtube ingest"))?;
+            if crate::ingest::youtube::extract_video_id(&target).is_none()
+                && !crate::ingest::youtube::is_playlist_or_channel_url(&target)
+            {
+                return Err(invalid_params(
+                    "invalid YouTube target; expected video URL, bare video ID, playlist URL, or channel URL",
+                ));
+            }
+            Ok(IngestSource::Youtube { target })
+        }
+        IngestSourceType::Sessions => {
+            let sessions = sessions.unwrap_or(SessionsIngestOptions {
+                claude: None,
+                codex: None,
+                gemini: None,
+                project: None,
+            });
+            Ok(IngestSource::Sessions {
+                sessions_claude: sessions.claude.unwrap_or(false),
+                sessions_codex: sessions.codex.unwrap_or(false),
+                sessions_gemini: sessions.gemini.unwrap_or(false),
+                sessions_project: sessions.project,
+            })
+        }
+    }
+}
+
+fn validate_mcp_reddit_target(target: &str) -> Result<(), ErrorData> {
+    match crate::ingest::reddit::classify_target(target)
+        .map_err(|e| invalid_params(e.to_string()))?
+    {
+        crate::ingest::reddit::RedditTarget::Subreddit(name) => {
+            let len = name.len();
+            let valid = (3..=21).contains(&len)
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid {
+                Ok(())
+            } else {
+                Err(invalid_params(
+                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'",
+                ))
+            }
+        }
+        crate::ingest::reddit::RedditTarget::Thread(url) => {
+            if url.starts_with("/r/") && url.contains("/comments/") {
+                Ok(())
+            } else {
+                Err(invalid_params(
+                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink",
+                ))
+            }
+        }
+    }
+}
+
+impl AxonMcpServer {
+    async fn handle_embed_start(
+        &self,
+        input: Option<String>,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let input = input.ok_or_else(|| invalid_params("input is required for embed.start"))?;
+        let input = validate_mcp_embed_input(&input)?;
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("embed.start.context", e.as_ref()))?;
+        let outcome =
+            embed_start_with_context(self.cfg.as_ref(), &input, &service_context, None, None)
+                .await
+                .map_err(|e| logged_internal_error("embed.start", e.as_ref()))?;
+        Ok(AxonToolResponse::ok(
+            "embed",
+            "start",
+            serde_json::json!({ "job_id": outcome.result.job_id }),
+        ))
+    }
+
+    async fn handle_embed_list(
+        &self,
+        limit: Option<i64>,
+        offset: Option<usize>,
+        response_mode: Option<ResponseMode>,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let limit = parse_limit(limit, 20);
+        let offset = parse_offset(offset);
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("embed.list.context", e.as_ref()))?;
+        let jobs = embed_list(
+            service_context.as_ref(),
+            limit,
+            i64::try_from(offset).unwrap_or(i64::MAX),
+        )
+        .await
+        .map_err(|e| logged_internal_error("embed.list", e.as_ref()))?;
+        respond_with_mode(
+            "embed",
+            "list",
+            response_mode,
+            "embed-list",
+            serde_json::json!({ "jobs": jobs.payload, "limit": limit, "offset": offset }),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_embed(
+        &self,
+        req: EmbedRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let response_mode = req.response_mode;
+        match req.subaction.unwrap_or(EmbedSubaction::Start) {
+            EmbedSubaction::Start => self.handle_embed_start(req.input).await,
+            EmbedSubaction::Status => {
+                let id = parse_job_id(req.job_id.as_deref())?;
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.status.context", e.as_ref()))?;
+                let job = embed_status(service_context.as_ref(), id)
+                    .await
+                    .map_err(|e| logged_internal_error("embed.status", e.as_ref()))?;
+                respond_with_mode(
+                    "embed",
+                    "status",
+                    response_mode,
+                    &format!("embed-status-{id}"),
+                    serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
+                )
+                .await
+            }
+            EmbedSubaction::Cancel => {
+                let id = parse_job_id(req.job_id.as_deref())?;
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cancel.context", e.as_ref()))?;
+                let canceled = embed_cancel(service_context.as_ref(), id)
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cancel", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "embed",
+                    "cancel",
+                    serde_json::json!({ "job_id": id.to_string(), "canceled": canceled }),
+                ))
+            }
+            EmbedSubaction::List => {
+                self.handle_embed_list(req.limit, req.offset, response_mode)
+                    .await
+            }
+            EmbedSubaction::Cleanup => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cleanup.context", e.as_ref()))?;
+                let deleted = embed_cleanup(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("embed.cleanup", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "embed",
+                    "cleanup",
+                    serde_json::json!({ "deleted": deleted }),
+                ))
+            }
+            EmbedSubaction::Clear => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.clear.context", e.as_ref()))?;
+                let deleted = embed_clear(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("embed.clear", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "embed",
+                    "clear",
+                    serde_json::json!({ "deleted": deleted }),
+                ))
+            }
+            EmbedSubaction::Recover => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("embed.recover.context", e.as_ref()))?;
+                let recovered = embed_recover(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("embed.recover", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "embed",
+                    "recover",
+                    serde_json::json!({ "recovered": recovered }),
+                ))
+            }
+        }
+    }
+
+    async fn handle_ingest_start(
+        &self,
+        mut req: IngestRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let source = parse_ingest_source(
+            req.source_type.take(),
+            req.target.take(),
+            req.sessions.take(),
+            req.include_source,
+            self.cfg.as_ref(),
+        )?;
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("ingest.start.context", e.as_ref()))?;
+        let outcome = ingest_start_with_context(self.cfg.as_ref(), source, &service_context)
+            .await
+            .map_err(|e| logged_internal_error("ingest.start", e.as_ref()))?;
+        Ok(AxonToolResponse::ok(
+            "ingest",
+            "start",
+            serde_json::json!({ "job_id": outcome.result.job_id }),
+        ))
+    }
+
+    async fn handle_ingest_list(
+        &self,
+        limit: Option<i64>,
+        offset: Option<usize>,
+        response_mode: Option<ResponseMode>,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let limit = parse_limit(limit, 20);
+        let offset = parse_offset(offset);
+        let service_context = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("ingest.list.context", e.as_ref()))?;
+        let offset_i64 = i64::try_from(offset).unwrap_or(i64::MAX);
+        let result = ingest_list(service_context.as_ref(), limit, offset_i64)
+            .await
+            .map_err(|e| logged_internal_error("ingest.list", e.as_ref()))?;
+        // Derive truncation from page fullness — avoids a separate count query
+        // that would bypass the service context and fail in lite mode.
+        let page_len = result.payload.as_array().map_or(0, |a| a.len() as i64);
+        let truncated = page_len >= limit;
+        respond_with_mode(
+            "ingest",
+            "list",
+            response_mode,
+            "ingest-list",
+            serde_json::json!({
+                "jobs": result.payload,
+                "limit": limit,
+                "offset": offset,
+                "truncated": truncated,
+            }),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_ingest(
+        &self,
+        req: IngestRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let response_mode = req.response_mode;
+        match req.subaction.unwrap_or(IngestSubaction::Start) {
+            IngestSubaction::Start => self.handle_ingest_start(req).await,
+            IngestSubaction::Status => {
+                let id = parse_job_id(req.job_id.as_deref())?;
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.status.context", e.as_ref()))?;
+                let job = ingest_status(service_context.as_ref(), id)
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.status", e.as_ref()))?;
+                respond_with_mode(
+                    "ingest",
+                    "status",
+                    response_mode,
+                    &format!("ingest-status-{id}"),
+                    serde_json::json!({ "job": job.map(|j| j.payload) }),
+                    InlineHint::Default,
+                )
+                .await
+            }
+            IngestSubaction::Cancel => {
+                let id = parse_job_id(req.job_id.as_deref())?;
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cancel.context", e.as_ref()))?;
+                let canceled = ingest_cancel(service_context.as_ref(), id)
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cancel", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "ingest",
+                    "cancel",
+                    serde_json::json!({ "job_id": id.to_string(), "canceled": canceled }),
+                ))
+            }
+            IngestSubaction::List => {
+                self.handle_ingest_list(req.limit, req.offset, response_mode)
+                    .await
+            }
+            IngestSubaction::Cleanup => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cleanup.context", e.as_ref()))?;
+                let deleted = ingest_cleanup(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.cleanup", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "ingest",
+                    "cleanup",
+                    serde_json::json!({ "deleted": deleted }),
+                ))
+            }
+            IngestSubaction::Clear => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.clear.context", e.as_ref()))?;
+                let deleted = ingest_clear(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.clear", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "ingest",
+                    "clear",
+                    serde_json::json!({ "deleted": deleted }),
+                ))
+            }
+            IngestSubaction::Recover => {
+                let service_context = self
+                    .base_service_context()
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.recover.context", e.as_ref()))?;
+                let recovered = ingest_recover(service_context.as_ref())
+                    .await
+                    .map_err(|e| logged_internal_error("ingest.recover", e.as_ref()))?;
+                Ok(AxonToolResponse::ok(
+                    "ingest",
+                    "recover",
+                    serde_json::json!({ "recovered": recovered }),
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ingest_source_normalizes_github_url() {
+        let cfg = Config::default();
+        let source = parse_ingest_source(
+            Some(IngestSourceType::Github),
+            Some("https://github.com/owner/repo.git".to_string()),
+            None,
+            Some(false),
+            &cfg,
+        )
+        .expect("valid github target");
+        assert!(matches!(
+            source,
+            IngestSource::Github {
+                repo,
+                include_source: false,
+            } if repo == "owner/repo"
+        ));
+    }
+
+    #[test]
+    fn parse_ingest_source_rejects_invalid_github_target() {
+        let cfg = Config::default();
+        let err = parse_ingest_source(
+            Some(IngestSourceType::Github),
+            Some("owner/repo/extra".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect_err("invalid target should fail");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn parse_ingest_source_rejects_non_reddit_comments_url() {
+        let cfg = Config::default();
+        let err = parse_ingest_source(
+            Some(IngestSourceType::Reddit),
+            Some("https://example.com/r/rust/comments/abc/title".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect_err("non-reddit thread URL should fail");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn parse_ingest_source_accepts_youtube_handle() {
+        let cfg = Config::default();
+        let source = parse_ingest_source(
+            Some(IngestSourceType::Youtube),
+            Some("https://www.youtube.com/@SpaceinvaderOne".to_string()),
+            None,
+            None,
+            &cfg,
+        )
+        .expect("valid youtube channel target");
+        assert!(
+            matches!(source, IngestSource::Youtube { target } if target.contains("@SpaceinvaderOne"))
+        );
+    }
+}

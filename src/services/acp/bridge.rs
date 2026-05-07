@@ -1,0 +1,632 @@
+//! ACP bridge client: implements the `agent_client_protocol::Client` trait,
+//! forwarding session notifications and permission requests through the
+//! service event channel.
+
+mod state;
+pub mod terminal;
+pub use state::*;
+
+use crate::services::events::{LogLevel, ServiceEvent, emit, emit_nonblocking};
+use crate::services::types::AcpSessionUpdateKind;
+use agent_client_protocol::{
+    Client, CreateTerminalRequest, CreateTerminalResponse, ExtNotification, ExtRequest,
+    ExtResponse, KillTerminalRequest, KillTerminalResponse, ReadTextFileRequest,
+    ReadTextFileResponse, ReleaseTerminalRequest, ReleaseTerminalResponse,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SessionNotification, TerminalExitStatus, TerminalOutputRequest, TerminalOutputResponse,
+    WaitForTerminalExitRequest, WaitForTerminalExitResponse, WriteTextFileRequest,
+    WriteTextFileResponse,
+};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use super::PermissionResponderMap;
+use super::mapping::{
+    extract_text_delta, map_permission_request_event, map_session_notification_event,
+    map_session_update_kind,
+};
+use super::permission::{auto_approve_outcome, handle_interactive_permission};
+
+// ── Bridge client ───────────────────────────────────────────────────────────
+
+/// Handler map for inbound extension method requests (FR-025).
+/// Keyed by method name; value is a sync fn returning an ACP result.
+type ExtMethodHandlerMap = Rc<
+    RefCell<
+        std::collections::HashMap<
+            String,
+            Box<dyn Fn(ExtRequest) -> agent_client_protocol::Result<ExtResponse>>,
+        >,
+    >,
+>;
+
+/// Handler map for inbound extension notifications (FR-026).
+/// Keyed by method name; value is a fire-and-forget fn.
+type ExtNotificationHandlerMap =
+    Rc<RefCell<std::collections::HashMap<String, Box<dyn Fn(ExtNotification)>>>>;
+
+/// `Arc<AcpRuntimeState>` — no Mutex wrapper needed because
+/// `AcpRuntimeState` uses `RefCell` internally (not thread-safe).  Cloning
+/// `AcpBridgeClient` shares the same state across spawned tasks safely
+/// because the ACP runtime runs on a `current_thread` tokio runtime inside
+/// a `LocalSet`, guaranteeing single-threaded access.  The `?Send` bound on
+/// the `Client` trait impl enforces this at compile time.
+#[derive(Clone)]
+pub struct AcpBridgeClient {
+    pub(super) runtime_state: Arc<AcpRuntimeState>,
+    /// When true, permissions are auto-approved without waiting for frontend.
+    pub(super) auto_approve: bool,
+    /// Pending permission response channels keyed by tool_call_id.
+    pub(super) permission_responders: PermissionResponderMap,
+    /// Working directory for this session — used to validate fs paths from the adapter.
+    pub(super) session_cwd: std::path::PathBuf,
+    /// Terminal subprocess manager for this session.
+    pub(super) terminal_manager: Rc<RefCell<terminal::TerminalManager>>,
+    /// Registered handlers for inbound extension method requests (FR-025).
+    /// Keyed by method name (without `_` prefix). Returns `method_not_found`
+    /// when no entry matches. Callers populate this map before starting a turn.
+    pub(super) ext_method_handlers: ExtMethodHandlerMap,
+    /// Registered handlers for inbound extension notifications (FR-026).
+    /// Keyed by method name (without `_` prefix). WARN-logs when no handler
+    /// matches — notifications are fire-and-forget so no error is returned.
+    pub(super) ext_notification_handlers: ExtNotificationHandlerMap,
+}
+
+// ── Path validation ──────────────────────────────────────────────────────────
+
+/// Resolve `path` relative to `cwd` and ensure it stays within `cwd`.
+///
+/// Uses two strategies depending on whether the target must already exist:
+///
+/// - **Read paths** (`for_write = false`): calls `canonicalize()` on both the
+///   resolved path and `cwd` to expand symlinks before the `starts_with` check.
+///   Symlinks that point outside `cwd` (e.g. `<cwd>/escape -> /etc`) are caught
+///   because `canonicalize` resolves the link target.  Returns
+///   `Err(resource_not_found)` when the path does not exist on disk.
+///
+/// - **Write paths** (`for_write = true`): `canonicalize()` would fail for
+///   files that do not exist yet.  The parent directory is canonicalized instead
+///   (it must exist) and the final component is appended verbatim.  Symlinks to
+///   directories inside `cwd` that themselves point outside `cwd` are caught
+///   because the parent is resolved.
+///
+/// Returns `Err(internal_error)` if the resolved path would escape the working
+/// directory, or if the parent directory does not exist (write path).
+fn validate_fs_path(
+    cwd: &std::path::Path,
+    path: &std::path::Path,
+    for_write: bool,
+) -> agent_client_protocol::Result<std::path::PathBuf> {
+    let base = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+
+    if for_write {
+        // For writes the target file may not exist yet — canonicalize the
+        // parent directory and then reattach the file name.
+        let parent = base.parent().unwrap_or(std::path::Path::new("."));
+        let canonical_parent = parent
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        let canonical_root = cwd
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        if !canonical_parent.starts_with(&canonical_root) {
+            return Err(agent_client_protocol::Error::internal_error());
+        }
+        let file_name = base
+            .file_name()
+            .ok_or_else(agent_client_protocol::Error::internal_error)?;
+        Ok(canonical_parent.join(file_name))
+    } else {
+        // For reads the path must exist — canonicalize resolves all symlinks.
+        let canonical = base.canonicalize().map_err(|_| {
+            agent_client_protocol::Error::resource_not_found(Some(
+                base.to_string_lossy().into_owned(),
+            ))
+        })?;
+        let canonical_root = cwd
+            .canonicalize()
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        if !canonical.starts_with(&canonical_root) {
+            return Err(agent_client_protocol::Error::internal_error());
+        }
+        Ok(canonical)
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl Client for AcpBridgeClient {
+    async fn request_permission(
+        &self,
+        args: RequestPermissionRequest,
+    ) -> agent_client_protocol::Result<RequestPermissionResponse> {
+        // Use the current turn's service_tx. Clone to release borrow before awaits.
+        let service_tx = self.runtime_state.service_tx.borrow().clone();
+        // Blocking emit: the permission request event MUST reach the frontend
+        // for the interactive approval dialog to appear.  Bound with a 5-second
+        // timeout so channel backpressure cannot cause the emit to block
+        // indefinitely — which would delay (or bypass) the 60-second permission
+        // timeout.  If delivery times out the turn is cancelled immediately.
+        if tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            emit(&service_tx, map_permission_request_event(&args)),
+        )
+        .await
+        .is_err()
+        {
+            tracing::warn!(
+                context = "acp_bridge",
+                "permission request event not delivered within 5s; cancelling turn"
+            );
+            return Ok(RequestPermissionResponse::new(
+                RequestPermissionOutcome::Cancelled,
+            ));
+        }
+
+        let tool_call_id = args.tool_call.tool_call_id.0.to_string();
+        let tool_name = args
+            .tool_call
+            .fields
+            .title
+            .as_deref()
+            .unwrap_or_else(|| args.tool_call.tool_call_id.0.as_ref())
+            .trim()
+            .to_lowercase();
+
+        if !tool_name.is_empty()
+            && self
+                .runtime_state
+                .blocked_mcp_tools
+                .borrow()
+                .contains(&tool_name)
+        {
+            emit_nonblocking(
+                &service_tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Info,
+                    message: format!(
+                        "ACP permission auto-cancelled for blocked MCP tool: {tool_name}"
+                    ),
+                },
+            );
+            return Ok(RequestPermissionResponse::new(
+                RequestPermissionOutcome::Cancelled,
+            ));
+        }
+
+        if self.auto_approve {
+            return Ok(RequestPermissionResponse::new(
+                auto_approve_outcome(&args, &service_tx, &tool_call_id).await,
+            ));
+        }
+
+        // Interactive mode: delegate to helper which manages oneshot registration,
+        // timeout, and map cleanup.
+        let session_id = args.session_id.0.as_ref();
+        let outcome = handle_interactive_permission(
+            &args,
+            &service_tx,
+            &self.permission_responders,
+            &self.runtime_state,
+            session_id,
+            &tool_call_id,
+        )
+        .await;
+
+        Ok(RequestPermissionResponse::new(outcome))
+    }
+
+    async fn read_text_file(
+        &self,
+        args: ReadTextFileRequest,
+    ) -> agent_client_protocol::Result<ReadTextFileResponse> {
+        let path = validate_fs_path(&self.session_cwd, &args.path, false)?;
+        let content = tokio::fs::read_to_string(&path).await.map_err(|_| {
+            agent_client_protocol::Error::resource_not_found(Some(
+                path.to_string_lossy().into_owned(),
+            ))
+        })?;
+        Ok(ReadTextFileResponse::new(content))
+    }
+
+    async fn write_text_file(
+        &self,
+        args: WriteTextFileRequest,
+    ) -> agent_client_protocol::Result<WriteTextFileResponse> {
+        let path = validate_fs_path(&self.session_cwd, &args.path, true)?;
+        let service_tx = self.runtime_state.service_tx.borrow().clone();
+        emit_nonblocking(
+            &service_tx,
+            ServiceEvent::Log {
+                level: LogLevel::Info,
+                message: format!("ACP adapter wrote file: {}", path.display()),
+            },
+        );
+        tokio::fs::write(&path, &args.content)
+            .await
+            .map_err(|_| agent_client_protocol::Error::internal_error())?;
+        Ok(WriteTextFileResponse::default())
+    }
+
+    async fn create_terminal(
+        &self,
+        args: CreateTerminalRequest,
+    ) -> agent_client_protocol::Result<CreateTerminalResponse> {
+        use terminal::DEFAULT_OUTPUT_BYTE_LIMIT;
+        let cwd = if let Some(req_cwd) = &args.cwd {
+            validate_fs_path(&self.session_cwd, req_cwd, false)?
+        } else {
+            self.session_cwd.clone()
+        };
+        let arg_strs: Vec<&str> = args.args.iter().map(String::as_str).collect();
+        let mgr = self.terminal_manager.borrow().clone();
+        let local_id = mgr
+            .create(&args.command, &arg_strs, &cwd, DEFAULT_OUTPUT_BYTE_LIMIT)
+            .await
+            .map_err(agent_client_protocol::Error::from)?;
+        Ok(CreateTerminalResponse::new(
+            agent_client_protocol::TerminalId::new(local_id.0),
+        ))
+    }
+
+    async fn terminal_output(
+        &self,
+        args: TerminalOutputRequest,
+    ) -> agent_client_protocol::Result<TerminalOutputResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let (text, truncated, exit_code) = self
+            .terminal_manager
+            .borrow()
+            .output(&local_id)
+            .map_err(agent_client_protocol::Error::from)?;
+        let mut resp = TerminalOutputResponse::new(text, truncated);
+        if let Some(code) = exit_code {
+            if code < 0 {
+                return Err(agent_client_protocol::Error::internal_error());
+            }
+            resp.exit_status = Some(TerminalExitStatus::new().exit_code(code as u32));
+        }
+        Ok(resp)
+    }
+
+    async fn wait_for_terminal_exit(
+        &self,
+        args: WaitForTerminalExitRequest,
+    ) -> agent_client_protocol::Result<WaitForTerminalExitResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let mgr = self.terminal_manager.borrow().clone();
+        let code = mgr
+            .wait_for_exit(&local_id)
+            .await
+            .map_err(agent_client_protocol::Error::from)?;
+        if code < 0 {
+            return Err(agent_client_protocol::Error::internal_error());
+        }
+        let exit_status = TerminalExitStatus::new().exit_code(code as u32);
+        Ok(WaitForTerminalExitResponse::new(exit_status))
+    }
+
+    async fn release_terminal(
+        &self,
+        args: ReleaseTerminalRequest,
+    ) -> agent_client_protocol::Result<ReleaseTerminalResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let mgr = self.terminal_manager.borrow().clone();
+        mgr.release(&local_id)
+            .await
+            .map_err(agent_client_protocol::Error::from)?;
+        Ok(ReleaseTerminalResponse::new())
+    }
+
+    async fn kill_terminal(
+        &self,
+        args: KillTerminalRequest,
+    ) -> agent_client_protocol::Result<KillTerminalResponse> {
+        let local_id = terminal::TerminalId(args.terminal_id.0.to_string());
+        let mgr = self.terminal_manager.borrow().clone();
+        mgr.kill(&local_id)
+            .await
+            .map_err(agent_client_protocol::Error::from)?;
+        Ok(KillTerminalResponse::new())
+    }
+
+    /// Dispatch an inbound extension method from the adapter.
+    ///
+    /// No handlers are registered by default. If no handler matches
+    /// `args.method`, logs a warning and returns `method_not_found`.
+    /// Register handlers at the call site by inserting into
+    /// `AcpBridgeClient::ext_method_handlers` before starting the turn.
+    async fn ext_method(&self, args: ExtRequest) -> agent_client_protocol::Result<ExtResponse> {
+        let method_name = args.method.to_string();
+        let handlers = self.ext_method_handlers.borrow();
+        if let Some(f) = handlers.get(&method_name) {
+            f(args)
+        } else {
+            drop(handlers);
+            tracing::warn!(
+                context = "acp_bridge",
+                method = %method_name,
+                "inbound ext_method has no registered handler; returning method_not_found"
+            );
+            Err(agent_client_protocol::Error::method_not_found())
+        }
+    }
+
+    /// Dispatch an inbound extension notification from the adapter (FR-026).
+    ///
+    /// Fire-and-forget: no response is expected. Logs a warning if no handler
+    /// is registered for `args.method` — this is informational only and does
+    /// not affect the turn outcome.
+    async fn ext_notification(&self, args: ExtNotification) -> agent_client_protocol::Result<()> {
+        let method_name = args.method.to_string();
+        let handlers = self.ext_notification_handlers.borrow();
+        if let Some(f) = handlers.get(&method_name) {
+            f(args);
+        } else {
+            drop(handlers);
+            tracing::warn!(
+                context = "acp_bridge",
+                method = %method_name,
+                "inbound ext_notification has no registered handler; ignoring"
+            );
+        }
+        Ok(())
+    }
+
+    async fn session_notification(
+        &self,
+        args: SessionNotification,
+    ) -> agent_client_protocol::Result<()> {
+        let update_kind = map_session_update_kind(&args.update);
+
+        {
+            // RefCell — no Mutex lock on the hot streaming token path.
+            // Safe: current_thread runtime + LocalSet ensures single-threaded access.
+            let state = &*self.runtime_state;
+
+            if let Some(text_delta) = extract_text_delta(&args.update)
+                && matches!(update_kind, AcpSessionUpdateKind::AssistantDelta)
+            {
+                // Stale-delta protection is handled structurally: `run_turn_on_conn`
+                // sets `service_tx` to `None` after each turn completes, so late
+                // deltas from a timed-out turn are silently discarded by `emit` /
+                // `emit_nonblocking` (both are no-ops when tx is `None`).
+                // No turn-ID comparison is needed here — on a single-threaded
+                // `LocalSet`, no other task can run between synchronous reads,
+                // making an inline guard dead code.
+
+                // Cap at 1 MiB to prevent unbounded accumulation from long sessions.
+                const MAX_ASSISTANT_TEXT_BYTES: usize = 1024 * 1024;
+                let mut text = state.assistant_text.borrow_mut();
+                if text.len() < MAX_ASSISTANT_TEXT_BYTES {
+                    text.push_str(&text_delta);
+                    if text.len() >= MAX_ASSISTANT_TEXT_BYTES {
+                        let msg = format!(
+                            "ACP runtime: assistant text reached limit ({MAX_ASSISTANT_TEXT_BYTES} bytes); \
+                             further output will be truncated in the final result"
+                        );
+                        crate::core::logging::log_warn(&msg);
+                    }
+                }
+            }
+            *state.current_session_id.borrow_mut() = Some(args.session_id.0.to_string());
+            state.apply_config_option_update(&args.update);
+        }
+
+        // Use the current turn's service_tx (updated per-turn by run_turn_on_conn).
+        // Clone immediately to release the borrow before the emit call.
+        let service_tx = self.runtime_state.service_tx.borrow().clone();
+
+        // Check the text length without holding the borrow across the await.
+        let text_at_limit = {
+            let text = self.runtime_state.assistant_text.borrow();
+            text.len() >= 1024 * 1024 && !text.is_empty()
+        };
+        if text_at_limit && !self.runtime_state.limit_warning_emitted.get() {
+            self.runtime_state.limit_warning_emitted.set(true);
+            emit_nonblocking(
+                &service_tx,
+                ServiceEvent::Log {
+                    level: LogLevel::Warn,
+                    message: "Assistant text limit hit (1 MiB); output truncated".to_string(),
+                },
+            );
+        }
+
+        // High-frequency delta variants (AssistantDelta, ThinkingDelta, UserDelta)
+        // use emit_nonblocking to avoid backpressure from a slow WS client stalling
+        // the adapter subprocess I/O loop.  These are lossy-safe — the complete
+        // text is always available in the final TurnResult.
+        // All other events (TurnResult, EditorWrite, PermissionRequest, config
+        // updates, tool calls) use blocking emit to guarantee delivery.
+        let event = map_session_notification_event(&args);
+        match update_kind {
+            AcpSessionUpdateKind::AssistantDelta
+            | AcpSessionUpdateKind::ThinkingDelta
+            | AcpSessionUpdateKind::UserDelta => {
+                emit_nonblocking(&service_tx, event);
+            }
+            _ => {
+                emit(&service_tx, event).await;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
+mod tests {
+    use super::*;
+    use crate::services::events::EditorOperation;
+    use agent_client_protocol::StopReason;
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn runtime_state_default_mcp_capabilities_are_false() {
+        let state = AcpRuntimeState::default();
+        assert!(!state.mcp_http_supported.get());
+        assert!(!state.mcp_sse_supported.get());
+    }
+
+    #[test]
+    fn runtime_state_mcp_capabilities_can_be_set() {
+        let state = AcpRuntimeState::default();
+        state.mcp_http_supported.set(true);
+        state.mcp_sse_supported.set(true);
+        assert!(state.mcp_http_supported.get());
+        assert!(state.mcp_sse_supported.get());
+    }
+
+    use agent_client_protocol::{
+        PermissionOption, PermissionOptionKind, SessionId, ToolCall, ToolCallId, ToolCallUpdate,
+    };
+
+    #[tokio::test]
+    async fn test_blocked_mcp_tool_by_name_not_id() {
+        let runtime_state = Arc::new(AcpRuntimeState::default());
+
+        // Block "shell" tool.
+        runtime_state
+            .blocked_mcp_tools
+            .borrow_mut()
+            .insert("shell".to_string());
+
+        let permission_responders = Arc::new(dashmap::DashMap::new());
+        let client = AcpBridgeClient {
+            runtime_state: runtime_state.clone(),
+            auto_approve: true,
+            permission_responders,
+            session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        };
+
+        // Create a permission request for "shell" tool with a different ID.
+        let tool_call_id = ToolCallId::new("call_123");
+        let tool_call = ToolCall::new(tool_call_id, "shell");
+
+        let args = RequestPermissionRequest::new(
+            SessionId::new("session-1"),
+            ToolCallUpdate::from(tool_call),
+            vec![PermissionOption::new(
+                "allow",
+                "Allow",
+                PermissionOptionKind::AllowOnce,
+            )],
+        );
+
+        let resp = client.request_permission(args).await.unwrap();
+
+        // Tool should be blocked by name ("shell"), not by call ID ("call_123").
+        assert_eq!(
+            resp.outcome,
+            RequestPermissionOutcome::Cancelled,
+            "Tool 'shell' should be blocked even if ID is 'call_123'"
+        );
+    }
+
+    /// `ext_method` with no registered handlers must return `method_not_found`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn ext_method_returns_method_not_found_with_no_handler() {
+        use agent_client_protocol::{ErrorCode, ExtRequest};
+        use serde_json::value::RawValue;
+        use std::sync::Arc;
+
+        let client = AcpBridgeClient {
+            runtime_state: Arc::new(AcpRuntimeState::default()),
+            auto_approve: false,
+            permission_responders: Arc::new(dashmap::DashMap::new()),
+            session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        };
+
+        let raw = RawValue::from_string("{}".to_string()).unwrap();
+        let req = ExtRequest::new("_axon.unknown_method", Arc::from(raw));
+        let result = client.ext_method(req).await;
+
+        assert!(result.is_err(), "expected method_not_found error");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.code,
+            ErrorCode::MethodNotFound,
+            "expected MethodNotFound (-32601), got {:?}",
+            err.code
+        );
+    }
+
+    /// `ext_notification` with no registered handler must return `Ok(())` and
+    /// not panic — the warning is fire-and-forget, so no error is propagated.
+    #[tokio::test(flavor = "current_thread")]
+    async fn ext_notification_returns_ok_with_no_handler() {
+        use agent_client_protocol::ExtNotification;
+        use serde_json::value::RawValue;
+        use std::sync::Arc;
+
+        let client = AcpBridgeClient {
+            runtime_state: Arc::new(AcpRuntimeState::default()),
+            auto_approve: false,
+            permission_responders: Arc::new(dashmap::DashMap::new()),
+            session_cwd: std::path::PathBuf::new(),
+            terminal_manager: Rc::new(RefCell::new(terminal::TerminalManager::new())),
+            ext_method_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            ext_notification_handlers: Rc::new(RefCell::new(std::collections::HashMap::new())),
+        };
+
+        let raw = RawValue::from_string("{}".to_string()).unwrap();
+        let notif = ExtNotification::new("_axon.unknown_event", Arc::from(raw));
+        let result = client.ext_notification(notif).await;
+
+        assert!(
+            result.is_ok(),
+            "ext_notification with no handler must return Ok(()), got {:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn finalize_emits_editor_write_events() {
+        let runtime_state = Arc::new(AcpRuntimeState::default());
+        let (tx, mut rx) = mpsc::channel(32);
+        let service_tx = Some(tx);
+
+        // Seed assistant text with an editor block.
+        *runtime_state.assistant_text.borrow_mut() = concat!(
+            "Some preamble.\n",
+            "<axon:editor op=\"replace\">\n",
+            "# Hello World\n",
+            "</axon:editor>\n",
+            "trailing text"
+        )
+        .to_string();
+
+        let result = finalize_successful_turn(
+            StopReason::EndTurn,
+            &runtime_state,
+            &service_tx,
+            "test-session-123",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Drain events and check for EditorWrite.
+        drop(service_tx);
+        let mut found_editor_write = false;
+        while let Ok(event) = rx.try_recv() {
+            if let ServiceEvent::EditorWrite { content, operation } = event {
+                assert_eq!(content, "# Hello World");
+                assert!(matches!(operation, EditorOperation::Replace));
+                found_editor_write = true;
+            }
+        }
+        assert!(found_editor_write, "Expected an EditorWrite event");
+    }
+}

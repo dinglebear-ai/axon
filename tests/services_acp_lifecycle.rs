@@ -1,8 +1,8 @@
 use agent_client_protocol::ProtocolVersion;
-use axon::crates::services::acp::{
+use axon::services::acp::{
     AcpClientScaffold, AcpSessionSetupRequest, validate_prompt_turn_request, validate_session_cwd,
 };
-use axon::crates::services::types::{AcpAdapterCommand, AcpPromptTurnRequest};
+use axon::services::types::{AcpAdapterCommand, AcpPromptTurnRequest};
 use std::path::Path;
 
 fn test_scaffold() -> AcpClientScaffold {

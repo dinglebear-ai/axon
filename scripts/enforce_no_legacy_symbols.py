@@ -2,9 +2,9 @@
 """Enforce architectural dependency direction for the services layer.
 
 Rules:
-  1. lib.rs must NOT import from crates::vector::ops (use CLI commands → services)
-  2. crates/services/*.rs must NOT import from crates::cli::commands (services never depend on CLI)
-  3. crates/mcp/server/handlers_*.rs must NOT import from crates::vector::ops or crates::cli::commands
+  1. lib.rs must NOT import from vector::ops (use CLI commands → services)
+  2. src/services/*.rs must NOT import from cli::commands (services never depend on CLI)
+  3. src/mcp/server/handlers_*.rs must NOT import from vector::ops or cli::commands
 
 Exit 0 if clean, 1 if violations found.
 """
@@ -20,17 +20,17 @@ RULES: list[tuple[str, list[str], str]] = [
     # (glob pattern, forbidden import prefixes, description)
     (
         "lib.rs",
-        ["crate::crates::vector::ops::run_"],
+        ["crate::vector::ops::run_"],
         "lib.rs must route through CLI commands, not vector::ops::run_*_native()",
     ),
     (
-        "crates/services/**/*.rs",
-        ["crate::crates::cli::commands"],
+        "src/services/**/*.rs",
+        ["crate::cli::commands"],
         "services must never import from CLI layer",
     ),
     (
-        "crates/mcp/server/handlers_*.rs",
-        ["crate::crates::vector::ops", "crate::crates::cli::commands"],
+        "src/mcp/server/handlers_*.rs",
+        ["crate::vector::ops", "crate::cli::commands"],
         "MCP handlers must only import from services, not vector::ops or CLI",
     ),
 ]
@@ -59,9 +59,9 @@ def main() -> int:
         if "*" in glob_pat or "**" in glob_pat:
             files = list(REPO.rglob(glob_pat.replace("**/", "")))
             # Filter to match the glob more precisely
-            if glob_pat.startswith("crates/services/"):
+            if glob_pat.startswith("src/services/"):
                 files = [f for f in REPO.glob(glob_pat)]
-            elif glob_pat.startswith("crates/mcp/"):
+            elif glob_pat.startswith("src/mcp/"):
                 files = [f for f in REPO.glob(glob_pat)]
         else:
             candidate = REPO / glob_pat

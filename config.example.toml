@@ -17,61 +17,62 @@
 # Priority (highest to lowest):
 #   CLI flags > environment variables > this file > built-in defaults
 #
-# Phase 1 keys (v0.36): marked "[wired]" — setting these in config.toml takes effect.
-# Phase 2 keys: marked "[env-only]" — the TOML key is parsed/validated but the value
-# is not yet read by the binary; use the env var shown instead for now.
+# Every key below is wired through Config: setting it in this file takes effect.
+# The env var shown next to each key still overrides the TOML value at the same
+# priority described above.
 
 [services]
-# [wired] Base URL of the Qdrant vector store. CLI/env still override this.
+# Base URL of the Qdrant vector store.
 # Env: QDRANT_URL
 # qdrant-url = "http://127.0.0.1:53333"
 
-# [wired] Base URL of the TEI embedding service. CLI/env still override this.
+# Base URL of the TEI embedding service.
 # Env: TEI_URL
 # tei-url = "http://127.0.0.1:52000"
 
-# [wired] Chrome management API endpoint used for rendered crawls.
+# Chrome management API endpoint used for rendered crawls.
 # Env: AXON_CHROME_REMOTE_URL
 # chrome-remote-url = "http://127.0.0.1:6000"
 
 [search]
-# [wired] Enable RRF hybrid search (requires a named-mode Qdrant collection).
+# Enable RRF hybrid search (requires a named-mode Qdrant collection).
 # Disable if your collection is legacy unnamed-mode.
 # Env: AXON_HYBRID_SEARCH
 # hybrid-enabled = true
 
-# [wired] Candidates per prefetch arm before RRF fusion (clamped 10–500).
+# Candidates per prefetch arm before RRF fusion (clamped 10–500).
 # Higher = better recall, slower query.
 # Env: AXON_HYBRID_CANDIDATES
 # hybrid-candidates = 100
 
-# [wired] Hybrid prefetch window for the ask pipeline (clamped 10–500).
+# Hybrid prefetch window for the ask pipeline (clamped 10–500).
 # Wider than hybrid-candidates to give reranking more material.
 # Env: AXON_ASK_HYBRID_CANDIDATES
 # ask-hybrid-candidates = 100
 
-# [env-only] HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
-# Higher = better recall, more RAM/CPU. Use AXON_HNSW_EF_SEARCH env var for now.
+# HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
+# Higher = better recall, more RAM/CPU.
+# Env: AXON_HNSW_EF_SEARCH
 # hnsw-ef = 128
 
-# [env-only] HNSW ef for legacy unnamed-mode collections (clamped 16–256).
-# Use AXON_HNSW_EF_SEARCH_LEGACY env var for now.
+# HNSW ef for legacy unnamed-mode collections (clamped 16–256).
+# Env: AXON_HNSW_EF_SEARCH_LEGACY
 # hnsw-ef-legacy = 64
 
-# [env-only] Default Qdrant collection name.
-# Use AXON_COLLECTION env var or --collection flag for now.
+# Default Qdrant collection name.
+# Env: AXON_COLLECTION (or --collection flag)
 # collection = "cortex"
 
 [ask]
-# [wired] Max chunks returned per ask query (clamped 3–40).
+# Max chunks returned per ask query (clamped 3–40).
 # Env: AXON_ASK_CHUNK_LIMIT
 # chunk-limit = 10
 
-# [wired] Max candidate chunks fetched before scoring (clamped 8–300).
+# Max candidate chunks fetched before scoring (clamped 8–300).
 # Env: AXON_ASK_CANDIDATE_LIMIT
 # candidate-limit = 150
 
-# [wired] Minimum relevance score to include a chunk (clamped -1.0–2.0).
+# Minimum relevance score to include a chunk (clamped -1.0–2.0).
 # Lower = more results, more noise. Higher = stricter but may miss relevant chunks.
 # Env: AXON_ASK_MIN_RELEVANCE_SCORE
 # min-relevance-score = 0.45
@@ -129,25 +130,27 @@
 # fulldoc-skip-score-delta = 0.15
 
 [tei]
-# [env-only] Max retry attempts per TEI request. Use TEI_MAX_RETRIES env var for now.
+# Max retry attempts after the initial TEI request.
+# Env: TEI_MAX_RETRIES
 # max-retries = 5
 
-# [env-only] Per-attempt timeout in milliseconds. Use TEI_REQUEST_TIMEOUT_MS env var for now.
+# Per-attempt timeout in milliseconds.
+# Env: TEI_REQUEST_TIMEOUT_MS
 # request-timeout-ms = 30000
 
-# [env-only] Default batch size sent to TEI; auto-splits on HTTP 413.
-# Use TEI_MAX_CLIENT_BATCH_SIZE env var for now.
+# Default batch size sent to TEI; auto-splits on HTTP 413.
+# Env: TEI_MAX_CLIENT_BATCH_SIZE
 # max-client-batch-size = 64
 
 [workers]
-# [env-only] Parallel ingest worker lanes (GitHub, Reddit, YouTube).
-# Use AXON_INGEST_LANES env var for now.
+# Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
+# Env: AXON_INGEST_LANES
 # ingest-lanes = 2
 
-# [env-only] Per-document embed timeout in seconds.
-# Use AXON_EMBED_DOC_TIMEOUT_SECS env var for now.
+# Per-document embed timeout in seconds.
+# Env: AXON_EMBED_DOC_TIMEOUT_SECS
 # embed-doc-timeout-secs = 300
 
-# [env-only] Crawl queue cap — reject new jobs above this count (0 = unlimited).
-# Use AXON_MAX_PENDING_CRAWL_JOBS env var for now.
+# Crawl queue cap — reject new jobs above this count (0 = unlimited).
+# Env: AXON_MAX_PENDING_CRAWL_JOBS
 # max-pending-crawl-jobs = 100

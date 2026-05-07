@@ -1,6 +1,6 @@
-use axon::crates::services::map::parse_map_result;
-use axon::crates::services::scrape::map_scrape_payload;
-use axon::crates::services::search::{map_research_payload, map_search_results};
+use axon::services::map::parse_map_result;
+use axon::services::scrape::map_scrape_payload;
+use axon::services::search::{map_research_payload, map_search_results};
 
 // ---------------------------------------------------------------------------
 // scrape service — map_scrape_payload

@@ -3,7 +3,7 @@
 //! Moved from `crates/services/types/acp.rs` to reduce that module's line count
 //! below the 500-line monolith policy limit.
 
-use axon::crates::services::types::{
+use axon::services::types::{
     AcpBridgeEvent, AcpConfigOption, AcpConfigSelectValue, AcpPermissionRequestEvent,
     AcpSessionUpdateEvent, AcpSessionUpdateKind, AcpTurnResultEvent, AcpUsageUpdate,
 };

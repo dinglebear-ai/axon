@@ -11,13 +11,49 @@ Axon is configured through three layers: `~/.axon/config.toml`, environment vari
 3. `~/.axon/config.toml` — tuning knobs (safe to commit, no secrets)
 4. Built-in defaults
 
+## Canonical `~/.axon/` layout
+
+`~/.axon/` is the canonical home for axon's user-level config, secrets, and persistent data. All flat — no nested `axon/` subdirectory.
+
+```
+~/.axon/
+├── config.toml              # tuning knobs (CLI > env > this > default)
+├── .env                     # URLs + secrets (loaded after AXON_ENV_FILE,
+│                            #   before repo-root .env ancestor walk)
+│
+├── jobs.db                  # SQLite job queue
+├── jobs.db-wal
+├── jobs.db-shm
+│
+├── output/                  # scraped markdown / HTML / JSON
+├── logs/
+│   └── axon.log             # size-rotated, 10 MiB default
+├── artifacts/               # MCP JSON artifacts (response_mode=path)
+├── screenshots/             # spider chrome_store_page captures
+└── chrome-diagnostics/      # opt-in browser diagnostics
+```
+
+`AXON_DATA_DIR` defaults to `~/.axon`. Override it to relocate every persistent path above.
+
+### Migration from `~/.local/share/axon`
+
+If you previously stored axon data under `~/.local/share/axon/`, axon does NOT auto-migrate. Either move the directory yourself (`mv ~/.local/share/axon ~/.axon`), or set `AXON_DATA_DIR=~/.local/share` explicitly to keep the old location. Tuning knobs that were previously env-only are now also accepted in `~/.axon/config.toml`.
+
 ## Environment files
 
-Two env files are used:
+Three env files are auto-loaded in this order; the first one that exists and parses wins (later files do **not** override earlier ones):
+
+| Order | Path | Notes |
+|-------|------|-------|
+| 1 | `$AXON_ENV_FILE` | Explicit override; only consulted when set |
+| 2 | `~/.axon/.env` | Canonical user-level secrets, loaded automatically |
+| 3 | First `.env` found by walking ancestors of CWD (or the binary's parent) | Repo-root `.env` for dev |
+
+A separate `services.env` file is used by Docker Compose only:
 
 | File | Purpose | Loaded by |
 |------|---------|-----------|
-| `.env` | App runtime + shared Docker Compose interpolation | Docker Compose (automatic), `dotenvy` in binary |
+| `~/.axon/.env` or repo `.env` | App runtime + shared Docker Compose interpolation | `dotenvy` in binary |
 | `services.env` | Infrastructure container credentials | Docker Compose `env_file:` directive in `config/docker-compose.services.yaml` via `../services.env` |
 
 ```bash
@@ -39,20 +75,15 @@ chmod 600 ~/.axon/config.toml
 
 To point at a custom path: `AXON_CONFIG_PATH=/path/to/config.toml`.
 
-**Phase 1 (v0.36) — wired keys** (setting in config.toml takes effect):
+All TOML keys below are wired through `Config` — setting them in `~/.axon/config.toml` takes effect. The env var shown for each key still overrides the TOML value at the precedence chain above.
 
-| Section | Keys |
-|---------|------|
-| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates` |
-| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` |
-
-**Phase 2 (planned) — parsed but env-only for now** (key is accepted in the file and validated, but the env var is still what the binary reads; use the env var shown in the table below):
-
-| Section | Key | Env var to use instead |
-|---------|-----|----------------------|
-| `[search]` | `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
+| Section | Keys | Env override |
+|---------|------|---------------|
+| `[services]` | `qdrant-url`, `tei-url`, `chrome-remote-url` | `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL` |
+| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
+| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
-| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS` |
+| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
 URLs, API keys, secrets, and security settings belong in `.env` — not in `config.toml`. See `config.example.toml` for the full annotated example with defaults.
 
@@ -71,7 +102,7 @@ URLs, API keys, secrets, and security settings belong in `.env` — not in `conf
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_DATA_DIR` | `./data` | Root directory for all persistent data |
+| `AXON_DATA_DIR` | `~/.axon` | Root directory for all persistent data (flat — no `axon/` subdir nesting) |
 | `HOST_HOME` | -- | Host user home (for session ingestion bind mount) |
 | `AXON_WORKSPACE` | -- | Host workspace dir mounted into axon-web |
 | `HOST_WORKSPACE` | -- | Host path to axon_rust repo |
@@ -91,7 +122,7 @@ URLs, API keys, secrets, and security settings belong in `.env` — not in `conf
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_LITE` | -- | Set to `1` to enable lite mode (default; uses SQLite) |
-| `AXON_SQLITE_PATH` | `~/.local/share/axon/jobs.db` | SQLite path for lite mode |
+| `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite path for lite mode |
 
 **Worker spawn is conditional**, not unconditional, in lite mode. The `LiteBackend` has two construction modes:
 
@@ -106,8 +137,8 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TEI_MAX_RETRIES` | `5` | Max retry attempts per request |
-| `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 100-600000) |
+| `TEI_MAX_RETRIES` | `5` | Max retry attempts after the initial request |
+| `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
 | `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 | `TEI_HTTP_PORT` | `52000` | Host port for TEI container |
 | `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace embedding model |
@@ -151,7 +182,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_EMBED_QUEUE` | `axon.embed.jobs` | Embed job queue |
 | `AXON_INGEST_QUEUE` | `axon.ingest.jobs` | Ingest job queue |
 | `AXON_GRAPH_QUEUE` | `axon.graph.jobs` | Graph job queue |
-| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes |
+| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
 
 ### Search and research
 
@@ -176,7 +207,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_CHROME_PROXY` | -- | Proxy URL for Chrome requests |
 | `AXON_CHROME_USER_AGENT` | -- | User-Agent override for Chrome requests |
 | `AXON_CHROME_DIAGNOSTICS` | `false` | Enable browser diagnostics artifact collection |
-| `AXON_CHROME_DIAGNOSTICS_DIR` | `$AXON_DATA_DIR/axon/chrome-diagnostics` | Output directory for diagnostics artifacts |
+| `AXON_CHROME_DIAGNOSTICS_DIR` | `$AXON_DATA_DIR/chrome-diagnostics` (default `~/.axon/chrome-diagnostics`) | Output directory for diagnostics artifacts |
 | `AXON_CHROME_DIAGNOSTICS_EVENTS` | `false` | Include event-log capture in diagnostics |
 | `AXON_CHROME_DIAGNOSTICS_SCREENSHOT` | `false` | Include screenshot capture in diagnostics |
 
@@ -245,7 +276,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUST_LOG` | `info` | Rust tracing filter |
-| `AXON_LOG_DIR` | `$AXON_DATA_DIR/axon/logs` (or `logs/`) | Directory holding the active log + rotated archives |
+| `AXON_LOG_DIR` | `$AXON_DATA_DIR/logs` (default `~/.axon/logs`) | Directory holding the active log + rotated archives |
 | `AXON_LOG_FILE` | `axon.log` | Filename of the active log (joined under `AXON_LOG_DIR`); rotated archives are `<file>.1`, `<file>.2`, … |
 | `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation (single file grows unboundedly). Default is 10 MB. |
 | `AXON_LOG_MAX_FILES` | `3` | Number of rotated archives to retain. `0` truncates without keeping any archive. |
@@ -258,7 +289,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port |
 | `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; required for non-loopback binds |
 | `AXON_MCP_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins for MCP HTTP CORS |
-| `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/axon/artifacts` | Directory for response artifacts |
+| `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline triggers (0 = disable) |
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | -- | Max bytes per local file embedding request via MCP |
@@ -267,7 +298,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/axon/output` | Output directory for file-writing commands |
+| `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/output` (default `~/.axon/output`) | Output directory for file-writing commands |
 | `AXON_NO_COLOR` | -- | Disable ANSI color output (any non-empty value) |
 | `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
 | `AXON_DOMAINS_DETAILED` | -- | Enable detailed per-domain breakdown in `axon domains` |

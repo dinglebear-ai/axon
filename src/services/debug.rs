@@ -1,0 +1,125 @@
+use crate::core::config::Config;
+use crate::core::health::build_doctor_report;
+use crate::core::logging::log_warn;
+use crate::services::acp_llm::{self, AcpCompletionRequest};
+use crate::services::types::DebugResult;
+use std::error::Error;
+
+#[must_use = "debug_report returns a Result that should be handled"]
+pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResult, Box<dyn Error>> {
+    let acp_adapter_cmd = cfg
+        .acp_adapter_cmd
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default();
+    if acp_adapter_cmd.is_empty() {
+        return Err("AXON_ACP_ADAPTER_CMD is required for debug".into());
+    }
+    if cfg.openai_model.is_empty() {
+        return Err("OPENAI_MODEL is required for debug".into());
+    }
+
+    // Start warming the ACP adapter before build_doctor_report so the cold-start
+    // overlaps with the HTTP health checks instead of running sequentially after them.
+    let warm = match acp_llm::warm_session(cfg, None) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            log_warn(&format!(
+                "debug: warm session failed to start, using cold path: {e}"
+            ));
+            None
+        }
+    };
+
+    let doctor_report = build_doctor_report(cfg).await?;
+
+    let prompt = format!(
+        "Analyze this Axon doctor report and provide actionable troubleshooting guidance.\n\
+         Prioritize root causes and concrete fix commands.\n\
+         Keep it concise and operator-friendly.\n\
+         Include:\n\
+         1) likely root causes ordered by confidence\n\
+         2) exact verification commands\n\
+         3) exact remediation commands\n\
+         4) what to check next if fixes fail\n\n\
+         Optional operator context:\n{}\n\n\
+         Doctor report JSON:\n{}",
+        if user_context.is_empty() {
+            "(none)"
+        } else {
+            user_context
+        },
+        serde_json::to_string_pretty(&doctor_report)?
+    );
+
+    let request = AcpCompletionRequest::new(prompt)
+        .system_prompt(
+            "You are a senior self-hosted infrastructure debugging assistant. Be precise and avoid generic advice."
+        )
+        .model(cfg.openai_model.clone());
+    // Warm path: WarmAcpSession is Send — await directly.
+    // Cold path: acp_llm::complete_text is !Send — use spawn_blocking to keep this
+    // function's future Send for web/MCP call sites that require Send + 'static.
+    let completion = if let Some(w) = warm {
+        w.complete_text(request).await?
+    } else {
+        let cfg_c = cfg.clone();
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| format!("failed to build debug ACP runtime: {err}"))?;
+            rt.block_on(acp_llm::complete_text(&cfg_c, request))
+                .map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|err| format!("failed to join debug ACP task: {err}"))?
+        .map_err(|err| -> Box<dyn Error> { err.into() })?
+    };
+    let analysis = if completion.text.trim().is_empty() {
+        "(no debug response)"
+    } else {
+        completion.text.as_str()
+    };
+
+    Ok(DebugResult {
+        payload: serde_json::json!({
+            "doctor_report": doctor_report,
+            "llm_debug": {
+                "model": &cfg.openai_model,
+                "adapter_cmd": cfg.acp_adapter_cmd,
+                "analysis": analysis,
+            }
+        }),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::debug_report;
+    use crate::core::config::Config;
+
+    #[tokio::test]
+    async fn debug_report_requires_acp_adapter_command() {
+        let cfg = Config {
+            openai_model: "gpt-4o-mini".to_string(),
+            acp_adapter_cmd: None,
+            ..Config::default()
+        };
+
+        let err = debug_report(&cfg, "ctx").await.expect_err("should fail");
+        assert!(err.to_string().contains("AXON_ACP_ADAPTER_CMD"));
+    }
+
+    #[tokio::test]
+    async fn debug_report_requires_model_name() {
+        let cfg = Config {
+            acp_adapter_cmd: Some("codex".to_string()),
+            openai_model: String::new(),
+            ..Config::default()
+        };
+
+        let err = debug_report(&cfg, "ctx").await.expect_err("should fail");
+        assert!(err.to_string().contains("OPENAI_MODEL"));
+    }
+}

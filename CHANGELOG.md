@@ -31,6 +31,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ask: adaptive `ask_full_docs` per query complexity (bd axon_rust-721). Reuses the `AskQueryForms.use_dual` signal as a coarse `QueryComplexity{Simple|Complex}` hint. Simple queries default to 2 full-doc fetches; complex (use_dual=true) queries default to 3. The user's explicit override (`AXON_ASK_FULL_DOCS` env var) still wins; tracked via new `Config::ask_full_docs_explicit` field. Diagnostics surface `detected_complexity`, `resolved_full_docs`, and `full_docs_source` (`user_override` / `adaptive_simple` / `adaptive_complex`).
 
+## [1.5.11] - 2026-05-07
+
+### Fixed
+
+- Aligned config docs and comments with runtime behavior for TEI retry attempts and ingest worker lane clamping.
+
+## [1.5.10] - 2026-05-07
+
+### Changed
+
+- Made `Config::default()` pure by moving env/TOML tuning resolution into a shared config path used by `into_config()` and `Config::default_lite()`.
+- Hardened config and secret loading: `~/.axon/.env` symlinks and directory/not-directory errors now hard-fail before repo `.env` fallback, and TOML config reads reject directory/not-directory cases and use no-follow opens on Unix.
+- Added warnings for malformed numeric env tuning values and MCP artifact fallback diagnostics.
+
+### Tests
+
+- Added boundary clamp coverage for TEI, worker, search, and ask tuning knobs.
+- Added integration coverage for the `~/.axon/.env` plus `~/.axon/config.toml` startup pipeline and hard-fail secret-loading cases.
+
+## [1.5.9] - 2026-05-06
+
+### Changed
+
+- Documented the canonical `~/.axon/` layout across all docs and removed `[env-only]` framing from the TOML config reference (epic `axon_rust-2j9`).
+- `config.example.toml`: dropped every `[env-only]` marker; every `[services]`, `[search]`, `[ask]`, `[tei]`, and `[workers]` key is now wired through `Config` and takes effect when set, with the env var still overriding (`axon_rust-2j9.4`).
+- `.env.example`: documented the auto-load order (`AXON_ENV_FILE` → `~/.axon/.env` → repo-root `.env` ancestor walk; first match wins).
+- `docs/CONFIG.md`: added the canonical `~/.axon/` directory tree, replaced the Phase 1 / Phase 2 / "env-only" tables with a single wired-keys table, refreshed every `$AXON_DATA_DIR/axon/...` default-path example to the flat `$AXON_DATA_DIR/...` form, and added a migration note for users coming from `~/.local/share/axon` (`axon_rust-2j9.5`).
+- `CLAUDE.md`, `README.md`, `docs/MCP.md`, `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md`, `docs/ACP.md`, `docs/mcp/DEPLOY.md`, `docs/mcp/ENV.md`, `src/core/CLAUDE.md`, `src/jobs/CLAUDE.md`, `src/mcp/CLAUDE.md`: updated stale `~/.local/share/axon` and `$AXON_DATA_DIR/axon/...` references to the flat `~/.axon/` layout.
+
+### Notes
+
+- Companion to the `axon_rust-2j9` epic: bead `2j9.1` added `~/.axon/.env` autoload, `2j9.2` defaulted `AXON_DATA_DIR` to `~/.axon`, `2j9.3` flattened persistent default paths, and `2j9.4` wired every TOML key in `TomlConfig` through `Config`. This bead (`2j9.5`) is documentation only — no `.rs` source changes.
+
+## [1.5.8] - 2026-05-06
+
+### Changed
+- Renamed `crates/` module directory to `src/` and moved `lib.rs`/`main.rs`/`crates.rs` into it — standard single-crate Rust layout
+- Removed `[lib] path` and `[[bin]] path` overrides from `Cargo.toml`; Cargo now uses the default `src/lib.rs` and `src/main.rs`
+- Eliminated the `crates.rs` re-export shim; module declarations now live directly in `src/lib.rs`
+
 ## [1.5.7] - 2026-05-06
 
 ### Changed

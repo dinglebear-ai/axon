@@ -6,15 +6,15 @@ type FileSpec = (&'static str, &'static [(&'static str, &'static str)]);
 
 const FILE_SPECS: &[FileSpec] = &[
     (
-        "crates/cli/commands/mcp.rs",
+        "src/cli/commands/mcp.rs",
         &[
             (
                 "run_http_server(",
-                "ERROR: MCP CLI must support HTTP transport in crates/cli/commands/mcp.rs",
+                "ERROR: MCP CLI must support HTTP transport in src/cli/commands/mcp.rs",
             ),
             (
                 "run_stdio_server(",
-                "ERROR: MCP CLI must support stdio transport in crates/cli/commands/mcp.rs",
+                "ERROR: MCP CLI must support stdio transport in src/cli/commands/mcp.rs",
             ),
             // Match the actual McpTransport::Both match arm shape, not a bare "Both"
             // substring. The bare token would be satisfied by a comment, an unrelated
@@ -22,29 +22,29 @@ const FILE_SPECS: &[FileSpec] = &[
             (
                 "McpTransport::Both =>",
                 "ERROR: MCP CLI must support both transports concurrently \
-                 (`McpTransport::Both =>` arm) in crates/cli/commands/mcp.rs",
+                 (`McpTransport::Both =>` arm) in src/cli/commands/mcp.rs",
             ),
         ],
     ),
     (
-        "crates/core/config/cli.rs",
+        "src/core/config/cli.rs",
         &[(
             "transport: Option<McpTransport>",
-            "ERROR: MCP CLI must expose --transport in crates/core/config/cli.rs",
+            "ERROR: MCP CLI must expose --transport in src/core/config/cli.rs",
         )],
     ),
     (
-        "crates/core/config/parse/build_config.rs",
+        "src/core/config/parse/build_config/config_literal.rs",
         &[(
             "resolve_mcp_transport(mcp_transport, mcp_transport_default)",
-            "ERROR: MCP transport resolver not wired into config build in crates/core/config/parse/build_config.rs",
+            "ERROR: MCP transport resolver not wired into config build in src/core/config/parse/build_config/config_literal.rs",
         )],
     ),
     (
-        "crates/core/config/parse/helpers.rs",
+        "src/core/config/parse/helpers.rs",
         &[(
             "AXON_MCP_TRANSPORT",
-            "ERROR: MCP transport env override missing in crates/core/config/parse/helpers.rs",
+            "ERROR: MCP transport env override missing in src/core/config/parse/helpers.rs",
         )],
     ),
 ];
@@ -74,7 +74,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn write_all_required(root: &Path) {
-        let mcp_rs = root.join("crates/cli/commands/mcp.rs");
+        let mcp_rs = root.join("src/cli/commands/mcp.rs");
         fs::create_dir_all(mcp_rs.parent().unwrap()).unwrap();
         fs::write(
             &mcp_rs,
@@ -83,7 +83,7 @@ mod tests {
         )
         .unwrap();
 
-        let cli_cfg = root.join("crates/core/config/cli.rs");
+        let cli_cfg = root.join("src/core/config/cli.rs");
         fs::create_dir_all(cli_cfg.parent().unwrap()).unwrap();
         fs::write(
             &cli_cfg,
@@ -91,7 +91,7 @@ mod tests {
         )
         .unwrap();
 
-        let build_cfg = root.join("crates/core/config/parse/build_config.rs");
+        let build_cfg = root.join("src/core/config/parse/build_config/config_literal.rs");
         fs::create_dir_all(build_cfg.parent().unwrap()).unwrap();
         fs::write(
             &build_cfg,
@@ -99,7 +99,7 @@ mod tests {
         )
         .unwrap();
 
-        let helpers = root.join("crates/core/config/parse/helpers.rs");
+        let helpers = root.join("src/core/config/parse/helpers.rs");
         fs::create_dir_all(helpers.parent().unwrap()).unwrap();
         fs::write(&helpers, "// reads AXON_MCP_TRANSPORT env var\n").unwrap();
     }
@@ -115,9 +115,9 @@ mod tests {
     fn fails_when_file_missing() {
         let tmp = TempDir::new().unwrap();
         write_all_required(tmp.path());
-        fs::remove_file(tmp.path().join("crates/cli/commands/mcp.rs")).unwrap();
+        fs::remove_file(tmp.path().join("src/cli/commands/mcp.rs")).unwrap();
         let err = check(tmp.path()).expect_err("expected missing file error");
-        assert_eq!(err.to_string(), "ERROR: missing crates/cli/commands/mcp.rs");
+        assert_eq!(err.to_string(), "ERROR: missing src/cli/commands/mcp.rs");
     }
 
     #[test]
@@ -127,7 +127,7 @@ mod tests {
         // Overwrite mcp.rs missing the `McpTransport::Both =>` arm. A bare `Both`
         // token (e.g., in a comment) must NOT satisfy the matcher.
         fs::write(
-            tmp.path().join("crates/cli/commands/mcp.rs"),
+            tmp.path().join("src/cli/commands/mcp.rs"),
             "fn run_http_server() {}\nfn run_stdio_server() {}\n// keyword: Both\n",
         )
         .unwrap();
@@ -145,10 +145,10 @@ mod tests {
         assert_eq!(
             paths,
             vec![
-                "crates/cli/commands/mcp.rs",
-                "crates/core/config/cli.rs",
-                "crates/core/config/parse/build_config.rs",
-                "crates/core/config/parse/helpers.rs",
+                "src/cli/commands/mcp.rs",
+                "src/core/config/cli.rs",
+                "src/core/config/parse/build_config/config_literal.rs",
+                "src/core/config/parse/helpers.rs",
             ]
         );
 

@@ -1,5 +1,5 @@
-use axon::crates::services::acp::{AcpClientScaffold, validate_adapter_command};
-use axon::crates::services::types::{AcpAdapterCommand, AcpPromptTurnRequest};
+use axon::services::acp::{AcpClientScaffold, validate_adapter_command};
+use axon::services::types::{AcpAdapterCommand, AcpPromptTurnRequest};
 
 #[test]
 fn acp_scaffold_is_constructible() {
