@@ -23,6 +23,13 @@ CONFIG_PATH=""
 MCPORTER=()
 
 EXPECTED_ROUTES="$(cat <<'EOF'
+acp:ext_method
+acp:ext_notification
+acp:fork_session
+acp:list_sessions
+acp:logout
+acp:resume_session
+acp:set_model
 artifacts:clean
 artifacts:delete
 artifacts:grep
@@ -99,6 +106,7 @@ EOF
 
 DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","evaluate","export","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
+acp
 artifacts
 ask
 crawl
