@@ -428,6 +428,9 @@ pub(super) async fn ensure_collection(
     if resp.status() != StatusCode::CONFLICT {
         resp.error_for_status()?;
     }
+    // Collection schema changed -- bump generation so any cached doc-chunk
+    // entries from a prior incarnation become unreachable. (axon_rust-pmc)
+    crate::crates::vector::cache::bump_generation(&cfg.collection);
     log_info(&format!(
         "qdrant collection_created collection={} mode=Named",
         cfg.collection
@@ -450,6 +453,9 @@ async fn patch_add_sparse(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .send()
         .await?
         .error_for_status()?;
+    // Schema patch may change which points are returned for some URL --
+    // invalidate cached doc-chunk entries via generation bump. (axon_rust-pmc)
+    crate::crates::vector::cache::bump_generation(&cfg.collection);
     log_info(&format!(
         "qdrant collection_patched_sparse collection={}",
         cfg.collection
@@ -517,5 +523,9 @@ pub(super) async fn qdrant_upsert(
             .into());
         }
     }
+    // All batches succeeded -- bump generation once per upsert call so
+    // cached doc-chunk entries reflect the new contents on next read.
+    // (axon_rust-pmc)
+    crate::crates::vector::cache::bump_generation(&cfg.collection);
     Ok(())
 }

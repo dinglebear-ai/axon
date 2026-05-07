@@ -64,6 +64,22 @@ pub(super) struct TomlAskSection {
     pub candidate_limit: Option<usize>,
     /// Minimum relevance score threshold (clamped -1.0–2.0).
     pub min_relevance_score: Option<f64>,
+    /// In-process document-chunk cache for the ask full-doc fetch path.
+    /// Only useful in long-lived parents (`axon serve`, `axon mcp`).
+    /// (bd axon_rust-pmc)
+    #[serde(default)]
+    pub cache: TomlAskCacheSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAskCacheSection {
+    /// Enable the cache. Default: false.
+    pub enabled: Option<bool>,
+    /// Max bytes (summed `chunk_text` length). Default: 268_435_456 (256 MiB).
+    pub max_capacity_bytes: Option<u64>,
+    /// TTL in seconds. Capped at 300s. Default: 300.
+    pub ttl_secs: Option<u64>,
 }
 
 // Phase 1: TEI and worker fields are parsed by serde but not yet wired into Config

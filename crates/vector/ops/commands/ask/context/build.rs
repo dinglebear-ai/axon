@@ -2,6 +2,7 @@ use super::super::timing::{AskTiming, AskTimingSlot};
 use super::heuristics::{push_context_entry, should_inject_supplemental};
 use crate::crates::core::config::Config;
 use crate::crates::core::logging::log_warn;
+use crate::crates::vector::cache::{DocCacheKey, current_generation, global_doc_cache};
 use crate::crates::vector::ops::source_display::display_source;
 use crate::crates::vector::ops::{qdrant, ranking};
 use anyhow::{Result, anyhow};
@@ -238,6 +239,17 @@ async fn fetch_full_docs(
         return Ok(fetched_docs);
     }
     let cfg_arc = Arc::new(cfg.clone());
+    // Cache enable gate. The cache itself is process-global; we only consult
+    // it when `cfg.ask_cache_enabled`. Snapshot the per-collection generation
+    // once for this fetch batch so all concurrent lookups in this stream see
+    // a consistent key. (axon_rust-pmc)
+    let cache_enabled = cfg.ask_cache_enabled;
+    let collection = cfg.collection.clone();
+    let generation = if cache_enabled {
+        current_generation(&collection)
+    } else {
+        0
+    };
     // Collect owned `(order, doc_idx)` pairs before mapping to async tasks so
     // the map closure receives `(usize, usize)` (no lifetime-parameterised
     // `&usize`).  The reference pattern `|(order, &doc_idx)|` or even receiving
@@ -247,9 +259,30 @@ async fn fetch_full_docs(
     let mut fetch_stream = stream::iter(tasks.into_iter().map(|(order, doc_idx)| {
         let cfg_for_task = Arc::clone(&cfg_arc);
         let url = reranked[doc_idx].url.clone();
+        let collection = collection.clone();
         async move {
-            let points =
-                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await;
+            let points = if cache_enabled {
+                let key = DocCacheKey {
+                    collection,
+                    url: url.clone(),
+                    generation,
+                };
+                let cfg_for_fetch = Arc::clone(&cfg_for_task);
+                let url_for_fetch = url.clone();
+                global_doc_cache()
+                    .get_or_fetch(key, move || async move {
+                        qdrant::qdrant_retrieve_by_url(
+                            &cfg_for_fetch,
+                            &url_for_fetch,
+                            Some(doc_chunk_limit),
+                        )
+                        .await
+                    })
+                    .await
+                    .map(|arc| (*arc).clone())
+            } else {
+                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await
+            };
             (order, url, points)
         }
     }))
