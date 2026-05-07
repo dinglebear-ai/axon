@@ -5,14 +5,14 @@
 ///   1. Option mapper round-trips produce correct service types.
 ///   2. The JSON response keys that MCP handlers emit match the schema contract.
 ///   3. Handler input parameters are forwarded to service calls correctly.
-use axon::crates::mcp::schema::{
+use axon::mcp::schema::{
     AxonRequest, AxonToolResponse, IngestSubaction, SearchTimeRange, parse_axon_request,
 };
-use axon::crates::mcp::server::common::{
+use axon::mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
 };
-use axon::crates::services::query::map_retrieve_result;
-use axon::crates::services::types::{
+use axon::services::query::map_retrieve_result;
+use axon::services::types::{
     AskResult, AskTiming, DoctorResult, DomainFacet, DomainsResult, MapOptions, Pagination,
     QueryHit, QueryResult, RetrieveOptions, RetrieveResult, SearchOptions, SearchResult,
     ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
@@ -229,7 +229,7 @@ fn ask_result_exposes_typed_answer() {
 #[test]
 fn suggest_result_exposes_url_vec() {
     let r = SuggestResult {
-        suggestions: vec![axon::crates::services::types::Suggestion {
+        suggestions: vec![axon::services::types::Suggestion {
             url: "https://rust-lang.org".to_string(),
             reason: "Rust docs".to_string(),
         }],

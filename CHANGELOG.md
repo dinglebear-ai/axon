@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.8] - 2026-05-06
+
+### Changed
+- Renamed `crates/` module directory to `src/` and moved `lib.rs`/`main.rs`/`crates.rs` into it — standard single-crate Rust layout
+- Removed `[lib] path` and `[[bin]] path` overrides from `Cargo.toml`; Cargo now uses the default `src/lib.rs` and `src/main.rs`
+- Eliminated the `crates.rs` re-export shim; module declarations now live directly in `src/lib.rs`
+
 ## [1.5.7] - 2026-05-06
 
 ### Changed

@@ -36,7 +36,7 @@ DOTENV_VALUES = load_dotenv_file()
 DEFAULT_QDRANT_URL = os.getenv("QDRANT_URL", DOTENV_VALUES.get("QDRANT_URL", "http://localhost:53333")).rstrip("/")
 DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", DOTENV_VALUES.get("QDRANT_COLLECTION", "cortex"))
 
-# Must stay aligned with crates/core/config.rs::default_exclude_prefixes().
+# Must stay aligned with src/core/config.rs::default_exclude_prefixes().
 DEFAULT_EXCLUDE_PREFIXES = [
     "/fr",
     "/de",

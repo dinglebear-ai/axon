@@ -24,8 +24,8 @@
 /// command that would expose those values if inherited, and assert the output is
 /// empty. They use a process-level mutex so env mutations don't race with other
 /// tests in the same binary.
-use axon::crates::services::acp::AcpClientScaffold;
-use axon::crates::services::types::AcpAdapterCommand;
+use axon::services::acp::AcpClientScaffold;
+use axon::services::types::AcpAdapterCommand;
 use std::collections::HashMap;
 use std::sync::Mutex;
 

@@ -9,10 +9,10 @@
 ///
 /// These tests run without live services — they exercise the pure mapping
 /// helpers and type constructors that the handlers now depend on.
-use axon::crates::services::system::{
+use axon::services::system::{
     map_doctor_payload, map_domains_payload, map_sources_payload, map_stats_payload,
 };
-use axon::crates::services::types::{
+use axon::services::types::{
     DoctorResult, DomainFacet, DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
     StatusTotals,
 };

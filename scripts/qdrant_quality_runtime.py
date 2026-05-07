@@ -61,8 +61,8 @@ def resolve_runtime_qdrant_url(configured_url: str) -> str:
 
 
 def extract_rust_default_excludes() -> list[str]:
-    """Extract default exclude prefixes from crates/core/config.rs."""
-    config_path = Path(__file__).resolve().parents[1] / "crates/core/config.rs"
+    """Extract default exclude prefixes from src/core/config.rs."""
+    config_path = Path(__file__).resolve().parents[1] / "src/core/config.rs"
     if not config_path.exists():
         return []
 

@@ -8,7 +8,7 @@ use std::process::Command;
 /// Rules (mirrors the original shell regex `(^|/)tests?(/|\.rs$)` plus
 /// `_test(s)?\.rs$`):
 /// - any `/`-separated path component equal to `test` or `tests` → test
-///   (catches root `tests/foo.rs`, `crates/foo/tests/bar.rs`, …)
+///   (catches root `tests/foo.rs`, `src/foo/tests/bar.rs`, …)
 /// - filename equal to `test.rs` or `tests.rs` (root or otherwise) → test
 /// - filename ending in `_test.rs` or `_tests.rs` → test
 /// - paths like `src/testability/foo.rs` are NOT test files (no full
@@ -234,13 +234,13 @@ mod tests {
 
     #[test]
     fn is_test_path_skips_nested_tests_dir() {
-        assert!(is_test_path("crates/foo/tests/bar.rs"));
+        assert!(is_test_path("src/foo/tests/bar.rs"));
     }
 
     #[test]
     fn is_test_path_does_not_match_regular_source() {
         assert!(!is_test_path("src/lib.rs"));
-        assert!(!is_test_path("crates/cli/commands/scrape.rs"));
+        assert!(!is_test_path("src/cli/commands/scrape.rs"));
     }
 
     // ---- check() smoke -----------------------------------------------------

@@ -84,15 +84,15 @@ The stack has the following components:
 
 | Crate / Directory | Role |
 |---|---|
-| `main.rs`, `lib.rs` | Binary entry and command dispatch |
-| `crates/cli/` | Command handlers |
-| `crates/core/` | Config, HTTP safety, content transforms |
-| `crates/crawl/` | Crawl engine, render modes, sitemap backfill |
-| `crates/jobs/` | SQLite-backed job runtime, in-process worker lanes, state machine |
-| `crates/vector/` | Qdrant operations, TEI embedding, RAG |
-| `crates/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
-| `crates/mcp/` | MCP server, tool schema, action router |
-| `crates/services/` | Typed service entry points for CLI, MCP, and web |
+| `src/lib.rs`, `src/main.rs` | Binary entry and command dispatch |
+| `src/cli/` | Command handlers |
+| `src/core/` | Config, HTTP safety, content transforms |
+| `src/crawl/` | Crawl engine, render modes, sitemap backfill |
+| `src/jobs/` | SQLite-backed job runtime, in-process worker lanes, state machine |
+| `src/vector/` | Qdrant operations, TEI embedding, RAG |
+| `src/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
+| `src/mcp/` | MCP server, tool schema, action router |
+| `src/services/` | Typed service entry points for CLI, MCP, and web |
 | `apps/web/` | Next.js dashboard at port 49010 |
 | `config/docker-compose.services.yaml` | Infrastructure deployment |
 
