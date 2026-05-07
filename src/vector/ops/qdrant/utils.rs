@@ -7,7 +7,6 @@ use reqwest::StatusCode;
 use serde::{Serialize, de::DeserializeOwned};
 use spider::url::Url;
 use std::env;
-use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 pub fn qdrant_base(cfg: &Config) -> &str {
@@ -102,16 +101,6 @@ pub(crate) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usiz
         .unwrap_or(default)
         .clamp(min, max)
 }
-
-// ── Cached env vars for hot-path search operations ──────────────────────────
-// These are read once at process startup via LazyLock instead of calling
-// std::env::var() (which acquires a global lock) on every search request.
-
-pub(crate) static HNSW_EF_SEARCH: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("AXON_HNSW_EF_SEARCH", 128, 32, 512));
-
-pub(crate) static HNSW_EF_SEARCH_LEGACY: LazyLock<usize> =
-    LazyLock::new(|| env_usize_clamped("AXON_HNSW_EF_SEARCH_LEGACY", 64, 32, 512));
 
 pub fn payload_text_typed(payload: &QdrantPayload) -> &str {
     if !payload.chunk_text.is_empty() {

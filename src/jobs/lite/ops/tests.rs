@@ -1,4 +1,5 @@
 use super::enqueue::check_pending_cap_for;
+use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::lite::ops::{
     cancel_row, claim_next_pending, enqueue_job, mark_completed, mark_failed, update_result_json,
@@ -22,6 +23,7 @@ async fn enqueue_and_claim_crawl_job() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -50,6 +52,7 @@ async fn mark_completed_updates_status() {
             input: "test".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -78,6 +81,7 @@ async fn update_result_json_persists_progress_without_changing_status() {
             source_type: "github".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -122,6 +126,7 @@ async fn mark_failed_sets_error_text() {
             url: "https://fail.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -151,6 +156,7 @@ async fn mark_completed_preserves_existing_result_when_none_provided() {
             input: "test".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -185,6 +191,7 @@ async fn cancel_row_sets_finished_at() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -211,6 +218,7 @@ async fn cancel_row_returns_false_for_terminal_jobs() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -237,6 +245,7 @@ async fn mark_completed_succeeds_when_job_already_canceled() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -342,6 +351,7 @@ async fn embed_queue_cap_zero_disables_limit() {
                 input: format!("item-{i}"),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .unwrap_or_else(|e| panic!("enqueue {i} failed: {e}"));
@@ -361,6 +371,7 @@ async fn embed_queue_cap_allows_after_drain() {
             input: "first".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("first enqueue");
@@ -399,6 +410,7 @@ async fn concurrent_claims_only_return_one_job() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");
@@ -455,6 +467,7 @@ async fn touch_heartbeat_advances_updated_at_only_on_running_rows() {
             input: "test".into(),
             config_json: "{}".into(),
         },
+        &Config::default_lite(),
     )
     .await
     .expect("enqueue");

@@ -49,6 +49,7 @@ pub async fn start_crawl_job(cfg: &Config, url: &str) -> Result<Uuid, Box<dyn Er
             url: canonical,
             config_json: "{}".to_string(),
         },
+        cfg,
     )
     .await?)
 }

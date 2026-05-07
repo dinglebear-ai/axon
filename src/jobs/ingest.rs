@@ -115,6 +115,7 @@ pub async fn start_ingest_job(cfg: &Config, source: IngestSource) -> Result<Uuid
             source_type,
             config_json,
         },
+        cfg,
     )
     .await?)
 }

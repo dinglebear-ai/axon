@@ -27,6 +27,9 @@ pub struct LiteBackend {
     pool: Arc<SqlitePool>,
     cancel_store: Arc<CancelStore>,
     workers: Option<workers::WorkerHandles>,
+    /// Config carried through to `enqueue_job` so pending-queue caps come from
+    /// the same priority chain as everywhere else (CLI > env > TOML > default).
+    cfg: Arc<Config>,
 }
 
 impl LiteBackend {
@@ -55,6 +58,7 @@ impl LiteBackend {
             pool,
             cancel_store,
             workers: None,
+            cfg,
         })
     }
 
@@ -79,6 +83,7 @@ impl LiteBackend {
             pool,
             cancel_store,
             workers: Some(worker_handles),
+            cfg,
         })
     }
 
@@ -94,6 +99,7 @@ impl LiteBackend {
             pool,
             cancel_store,
             workers: None,
+            cfg: default_cfg,
         })
     }
 
@@ -124,7 +130,7 @@ impl LiteBackend {
 impl JobBackend for LiteBackend {
     async fn enqueue(&self, payload: JobPayload) -> BackendResult<JobId> {
         let kind = payload.kind();
-        let id = ops::enqueue_job(&self.pool, &payload).await?;
+        let id = ops::enqueue_job(&self.pool, &payload, &self.cfg).await?;
 
         if let Some(ref workers) = self.workers {
             workers.notify(kind);

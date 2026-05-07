@@ -309,6 +309,7 @@ mod tests {
                 url: "https://example.com".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue crawl");
@@ -320,6 +321,7 @@ mod tests {
                 input: "doc".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue embed");
@@ -347,6 +349,7 @@ mod tests {
                 url: "https://example.com".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue crawl");
@@ -357,6 +360,7 @@ mod tests {
                 input: "doc".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue embed");
@@ -389,6 +393,7 @@ mod tests {
                 url: "https://example.com".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue");
@@ -399,6 +404,7 @@ mod tests {
                 input: "x".into(),
                 config_json: "{}".into(),
             },
+            &Config::default_lite(),
         )
         .await
         .expect("enqueue embed");

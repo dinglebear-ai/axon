@@ -120,6 +120,46 @@ impl Default for Config {
                 .and_then(|v| v.parse::<usize>().ok())
                 .map(|v| v.clamp(1, 128))
                 .unwrap_or(64),
+            ingest_lanes: env::var("AXON_INGEST_LANES")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(1, 64))
+                .unwrap_or(2),
+            embed_doc_timeout_secs: env::var("AXON_EMBED_DOC_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|v| v.clamp(30, 3600))
+                .unwrap_or(300),
+            max_pending_crawl_jobs: env::var("AXON_MAX_PENDING_CRAWL_JOBS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(0, 10_000))
+                .unwrap_or(100),
+            max_pending_embed_jobs: env::var("AXON_MAX_PENDING_EMBED_JOBS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(0, 10_000))
+                .unwrap_or(50),
+            max_pending_extract_jobs: env::var("AXON_MAX_PENDING_EXTRACT_JOBS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(0, 10_000))
+                .unwrap_or(50),
+            max_pending_ingest_jobs: env::var("AXON_MAX_PENDING_INGEST_JOBS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(0, 10_000))
+                .unwrap_or(50),
+            hnsw_ef_search: env::var("AXON_HNSW_EF_SEARCH")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(32, 512))
+                .unwrap_or(128),
+            hnsw_ef_search_legacy: env::var("AXON_HNSW_EF_SEARCH_LEGACY")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|v| v.clamp(16, 256))
+                .unwrap_or(64),
             evaluate_retrieval_ab: false,
             cron_every_seconds: None,
             cron_max_runs: None,
@@ -322,6 +362,14 @@ impl fmt::Debug for Config {
             .field("tei_max_retries", &self.tei_max_retries)
             .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
             .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
+            .field("ingest_lanes", &self.ingest_lanes)
+            .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
+            .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
+            .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)
+            .field("max_pending_extract_jobs", &self.max_pending_extract_jobs)
+            .field("max_pending_ingest_jobs", &self.max_pending_ingest_jobs)
+            .field("hnsw_ef_search", &self.hnsw_ef_search)
+            .field("hnsw_ef_search_legacy", &self.hnsw_ef_search_legacy)
             .field("evaluate_retrieval_ab", &self.evaluate_retrieval_ab)
             .field("cron_every_seconds", &self.cron_every_seconds)
             .field("cron_max_runs", &self.cron_max_runs)

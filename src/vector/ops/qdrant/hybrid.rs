@@ -12,7 +12,7 @@ use serde::Serialize;
 use std::time::Instant;
 
 use super::types::{QdrantQueryResponse, QdrantSearchHit};
-use super::utils::{HNSW_EF_SEARCH, qdrant_collection_endpoint, qdrant_post_json_with_retry};
+use super::utils::{qdrant_collection_endpoint, qdrant_post_json_with_retry};
 
 // Typed request bodies for Qdrant `/points/query`. Replaces serde_json::json!{...}
 // macro allocations on the retrieval hot path. (bd axon_rust-d71.25)
@@ -104,7 +104,7 @@ pub(crate) async fn qdrant_hybrid_search(
     let candidates = candidates_override
         .unwrap_or(cfg.hybrid_search_candidates)
         .max(limit);
-    let hnsw_ef = *HNSW_EF_SEARCH;
+    let hnsw_ef = cfg.hnsw_ef_search;
 
     let body = HybridQueryBody {
         prefetch: [
@@ -175,7 +175,7 @@ pub(crate) async fn qdrant_named_dense_search(
     let client = http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/query")?;
 
-    let hnsw_ef = *HNSW_EF_SEARCH;
+    let hnsw_ef = cfg.hnsw_ef_search;
     let body = NamedDenseQueryBody {
         query: dense_vector,
         using: "dense",
