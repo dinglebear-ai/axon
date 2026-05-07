@@ -156,7 +156,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `OPENAI_BASE_URL` | -- | OpenAI-compatible base URL (legacy) |
 | `OPENAI_API_KEY` | -- | API key for LLM provider |
 | `OPENAI_MODEL` | -- | Model override for ask synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
-| `AXON_ASK_BACKEND` | `headless` | Ask synthesis backend (`acp`, `headless`, or `auto`). Env wins over `[ask] backend`; unknown env values warn and fall back to `headless`. |
+| `AXON_ASK_BACKEND` | `headless` | Ask synthesis backend (`acp`, `headless`, or `auto`). `headless` is canonical; `auto` currently resolves to headless. Env wins over `[ask] backend`; unknown env values warn and fall back to `headless`. |
 | `AXON_ASK_AGENT` | `gemini` | Which agent handles ask/research (`claude`, `codex`, or `gemini`). For `AXON_ASK_BACKEND=headless`, `claude` and `gemini` are supported. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless ask synthesis |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME |

@@ -91,6 +91,9 @@ mod tests {
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);
         assert_eq!(cfg.ask_min_citations_nontrivial, 2);
         assert_eq!(cfg.ask_backend, AskBackend::Headless);
+        assert!(AskBackend::Headless.uses_headless());
+        assert!(AskBackend::Auto.uses_headless());
+        assert!(AskBackend::Acp.uses_acp());
     }
 
     #[test]

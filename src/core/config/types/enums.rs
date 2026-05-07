@@ -52,6 +52,16 @@ impl AskBackend {
             Self::Auto => "auto",
         }
     }
+
+    #[must_use]
+    pub fn uses_acp(self) -> bool {
+        matches!(self, Self::Acp)
+    }
+
+    #[must_use]
+    pub fn uses_headless(self) -> bool {
+        matches!(self, Self::Headless | Self::Auto)
+    }
 }
 
 impl fmt::Display for AskBackend {

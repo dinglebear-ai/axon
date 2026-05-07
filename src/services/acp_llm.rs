@@ -20,7 +20,7 @@ pub use warm::{WarmAcpSession, WarmAcpSessionOrigin, warm_session};
 use std::error::Error as StdError;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::core::config::{AskBackend, Config};
+use crate::core::config::Config;
 use crate::services::llm_backend::headless;
 use runner::AcpRuntimeCompletionRunner;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -77,7 +77,7 @@ pub async fn complete_text(
     req: AcpCompletionRequest,
 ) -> Result<AcpCompletionResponse, Box<dyn StdError>> {
     let _permit = acquire_completion_permit().await?;
-    if cfg.ask_backend == AskBackend::Headless {
+    if cfg.ask_backend.uses_headless() {
         return headless::dispatch::complete_text(req).await;
     }
     if cfg.acp_ws_url.is_some() {
@@ -97,7 +97,7 @@ where
     F: FnMut(&str) -> Result<(), Box<dyn StdError>> + Send,
 {
     let _permit = acquire_completion_permit().await?;
-    if cfg.ask_backend == AskBackend::Headless {
+    if cfg.ask_backend.uses_headless() {
         return headless::dispatch::complete_streaming(req, on_delta).await;
     }
     if cfg.acp_ws_url.is_some() {

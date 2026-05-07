@@ -14,7 +14,7 @@ pub(crate) use normalize::normalize_ask_answer;
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
-    if cfg.ask_backend == AskBackend::Headless {
+    if cfg.ask_backend.uses_headless() {
         llm_backend::headless::dispatch::validate_selected_agent()
             .map_err(|e| anyhow::anyhow!("{e}"))?;
     } else {
@@ -41,15 +41,15 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     ));
     validate_ask_llm_config(cfg)?;
 
-    // Start warming the ACP adapter before context retrieval so the cold-start
-    // overlaps with Qdrant queries instead of running sequentially after them.
+    // Only explicit ACP mode warms an adapter. Headless/auto use the canonical
+    // short-lived CLI path and skip ACP entirely.
     let warm_started = std::time::Instant::now();
     let warm = match cfg.ask_backend {
-        AskBackend::Headless => {
+        AskBackend::Headless | AskBackend::Auto => {
             timing.set_warm_path("HeadlessNoWarm");
             None
         }
-        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
             Ok(w) => {
                 // Capture origin (Pool / FreshSpawn / EventChannelBypass) at session
                 // construction; the slot reflects the synchronous portion of warm-

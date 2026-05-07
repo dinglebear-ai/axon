@@ -12,18 +12,18 @@ pub async fn debug_report(cfg: &Config, user_context: &str) -> Result<DebugResul
         .as_deref()
         .map(str::trim)
         .unwrap_or_default();
-    if cfg.ask_backend != AskBackend::Headless && acp_adapter_cmd.is_empty() {
+    if cfg.ask_backend.uses_acp() && acp_adapter_cmd.is_empty() {
         return Err("AXON_ACP_ADAPTER_CMD is required for debug".into());
     }
-    if cfg.ask_backend != AskBackend::Headless && cfg.openai_model.is_empty() {
+    if cfg.ask_backend.uses_acp() && cfg.openai_model.is_empty() {
         return Err("OPENAI_MODEL is required for debug".into());
     }
 
-    // Start warming the ACP adapter before build_doctor_report so the cold-start
-    // overlaps with the HTTP health checks instead of running sequentially after them.
+    // Only explicit ACP mode warms an adapter. Headless/auto use the canonical
+    // short-lived CLI path and skip ACP entirely.
     let warm = match cfg.ask_backend {
-        AskBackend::Headless => None,
-        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+        AskBackend::Headless | AskBackend::Auto => None,
+        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
             Ok(w) => Some(w),
             Err(e) => {
                 log_warn(&format!(
@@ -141,6 +141,21 @@ mod tests {
         match debug_report(&cfg, "ctx").await {
             Ok(result) => assert!(result.payload.get("llm_debug").is_some()),
             Err(err) => panic!("headless should skip ACP/model prereqs: {err}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn debug_report_auto_uses_headless_prereqs() {
+        let cfg = Config {
+            ask_backend: AskBackend::Auto,
+            acp_adapter_cmd: None,
+            openai_model: String::new(),
+            ..Config::default()
+        };
+
+        match debug_report(&cfg, "ctx").await {
+            Ok(result) => assert!(result.payload.get("llm_debug").is_some()),
+            Err(err) => panic!("auto should use headless prereqs: {err}"),
         }
     }
 }

@@ -217,8 +217,8 @@ fn maybe_warm_evaluate_session(
     label: &'static str,
 ) -> Option<acp_llm::WarmAcpSession> {
     match cfg.ask_backend {
-        AskBackend::Headless => None,
-        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+        AskBackend::Headless | AskBackend::Auto => None,
+        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
             Ok(w) => Some(w),
             Err(e) => {
                 log_warn(&format!(

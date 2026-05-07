@@ -341,8 +341,8 @@ async fn discover_suggestions_with_context(
 ) -> Result<(Vec<Suggestion>, Vec<String>, String, SuggestPromptContext), Box<dyn Error>> {
     // Start warming before Qdrant calls so cold-start overlaps with retrieval.
     let warm = match cfg.ask_backend {
-        AskBackend::Headless => None,
-        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, None) {
+        AskBackend::Headless | AskBackend::Auto => None,
+        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
             Ok(w) => Some(w),
             Err(e) => {
                 log_warn(&format!(

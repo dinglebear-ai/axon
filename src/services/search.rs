@@ -139,7 +139,7 @@ pub async fn research_payload(
     if cfg.tavily_api_key.is_empty() {
         return Err("research requires TAVILY_API_KEY — set it in .env".into());
     }
-    if cfg.ask_backend != AskBackend::Headless
+    if cfg.ask_backend.uses_acp()
         && cfg
             .acp_adapter_cmd
             .as_deref()
@@ -149,15 +149,11 @@ pub async fn research_payload(
     {
         return Err("research requires AXON_ACP_ADAPTER_CMD — set it in .env".into());
     }
-    // Start warming the ACP adapter session in the background so its cold-start
-    // (subprocess spawn → init → session setup) overlaps with the Tavily search.
-    // A warm-session failure is treated as degraded — search results are still
-    // returned without LLM synthesis rather than aborting the whole request.
-    // Convert to Option<_> immediately so Box<dyn Error> (!Send) is dropped
-    // before the first .await below.
+    // Only explicit ACP mode warms an adapter. Headless/auto use the canonical
+    // short-lived CLI path for synthesis.
     let warm_opt = match cfg.ask_backend {
-        AskBackend::Headless => None,
-        AskBackend::Acp | AskBackend::Auto => match acp_llm::warm_session(cfg, tx.clone()) {
+        AskBackend::Headless | AskBackend::Auto => None,
+        AskBackend::Acp => match acp_llm::warm_session(cfg, tx.clone()) {
             Ok(w) => Some(w),
             Err(e) => {
                 log_warn(&format!(

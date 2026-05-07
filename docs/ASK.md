@@ -8,7 +8,7 @@ workspace mutation.
 |---------|-----------|----------|
 | Headless | `AXON_ASK_BACKEND=headless` | Default. Starts a short-lived Gemini CLI subprocess for answer synthesis. No warm session. Unsafe or unavailable agent cells fail closed. |
 | ACP | `AXON_ASK_BACKEND=acp` | Uses the configured ACP adapter, warm sessions, remote WS routing, and existing adapter isolation. |
-| Auto | `AXON_ASK_BACKEND=auto` | Currently ACP-equivalent. No heuristic selection is enabled. |
+| Auto | `AXON_ASK_BACKEND=auto` | Headless-equivalent. Uses the canonical CLI synthesis path unless a future heuristic is explicitly added. |
 
 Agent selection stays on `AXON_ASK_AGENT=claude|codex|gemini`; the default is
 `gemini` for headless ask.

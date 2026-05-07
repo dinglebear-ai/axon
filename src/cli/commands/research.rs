@@ -1,6 +1,6 @@
 use crate::cli::commands::common::parse_service_time_range;
 use crate::cli::commands::resolve_input_text;
-use crate::core::config::{AskBackend, Config};
+use crate::core::config::Config;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
 use crate::services::events::ServiceEvent;
@@ -99,7 +99,7 @@ fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
-    if cfg.ask_backend != AskBackend::Headless
+    if cfg.ask_backend.uses_acp()
         && cfg
             .acp_adapter_cmd
             .as_deref()
@@ -185,7 +185,7 @@ fn print_extraction_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::CommandKind;
+    use crate::core::config::{AskBackend, CommandKind};
 
     fn make_research_cfg(
         tavily_key: &str,
@@ -232,6 +232,19 @@ mod tests {
         assert!(
             err.to_string().contains("query"),
             "expected query validation after headless ACP skip, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_research_allows_auto_without_acp_adapter() {
+        let mut cfg = make_research_cfg("tvly-key", None, "");
+        cfg.ask_backend = AskBackend::Auto;
+        cfg.positional = vec![];
+        cfg.query = None;
+        let err = run_research(&cfg).await.unwrap_err();
+        assert!(
+            err.to_string().contains("query"),
+            "expected query validation after auto ACP skip, got: {err}"
         );
     }
 
