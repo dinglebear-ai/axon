@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ask: AXON_ASK_HYBRID_CANDIDATES default lowered 150 → 100 (Qdrant RRF rank-stable at 2x final K; ask_candidate_limit=50 → prefetch=100 is sufficient).
 
+## [1.6.1] - 2026-05-07
+
+### Fixed
+
+- http: cap shared `HTTP_CLIENT` `pool_max_idle_per_host` to 50 with a 60s idle TTL (bd axon_rust-wo1). reqwest defaults `pool_max_idle_per_host` to `usize::MAX`; under sustained dual-Qdrant + TEI load the idle pool grew unbounded. Audited `crates/vector/ops/commands/ask/context/retrieval.rs:252-352` and confirmed the dual-Qdrant `tokio::join!` fallback has no shared `Mutex`/`Semaphore`/`block_on` and `tei_embed_typed` returns vectors by value pre-join — parallelism is correct by construction.
+
 ## [1.6.0] - 2026-05-07
 
 ### Added
