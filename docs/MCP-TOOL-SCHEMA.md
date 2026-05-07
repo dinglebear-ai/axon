@@ -78,10 +78,6 @@ These actions do not require `subaction`:
 
 Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`.
 
-Note: `ask.graph` is retained for schema compatibility, but graph retrieval is
-not available in this build. Requests with `graph: true` return
-`invalid_params`; omit it or set `graph: false`.
-
 ## Crawl Start Parameters
 Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 
