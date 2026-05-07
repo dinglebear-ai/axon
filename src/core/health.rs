@@ -24,7 +24,7 @@ pub fn browser_diagnostics_pattern() -> BrowserDiagnosticsPattern {
     let output_dir = env::var("AXON_CHROME_DIAGNOSTICS_DIR")
         .ok()
         .filter(|v| !v.trim().is_empty())
-        .or_else(|| axon_data_dir().map(|d| format!("{}/axon/chrome-diagnostics", d.display())))
+        .or_else(|| axon_data_dir().map(|d| format!("{}/chrome-diagnostics", d.display())))
         .unwrap_or_else(|| DIAGNOSTICS_DIR_DEFAULT.to_string());
 
     BrowserDiagnosticsPattern {
@@ -64,7 +64,7 @@ mod tests {
             reset_env();
             let pattern = browser_diagnostics_pattern();
             let expected_output_dir = axon_data_dir()
-                .map(|d| format!("{}/axon/chrome-diagnostics", d.display()))
+                .map(|d| format!("{}/chrome-diagnostics", d.display()))
                 .unwrap_or_else(|| ".cache/chrome-diagnostics".to_string());
             assert!(!pattern.enabled);
             assert!(!pattern.screenshot);

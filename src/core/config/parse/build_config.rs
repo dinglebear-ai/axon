@@ -525,7 +525,7 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     if cfg.output_dir == std::path::Path::new(".cache/axon-rust/output")
         && let Some(data_dir) = crate::core::paths::axon_data_dir()
     {
-        cfg.output_dir = data_dir.join("axon/output");
+        cfg.output_dir = data_dir.join("output");
     }
 
     Ok(cfg)

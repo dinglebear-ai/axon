@@ -50,9 +50,7 @@ impl Default for Config {
             batch_concurrency: 16,
             wait: false,
             lite_mode: false,
-            sqlite_path: crate::core::paths::axon_data_base_dir()
-                .join("axon")
-                .join("jobs.db"),
+            sqlite_path: crate::core::paths::axon_data_base_dir().join("jobs.db"),
             yes: false,
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,

@@ -240,7 +240,7 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             super::paths::axon_data_dir()
-                .map(|d| d.join("axon").join("logs"))
+                .map(|d| d.join("logs"))
                 .unwrap_or_else(|| PathBuf::from("logs"))
         });
     std::fs::create_dir_all(&log_dir).ok();

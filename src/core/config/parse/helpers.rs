@@ -67,9 +67,7 @@ pub(super) fn read_env(var: &str) -> Option<String> {
 }
 
 pub(super) fn default_sqlite_path() -> std::path::PathBuf {
-    crate::core::paths::axon_data_base_dir()
-        .join("axon")
-        .join("jobs.db")
+    crate::core::paths::axon_data_base_dir().join("jobs.db")
 }
 
 pub(super) fn validate_collection_name(name: &str) -> Result<(), String> {

@@ -12,14 +12,14 @@ pub fn axon_data_dir() -> Option<PathBuf> {
 }
 
 /// Returns the base data directory for Axon, falling back through:
-/// `AXON_DATA_DIR` → `$HOME/.local/share` → `.cache/axon-rust/data`.
+/// `AXON_DATA_DIR` → `$HOME/.axon` → `.cache/axon-rust/data`.
 ///
 /// Used by subsystems that need a persistent writable directory
 /// (prewarm, assistant mode, etc.).
 pub fn axon_data_base_dir() -> PathBuf {
     axon_data_dir().unwrap_or_else(|| {
         valid_home_path()
-            .map(|home| home.join(".local").join("share"))
+            .map(|home| home.join(".axon"))
             .unwrap_or_else(|| PathBuf::from(".cache/axon-rust/data"))
     })
 }
@@ -144,7 +144,7 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
             None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
         }
-        assert_eq!(result, PathBuf::from("/home/testuser/.local/share"));
+        assert_eq!(result, PathBuf::from("/home/testuser/.axon"));
     }
 
     #[allow(unsafe_code)]

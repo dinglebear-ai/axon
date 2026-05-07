@@ -41,7 +41,7 @@ pub fn client_context_name() -> &'static str {
 /// Return the artifact root directory.
 ///
 /// Resolution order: `AXON_MCP_ARTIFACT_DIR` env var, then
-/// `axon_data_base_dir()/axon/artifacts` (`AXON_DATA_DIR` → `$HOME/.local/share`).
+/// `axon_data_base_dir()/artifacts` (`AXON_DATA_DIR` → `$HOME/.axon`).
 /// The context subdirectory (from `client_context_name()`) is always appended.
 ///
 /// Not cached with `OnceLock` because tests mutate env vars between runs
@@ -53,7 +53,7 @@ pub fn artifact_root() -> PathBuf {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| axon_data_base_dir().join("axon/artifacts"));
+        .unwrap_or_else(|| axon_data_base_dir().join("artifacts"));
     base.join(client_context_name())
 }
 
