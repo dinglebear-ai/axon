@@ -1,0 +1,28 @@
+services:
+  axon-mcp:
+    build:
+      context: .
+      dockerfile: config/Dockerfile
+    container_name: axon-mcp
+    restart: unless-stopped
+    command: ["serve", "mcp"]
+    env_file:
+      - path: ~/.claude-homelab/.env
+        required: false
+      - path: .env
+        required: false
+    ports:
+      - "${AXON_MCP_HTTP_PORT:-8001}:8001/tcp"
+    networks:
+      - jakenet
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+
+networks:
+  jakenet:
+    name: ${DOCKER_NETWORK:-jakenet}
+    external: true

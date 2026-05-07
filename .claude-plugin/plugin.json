@@ -7,7 +7,7 @@
     "email": "jmagar@gmail.com",
     "url": "https://github.com/jmagar"
   },
-  "homepage": "https://github.com/jmagar/axon",
+  "homepage": "https://github.com/jmagar",
   "repository": "https://github.com/jmagar/axon",
   "keywords": [
     "rag",
@@ -24,8 +24,39 @@
   "skills": "./plugins/skills",
   "agents": "./plugins/agents/researcher.md",
   "hooks": "./plugins/hooks/hooks.json",
-  "mcp": "./plugins/.mcp.json",
+  "mcpServers": "./plugins/.mcp.json",
   "userConfig": {
+    "use_docker": {
+      "type": "boolean",
+      "title": "Deploy with Docker",
+      "description": "True: run via docker compose (builds from source). False: install as a systemd user service using the bundled binary.",
+      "default": false
+    },
+    "api_token": {
+      "type": "string",
+      "title": "API token",
+      "description": "Bearer token for MCP authentication (AXON_MCP_HTTP_TOKEN). Required in docker mode; optional in systemd mode when binding to 127.0.0.1.",
+      "sensitive": true,
+      "required": true
+    },
+    "server_url": {
+      "type": "string",
+      "title": "MCP server URL",
+      "description": "axon MCP HTTP server base URL. Leave as default unless running on a remote host.",
+      "default": "http://localhost:8001"
+    },
+    "mcp_host": {
+      "type": "string",
+      "title": "MCP bind host",
+      "description": "Network interface to bind the MCP HTTP server to. Keep 127.0.0.1 unless you set AXON_MCP_HTTP_TOKEN (non-loopback requires auth).",
+      "default": "127.0.0.1"
+    },
+    "mcp_port": {
+      "type": "number",
+      "title": "MCP HTTP port",
+      "description": "Port for the axon MCP HTTP server.",
+      "default": 8001
+    },
     "qdrant_url": {
       "type": "string",
       "title": "Qdrant URL",
@@ -37,7 +68,8 @@
       "type": "string",
       "title": "TEI embedding server URL",
       "description": "URL of your Text Embeddings Inference server (e.g. http://localhost:52000)",
-      "required": true
+      "required": true,
+      "default": "http://localhost:52000"
     },
     "collection": {
       "type": "string",
