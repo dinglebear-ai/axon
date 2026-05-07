@@ -153,21 +153,32 @@ mod tests {
     use super::*;
     use std::fs;
 
-    /// Helper: save and restore an env var unconditionally.
-    fn with_env_restored<F: FnOnce()>(keys: &[&str], f: F) {
-        let saved: Vec<(String, Option<String>)> = keys
-            .iter()
-            .map(|k| ((*k).to_string(), std::env::var(k).ok()))
-            .collect();
-        f();
-        for (k, v) in saved {
-            match v {
-                #[allow(unsafe_code)]
-                Some(val) => unsafe { std::env::set_var(&k, val) },
-                #[allow(unsafe_code)]
-                None => unsafe { std::env::remove_var(&k) },
+    /// Drop guard that restores env vars even if the test body panics.
+    /// Without this, an assertion failure leaks mutated env state into
+    /// other tests in the same binary.
+    struct EnvRestore(Vec<(String, Option<String>)>);
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (k, v) in self.0.drain(..) {
+                match v {
+                    #[allow(unsafe_code)]
+                    Some(val) => unsafe { std::env::set_var(&k, val) },
+                    #[allow(unsafe_code)]
+                    None => unsafe { std::env::remove_var(&k) },
+                }
             }
         }
+    }
+
+    /// Helper: save and restore an env var even if `f()` panics.
+    fn with_env_restored<F: FnOnce()>(keys: &[&str], f: F) {
+        let _guard = EnvRestore(
+            keys.iter()
+                .map(|k| ((*k).to_string(), std::env::var(k).ok()))
+                .collect(),
+        );
+        f();
     }
 
     #[allow(unsafe_code)]

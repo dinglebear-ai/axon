@@ -256,9 +256,11 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
 
     let batch_size = cfg.tei_max_client_batch_size.clamp(1, 128);
     let embed_url = format!("{}/embed", cfg.tei_url.trim_end_matches('/'));
-    // Retry attempts must be at least 1 (so we make at least one request),
-    // even if cfg allows 0 retries.
-    let max_attempts = cfg.tei_max_retries.max(1);
+    // tei_max_retries is the number of RETRY attempts after the initial request,
+    // so total attempts = retries + 1. Default 5 retries → 6 attempts max.
+    // .max(1) on the sum ensures at least one request even if a future config
+    // shape allowed retries to underflow.
+    let max_attempts = cfg.tei_max_retries.saturating_add(1).max(1);
     let request_timeout_ms = cfg.tei_request_timeout_ms.clamp(1000, 300_000);
     let safe_embed_url = redact_url_for_log(&embed_url);
 

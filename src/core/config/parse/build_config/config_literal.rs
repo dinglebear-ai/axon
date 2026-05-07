@@ -375,8 +375,11 @@ fn tei_max_client_batch_size(toml: &TomlConfig) -> usize {
 }
 
 fn ingest_lanes(toml: &TomlConfig) -> usize {
-    performance::env_usize_opt("AXON_INGEST_LANES", 1, 64)
-        .or_else(|| toml.workers.ingest_lanes.map(|v| v.clamp(1, 64)))
+    // Clamp to the same effective range that the runtime worker enforces
+    // (1..=16) so users do not see a documented 64-lane limit that is
+    // silently capped at spawn time.
+    performance::env_usize_opt("AXON_INGEST_LANES", 1, 16)
+        .or_else(|| toml.workers.ingest_lanes.map(|v| v.clamp(1, 16)))
         .unwrap_or(2)
 }
 

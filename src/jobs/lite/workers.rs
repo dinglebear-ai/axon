@@ -91,9 +91,8 @@ pub fn spawn_workers(
     let shutdown = CancellationToken::new();
 
     let embed_lanes = resolve_lane_count("AXON_EMBED_LANES", 2, 32);
-    // ingest_lanes is sourced from Config (env > TOML > default), already clamped 1..=64.
-    // We additionally cap at 16 here to mirror the pre-existing soft ceiling that the
-    // resolve_lane_count helper enforced for ingest specifically.
+    // ingest_lanes is sourced from Config (env > TOML > default), already clamped at parse
+    // time to the same effective range used here.
     let ingest_lanes = cfg.ingest_lanes.clamp(1, 16);
 
     let mut worker_handles = Vec::new();
