@@ -283,10 +283,6 @@ pub struct AskDiagnostics {
     pub context_chars: usize,
     pub graph_entities: usize,
     pub graph_context_chars: usize,
-    pub min_relevance_score: f64,
-    pub doc_fetch_concurrency: usize,
-    pub top_domains: Vec<String>,
-    pub authority_ratio: f64,
     #[serde(default)]
     pub full_doc_fetch_skipped: bool,
     #[serde(default)]
@@ -297,6 +293,10 @@ pub struct AskDiagnostics {
     pub resolved_full_docs: usize,
     #[serde(default)]
     pub full_docs_source: String,
+    pub min_relevance_score: f64,
+    pub doc_fetch_concurrency: usize,
+    pub top_domains: Vec<String>,
+    pub authority_ratio: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

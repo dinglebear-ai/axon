@@ -324,6 +324,47 @@ mod tests {
     }
 
     #[test]
+    fn map_ask_payload_preserves_adaptive_diagnostics() {
+        let payload = json!({
+            "query": "what is axon?",
+            "answer": "A crawler.",
+            "diagnostics": {
+                "candidate_pool": 12,
+                "reranked_pool": 8,
+                "chunks_selected": 4,
+                "full_docs_selected": 2,
+                "supplemental_selected": 1,
+                "context_chars": 3000,
+                "graph_entities": 0,
+                "graph_context_chars": 0,
+                "full_doc_fetch_skipped": true,
+                "full_doc_fetch_skip_reason": "low_complexity",
+                "detected_complexity": "simple",
+                "resolved_full_docs": 2,
+                "full_docs_source": "adaptive",
+                "min_relevance_score": 0.4,
+                "doc_fetch_concurrency": 8,
+                "top_domains": ["docs.example.com"],
+                "authority_ratio": 0.75
+            },
+            "timing_ms": {
+                "retrieval": 1,
+                "context_build": 2,
+                "graph": 0,
+                "llm": 3,
+                "total": 6
+            }
+        });
+        let result = map_ask_payload(payload).unwrap();
+        let diagnostics = result.diagnostics.expect("diagnostics should deserialize");
+        assert!(diagnostics.full_doc_fetch_skipped);
+        assert_eq!(diagnostics.full_doc_fetch_skip_reason, "low_complexity");
+        assert_eq!(diagnostics.detected_complexity, "simple");
+        assert_eq!(diagnostics.resolved_full_docs, 2);
+        assert_eq!(diagnostics.full_docs_source, "adaptive");
+    }
+
+    #[test]
     fn map_ask_payload_rejects_invalid_shape() {
         let err = map_ask_payload(json!({ "answer": "missing query and timing" })).unwrap_err();
         assert!(err.to_string().contains("invalid ask payload"));

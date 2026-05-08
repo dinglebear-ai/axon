@@ -14,6 +14,8 @@ pub enum AxonRequest {
     Retrieve(RetrieveRequest),
     Search(SearchRequest),
     Map(MapRequest),
+    Evaluate(EvaluateRequest),
+    Suggest(SuggestRequest),
     Doctor(DoctorRequest),
     Domains(DomainsRequest),
     Sources(SourcesRequest),
@@ -293,6 +295,41 @@ pub struct MapRequest {
     pub url: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvaluateRequest {
+    #[serde(alias = "question")]
+    pub query: Option<String>,
+    /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
+    pub diagnostics: Option<bool>,
+    /// Compare hybrid RAG against dense-only RAG instead of RAG against baseline.
+    pub retrieval_ab: Option<bool>,
+    /// Qdrant collection to search. Defaults to the server's configured collection.
+    pub collection: Option<String>,
+    /// Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.
+    /// Restricts results to content indexed on or after this date.
+    pub since: Option<String>,
+    /// Upper bound for temporal filter. Same formats as `since`.
+    /// Restricts results to content indexed on or before this date.
+    pub before: Option<String>,
+    /// Per-request hybrid search override. `false` forces dense-only retrieval
+    /// (skips BM42 sparse + RRF). When unset, falls back to server config.
+    pub hybrid_search: Option<bool>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SuggestRequest {
+    #[serde(alias = "query")]
+    pub focus: Option<String>,
+    /// Maximum number of suggestions to return. Overrides cfg.search_limit.
+    pub limit: Option<usize>,
+    /// Qdrant collection to inspect. Defaults to the server's configured collection.
+    pub collection: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

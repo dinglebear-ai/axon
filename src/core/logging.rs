@@ -260,8 +260,13 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(3);
 
-    let file_appender = SizeRotatingFile::new(log_dir, log_file_name, max_bytes, max_files)
-        .expect("failed to create axon log file appender");
+    let Ok(file_appender) = SizeRotatingFile::new(log_dir, log_file_name, max_bytes, max_files)
+    else {
+        eprintln!("warn: failed to create axon log file appender; continuing with stderr logging");
+        let (_sink, guard) = tracing_appender::non_blocking(io::sink());
+        tracing_subscriber::registry().with(console_layer).init();
+        return guard;
+    };
 
     let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
 

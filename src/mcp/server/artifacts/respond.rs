@@ -65,10 +65,9 @@ pub async fn write_json_artifact(
 
 /// Respond with the appropriate mode, respecting the caller's explicit choice.
 ///
-/// When `mode` is `None` (caller didn't specify), small payloads are auto-inlined
-/// to avoid unnecessary disk writes. When the caller explicitly requests a mode
-/// (`Some(Path)`, `Some(Inline)`, `Some(Both)`), that choice is honored regardless
-/// of payload size.
+/// When `mode` is `None` or `Some(AutoInline)`, small payloads are auto-inlined
+/// to avoid unnecessary disk writes. Explicit `Path`, `Inline`, and `Both`
+/// choices are honored regardless of payload size.
 pub async fn respond_with_mode(
     action: &str,
     subaction: &str,
@@ -110,8 +109,7 @@ pub async fn respond_with_mode(
     }
 
     let effective_mode = match mode {
-        Some(explicit) => explicit,
-        None => {
+        Some(ResponseMode::AutoInline) | None => {
             let payload_bytes = serde_json::to_string(&payload)
                 .map(|s| s.len())
                 .unwrap_or(usize::MAX);
@@ -126,9 +124,10 @@ pub async fn respond_with_mode(
                     }),
                 ));
             }
-            // Large payload with no explicit mode — default to path.
+            // Large payload with auto mode — default to path.
             ResponseMode::Path
         }
+        Some(explicit) => explicit,
     };
 
     let artifact = write_json_artifact(artifact_stem, &payload).await?;
@@ -143,7 +142,7 @@ pub async fn respond_with_mode(
                 "artifact": artifact,
             }),
         )),
-        ResponseMode::Inline | ResponseMode::AutoInline => {
+        ResponseMode::Inline => {
             let (inline, truncated) = clip_inline_json(&payload, 12_000);
             Ok(AxonToolResponse::ok(
                 action,
@@ -170,6 +169,7 @@ pub async fn respond_with_mode(
                 }),
             ))
         }
+        ResponseMode::AutoInline => unreachable!("auto-inline is normalized before matching"),
     }
 }
 
@@ -275,6 +275,31 @@ mod tests {
         assert_eq!(resp.data["response_mode"], "path");
         assert!(resp.data["artifact"].is_object());
         assert!(resp.data["shape"].is_object());
+        restore_artifact_env(prev);
+    }
+
+    #[tokio::test]
+    #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
+    async fn explicit_auto_inline_mode_uses_threshold_auto_response() {
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let (_tmp, prev) = scoped_artifact_root();
+        let payload = serde_json::json!({"key": "value"});
+        let resp = respond_with_mode(
+            "test",
+            "sub",
+            Some(ResponseMode::AutoInline),
+            "test-auto-inline-mode",
+            payload.clone(),
+            InlineHint::Default,
+        )
+        .await
+        .unwrap();
+        assert!(resp.ok);
+        assert_eq!(resp.data["response_mode"], "auto-inline");
+        assert_eq!(resp.data["data"], payload);
         restore_artifact_env(prev);
     }
 
