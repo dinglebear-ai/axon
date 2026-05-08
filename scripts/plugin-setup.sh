@@ -12,7 +12,7 @@ OPENAI_API_KEY="${CLAUDE_PLUGIN_OPTION_OPENAI_API_KEY:-}"
 OPENAI_MODEL="${CLAUDE_PLUGIN_OPTION_OPENAI_MODEL:-}"
 TAVILY_API_KEY="${CLAUDE_PLUGIN_OPTION_TAVILY_API_KEY:-}"
 CHROME_REMOTE_URL="${CLAUDE_PLUGIN_OPTION_CHROME_REMOTE_URL:-http://localhost:6000}"
-MCP_HOST="${CLAUDE_PLUGIN_OPTION_MCP_HOST:-127.0.0.1}"
+MCP_HOST="${CLAUDE_PLUGIN_OPTION_MCP_HOST:-0.0.0.0}"
 MCP_PORT="${CLAUDE_PLUGIN_OPTION_MCP_PORT:-8001}"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -24,6 +24,18 @@ UNIT_FILE="${HOME}/.config/systemd/user/axon-mcp.service"
 # Returns 0 if env file was written/changed, 1 if unchanged
 write_env() {
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
+  existing_env_var() {
+    local key="$1"
+    [[ -f "${ENV_FILE}" ]] || return 0
+    awk -F= -v key="${key}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}"
+  }
+  local allowed_origins auth_mode public_url google_client_id google_client_secret admin_email
+  allowed_origins="${CLAUDE_PLUGIN_OPTION_MCP_ALLOWED_ORIGINS:-$(existing_env_var AXON_MCP_ALLOWED_ORIGINS)}"
+  auth_mode="${CLAUDE_PLUGIN_OPTION_AUTH_MODE:-$(existing_env_var AXON_MCP_AUTH_MODE)}"
+  public_url="${CLAUDE_PLUGIN_OPTION_PUBLIC_URL:-$(existing_env_var AXON_MCP_PUBLIC_URL)}"
+  google_client_id="${CLAUDE_PLUGIN_OPTION_GOOGLE_CLIENT_ID:-$(existing_env_var AXON_MCP_GOOGLE_CLIENT_ID)}"
+  google_client_secret="${CLAUDE_PLUGIN_OPTION_GOOGLE_CLIENT_SECRET:-$(existing_env_var AXON_MCP_GOOGLE_CLIENT_SECRET)}"
+  admin_email="${CLAUDE_PLUGIN_OPTION_AUTH_ADMIN_EMAIL:-$(existing_env_var AXON_MCP_AUTH_ADMIN_EMAIL)}"
   local new_env
   new_env=$(cat << EOF
 QDRANT_URL=${QDRANT_URL}
@@ -39,9 +51,22 @@ AXON_MCP_HTTP_PORT=${MCP_PORT}
 AXON_MCP_HTTP_TOKEN=${API_TOKEN}
 EOF
 )
+  [[ -n "${allowed_origins}" ]] && new_env="${new_env}
+AXON_MCP_ALLOWED_ORIGINS=${allowed_origins}"
+  [[ -n "${auth_mode}" ]] && new_env="${new_env}
+AXON_MCP_AUTH_MODE=${auth_mode}"
+  [[ -n "${public_url}" ]] && new_env="${new_env}
+AXON_MCP_PUBLIC_URL=${public_url}"
+  [[ -n "${google_client_id}" ]] && new_env="${new_env}
+AXON_MCP_GOOGLE_CLIENT_ID=${google_client_id}"
+  [[ -n "${google_client_secret}" ]] && new_env="${new_env}
+AXON_MCP_GOOGLE_CLIENT_SECRET=${google_client_secret}"
+  [[ -n "${admin_email}" ]] && new_env="${new_env}
+AXON_MCP_AUTH_ADMIN_EMAIL=${admin_email}"
   if [[ -f "${ENV_FILE}" ]] && diff -q <(echo "${new_env}") "${ENV_FILE}" >/dev/null 2>&1; then
     return 1  # unchanged
   fi
+  umask 077
   echo "${new_env}" > "${ENV_FILE}"
   return 0  # changed
 }
