@@ -63,11 +63,22 @@ pub(super) async fn run_baseline_answer(
             log_warn(&format!(
                 "baseline streaming failed, falling back to non-streaming: {e}"
             ));
-            let fallback = baseline_llm_non_streaming(cfg, client, query).await?;
-            if !cfg.json_output {
-                print!("{fallback}");
+            match baseline_llm_non_streaming(cfg, client, query).await {
+                Ok(fallback) => {
+                    if !cfg.json_output {
+                        print!("{fallback}");
+                    }
+                    fallback
+                }
+                Err(e2) => {
+                    log_warn(&format!(
+                        "evaluate: both streaming and non-streaming baseline failed: {e2}"
+                    ));
+                    String::from(
+                        "(baseline unavailable — both streaming and non-streaming LLM calls failed)",
+                    )
+                }
             }
-            fallback
         }
     };
     Ok((answer, started.elapsed().as_millis()))
