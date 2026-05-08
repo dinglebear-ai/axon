@@ -1,0 +1,56 @@
+[workspace]
+
+[package]
+name = "lab-auth"
+description = "Parameterizable OAuth 2.0 + JWT auth crate (axum) for lab and other consumers."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+license = "MIT"
+publish = false
+
+[features]
+# Explicit empty default to keep Cargo feature unification a no-op for downstream consumers.
+default = []
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+base64 = "0.22"
+getrandom = "0.4"
+httpdate = "1"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "rustls",
+  "json",
+  "gzip",
+  "stream",
+  "form",
+] }
+rsa = "0.10.0-rc.16"
+# PINNED: rusqlite 0.32 (do not upgrade without reading this comment)
+#
+# rusqlite 0.32 depends on libsqlite3-sys 0.30, which is the same version that
+# sqlx-sqlite 0.8 pins (libsqlite3-sys = "0.30.1"). Both crates declare
+# `links = "sqlite3"` — only one version of a links-key crate may appear in a
+# build graph. Upgrading to rusqlite 0.39 would pull libsqlite3-sys 0.37, which
+# conflicts with sqlx's 0.30 and causes a link error.
+#
+# To unpin: upgrade sqlx-sqlite to a version that uses libsqlite3-sys >= 0.37,
+# then upgrade rusqlite to match, keeping both on the same libsqlite3-sys minor.
+# Verify with `cargo tree -d` that no duplicate libsqlite3-sys versions appear.
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+subtle = "2"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "rt", "fs"] }
+tower = { version = "0.5", features = ["util"] }
+tracing = "0.1"
+url = { version = "2", features = ["serde"] }
+
+[dev-dependencies]
+rand = "0.9"
+tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+wiremock = "0.6"

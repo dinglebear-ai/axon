@@ -31,3 +31,12 @@ src/services/types/acp.rs  # expires: 2026-06-09 | owner: jmagar | split: types/
 src/services/acp/session.rs  # expires: 2026-06-09 | owner: jmagar | split: acp/{session_core,mcp_fallback,tests}.rs
 src/services/types/service.rs  # expires: 2026-06-09 | owner: jmagar | split: types/service/{query,lifecycle,system}.rs
 src/vector/ops/commands/streaming.rs  # expires: 2026-06-09 | owner: jmagar | split: streaming/{base,ttft,evaluate}.rs (bd axon_rust-nm9)
+
+# Vendored lab-auth source (upstream pinned SHA 87cec324).
+# These files cannot be split — they are upstream code vendored to resolve
+# the libsqlite3-sys link conflict between sqlx-sqlite 0.8 and rusqlite 0.39.
+# Track in bd axon_rust for cleanup when lab upgrades to rusqlite 0.32+.
+vendor/lab-auth/src/authorize.rs  # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
+vendor/lab-auth/src/sqlite.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
+vendor/lab-auth/src/google.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
+vendor/lab-auth/src/middleware.rs  # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)

@@ -2,6 +2,16 @@
 members = ["xtask"]
 resolver = "2"
 
+# Override lab-auth from the git source with a local vendored copy that uses
+# rusqlite 0.32 (libsqlite3-sys 0.30) instead of rusqlite 0.39 (libsqlite3-sys
+# 0.37). Both libsqlite3-sys versions declare `links = "sqlite3"`, which Cargo
+# forbids when two different versions of a links-crate coexist in the same
+# build graph. sqlx-sqlite 0.8 pins libsqlite3-sys = "0.30.1", so using
+# rusqlite 0.32 here resolves to the same libsqlite3-sys version and eliminates
+# the conflict.
+[patch."https://github.com/jmagar/lab.git"]
+lab-auth = { path = "vendor/lab-auth" }
+
 [package]
 name = "axon"
 version = "1.8.4"
@@ -36,7 +46,9 @@ portable-pty = "0"
 futures-util = "0.3"
 futures = "0.3"
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
-rustls = { version = "0.23", features = ["aws-lc-rs"], default-features = false }
+rustls = { version = "0.23", features = [
+  "aws-lc-rs",
+], default-features = false }
 rand = "0.10"
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
 serde = { version = "1", features = ["derive"] }
@@ -72,7 +84,12 @@ spider_agent = { version = "2.47.89", default-features = false, features = [
 ] }
 spider_transformations = "2"
 ssh2-config = "0.7.1"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = [
+  "runtime-tokio-rustls",
+  "sqlite",
+  "uuid",
+  "chrono",
+] }
 subtle = "2"
 text-splitter = { version = "0.30", features = ["code", "markdown"] }
 tree-sitter-bash = "0.25"
@@ -94,7 +111,10 @@ tokio = { version = "1", features = [
   "time",
 ] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
-toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
+toml = { version = "1.1", default-features = false, features = [
+  "parse",
+  "serde",
+] }
 toml_edit = "0.25.11"
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-executor-trait = "3"
@@ -109,7 +129,11 @@ sha2 = "0.11"
 hex = "0.4"
 reflink-copy = "0.1"
 dotenvy = "0.15"
-rmcp = { version = "1.1.0", features = [
+# rmcp 1.5+ is required: 1.5 introduced the HTTP Parts injection into
+# RequestContext::extensions that our OAuth scope check relies on
+# (ctx.extensions.get::<http::request::Parts>()). Pin to >=1.5 to avoid
+# silently landing on an earlier version that lacks this feature.
+rmcp = { version = "1.5", features = [
   "server",
   "macros",
   "transport-io",
@@ -117,6 +141,10 @@ rmcp = { version = "1.1.0", features = [
   "schemars",
   "elicitation",
 ] }
+# OAuth 2.0 + JWT auth (shared with lab via parameterizable lab-auth crate).
+# Pinned to the exact SHA that introduced the parameterizable API used here.
+lab-auth = { git = "https://github.com/jmagar/lab.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
+url = "2"
 html5gum = "0.8"
 libc = "0.2"
 mime_guess = "2"
