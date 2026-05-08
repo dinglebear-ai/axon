@@ -21,9 +21,8 @@ pub(crate) enum AskTiming {
 #[derive(Debug, Clone)]
 pub(crate) struct EnabledAskTiming {
     /// Request start time captured at the CLI dispatch boundary, used as the
-    /// TTFT origin so any ACP cold-start tax is included.
+    /// TTFT origin for user-visible LLM latency.
     pub request_start: Instant,
-    pub warm_session_ready_ms: Option<u128>,
     pub tei_embed_ms: Option<u128>,
     pub qdrant_primary_ms: Option<u128>,
     pub qdrant_secondary_ms: Option<u128>,
@@ -33,7 +32,6 @@ pub(crate) struct EnabledAskTiming {
     pub supplemental_ms: Option<u128>,
     pub llm_ttft_ms: Option<u128>,
     pub llm_total_ms: Option<u128>,
-    pub llm_warm_path: Option<String>,
     pub streamed: Option<bool>,
     pub normalize_ms: Option<u128>,
 }
@@ -43,7 +41,6 @@ impl AskTiming {
         if diagnostics_enabled {
             AskTiming::Enabled(Box::new(EnabledAskTiming {
                 request_start,
-                warm_session_ready_ms: None,
                 tei_embed_ms: None,
                 qdrant_primary_ms: None,
                 qdrant_secondary_ms: None,
@@ -53,7 +50,6 @@ impl AskTiming {
                 supplemental_ms: None,
                 llm_ttft_ms: None,
                 llm_total_ms: None,
-                llm_warm_path: None,
                 streamed: None,
                 normalize_ms: None,
             }))
@@ -101,7 +97,6 @@ impl AskTiming {
             return;
         };
         match slot {
-            AskTimingSlot::WarmSessionReady => e.warm_session_ready_ms = Some(v),
             AskTimingSlot::TeiEmbed => e.tei_embed_ms = Some(v),
             AskTimingSlot::QdrantPrimary => e.qdrant_primary_ms = Some(v),
             AskTimingSlot::QdrantSecondary => e.qdrant_secondary_ms = Some(v),
@@ -111,12 +106,6 @@ impl AskTiming {
             AskTimingSlot::Supplemental => e.supplemental_ms = Some(v),
             AskTimingSlot::LlmTotal => e.llm_total_ms = Some(v),
             AskTimingSlot::Normalize => e.normalize_ms = Some(v),
-        }
-    }
-
-    pub(crate) fn set_warm_path(&mut self, warm_path: impl Into<String>) {
-        if let AskTiming::Enabled(e) = self {
-            e.llm_warm_path = Some(warm_path.into());
         }
     }
 
@@ -135,7 +124,6 @@ impl AskTiming {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum AskTimingSlot {
-    WarmSessionReady,
     TeiEmbed,
     QdrantPrimary,
     QdrantSecondary,
@@ -158,7 +146,6 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(2));
         t.record(AskTimingSlot::TeiEmbed, probe);
         t.set_ttft(42);
-        t.set_warm_path("Pool");
         t.set_streamed(true);
         assert!(t.enabled().is_none());
     }
@@ -169,12 +156,10 @@ mod tests {
         let probe = Instant::now();
         std::thread::sleep(std::time::Duration::from_millis(2));
         t.record(AskTimingSlot::TeiEmbed, probe);
-        t.set_warm_path("FreshSpawn");
         t.set_ttft(99);
         t.set_streamed(false);
         let e = t.enabled().expect("enabled");
         assert!(e.tei_embed_ms.is_some_and(|v| v >= 1));
-        assert_eq!(e.llm_warm_path.as_deref(), Some("FreshSpawn"));
         assert_eq!(e.llm_ttft_ms, Some(99));
         assert_eq!(e.streamed, Some(false));
     }

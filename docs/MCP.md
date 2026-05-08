@@ -70,20 +70,9 @@ HTTP transport uses:
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 - `AXON_MCP_HTTP_TOKEN` (required for non-loopback binds)
 
-## ACP MCP Server Store (Web UI + Pulse ACP)
+## MCP Server Store
 
-ACP sessions (`pulse_chat`) read MCP server definitions from:
-
-- `${AXON_DATA_DIR}/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`)
-- `~/.config/axon/mcp.json` fallback when `AXON_DATA_DIR` is unset
-
-The Web UI MCP settings page (`/api/mcp`) writes to this same file, so servers
-added in the UI are the servers passed into ACP sessions.
-
-Hot reload behavior:
-- ACP watches `mcp.json` changes via file metadata checks.
-- When MCP server config changes, Pulse ACP respawns the persistent adapter
-  session with the updated MCP server list on the next turn.
+The Web UI MCP settings page writes MCP server definitions to `${AXON_DATA_DIR}/mcp.json` when `AXON_DATA_DIR` is set (default: `~/.axon/mcp.json`) and falls back to `~/.config/axon/mcp.json` when unset. These definitions are used by MCP clients and server configuration flows.
 
 ### Config File Examples
 
@@ -157,7 +146,6 @@ Use CLI-identical action names:
 - `search`, `map`
 - `artifacts` (with subactions `head|grep|wc|read|list|delete|clean|search`)
 - `scrape`, `research`, `ask`, `evaluate`, `suggest`, `screenshot`, `help`, `status`, `elicit_demo`
-- `acp` (subactions: `list_sessions|fork_session|resume_session|set_model|ext_method|ext_notification|logout`)
 
 Examples:
 - `action: "ingest", subaction: "start"`

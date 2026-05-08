@@ -1,4 +1,3 @@
-use crate::services::types::AcpBridgeEvent;
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -6,7 +5,7 @@ use tokio::sync::mpsc;
 ///
 /// Serializes to `"replace"` or `"append"` on the wire, matching the
 /// TypeScript `'replace' | 'append'` union and the Zod schema in
-/// `use-axon-acp.ts`.
+/// `web event consumers`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EditorOperation {
@@ -65,9 +64,6 @@ pub enum ServiceEvent {
     Log {
         level: LogLevel,
         message: String,
-    },
-    AcpBridge {
-        event: AcpBridgeEvent,
     },
     /// Emitted after a turn completes when the agent's response contained
     /// one or more `<axon:editor>` blocks.  Each block becomes one event.

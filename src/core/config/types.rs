@@ -6,8 +6,8 @@ pub mod subconfigs;
 
 pub use config::Config;
 pub use enums::{
-    AskBackend, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 pub use overrides::ConfigOverrides;
 
@@ -90,10 +90,6 @@ mod tests {
         assert!(cfg.ask_authoritative_domains.is_empty());
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);
         assert_eq!(cfg.ask_min_citations_nontrivial, 2);
-        assert_eq!(cfg.ask_backend, AskBackend::Headless);
-        assert!(AskBackend::Headless.uses_headless());
-        assert!(AskBackend::Auto.uses_headless());
-        assert!(AskBackend::Acp.uses_acp());
     }
 
     #[test]

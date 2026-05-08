@@ -43,7 +43,7 @@ The primary HTTP MCP endpoint is mounted at `/mcp`.
 - Tool name: `axon`
 - Routing: `action` + `subaction` (for lifecycle families)
 
-Supported top-level action families include: `status`, `help`, `crawl`, `extract`, `embed`, `ingest`, `query`, `retrieve`, `search`, `map`, `doctor`, `domains`, `sources`, `stats`, `artifacts`, `scrape`, `research`, `ask`, `screenshot`, `acp`, `elicit_demo`.
+Supported top-level action families include: `status`, `help`, `crawl`, `extract`, `embed`, `ingest`, `query`, `retrieve`, `search`, `map`, `doctor`, `domains`, `sources`, `stats`, `artifacts`, `scrape`, `research`, `ask`, `screenshot`, `elicit_demo`.
 
 ## Examples
 

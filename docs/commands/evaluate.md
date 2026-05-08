@@ -22,14 +22,14 @@ axon evaluate --query "<question>" [FLAGS]
 |----------|-------------|
 | `<question>` | Evaluation question (positional, or via `--query`). |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `TEI_URL` | TEI embeddings base URL (retrieval and judge reference). |
 | `QDRANT_URL` | Qdrant base URL. |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for all LLM calls (RAG, baseline, judge). |
-| `OPENAI_MODEL` | Model name passed to the ACP adapter for all evaluate LLM calls. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for all evaluate LLM calls. |
 
 `evaluate` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 

@@ -308,10 +308,12 @@ impl AxonMcpServer {
         if self.cfg.tavily_api_key.is_empty() {
             return Err(internal_error("TAVILY_API_KEY is required for research"));
         }
-        if self.cfg.openai_base_url.is_empty() || self.cfg.openai_model.is_empty() {
-            return Err(internal_error(
-                "OPENAI_BASE_URL and OPENAI_MODEL are required for research",
-            ));
+        let backend = crate::services::llm_backend::LlmBackendConfig::from_config(&self.cfg);
+        if let Err(err) = crate::services::llm_backend::headless::gemini::validate_config(&backend)
+        {
+            return Err(internal_error(format!(
+                "Gemini headless is required for research: {err}"
+            )));
         }
         let query = req
             .query

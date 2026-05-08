@@ -596,15 +596,15 @@ mod tests {
     #[test]
     fn test_page_matches_requested_url_accepts_docs_redirect_filename_match() {
         assert!(page_matches_requested_url(
-            "https://docs.rs/agent-client-protocol/latest/agent_client_protocol/trait.Client.html",
-            "https://docs.rs/agent-client-protocol/0.9.5/agent_client_protocol/trait.Client.html"
+            "https://docs.rs/serde/latest/serde/trait.Serialize.html",
+            "https://docs.rs/serde/1.0.203/serde/trait.Serialize.html"
         ));
     }
 
     #[test]
     fn test_page_matches_requested_url_rejects_different_terminal_page() {
         assert!(!page_matches_requested_url(
-            "https://docs.rs/agent-client-protocol/latest/agent_client_protocol/trait.Client.html",
+            "https://docs.rs/serde/latest/serde/trait.Serialize.html",
             "https://docs.rs/releases"
         ));
     }

@@ -12,8 +12,6 @@ use std::io::{IsTerminal, Write as _};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
-use crate::services::acp_llm::WarmAcpSession;
-
 use super::super::streaming::{
     JudgeContext, TaggedToken, ask_llm_non_streaming, ask_llm_streaming, ask_llm_streaming_tagged,
     baseline_llm_non_streaming, baseline_llm_streaming, baseline_llm_streaming_tagged,
@@ -30,11 +28,9 @@ pub(super) async fn run_rag_answer(
     client: &reqwest::Client,
     query: &str,
     context: &str,
-    warm: Option<WarmAcpSession>,
 ) -> Result<(String, u128), Box<dyn Error>> {
     let started = Instant::now();
-    let streaming = ask_llm_streaming(cfg, client, query, context, !cfg.json_output, warm).await;
-    let answer = match streaming.map_err(|e| e.to_string()) {
+    let answer = match ask_llm_streaming(cfg, client, query, context, !cfg.json_output).await {
         Ok(v) => v,
         Err(message) => {
             log_warn(&format!(
@@ -54,11 +50,9 @@ pub(super) async fn run_baseline_answer(
     cfg: &Config,
     client: &reqwest::Client,
     query: &str,
-    warm: Option<WarmAcpSession>,
 ) -> Result<(String, u128), Box<dyn Error>> {
     let started = Instant::now();
-    let streaming = baseline_llm_streaming(cfg, client, query, !cfg.json_output, warm).await;
-    let answer = match streaming.map_err(|e| e.to_string()) {
+    let answer = match baseline_llm_streaming(cfg, client, query, !cfg.json_output).await {
         Ok(v) => v,
         Err(message) => {
             log_warn(&format!(
@@ -89,12 +83,11 @@ pub(super) async fn run_analysis(
     cfg: &Config,
     client: &reqwest::Client,
     judge_ctx: &JudgeContext<'_>,
-    warm: Option<WarmAcpSession>,
 ) -> (String, u128) {
     let started = Instant::now();
     let print_tokens =
         !cfg.json_output && cfg.evaluate_responses_mode != EvaluateResponsesMode::Events;
-    let answer = match judge_llm_streaming(cfg, client, judge_ctx, print_tokens, warm).await {
+    let answer = match judge_llm_streaming(cfg, client, judge_ctx, print_tokens).await {
         Ok(v) => v,
         Err(e) => {
             log_warn(&format!(

@@ -16,7 +16,6 @@ docs/
 ├── sessions/                 # Session logs: YYYY-MM-DD-HH-MM-description.md
 ├── archive/                  # Pre-lite-mode docs kept for historical reference (do not edit)
 │
-├── ACP.md                    # ACP protocol: one-shot vs persistent, wire format, session cache, prewarming
 ├── ARCHITECTURE.md           # System architecture diagrams and data-flow
 ├── DEPLOYMENT.md             # Production deployment guide
 ├── FEATURE-DELIVERY-FRAMEWORK.md  # Feature development process

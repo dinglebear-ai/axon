@@ -47,7 +47,7 @@ Required values in `.env`:
 | `AXON_DATA_DIR` | Host root for SQLite, Qdrant volume, TEI cache, output |
 | `QDRANT_URL` | Default: `http://127.0.0.1:53333` |
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter binary (e.g. `codex`, `claude`, `gemini`) — required for `ask`/`evaluate`/`research`/`debug` |
+| `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
 | `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` | LLM endpoint used as model override |
 | `TAVILY_API_KEY` | Required for `search` and `research` |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Required for Reddit ingest |
@@ -94,7 +94,7 @@ processed by that running `axon mcp` (or `axon serve`).
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
 - **Qdrant** — `GET /healthz`, plus `/collections/{name}` for vector mode (named/unnamed)
 - **Chrome** — `chrome_remote_url` if configured
-- **OpenAI/ACP LLM** — base URL + model reachability
+- **Gemini headless LLM** — base URL + model reachability
 - **Vector mode mismatch** — warns if collection is unnamed but `AXON_HYBRID_SEARCH=true`
 
 `axon status` reports per-kind job counts (Crawl / Extract / Embed / Ingest)
@@ -312,7 +312,7 @@ tail -f "${AXON_DATA_DIR:-$HOME/.axon}/logs/axon.log"
 RUST_LOG=info,crates::jobs::lite=debug just dev
 ```
 
-`tracing` filters honor `RUST_LOG`. CDP/ACP decoder noise is suppressed by
+`tracing` filters honor `RUST_LOG`. CDP decoder noise is suppressed by
 `init_tracing`.
 
 ### Container logs

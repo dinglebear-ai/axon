@@ -67,7 +67,7 @@ flowchart LR
 | `crates/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
 | `crates/jobs/*` | SQLite-backed worker runtime + job state transitions |
 | `crates/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
-| `crates/services/acp/*` | ACP session lifecycle, subprocess bridge, runtime state, permission map |
+| `crates/services/llm_backend/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
 | `config/docker-compose.services.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
@@ -285,26 +285,20 @@ Added in v0.12.0 to manage MCP tool response artifacts:
 | `artifacts/respond.rs` | Build MCP tool response payloads embedding artifact refs |
 | `artifacts/shape.rs` | `ArtifactShape` enum: `Blob`, `Text`, `Json`, `Image` |
 
-### ACP Service (`crates/services/acp/`)
+### LLM Backend (`crates/services/llm_backend/`)
 
-`services/acp.rs` (formerly 2060-line monolith) was split (v0.11.2) into:
+`services/llm_backend` is the sole LLM synthesis gateway. It serves `ask`,
+`evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
+Gemini headless with:
 
-| File | Responsibility |
-|---|---|
-| `bridge.rs` | `AcpBridgeClient` — implements the ACP SDK `Client` trait; forwards session notifications and permission requests through the service event channel. Owns `AcpRuntimeState` (RefCell-based, single-threaded via `LocalSet`). |
-| `runtime.rs` | `run_prompt_turn`, `run_session_probe` — one-shot orchestration. Contains `AdapterGuard` RAII cleanup. |
-| `session.rs` | Subprocess spawn, connection init, session setup sub-functions called from `runtime.rs`. |
-| `adapters.rs` | Adapter detection (`is_codex_adapter`, `is_gemini_adapter`) and model override injection. |
-| `config.rs` | Config option discovery and model cache readers (Codex `models_cache.json`, Gemini `settings.json`). |
-| `mapping.rs` | SDK event → service type conversions. |
-| `persistent_conn.rs` | `AcpConnectionHandle` — single persistent adapter handle used by Pulse Chat sessions. |
+- isolated temporary HOME populated from `AXON_HEADLESS_GEMINI_HOME` or process HOME
+- allowlisted environment variables
+- command path validation
+- `AXON_LLM_COMPLETION_CONCURRENCY` semaphore
+- `AXON_LLM_COMPLETION_TIMEOUT_SECS` per-request timeout
 
-Key runtime patterns:
-
-- `AcpRuntimeState` uses `RefCell` (not `Mutex`) — single-threaded via `LocalSet` on a `current_thread` runtime inside `spawn_blocking`. Safe; compiler enforces via `?Send` bounds.
-- Permission map uses `DashMap` (lock-free concurrent reads for session-scoped permission routing, SEC-7).
-- `AdapterGuard` — RAII guard that cleans up the ACP subprocess on `Drop`, preventing zombie processes.
-- `select! { biased; }` — event-drain loop ordering ensures cancellation signals are checked before new input, preventing unbounded queuing on client disconnect.
+Callers use `CompletionRequest` and `CompletionResponse`; no entry point should
+spawn Gemini directly.
 
 ## Data Model and Persistence
 
@@ -407,16 +401,14 @@ Ingest:
 - `crates/ingest/youtube.rs` + `crates/ingest/youtube/` (meta, vtt)
 - `crates/ingest/sessions.rs`
 
-ACP + MCP:
+LLM backend:
 
-- `crates/services/acp.rs`
-- `crates/services/acp/bridge.rs`
-- `crates/services/acp/runtime.rs`
-- `crates/services/acp/session.rs`
-- `crates/services/acp/adapters.rs`
-- `crates/services/acp/config.rs`
-- `crates/services/acp/mapping.rs`
-- `crates/services/acp/persistent_conn.rs`
+- `crates/services/llm_backend.rs`
+- `crates/services/llm_backend/concurrency.rs`
+- `crates/services/llm_backend/headless/dispatch.rs`
+- `crates/services/llm_backend/headless/env.rs`
+- `crates/services/llm_backend/headless/gemini.rs`
+- `crates/services/llm_backend/types.rs`
 - `crates/mcp/server/artifacts.rs`
 - `crates/mcp/server/artifacts/` (lifecycle, path, respond, shape)
 

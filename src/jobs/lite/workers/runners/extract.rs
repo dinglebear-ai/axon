@@ -50,8 +50,9 @@ pub async fn run_extract_job_lite(
             openai_base_url: effective_cfg.openai_base_url.clone(),
             openai_api_key: effective_cfg.openai_api_key.clone(),
             openai_model: effective_cfg.openai_model.clone(),
-            acp_adapter_cmd: effective_cfg.acp_adapter_cmd.clone(),
-            acp_adapter_args: effective_cfg.acp_adapter_args.clone(),
+            llm_backend: crate::services::llm_backend::LlmBackendConfig::from_config(
+                &effective_cfg,
+            ),
             custom_headers: effective_cfg.custom_headers.clone(),
             render_mode: effective_cfg.render_mode,
             chrome_remote_url: effective_cfg.chrome_remote_url.clone(),

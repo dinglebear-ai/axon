@@ -350,7 +350,7 @@ axon research "<query>" [FLAGS]
 | `--limit <n>` | `10` | Number of Tavily results. |
 | `--search-time-range` | — | Filter results by recency: `day`, `week`, `month`, `year`. |
 
-Requires `TAVILY_API_KEY` and `AXON_ACP_ADAPTER_CMD`.
+Requires `TAVILY_API_KEY` and the Gemini CLI headless configuration.
 
 ---
 
@@ -423,7 +423,7 @@ RAG pipeline:
 4. Rerank by score; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
 5. Backfill additional chunks from top `AXON_ASK_FULL_DOCS` (default: 4) documents
 6. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
-7. Call the LLM via ACP adapter
+7. Call the LLM via Gemini headless
 8. Apply citation-quality gates and return the answer
 
 ```bash
@@ -442,7 +442,7 @@ Baseline vs RAG evaluation with an independent LLM judge. Compares an answer wit
 axon evaluate "<question>" [FLAGS]
 ```
 
-Requires `AXON_ACP_ADAPTER_CMD`.
+Requires the Gemini CLI headless configuration.
 
 ---
 
@@ -654,7 +654,7 @@ axon doctor [FLAGS]
 
 ### debug
 
-Run `doctor` plus LLM-assisted troubleshooting with recommendations. Requires `AXON_ACP_ADAPTER_CMD`.
+Run `doctor` plus LLM-assisted troubleshooting with recommendations. Requires the Gemini CLI headless configuration.
 
 ```bash
 axon debug [FLAGS]
@@ -895,7 +895,7 @@ HTTP transport example:
 }
 ```
 
-MCP server config for ACP sessions is read from `${AXON_DATA_DIR}/mcp.json` (default: `~/.axon/mcp.json`; falls back to `~/.config/axon/mcp.json`). The Web UI MCP settings page writes to this same file.
+The Web UI MCP settings page writes MCP server definitions to `${AXON_DATA_DIR}/mcp.json` (default: `~/.axon/mcp.json`; falls back to `~/.config/axon/mcp.json`).
 
 ---
 
@@ -914,11 +914,13 @@ The minimum set needed to start:
 |---|---|---|
 | `QDRANT_URL` | Yes | Qdrant REST API base URL (e.g. `http://127.0.0.1:53333`) |
 | `TEI_URL` | Yes | Text Embeddings Inference base URL (e.g. `http://127.0.0.1:52000`) |
-| `AXON_ASK_BACKEND` | For ask/research | Ask synthesis backend: `headless` by default, or `acp` / `auto` |
-| `AXON_ASK_AGENT` | For ask/research | Which agent handles synthesis: `gemini` by default, or `claude` / `codex` |
-| `AXON_ACP_CLAUDE_ADAPTER_CMD` | When `AXON_ASK_AGENT=claude` | ACP adapter command (default: `claude-agent-acp`) |
-| `OPENAI_BASE_URL` | For ask/research | OpenAI-compatible API base URL |
-| `OPENAI_MODEL` | For ask/research | Model override; headless Gemini defaults to `gemini-3.1-flash-lite-preview` |
+| `AXON_HEADLESS_GEMINI_CMD` | For ask/research/evaluate/suggest/debug/extract fallback | Gemini CLI command (default: `gemini`) |
+| `AXON_HEADLESS_GEMINI_HOME` | For Gemini auth isolation | Source HOME to copy Gemini auth files from |
+| `AXON_HEADLESS_GEMINI_MODEL` | For ask/research | Gemini model override; defaults to `gemini-3.1-flash-lite-preview` |
+| `AXON_LLM_COMPLETION_CONCURRENCY` | No | Max concurrent Gemini headless completions (default: `4`) |
+| `AXON_LLM_COMPLETION_TIMEOUT_SECS` | No | Gemini completion timeout in seconds (default: `300`) |
+| `OPENAI_BASE_URL` | Compatibility | OpenAI-compatible API base URL for legacy callers; Gemini headless does not require it |
+| `OPENAI_MODEL` | Compatibility | Only `gemini-*` values are reused as Gemini overrides; older OpenAI model names are ignored |
 | `TAVILY_API_KEY` | For search/research | Tavily search API key |
 | `GITHUB_TOKEN` | For GitHub ingest | GitHub personal access token (optional, raises rate limits) |
 | `REDDIT_CLIENT_ID` | For Reddit ingest | Reddit OAuth2 app client ID |
@@ -1139,9 +1141,9 @@ DNS rebinding is mitigated via `SsrfBlockingResolver`, which re-checks resolved 
 
 The `/ws` gate activates when `AXON_WEB_API_TOKEN` is set. Unset means open (trusted-network deployments). The browser sends the token as `?token=` on the WebSocket URL. MCP OAuth clients (`atk_` tokens) use `/mcp` only.
 
-### ACP Permission Security
+### LLM Process Isolation
 
-Concurrent ACP sessions are isolated by `(session_id, tool_call_id)` composite keys. One session cannot receive another session's permission prompt. Auto-approve is on by default (`AXON_ACP_AUTO_APPROVE=true`). Set to `false` to require explicit UI approval.
+Gemini headless completions run with an isolated temporary HOME and an allowlisted environment. The Gemini command path is validated before launch, and LLM completion concurrency is capped by `AXON_LLM_COMPLETION_CONCURRENCY`.
 
 ### Destructive Operations
 
@@ -1273,8 +1275,7 @@ axon sources
 | `docs/CONFIG.md` | Authoritative environment variable reference |
 | `docs/MCP.md` | MCP runtime and design guide |
 | `docs/MCP-TOOL-SCHEMA.md` | MCP tool schema source of truth |
-| `docs/ACP.md` | ACP protocol reference |
-| `docs/SECURITY.md` | Security model, SSRF controls, ACP permission isolation |
+| `docs/SECURITY.md` | Security model, SSRF controls, MCP auth, and LLM process isolation |
 | `docs/JOB-LIFECYCLE.md` | Async job state machine, worker architecture |
 | `docs/DEPLOYMENT.md` | Deploy and rollback procedures |
 | `docs/TESTING.md` | Test strategy and mcporter smoke harness |

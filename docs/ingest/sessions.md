@@ -80,32 +80,6 @@ Both fields are present on `SessionFile` (scanner), `SessionSummary` (frontend i
 
 `components/reboot/axon-sidebar.tsx` uses `repo` and `branch` to filter sessions in the sidebar search. A search query is matched against `session.repo`, `session.branch`, and `session.project` — so users can filter by repository name or branch.
 
-## SessionFallback Event
-
-When Pulse chat (ACP bridge) attempts to resume a session by ID and the ACP adapter fails to load it (e.g. the session file no longer exists or the adapter cannot parse it), the bridge falls back to creating a **new session** and emits a `SessionFallback` event.
-
-### Rust wire shape
-
-Emitted from `crates/services/acp/session.rs` via `AcpBridgeEvent::SessionFallback` and serialized by `crates/services/types/acp.rs`:
-
-```json
-{
-  "type": "session_fallback",
-  "old_session_id": "<requested session UUID>",
-  "new_session_id": "<newly created session UUID>"
-}
-```
-
-### Frontend propagation
-
-The event is handled in two places in the Pulse stream pipeline:
-
-- **`/api/pulse/chat/route.ts`**: on receiving `session_fallback` from the Rust WS bridge, emits `{ type: 'session_fallback', newSessionId }` downstream to the client.
-- **`hooks/use-axon-acp.ts`**: exposes an `onSessionFallback(oldId, newId)` callback; `axon-shell.tsx` currently passes `undefined` (no custom handler), so the fallback is a silent session swap.
-- **`lib/pulse/chat-api.ts`**: the `ChatStreamEvent` union type includes `{ type: 'session_fallback'; newSessionId: string }`, and `chat-stream.ts` also models it.
-
-The fallback is **graceful** — the user continues into a new session rather than seeing an error. The `old_session_id` is available if the caller needs to log or surface the swap.
-
 ## Adding a New Session Format
 
 1. Create `crates/ingest/sessions/<provider>.rs` (or add provider parser logic under `crates/ingest/sessions.rs` if keeping a single module)

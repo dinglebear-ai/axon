@@ -37,9 +37,13 @@ mod tests {
         submitted.qdrant_url = "http://submitted-qdrant:6333".to_string();
         submitted.tei_url = "http://submitted-tei:80".to_string();
         submitted.openai_model = "submitted-model".to_string();
+        submitted.headless_gemini_model = "gemini-submitted".to_string();
+        submitted.headless_gemini_cmd = "/opt/submitted/gemini".to_string();
+        submitted.headless_gemini_home = Some(PathBuf::from("/tmp/submitted-gemini-home"));
+        submitted.llm_completion_concurrency = 2;
+        submitted.llm_completion_timeout_secs = 17;
         submitted.openai_api_key = "submitted-secret".to_string();
         submitted.chrome_proxy = Some("http://submitted-proxy:8080".to_string());
-        submitted.acp_adapter_args = Some("--model|submitted".to_string());
         submitted.custom_headers = vec!["Authorization: Bearer submitted".to_string()];
 
         let mut worker = Config::test_default();
@@ -55,9 +59,13 @@ mod tests {
         worker.qdrant_url = "http://worker-qdrant:6333".to_string();
         worker.tei_url = "http://worker-tei:80".to_string();
         worker.openai_model = "worker-model".to_string();
+        worker.headless_gemini_model = "gemini-worker".to_string();
+        worker.headless_gemini_cmd = "/opt/worker/gemini".to_string();
+        worker.headless_gemini_home = Some(PathBuf::from("/tmp/worker-gemini-home"));
+        worker.llm_completion_concurrency = 8;
+        worker.llm_completion_timeout_secs = 99;
         worker.openai_api_key = "worker-secret".to_string();
         worker.chrome_proxy = Some("http://worker-proxy:8080".to_string());
-        worker.acp_adapter_args = Some("--model|worker".to_string());
         worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
 
         let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
@@ -75,13 +83,17 @@ mod tests {
         assert_eq!(effective.qdrant_url, "http://submitted-qdrant:6333");
         assert_eq!(effective.tei_url, "http://submitted-tei:80");
         assert_eq!(effective.openai_model, "submitted-model");
+        assert_eq!(effective.headless_gemini_model, "gemini-submitted");
+        assert_eq!(effective.headless_gemini_cmd, "/opt/submitted/gemini");
+        assert_eq!(
+            effective.headless_gemini_home,
+            Some(PathBuf::from("/tmp/submitted-gemini-home"))
+        );
+        assert_eq!(effective.llm_completion_concurrency, 2);
+        assert_eq!(effective.llm_completion_timeout_secs, 17);
         assert_eq!(
             effective.chrome_proxy.as_deref(),
             Some("http://submitted-proxy:8080")
-        );
-        assert_eq!(
-            effective.acp_adapter_args.as_deref(),
-            Some("--model|submitted")
         );
         assert_eq!(effective.openai_api_key, "worker-secret");
         assert_eq!(
@@ -96,21 +108,16 @@ mod tests {
         submitted.output_path = None;
         submitted.request_timeout_ms = None;
         submitted.chrome_wait_for_selector = None;
-        submitted.acp_adapter_args = None;
-
         let mut worker = Config::test_default();
         worker.output_path = Some(PathBuf::from("/tmp/worker-output.md"));
         worker.request_timeout_ms = Some(999);
         worker.chrome_wait_for_selector = Some("#app".to_string());
-        worker.acp_adapter_args = Some("--model|worker".to_string());
-
         let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
         let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
 
         assert_eq!(effective.output_path, None);
         assert_eq!(effective.request_timeout_ms, None);
         assert_eq!(effective.chrome_wait_for_selector, None);
-        assert_eq!(effective.acp_adapter_args, None);
     }
 
     #[test]
@@ -119,14 +126,10 @@ mod tests {
         submitted.tei_url = "http://user:secret@tei.example/embed?token=abc#frag".to_string();
         submitted.qdrant_url = "http://qdrant.example:6333?api_key=secret".to_string();
         submitted.openai_base_url = "https://llm.example/v1?token=secret".to_string();
-        submitted.acp_ws_url = Some("wss://axon.example/ws?token=secret".to_string());
-
         let mut worker = Config::test_default();
         worker.tei_url = "http://worker-tei:80".to_string();
         worker.qdrant_url = "http://worker-qdrant:6333".to_string();
         worker.openai_base_url = "http://worker-llm/v1".to_string();
-        worker.acp_ws_url = Some("wss://worker/ws".to_string());
-
         let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
         assert!(!config_json.contains("secret"));
         assert!(!config_json.contains("token=abc"));
@@ -137,7 +140,6 @@ mod tests {
         assert_eq!(effective.tei_url, "http://worker-tei:80");
         assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
         assert_eq!(effective.openai_base_url, "http://worker-llm/v1");
-        assert_eq!(effective.acp_ws_url.as_deref(), Some("wss://worker/ws"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Tests for `build_config::into_config()`.
 //!
 //! Split into two themed submodules (bead axon_rust-2j9.6):
-//!   * `lite_mode`        — AXON_LITE / MCP origin / URL-required / ACP env tests
+//!   * `lite_mode`        — AXON_LITE / MCP origin / URL-required env tests
 //!   * `priority_chain`   — `CLI > env > TOML > default` tests for ask/hybrid/tei/workers/search
 //!
 //! Test BODIES are unchanged from the previous flat `mod tests` in `build_config.rs`.

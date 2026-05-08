@@ -214,11 +214,7 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     // CDP proxy sends non-standard frames that chromiumoxide logs at ERROR;
     // they are gracefully dropped, suppress the noise.
     const SUPPRESS_CDP_NOISE: &str = "chromiumoxide::conn::raw_ws::parse_errors=off";
-    // agent-client-protocol does not recognise usage_update frames from
-    // Claude Code; non-fatal, suppress until upstream adds the variant.
-    const SUPPRESS_ACP_DECODE_NOISE: &str = "agent_client_protocol::rpc=off";
-
-    let noise_directives = [SUPPRESS_CDP_NOISE, SUPPRESS_ACP_DECODE_NOISE];
+    let noise_directives = [SUPPRESS_CDP_NOISE];
 
     let console_filter = build_filter_with_noise("warn", &noise_directives);
     let file_filter = build_filter_with_noise("info", &noise_directives);
@@ -243,11 +239,6 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
                 .map(|d| d.join("logs"))
                 .unwrap_or_else(|| PathBuf::from("logs"))
         });
-    // Use ensure_private_dir (0o700) so axon.log + rotated archives —
-    // which include redacted Config dumps and may include service URLs
-    // in error messages — are not world-readable on multi-user hosts.
-    super::paths::ensure_private_dir(&log_dir).ok();
-
     let log_file_name = std::env::var("AXON_LOG_FILE").unwrap_or_else(|_| "axon.log".to_string());
 
     let max_bytes = std::env::var("AXON_LOG_MAX_BYTES")

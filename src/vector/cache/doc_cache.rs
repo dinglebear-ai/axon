@@ -18,7 +18,7 @@
 //! ## Process-local — only useful in long-lived parents
 //!
 //! In short-lived CLI one-shots, hit rate is zero by definition. Enable only
-//! in `axon serve` / `axon mcp` (or the persistent ACP daemon path). The
+//! in `axon serve` / `axon mcp`. The
 //! enable-gate lives in `cfg.ask_cache_enabled`.
 //!
 //! ## Security

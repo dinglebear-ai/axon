@@ -147,42 +147,6 @@ pub(super) fn resolve_mcp_transport(
     default_transport
 }
 
-/// Resolve adapter command for ask/research ACP calls.
-///
-/// Priority:
-/// 1. `AXON_ACP_ADAPTER_CMD` — explicit global override
-/// 2. `AXON_ASK_AGENT=claude|codex|gemini` — per-agent adapter var
-pub(crate) fn resolve_ask_adapter_cmd() -> Option<String> {
-    read_env("AXON_ACP_ADAPTER_CMD").or_else(|| {
-        let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let (var, default_cmd) = match agent.trim().to_lowercase().as_str() {
-            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_CMD", "claude-agent-acp"),
-            "codex" => ("AXON_ACP_CODEX_ADAPTER_CMD", "codex-acp"),
-            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_CMD", "gemini"),
-            _ => return None,
-        };
-        Some(read_env(var).unwrap_or_else(|| default_cmd.to_string()))
-    })
-}
-
-/// Resolve adapter args for ask/research ACP calls (mirrors `resolve_ask_adapter_cmd`).
-pub(crate) fn resolve_ask_adapter_args() -> Option<String> {
-    read_env("AXON_ACP_ADAPTER_ARGS").or_else(|| {
-        let agent = env::var("AXON_ASK_AGENT").ok()?;
-        let (var, default_args) = match agent.trim().to_lowercase().as_str() {
-            "claude" => ("AXON_ACP_CLAUDE_ADAPTER_ARGS", None),
-            "codex" => ("AXON_ACP_CODEX_ADAPTER_ARGS", None),
-            "gemini" => ("AXON_ACP_GEMINI_ADAPTER_ARGS", Some("--experimental-acp")),
-            _ => return None,
-        };
-        if read_env("AXON_ACP_ADAPTER_CMD").is_some() {
-            None
-        } else {
-            read_env(var).or_else(|| default_args.map(str::to_string))
-        }
-    })
-}
-
 pub(super) fn env_port(env_var: &str, default: u16) -> Result<u16, String> {
     match env::var(env_var).ok() {
         None => Ok(default),
@@ -313,73 +277,6 @@ mod tests {
     fn validate_collection_name_rejects_overlong() {
         let huge = "a".repeat(256);
         assert!(validate_collection_name(&huge).is_err());
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_claude_returns_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::remove_var("AXON_ACP_CLAUDE_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "claude");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, Some("claude-agent-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_codex_returns_default() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::remove_var("AXON_ACP_CODEX_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "codex");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, Some("codex-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_args_gemini_returns_experimental_flag() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_ARGS");
-            env::remove_var("AXON_ACP_GEMINI_ADAPTER_ARGS");
-            env::set_var("AXON_ASK_AGENT", "gemini");
-        }
-        let result = resolve_ask_adapter_args();
-        assert_eq!(result, Some("--experimental-acp".to_string()));
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
-    }
-
-    #[allow(unsafe_code)]
-    #[serial_test::serial]
-    #[test]
-    fn resolve_ask_adapter_cmd_unknown_agent_returns_none() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("AXON_ACP_ADAPTER_CMD");
-            env::set_var("AXON_ASK_AGENT", "unknown-agent");
-        }
-        let result = resolve_ask_adapter_cmd();
-        assert_eq!(result, None);
-        unsafe {
-            env::remove_var("AXON_ASK_AGENT");
-        }
     }
 
     #[allow(unsafe_code)]

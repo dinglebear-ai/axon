@@ -1,15 +1,9 @@
 use crate::core::config::{Config, McpTransport};
-use crate::services::acp_llm;
 use crate::vector::cache::enforce_core_dump_disabled_for_ask_cache;
 use std::error::Error;
 
 pub async fn run_mcp(cfg: &Config) -> Result<(), Box<dyn Error>> {
     enforce_core_dump_disabled_for_ask_cache(cfg).map_err(|e| -> Box<dyn Error> { e.into() })?;
-    // Pre-warm the ACP adapter session pool. MCP ask/evaluate/suggest calls
-    // will check out a warm session instead of paying cold-start per request.
-    // NOTE: init_warm_pool uses log_warn (stderr) only — safe for stdio transport.
-    acp_llm::init_warm_pool(cfg);
-
     match cfg.mcp_transport {
         McpTransport::Stdio => crate::mcp::run_stdio_server(cfg.clone()).await,
         McpTransport::Http => {

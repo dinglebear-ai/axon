@@ -1,5 +1,5 @@
 use super::*;
-use crate::services::acp_llm::AcpCompletionRunner;
+use crate::services::llm_backend::{self, CompletionRunner};
 
 fn extract_sse_token(data: &str) -> Option<String> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
@@ -16,7 +16,7 @@ pub(crate) fn process_sse_line(
     print_tokens: bool,
     saw_stream_payload: &mut bool,
     tagged: Option<(&UnboundedSender<TaggedToken>, &'static str)>,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool, Box<dyn Error + Send + Sync>> {
     let trimmed = line.trim();
     if trimmed.is_empty() || !trimmed.starts_with("data: ") {
         return Ok(false);
@@ -46,21 +46,21 @@ pub(crate) fn process_sse_line(
     Ok(false)
 }
 
-async fn run_acp_streaming_completion_with_runner<R>(
+async fn run_llm_streaming_completion_with_runner<R>(
     runner: &R,
-    req: AcpCompletionRequest,
+    req: CompletionRequest,
     print_tokens: bool,
     tagged: Option<(UnboundedSender<TaggedToken>, &'static str)>,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
     let mut answer = String::new();
     let mut saw_stream_payload = false;
     let mut first_sources_pos: Option<usize> = None;
     let mut sources_search_from = 0usize;
     let mut repeat_guard_triggered = false;
-    let response = acp_llm::complete_streaming_with_runner(runner, req, |delta| {
+    let response = llm_backend::complete_streaming_with_runner(runner, req, |delta| {
         if repeat_guard_triggered {
             return Ok(());
         }
@@ -70,7 +70,8 @@ where
             print_tokens,
             &mut saw_stream_payload,
             tagged.as_ref(),
-        )?;
+        )
+        .map_err(|err| err.to_string())?;
         let scan_from = sources_search_from.saturating_sub(10);
         if let Some(second_pos) =
             check_sources_repetition(&answer, scan_from, &mut first_sources_pos)
@@ -84,16 +85,17 @@ where
     .await?;
 
     finalize_stream_answer(answer, saw_stream_payload, response.text)
+        .map_err(|err| err.to_string().into())
 }
 
-async fn run_acp_text_completion_with_runner<R>(
+async fn run_llm_text_completion_with_runner<R>(
     runner: &R,
-    req: AcpCompletionRequest,
-) -> Result<String, Box<dyn Error>>
+    req: CompletionRequest,
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    let response = acp_llm::complete_text_with_runner(runner, req).await?;
+    let response = llm_backend::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
 }
 
@@ -103,11 +105,11 @@ pub(crate) async fn ask_llm_streaming_with_runner<R>(
     query: &str,
     context: &str,
     print_tokens: bool,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_streaming_completion_with_runner(
+    run_llm_streaming_completion_with_runner(
         runner,
         ask_completion_request(cfg, query, context, true),
         print_tokens,
@@ -123,11 +125,11 @@ pub(crate) async fn ask_llm_streaming_tagged_with_runner<R>(
     context: &str,
     stream: &'static str,
     tx: &UnboundedSender<TaggedToken>,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_streaming_completion_with_runner(
+    run_llm_streaming_completion_with_runner(
         runner,
         ask_completion_request(cfg, query, context, true),
         false,
@@ -141,11 +143,11 @@ pub(crate) async fn ask_llm_non_streaming_with_runner<R>(
     cfg: &Config,
     query: &str,
     context: &str,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_text_completion_with_runner(runner, ask_completion_request(cfg, query, context, false))
+    run_llm_text_completion_with_runner(runner, ask_completion_request(cfg, query, context, false))
         .await
 }
 
@@ -155,11 +157,11 @@ pub(crate) async fn baseline_llm_streaming_tagged_with_runner<R>(
     query: &str,
     stream: &'static str,
     tx: &UnboundedSender<TaggedToken>,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_streaming_completion_with_runner(
+    run_llm_streaming_completion_with_runner(
         runner,
         baseline_completion_request(cfg, query, true),
         false,
@@ -172,11 +174,11 @@ pub(crate) async fn baseline_llm_non_streaming_with_runner<R>(
     runner: &R,
     cfg: &Config,
     query: &str,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_text_completion_with_runner(runner, baseline_completion_request(cfg, query, false))
+    run_llm_text_completion_with_runner(runner, baseline_completion_request(cfg, query, false))
         .await
 }
 
@@ -184,9 +186,9 @@ pub(crate) async fn judge_llm_non_streaming_with_runner<R>(
     runner: &R,
     cfg: &Config,
     ctx: &JudgeContext<'_>,
-) -> Result<String, Box<dyn Error>>
+) -> Result<String, Box<dyn Error + Send + Sync>>
 where
-    R: AcpCompletionRunner + ?Sized,
+    R: CompletionRunner + ?Sized,
 {
-    run_acp_text_completion_with_runner(runner, judge_completion_request(cfg, ctx, false)).await
+    run_llm_text_completion_with_runner(runner, judge_completion_request(cfg, ctx, false)).await
 }

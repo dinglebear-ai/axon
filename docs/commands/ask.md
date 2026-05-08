@@ -19,14 +19,14 @@ axon ask --query "<question>" [FLAGS]
 |----------|-------------|
 | `<question>` | Question to answer (positional, or via `--query`) |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for LLM answer generation — ask fails fast without it. |
-| `OPENAI_MODEL` | Model name passed to the ACP adapter for answer generation. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
 
 `ask` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 
@@ -74,7 +74,7 @@ axon ask "what is the max crawl depth?" --json
 5. Rerank by the mode-appropriate score/order; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
 6. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
 7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
-8. Call the LLM with context + question
+8. Call Gemini headless with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
 
@@ -94,7 +94,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 
 ## Notes
 
-- LLM answer generation goes through the ACP adapter (`AXON_ACP_ADAPTER_CMD`), not directly to an OpenAI-compatible endpoint. `OPENAI_MODEL` is used as the model override passed to the adapter.
+- LLM answer generation goes through Gemini headless. `AXON_HEADLESS_GEMINI_MODEL` is used as the Gemini model override.
 - If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.

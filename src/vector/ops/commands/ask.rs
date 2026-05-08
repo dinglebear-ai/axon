@@ -1,6 +1,6 @@
-use crate::core::config::{AskBackend, Config};
-use crate::core::logging::{log_info, log_warn};
-use crate::services::{acp_llm, llm_backend};
+use crate::core::config::Config;
+use crate::core::logging::log_info;
+use crate::services::llm_backend;
 
 mod context;
 mod normalize;
@@ -14,20 +14,9 @@ pub(crate) use normalize::normalize_ask_answer;
 pub(crate) use timing::{AskTiming, AskTimingSlot};
 
 pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
-    if cfg.ask_backend.uses_headless() {
-        llm_backend::headless::dispatch::validate_selected_agent()
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-    } else {
-        anyhow::ensure!(
-            cfg.acp_adapter_cmd
-                .as_deref()
-                .is_some_and(|program| !program.trim().is_empty()),
-            "ask/evaluate requires an ACP adapter — set AXON_ASK_AGENT=claude|codex|gemini \
-             (uses the AXON_ACP_<AGENT>_ADAPTER_CMD you already have configured) \
-             or set AXON_ACP_ADAPTER_CMD directly"
-        );
-    }
-    Ok(())
+    let _ = cfg;
+    let backend = llm_backend::LlmBackendConfig::from_config(cfg);
+    llm_backend::headless::gemini::validate_config(&backend).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
@@ -41,35 +30,8 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     ));
     validate_ask_llm_config(cfg)?;
 
-    // Only explicit ACP mode warms an adapter. Headless/auto use the canonical
-    // short-lived CLI path and skip ACP entirely.
-    let warm_started = std::time::Instant::now();
-    let warm = match cfg.ask_backend {
-        AskBackend::Headless | AskBackend::Auto => {
-            timing.set_warm_path("HeadlessNoWarm");
-            None
-        }
-        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
-            Ok(w) => {
-                // Capture origin (Pool / FreshSpawn / EventChannelBypass) at session
-                // construction; the slot reflects the synchronous portion of warm-
-                // session acquisition.
-                timing.set_warm_path(w.origin().as_str());
-                Some(w)
-            }
-            Err(e) => {
-                log_warn(&format!(
-                    "ask: warm session failed to start, using cold path: {e}"
-                ));
-                timing.set_warm_path("FailedFallback");
-                None
-            }
-        },
-    };
-    timing.record(AskTimingSlot::WarmSessionReady, warm_started);
-
     let ctx = build_ask_context(cfg, query, &mut timing).await?;
-    let llm = output::ask_llm_answer(cfg, query, &ctx.context, warm)
+    let llm = output::ask_llm_answer(cfg, query, &ctx.context)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
     let (answer_text, llm_total_ms) = match &llm {
@@ -79,10 +41,8 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             llm_total_ms,
         } => {
             timing.set_streamed(true);
-            // TTFT must be measured from the outer ask request_start so the ACP
-            // cold-start tax incurred by warm_session and retrieval is included;
-            // a TTFT measured from the LLM call would understate user-visible
-            // latency by the entire pre-LLM pipeline.
+            // TTFT is measured from the outer ask request_start so retrieval
+            // and context construction are included in user-visible latency.
             if let Some(start) = timing.request_start() {
                 let ttft_ms = ttft_at.saturating_duration_since(start).as_millis();
                 timing.set_ttft(ttft_ms);
@@ -167,9 +127,6 @@ fn build_timing_json(
     let Some(e) = timing.enabled() else {
         return serde_json::Value::Object(obj);
     };
-    if let Some(v) = e.warm_session_ready_ms {
-        obj.insert("warm_session_ready_ms".into(), ms(v));
-    }
     if let Some(v) = e.tei_embed_ms {
         obj.insert("tei_embed_ms".into(), ms(v));
     }
@@ -196,9 +153,6 @@ fn build_timing_json(
     }
     if let Some(v) = e.llm_total_ms {
         obj.insert("llm_total_ms".into(), ms(v));
-    }
-    if let Some(v) = e.llm_warm_path.as_ref() {
-        obj.insert("llm_warm_path".into(), v.clone().into());
     }
     if let Some(v) = e.streamed {
         obj.insert("streamed".into(), v.into());

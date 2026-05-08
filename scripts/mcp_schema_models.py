@@ -123,7 +123,6 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Ask": "ask",
     "Screenshot": "screenshot",
     "ElicitDemo": "elicit_demo",
-    "Acp": "acp",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {

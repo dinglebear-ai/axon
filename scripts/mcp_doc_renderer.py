@@ -108,7 +108,7 @@ def _emit_parser_rules(emit) -> None:
     emit("- `action` is required and must match canonical schema names")
     emit(
         "- `subaction` is required for lifecycle families "
-        "(`crawl|extract|embed|ingest|artifacts|acp`)"
+        "(`crawl|extract|embed|ingest|artifacts`)"
     )
     emit("- No fallback fields (`command`, `op`, `operation`)")
     emit("- No token normalization or case folding")
@@ -397,8 +397,6 @@ def _start_requirement_summary(action: str, sdef: StructDef) -> str:
             return "start requires `source_type` + `target`"
         case "artifacts":
             return "requires `path`; `pattern` for grep"
-        case "acp":
-            return "requires action-specific session fields"
         case _:
             req = sdef.required_fields()
             if req:

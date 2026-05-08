@@ -4,7 +4,7 @@ Last Modified: 2026-03-03
 Version: 1.0.0
 Last Updated: 20:29:46 | 03/03/2026 EST
 
-Web research pipeline: Tavily search plus one ACP-backed synthesis call over returned snippets. Runs synchronously and prints extracted source previews plus a synthesized summary.
+Web research pipeline: Tavily search plus one Gemini headless synthesis call over returned snippets. Runs synchronously and prints extracted source previews plus a synthesized summary.
 
 ## Synopsis
 
@@ -19,14 +19,13 @@ axon research --query "<query>" [FLAGS]
 |----------|-------------|
 | `<query>` | Research query text (or use `--query`) |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `TAVILY_API_KEY` | Tavily API key for source discovery. |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`) used for synthesis. |
-| `OPENAI_BASE_URL` | OpenAI-compatible base URL passed to the ACP adapter (e.g. `http://host/v1`). |
-| `OPENAI_MODEL` | Model name passed to the ACP adapter for synthesis. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for synthesis. |
 
 ## Flags
 
@@ -38,8 +37,7 @@ All global flags apply. Key flags:
 | `--limit <n>` | `10` | Maximum Tavily results processed. |
 | `--search-time-range <range>` | — | Filter Tavily results by time range: `day`, `week`, `month`, `year`. |
 | `--research-depth <n>` | — | Crawl depth limit for the research pass. |
-| `--openai-base-url <url>` | env/default | Override LLM base URL passed to ACP adapter. |
-| `--openai-model <name>` | env/default | Override LLM model name passed to ACP adapter. |
+| `--openai-model <name>` | env/default | Override Gemini model name. |
 
 ## Examples
 
@@ -50,8 +48,8 @@ axon research "Rust async cancellation patterns"
 # Use --query and limit
 axon research --query "Qdrant HNSW tuning" --limit 5
 
-# Override LLM endpoint
-axon research "Spider.rs rendering tradeoffs" --openai-base-url http://localhost:11434/v1 --openai-model llama3
+# Override Gemini model
+axon research "Spider.rs rendering tradeoffs" --openai-model gemini-3.1-pro-preview
 ```
 
 ## Pipeline
@@ -62,7 +60,7 @@ axon research "Spider.rs rendering tradeoffs" --openai-base-url http://localhost
 
 ## Behavior Notes
 
-- Both `TAVILY_API_KEY` and `AXON_ACP_ADAPTER_CMD` are validated at startup; the command errors immediately if either is missing or empty.
+- `TAVILY_API_KEY` is validated at startup; Gemini headless is used for synthesis.
 - `--search-time-range` is applied to the Tavily search step before synthesis.
 - The synthesis prompt asks for plain text, not JSON. The service still accepts legacy `{"summary":"..."}` model responses and unwraps the `summary` field for compatibility.
 - With `--json`, stdout is strict command JSON. The `summary` field inside that payload is a string containing the plain-text synthesis.

@@ -39,18 +39,16 @@ fi
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
 
-BACKENDS="${BACKENDS:-acp headless}"
-AGENTS="${AGENTS:-claude codex gemini}"
 JUDGE_MODEL="${JUDGE_MODEL:-${OPENAI_MODEL:-}}"
 
 while IFS= read -r row; do
   id=$(jq -r '.id' <<<"$row")
   question=$(jq -r '.question' <<<"$row")
-  for backend in $BACKENDS; do
-    for agent in $AGENTS; do
+  backend="gemini-headless"
+  agent="gemini"
       stdout_file="$(mktemp)"
       stderr_file="$(mktemp)"
-      if AXON_ASK_BACKEND="$backend" AXON_ASK_AGENT="$agent" "$AXON_BIN" evaluate "$question" --json >"$stdout_file" 2>"$stderr_file"; then
+      if "$AXON_BIN" evaluate "$question" --json >"$stdout_file" 2>"$stderr_file"; then
         output="$(cat "$stdout_file")"
         if scores=$(jq -c '.scores // {status:"parse_failed"}' <<<"$output"); then
           status=$(jq -r '.status // "parse_failed"' <<<"$scores")
@@ -82,8 +80,6 @@ while IFS= read -r row; do
           '{id:$id,backend:$backend,agent:$agent,status:$status,error:$error,judge:{backend:$judge_backend,agent:$judge_agent,model:$judge_model}}' >> "$OUT"
       fi
       rm -f "$stdout_file" "$stderr_file"
-    done
-  done
 done < "$GOLDEN"
 
 echo "$OUT"

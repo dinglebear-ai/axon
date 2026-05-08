@@ -1,0 +1,92 @@
+use tokio::process::Command;
+
+#[cfg(test)]
+use std::ffi::OsString;
+
+const ALLOWED_ENV_KEYS: &[&str] = &[
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "TERM",
+    "TZ",
+    "USER",
+    "XDG_CACHE_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GOOGLE_API_KEY",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GEMINI_API_KEY",
+];
+
+pub fn apply_env_allowlist(command: &mut Command) {
+    command.env_clear();
+    for key in ALLOWED_ENV_KEYS {
+        if let Some(value) = std::env::var_os(key).filter(|value| !value.is_empty()) {
+            command.env(key, value);
+        }
+    }
+}
+
+#[cfg(test)]
+pub fn allowed_env_keys() -> &'static [&'static str] {
+    ALLOWED_ENV_KEYS
+}
+
+#[cfg(test)]
+fn capture_allowed_env(input: &[(&str, &str)]) -> Vec<(&'static str, OsString)> {
+    ALLOWED_ENV_KEYS
+        .iter()
+        .filter_map(|allowed| {
+            input
+                .iter()
+                .find(|(key, _)| key == allowed)
+                .map(|(_, value)| (*allowed, OsString::from(value)))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn allowlist_excludes_common_secret_keys() {
+        let denied = [
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "AXON_MCP_HTTP_TOKEN",
+            "TAVILY_API_KEY",
+            "GITHUB_TOKEN",
+            "BEADS_DOLT_PASSWORD",
+            "CLAUDECODE",
+        ];
+        for key in denied {
+            assert!(!allowed_env_keys().contains(&key));
+        }
+    }
+
+    #[test]
+    fn capture_keeps_only_allowed_keys() {
+        let captured = capture_allowed_env(&[
+            ("PATH", "/usr/bin"),
+            ("OPENAI_API_KEY", "secret"),
+            ("GEMINI_API_KEY", "gemini"),
+            ("GOOGLE_API_KEY", "google"),
+            ("GOOGLE_CLOUD_LOCATION", "us-central1"),
+        ]);
+        assert_eq!(
+            captured,
+            vec![
+                ("PATH", OsString::from("/usr/bin")),
+                ("GOOGLE_API_KEY", OsString::from("google")),
+                ("GOOGLE_CLOUD_LOCATION", OsString::from("us-central1")),
+                ("GEMINI_API_KEY", OsString::from("gemini")),
+            ]
+        );
+    }
+}

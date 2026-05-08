@@ -1,6 +1,5 @@
-use crate::core::config::Config;
 use crate::core::logging::log_warn;
-use crate::services::acp_llm::{self, AcpCompletionRequest};
+use crate::services::llm_backend::{self, CompletionRequest};
 use html5gum::{Token, Tokenizer};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -16,6 +15,7 @@ pub struct ExtractionMetrics {
     pub completion_tokens: u64,
     pub total_tokens: u64,
     pub estimated_cost_usd: f64,
+    pub llm_fallback_failures: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -284,21 +284,14 @@ pub(crate) struct FallbackResponse {
 
 pub(crate) async fn extract_items_fallback(
     _client: &reqwest::Client,
-    acp_adapter_cmd: Option<&str>,
-    acp_adapter_args: Option<&str>,
     openai_model: &str,
+    llm_backend: llm_backend::LlmBackendConfig,
     prompt: &str,
     page_url: &str,
     markdown: &str,
 ) -> Result<FallbackResponse, Box<dyn Error>> {
-    let cfg = Config {
-        acp_adapter_cmd: acp_adapter_cmd.map(ToString::to_string),
-        acp_adapter_args: acp_adapter_args.map(ToString::to_string),
-        ..Config::default()
-    };
-
     let trimmed_markdown: String = markdown.chars().take(12_000).collect();
-    let mut request = AcpCompletionRequest::new(format!(
+    let mut request = CompletionRequest::new(format!(
         "URL: {page_url}\n\nContent (markdown):\n{trimmed_markdown}"
     ))
     .system_prompt(format!(
@@ -306,23 +299,22 @@ pub(crate) async fn extract_items_fallback(
          The JSON must have a top-level key \"results\" containing an array of extracted items. \
          Output the bare JSON object starting with `{{` and nothing before or after it."
     ));
-    if !openai_model.trim().is_empty() {
+    request.backend = llm_backend;
+    if !request
+        .backend
+        .gemini_model
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        request.model = request.backend.gemini_model.clone();
+    } else if openai_model.trim().starts_with("gemini-") {
         request = request.model(openai_model.to_string());
     }
-    // acp_llm::complete_text returns a !Send future (subprocess + channel internals),
-    // so it cannot be directly awaited inside a JoinSet::spawn task. The spawn_blocking
-    // wrapper runs it on a dedicated thread with its own single-threaded runtime.
-    let response = tokio::task::spawn_blocking(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| format!("failed to build ACP completion runtime: {err}"))?;
-        rt.block_on(acp_llm::complete_text(&cfg, request))
-            .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| format!("failed to join ACP completion task: {err}"))?
-    .map_err(|err| -> Box<dyn Error> { err.into() })?;
+    let response = llm_backend::complete_text(request)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     let prompt_tokens = response
         .usage
         .as_ref()
@@ -339,11 +331,11 @@ pub(crate) async fn extract_items_fallback(
         .map(|usage| usage.total_tokens)
         .unwrap_or(prompt_tokens + completion_tokens);
 
-    let parsed = match parse_acp_fallback_json(&response.text) {
+    let parsed = match parse_llm_fallback_json(&response.text) {
         Ok(v) => v,
         Err(err) => {
             log_warn(&format!(
-                "ACP fallback response is not valid JSON for {page_url}: {err} — \
+                "LLM fallback response is not valid JSON for {page_url}: {err} — \
                  first 200 chars: {:?}",
                 response.text.chars().take(200).collect::<String>()
             ));
@@ -362,18 +354,18 @@ pub(crate) async fn extract_items_fallback(
     })
 }
 
-/// Parse the ACP fallback response as JSON, tolerating common ACP adapter
+/// Parse the LLM fallback response as JSON, tolerating common Gemini headless
 /// envelopes the model wraps around the JSON: triple-backtick fences (with or
 /// without a `json` language tag), and leading conversational/session-greeting
 /// text before the first `{` or `[`.
-fn parse_acp_fallback_json(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
-    let stripped = strip_acp_fallback_envelope(raw);
+fn parse_llm_fallback_json(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
+    let stripped = strip_llm_fallback_envelope(raw);
     serde_json::from_str(stripped)
 }
 
-/// Strip ```json fences and leading prose from an ACP-fallback completion
+/// Strip ```json fences and leading prose from an LLM-fallback completion
 /// before JSON-parsing. Leaves the input alone if no envelope is detected.
-fn strip_acp_fallback_envelope(raw: &str) -> &str {
+fn strip_llm_fallback_envelope(raw: &str) -> &str {
     let trimmed = raw.trim();
 
     // Strip code fences: ```json ... ``` or ``` ... ```
@@ -426,10 +418,10 @@ pub(crate) fn estimate_llm_cost_usd(
 
 #[cfg(test)]
 mod tests {
-    use super::{flatten_results, parse_acp_fallback_json, strip_acp_fallback_envelope};
+    use super::{flatten_results, parse_llm_fallback_json, strip_llm_fallback_envelope};
 
     #[test]
-    fn extract_items_fallback_parses_results_from_acp_json_text() {
+    fn extract_items_fallback_parses_results_from_llm_json_text() {
         let parsed = serde_json::json!({
             "results": [
                 {"title": "first"},
@@ -445,7 +437,7 @@ mod tests {
     fn strip_envelope_handles_json_code_fence() {
         let raw = "```json\n{\"results\":[{\"a\":1}]}\n```";
         assert_eq!(
-            strip_acp_fallback_envelope(raw),
+            strip_llm_fallback_envelope(raw),
             "{\"results\":[{\"a\":1}]}"
         );
     }
@@ -453,26 +445,26 @@ mod tests {
     #[test]
     fn strip_envelope_handles_bare_code_fence() {
         let raw = "```\n[1, 2, 3]\n```";
-        assert_eq!(strip_acp_fallback_envelope(raw), "[1, 2, 3]");
+        assert_eq!(strip_llm_fallback_envelope(raw), "[1, 2, 3]");
     }
 
     #[test]
     fn strip_envelope_skips_leading_prose() {
         let raw = "Model switched to claude-sonnet-4-6. Ready to help.\n{\"results\":[]}";
-        assert_eq!(strip_acp_fallback_envelope(raw), "{\"results\":[]}");
+        assert_eq!(strip_llm_fallback_envelope(raw), "{\"results\":[]}");
     }
 
     #[test]
-    fn parse_acp_fallback_recovers_fenced_json() {
+    fn parse_llm_fallback_recovers_fenced_json() {
         let raw = "```json\n{\"results\":[{\"title\":\"x\"}]}\n```";
-        let v = parse_acp_fallback_json(raw).expect("must parse fenced JSON");
+        let v = parse_llm_fallback_json(raw).expect("must parse fenced JSON");
         assert_eq!(v["results"][0]["title"], "x");
     }
 
     #[test]
-    fn parse_acp_fallback_recovers_prose_prefixed_json() {
+    fn parse_llm_fallback_recovers_prose_prefixed_json() {
         let raw = "Greetings — extracted items below:\n[{\"title\":\"y\"}]";
-        let v = parse_acp_fallback_json(raw).expect("must parse prose-prefixed JSON");
+        let v = parse_llm_fallback_json(raw).expect("must parse prose-prefixed JSON");
         assert_eq!(v[0]["title"], "y");
     }
 }

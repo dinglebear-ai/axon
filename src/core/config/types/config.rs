@@ -1,6 +1,6 @@
 use super::enums::{
-    AskBackend, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use std::path::PathBuf;
 
@@ -213,40 +213,34 @@ pub struct Config {
     pub qdrant_url: String,
 
     /// Legacy OpenAI-compatible API base URL (e.g. `http://ollama:11434/v1`).
-    /// Kept for compatibility and transitional commands; ACP-backed paths do not require it.
+    /// Kept for compatibility and transitional commands; Gemini headless paths do not require it.
     /// Env: `OPENAI_BASE_URL`.
     pub openai_base_url: String,
 
     /// Legacy API key for OpenAI-compatible LLM endpoints.
-    /// Kept for compatibility and transitional commands; ACP-backed paths do not require it.
+    /// Kept for compatibility and transitional commands; Gemini headless paths do not require it.
     /// Env: `OPENAI_API_KEY`. **Secret.**
     pub openai_api_key: String,
 
-    /// Model name used as the ACP completion model override when supplied.
+    /// Gemini model override for headless LLM synthesis.
     /// Retained as `OPENAI_MODEL` for backward compatibility.
     pub openai_model: String,
 
-    /// ACP adapter command used by `pulse_chat` execution mode.
-    /// Env: `AXON_ACP_ADAPTER_CMD`.
-    pub acp_adapter_cmd: Option<String>,
+    /// Gemini-specific model override for headless LLM synthesis.
+    /// Env: `AXON_HEADLESS_GEMINI_MODEL`.
+    pub headless_gemini_model: String,
 
-    /// Optional ACP adapter args encoded as a pipe-delimited string
-    /// (e.g. `--stdio|--model|gemini-3-flash-preview`).
-    /// Env: `AXON_ACP_ADAPTER_ARGS`.
-    pub acp_adapter_args: Option<String>,
+    /// Gemini CLI command for headless LLM synthesis. Env: `AXON_HEADLESS_GEMINI_CMD`.
+    pub headless_gemini_cmd: String,
 
-    /// Whether to pre-warm the default ACP adapter on server boot.
-    /// Sourced from `AXON_ACP_PREWARM` (default: `true`).
-    pub acp_prewarm: bool,
+    /// Source HOME for Gemini CLI auth isolation. Env: `AXON_HEADLESS_GEMINI_HOME`.
+    pub headless_gemini_home: Option<PathBuf>,
 
-    /// Remote axon serve WebSocket URL for ACP completions.
-    /// When set, acp_llm routes through the remote WS instead of a local subprocess.
-    /// Env: `AXON_ACP_WS_URL`
-    pub acp_ws_url: Option<String>,
+    /// Max concurrent Gemini headless completion requests. Env: `AXON_LLM_COMPLETION_CONCURRENCY`.
+    pub llm_completion_concurrency: usize,
 
-    /// Bearer token for the remote WS ACP endpoint (matches AXON_WEB_API_TOKEN on server).
-    /// Env: `AXON_ACP_WS_TOKEN`
-    pub acp_ws_token: Option<String>,
+    /// Timeout for each Gemini headless completion request. Env: `AXON_LLM_COMPLETION_TIMEOUT_SECS`.
+    pub llm_completion_timeout_secs: u64,
 
     /// Tavily search API key. Env: `TAVILY_API_KEY`. **Secret.**
     pub tavily_api_key: String,
@@ -257,9 +251,6 @@ pub struct Config {
 
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
     pub ask_diagnostics: bool,
-
-    /// Completion backend used by `ask` synthesis. Env: `AXON_ASK_BACKEND`.
-    pub ask_backend: AskBackend,
 
     /// Enable graph-enhanced retrieval during `ask` when Neo4j is configured. Flag: `--graph`.
     pub ask_graph: bool,
@@ -561,8 +552,7 @@ pub struct Config {
     pub quiet: bool,
 
     /// When set, `axon ask` POSTs to `<server_url>/v1/ask` on a running `axon serve` instance
-    /// instead of running ACP synthesis in-process. Reuses the server's WarmSessionPool so cold
-    /// ACP startup (~45s) is paid once at server boot. Flag: `--server-url`,
+    /// instead of running Gemini synthesis in-process. Reuses the server path so LLM startup (~45s) is paid once at server boot. Flag: `--server-url`,
     /// env: `AXON_ASK_SERVER_URL`. When unset, ask runs in-process.
     ///
     /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are

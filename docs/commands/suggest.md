@@ -19,13 +19,13 @@ axon suggest --query "<focus>" [FLAGS]
 |----------|-------------|
 | `[focus]` | Optional focus text for suggestions (also accepted via `--query`). |
 
-## Required Environment Variables
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL (reads indexed URLs/domains). |
-| `AXON_ACP_ADAPTER_CMD` | ACP adapter command (e.g. `codex`). Required for LLM suggestion generation. |
-| `OPENAI_MODEL` | Model name passed to the ACP adapter for suggestion generation. |
+| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for suggestion generation. |
 
 `suggest` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 

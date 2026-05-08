@@ -9,25 +9,8 @@ The contract boundary between all entry points (CLI commands, MCP handlers, web 
 services/
 ├── context.rs              # ServiceContext — canonical handler entry point (cfg + jobs only)
 ├── runtime.rs              # ServiceJobRuntime trait + resolve_runtime{,_with_workers}() + LiteServiceRuntime
-├── acp.rs                  # ACP adapter orchestration module root
-├── acp/
-│   ├── adapters.rs         # Adapter subprocess wrappers (spawn, stdin/stdout)
-│   ├── bridge.rs / bridge/ # Shared turn finalization: logging, EditorWrite, TurnResult dispatch
-│   ├── config.rs           # ACP session/model/tool config builder
-│   ├── mapping.rs / mapping/ # SDK event mapping
-│   ├── permission.rs       # Permission bridge: maps ACP tool calls to gated operations
-│   ├── persistent_conn.rs / persistent_conn/ # Persistent-connection mode
-│   ├── preflight.rs        # Pre-flight checks before spawning an adapter
-│   ├── runtime.rs          # One-shot mode: spawn → init → turn → teardown per prompt
-│   ├── session.rs          # Session setup: context injection, system prompt assembly
-│   └── session_cache.rs / session_cache/  # WS reconnect replay buffer (TTL, byte cap, reaper)
-├── acp_llm.rs              # ACP-backed LLM completion gateway module root
-├── acp_llm/                # Submodules for the completion gateway
-│   ├── pool.rs             # Pool of warm sessions
-│   ├── runner.rs           # One-shot adapter execution
-│   ├── types.rs            # AcpCompletionRequest/Response, AcpUsageSnapshot, helpers
-│   ├── warm.rs             # Pre-warmed adapter (overlaps cold-start)
-│   └── ws_runner.rs        # WS-driven runner used by Pulse Chat
+├── llm_backend.rs          # Gemini headless LLM completion gateway module root
+├── llm_backend/           # Gemini dispatch, env allowlist, concurrency, and typed completion API
 ├── crawl.rs                # crawl start/status/cancel/list/cleanup/recover
 ├── crawl_sync.rs           # Synchronous crawl orchestration (24h cache, sitemap-only, HTTP→Chrome fallback)
 ├── debug.rs                # doctor + LLM-assisted debug
@@ -53,8 +36,6 @@ services/
 ├── system.rs               # doctor, stats, sources, domains, status, dedupe
 ├── types.rs                # types/ module root
 ├── types/
-│   ├── acp.rs              # AcpBridgeEvent enum (all ACP → client wire events)
-│   ├── acp/                # ACP type submodules
 │   ├── contracts.rs        # External-facing service contract types
 │   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
 └── watch.rs                # CRUD shim — actual scheduler runtime lives in crates/jobs/watch_lite.rs
@@ -163,7 +144,6 @@ let result = services::query::ask(cfg, "my question", Some(tx)).await?;
 while let Some(event) = rx.recv().await {
     match event {
         ServiceEvent::Log { level, message } => eprintln!("[{level}] {message}"),
-        ServiceEvent::AcpBridge { event } => { /* forward to WS client */ }
         ServiceEvent::EditorWrite { content, operation } => { /* apply to editor */ }
     }
 }
@@ -171,57 +151,17 @@ while let Some(event) = rx.recv().await {
 
 Pass `None` for `tx` in CLI commands that don't need streaming progress. `emit()` is a no-op when `tx` is `None`.
 
-**Backpressure:** `emit()` uses `.send().await` — it blocks if the channel is full. Use a channel size that matches expected burst rate (default 32 for ask, larger for ACP streaming turns).
+**Backpressure:** `emit()` uses `.send().await` — it blocks if the channel is full. Use a channel size that matches expected burst rate (default 32 for ask/research streaming).
 
-## ACP Module (`acp/`)
+## LLM Backend (`llm_backend/`)
 
-The ACP module orchestrates adapter subprocess execution (Claude Code, Codex, Gemini CLI). Two complete code paths exist:
+`llm_backend` is the typed completion facade used by ask synthesis, evaluate,
+suggest, research summaries, extract fallback, and debug. It launches Gemini
+headless with an isolated temporary HOME, an allowlisted environment, command
+validation, timeout enforcement, and a process-wide concurrency semaphore.
 
-### One-Shot (`acp/runtime.rs`)
-- Spawns a fresh adapter subprocess per prompt turn
-- Lifecycle: spawn → init → set session → apply config → execute → teardown
-- After turn: awaits adapter exit with **10-second timeout** (allows session flush before SIGKILL)
-- Higher latency, clean state per turn
-
-### Persistent-Connection (`acp/persistent_conn/`)
-- Keeps a single adapter process alive for the entire WebSocket connection lifetime
-- Turns dispatched via `mpsc` channel to the long-running process
-- Adapter set up lazily on first turn
-- Timeout: **3600 seconds** (configurable via `adapter_timeout_secs`)
-- Lower latency on subsequent turns; process managed across full WS lifetime
-
-Both paths call `bridge::finalize_successful_turn()` for consistent completion behavior: logging, `EditorWrite` emission, `TurnResult` dispatch.
-
-### Session Cache (`acp/session_cache/`)
-
-WS reconnect replay buffer. Hardcoded constants:
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `SESSION_TTL` | 30 minutes | Idle session eviction |
-| `MAX_REPLAY_BUFFER` | 4096 messages | Per-session message count cap |
-| `MAX_REPLAY_BUFFER_BYTES` | 4 MiB | Per-session byte cap |
-| Reaper interval | 60 seconds | Background cleanup frequency |
-| `AXON_ACP_MAX_CONCURRENT_SESSIONS` | 8 (default) | Semaphore limit on concurrent ACP sessions |
-
-The reaper starts lazily via `Once` on first session insertion.
-
-## ACP LLM Completion Gateway (`acp_llm/`)
-
-`acp_llm.rs` is a thin completion facade on top of the ACP adapter. Unlike the interactive session paths in `acp/`, this module is designed for request/response LLM calls (no streaming turns, no WS connection).
-
-Two code paths:
-
-| Path | Function | Use case |
-|------|----------|----------|
-| **One-shot** | `complete_text(cfg, req)` / `complete_streaming(cfg, req, callback)` | Spawns a fresh adapter per call — highest isolation |
-| **Pre-warmed** | `warm_session(cfg) -> WarmAcpSession` | Starts the adapter eagerly to overlap cold-start; call `.complete(req)` on the returned handle |
-
-`AcpCompletionRequest` fields: `system_prompt: Option<String>`, `prompt: String`, `model: Option<String>`, `stream: bool`.
-
-**When to use vs `acp/runtime.rs`:** Use `acp_llm` for fire-and-forget completions (ask synthesis, research summaries, extract fallback). Use `acp/runtime.rs` / `persistent_conn` for interactive Pulse Chat sessions where turn state and WS streaming matter.
-
-> Full ACP protocol reference: `docs/ACP.md`
+Use `CompletionRequest` and `CompletionResponse` for service-facing synthesis
+calls. Entry points should not spawn Gemini directly.
 
 ## Testing
 

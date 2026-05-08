@@ -1,7 +1,7 @@
 use super::super::deterministic::{DeterministicExtractionEngine, ExtractRun};
 use super::{
-    ExtractWebConfig, FallbackConfig, PageCollectResult, collect_page_results,
-    run_single_url_extract,
+    ExtractWebConfig, FallbackConfig, PageCollectResult, all_fallback_attempts_failed,
+    collect_page_results, run_single_url_extract,
 };
 use crate::core::config::parse::is_docker_service_host;
 use crate::core::http::{cdp_discovery_url, http_client, ssrf_blacklist_patterns};
@@ -187,6 +187,10 @@ pub(super) async fn run_single_url_extract_chrome(
         metrics,
         parser_hits,
     } = collect_page_results(replay_rx, http, Arc::clone(&engine), fallback_cfg).await;
+
+    if all_fallback_attempts_failed(&metrics, &results) {
+        return Err("all LLM fallback extraction attempts failed".into());
+    }
 
     Ok(ExtractRun {
         start_url: url.to_string(),

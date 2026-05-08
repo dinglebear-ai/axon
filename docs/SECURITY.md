@@ -34,7 +34,7 @@ This document captures the security controls present in the Axon code base today
 
 - Host kernel compromise
 - Multi-tenant isolation — Axon is designed for trusted self-hosted operation
-- Hardening of the upstream services Axon talks to (Qdrant, TEI, ACP-backed LLMs)
+- Hardening of the upstream services Axon talks to (Qdrant, TEI, Gemini headless LLM)
 - Supply-chain integrity beyond pinned crate versions
 
 ---
@@ -192,7 +192,6 @@ Recommendations:
 - `github_token`
 - `reddit_client_id`, `reddit_client_secret`
 - `openai_api_key`
-- `acp_ws_token`
 - `tavily_api_key`
 - `custom_headers` — values redacted, header names preserved as `"Name: [REDACTED]"`; malformed entries become `"[MALFORMED]"`
 

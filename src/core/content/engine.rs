@@ -28,8 +28,7 @@ pub struct ExtractWebConfig {
     pub openai_base_url: String,
     pub openai_api_key: String,
     pub openai_model: String,
-    pub acp_adapter_cmd: Option<String>,
-    pub acp_adapter_args: Option<String>,
+    pub llm_backend: crate::services::llm_backend::LlmBackendConfig,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
     // ── Rendering / Chrome ──────────────────────────────────────────────────
@@ -52,8 +51,7 @@ pub struct ExtractWebConfig {
 
 struct FallbackConfig {
     model: String,
-    acp_adapter_cmd: Option<String>,
-    acp_adapter_args: Option<String>,
+    llm_backend: crate::services::llm_backend::LlmBackendConfig,
     prompt_text: String,
     has_fallback: bool,
 }
@@ -94,8 +92,7 @@ fn queue_fallback_extraction(
     html: String,
 ) {
     let model_c = cfg.model.clone();
-    let acp_adapter_cmd_c = cfg.acp_adapter_cmd.clone();
-    let acp_adapter_args_c = cfg.acp_adapter_args.clone();
+    let llm_backend_c = cfg.llm_backend.clone();
     let prompt_c = cfg.prompt_text.clone();
     fallback_tasks.spawn(async move {
         // Run CPU-bound HTML→markdown conversion via spawn_blocking BEFORE
@@ -119,9 +116,8 @@ fn queue_fallback_extraction(
         };
         let res = extract_items_fallback(
             &client,
-            acp_adapter_cmd_c.as_deref(),
-            acp_adapter_args_c.as_deref(),
             &model_c,
+            llm_backend_c,
             &prompt_c,
             &page_url,
             &markdown,
@@ -222,12 +218,23 @@ fn drain_fallback_result(
             }
         }
         Ok((url, Err(err))) => {
+            metrics.llm_fallback_failures += 1;
             log_warn(&format!("fallback extraction failed for {url}: {err}"));
         }
         Err(err) => {
+            metrics.llm_fallback_failures += 1;
             log_warn(&format!("fallback extraction task join error: {err}"));
         }
     }
+}
+
+fn all_fallback_attempts_failed(
+    metrics: &ExtractionMetrics,
+    results: &[serde_json::Value],
+) -> bool {
+    metrics.llm_fallback_pages > 0
+        && metrics.llm_fallback_failures == metrics.llm_fallback_pages
+        && results.is_empty()
 }
 
 /// Fetch a single URL directly with reqwest and extract structured data from it.
@@ -274,9 +281,8 @@ async fn run_single_url_extract(
         let markdown = to_markdown(&html, None);
         match extract_items_fallback(
             &client,
-            cfg.acp_adapter_cmd.as_deref(),
-            cfg.acp_adapter_args.as_deref(),
             &cfg.model,
+            cfg.llm_backend.clone(),
             &cfg.prompt_text,
             url,
             &markdown,
@@ -295,7 +301,9 @@ async fn run_single_url_extract(
                     log_warn(&format!("fallback extraction produced no items for {url}"));
                 }
             }
-            Err(e) => log_warn(&format!("fallback extraction failed for {url}: {e}")),
+            Err(e) => {
+                return Err(format!("fallback extraction failed for {url}: {e}").into());
+            }
         }
     }
 
@@ -313,12 +321,7 @@ pub async fn run_extract_with_engine(
     wcfg: ExtractWebConfig,
     engine: Arc<DeterministicExtractionEngine>,
 ) -> Result<ExtractRun, Box<dyn Error>> {
-    let has_fallback = wcfg
-        .acp_adapter_cmd
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty())
-        && !wcfg.openai_model.is_empty()
-        && !wcfg.prompt.trim().is_empty();
+    let has_fallback = !wcfg.prompt.trim().is_empty();
 
     validate_url(&wcfg.start_url)?;
 
@@ -327,8 +330,7 @@ pub async fn run_extract_with_engine(
 
     let fallback_cfg = FallbackConfig {
         model: wcfg.openai_model.clone(),
-        acp_adapter_cmd: wcfg.acp_adapter_cmd.clone(),
-        acp_adapter_args: wcfg.acp_adapter_args.clone(),
+        llm_backend: wcfg.llm_backend.clone(),
         prompt_text: wcfg.prompt.clone(),
         has_fallback,
     };
@@ -396,6 +398,9 @@ pub async fn run_extract_with_engine(
         metrics,
         parser_hits,
     } = collect.await?;
+    if all_fallback_attempts_failed(&metrics, &results) {
+        return Err("all LLM fallback extraction attempts failed".into());
+    }
     Ok(ExtractRun {
         start_url: wcfg.start_url,
         pages_visited,
@@ -423,8 +428,7 @@ mod tests {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
-            acp_adapter_cmd: None,
-            acp_adapter_args: None,
+            llm_backend: crate::services::llm_backend::LlmBackendConfig::default(),
             custom_headers: vec![],
             render_mode: RenderMode::Chrome,
             chrome_remote_url: None, // ← no Chrome configured

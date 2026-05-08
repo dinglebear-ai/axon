@@ -1,7 +1,7 @@
 use super::config::Config;
 use super::enums::{
-    AskBackend, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
 use std::fmt;
@@ -81,15 +81,14 @@ impl Default for Config {
             openai_base_url: String::new(),
             openai_api_key: String::new(),
             openai_model: String::new(),
-            acp_adapter_cmd: None,
-            acp_adapter_args: None,
-            acp_prewarm: true,
-            acp_ws_url: None,
-            acp_ws_token: None,
+            headless_gemini_model: String::new(),
+            headless_gemini_cmd: "gemini".to_string(),
+            headless_gemini_home: None,
+            llm_completion_concurrency: 4,
+            llm_completion_timeout_secs: 300,
             tavily_api_key: String::new(),
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
-            ask_backend: AskBackend::Headless,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 120_000,
@@ -295,15 +294,20 @@ impl fmt::Debug for Config {
             .field("openai_base_url", &self.openai_base_url)
             .field("openai_api_key", &"[REDACTED]")
             .field("openai_model", &self.openai_model)
-            .field("acp_adapter_cmd", &self.acp_adapter_cmd)
-            .field("acp_adapter_args", &self.acp_adapter_args)
-            .field("acp_prewarm", &self.acp_prewarm)
-            .field("acp_ws_url", &self.acp_ws_url)
-            .field("acp_ws_token", &"[REDACTED]")
+            .field("headless_gemini_model", &self.headless_gemini_model)
+            .field("headless_gemini_cmd", &self.headless_gemini_cmd)
+            .field("headless_gemini_home", &self.headless_gemini_home)
+            .field(
+                "llm_completion_concurrency",
+                &self.llm_completion_concurrency,
+            )
+            .field(
+                "llm_completion_timeout_secs",
+                &self.llm_completion_timeout_secs,
+            )
             .field("tavily_api_key", &"[REDACTED]")
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)
-            .field("ask_backend", &self.ask_backend)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)

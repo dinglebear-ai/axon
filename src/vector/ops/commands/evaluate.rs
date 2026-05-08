@@ -2,10 +2,9 @@ mod display;
 mod scoring;
 mod streaming;
 
-use crate::core::config::{AskBackend, Config};
+use crate::core::config::Config;
 use crate::core::http::http_client;
 use crate::core::logging::log_warn;
-use crate::services::acp_llm;
 use std::error::Error;
 use std::time::Instant;
 
@@ -88,41 +87,34 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     let query = evaluate_query(&derived)?;
     let client = http_client()?;
     let eval_started = Instant::now();
-    // Start warm sessions for all three LLM calls so their adapter cold-starts
-    // overlap with retrieval work. warm1 → rag answer, warm2 → baseline, warm3 → judge.
-    let warm1 = maybe_warm_evaluate_session(&derived, "rag");
-    let warm2 = maybe_warm_evaluate_session(&derived, "baseline");
-
     let ctx = build_evaluate_ask_context(&derived, &query).await?;
-    let rag_future = run_rag_answer(&derived, client, &query, &ctx.context, warm1);
-    let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) = if derived
-        .evaluate_retrieval_ab
-    {
-        // Retrieval A/B: replace the no-context baseline with a second RAG run that has
-        // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
-        let mut dense_cfg = derived.clone();
-        dense_cfg.hybrid_search_enabled = false;
-        let dense_ctx = build_evaluate_ask_context(&dense_cfg, &query).await?;
-        let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context, warm2);
-        let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
-        let (rag_answer, rag_elapsed_ms) = rag;
-        let (dense_answer, dense_elapsed_ms) = dense;
-        (rag_answer, rag_elapsed_ms, dense_answer, dense_elapsed_ms)
-    } else {
-        let baseline_future = run_baseline_answer(&derived, client, &query, warm2);
-        let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
-        let (rag_answer, rag_elapsed_ms) = rag;
-        let (baseline_answer, baseline_elapsed_ms) = baseline;
-        (
-            rag_answer,
-            rag_elapsed_ms,
-            baseline_answer,
-            baseline_elapsed_ms,
-        )
-    };
+    let rag_future = run_rag_answer(&derived, client, &query, &ctx.context);
+    let (rag_answer, rag_elapsed_ms, baseline_answer, baseline_elapsed_ms) =
+        if derived.evaluate_retrieval_ab {
+            // Retrieval A/B: replace the no-context baseline with a second RAG run that has
+            // hybrid retrieval disabled, so the judge compares hybrid-RAG vs dense-only-RAG.
+            let mut dense_cfg = derived.clone();
+            dense_cfg.hybrid_search_enabled = false;
+            let dense_ctx = build_evaluate_ask_context(&dense_cfg, &query).await?;
+            let dense_future = run_rag_answer(&dense_cfg, client, &query, &dense_ctx.context);
+            let (rag, dense) = tokio::try_join!(rag_future, dense_future)?;
+            let (rag_answer, rag_elapsed_ms) = rag;
+            let (dense_answer, dense_elapsed_ms) = dense;
+            (rag_answer, rag_elapsed_ms, dense_answer, dense_elapsed_ms)
+        } else {
+            let baseline_future = run_baseline_answer(&derived, client, &query);
+            let (rag, baseline) = tokio::try_join!(rag_future, baseline_future)?;
+            let (rag_answer, rag_elapsed_ms) = rag;
+            let (baseline_answer, baseline_elapsed_ms) = baseline;
+            (
+                rag_answer,
+                rag_elapsed_ms,
+                baseline_answer,
+                baseline_elapsed_ms,
+            )
+        };
     let normalized_rag_answer = normalize_ask_answer(&derived, &query, &rag_answer, &ctx.context);
     let research_started = Instant::now();
-    let warm3 = maybe_warm_evaluate_session(&derived, "judge");
     let (judge_reference, ref_chunk_count) = build_judge_reference(&derived, &query)
         .await
         .unwrap_or_else(|e| {
@@ -153,8 +145,7 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
         context_chars,
         retrieval_ab: derived.evaluate_retrieval_ab,
     };
-    let (analysis_answer, analysis_elapsed_ms) =
-        run_analysis(&derived, client, &judge_ctx, warm3).await;
+    let (analysis_answer, analysis_elapsed_ms) = run_analysis(&derived, client, &judge_ctx).await;
     let crawl_suggestions = if rag_underperformed(&analysis_answer) {
         let focus = build_suggestion_focus(&query, &analysis_answer);
         discover_crawl_suggestions(&derived, &focus, 5)
@@ -212,24 +203,6 @@ async fn build_evaluate_ask_context(
     Ok(build_ask_context(cfg, query, &mut timing).await?)
 }
 
-fn maybe_warm_evaluate_session(
-    cfg: &Config,
-    label: &'static str,
-) -> Option<acp_llm::WarmAcpSession> {
-    match cfg.ask_backend {
-        AskBackend::Headless | AskBackend::Auto => None,
-        AskBackend::Acp => match acp_llm::warm_session(cfg, None) {
-            Ok(w) => Some(w),
-            Err(e) => {
-                log_warn(&format!(
-                    "evaluate: {label} warm session failed to start: {e}"
-                ));
-                None
-            }
-        },
-    }
-}
-
 /// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are
 /// not surfaced from the evaluate path, so this helper produces a disabled
 /// AskTiming accumulator (no Instant probes fire).
@@ -245,7 +218,7 @@ mod tests {
         build_suggestion_focus, rag_underperformed, score_totals_from_analysis,
         structured_scores_from_analysis,
     };
-    use crate::core::config::{AskBackend, Config};
+    use crate::core::config::Config;
 
     #[test]
     fn wrap_fixed_width_respects_limit() {
@@ -317,32 +290,14 @@ RAG is better.";
     }
 
     #[test]
-    fn evaluate_query_accepts_acp_only_config() {
+    fn evaluate_query_accepts_gemini_config() {
         let mut cfg = Config::test_default();
         cfg.openai_base_url.clear();
         cfg.openai_model.clear();
-        cfg.acp_adapter_cmd = Some("codex".to_string());
-        cfg.query = Some("How does ACP validation work?".to_string());
+        cfg.query = Some("How does Gemini validation work?".to_string());
 
-        let query = evaluate_query(&cfg).expect("ACP-only config should pass");
+        let query = evaluate_query(&cfg).expect("Gemini config should pass");
 
-        assert_eq!(query, "How does ACP validation work?");
-    }
-
-    #[test]
-    fn evaluate_query_rejects_missing_acp_adapter_command() {
-        let mut cfg = Config::test_default();
-        cfg.openai_base_url.clear();
-        cfg.openai_model.clear();
-        cfg.acp_adapter_cmd = None;
-        cfg.ask_backend = AskBackend::Acp;
-        cfg.query = Some("How does ACP validation work?".to_string());
-
-        let err = evaluate_query(&cfg).expect_err("missing adapter should fail");
-
-        assert!(
-            err.to_string().contains("AXON_ASK_AGENT"),
-            "error should mention AXON_ASK_AGENT: {err}"
-        );
+        assert_eq!(query, "How does Gemini validation work?");
     }
 }

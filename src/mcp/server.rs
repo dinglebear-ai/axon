@@ -2,8 +2,6 @@
 pub(super) mod artifacts;
 #[path = "server/common.rs"]
 pub mod common;
-#[path = "server/handlers_acp.rs"]
-mod handlers_acp;
 #[path = "server/handlers_crawl_extract.rs"]
 mod handlers_crawl_extract;
 #[path = "server/handlers_elicit.rs"]
@@ -106,7 +104,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo, acp.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -155,7 +153,6 @@ impl AxonMcpServer {
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
-            AxonRequest::Acp(req) => self.handle_acp(req).await?,
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))
@@ -247,7 +244,6 @@ impl ServerHandler for AxonMcpServer {
             "- `suggest` — propose new crawl targets from indexed source coverage\n",
             "- `research` — Tavily AI search with LLM synthesis\n",
             "- `extract` — structured data extraction via LLM\n",
-            "- `acp` — inspect and manage ACP-backed LLM sessions\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",
             "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",

@@ -145,8 +145,7 @@ pub(crate) fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), St
 }
 
 /// POST the ask request to a running `axon serve` instance and deserialize the
-/// `AskResult` response. The server reuses its WarmSessionPool so ACP cold-start
-/// is paid once at server boot, not per CLI invocation.
+/// `AskResult` response from a running server.
 pub(crate) async fn ask_via_server(
     cfg: &Config,
     server_url: &reqwest::Url,

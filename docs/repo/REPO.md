@@ -42,8 +42,7 @@ axon_rust/
 │   ├── services/                    # Typed service layer
 │   │   ├── context.rs              # ServiceContext and capabilities
 │   │   ├── types/                  # Result structs
-│   │   ├── acp/                    # ACP session lifecycle
-│   │   └── acp_llm/               # ACP-backed LLM completions
+│   │   ├── llm_backend/            # Gemini headless completions
 │   ├── vector.rs                    # Vector module root
 │   ├── vector/                      # Qdrant ops, TEI, hybrid search
 │   │   └── ops/                    # TEI embed, Qdrant upsert/search, ask
