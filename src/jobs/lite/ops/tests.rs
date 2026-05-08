@@ -44,6 +44,35 @@ async fn claim_returns_none_when_queue_empty() {
 }
 
 #[tokio::test]
+async fn claim_clears_reclaimed_error_text() {
+    let pool = test_pool().await;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO axon_embed_jobs \
+         (id, status, input_text, config_json, created_at, updated_at, error_text) \
+         VALUES (?, 'pending', 'docs', '{}', 1, 1, 'reclaimed after unexpected shutdown')",
+    )
+    .bind(&id)
+    .execute(&pool)
+    .await
+    .expect("insert reclaimed pending embed job");
+
+    let claimed = claim_next_pending(&pool, JobKind::Embed)
+        .await
+        .expect("claim");
+    assert_eq!(claimed.map(|id| id.to_string()), Some(id.clone()));
+
+    let row: (String, Option<String>) =
+        sqlx::query_as("SELECT status, error_text FROM axon_embed_jobs WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&pool)
+            .await
+            .expect("claimed row");
+    assert_eq!(row.0, "running");
+    assert_eq!(row.1, None);
+}
+
+#[tokio::test]
 async fn mark_completed_updates_status() {
     let pool = test_pool().await;
     let id = enqueue_job(

@@ -7,6 +7,7 @@ use crate::core::ui::{muted, primary, status_text as human_status_text, symbol_f
 use crate::services::context::ServiceContext;
 use crate::services::system::{build_status_payload, load_status_jobs};
 use crate::services::types::ServiceJob;
+use std::collections::HashMap;
 use std::error::Error;
 
 pub async fn run_status(
@@ -58,11 +59,17 @@ async fn run_status_impl(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let (jobs, _totals) = load_status_jobs(service_context).await?;
+    let embed_jobs_by_id: HashMap<String, &ServiceJob> = jobs
+        .embed
+        .iter()
+        .map(|job| (job.id.to_string(), job))
+        .collect();
+    let embed_doc_totals = embed_doc_totals_from_crawls(&jobs.crawl);
     print_status_section(
         "Crawl",
         &jobs.crawl,
         |job| job.url.clone().unwrap_or_else(|| job.id.to_string()),
-        crawl_progress_summary,
+        |job| crawl_progress_summary(job, &embed_jobs_by_id, &embed_doc_totals),
     );
     print_status_section(
         "Extract",
@@ -79,7 +86,7 @@ async fn run_status_impl(
         "Embed",
         &jobs.embed,
         |job| job.target.clone().unwrap_or_else(|| job.id.to_string()),
-        embed_progress_summary,
+        |job| embed_progress_summary(job, embed_doc_totals.get(&job.id.to_string()).copied()),
     );
     print_status_section(
         "Ingest",
@@ -94,7 +101,11 @@ async fn run_status_impl(
     Ok(())
 }
 
-fn crawl_progress_summary(job: &ServiceJob) -> Option<String> {
+fn crawl_progress_summary(
+    job: &ServiceJob,
+    embed_jobs_by_id: &HashMap<String, &ServiceJob>,
+    embed_doc_totals: &HashMap<String, u64>,
+) -> Option<String> {
     let metrics = job.result_json.as_ref()?;
     match job.status.as_str() {
         "running" => {
@@ -129,13 +140,26 @@ fn crawl_progress_summary(job: &ServiceJob) -> Option<String> {
             } else {
                 format!("{elapsed_ms}ms")
             };
-            Some(format!("{docs} docs · {time}"))
+            let mut summary = format!("{docs} docs · {time}");
+            if let Some(embed_id) = metrics.get("embed_job_id").and_then(|v| v.as_str()) {
+                if let Some(embed_job) = embed_jobs_by_id.get(embed_id) {
+                    summary.push_str(&format!(" · embed {}", embed_job.status));
+                    if let Some(embed_progress) =
+                        embed_progress_summary(embed_job, embed_doc_totals.get(embed_id).copied())
+                    {
+                        summary.push_str(&format!(" ({embed_progress})"));
+                    }
+                } else {
+                    summary.push_str(&format!(" · embed queued {embed_id}"));
+                }
+            }
+            Some(summary)
         }
         _ => None,
     }
 }
 
-fn embed_progress_summary(job: &ServiceJob) -> Option<String> {
+fn embed_progress_summary(job: &ServiceJob, fallback_docs_total: Option<u64>) -> Option<String> {
     let metrics = job.result_json.as_ref()?;
     if !matches!(job.status.as_str(), "running" | "completed") {
         return None;
@@ -148,14 +172,41 @@ fn embed_progress_summary(job: &ServiceJob) -> Option<String> {
         .get("chunks_embedded")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let docs_total = metrics
+        .get("docs_total")
+        .and_then(|v| v.as_u64())
+        .or(fallback_docs_total);
     if docs == 0 && chunks == 0 {
         return None;
+    }
+    if let Some(total) = docs_total.filter(|total| *total > 0) {
+        let percent = ((docs as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+        let percent_text = if percent < 99.95 {
+            format!("{percent:.1}%")
+        } else {
+            "100%".to_string()
+        };
+        return Some(format!(
+            "{docs}/{total} docs · {percent_text} · {chunks} chunks"
+        ));
     }
     if docs > 0 {
         Some(format!("{docs} docs · {chunks} chunks"))
     } else {
         Some(format!("{chunks} chunks"))
     }
+}
+
+fn embed_doc_totals_from_crawls(crawl_jobs: &[ServiceJob]) -> HashMap<String, u64> {
+    crawl_jobs
+        .iter()
+        .filter_map(|job| {
+            let metrics = job.result_json.as_ref()?;
+            let embed_id = metrics.get("embed_job_id")?.as_str()?;
+            let docs = metrics.get("md_created")?.as_u64()?;
+            Some((embed_id.to_string(), docs))
+        })
+        .collect()
 }
 
 fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
@@ -222,9 +273,27 @@ fn print_status_section(
                 muted(&job.id.to_string()),
             );
         }
-        if let Some(err) = job.error_text.as_deref() {
-            println!("    {}", muted(err));
+        if let Some(err) = job
+            .error_text
+            .as_deref()
+            .and_then(|err| job_error_hint(&job.status, err))
+        {
+            println!("    {}", muted(&err));
         }
     }
     println!();
+}
+
+fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
+    if error_text.trim_start() == "reclaimed after unexpected shutdown" {
+        return match status {
+            "pending" => Some(
+                "recovered after worker shutdown; waiting for a worker to claim it".to_string(),
+            ),
+            "running" => Some("recovered after worker shutdown; processing resumed".to_string()),
+            "completed" => None,
+            _ => Some(error_text.to_string()),
+        };
+    }
+    Some(error_text.to_string())
 }

@@ -127,9 +127,21 @@ fn test_exclude_path_prefix_blocks_locale_region_variants() {
         "https://example.com/ko-kr/blog",
         &excludes
     ));
+    assert!(is_excluded_url_path(
+        "https://example.com/docs/ja/settings",
+        &excludes
+    ));
+    assert!(is_excluded_url_path(
+        "https://example.com/docs/ko-kr/blog",
+        &excludes
+    ));
     // Should NOT block unrelated paths that start with the same letters
     assert!(!is_excluded_url_path(
         "https://example.com/javascript",
+        &excludes
+    ));
+    assert!(!is_excluded_url_path(
+        "https://example.com/docs/javascript",
         &excludes
     ));
     assert!(!is_excluded_url_path(

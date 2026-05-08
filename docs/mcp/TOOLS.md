@@ -237,7 +237,7 @@ Start parameters:
 |-----------|------|---------|-------------|
 | `urls` | string[] | -- | Seed URLs (required) |
 | `max_pages` | u32 | 0 (uncapped) | Page limit |
-| `max_depth` | usize | 5 | Max crawl depth |
+| `max_depth` | usize | 10 | Max crawl depth |
 | `include_subdomains` | bool | `false` | Include subdomains |
 | `respect_robots` | bool | `false` | Honor robots.txt |
 | `discover_sitemaps` | bool | `true` | Run sitemap backfill |

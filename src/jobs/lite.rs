@@ -51,6 +51,11 @@ impl LiteBackend {
     /// fire-and-forget commands where `axon serve` handles processing.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = cfg.sqlite_path.to_string_lossy().to_string();
+        tracing::info!(
+            sqlite_path = %cfg.sqlite_path.display(),
+            workers = false,
+            "lite: opening SQLite job backend"
+        );
         let pool = Arc::new(open_sqlite_pool(&path).await?);
         let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
 
@@ -70,6 +75,11 @@ impl LiteBackend {
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let path = cfg.sqlite_path.to_string_lossy().to_string();
+        tracing::info!(
+            sqlite_path = %cfg.sqlite_path.display(),
+            workers = true,
+            "lite: opening SQLite job backend"
+        );
         let pool = Arc::new(open_sqlite_pool(&path).await?);
         let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
 

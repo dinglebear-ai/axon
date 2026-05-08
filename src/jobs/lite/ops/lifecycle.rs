@@ -56,7 +56,7 @@ async fn claim_next_pending_inner(
         }
         Some((id_str,)) => {
             let update_result = match sqlx::query(&format!(
-                "UPDATE {} SET status='running', started_at=?, updated_at=? \
+                "UPDATE {} SET status='running', started_at=?, updated_at=?, error_text=NULL \
                  WHERE id=? AND status='pending'",
                 table
             ))
@@ -111,7 +111,7 @@ async fn mark_completed_inner(
     let result = match result_json {
         Some(result) => {
             sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=? \
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, error_text=NULL \
                  WHERE id=? AND status='running'",
                 table
             ))
@@ -124,7 +124,7 @@ async fn mark_completed_inner(
         }
         None => {
             sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=? \
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, error_text=NULL \
                  WHERE id=? AND status='running'",
                 table
             ))

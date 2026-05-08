@@ -12,7 +12,7 @@ pub(in crate::core::config) struct GlobalArgs {
     pub(in crate::core::config) max_pages: u32,
 
     /// Maximum crawl depth from the start URL
-    #[arg(global = true, long, default_value_t = 5)]
+    #[arg(global = true, long, default_value_t = 10)]
     pub(in crate::core::config) max_depth: usize,
 
     /// Crawl all subdomains of the start URL's parent domain

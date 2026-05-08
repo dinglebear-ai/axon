@@ -70,9 +70,27 @@ pub(crate) fn is_excluded_url_path(url: &str, excludes: &[String]) -> bool {
         .ok()
         .map(|u| u.path().to_string())
         .unwrap_or_else(|| "/".to_string());
+    is_excluded_path_or_first_segment_relative(&path, excludes)
+}
+
+pub(crate) fn is_excluded_path_or_first_segment_relative(path: &str, excludes: &[String]) -> bool {
+    if excludes
+        .iter()
+        .any(|prefix| is_path_prefix_excluded(path, prefix))
+    {
+        return true;
+    }
+
+    let Some(rest) = path
+        .trim_start_matches('/')
+        .split_once('/')
+        .map(|(_, rest)| format!("/{rest}"))
+    else {
+        return false;
+    };
     excludes
         .iter()
-        .any(|prefix| is_path_prefix_excluded(&path, prefix))
+        .any(|prefix| is_path_prefix_excluded(&rest, prefix))
 }
 
 fn is_path_prefix_excluded(path: &str, prefix: &str) -> bool {
@@ -160,17 +178,23 @@ pub(super) fn build_exclude_blacklist_patterns(
 
     excludes
         .iter()
-        .map(|prefix| {
+        .flat_map(|prefix| {
             let normalized: Cow<'_, str> = if prefix.starts_with('/') {
                 Cow::Borrowed(prefix)
             } else {
                 Cow::Owned(format!("/{prefix}"))
             };
-            format!(
+            let root_pattern = format!(
                 "^https?://{}{}(?:/|-|$|\\?|#)",
                 host_pattern,
                 regex_escape(&normalized)
-            )
+            );
+            let first_segment_relative_pattern = format!(
+                "^https?://{}/[^/?#]+{}(?:/|-|$|\\?|#)",
+                host_pattern,
+                regex_escape(&normalized)
+            );
+            [root_pattern, first_segment_relative_pattern]
         })
         .collect()
 }
@@ -292,7 +316,7 @@ mod tests {
     #[test]
     fn build_exclude_blacklist_patterns_generates_anchored_host_scoped_regex() {
         let patterns = build_exclude_blacklist_patterns("https://example.com", &excludes(&["/fr"]));
-        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns.len(), 2);
         assert!(
             patterns[0].starts_with("^https?://"),
             "pattern should start with ^https?://, got: {}",
@@ -309,7 +333,7 @@ mod tests {
     #[test]
     fn build_exclude_blacklist_patterns_escapes_dots_in_hostname() {
         let patterns = build_exclude_blacklist_patterns("https://example.com", &excludes(&["/fr"]));
-        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns.len(), 2);
         assert!(
             patterns[0].contains("example\\.com"),
             "dots in hostname should be escaped, got: {}",
@@ -330,21 +354,21 @@ mod tests {
         );
     }
 
-    // 5. Three excludes → three patterns (one per exclude).
+    // 5. Three excludes → six patterns (root + first path segment relative).
     #[test]
     fn build_exclude_blacklist_patterns_multiple_excludes_produces_one_pattern_each() {
         let patterns = build_exclude_blacklist_patterns(
             "https://example.com",
             &excludes(&["/fr", "/de", "/ja"]),
         );
-        assert_eq!(patterns.len(), 3);
+        assert_eq!(patterns.len(), 6);
     }
 
     // 6. Unparseable URL falls back to `[^/]+` as the host wildcard.
     #[test]
     fn build_exclude_blacklist_patterns_invalid_start_url_uses_wildcard_host() {
         let patterns = build_exclude_blacklist_patterns("not-a-valid-url", &excludes(&["/fr"]));
-        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns.len(), 2);
         assert!(
             patterns[0].contains("[^/]+"),
             "invalid URL should fall back to [^/]+ host pattern, got: {}",
@@ -358,11 +382,16 @@ mod tests {
     #[test]
     fn build_exclude_blacklist_patterns_pattern_ends_with_boundary_alternation() {
         let patterns = build_exclude_blacklist_patterns("https://example.com", &excludes(&["/fr"]));
-        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns.len(), 2);
         assert!(
             patterns[0].ends_with("(?:/|-|$|\\?|#)"),
             "pattern should end with boundary alternation group, got: {}",
             patterns[0]
+        );
+        assert!(
+            patterns[1].contains("/[^/?#]+/fr"),
+            "second pattern should match first path segment relative excludes, got: {}",
+            patterns[1]
         );
     }
 

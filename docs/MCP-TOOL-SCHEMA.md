@@ -86,7 +86,7 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 | `subaction` | CrawlSubaction | -- |  |
 | `urls` | string[] | -- | Seed URLs (required, non-empty array) |
 | `max_pages` | u32 | 0 (uncapped) | Page limit |
-| `max_depth` | usize | 5 | Max crawl depth |
+| `max_depth` | usize | 10 | Max crawl depth |
 | `include_subdomains` | bool | false | Include subdomains |
 | `respect_robots` | bool | false | Honour robots.txt |
 | `discover_sitemaps` | bool | true | Run sitemap backfill after crawl |

@@ -439,6 +439,14 @@ pub fn is_excluded_url_path(url: &str, prefixes: &[String]) -> bool {
         return false;
     };
     let path = parsed.path();
+    is_excluded_path(path, prefixes)
+        || path
+            .trim_start_matches('/')
+            .split_once('/')
+            .is_some_and(|(_, rest)| is_excluded_path(&format!("/{rest}"), prefixes))
+}
+
+fn is_excluded_path(path: &str, prefixes: &[String]) -> bool {
     prefixes.iter().any(|raw| {
         // Inline normalize_prefix logic without allocating — prefixes are pre-validated
         // at config time so the hot path is the common case (already has leading slash).
@@ -509,4 +517,26 @@ pub fn extract_robots_sitemaps(robots_txt: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+#[cfg(test)]
+mod exclude_path_tests {
+    use super::is_excluded_url_path;
+
+    #[test]
+    fn excludes_first_segment_relative_locale_paths() {
+        let prefixes = vec!["/fr".to_string(), "/ja".to_string()];
+        assert!(is_excluded_url_path(
+            "https://example.com/docs/fr/settings",
+            &prefixes
+        ));
+        assert!(is_excluded_url_path(
+            "https://example.com/docs/ja-jp/settings",
+            &prefixes
+        ));
+        assert!(!is_excluded_url_path(
+            "https://example.com/docs/javascript",
+            &prefixes
+        ));
+    }
 }

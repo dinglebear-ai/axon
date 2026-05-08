@@ -208,7 +208,7 @@ impl Default for CrawlConfig {
     fn default() -> Self {
         Self {
             max_pages: 0,
-            max_depth: 5,
+            max_depth: 10,
             include_subdomains: false,
             exclude_path_prefix: vec![],
             respect_robots: false,
@@ -333,7 +333,7 @@ mod tests {
     fn crawl_config_default_values() {
         let c = CrawlConfig::default();
         assert_eq!(c.max_pages, 0);
-        assert_eq!(c.max_depth, 5);
+        assert_eq!(c.max_depth, 10);
         assert!(!c.include_subdomains);
         assert!(c.drop_thin_markdown);
         assert!(c.discover_sitemaps);

@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn config_default_crawl_settings() {
         let cfg = Config::default();
-        assert_eq!(cfg.max_depth, 5);
+        assert_eq!(cfg.max_depth, 10);
         assert_eq!(cfg.min_markdown_chars, 200);
         assert!(cfg.discover_sitemaps);
         assert!(cfg.drop_thin_markdown);

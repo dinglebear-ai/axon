@@ -54,12 +54,42 @@ debug:
 install:
     {{rust_dev_env}}; cargo build --release --locked
     mkdir -p ~/.local/bin
-    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon; PLUGIN_BIN="${AXON_PLUGIN_BIN:-$HOME/.claude/plugins/cache/jmagar-lab/axon/575c090bcaf5/bin/axon}"; if [ -e "$PLUGIN_BIN" ] || [ -L "$PLUGIN_BIN" ]; then mkdir -p "$(dirname "$PLUGIN_BIN")"; ln -sf "$AXON_BIN" "$PLUGIN_BIN"; systemctl --user restart axon-mcp 2>/dev/null || true; fi
 
 install-debug:
-    just debug
+    #!/usr/bin/env bash
+    set -euo pipefail
     mkdir -p ~/.local/bin
-    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/debug/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/debug/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    case "$AXON_TARGET_DIR" in
+      /*) AXON_BIN="$AXON_TARGET_DIR/debug/axon" ;;
+      *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/debug/axon" ;;
+    esac
+    stale=0
+    if [ ! -x "$AXON_BIN" ]; then
+      stale=1
+    else
+      while IFS= read -r -d '' input; do
+        if [ "$input" -nt "$AXON_BIN" ]; then
+          stale=1
+          break
+        fi
+      done < <(git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml .cargo src config.example.toml docker-compose.yaml config migrations)
+    fi
+    if [ "$stale" -eq 1 ]; then
+      just debug
+    else
+      echo "debug binary is current: $AXON_BIN"
+    fi
+    ln -sf "$AXON_BIN" ~/.local/bin/axon
+    PLUGIN_BIN="${AXON_PLUGIN_BIN:-$HOME/.claude/plugins/cache/jmagar-lab/axon/575c090bcaf5/bin/axon}"
+    if [ -e "$PLUGIN_BIN" ] || [ -L "$PLUGIN_BIN" ]; then
+      mkdir -p "$(dirname "$PLUGIN_BIN")"
+      ln -sf "$AXON_BIN" "$PLUGIN_BIN"
+      if systemctl --user list-unit-files axon-mcp.service >/dev/null 2>&1; then
+        systemctl --user restart axon-mcp || true
+      fi
+    fi
 
 lint-all:
     just fmt-check

@@ -39,6 +39,7 @@ pub(super) fn spawn_embed_progress_persister(
     let task = tokio::spawn(async move {
         while let Some(progress) = rx.recv().await {
             let json = serde_json::json!({
+                "docs_total": progress.docs_total,
                 "docs_embedded": progress.docs_completed,
                 "chunks_embedded": progress.chunks_embedded,
             });

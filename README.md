@@ -168,7 +168,7 @@ All commands share global flags documented below. Commands listed as **async by 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--max-pages <n>` | u32 | `0` | Page cap for crawl (0 = uncapped). |
-| `--max-depth <n>` | usize | `5` | Maximum crawl depth from start URL. |
+| `--max-depth <n>` | usize | `10` | Maximum crawl depth from start URL. |
 | `--render-mode <mode>` | enum | `auto-switch` | `http`, `chrome`, or `auto-switch`. Auto-switch tries HTTP first and falls back to Chrome when >60% of pages are thin. |
 | `--format <fmt>` | enum | `markdown` | Output format: `markdown`, `html`, `rawHtml`, `json`. |
 | `--include-subdomains <bool>` | bool | `false` | Crawl all subdomains of the start URL's parent domain. |
@@ -269,7 +269,7 @@ Key flags:
 |------|---------|-------------|
 | `--wait <bool>` | `false` | `false`: enqueue and return job IDs. `true`: run inline and block. |
 | `--max-pages <n>` | `0` | Page cap (0 = uncapped). |
-| `--max-depth <n>` | `5` | Maximum crawl depth. |
+| `--max-depth <n>` | `10` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
 | `--embed <bool>` | `true` | Queue embed job from crawl output. |
 | `--sitemap-only` | `false` | Sync-only: run sitemap backfill without full crawl. |

@@ -106,6 +106,14 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         "startup"
     );
     let cfg = parse_args();
+    tracing::info!(
+        command = cfg.command.as_str(),
+        collection = %cfg.collection,
+        sqlite_path = %cfg.sqlite_path.display(),
+        data_dir = %core::paths::axon_data_base_dir().display(),
+        output_dir = %cfg.output_dir.display(),
+        "runtime paths resolved"
+    );
 
     let start_url = start_url_from_cfg(&cfg);
 

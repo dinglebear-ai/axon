@@ -46,7 +46,7 @@ All global flags apply. Key flags:
 |------|---------|-------------|
 | `--wait <bool>` | `false` | `false`: enqueue crawl jobs and return. `true`: run crawl inline and block. |
 | `--max-pages <n>` | `0` | Page cap (`0` = uncapped). |
-| `--max-depth <n>` | `5` | Maximum crawl depth. |
+| `--max-depth <n>` | `10` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
 | `--discover-sitemaps <bool>` | `true` | Enable Spider sitemap traversal plus Axon sitemap backfill before embed handoff. |
 | `--sitemap-since-days <n>` | `0` | Restrict sitemap backfill by `<lastmod>` age. |

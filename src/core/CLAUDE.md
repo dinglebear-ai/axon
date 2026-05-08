@@ -69,7 +69,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Group | Fields |
 |-------|--------|
 | Command & Input | `command: CommandKind`, `start_url`, `positional: Vec<String>`, `urls_csv`, `url_glob`, `query` |
-| Crawl Control | `max_pages` (0 = uncapped), `max_depth` (default 5), `include_subdomains` (default false), `exclude_path_prefix`, `delay_ms` |
+| Crawl Control | `max_pages` (0 = uncapped), `max_depth` (default 10), `include_subdomains` (default false), `exclude_path_prefix`, `delay_ms` |
 | Rendering | `render_mode: RenderMode`, `chrome_remote_url`, `chrome_headless/anti_bot/intercept/stealth/bootstrap` (all default true) |
 | Page Filtering | `min_markdown_chars` (default 200), `drop_thin_markdown` (default true), `respect_robots` (default false) |
 | Sitemap | `discover_sitemaps` (default true), `sitemap_since_days` (0 = all), `sitemap_only` |
