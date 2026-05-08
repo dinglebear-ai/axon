@@ -271,6 +271,26 @@ pub struct QueryResult {
 pub struct RetrieveResult {
     pub chunk_count: usize,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matched_url: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variant_errors: Vec<ServiceRetrieveVariantError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceRetrieveVariantError {
+    pub url: String,
+    pub error: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

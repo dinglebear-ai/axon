@@ -69,13 +69,14 @@ axon ask "what is the max crawl depth?" --json
 
 1. Embed the question via TEI
 2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 150) candidate chunks
-3. Filter chunks below `AXON_ASK_MIN_RELEVANCE_SCORE` (default: 0.45)
-4. Rerank by score; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
-5. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
-6. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
-7. Call the LLM with context + question
-8. Apply response-quality gates (citations + policy checks)
-9. Print the normalized answer
+3. Apply the score threshold only on cosine/dense paths. `AXON_ASK_MIN_RELEVANCE_SCORE` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
+4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
+5. Rerank by the mode-appropriate score/order; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
+6. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
+7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
+8. Call the LLM with context + question
+9. Apply response-quality gates (citations + policy checks)
+10. Print the normalized answer
 
 ## RAG Tuning
 
@@ -83,7 +84,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance (0.6–0.7 for high-precision); lower if you get "no candidates" |
+| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6–0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
 | `AXON_ASK_CANDIDATE_LIMIT` | `150` | More candidates = better recall, slower reranking |
 | `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks in final LLM context |
 | `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Total context characters; raise for large-context models |
@@ -94,7 +95,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 ## Notes
 
 - LLM answer generation goes through the ACP adapter (`AXON_ACP_ADAPTER_CMD`), not directly to an OpenAI-compatible endpoint. `OPENAI_MODEL` is used as the model override passed to the adapter.
-- If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection.
+- If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.
 - `ask` enforces citation-quality gates:

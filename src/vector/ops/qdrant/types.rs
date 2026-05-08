@@ -19,6 +19,32 @@ pub struct QdrantPoint {
     pub payload: QdrantPayload,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetrieveVariantError {
+    pub url: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct QdrantRetrieveByUrlResult {
+    pub url_match: String,
+    pub points: Vec<QdrantPoint>,
+    pub max_points: usize,
+    pub malformed_points: usize,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DirectRetrieveResult {
+    pub requested_url: String,
+    pub matched_url: Option<String>,
+    pub chunk_count: usize,
+    pub content: String,
+    pub truncated: bool,
+    pub warnings: Vec<String>,
+    pub variant_errors: Vec<RetrieveVariantError>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct QdrantSearchHit {
     #[serde(default)]

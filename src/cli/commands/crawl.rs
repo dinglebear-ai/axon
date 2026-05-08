@@ -15,9 +15,10 @@ use crate::cli::commands::CommandFuture;
 use crate::core::config::Config;
 use crate::core::http::validate_url;
 use crate::core::logging::{log_info, log_warn};
-use crate::core::ui::{muted, primary, print_option, print_phase};
+use crate::core::ui::{accent, muted, primary, success, warning};
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_service;
+use crate::services::types::CrawlStartJob;
 use crate::services::types::StartDisposition;
 use spider::url::Url;
 use std::error::Error;
@@ -118,71 +119,163 @@ async fn warn_if_url_looks_like_local_file(target: &str) {
     ));
 }
 
-fn print_async_options(cfg: &Config, start_url: &str) {
-    print_phase("◐", "Crawling", start_url);
-    println!("  {}", primary("Options:"));
-    // Crawl scope
-    print_option(
-        "maxPages",
-        &if cfg.max_pages == 0 {
-            "uncapped".to_string()
+fn pages_label(max_pages: u32) -> String {
+    if max_pages == 0 {
+        "uncapped pages".to_string()
+    } else {
+        format!("{max_pages} pages")
+    }
+}
+
+fn scope_label(cfg: &Config) -> String {
+    let domain = if cfg.include_subdomains {
+        "subdomains allowed"
+    } else {
+        "same domain"
+    };
+    let mut parts = vec![
+        domain.to_string(),
+        format!("depth {}", cfg.max_depth),
+        pages_label(cfg.max_pages),
+    ];
+    if cfg.respect_robots {
+        parts.push("robots.txt respected".to_string());
+    }
+    if !cfg.url_whitelist.is_empty() {
+        parts.push("URL whitelist active".to_string());
+    }
+    parts.join(", ")
+}
+
+fn strategy_label(cfg: &Config) -> String {
+    match cfg.render_mode.to_string().as_str() {
+        "auto-switch" => "HTTP first, Chrome fallback".to_string(),
+        "chrome" => "Chrome rendering".to_string(),
+        "http" => "HTTP only".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn pipeline_label(cfg: &Config) -> String {
+    let mut stages = vec!["crawl"];
+    if cfg.discover_sitemaps {
+        stages.push("sitemap");
+    }
+    if cfg.embed {
+        stages.push("embed");
+    }
+    stages.join(" -> ")
+}
+
+fn print_summary_row(label: &str, value: &str) {
+    println!("  {} {}", muted(&format!("{label:<9}")), value);
+}
+
+fn print_override(label: &str, value: &str) {
+    println!("  {} {}", muted(&format!("{label:<19}")), warning(value));
+}
+
+fn print_crawl_overrides(cfg: &Config) {
+    let mut printed_header = false;
+    let mut print = |label: &str, value: String| {
+        if !printed_header {
+            println!();
+            println!("{}", primary("Overrides"));
+            printed_header = true;
+        }
+        print_override(label, &value);
+    };
+
+    if cfg.respect_robots {
+        print("respect robots.txt", "true".to_string());
+    }
+    if cfg.include_subdomains {
+        print("subdomains", "true".to_string());
+    }
+    if !cfg.url_whitelist.is_empty() {
+        print("url whitelist", cfg.url_whitelist.join(", "));
+    }
+    if let Some(max_page_bytes) = cfg.max_page_bytes {
+        print("max page bytes", max_page_bytes.to_string());
+    }
+    if cfg.block_assets {
+        print("block assets", "true".to_string());
+    }
+    if cfg.redirect_policy_strict {
+        print("strict redirects", "true".to_string());
+    }
+    if cfg.chrome_screenshot {
+        print("screenshots", "true".to_string());
+    }
+    if cfg.bypass_csp {
+        print("bypass CSP", "true".to_string());
+    }
+    if cfg.accept_invalid_certs {
+        print("invalid certs", "accepted".to_string());
+    }
+    if !cfg.cache {
+        print("cache", "false".to_string());
+    }
+}
+
+fn print_async_crawl_result(
+    cfg: &Config,
+    display: &str,
+    jobs: &[CrawlStartJob],
+    disposition: StartDisposition,
+) {
+    let queued = disposition == StartDisposition::Enqueued;
+    let headline = if queued {
+        success("● Crawl queued")
+    } else {
+        success("✓ Crawl completed")
+    };
+
+    println!("{headline}");
+    println!();
+    println!("  {}", accent(display));
+    println!();
+    print_summary_row("Strategy", &strategy_label(cfg));
+    print_summary_row("Scope", &scope_label(cfg));
+    print_summary_row("Pipeline", &pipeline_label(cfg));
+    print_summary_row(
+        "Runtime",
+        if queued {
+            "background workers"
         } else {
-            cfg.max_pages.to_string()
+            "completed in process"
         },
     );
-    print_option("maxDepth", &cfg.max_depth.to_string());
-    print_option("allowSubdomains", &cfg.include_subdomains.to_string());
-    print_option("respectRobotsTxt", &cfg.respect_robots.to_string());
-    print_option("discoverSitemaps", &cfg.discover_sitemaps.to_string());
-    // Content filtering
-    print_option("blockAssets", &cfg.block_assets.to_string());
-    print_option(
-        "redirectPolicyStrict",
-        &cfg.redirect_policy_strict.to_string(),
-    );
-    print_option(
-        "maxPageBytes",
-        &cfg.max_page_bytes
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "none".to_string()),
-    );
-    print_option("minMarkdownChars", &cfg.min_markdown_chars.to_string());
-    print_option("dropThinMarkdown", &cfg.drop_thin_markdown.to_string());
-    if !cfg.url_whitelist.is_empty() {
-        print_option("urlWhitelist", &cfg.url_whitelist.join(", "));
+    println!();
+
+    if jobs.len() == 1 {
+        let job = &jobs[0];
+        print_summary_row("Job", &accent(&job.job_id));
+    } else {
+        println!("{}", primary("Jobs"));
+        for job in jobs {
+            println!(
+                "  {} {} {}",
+                accent(&job.job_id),
+                muted("->"),
+                muted(&job.url)
+            );
+        }
     }
-    // Render / Chrome
-    print_option("renderMode", &cfg.render_mode.to_string());
-    print_option("cache", &cfg.cache.to_string());
-    print_option("cacheSkipBrowser", &cfg.cache_skip_browser.to_string());
-    print_option(
-        "chromeRemote",
-        cfg.chrome_remote_url.as_deref().unwrap_or("auto/local"),
-    );
-    print_option("chromeProxy", cfg.chrome_proxy.as_deref().unwrap_or("none"));
-    print_option(
-        "chromeUserAgent",
-        cfg.chrome_user_agent.as_deref().unwrap_or("spider-default"),
-    );
-    print_option("chromeHeadless", &cfg.chrome_headless.to_string());
-    print_option("chromeAntiBot", &cfg.chrome_anti_bot.to_string());
-    print_option("chromeStealth", &cfg.chrome_stealth.to_string());
-    print_option("chromeIntercept", &cfg.chrome_intercept.to_string());
-    print_option("chromeBootstrap", &cfg.chrome_bootstrap.to_string());
-    print_option(
-        "chromeNetworkIdleTimeoutSecs",
-        &cfg.chrome_network_idle_timeout_secs.to_string(),
-    );
-    print_option(
-        "chromeWaitForSelector",
-        cfg.chrome_wait_for_selector.as_deref().unwrap_or("none"),
-    );
-    print_option("chromeScreenshot", &cfg.chrome_screenshot.to_string());
-    print_option("bypassCsp", &cfg.bypass_csp.to_string());
-    print_option("acceptInvalidCerts", &cfg.accept_invalid_certs.to_string());
-    // Output
-    print_option("embed", &cfg.embed.to_string());
-    print_option("wait", &cfg.wait.to_string());
+
+    print_crawl_overrides(cfg);
+
+    if queued {
+        println!();
+        println!("{}", primary("Follow progress"));
+        if jobs.len() == 1 {
+            println!(
+                "  {}",
+                accent(&format!("axon crawl status {}", jobs[0].job_id))
+            );
+        }
+        println!("  {}", accent("axon status"));
+    }
 }
 
 async fn run_async_enqueue_multi(
@@ -196,29 +289,8 @@ async fn run_async_enqueue_multi(
         [single] => single.clone(),
         _ => format!("{} (+{} more)", urls[0], urls.len() - 1),
     };
-    print_async_options(cfg, &display);
-    println!();
 
     let outcome = crawl_service::crawl_start_with_context(cfg, urls, service_context, None).await?;
-    if outcome.disposition == StartDisposition::Enqueued {
-        println!(
-            "  {}",
-            muted(
-                "Async enqueue mode skips sitemap preflight; worker performs discovery during crawl."
-            )
-        );
-        if cfg.embed {
-            println!(
-                "  {}",
-                muted("Embedding job will be queued automatically after crawl completion.")
-            );
-        }
-    } else if !cfg.json_output {
-        println!(
-            "  {}",
-            muted("Lite mode completed the crawl in-process before exiting.")
-        );
-    }
     for job in &outcome.result.jobs {
         let status = if outcome.disposition == StartDisposition::Completed {
             "completed"
@@ -236,26 +308,10 @@ async fn run_async_enqueue_multi(
                     "predicted_paths": job.predicted_paths,
                 })
             );
-        } else {
-            println!(
-                "  {} {} → {}",
-                primary("Crawl Job"),
-                crate::core::ui::accent(&job.job_id),
-                muted(&job.url)
-            );
-            if outcome.disposition == StartDisposition::Enqueued {
-                println!(
-                    "  {}",
-                    muted(&format!("Check status: axon crawl status {}", job.job_id))
-                );
-            }
         }
     }
-    println!();
     if !cfg.json_output {
-        for job in &outcome.result.jobs {
-            println!("Job ID: {}", job.job_id);
-        }
+        print_async_crawl_result(cfg, &display, &outcome.result.jobs, outcome.disposition);
     }
     Ok(())
 }

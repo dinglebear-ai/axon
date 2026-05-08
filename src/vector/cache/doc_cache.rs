@@ -32,10 +32,12 @@
 use crate::vector::ops::qdrant::QdrantPoint;
 use anyhow::Result;
 use moka::future::Cache;
+use std::collections::HashMap;
 use std::future::Future;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 /// Hard upper bound on how long any cached entry can be served, regardless of
@@ -85,10 +87,24 @@ fn weigh_points(points: &[QdrantPoint]) -> u32 {
 }
 
 /// Configuration for [`DocCache::new`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct DocCacheConfig {
     pub max_capacity_bytes: u64,
     pub ttl_secs: u64,
+}
+
+impl PartialEq for DocCacheConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.max_capacity_bytes == other.max_capacity_bytes
+            && self.effective_ttl_secs() == other.effective_ttl_secs()
+    }
+}
+
+impl Hash for DocCacheConfig {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.max_capacity_bytes.hash(state);
+        self.effective_ttl_secs().hash(state);
+    }
 }
 
 impl Default for DocCacheConfig {
@@ -100,10 +116,26 @@ impl Default for DocCacheConfig {
     }
 }
 
+impl DocCacheConfig {
+    /// Build the document cache config from the parsed runtime config.
+    pub fn from_ask_config(cfg: &crate::core::config::Config) -> Self {
+        Self {
+            max_capacity_bytes: cfg.ask_cache_max_capacity_bytes,
+            ttl_secs: cfg.ask_cache_ttl_secs,
+        }
+    }
+
+    /// TTL after applying the hard security cap.
+    pub fn effective_ttl_secs(&self) -> u64 {
+        self.ttl_secs.min(CACHE_TTL_HARD_CAP_SECS)
+    }
+}
+
 /// In-process moka cache for full-document chunk fetches.
 pub struct DocCache {
     inner: Cache<DocCacheKey, Arc<Vec<QdrantPoint>>>,
     stats: Arc<DocCacheStats>,
+    config: DocCacheConfig,
 }
 
 impl DocCache {
@@ -112,7 +144,7 @@ impl DocCache {
     pub fn new(config: DocCacheConfig) -> Self {
         let stats = Arc::new(DocCacheStats::default());
         let stats_for_eviction = Arc::clone(&stats);
-        let ttl = Duration::from_secs(config.ttl_secs.min(CACHE_TTL_HARD_CAP_SECS));
+        let ttl = Duration::from_secs(config.effective_ttl_secs());
         let inner = Cache::builder()
             .max_capacity(config.max_capacity_bytes)
             .weigher(|_k: &DocCacheKey, v: &Arc<Vec<QdrantPoint>>| weigh_points(v))
@@ -122,7 +154,16 @@ impl DocCache {
                 stats_for_eviction.evicted.fetch_add(1, Ordering::Relaxed);
             })
             .build();
-        Self { inner, stats }
+        Self {
+            inner,
+            stats,
+            config,
+        }
+    }
+
+    /// Returns the effective cache configuration.
+    pub fn config(&self) -> &DocCacheConfig {
+        &self.config
     }
 
     /// Returns the shared stats handle for diagnostics.
@@ -181,16 +222,20 @@ impl DocCache {
     }
 }
 
-/// Process-global default cache instance, lazily constructed when the cache is
-/// first enabled. Mirrors the `COLLECTION_MODES` pattern (LazyLock + module
-/// state). Keeps the consumer side simple: callers reach in only when
-/// `cfg.ask_cache_enabled` is true.
-static DEFAULT_CACHE: LazyLock<DocCache> = LazyLock::new(|| {
-    // The default capacity/TTL match the documented `[ask.cache]` defaults.
-    DocCache::new(DocCacheConfig::default())
-});
+/// Process-global cache registry keyed by effective cache config. This keeps
+/// the common daemon hit path process-local while making `[ask.cache]`
+/// capacity/TTL changes take effect without a hardcoded singleton.
+static CACHE_REGISTRY: LazyLock<Mutex<HashMap<DocCacheConfig, Arc<DocCache>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Returns the process-global cache instance.
-pub fn global_doc_cache() -> &'static DocCache {
-    &DEFAULT_CACHE
+/// Returns the process-global cache instance matching the supplied config.
+pub fn doc_cache_for_config(config: DocCacheConfig) -> Arc<DocCache> {
+    let mut registry = CACHE_REGISTRY
+        .lock()
+        .expect("doc cache registry mutex poisoned");
+    Arc::clone(
+        registry
+            .entry(config.clone())
+            .or_insert_with(|| Arc::new(DocCache::new(config))),
+    )
 }

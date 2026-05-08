@@ -1,8 +1,8 @@
 use crate::core::config::Config;
-use crate::services::error::ServiceError;
 use crate::vector::ops::commands::retrieval::{
-    CandidateBuildPolicy, CandidateScorePolicy, RetrievedCandidate, build_candidates_from_hits,
-    candidates_only, query_allows_low_signal, score_and_filter_candidates,
+    CandidateBuildPolicy, CandidateScorePolicy, RetrievedCandidate, VectorDispatchContext,
+    build_typed_retrieval_result, candidates_only, dispatch_vector_search_with_diagnostics,
+    embed_retrieval_inputs, query_allows_low_signal, vector_mode_metadata,
 };
 use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking, tei};
@@ -14,12 +14,9 @@ pub async fn query_results(
     limit: usize,
     offset: usize,
 ) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    let mut query_vectors = tei::tei_embed_kind(
-        cfg,
-        tei::EmbedKind::Query,
-        std::slice::from_ref(&query.to_string()),
-    )
-    .await?;
+    let mut query_vectors =
+        embed_retrieval_inputs(cfg, &[tei::EmbedInput::query(query)], "TEI embed for query")
+            .await?;
     if query_vectors.is_empty() {
         return Err("TEI returned no vector for query".into());
     }
@@ -28,40 +25,35 @@ pub async fn query_results(
     let fetch_limit = ((limit + offset).max(1) * 16).max(limit + offset).min(1000);
     let request = qdrant::VectorSearchRequest::from_query(cfg, &vector, query, fetch_limit)
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
-    let hits = qdrant::dispatch_vector_search_request(cfg, &request)
+    let hits = dispatch_vector_search_with_diagnostics(
+        cfg,
+        &request,
+        query,
+        VectorDispatchContext {
+            stage: "query_vector_search_dispatch",
+            command: "query",
+            arm: "primary",
+            fetch_limit: Some(fetch_limit),
+        },
+    )
+    .await
+    .map_err(|e| -> Box<dyn Error> { e })?;
+    let _mode = vector_mode_metadata(cfg, &request)
         .await
-        .map_err(|e| -> Box<dyn Error> {
-            if cfg.ask_diagnostics {
-                let diagnostics = serde_json::json!({
-                    "stage": "query_vector_search_dispatch",
-                    "collection": cfg.collection,
-                    "qdrant_url": cfg.qdrant_url,
-                    "query_len": query.len(),
-                    "error": e.to_string(),
-                });
-                Box::new(ServiceError::with_diagnostics(
-                    format!("vector search dispatch: {e}"),
-                    diagnostics,
-                ))
-            } else {
-                Box::new(ServiceError::new(format!("vector search dispatch: {e}")))
-            }
-        })?;
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
     let query_tokens = ranking::tokenize_query(query);
     let build_policy = CandidateBuildPolicy {
         allow_low_signal: query_allows_low_signal(&query_tokens, query),
     };
-    let built = build_candidates_from_hits(hits, &build_policy);
-    if built.candidates.is_empty() {
-        return Ok(Vec::new());
-    }
     let score_policy = query_score_policy(cfg);
-    let reranked_with_metadata =
-        score_and_filter_candidates(&built.candidates, &query_tokens, &score_policy);
-    if reranked_with_metadata.is_empty() {
+    let retrieval = build_typed_retrieval_result(hits, &query_tokens, &build_policy, &score_policy);
+    if retrieval.retrieved_candidates.is_empty() {
         return Ok(Vec::new());
     }
-    let reranked = candidates_only(&reranked_with_metadata);
+    if retrieval.reranked_candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let reranked = candidates_only(&retrieval.reranked_candidates);
     let selected_indices =
         ranking::select_diverse_candidates(&reranked, (limit + offset).max(1), 2);
 
@@ -71,7 +63,7 @@ pub async fn query_results(
         .take(limit)
         .enumerate()
         .map(|(i, hit_idx)| {
-            let selected = &reranked_with_metadata[hit_idx];
+            let selected = &retrieval.reranked_candidates[hit_idx];
             let h = &selected.candidate;
             let url = &h.url;
             let source = display_source(url);

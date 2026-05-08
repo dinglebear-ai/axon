@@ -61,6 +61,7 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.url_glob = g.url_glob.clone();
     cfg.query = g.query.clone();
     cfg.search_limit = g.limit;
+    cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.max_pages = g.max_pages;
     cfg.max_depth = g.max_depth;
     cfg.include_subdomains = g.include_subdomains;

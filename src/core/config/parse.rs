@@ -217,6 +217,25 @@ mod tests {
         assert!(result.is_ok(), "completion alias should be accepted");
     }
 
+    #[test]
+    fn parse_retrieve_max_points_into_config() {
+        let cli = super::Cli::parse_from([
+            "axon",
+            "--tei-url",
+            "http://127.0.0.1:52000",
+            "--qdrant-url",
+            "http://127.0.0.1:53333",
+            "retrieve",
+            "https://example.com/docs",
+            "--max-points",
+            "25",
+        ]);
+        let cfg = super::build_config::into_config(cli).expect("retrieve should parse");
+        assert!(matches!(cfg.command, CommandKind::Retrieve));
+        assert_eq!(cfg.positional, vec!["https://example.com/docs".to_string()]);
+        assert_eq!(cfg.retrieve_max_points, Some(25));
+    }
+
     // --- is_docker_service_host tests ---
 
     #[test]

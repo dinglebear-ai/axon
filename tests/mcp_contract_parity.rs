@@ -197,6 +197,11 @@ fn retrieve_result_chunks_are_empty_for_zero_count() {
     let r = RetrieveResult {
         chunk_count: 0,
         content: String::new(),
+        requested_url: None,
+        matched_url: None,
+        truncated: false,
+        warnings: Vec::new(),
+        variant_errors: Vec::new(),
     };
     assert_eq!(r.chunk_count, 0);
     assert!(r.content.is_empty());

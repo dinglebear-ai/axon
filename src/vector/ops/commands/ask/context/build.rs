@@ -4,7 +4,9 @@ use super::heuristics::{
 };
 use crate::core::config::Config;
 use crate::core::logging::{log_info, log_warn};
-use crate::vector::cache::{DocCacheKey, current_generation, global_doc_cache};
+use crate::vector::cache::{
+    DocCache, DocCacheConfig, DocCacheKey, current_generation, doc_cache_for_config,
+};
 use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking};
 use anyhow::{Result, anyhow};
@@ -273,6 +275,7 @@ async fn fetch_full_docs(
     // once for this fetch batch so all concurrent lookups in this stream see
     // a consistent key. (axon_rust-pmc)
     let cache_enabled = cfg.ask_cache_enabled;
+    let doc_cache = cache_enabled.then(|| ask_doc_cache(cfg));
     let collection = cfg.collection.clone();
     let generation = if cache_enabled {
         current_generation(&collection)
@@ -289,6 +292,7 @@ async fn fetch_full_docs(
         let cfg_for_task = Arc::clone(&cfg_arc);
         let url = reranked[doc_idx].url.clone();
         let collection = collection.clone();
+        let doc_cache = doc_cache.clone();
         async move {
             let points = if cache_enabled {
                 let key = DocCacheKey {
@@ -298,7 +302,8 @@ async fn fetch_full_docs(
                 };
                 let cfg_for_fetch = Arc::clone(&cfg_for_task);
                 let url_for_fetch = url.clone();
-                global_doc_cache()
+                doc_cache
+                    .expect("doc cache must exist when cache is enabled")
                     .get_or_fetch(key, move || async move {
                         qdrant::qdrant_retrieve_by_url(
                             &cfg_for_fetch,
@@ -328,6 +333,10 @@ async fn fetch_full_docs(
     }
     fetched_docs.sort_by_key(|(order, _, _)| *order);
     Ok(fetched_docs)
+}
+
+fn ask_doc_cache(cfg: &Config) -> Arc<DocCache> {
+    doc_cache_for_config(DocCacheConfig::from_ask_config(cfg))
 }
 
 /// Number of chunks per fetched full-doc that survive the query-relevance
@@ -503,7 +512,8 @@ fn build_diagnostic_sources(
 
 #[cfg(test)]
 mod renumber_tests {
-    use super::renumber_context_source_header;
+    use super::{ask_doc_cache, renumber_context_source_header};
+    use crate::core::config::Config;
 
     #[test]
     fn renumber_context_source_header_updates_existing_source_id() {
@@ -518,5 +528,19 @@ mod renumber_tests {
     fn renumber_context_source_header_leaves_malformed_header_unchanged() {
         let entry = "## Top Chunk [SX]: https://docs.example.com\n\nbody";
         assert_eq!(renumber_context_source_header(entry, 1), entry);
+    }
+
+    #[test]
+    fn ask_doc_cache_uses_runtime_cache_config() {
+        let cfg = Config {
+            ask_cache_max_capacity_bytes: 12_345,
+            ask_cache_ttl_secs: 7,
+            ..Config::default()
+        };
+
+        let cache = ask_doc_cache(&cfg);
+
+        assert_eq!(cache.config().max_capacity_bytes, 12_345);
+        assert_eq!(cache.config().effective_ttl_secs(), 7);
     }
 }
