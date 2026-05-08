@@ -104,7 +104,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo, acp.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Use action:help to list actions/subactions/defaults. Exposes schema resource axon://schema/mcp-tool. Actions: status, help, crawl, extract, embed, ingest, query, retrieve, search, map, evaluate, suggest, doctor, domains, sources, stats, artifacts, scrape, research, ask, screenshot, elicit_demo.",
         meta = axon_tool_meta()
     )]
     async fn axon<'a>(
@@ -244,7 +244,6 @@ impl ServerHandler for AxonMcpServer {
             "- `suggest` — propose new crawl targets from indexed source coverage\n",
             "- `research` — Tavily AI search with LLM synthesis\n",
             "- `extract` — structured data extraction via LLM\n",
-            "- `acp` — inspect and manage ACP-backed LLM sessions\n",
             "- `status` / `doctor` — job queue health and service diagnostics\n",
             "- `artifacts` — read/grep/inspect large output files\n",
             "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",

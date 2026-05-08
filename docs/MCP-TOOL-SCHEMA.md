@@ -29,14 +29,14 @@ Code references:
 Incoming request map is parsed strictly with serde:
 
 - `action` is required and must match canonical schema names
-- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|artifacts|acp`)
+- `subaction` is required for lifecycle families (`crawl|extract|embed|ingest|artifacts`)
 - No fallback fields (`command`, `op`, `operation`)
 - No token normalization or case folding
 - No action alias remapping
 
 ## Preferred Client Actions
 Use CLI-identical top-level actions:
-- Lifecycle families: `acp`, `artifacts`, `crawl`, `embed`, `extract`, `ingest`
+- Lifecycle families: `artifacts`, `crawl`, `embed`, `extract`, `ingest`
 - Direct actions: `ask`, `doctor`, `domains`, `elicit_demo`, `evaluate`, `help`, `map`, `query`, `research`, `retrieve`, `scrape`, `screenshot`, `search`, `sources`, `stats`, `status`, `suggest`
 
 For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canonical families with `subaction`:
@@ -76,6 +76,8 @@ These actions do not require `subaction`:
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 
+Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`.
+
 ## Crawl Start Parameters
 Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 
@@ -93,7 +95,6 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 | `delay_ms` | u64 | 0 | Per-request delay ms |
 
 ## Lifecycle Action Families
-- `acp`: `list_sessions|fork_session|resume_session|set_model|ext_method|ext_notification|logout` -- requires action-specific session fields
 - `artifacts`: `head|grep|wc|read|list|delete|clean|search` -- requires `path`; `pattern` for grep
 - `crawl`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `urls` (array)
 - `embed`: `start|status|cancel|list|cleanup|clear|recover` -- start requires `input` (string)
