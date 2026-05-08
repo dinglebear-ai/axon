@@ -133,9 +133,33 @@ async fn mcp_http_router(
             },
             Default::default(),
             {
-                let mut cfg = StreamableHttpServerConfig::default();
-                cfg.stateful_mode = true;
-                cfg
+                // Build allowed-hosts list from bind address + configured origins,
+                // mirroring the pattern used by syslog-mcp to allow external access
+                // through reverse proxies (e.g. SWAG/Cloudflare).
+                let mut hosts = vec![
+                    "localhost".to_string(),
+                    format!("localhost:{port}"),
+                    "127.0.0.1".to_string(),
+                    format!("127.0.0.1:{port}"),
+                    "[::1]".to_string(),
+                    format!("[::1]:{port}"),
+                ];
+                for origin in &cfg_arc.mcp_allowed_origins {
+                    // Extract hostname from origin URL (e.g. "https://axon.tootie.tv" → "axon.tootie.tv")
+                    if let Ok(uri) = origin.parse::<axum::http::Uri>()
+                        && let Some(authority) = uri.authority()
+                    {
+                        let h = authority.host().to_string();
+                        hosts.push(h.clone());
+                        hosts.push(format!("{h}:{port}"));
+                        hosts.push(format!("{h}:443"));
+                    }
+                }
+                hosts.sort();
+                hosts.dedup();
+                StreamableHttpServerConfig::default()
+                    .with_stateful_mode(true)
+                    .with_allowed_hosts(hosts)
             },
         );
 
