@@ -48,10 +48,18 @@ build:
     mkdir -p bin
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; cp "$AXON_TARGET_DIR/release/axon" bin/axon
 
+debug:
+    {{rust_dev_env}}; cargo build --locked --bin axon
+
 install:
     {{rust_dev_env}}; cargo build --release --locked
     mkdir -p ~/.local/bin
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon
+
+install-debug:
+    just debug
+    mkdir -p ~/.local/bin
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/debug/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/debug/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon
 
 lint-all:
     just fmt-check
