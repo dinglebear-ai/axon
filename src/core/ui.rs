@@ -47,6 +47,14 @@ pub fn accent(text: &str) -> String {
     Style::new().color256(111).apply_to(text).to_string()
 }
 
+pub fn success(text: &str) -> String {
+    Style::new().green().bold().apply_to(text).to_string()
+}
+
+pub fn warning(text: &str) -> String {
+    Style::new().yellow().bold().apply_to(text).to_string()
+}
+
 pub fn muted(text: &str) -> String {
     Style::new().dim().apply_to(text).to_string()
 }
