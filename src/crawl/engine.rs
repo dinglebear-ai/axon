@@ -11,7 +11,7 @@ mod url_utils;
 mod waf;
 
 use crate::core::config::{Config, RenderMode};
-use crate::core::content::{build_selector_config, build_transform_config};
+use crate::core::content::build_selector_config;
 use crate::core::logging::{log_done, log_info};
 use crate::crawl::manifest::ManifestEntry;
 use collector::{CollectorConfig, collect_crawl_pages};
@@ -136,7 +136,6 @@ pub async fn run_crawl_once(
     let drop_thin = cfg.drop_thin_markdown;
     let exclude_path_prefix = cfg.exclude_path_prefix.clone();
     let crawl_start = Instant::now();
-    let transform_cfg = build_transform_config();
 
     // Enable inline Chrome re-rendering when the *config* requests AutoSwitch,
     // even though `mode` is `Http` for the initial crawl phase (AutoSwitch
@@ -160,7 +159,6 @@ pub async fn run_crawl_once(
             drop_thin,
             exclude_path_prefix,
             scope: None,
-            transform_cfg,
             progress_tx,
             previous_manifest: Arc::clone(&previous_manifest),
             selector_config: build_selector_config(cfg),
@@ -236,7 +234,6 @@ pub async fn run_sitemap_only(
     let rx = website.subscribe(subscribe_buf);
     let manifest_path = output_dir.join("manifest.jsonl");
     let markdown_dir = output_dir.join("markdown");
-    let transform_cfg = build_transform_config();
     let crawl_start = Instant::now();
 
     let join = tokio::spawn(collect_crawl_pages(
@@ -248,7 +245,6 @@ pub async fn run_sitemap_only(
             drop_thin: cfg.drop_thin_markdown,
             exclude_path_prefix: cfg.exclude_path_prefix.clone(),
             scope: None,
-            transform_cfg,
             progress_tx: None,
             previous_manifest: Arc::clone(&previous_manifest),
             selector_config: build_selector_config(cfg),

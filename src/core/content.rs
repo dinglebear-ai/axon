@@ -93,9 +93,21 @@ pub fn build_selector_config(cfg: &Config) -> Option<SelectorConfiguration> {
 /// selector and excludes elements matching the exclude selector — matching
 /// Spider Cloud's official API behavior.
 pub fn to_markdown(html: &str, selector_config: Option<&SelectorConfiguration>) -> String {
+    bytes_to_markdown(html.as_bytes(), selector_config)
+}
+
+/// Convert HTML bytes to clean markdown with the crawl-wide transform policy.
+///
+/// This is the shared path for primary crawls, Chrome recovery, sitemap
+/// backfill, and URL embed fetches so selector and boilerplate behavior cannot
+/// drift between call sites.
+pub fn bytes_to_markdown(
+    html_bytes: &[u8],
+    selector_config: Option<&SelectorConfiguration>,
+) -> String {
     let input = TransformInput {
         url: None,
-        content: html.as_bytes(),
+        content: html_bytes,
         screenshot_bytes: None,
         encoding: None,
         selector_config,

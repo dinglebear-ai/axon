@@ -150,7 +150,7 @@ Cancellation is **in-process only** (lite mode is single-process by design — s
 1. **DB row update** — `cancel_row` flips `status` to `canceled` (gated `WHERE status IN ('pending','running')`).
 2. **In-memory token** — runners that registered a token via `cancel_store.register(id)` observe `token.is_cancelled()` mid-execution and abort cleanly.
 
-Today only the **ingest** runner registers a cancel token (`lite/workers.rs:282-300`). The other runners observe cancellation only via the next DB read or via process exit; an already-running crawl/extract/embed job runs to completion (the `cancel_row` SQL will mark the row `canceled` immediately, but the runner's `mark_completed`/`mark_failed` write is then dropped by the `WHERE status='running'` guard).
+All active runners register a cancel token for claimed jobs. Crawl observes cancellation at the runner boundary, sends `spider::utils::shutdown("{job_id}{url}")` to the active Spider control target, waits briefly for drain, and returns canceled. Crawl progress JSON written before cancellation remains on the row, including output paths and counts when available. Extract and ingest check cancellation inside their loops or per-target futures; embed observes cancellation at the runner boundary.
 
 `CancelStore::cancel(id, pool, kind)` performs both writes and returns `true` when the row update affected at least one row.
 
@@ -319,7 +319,7 @@ The four ingest source aliases (`axon github`, `axon reddit`, `axon youtube`, `a
 | Auto-embed deferred | Crawl `result_json.embed_deferred` populated; markdown unindexed | Embed queue at capacity when crawl finished | Drain embed queue, then re-embed the markdown directory manually |
 | `wait_for_job` timeout | `job <id> timed out after Ns in state running` | Job exceeded `AXON_JOB_WAIT_TIMEOUT_SECS` | Continue polling via `axon <kind> status <id>`; raise the env var or run with `--wait false` |
 | Crawl runner row-missing | `job row not found at execution time, may have been deleted mid-run` warn | Row deleted between claim and execute (e.g. `clear`) | None — runner returns `Ok(None)` and `mark_completed` no-ops |
-| Cancel of mid-flight crawl/extract/embed | Row goes `canceled`, runner keeps running until natural finish | These runners do not register a `CancellationToken` today | Process termination is the only forceful stop |
+| Cancel of mid-flight crawl/extract/embed | Row goes `canceled`; runner returns canceled at its safe interruption point | In-flight network or browser work may need a short drain window; crawl also sends Spider shutdown | Continue with `status`; partial crawl progress JSON is retained when it was already persisted |
 | Unknown status string in DB | `unknown job status value in DB — treating as Failed` warn | DB hand-edited or schema drift | Restore via SQL or run a fresh DB |
 
 ## Source Map

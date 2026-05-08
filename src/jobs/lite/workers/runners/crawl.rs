@@ -12,6 +12,8 @@ use crate::jobs::backend::{JobPayload, lift_err};
 use crate::jobs::error::JobError;
 use crate::jobs::lite::config_snapshot::{apply_lite_config_snapshot, lite_config_snapshot_json};
 use crate::jobs::lite::ops::enqueue_job;
+use crate::jobs::lite::query::job_status_row;
+use crate::jobs::status::JobStatus;
 
 use super::JobResult;
 
@@ -41,7 +43,8 @@ pub async fn run_crawl_job_lite(
         &id.to_string(),
     );
 
-    let (progress_tx, progress_task) = spawn_crawl_progress_persister(pool, id);
+    let (progress_tx, progress_task) =
+        spawn_crawl_progress_persister(pool, id, job_output_dir.clone());
     let id_str = id.to_string();
     let crawl_fut = async {
         crate::crawl::engine::run_crawl_once(
@@ -57,9 +60,10 @@ pub async fn run_crawl_job_lite(
         .await
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })
     };
-    let (summary, _) = match cancel_token.as_ref() {
+    let (mut summary, seen_urls) = match cancel_token.as_ref() {
         Some(token) => tokio::select! {
             _ = token.cancelled() => {
+                request_spider_crawl_shutdown(&id_str, &url).await;
                 return Err("crawl canceled".into());
             }
             r = crawl_fut => r?,
@@ -70,6 +74,21 @@ pub async fn run_crawl_job_lite(
         tracing::warn!(job_id = %id, error = %e, "crawl progress persister task failed");
     }
 
+    ensure_crawl_not_cancelled(pool, id, cancel_token.as_ref(), &id_str, &url).await?;
+
+    maybe_append_sitemap_backfill(
+        pool,
+        &effective_cfg,
+        id,
+        &url,
+        &id_str,
+        &job_output_dir,
+        &seen_urls,
+        &mut summary,
+        cancel_token.as_ref(),
+    )
+    .await?;
+
     let (embed_job_id, embed_deferred) = try_enqueue_embed_handoff(
         pool,
         &effective_cfg,
@@ -79,40 +98,144 @@ pub async fn run_crawl_job_lite(
     )
     .await?;
 
-    if !effective_cfg.json_output && !effective_cfg.quiet {
-        eprintln!(
-            "{} crawl completed {} pages={} markdown={} thin={} errors={} elapsed={} job={} output={}",
-            symbol_for_status("completed"),
-            accent(&url),
-            summary.pages_seen,
-            summary.markdown_files,
-            summary.thin_pages,
-            summary.error_pages,
-            format_elapsed_ms(summary.elapsed_ms),
-            id,
-            job_output_dir.join("markdown").display()
-        );
-        if let Some(embed_job_id) = &embed_job_id {
-            eprintln!("  embed queued job={embed_job_id}");
-        } else if let Some(reason) = &embed_deferred {
-            eprintln!("  ⚠ embed DEFERRED: {reason}");
-            eprintln!(
-                "    markdown is on disk at {} but NOT yet indexed; query/ask will not see it.",
-                job_output_dir.join("markdown").display()
-            );
-        } else if effective_cfg.embed {
-            eprintln!("  embed skipped no markdown output");
-        } else {
-            eprintln!("  embed disabled");
-        }
-    }
+    print_crawl_completion(
+        &effective_cfg,
+        id,
+        &url,
+        &job_output_dir,
+        &summary,
+        embed_job_id.as_deref(),
+        embed_deferred.as_deref(),
+    );
 
     Ok(Some(build_crawl_result_json(
         &url,
+        &job_output_dir,
         &summary,
         embed_job_id.as_deref(),
         embed_deferred.as_deref(),
     )))
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "keeps cancellation context explicit"
+)]
+async fn maybe_append_sitemap_backfill(
+    pool: &SqlitePool,
+    effective_cfg: &Config,
+    id: uuid::Uuid,
+    url: &str,
+    crawl_id: &str,
+    job_output_dir: &std::path::Path,
+    seen_urls: &std::collections::HashSet<String>,
+    summary: &mut crate::crawl::engine::CrawlSummary,
+    cancel_token: Option<&CancellationToken>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !effective_cfg.discover_sitemaps {
+        return Ok(());
+    }
+
+    let backfill_fut = async {
+        crate::crawl::engine::append_sitemap_backfill(
+            effective_cfg,
+            url,
+            job_output_dir,
+            seen_urls,
+            summary,
+        )
+        .await
+        .map_err(|e| e.to_string())
+    };
+    let backfill_result = match cancel_token {
+        Some(token) => tokio::select! {
+            _ = token.cancelled() => {
+                request_spider_crawl_shutdown(crawl_id, url).await;
+                return Err("crawl canceled".into());
+            }
+            result = backfill_fut => result,
+        },
+        None => backfill_fut.await,
+    };
+    if let Err(e) = backfill_result {
+        tracing::warn!(
+            job_id = %id,
+            url,
+            error = %e,
+            "crawl sitemap backfill failed after primary crawl; continuing to embed primary output"
+        );
+    }
+    ensure_crawl_not_cancelled(pool, id, cancel_token, crawl_id, url).await
+}
+
+async fn ensure_crawl_not_cancelled(
+    pool: &SqlitePool,
+    id: uuid::Uuid,
+    cancel_token: Option<&CancellationToken>,
+    crawl_id: &str,
+    url: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if cancel_token.is_some_and(CancellationToken::is_cancelled)
+        || job_status_row(pool, crate::jobs::backend::JobKind::Crawl, id)
+            .await?
+            .is_some_and(|row| row.status == JobStatus::Canceled)
+    {
+        request_spider_crawl_shutdown(crawl_id, url).await;
+        return Err("crawl canceled".into());
+    }
+    Ok(())
+}
+
+async fn request_spider_crawl_shutdown(crawl_id: &str, url: &str) {
+    let target = format!("{crawl_id}{url}");
+    tracing::info!(
+        crawl_id,
+        url,
+        target,
+        "lite crawl cancel: requesting spider shutdown"
+    );
+    spider::utils::shutdown(&target).await;
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+}
+
+fn print_crawl_completion(
+    effective_cfg: &Config,
+    id: uuid::Uuid,
+    url: &str,
+    job_output_dir: &std::path::Path,
+    summary: &crate::crawl::engine::CrawlSummary,
+    embed_job_id: Option<&str>,
+    embed_deferred: Option<&str>,
+) {
+    if effective_cfg.json_output || effective_cfg.quiet {
+        return;
+    }
+
+    eprintln!(
+        "{} crawl completed {} pages={} markdown={} thin={} errors={} elapsed={} job={} output={}",
+        symbol_for_status("completed"),
+        accent(url),
+        summary.pages_seen,
+        summary.markdown_files,
+        summary.thin_pages,
+        summary.error_pages,
+        format_elapsed_ms(summary.elapsed_ms),
+        id,
+        job_output_dir.join("markdown").display()
+    );
+    if let Some(embed_job_id) = embed_job_id {
+        eprintln!("  embed queued job={embed_job_id}");
+    } else if let Some(reason) = embed_deferred {
+        eprintln!("  ⚠ embed DEFERRED: {reason}");
+        eprintln!(
+            "    markdown is on disk at {} but NOT yet indexed; query/ask will not see it.",
+            job_output_dir.join("markdown").display()
+        );
+    } else if effective_cfg.embed {
+        eprintln!("  embed skipped no markdown output");
+    } else {
+        eprintln!("  embed disabled");
+    }
 }
 
 /// Enqueue an embed job for the freshly-crawled markdown directory. Returns
@@ -173,12 +296,15 @@ async fn try_enqueue_embed_handoff(
 /// is on disk but not yet indexed.
 fn build_crawl_result_json(
     url: &str,
+    job_output_dir: &std::path::Path,
     summary: &crate::crawl::engine::CrawlSummary,
     embed_job_id: Option<&str>,
     embed_deferred: Option<&str>,
 ) -> serde_json::Value {
     let mut value = serde_json::json!({
         "url": url,
+        "output_dir": job_output_dir,
+        "output_path": job_output_dir.join("markdown"),
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
         "pages_discovered": summary.pages_discovered,
@@ -209,6 +335,7 @@ fn format_elapsed_ms(elapsed_ms: u128) -> String {
 mod tests {
     use super::build_crawl_result_json;
     use crate::crawl::engine::CrawlSummary;
+    use std::path::Path;
 
     fn make_summary() -> CrawlSummary {
         CrawlSummary {
@@ -227,6 +354,7 @@ mod tests {
     fn crawl_result_json_uses_canonical_keys() {
         let json = build_crawl_result_json(
             "https://example.com",
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
             Some("embed-job-id"),
             None,
@@ -255,11 +383,25 @@ mod tests {
             obj.get("embed_job_id").and_then(|v| v.as_str()),
             Some("embed-job-id")
         );
+        assert_eq!(
+            obj.get("output_dir").and_then(|v| v.as_str()),
+            Some("/tmp/axon-crawl")
+        );
+        assert_eq!(
+            obj.get("output_path").and_then(|v| v.as_str()),
+            Some("/tmp/axon-crawl/markdown")
+        );
     }
 
     #[test]
     fn crawl_result_json_omits_legacy_aliases() {
-        let json = build_crawl_result_json("https://example.com", &make_summary(), None, None);
+        let json = build_crawl_result_json(
+            "https://example.com",
+            Path::new("/tmp/axon-crawl"),
+            &make_summary(),
+            None,
+            None,
+        );
         let obj = json.as_object().expect("json is an object");
 
         // Legacy aliases removed (axon_rust-pkl.8)
@@ -275,10 +417,18 @@ mod tests {
 
     #[test]
     fn crawl_result_json_required_keys() {
-        let json = build_crawl_result_json("https://example.com", &make_summary(), None, None);
+        let json = build_crawl_result_json(
+            "https://example.com",
+            Path::new("/tmp/axon-crawl"),
+            &make_summary(),
+            None,
+            None,
+        );
         let obj = json.as_object().expect("json is an object");
         for key in [
             "url",
+            "output_dir",
+            "output_path",
             "pages_crawled",
             "md_created",
             "pages_discovered",
@@ -300,6 +450,7 @@ mod tests {
     fn crawl_result_json_includes_embed_deferred_when_capacity_exceeded() {
         let json = build_crawl_result_json(
             "https://example.com",
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
             None,
             Some("embed queue at capacity: 50/50 pending embed jobs"),

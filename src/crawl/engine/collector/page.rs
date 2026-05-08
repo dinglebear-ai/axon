@@ -3,16 +3,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
-use spider_transformations::transformation::content::{
-    SelectorConfiguration, TransformConfig, TransformInput, transform_content_input,
-};
+use spider_transformations::transformation::content::SelectorConfiguration;
 use tokio::sync::mpsc::Sender;
 
 use super::super::is_excluded_url_path;
 use super::super::{
     CrawlSummary, MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url,
 };
-use crate::core::content::{BOILERPLATE_SELECTORS, clean_markdown_whitespace, url_to_filename};
+use crate::core::content::{bytes_to_markdown, url_to_filename};
 use crate::crawl::manifest::ManifestEntry;
 
 pub struct CollectorConfig {
@@ -22,7 +20,6 @@ pub struct CollectorConfig {
     pub drop_thin: bool,
     pub exclude_path_prefix: Vec<String>,
     pub scope: Option<MapScope>,
-    pub transform_cfg: &'static TransformConfig,
     pub progress_tx: Option<Sender<CrawlSummary>>,
     pub previous_manifest: Arc<HashMap<String, ManifestEntry>>,
     pub selector_config: Option<SelectorConfiguration>,
@@ -55,16 +52,7 @@ pub fn process_page(
     col: &CollectorConfig,
     next_file_count: u32,
 ) -> PageOutcome {
-    let input = TransformInput {
-        url: None,
-        content: html_bytes,
-        screenshot_bytes: None,
-        encoding: None,
-        selector_config: col.selector_config.as_ref(),
-        ignore_tags: Some(BOILERPLATE_SELECTORS),
-    };
-    let markdown = transform_content_input(input, col.transform_cfg);
-    let trimmed = clean_markdown_whitespace(markdown.trim());
+    let trimmed = bytes_to_markdown(html_bytes, col.selector_config.as_ref());
     let chars = trimmed.len();
 
     if trimmed.is_empty() {

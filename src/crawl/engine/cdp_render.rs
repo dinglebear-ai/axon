@@ -4,12 +4,10 @@
 //! using `Page.setContent()` — no second HTTP request. Used by the collector
 //! to recover thin pages while the HTTP crawl is still in progress.
 
-use crate::core::content::{
-    BOILERPLATE_SELECTORS, build_transform_config, clean_markdown_whitespace,
-};
+use crate::core::content::bytes_to_markdown;
 use crate::core::logging::log_warn;
 use futures_util::{SinkExt, StreamExt};
-use spider_transformations::transformation::content::{TransformInput, transform_content_input};
+use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -219,10 +217,9 @@ where
     //
     // The HTML string is JSON-escaped by serde_json so it survives embedding
     // inside a JS template literal — no second encoding needed.
-    let inject_expr = format!(
-        "document.open(); document.write({}); document.close();",
-        serde_json::to_string(html).unwrap_or_else(|_| "''".into())
-    );
+    let escaped_html = serde_json::to_string(html)
+        .map_err(|e| format!("HTML JSON escaping failed for {page_url}: {e}"))?;
+    let inject_expr = format!("document.open(); document.write({escaped_html}); document.close();");
     send_cdp_cmd(
         tx,
         rx,
@@ -285,6 +282,7 @@ pub(super) async fn render_html_with_chrome(
     page_url: &str,
     min_chars: usize,
     timeout_secs: u64,
+    selector_config: Option<SelectorConfiguration>,
 ) -> Option<String> {
     let html = match String::from_utf8(html_bytes) {
         Ok(s) => s,
@@ -335,21 +333,15 @@ pub(super) async fn render_html_with_chrome(
         }
     };
 
-    markdown_if_not_thin(&rendered_html, min_chars)
+    markdown_if_not_thin(&rendered_html, min_chars, selector_config.as_ref())
 }
 
-fn markdown_if_not_thin(rendered_html: &str, min_chars: usize) -> Option<String> {
-    let transform_cfg = build_transform_config();
-    let input = TransformInput {
-        url: None,
-        content: rendered_html.as_bytes(),
-        screenshot_bytes: None,
-        encoding: None,
-        selector_config: None,
-        ignore_tags: Some(BOILERPLATE_SELECTORS),
-    };
-    let markdown = transform_content_input(input, transform_cfg);
-    let trimmed = clean_markdown_whitespace(markdown.trim());
+fn markdown_if_not_thin(
+    rendered_html: &str,
+    min_chars: usize,
+    selector_config: Option<&SelectorConfiguration>,
+) -> Option<String> {
+    let trimmed = bytes_to_markdown(rendered_html.as_bytes(), selector_config);
     if trimmed.len() < min_chars {
         None
     } else {
@@ -402,4 +394,31 @@ where
         Duration::from_secs(5),
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::markdown_if_not_thin;
+    use spider_transformations::transformation::content::SelectorConfiguration;
+
+    #[test]
+    fn markdown_if_not_thin_honors_selector_config() {
+        let html = r#"
+            <main>
+                <h1>Keep this page</h1>
+                <p>Enough selected content to pass the thin page threshold.</p>
+                <aside>Drop this excluded navigation text</aside>
+            </main>
+            <footer>Drop this footer too</footer>
+        "#;
+        let selectors = SelectorConfiguration {
+            root_selector: Some("main".to_string()),
+            exclude_selector: Some("aside".to_string()),
+        };
+        let md = markdown_if_not_thin(html, 10, Some(&selectors)).expect("markdown");
+
+        assert!(md.contains("Keep this page"));
+        assert!(!md.contains("Drop this excluded navigation text"));
+        assert!(!md.contains("Drop this footer too"));
+    }
 }

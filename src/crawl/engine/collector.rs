@@ -214,7 +214,6 @@ async fn process_received_page(
 mod tests {
     use super::super::url_utils::MapScope;
     use super::*;
-    use crate::core::content::build_transform_config;
     use std::collections::HashMap;
 
     fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
@@ -225,7 +224,6 @@ mod tests {
             drop_thin: false,
             exclude_path_prefix: Vec::new(),
             scope,
-            transform_cfg: build_transform_config(),
             progress_tx: None,
             previous_manifest: Arc::new(HashMap::new()),
             selector_config: None,

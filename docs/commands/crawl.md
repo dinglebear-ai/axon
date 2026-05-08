@@ -48,17 +48,17 @@ All global flags apply. Key flags:
 | `--max-pages <n>` | `0` | Page cap (`0` = uncapped). |
 | `--max-depth <n>` | `5` | Maximum crawl depth. |
 | `--render-mode <mode>` | `auto-switch` | `http`, `chrome`, `auto-switch`. |
-| `--discover-sitemaps <bool>` | `true` | Enable sitemap discovery/backfill. |
+| `--discover-sitemaps <bool>` | `true` | Enable Spider sitemap traversal plus Axon sitemap backfill before embed handoff. |
 | `--sitemap-since-days <n>` | `0` | Restrict sitemap backfill by `<lastmod>` age. |
 | `--include-subdomains <bool>` | `false` | Include subdomains under the same parent domain. |
 | `--respect-robots <bool>` | `false` | Respect `robots.txt` directives. |
 | `--min-markdown-chars <n>` | `200` | Thin-page threshold. |
-
-Lite mode preserves fire-and-forget semantics for `--wait false`: `crawl` enqueues and exits without draining other pending crawl rows. Use `--wait true` to run the submitted crawl inline and wait for its explicit dependent embed job, if one is created.
 | `--drop-thin-markdown <bool>` | `true` | Skip thin pages. |
 | `--sitemap-only` | `false` | Sync-only path: run sitemap backfill without full crawl. |
 | `--embed <bool>` | `true` | Queue embed job from crawl output. |
 | `--json` | `false` | JSON output for job metadata/status responses. |
+
+Lite mode preserves fire-and-forget semantics for `--wait false`: `crawl` enqueues and exits without draining other pending crawl rows. Workers run the same Axon sitemap backfill before auto-embedding the crawl output, so sitemap-added pages are visible to the dependent embed job. Use `--wait true` to wait for the submitted crawl and its explicit dependent embed job, if one is created.
 
 ## Examples
 
@@ -84,6 +84,7 @@ axon crawl status 550e8400-e29b-41d4-a716-446655440000
 - Async mode prints one job ID per URL and returns immediately.
 - Async JSON output now includes the predicted `output_dir` plus `predicted_paths` for each enqueued job.
 - Sync mode writes crawl artifacts under `<output-dir>/domains/<domain>/sync/`.
+- With `--discover-sitemaps true`, both async worker mode and sync `--wait true` mode run Axon's sitemap backfill before the embed handoff. Sync mode performs the embed inline; async mode queues a dependent embed job after backfill completes.
 - Completed crawl status JSON may include `output_files` when the worker has a manifest-backed file list available.
 - `--render-mode auto-switch` now treats one- and two-page HTTP crawls as too little signal and may retry in Chrome even when the pages are not technically thin.
 - Malformed discovered URLs are filtered before they enter the accepted result set, which keeps crawl/page counts aligned with canonical URLs instead of raw Spider candidates.

@@ -157,10 +157,10 @@ mod tests {
             ..Config::default()
         };
 
-        match debug_report(&cfg, "ctx").await {
-            Ok(result) => assert!(result.payload.get("llm_debug").is_some()),
-            Err(err) => panic!("headless should skip ACP/model prereqs: {err}"),
-        }
+        assert_debug_result_or_external_headless_error(
+            debug_report(&cfg, "ctx").await,
+            "headless should skip ACP/model prereqs",
+        );
     }
 
     #[tokio::test]
@@ -172,9 +172,36 @@ mod tests {
             ..Config::default()
         };
 
-        match debug_report(&cfg, "ctx").await {
+        assert_debug_result_or_external_headless_error(
+            debug_report(&cfg, "ctx").await,
+            "auto should use headless prereqs",
+        );
+    }
+
+    fn assert_debug_result_or_external_headless_error(
+        result: Result<crate::services::types::DebugResult, Box<dyn std::error::Error>>,
+        context: &str,
+    ) {
+        match result {
             Ok(result) => assert!(result.payload.get("llm_debug").is_some()),
-            Err(err) => panic!("auto should use headless prereqs: {err}"),
+            Err(err) => {
+                let msg = err.to_string();
+                assert!(
+                    is_expected_external_headless_error(&msg),
+                    "{context}: {msg}"
+                );
+            }
         }
+    }
+
+    fn is_expected_external_headless_error(msg: &str) -> bool {
+        [
+            "failed to spawn Gemini headless command",
+            "Gemini headless exited with",
+            "AXON_ASK_AGENT=gemini is unavailable for headless backend",
+            "HOME is required to locate Gemini CLI auth files",
+        ]
+        .iter()
+        .any(|expected| msg.contains(expected))
     }
 }

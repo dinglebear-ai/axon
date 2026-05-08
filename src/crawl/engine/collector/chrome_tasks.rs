@@ -4,6 +4,7 @@ use crate::core::logging::{log_info, log_warn};
 use crate::crawl::engine::CrawlSummary;
 use crate::crawl::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
 use crate::crawl::manifest::ManifestEntry;
+use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -11,6 +12,10 @@ use tokio::task::JoinSet;
 /// Spawn an inline Chrome render task for a thin page, bounded by `sem`.
 ///
 /// Uses the HTML bytes already in hand — no second HTTP request.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "task spawn passes ownership of render inputs into the async task"
+)]
 pub(super) fn spawn_chrome_render(
     chrome_tasks: &mut JoinSet<RefetchResult>,
     sem: Arc<Semaphore>,
@@ -19,6 +24,7 @@ pub(super) fn spawn_chrome_render(
     url: String,
     min_chars: usize,
     timeout_secs: u64,
+    selector_config: Option<SelectorConfiguration>,
 ) {
     chrome_tasks.spawn(async move {
         let _permit = match sem.acquire().await {
@@ -30,8 +36,15 @@ pub(super) fn spawn_chrome_render(
                 };
             }
         };
-        let markdown =
-            render_html_with_chrome(&ws_url, html_bytes, &url, min_chars, timeout_secs).await;
+        let markdown = render_html_with_chrome(
+            &ws_url,
+            html_bytes,
+            &url,
+            min_chars,
+            timeout_secs,
+            selector_config,
+        )
+        .await;
         RefetchResult { url, markdown }
     });
 }
@@ -125,6 +138,7 @@ pub(super) async fn apply_thin_page_outcome(
             url.to_string(),
             col.min_chars,
             col.chrome_timeout_secs,
+            col.selector_config.clone(),
         );
     }
     if col.drop_thin {
