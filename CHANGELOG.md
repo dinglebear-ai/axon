@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - mcp: preserve adaptive ask diagnostics in typed service results, reject unavailable `ask.graph=true` requests, and route request-scoped MCP config changes through `Config::apply_overrides`.
 - retrieval: add typed direct-retrieve metadata, bounded canonical-first URL lookup, malformed-point warnings, `retrieve --max-points`, shared query/ask dispatch diagnostics, and ask full-document cache config enforcement.
 - retrieval: extract shared typed retrieval helpers for query and ask embedding, vector dispatch diagnostics, mode metadata, candidate construction, and scoring.
+- retrieval: simplify the shared query/ask retrieval helpers without changing public result contracts.
 
 ### bd-teams/ask-perf-foundation
 

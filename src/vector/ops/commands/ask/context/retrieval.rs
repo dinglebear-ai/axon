@@ -2,10 +2,11 @@ use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_warn};
 use crate::vector::ops::commands::retrieval::{
-    CandidateBuildPolicy, CandidateScorePolicy, VectorDispatchContext, authoritative_ratio,
-    build_candidates_from_hits, candidate_has_topical_overlap, candidates_only,
-    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, merge_candidates,
-    query_allows_low_signal, score_and_filter_candidates, top_domains, vector_mode_metadata,
+    CandidateBuildPolicy, CandidateScorePolicy, RetrievedCandidate, VectorDispatchContext,
+    authoritative_ratio, build_candidates_from_hits, candidate_has_topical_overlap,
+    candidates_only, dispatch_vector_search_with_diagnostics, embed_retrieval_inputs,
+    merge_candidates, query_allows_low_signal, score_and_filter_candidates, top_domains,
+    vector_mode_metadata,
 };
 #[cfg(test)]
 use crate::vector::ops::tei::qdrant_store::VectorMode;
@@ -40,10 +41,10 @@ pub(super) fn is_rrf_mode(
 
 pub(super) fn apply_mode_aware_rerank(
     is_rrf: bool,
-    candidates: &[crate::vector::ops::commands::retrieval::RetrievedCandidate],
+    candidates: &[RetrievedCandidate],
     query_tokens: &[String],
     params: &RerankParams<'_>,
-) -> Vec<crate::vector::ops::commands::retrieval::RetrievedCandidate> {
+) -> Vec<RetrievedCandidate> {
     if is_rrf {
         return candidates
             .iter()
@@ -78,26 +79,9 @@ pub(super) async fn retrieve_ask_candidates(
     let retrieval_started = std::time::Instant::now();
     let ask_tuning = cfg.ask_config();
     let query_forms = super::query_rewrite::build_query_forms(query);
-    let query_tokens = query_forms.query_tokens;
-    let allow_low_signal = query_allows_low_signal(&query_tokens, query);
-
-    // Per Qwen3-Embedding asymmetric spec: queries get the instruction prefix,
-    // documents do not. The typed embed API enforces that distinction at the call site.
-    let mut embed_inputs = vec![tei::EmbedInput::query(query)];
-    if query_forms.use_dual {
-        // The keyword form is essentially document-shaped text (e.g. "PreToolUse
-        // hook fields"), so it is embedded WITHOUT the query instruction.
-        embed_inputs.push(tei::EmbedInput::document(query_forms.keyword_query.clone()));
-    }
-
-    let tei_started = std::time::Instant::now();
-    let mut ask_vectors = embed_retrieval_inputs(cfg, &embed_inputs, "TEI embed for ask query")
-        .await
-        .map_err(|e| anyhow!("{e}"))?;
-    timing.record(AskTimingSlot::TeiEmbed, tei_started);
-    if ask_vectors.is_empty() {
-        return Err(anyhow!("TEI returned no vector for ask query"));
-    }
+    let query_tokens = &query_forms.query_tokens;
+    let allow_low_signal = query_allows_low_signal(query_tokens, query);
+    let mut ask_vectors = embed_ask_query_forms(cfg, query, &query_forms, timing).await?;
     let vecq = ask_vectors.remove(0);
 
     let DispatchOutcome {
@@ -122,22 +106,7 @@ pub(super) async fn retrieve_ask_candidates(
     let rrf_mode = mode.rrf_mode;
 
     let build_policy = CandidateBuildPolicy { allow_low_signal };
-    let primary = build_candidates_from_hits(hits, &build_policy);
-    let mut retrieved_candidates = primary.candidates;
-
-    // Secondary keyword-form search: errors are swallowed since primary already
-    // succeeded.
-    if let Some(secondary_res) = secondary_res {
-        match secondary_res {
-            Ok(kw_hits) => {
-                let secondary = build_candidates_from_hits(kw_hits, &build_policy);
-                retrieved_candidates = merge_candidates(retrieved_candidates, secondary.candidates);
-            }
-            Err(e) => log_warn(&format!(
-                "ask: keyword search failed (continuing with NL only): {e}"
-            )),
-        }
-    }
+    let retrieved_candidates = build_ask_candidates(hits, secondary_res, &build_policy);
 
     if retrieved_candidates.is_empty() {
         return Err(anyhow!("No relevant documents found for ask query"));
@@ -152,7 +121,7 @@ pub(super) async fn retrieve_ask_candidates(
     let reranked_candidates = apply_mode_aware_rerank(
         rrf_mode,
         &retrieved_candidates,
-        &query_tokens,
+        query_tokens,
         &rerank_params,
     );
     let reranked = candidates_only(&reranked_candidates);
@@ -200,11 +169,62 @@ pub(super) async fn retrieve_ask_candidates(
     })
 }
 
+async fn embed_ask_query_forms(
+    cfg: &Config,
+    query: &str,
+    query_forms: &super::query_rewrite::AskQueryForms,
+    timing: &mut AskTiming,
+) -> Result<Vec<Vec<f32>>> {
+    // Per Qwen3-Embedding asymmetric spec: queries get the instruction prefix,
+    // documents do not. The typed embed API enforces that distinction at the call site.
+    let mut embed_inputs = vec![tei::EmbedInput::query(query)];
+    if query_forms.use_dual {
+        // The keyword form is essentially document-shaped text (e.g. "PreToolUse
+        // hook fields"), so it is embedded WITHOUT the query instruction.
+        embed_inputs.push(tei::EmbedInput::document(query_forms.keyword_query.clone()));
+    }
+
+    let tei_started = std::time::Instant::now();
+    let ask_vectors = embed_retrieval_inputs(cfg, &embed_inputs, "TEI embed for ask query")
+        .await
+        .map_err(|e| anyhow!("{e}"))?;
+    timing.record(AskTimingSlot::TeiEmbed, tei_started);
+    if ask_vectors.is_empty() {
+        return Err(anyhow!("TEI returned no vector for ask query"));
+    }
+    Ok(ask_vectors)
+}
+
+fn build_ask_candidates(
+    hits: Vec<qdrant::QdrantSearchHit>,
+    secondary_res: Option<SearchHitsResult>,
+    build_policy: &CandidateBuildPolicy,
+) -> Vec<RetrievedCandidate> {
+    let mut retrieved_candidates = build_candidates_from_hits(hits, build_policy);
+
+    // Secondary keyword-form search: errors are swallowed since primary already
+    // succeeded.
+    if let Some(secondary_res) = secondary_res {
+        match secondary_res {
+            Ok(kw_hits) => {
+                let secondary = build_candidates_from_hits(kw_hits, build_policy);
+                retrieved_candidates = merge_candidates(retrieved_candidates, secondary);
+            }
+            Err(e) => log_warn(&format!(
+                "ask: keyword search failed (continuing with NL only): {e}"
+            )),
+        }
+    }
+    retrieved_candidates
+}
+
+type SearchHitsResult =
+    Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>;
+
 struct DispatchOutcome<'a> {
     primary_request: qdrant::VectorSearchRequest<'a>,
-    primary_res: Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
-    secondary_res:
-        Option<Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>>,
+    primary_res: SearchHitsResult,
+    secondary_res: Option<SearchHitsResult>,
 }
 
 /// Dispatch the NL (primary) and optional keyword (secondary) Qdrant searches.
@@ -336,10 +356,7 @@ async fn fallback_parallel_dispatch(
     )
 }
 
-type TimedSearchResult = (
-    Result<Vec<qdrant::QdrantSearchHit>, Box<dyn std::error::Error + Send + Sync>>,
-    u128,
-);
+type TimedSearchResult = (SearchHitsResult, u128);
 
 async fn dispatch_ask_arm(
     cfg: &Config,

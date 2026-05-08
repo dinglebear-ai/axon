@@ -14,10 +14,6 @@ pub(crate) struct RetrievedCandidate {
     pub(crate) chunk_index: Option<i64>,
 }
 
-pub(crate) struct CandidateBuildResult {
-    pub(crate) candidates: Vec<RetrievedCandidate>,
-}
-
 pub(crate) struct CandidateBuildPolicy {
     pub(crate) allow_low_signal: bool,
 }
@@ -116,11 +112,11 @@ pub(crate) fn build_typed_retrieval_result(
     build_policy: &CandidateBuildPolicy,
     score_policy: &CandidateScorePolicy<'_>,
 ) -> TypedRetrievalResult {
-    let built = build_candidates_from_hits(hits, build_policy);
+    let retrieved_candidates = build_candidates_from_hits(hits, build_policy);
     let reranked_candidates =
-        score_and_filter_candidates(&built.candidates, query_tokens, score_policy);
+        score_and_filter_candidates(&retrieved_candidates, query_tokens, score_policy);
     TypedRetrievalResult {
-        retrieved_candidates: built.candidates,
+        retrieved_candidates,
         reranked_candidates,
     }
 }
@@ -128,7 +124,7 @@ pub(crate) fn build_typed_retrieval_result(
 pub(crate) fn build_candidates_from_hits(
     hits: Vec<qdrant::QdrantSearchHit>,
     policy: &CandidateBuildPolicy,
-) -> CandidateBuildResult {
+) -> Vec<RetrievedCandidate> {
     let mut candidates = Vec::new();
     for hit in hits {
         let url = qdrant::payload_url_typed(&hit.payload).to_string();
@@ -155,7 +151,7 @@ pub(crate) fn build_candidates_from_hits(
             chunk_index: hit.payload.chunk_index,
         });
     }
-    CandidateBuildResult { candidates }
+    candidates
 }
 
 /// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).
