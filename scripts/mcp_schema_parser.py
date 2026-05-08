@@ -18,16 +18,26 @@ def parse_schema(source: str) -> tuple[dict[str, StructDef], dict[str, EnumDef]]
 
     # Parse structs
     struct_pattern = re.compile(r"pub\s+struct\s+(\w+)\s*\{([^}]*)\}", re.DOTALL)
-    field_pattern = re.compile(r"pub\s+(\w+)\s*:\s*([^,\n]+)")
-
     for m in struct_pattern.finditer(source):
         name = m.group(1)
         body = m.group(2)
         fields: list[FieldDef] = []
-        for fm in field_pattern.finditer(body):
-            fname = fm.group(1)
-            ftype = fm.group(2).strip().rstrip(",").strip()
-            fields.append(FieldDef(name=fname, rust_type=ftype))
+        pending_aliases: list[str] = []
+        for line in body.splitlines():
+            stripped = line.strip()
+            alias_match = re.search(r'#\[serde\([^]]*alias\s*=\s*"([^"]+)"', stripped)
+            if alias_match:
+                pending_aliases.append(alias_match.group(1))
+                continue
+            field_match = re.match(r"pub\s+(\w+)\s*:\s*([^,\n]+)", stripped)
+            if not field_match:
+                continue
+            fname = field_match.group(1)
+            ftype = field_match.group(2).strip().rstrip(",").strip()
+            fields.append(
+                FieldDef(name=fname, rust_type=ftype, aliases=pending_aliases)
+            )
+            pending_aliases = []
         structs[name] = StructDef(name=name, fields=fields)
 
     # Parse enums

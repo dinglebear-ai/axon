@@ -281,6 +281,8 @@ impl AxonMcpServer {
                     "scrape": ["scrape"],
                     "research": ["research"],
                     "ask": ["ask"],
+                    "evaluate": ["evaluate"],
+                    "suggest": ["suggest"],
                     "screenshot": ["screenshot"],
                     "crawl": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
                     "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
@@ -295,6 +297,7 @@ impl AxonMcpServer {
                     "sources": ["sources"],
                     "stats": ["stats"],
                     "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
+                    "acp": ["list_sessions", "fork_session", "resume_session", "set_model", "ext_method", "ext_notification", "logout"],
                     "elicit_demo": []
                 },
                 "resources": [

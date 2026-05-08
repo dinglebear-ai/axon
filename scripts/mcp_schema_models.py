@@ -21,6 +21,7 @@ class FieldDef:
 
     name: str
     rust_type: str
+    aliases: list[str] = field(default_factory=list)
 
     @property
     def is_optional(self) -> bool:
@@ -109,6 +110,8 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Retrieve": "retrieve",
     "Search": "search",
     "Map": "map",
+    "Evaluate": "evaluate",
+    "Suggest": "suggest",
     "Doctor": "doctor",
     "Domains": "domains",
     "Sources": "sources",
@@ -120,6 +123,7 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Ask": "ask",
     "Screenshot": "screenshot",
     "ElicitDemo": "elicit_demo",
+    "Acp": "acp",
 }
 
 STRUCT_TO_ACTION: dict[str, str] = {
@@ -148,9 +152,6 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
 
 # Runtime env vars -- not in schema.rs, hardcoded here.
 RUNTIME_ENV_VARS: list[str] = [
-    "AXON_PG_URL",
-    "AXON_REDIS_URL",
-    "AXON_AMQP_URL",
     "QDRANT_URL",
     "TEI_URL",
     "OPENAI_BASE_URL",

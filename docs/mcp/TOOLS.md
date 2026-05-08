@@ -121,6 +121,38 @@ RAG: semantic search + LLM answer synthesis with citations.
 | `before` | string | -- | Date filter (before) |
 | `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
 
+### evaluate
+
+Evaluate RAG quality against a baseline answer.
+
+```json
+{ "action": "evaluate", "query": "How good is retrieval for hybrid search?" }
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | -- | Question to evaluate. `question` is accepted as an alias. |
+| `diagnostics` | bool | `false` | Include retrieval diagnostics |
+| `retrieval_ab` | bool | `false` | Compare hybrid RAG against dense-only RAG instead of RAG against baseline |
+| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+| `since` | string | -- | Date filter (after) |
+| `before` | string | -- | Date filter (before) |
+| `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
+
+### suggest
+
+Suggest new crawl targets from the current indexed source coverage.
+
+```json
+{ "action": "suggest", "focus": "refresh scheduler internals", "limit": 5 }
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `focus` | string | -- | Optional suggestion focus. `query` is accepted as an alias. |
+| `limit` | usize | server search limit | Max suggestions to return |
+| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+
 ### search
 
 Web search via Tavily, auto-queues crawl jobs for results.
@@ -193,7 +225,7 @@ Demo elicitation prompt — exercises the MCP elicitation request path end to en
 
 Manage ACP adapter sessions (advanced). Subactions: `list_sessions`,
 `fork_session`, `resume_session`, `set_model`, `ext_method`, `ext_notification`,
-`logout`. See `crates/mcp/server/handlers_acp.rs` for the wire contract.
+`logout`. See `src/mcp/server/handlers_acp.rs` for the wire contract.
 
 ## Lifecycle action families
 

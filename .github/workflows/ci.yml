@@ -515,6 +515,9 @@ jobs:
         env:
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
+          AXON_DATA_DIR: .cache/axon-ci
+          AXON_LOG_DIR: .cache/axon-ci/logs
+          AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
         run: ./target/release/axon embed "docs/MCP.md" --wait true --json
 
@@ -522,6 +525,9 @@ jobs:
         env:
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
+          AXON_DATA_DIR: .cache/axon-ci
+          AXON_LOG_DIR: .cache/axon-ci/logs
+          AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
           ./target/release/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
