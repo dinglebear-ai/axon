@@ -12,7 +12,7 @@ use tracing;
 /// # Usage in SQL
 ///
 /// ```rust,ignore
-/// # use axon::crates::jobs::status::JobStatus;
+/// # use axon::jobs::status::JobStatus;
 /// # async fn example(pool: &sqlx::PgPool, id: uuid::Uuid) -> Result<(), sqlx::Error> {
 /// sqlx::query("UPDATE axon_embed_jobs SET status=$1 WHERE id=$2")
 ///     .bind(JobStatus::Completed.as_str())
