@@ -1,11 +1,13 @@
+mod commands;
+
 use std::error::Error;
 
-use crate::mcp::schema::{AxonRequest, CrawlRequest, CrawlSubaction};
+use crate::mcp::schema::{
+    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
+};
 use crate::services::context::ServiceContext;
-use crate::services::crawl as crawl_svc;
 use crate::services::system;
 use crate::services::types::ClientActionError;
-use uuid::Uuid;
 
 pub async fn dispatch_action(
     service_context: &ServiceContext,
@@ -18,7 +20,12 @@ pub async fn dispatch_action(
                 .map_err(internal_error)?;
             Ok(result.payload)
         }
-        AxonRequest::Crawl(req) => dispatch_crawl(service_context, req).await,
+        AxonRequest::Crawl(req) => commands::dispatch_crawl(service_context, req).await,
+        AxonRequest::Extract(req) => commands::dispatch_extract(service_context, req).await,
+        AxonRequest::Embed(req) => commands::dispatch_embed(service_context, req).await,
+        AxonRequest::Ingest(req) => commands::dispatch_ingest(service_context, req).await,
+        AxonRequest::Scrape(req) => commands::dispatch_scrape(service_context, req).await,
+        AxonRequest::Screenshot(req) => commands::dispatch_screenshot(service_context, req).await,
         other => Err(unsupported_action(action_name(&other))),
     }
 }
@@ -34,101 +41,21 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             | CrawlSubaction::Clear
             | CrawlSubaction::Recover => Some("axon:write"),
         },
+        AxonRequest::Extract(req) => match req.subaction.unwrap_or(ExtractSubaction::Start) {
+            ExtractSubaction::Status | ExtractSubaction::List => Some("axon:read"),
+            _ => Some("axon:write"),
+        },
+        AxonRequest::Embed(req) => match req.subaction.unwrap_or(EmbedSubaction::Start) {
+            EmbedSubaction::Status | EmbedSubaction::List => Some("axon:read"),
+            _ => Some("axon:write"),
+        },
+        AxonRequest::Ingest(req) => match req.subaction.unwrap_or(IngestSubaction::Start) {
+            IngestSubaction::Status | IngestSubaction::List => Some("axon:read"),
+            _ => Some("axon:write"),
+        },
+        AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         _ => None,
     }
-}
-
-async fn dispatch_crawl(
-    service_context: &ServiceContext,
-    req: CrawlRequest,
-) -> Result<serde_json::Value, ClientActionError> {
-    let subaction = match req.subaction {
-        Some(subaction) => subaction,
-        None => CrawlSubaction::Start,
-    };
-    match subaction {
-        CrawlSubaction::Status => {
-            let id = parse_job_id(req.job_id.as_deref())?;
-            let result = crawl_svc::crawl_status(service_context, id)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({
-                "job": result.payload,
-                "output_files": result.output_files,
-            }))
-        }
-        CrawlSubaction::List => {
-            let limit = match req.limit {
-                Some(limit) => limit.clamp(1, 500),
-                None => 20,
-            };
-            let offset = match req.offset {
-                Some(offset) => offset.min(i64::MAX as usize) as i64,
-                None => 0,
-            };
-            let result = crawl_svc::crawl_list(service_context, limit, offset)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({
-                "jobs": result.payload,
-                "limit": limit,
-                "offset": offset,
-            }))
-        }
-        CrawlSubaction::Cancel => {
-            let id = parse_job_id(req.job_id.as_deref())?;
-            let canceled = crawl_svc::crawl_cancel(service_context, id)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({
-                "job_id": id.to_string(),
-                "canceled": canceled,
-            }))
-        }
-        CrawlSubaction::Cleanup => {
-            let deleted = crawl_svc::crawl_cleanup(service_context)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({ "deleted": deleted }))
-        }
-        CrawlSubaction::Clear => {
-            let deleted = crawl_svc::crawl_clear(service_context)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({ "deleted": deleted }))
-        }
-        CrawlSubaction::Recover => {
-            let recovered = crawl_svc::crawl_recover(service_context)
-                .await
-                .map_err(internal_error)?;
-            Ok(serde_json::json!({ "recovered": recovered }))
-        }
-        CrawlSubaction::Start => Err(ClientActionError::new(
-            "unsupported_action",
-            "crawl.start is not exposed by the first-party action API yet",
-            false,
-            Some("use crawl lifecycle read actions until command migration is implemented".into()),
-        )),
-    }
-}
-
-fn parse_job_id(raw: Option<&str>) -> Result<Uuid, ClientActionError> {
-    let raw = raw.ok_or_else(|| {
-        ClientActionError::new(
-            "invalid_request",
-            "job_id is required",
-            false,
-            Some("include a UUID job_id for this lifecycle action".to_string()),
-        )
-    })?;
-    Uuid::parse_str(raw).map_err(|err| {
-        ClientActionError::new(
-            "invalid_request",
-            format!("invalid job_id: {err}"),
-            false,
-            Some("job_id must be a UUID returned by a start action".to_string()),
-        )
-    })
 }
 
 fn unsupported_action(action: &'static str) -> ClientActionError {
@@ -174,12 +101,14 @@ fn action_name(action: &AxonRequest) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::config::Config;
     use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
     use crate::mcp::schema::{CrawlRequest, CrawlSubaction, StatusRequest};
     use crate::services::runtime::ServiceJobRuntime;
     use crate::services::types::ServiceJob;
     use async_trait::async_trait;
     use std::sync::Arc;
+    use uuid::Uuid;
 
     struct EmptyRuntime;
 
@@ -252,10 +181,7 @@ mod tests {
     }
 
     fn test_context() -> ServiceContext {
-        ServiceContext::from_runtime(
-            Arc::new(crate::core::config::Config::default()),
-            Arc::new(EmptyRuntime),
-        )
+        ServiceContext::from_runtime(Arc::new(Config::default()), Arc::new(EmptyRuntime))
     }
 
     #[tokio::test]
