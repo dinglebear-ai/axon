@@ -2,6 +2,7 @@ use super::AxonMcpServer;
 use crate::core::config::Config;
 use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, build_auth_policy, configured_mcp_http_token,
+    normalize_api_key_header,
 };
 use crate::mcp::cors::cors_middleware;
 use crate::services::context::ServiceContext;
@@ -50,7 +51,12 @@ pub async fn run_unified_server(
     let setup_required = panel.setup_required();
     let cfg_arc = Arc::new(cfg.clone());
     let service_context = Arc::new(OnceCell::<Arc<ServiceContext>>::new());
-    let web_router = crate::web::router(Arc::clone(&cfg_arc), panel, Arc::clone(&service_context));
+    let web_router = crate::web::router(
+        Arc::clone(&cfg_arc),
+        panel,
+        Arc::clone(&service_context),
+        auth_policy.clone(),
+    );
     let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
         .await?
         .merge(web_router)
@@ -254,26 +260,6 @@ async fn mcp_http_router(
         Arc::clone(&cfg_arc),
         mcp_http_cors_middleware,
     )))
-}
-
-/// Rewrite `x-api-key: <token>` to `Authorization: Bearer <token>` so that
-/// clients using the legacy header continue to work with `AuthLayer` (which
-/// exclusively reads `Authorization: Bearer`).
-///
-/// This runs before `AuthLayer` in the middleware stack. If `Authorization` is
-/// already set, the request is passed through unchanged — we never override an
-/// explicitly-set Authorization header.
-async fn normalize_api_key_header(mut req: axum::http::Request<Body>, next: Next) -> Response {
-    if !req.headers().contains_key("authorization")
-        && let Some(key_val) = req
-            .headers()
-            .get("x-api-key")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| format!("Bearer {v}").parse().ok())
-    {
-        req.headers_mut().insert("authorization", key_val);
-    }
-    next.run(req).await
 }
 
 async fn mcp_http_cors_middleware(

@@ -23,6 +23,21 @@ pub async fn dispatch_action(
     }
 }
 
+pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
+    match action {
+        AxonRequest::Status(_) => Some("axon:read"),
+        AxonRequest::Crawl(req) => match req.subaction.unwrap_or(CrawlSubaction::Start) {
+            CrawlSubaction::Status | CrawlSubaction::List => Some("axon:read"),
+            CrawlSubaction::Start
+            | CrawlSubaction::Cancel
+            | CrawlSubaction::Cleanup
+            | CrawlSubaction::Clear
+            | CrawlSubaction::Recover => Some("axon:write"),
+        },
+        _ => None,
+    }
+}
+
 async fn dispatch_crawl(
     service_context: &ServiceContext,
     req: CrawlRequest,

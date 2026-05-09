@@ -71,6 +71,8 @@ impl ClientActionError {
 pub struct ServerInfo {
     pub version: String,
     pub schema_version: String,
+    pub minimum_client_schema_version: String,
+    pub required_request_fields: Vec<String>,
     pub supported_actions: Vec<String>,
 }
 
@@ -79,9 +81,18 @@ impl ServerInfo {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             schema_version: CLIENT_SERVER_SCHEMA_VERSION.to_string(),
+            minimum_client_schema_version: CLIENT_SERVER_SCHEMA_VERSION.to_string(),
+            required_request_fields: required_request_fields(),
             supported_actions: supported_actions(),
         }
     }
+}
+
+pub fn required_request_fields() -> Vec<String> {
+    ["request_id", "action"]
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 pub fn supported_actions() -> Vec<String> {

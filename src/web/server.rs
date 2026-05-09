@@ -95,6 +95,7 @@ pub(crate) fn router(
     cfg: Arc<crate::core::config::Config>,
     panel: Arc<PanelRuntimeState>,
     service_context: Arc<tokio::sync::OnceCell<Arc<crate::services::context::ServiceContext>>>,
+    auth_policy: crate::mcp::auth::AuthPolicy,
 ) -> Router {
     let state = AppState { panel };
     let panel_router = Router::new()
@@ -110,7 +111,7 @@ pub(crate) fn router(
         )
         .fallback(super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));
-    panel_router.merge(super::actions::router(cfg, service_context))
+    panel_router.merge(super::actions::router(cfg, service_context, auth_policy))
 }
 
 async fn panel_state(

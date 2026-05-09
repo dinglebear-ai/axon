@@ -32,17 +32,17 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::http::{HeaderMap, StatusCode};
+use axum::{
+    body::Body,
+    http::{HeaderMap, Request, StatusCode},
+    middleware::Next,
+    response::Response,
+};
 use lab_auth::{AuthLayer, state::AuthState};
 use subtle::ConstantTimeEq;
 
 #[cfg(test)]
-use axum::{
-    body::Body,
-    http::Request,
-    middleware::Next,
-    response::{IntoResponse, Response},
-};
+use axum::response::IntoResponse;
 
 // ── AuthPolicy ────────────────────────────────────────────────────────────────
 
@@ -365,6 +365,22 @@ pub(crate) fn authorize_mcp_http_headers_from_env(headers: &HeaderMap) -> Result
         return Err(StatusCode::UNAUTHORIZED);
     }
     authorize_mcp_http_headers(headers, Some(configured))
+}
+
+/// Rewrite `x-api-key: <token>` to `Authorization: Bearer <token>` so legacy
+/// clients continue to work with `lab_auth::AuthLayer`, which reads bearer
+/// authorization only.
+pub(crate) async fn normalize_api_key_header(mut req: Request<Body>, next: Next) -> Response {
+    if !req.headers().contains_key("authorization")
+        && let Some(key_val) = req
+            .headers()
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| format!("Bearer {v}").parse().ok())
+    {
+        req.headers_mut().insert("authorization", key_val);
+    }
+    next.run(req).await
 }
 
 #[cfg(test)]

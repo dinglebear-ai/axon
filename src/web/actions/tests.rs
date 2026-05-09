@@ -2,6 +2,7 @@
 
 use super::router;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
+use crate::mcp::auth::AuthPolicy;
 use crate::services::context::ServiceContext;
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
@@ -109,7 +110,9 @@ impl ServiceJobRuntime for EmptyRuntime {
     }
 }
 
-async fn spawn_test_server() -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
+async fn spawn_test_server(
+    auth_policy: AuthPolicy,
+) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
     let cfg = Arc::new(crate::core::config::Config::default());
     let cell = Arc::new(OnceCell::new());
     let ctx = Arc::new(ServiceContext::from_runtime(
@@ -118,7 +121,7 @@ async fn spawn_test_server() -> (String, oneshot::Sender<()>, tokio::task::JoinH
     ));
     assert!(cell.set(ctx).is_ok());
 
-    let app = router(cfg, cell);
+    let app = router(cfg, cell, auth_policy);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind test listener");
@@ -145,7 +148,7 @@ async fn stop(shutdown: oneshot::Sender<()>, handle: tokio::task::JoinHandle<()>
 #[serial]
 async fn capabilities_returns_server_info() {
     let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn_test_server().await;
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
 
     let response = reqwest::get(format!("{base}/v1/capabilities"))
         .await
@@ -157,6 +160,11 @@ async fn capabilities_returns_server_info() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(body["schema_version"], "client-server.v1");
+    assert_eq!(body["minimum_client_schema_version"], "client-server.v1");
+    assert_eq!(
+        body["required_request_fields"],
+        serde_json::json!(["request_id", "action"])
+    );
     assert!(
         body["supported_actions"]
             .as_array()
@@ -170,7 +178,8 @@ async fn capabilities_returns_server_info() {
 #[serial]
 async fn actions_rejects_missing_and_invalid_auth_as_json() {
     let _env = EnvGuard::set(Some("secret"));
-    let (base, shutdown, handle) = spawn_test_server().await;
+    let (base, shutdown, handle) =
+        spawn_test_server(AuthPolicy::Mounted { auth_state: None }).await;
     let client = reqwest::Client::new();
     let body = serde_json::json!({
         "request_id": "auth-1",
@@ -209,7 +218,7 @@ async fn actions_rejects_missing_and_invalid_auth_as_json() {
 #[serial]
 async fn actions_unknown_action_returns_json_error() {
     let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn_test_server().await;
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/actions"))
         .json(&serde_json::json!({
@@ -240,7 +249,7 @@ async fn actions_unknown_action_returns_json_error() {
 #[serial]
 async fn actions_dispatches_status_through_service_context() {
     let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn_test_server().await;
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/actions"))
         .json(&serde_json::json!({

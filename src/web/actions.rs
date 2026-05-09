@@ -1,17 +1,22 @@
 use crate::core::config::Config;
-use crate::mcp::auth::authorize_mcp_http_headers_from_env;
-use crate::services::action_api::dispatch_action;
+use crate::mcp::auth::{
+    AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
+};
+use crate::services::action_api::{dispatch_action, required_scope};
 use crate::services::context::ServiceContext;
 use crate::services::types::{
     ClientActionError, ClientActionRequest, ClientActionResponse, ServerInfo,
 };
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
+    body::Body,
     extract::{DefaultBodyLimit, State, rejection::JsonRejection},
-    http::{HeaderMap, StatusCode},
+    http::{Request, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use lab_auth::AuthContext;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -22,16 +27,19 @@ const ACTIONS_BODY_LIMIT: usize = 128 * 1024;
 pub(crate) struct ActionState {
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    auth_required: bool,
 }
 
 impl ActionState {
     pub(crate) fn new(
         cfg: Arc<Config>,
         service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+        auth_policy: AuthPolicy,
     ) -> Self {
         Self {
             cfg,
             service_context,
+            auth_required: !matches!(auth_policy, AuthPolicy::LoopbackDev),
         }
     }
 
@@ -58,14 +66,31 @@ impl ActionState {
 pub(crate) fn router(
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    auth_policy: AuthPolicy,
 ) -> Router {
-    Router::new()
-        .route("/v1/capabilities", get(v1_capabilities))
+    let state = ActionState::new(Arc::clone(&cfg), service_context, auth_policy.clone());
+    let actions = Router::new()
         .route(
             "/v1/actions",
             post(v1_actions).layer(DefaultBodyLimit::max(ACTIONS_BODY_LIMIT)),
         )
-        .with_state(ActionState::new(cfg, service_context))
+        .with_state(state);
+    let actions = if let Some(layer) = build_auth_layer(
+        &auth_policy,
+        configured_mcp_http_token().map(Arc::from),
+        oauth_resource_url(&auth_policy),
+    ) {
+        actions
+            .layer(layer)
+            .layer(middleware::from_fn(normalize_api_key_header))
+            .layer(middleware::from_fn(jsonize_auth_error))
+    } else {
+        actions
+    };
+
+    Router::new()
+        .route("/v1/capabilities", get(v1_capabilities))
+        .merge(actions)
 }
 
 async fn v1_capabilities() -> Json<ServerInfo> {
@@ -74,21 +99,13 @@ async fn v1_capabilities() -> Json<ServerInfo> {
 
 async fn v1_actions(
     State(state): State<ActionState>,
-    headers: HeaderMap,
+    auth: Option<Extension<AuthContext>>,
     payload: Result<Json<Value>, JsonRejection>,
 ) -> Response {
     let request_id = payload
         .as_ref()
         .ok()
         .and_then(|Json(value)| request_id_from_value(value));
-
-    if authorize_mcp_http_headers_from_env(&headers).is_err() {
-        return json_error(
-            StatusCode::UNAUTHORIZED,
-            request_id,
-            ClientActionError::new("unauthorized", "unauthorized", false, None),
-        );
-    }
 
     let Json(value) = match payload {
         Ok(payload) => payload,
@@ -118,6 +135,14 @@ async fn v1_actions(
         }
     };
 
+    if let Err((status, err)) = authorize_action(
+        &state,
+        auth.as_ref().map(|Extension(ctx)| ctx),
+        &request.action,
+    ) {
+        return json_error(status, Some(request.request_id), err);
+    }
+
     let service_context = match state.service_context().await {
         Ok(ctx) => ctx,
         Err(err) => {
@@ -138,6 +163,71 @@ async fn v1_actions(
     }
 }
 
+async fn jsonize_auth_error(request: Request<Body>, next: Next) -> Response {
+    let response = next.run(request).await;
+    let status = response.status();
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        let kind = if status == StatusCode::UNAUTHORIZED {
+            "unauthorized"
+        } else {
+            "forbidden"
+        };
+        return json_error(
+            status,
+            None,
+            ClientActionError::new(kind, kind, false, None),
+        );
+    }
+    response
+}
+
+fn oauth_resource_url(auth_policy: &AuthPolicy) -> Option<Arc<str>> {
+    match auth_policy {
+        AuthPolicy::Mounted {
+            auth_state: Some(_),
+        } => std::env::var("AXON_MCP_PUBLIC_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .map(|u| Arc::from(format!("{}/mcp", u.trim_end_matches('/')))),
+        _ => None,
+    }
+}
+
+fn authorize_action(
+    state: &ActionState,
+    auth: Option<&AuthContext>,
+    action: &crate::mcp::schema::AxonRequest,
+) -> Result<(), (StatusCode, ClientActionError)> {
+    if !state.auth_required {
+        return Ok(());
+    }
+    let Some(auth) = auth else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            ClientActionError::new("unauthorized", "unauthorized", false, None),
+        ));
+    };
+    let Some(required_scope) = required_scope(action) else {
+        return Ok(());
+    };
+    let allowed = auth.scopes.iter().any(|scope| {
+        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
+    });
+    if allowed {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            ClientActionError::new(
+                "forbidden",
+                format!("requires scope: {required_scope}"),
+                false,
+                None,
+            ),
+        ))
+    }
+}
+
 fn request_id_from_value(value: &Value) -> Option<String> {
     value
         .get("request_id")
@@ -149,6 +239,7 @@ fn status_for_error(error: &ClientActionError) -> StatusCode {
     match error.kind.as_str() {
         "invalid_request" | "unsupported_action" => StatusCode::BAD_REQUEST,
         "unauthorized" => StatusCode::UNAUTHORIZED,
+        "forbidden" => StatusCode::FORBIDDEN,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
