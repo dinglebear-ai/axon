@@ -39,6 +39,8 @@ Required infrastructure:
 
 ## Bridge Endpoints
 
+- `GET /v1/capabilities` - first-party CLI client/server capability metadata
+- `POST /v1/actions` - first-party CLI action dispatch for supported stateful commands
 - `GET /ws` - command execution WebSocket bridge
 - `GET /ws/shell` - shell WebSocket (loopback-only)
 - `GET /output/{*path}` - serve generated output files
@@ -58,11 +60,16 @@ axon serve --port 8080
 
 # Bind the Rust bridge on all interfaces
 AXON_SERVE_HOST=0.0.0.0 axon serve --port 49000
+
+# Point host CLI commands at this server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
 ```
 
 ## Notes
 
 - `serve` is now the primary local dev entrypoint.
+- `serve` is the recommended execution boundary for Docker/systemd client/server mode. It owns job state, generated output, screenshots, and artifacts under its `AXON_DATA_DIR`.
+- `AXON_MCP_HTTP_TOKEN` protects both `/mcp` and `/v1/actions` when token auth is configured.
 - `serve` restarts failed child processes with bounded exponential backoff.
 - `serve` aborts the whole stack after repeated fast failures instead of crash-looping forever.
 - `serve` does not auto-start Docker containers; it only checks them.

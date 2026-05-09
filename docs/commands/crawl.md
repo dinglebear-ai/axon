@@ -77,11 +77,15 @@ axon crawl https://example.com --render-mode chrome --max-pages 200 --max-depth 
 
 # Job status
 axon crawl status 550e8400-e29b-41d4-a716-446655440000
+
+# Enqueue through the canonical server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://example.com --json
 ```
 
 ## Behavior Notes
 
 - Async mode prints one job ID per URL and returns immediately.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), crawl submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers. Use `--local` to force the local behavior.
 - Async JSON output now includes the predicted `output_dir` plus `predicted_paths` for each enqueued job.
 - Sync mode writes crawl artifacts under `<output-dir>/domains/<domain>/sync/`.
 - With `--discover-sitemaps true`, both async worker mode and sync `--wait true` mode run Axon's sitemap backfill before the embed handoff. Sync mode performs the embed inline; async mode queues a dependent embed job after backfill completes.

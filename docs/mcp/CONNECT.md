@@ -176,6 +176,22 @@ If connection fails:
 The MCP HTTP server does not currently expose a dedicated `/health` endpoint —
 auth-pass on `/mcp` (anything other than `401`) is the closest probe.
 
+## Host CLI client/server mode
+
+The same `axon serve` HTTP process also exposes first-party CLI action routes.
+Set `AXON_SERVER_URL` in the host shell to make supported stateful CLI commands
+call the server:
+
+```bash
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+```
+
+This is separate from MCP JSON-RPC. The CLI uses `/v1/capabilities` and
+`/v1/actions`; MCP clients continue to use `/mcp`. Both surfaces share the
+same bearer token policy (`AXON_MCP_HTTP_TOKEN`). Use `--local` when you need
+to bypass server mode for a single command.
+
 ## See also
 
 - [TRANSPORT.md](TRANSPORT.md) -- transport configuration details

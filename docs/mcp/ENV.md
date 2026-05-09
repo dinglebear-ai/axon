@@ -15,6 +15,18 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) | no |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | -- | Max bytes per local file embedding request via MCP (unset = no per-request size limit; only `AXON_MCP_EMBED_ALLOWED_ROOTS` gates access) | no |
 
+## CLI server mode
+
+These are not MCP transport variables, but they point the host CLI at the same
+`axon serve` HTTP process.
+
+| Variable | Required | Default | Description | Sensitive |
+|----------|----------|---------|-------------|-----------|
+| `AXON_SERVER_URL` | no | unset | Generic CLI server-mode endpoint, for example `http://127.0.0.1:8001`. Supported stateful CLI commands call `/v1/actions`. | no |
+| `AXON_LOCAL_MODE` | no | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. | no |
+| `AXON_SERVER_INSECURE` | no | unset | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Prefer HTTPS instead. | no |
+| `AXON_ASK_SERVER_URL` | no | unset | Deprecated compatibility alias for `axon ask` only when `AXON_SERVER_URL` is unset. | no |
+
 ## Transport selection
 
 | Variable | Required | Default | Description |

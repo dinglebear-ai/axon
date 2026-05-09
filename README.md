@@ -215,12 +215,20 @@ All commands share global flags documented below. Commands listed as **async by 
 
 | Flag | Env Var | Default |
 |------|---------|---------|
+| `--server-url <url>` | `AXON_SERVER_URL` | — |
+| `--local` | `AXON_LOCAL_MODE` | `false` |
 | `--qdrant-url <url>` | `QDRANT_URL` | `http://127.0.0.1:53333` |
 | `--tei-url <url>` | `TEI_URL` | — |
 | `--openai-base-url <url>` | `OPENAI_BASE_URL` | — |
 | `--openai-api-key <key>` | `OPENAI_API_KEY` | — |
 | `--openai-model <name>` | `OPENAI_MODEL` | — |
 | `--sqlite-path <path>` | `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) |
+
+`AXON_SERVER_URL` turns the host CLI into a client for a running `axon serve`
+process. Supported stateful commands execute on the server and use
+server-owned job/output/artifact state. Use `--local` to force in-process CLI
+execution for one command. `AXON_ASK_SERVER_URL` is kept only as an older
+`ask` alias when `AXON_SERVER_URL` is unset.
 
 ---
 
@@ -906,6 +914,20 @@ Copy `.env.example` to `~/.axon/.env` and fill in values. `~/.axon` is the canon
 - `~/.axon/.env` — canonical app runtime variables, secrets, and Docker Compose interpolation
 - `~/.axon/config.toml` — non-secret tuning knobs
 - repo-root `.env` — development fallback only, used when `~/.axon/.env` is absent
+
+For client/server operation, put server process settings and secrets in
+`~/.axon/.env`, start `axon serve`, then point host CLIs at it:
+
+```bash
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+```
+
+Server-mode scrape/crawl output is not written as host-local markdown by the
+CLI. The server owns files under its `AXON_DATA_DIR` and returns portable
+artifact handles. If bearer auth is enabled, non-loopback plaintext HTTP is
+refused by default; use HTTPS or loopback unless `AXON_SERVER_INSECURE=1` is
+an intentional operator override.
 
 ### Environment Variables
 
