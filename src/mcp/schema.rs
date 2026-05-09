@@ -2,7 +2,7 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum AxonRequest {
     Status(StatusRequest),
@@ -29,7 +29,7 @@ pub enum AxonRequest {
     ElicitDemo(ElicitDemoRequest),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {
     Path,
@@ -39,7 +39,7 @@ pub enum ResponseMode {
     AutoInline,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CrawlRequest {
     pub subaction: Option<CrawlSubaction>,
@@ -58,7 +58,7 @@ pub struct CrawlRequest {
     pub delay_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CrawlSubaction {
     Start,
@@ -70,7 +70,7 @@ pub enum CrawlSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpRenderMode {
     Http,
@@ -78,7 +78,7 @@ pub enum McpRenderMode {
     AutoSwitch,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpScrapeFormat {
     Markdown,
@@ -87,7 +87,7 @@ pub enum McpScrapeFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractRequest {
     pub subaction: Option<ExtractSubaction>,
@@ -100,7 +100,7 @@ pub struct ExtractRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractSubaction {
     Start,
@@ -112,7 +112,7 @@ pub enum ExtractSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EmbedRequest {
     pub subaction: Option<EmbedSubaction>,
@@ -123,7 +123,7 @@ pub struct EmbedRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EmbedSubaction {
     Start,
@@ -135,7 +135,7 @@ pub enum EmbedSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IngestRequest {
     pub subaction: Option<IngestSubaction>,
@@ -149,7 +149,7 @@ pub struct IngestRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IngestSubaction {
     Start,
@@ -161,7 +161,7 @@ pub enum IngestSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum IngestSourceType {
     Github,
@@ -170,7 +170,7 @@ pub enum IngestSourceType {
     Sessions,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SessionsIngestOptions {
     pub claude: Option<bool>,
@@ -179,7 +179,7 @@ pub struct SessionsIngestOptions {
     pub project: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchTimeRange {
     Day,
@@ -188,7 +188,7 @@ pub enum SearchTimeRange {
     Year,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HelpRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -196,7 +196,7 @@ pub struct HelpRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StatusRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -204,7 +204,7 @@ pub struct StatusRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactsRequest {
     pub subaction: ArtifactsSubaction,
@@ -224,7 +224,7 @@ pub struct ArtifactsRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ArtifactsSubaction {
     Head,
@@ -241,7 +241,7 @@ pub enum ArtifactsSubaction {
     Search,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QueryRequest {
     pub query: Option<String>,
@@ -262,7 +262,7 @@ pub struct QueryRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RetrieveRequest {
     pub url: Option<String>,
@@ -278,7 +278,7 @@ pub struct RetrieveRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchRequest {
     pub query: Option<String>,
@@ -288,7 +288,7 @@ pub struct SearchRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MapRequest {
     pub url: Option<String>,
@@ -297,7 +297,7 @@ pub struct MapRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvaluateRequest {
     #[serde(alias = "question")]
@@ -320,7 +320,7 @@ pub struct EvaluateRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SuggestRequest {
     #[serde(alias = "query")]
@@ -332,7 +332,7 @@ pub struct SuggestRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DoctorRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -340,7 +340,7 @@ pub struct DoctorRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DomainsRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -351,7 +351,7 @@ pub struct DomainsRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourcesRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -362,7 +362,7 @@ pub struct SourcesRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StatsRequest {
     #[allow(dead_code)] // accepted for API compat but ignored by handlers
@@ -370,7 +370,7 @@ pub struct StatsRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScrapeRequest {
     pub url: Option<String>,
@@ -387,7 +387,7 @@ pub struct ScrapeRequest {
     pub exclude_selector: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResearchRequest {
     pub query: Option<String>,
@@ -397,7 +397,7 @@ pub struct ResearchRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
@@ -420,7 +420,7 @@ pub struct AskRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenshotRequest {
     pub url: Option<String>,
@@ -431,7 +431,7 @@ pub struct ScreenshotRequest {
 }
 
 /// Request parameters for the elicit_demo action.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ElicitDemoRequest {
     /// Optional prompt message shown to the user above the elicitation form.

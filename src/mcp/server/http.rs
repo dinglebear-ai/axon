@@ -2,8 +2,10 @@ use super::AxonMcpServer;
 use crate::core::config::Config;
 use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, build_auth_policy, configured_mcp_http_token,
+    normalize_api_key_header,
 };
 use crate::mcp::cors::cors_middleware;
+use crate::services::context::ServiceContext;
 use crate::web::security::{HostAllowlist, host_validation_middleware};
 use axum::{Router, body::Body, extract::State, middleware, middleware::Next, response::Response};
 use rmcp::transport::streamable_http_server::{
@@ -20,13 +22,13 @@ pub async fn run_http_server(
     let auth_policy = build_auth_policy(host, false).await?;
     let host_allowlist = HostAllowlist::new(host, port, &cfg.mcp_allowed_origins);
 
-    let app =
-        mcp_http_router(cfg, host, port, auth_policy)
-            .await?
-            .layer(middleware::from_fn_with_state(
-                host_allowlist,
-                host_validation_middleware,
-            ));
+    let service_context = Arc::new(OnceCell::<Arc<ServiceContext>>::new());
+    let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
+        .await?
+        .layer(middleware::from_fn_with_state(
+            host_allowlist,
+            host_validation_middleware,
+        ));
 
     tracing::info!(host = %host, port, "mcp_http: server starting");
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
@@ -48,8 +50,14 @@ pub async fn run_unified_server(
     let panel = Arc::new(crate::web::PanelRuntimeState::initialize(host, port)?);
     let setup_required = panel.setup_required();
     let cfg_arc = Arc::new(cfg.clone());
-    let web_router = crate::web::router(Arc::clone(&cfg_arc), panel);
-    let app = mcp_http_router(cfg, host, port, auth_policy)
+    let service_context = Arc::new(OnceCell::<Arc<ServiceContext>>::new());
+    let web_router = crate::web::router(
+        Arc::clone(&cfg_arc),
+        panel,
+        Arc::clone(&service_context),
+        auth_policy.clone(),
+    );
+    let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
         .await?
         .merge(web_router)
         .layer(middleware::from_fn_with_state(
@@ -109,10 +117,10 @@ async fn mcp_http_router(
     host: &str,
     port: u16,
     auth_policy: AuthPolicy,
+    service_context: Arc<OnceCell<Arc<ServiceContext>>>,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     // Wrap cfg in Arc once; share via clone of the Arc rather than cloning Config.
     let cfg_arc = Arc::new(cfg);
-    let service_context = Arc::new(OnceCell::new());
     AxonMcpServer::new_with_service_context_cell((*cfg_arc).clone(), Arc::clone(&service_context))
         .base_service_context()
         .await
@@ -252,26 +260,6 @@ async fn mcp_http_router(
         Arc::clone(&cfg_arc),
         mcp_http_cors_middleware,
     )))
-}
-
-/// Rewrite `x-api-key: <token>` to `Authorization: Bearer <token>` so that
-/// clients using the legacy header continue to work with `AuthLayer` (which
-/// exclusively reads `Authorization: Bearer`).
-///
-/// This runs before `AuthLayer` in the middleware stack. If `Authorization` is
-/// already set, the request is passed through unchanged — we never override an
-/// explicitly-set Authorization header.
-async fn normalize_api_key_header(mut req: axum::http::Request<Body>, next: Next) -> Response {
-    if !req.headers().contains_key("authorization")
-        && let Some(key_val) = req
-            .headers()
-            .get("x-api-key")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| format!("Bearer {v}").parse().ok())
-    {
-        req.headers_mut().insert("authorization", key_val);
-    }
-    next.run(req).await
 }
 
 async fn mcp_http_cors_middleware(

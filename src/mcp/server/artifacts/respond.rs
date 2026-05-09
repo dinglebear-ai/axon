@@ -1,5 +1,5 @@
 use super::super::common::internal_error;
-use super::path::{build_artifact_path, ensure_artifact_root};
+use super::path::{artifact_handle_for_path, build_artifact_path};
 use super::shape::{clip_inline_json, json_shape_preview, line_count, sha256_hex};
 use crate::mcp::schema::{AxonToolResponse, ResponseMode};
 use crate::vector::ops::qdrant::env_usize_clamped;
@@ -46,21 +46,56 @@ pub async fn write_json_artifact(
         internal_error(format!("failed to finalize artifact file: {e}"))
     })?;
 
-    let relative_path = ensure_artifact_root()
-        .await
-        .ok()
-        .as_ref()
-        .and_then(|root| path.strip_prefix(root).ok())
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+    let job_id = payload
+        .get("job_id")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            payload
+                .get("job")
+                .and_then(|job| job.get("id"))
+                .and_then(|value| value.as_str())
+        })
+        .map(ToString::to_string);
+    let url = payload
+        .get("url")
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            payload
+                .get("job")
+                .and_then(|job| job.get("url"))
+                .and_then(|value| value.as_str())
+        })
+        .map(ToString::to_string);
+    let handle = artifact_handle_for_path(
+        "json",
+        &path,
+        text.len() as u64,
+        Some(line_count(&text) as u64),
+        job_id,
+        url,
+    )
+    .await?;
+    let relative_path = handle.relative_path.clone();
+    let display_path = handle.display_path.clone();
+    let kind = handle.kind.clone();
 
     Ok(serde_json::json!({
-        "path": path,
+        "artifact_handle": handle,
+        "path": relative_path,
         "relative_path": relative_path,
+        "display_path": display_path,
+        "kind": kind,
         "bytes": text.len(),
         "line_count": line_count(&text),
         "sha256": sha256_hex(text.as_bytes()),
     }))
+}
+
+fn artifact_handle_value(artifact: &serde_json::Value) -> serde_json::Value {
+    artifact
+        .get("artifact_handle")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null)
 }
 
 /// Respond with the appropriate mode, respecting the caller's explicit choice.
@@ -86,6 +121,7 @@ pub async fn respond_with_mode(
             serde_json::json!({
                 "response_mode": "path",
                 "shape": shape,
+                "artifact_handle": artifact_handle_value(&artifact),
                 "artifact": artifact,
             }),
         ));
@@ -103,6 +139,7 @@ pub async fn respond_with_mode(
                 "response_mode": "path",
                 "key_fields": key_fields,
                 "shape": shape,
+                "artifact_handle": artifact_handle_value(&artifact),
                 "artifact": artifact,
             }),
         ));
@@ -139,6 +176,7 @@ pub async fn respond_with_mode(
             serde_json::json!({
                 "response_mode": "path",
                 "shape": shape,
+                "artifact_handle": artifact_handle_value(&artifact),
                 "artifact": artifact,
             }),
         )),
@@ -151,6 +189,7 @@ pub async fn respond_with_mode(
                     "response_mode": "inline",
                     "inline": inline,
                     "truncated": truncated,
+                    "artifact_handle": artifact_handle_value(&artifact),
                     "artifact": artifact,
                 }),
             ))
@@ -165,6 +204,7 @@ pub async fn respond_with_mode(
                     "inline": inline,
                     "truncated": truncated,
                     "shape": shape,
+                    "artifact_handle": artifact_handle_value(&artifact),
                     "artifact": artifact,
                 }),
             ))
@@ -274,6 +314,17 @@ mod tests {
         assert!(resp.ok);
         assert_eq!(resp.data["response_mode"], "path");
         assert!(resp.data["artifact"].is_object());
+        assert_eq!(
+            resp.data["artifact_handle"]["relative_path"],
+            resp.data["artifact"]["relative_path"]
+        );
+        assert!(
+            !resp.data["artifact_handle"]["relative_path"]
+                .as_str()
+                .unwrap()
+                .starts_with('/')
+        );
+        assert!(resp.data["artifact_handle"]["display_path"].is_string());
         assert!(resp.data["shape"].is_object());
         restore_artifact_env(prev);
     }

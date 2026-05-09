@@ -369,15 +369,16 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, env = "AXON_LOG_LEVEL")]
     pub(in crate::core::config) log_level: Option<String>,
 
-    /// Route `axon ask` through a running `axon serve` HTTP endpoint instead of running
-    /// Gemini synthesis in-process. Reuses the server URL path when configured so LLM startup
-    /// (~45s) is paid once at server boot, not on every invocation. Example:
-    /// `--server-url http://127.0.0.1:8001`. Env: `AXON_ASK_SERVER_URL`.
-    ///
+    /// Force in-process local execution even when a server URL is configured.
+    #[arg(global = true, long, env = "AXON_LOCAL_MODE", action = ArgAction::SetTrue, default_value_t = false)]
+    pub(in crate::core::config) local: bool,
+
+    /// Route supported commands through a running `axon serve` HTTP endpoint.
+    /// Example: `--server-url http://127.0.0.1:8001`. Env: `AXON_SERVER_URL`.
     /// Parsed into a `url::Url` at config-build time; malformed values are rejected with a
     /// clear error before any command runs. If the resolved scheme is `http` and the host
     /// is non-loopback, the CLI refuses to attach `AXON_MCP_HTTP_TOKEN` (cleartext-bearer
-    /// guard); set `AXON_ASK_INSECURE=1` to override.
-    #[arg(global = true, long, env = "AXON_ASK_SERVER_URL")]
+    /// guard); set `AXON_SERVER_INSECURE=1` to override.
+    #[arg(global = true, long, env = "AXON_SERVER_URL")]
     pub(in crate::core::config) server_url: Option<String>,
 }

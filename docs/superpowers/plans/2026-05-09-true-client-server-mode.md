@@ -34,7 +34,7 @@ Locked decisions:
 ## Research And Review Feedback Incorporated
 
 Lavra research:
-- Existing server mode is ask-only: `Config.server_url`, `--server-url`, and `AXON_ASK_SERVER_URL` currently target `/v1/ask`.
+- Existing server mode was ask-only: `Config.server_url` and `--server-url` targeted `/v1/ask`; the ask-specific env alias is intentionally removed.
 - `src/web/server.rs` already proves `axon serve` can host JSON routes, but `/v1/ask` is too narrow and uses an ask-specific auth helper.
 - MCP already has typed `AxonRequest` action routing in `src/mcp/schema.rs` and `src/mcp/server.rs`; reuse its schema/dispatch shape where practical, but do not put MCP JSON-RPC/SSE in the CLI.
 - `ServiceContext::new_with_workers()` is the long-lived worker-bearing server boundary; server-mode CLI must not spawn local workers for `--wait true`.
@@ -42,7 +42,7 @@ Lavra research:
 - Use the existing shared HTTP client discipline from `src/core/http/client.rs`; do not create fresh `reqwest::Client::new()` calls per request.
 
 Design pass:
-- Add explicit config first: `AXON_SERVER_URL`, generic `--server-url`, and explicit local override. Keep `AXON_ASK_SERVER_URL` only as a compatibility alias for `ask`.
+- Add explicit config first: `AXON_SERVER_URL`, generic `--server-url`, and explicit local override. Do not keep an ask-specific server URL knob.
 - Start with explicit URL mode. Do not add localhost auto-discovery in this epic.
 - Add a `/v1/actions`-style first-party route with typed request/response envelopes and a `/v1/capabilities` or equivalent schema/version handshake before broad command migration.
 - Centralize token attachment, cleartext bearer refusal, status decoding, JSON decoding, timeout handling, and user hints in one CLI client module.
@@ -115,7 +115,6 @@ Do not modify:
 Add tests covering:
 - `AXON_SERVER_URL` populates generic server URL.
 - CLI `--server-url` overrides `AXON_SERVER_URL`.
-- `AXON_ASK_SERVER_URL` remains a compatibility alias for `ask` only when generic URL is unset.
 - Explicit local mode bypasses server URL for stateful commands.
 - Malformed generic URL reports `invalid --server-url / AXON_SERVER_URL`.
 
@@ -406,12 +405,12 @@ git commit -m "feat(cli): route stateful commands through server mode"
 
 Check:
 - `AXON_SERVER_URL` appears as primary server-mode setting.
-- `AXON_ASK_SERVER_URL` appears only as compatibility/deprecated ask wording.
+- no ask-specific server URL appears in user-facing docs.
 - Docs explain explicit local mode.
 - Docs explain why server-mode scrape does not create host-local markdown.
 - Docs warn that bearer tokens over non-loopback plaintext HTTP are refused by default.
 
-Run: `rg "AXON_SERVER_URL|AXON_ASK_SERVER_URL|server mode|local mode" docs README.md .env.example`
+Run: `rg "AXON_SERVER_URL|server mode|local mode" docs README.md .env.example`
 
 Expected: current docs show ask-only language and missing generic mode.
 

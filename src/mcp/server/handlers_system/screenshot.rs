@@ -1,7 +1,9 @@
 use crate::core::config::ConfigOverrides;
 use crate::mcp::schema::{AxonToolResponse, ResponseMode, ScreenshotRequest};
 use crate::mcp::server::AxonMcpServer;
-use crate::mcp::server::artifacts::{ensure_artifact_root, resolve_artifact_output_path};
+use crate::mcp::server::artifacts::{
+    artifact_handle_for_path, ensure_artifact_root, resolve_artifact_output_path,
+};
 use crate::mcp::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
 use rmcp::ErrorData;
 
@@ -83,10 +85,24 @@ impl AxonMcpServer {
         let shot = crate::services::screenshot::screenshot_capture(&cfg, &url)
             .await
             .map_err(|e| logged_internal_error("screenshot", e.as_ref()))?;
+        let artifact_handle = artifact_handle_for_path(
+            "screenshot",
+            &output_path,
+            shot.size_bytes,
+            None,
+            None,
+            Some(shot.url.clone()),
+        )
+        .await?;
 
+        let relative_path = artifact_handle.relative_path.clone();
+        let display_path = artifact_handle.display_path.clone();
         let payload = serde_json::json!({
             "url": shot.url,
-            "path": shot.path,
+            "path": relative_path,
+            "relative_path": relative_path,
+            "display_path": display_path,
+            "artifact_handle": artifact_handle,
             "size_bytes": shot.size_bytes,
             "full_page": full_page,
             "viewport": format!("{}x{}", width, height),
@@ -98,8 +114,12 @@ impl AxonMcpServer {
             ResponseMode::Path => serde_json::json!({
                 "response_mode": "path",
                 "data": payload.clone(),
+                "artifact_handle": payload["artifact_handle"].clone(),
                 "artifact": {
-                    "path": payload["path"].clone(),
+                    "artifact_handle": payload["artifact_handle"].clone(),
+                    "path": payload["artifact_handle"]["relative_path"].clone(),
+                    "relative_path": payload["artifact_handle"]["relative_path"].clone(),
+                    "display_path": payload["artifact_handle"]["display_path"].clone(),
                     "bytes": payload["size_bytes"].clone(),
                     "mime_type": "image/png",
                 },
@@ -116,8 +136,12 @@ impl AxonMcpServer {
             ResponseMode::Both => serde_json::json!({
                 "response_mode": "both",
                 "data": payload.clone(),
+                "artifact_handle": payload["artifact_handle"].clone(),
                 "artifact": {
-                    "path": payload["path"].clone(),
+                    "artifact_handle": payload["artifact_handle"].clone(),
+                    "path": payload["artifact_handle"]["relative_path"].clone(),
+                    "relative_path": payload["artifact_handle"]["relative_path"].clone(),
+                    "display_path": payload["artifact_handle"]["display_path"].clone(),
                     "bytes": payload["size_bytes"].clone(),
                     "mime_type": "image/png",
                 },

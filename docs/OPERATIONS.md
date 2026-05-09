@@ -106,6 +106,41 @@ and recent jobs (top 10).
 
 ## Submit work
 
+### Host CLI against a running server
+
+For Docker/systemd-style operation, keep `axon serve` as the authoritative
+process and point host CLI calls at it:
+
+```bash
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://docs.rs/spider
+```
+
+In server mode, stateful commands run on the server and the server owns
+SQLite job rows, markdown output, screenshots, and artifacts under its
+`AXON_DATA_DIR` (default `~/.axon`). The CLI displays server-owned artifact
+handles and root-relative paths; it does not make host-local markdown the
+source of truth. Use `--local` or `AXON_LOCAL_MODE=1` only when you explicitly
+want in-process host execution.
+
+If the server is exposed beyond loopback, configure `AXON_MCP_HTTP_TOKEN` on
+both server and client and publish through HTTPS. The CLI refuses to attach
+that bearer token over plaintext HTTP to non-loopback hosts unless
+`AXON_SERVER_INSECURE=1` is set intentionally.
+
+To diagnose stale client/server drift:
+
+```bash
+which -a axon
+axon --version
+ss -ltnp '( sport = :8001 )'
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+```
+
+If the binary or schema is stale, rebuild and restart the canonical server on
+port `8001` before retrying the host CLI.
+
 Synchronous (block until done):
 
 ```bash

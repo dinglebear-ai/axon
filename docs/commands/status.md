@@ -57,11 +57,15 @@ axon status --json
 
 # Only watchdog-reclaimed stale jobs
 axon status --reclaimed --json
+
+# Status from the canonical server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
 ```
 
 ## Notes
 
 - `status` loads up to 20 recent jobs per queue family.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), `status` is read from the running `axon serve` process and reflects the server-owned SQLite job store.
 - By default, watchdog-reclaimed failures are hidden. `--reclaimed` flips to reclaimed-only mode.
 - `--active` and `--recent` apply to all job families.
 - This command is read-only and does not enqueue or mutate jobs.

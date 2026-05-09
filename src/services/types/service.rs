@@ -1,6 +1,8 @@
 //! Generic service result types used by query, scrape, system, and other
 //! non-entrypoint service modules.
 
+use super::client_server::ArtifactHandle;
+
 // ── Options / pagination ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,6 +424,7 @@ pub struct ScrapeResult {
     pub url: String,
     pub markdown: String,
     pub output: String,
+    pub artifact_handle: Option<ArtifactHandle>,
 }
 
 /// Typed result of a `map` (URL discovery) operation.
@@ -480,6 +483,7 @@ pub struct CrawlStartJob {
     pub url: String,
     pub output_dir: String,
     pub predicted_paths: Vec<String>,
+    pub predicted_artifact_handles: Vec<ArtifactHandle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -487,6 +491,7 @@ pub struct CrawlStartResult {
     pub job_ids: Vec<String>,
     pub output_dir: Option<String>,
     pub predicted_paths: Vec<String>,
+    pub predicted_artifact_handles: Vec<ArtifactHandle>,
     pub jobs: Vec<CrawlStartJob>,
 }
 
@@ -494,6 +499,7 @@ pub struct CrawlStartResult {
 pub struct CrawlJobResult {
     pub payload: serde_json::Value,
     pub output_files: Option<Vec<String>>,
+    pub output_file_handles: Vec<ArtifactHandle>,
 }
 
 /// Result of a synchronous (--wait true) crawl, including all phases
@@ -571,6 +577,8 @@ pub struct ScreenshotResult {
     pub url: String,
     pub path: String,
     pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_handle: Option<ArtifactHandle>,
 }
 
 // ── Job list pagination ──────────────────────────────────────────────────

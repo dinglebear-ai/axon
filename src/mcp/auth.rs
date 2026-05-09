@@ -32,15 +32,17 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use lab_auth::{AuthLayer, state::AuthState};
-
-#[cfg(test)]
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
 };
+use lab_auth::{AuthLayer, state::AuthState};
+use subtle::ConstantTimeEq;
+
+#[cfg(test)]
+use axum::response::IntoResponse;
 
 // ── AuthPolicy ────────────────────────────────────────────────────────────────
 
@@ -289,7 +291,7 @@ fn build_allowed_redirect_uris() -> String {
     if let Ok(extra) = std::env::var("AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS") {
         for u in extra.split(',') {
             let u = u.trim();
-            if !u.is_empty() && !uris.contains(&u.to_string()) {
+            if !u.is_empty() && !uris.iter().any(|existing| existing == u) {
                 uris.push(u.to_string());
             }
         }
@@ -310,64 +312,99 @@ pub(crate) fn configured_mcp_http_token() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Authorize headers using the same static-token semantics as MCP HTTP.
+///
+/// `None` means token auth is not configured and the request is allowed. A
+/// configured empty/whitespace token should be handled by the env-aware wrapper
+/// below and fail closed.
+pub(crate) fn authorize_mcp_http_headers(
+    headers: &HeaderMap,
+    configured_token: Option<&str>,
+) -> Result<(), StatusCode> {
+    let Some(expected) = configured_token.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    let bearer = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .and_then(|v| {
+            let (scheme, token) = v.split_once(' ')?;
+            scheme
+                .eq_ignore_ascii_case("Bearer")
+                .then_some(token.trim())
+                .filter(|s| !s.is_empty())
+        });
+    let api_key = headers
+        .get("x-api-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let matches_expected = |token: &str| bool::from(token.as_bytes().ct_eq(expected.as_bytes()));
+    if bearer.is_some_and(matches_expected) || api_key.is_some_and(matches_expected) {
+        return Ok(());
+    }
+    Err(StatusCode::UNAUTHORIZED)
+}
+
+/// Authorize first-party HTTP routes from `AXON_MCP_HTTP_TOKEN`.
+///
+/// Env unset means loopback-dev style unauthenticated mode. Env set to empty,
+/// whitespace, or non-UTF8 fails closed.
+pub(crate) fn authorize_mcp_http_headers_from_env(headers: &HeaderMap) -> Result<(), StatusCode> {
+    let raw = match std::env::var("AXON_MCP_HTTP_TOKEN") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => return Err(StatusCode::UNAUTHORIZED),
+    };
+    let Some(raw) = raw else {
+        return Ok(());
+    };
+    let configured = raw.trim();
+    if configured.is_empty() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    authorize_mcp_http_headers(headers, Some(configured))
+}
+
+/// Rewrite `x-api-key: <token>` to `Authorization: Bearer <token>` so legacy
+/// clients continue to work with `lab_auth::AuthLayer`, which reads bearer
+/// authorization only.
+pub(crate) async fn normalize_api_key_header(mut req: Request<Body>, next: Next) -> Response {
+    if !req.headers().contains_key("authorization")
+        && let Some(key_val) = req
+            .headers()
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| format!("Bearer {v}").parse().ok())
+    {
+        req.headers_mut().insert("authorization", key_val);
+    }
+    next.run(req).await
+}
+
 #[cfg(test)]
 mod legacy {
     use super::*;
-    use subtle::ConstantTimeEq;
-
-    /// Constant-time byte comparison to prevent timing attacks.
-    pub(super) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-        a.ct_eq(b).into()
-    }
-
-    /// Extract the bearer or x-api-key token from request headers.
-    pub(super) fn extract_token(req: &Request<Body>) -> Option<&str> {
-        req.headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .map(str::trim)
-            .and_then(|v| {
-                let (scheme, token) = v.split_once(' ')?;
-                scheme
-                    .eq_ignore_ascii_case("Bearer")
-                    .then_some(token.trim())
-                    .filter(|s| !s.is_empty())
-            })
-            .or_else(|| {
-                req.headers()
-                    .get("x-api-key")
-                    .and_then(|v| v.to_str().ok())
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-            })
-    }
 
     pub(super) fn authorize_mcp_http_request_with_token(
         request: &Request<Body>,
         configured_token: Option<&str>,
     ) -> Result<(), StatusCode> {
-        match configured_token.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(expected) => {
-                let provided = extract_token(request).unwrap_or("").trim();
-                if provided.is_empty() {
-                    return Err(StatusCode::UNAUTHORIZED);
-                }
-                if !constant_time_eq(provided.as_bytes(), expected.as_bytes()) {
-                    return Err(StatusCode::UNAUTHORIZED);
-                }
-                Ok(())
-            }
-            None => {
-                static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-                WARNED.get_or_init(|| {
-                    tracing::warn!(
-                        context = "mcp_auth",
-                        "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
-                    );
-                });
-                Ok(())
-            }
+        if configured_token
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+            WARNED.get_or_init(|| {
+                tracing::warn!(
+                    context = "mcp_auth",
+                    "AXON_MCP_HTTP_TOKEN not set \u{2014} MCP HTTP server is unauthenticated"
+                );
+            });
         }
+        authorize_mcp_http_headers(request.headers(), configured_token)
     }
 }
 

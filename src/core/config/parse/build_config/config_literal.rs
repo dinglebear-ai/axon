@@ -6,7 +6,7 @@
 //! same as the previous flat literal.
 
 use super::super::super::cli::GlobalArgs;
-use super::super::super::types::Config;
+use super::super::super::types::{ClientMode, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_port, parse_csv_env, parse_origin_allowlist, resolve_mcp_transport, validate_custom_headers,
@@ -286,19 +286,34 @@ fn populate_misc(
     cfg.custom_headers = custom_headers;
     cfg.quiet = g.quiet;
     cfg.log_level = g.log_level.clone();
-    cfg.server_url = match g
-        .server_url
-        .as_ref()
-        .map(|v| v.trim())
-        .filter(|v| !v.is_empty())
-    {
-        Some(raw) => Some(
-            reqwest::Url::parse(raw)
-                .map_err(|e| format!("invalid --server-url / AXON_ASK_SERVER_URL '{raw}': {e}"))?,
-        ),
-        None => None,
+    cfg.local_mode = g.local;
+    cfg.server_url = if cfg.local_mode {
+        None
+    } else {
+        resolve_server_url(g)?
+    };
+    cfg.client_mode = if cfg.server_url.is_some() {
+        ClientMode::Server
+    } else {
+        ClientMode::Local
     };
     Ok(())
+}
+
+fn resolve_server_url(g: &GlobalArgs) -> Result<Option<reqwest::Url>, String> {
+    let candidate = g
+        .server_url
+        .as_ref()
+        .map(|value| ("--server-url / AXON_SERVER_URL", value.trim().to_string()))
+        .filter(|(_, value)| !value.is_empty());
+
+    candidate
+        .map(|(source, raw)| {
+            reqwest::Url::parse(&raw).map(Some).map_err(|e| {
+                format!("invalid --server-url / AXON_SERVER_URL '{raw}' ({source}): {e}")
+            })
+        })
+        .unwrap_or(Ok(None))
 }
 
 fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {

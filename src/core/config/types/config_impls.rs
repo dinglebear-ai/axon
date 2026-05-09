@@ -1,7 +1,7 @@
 use super::config::Config;
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    ClientMode, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
+    RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use super::subconfigs::AskConfig;
 use std::fmt;
@@ -162,6 +162,8 @@ impl Default for Config {
             custom_headers: vec![],
             quiet: false,
             log_level: None,
+            client_mode: ClientMode::Local,
+            local_mode: false,
             server_url: None,
         }
     }
@@ -398,6 +400,8 @@ impl fmt::Debug for Config {
                     .collect::<Vec<_>>(),
             )
             .field("quiet", &self.quiet)
+            .field("client_mode", &self.client_mode)
+            .field("local_mode", &self.local_mode)
             .field(
                 "server_url",
                 &self.server_url.as_ref().map(|url| {

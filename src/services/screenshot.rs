@@ -1,7 +1,7 @@
 use crate::core::config::Config;
 use crate::core::http::{normalize_url, validate_url};
 use crate::crawl::screenshot::{spider_screenshot_with_options, url_to_screenshot_filename};
-use crate::services::types::ScreenshotResult;
+use crate::services::types::{ArtifactHandle, ScreenshotResult};
 use std::error::Error;
 
 // --- Pure mapping helper (no I/O, testable without live services) ---
@@ -31,6 +31,10 @@ pub fn map_screenshot_result(
         url,
         path,
         size_bytes,
+        artifact_handle: payload
+            .get("artifact_handle")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
     })
 }
 
@@ -76,10 +80,21 @@ pub async fn screenshot_capture(
     }
     tokio::fs::write(&path, &bytes).await?;
 
+    let artifact_handle = ArtifactHandle::try_from_path(
+        "screenshot",
+        &cfg.output_dir,
+        &path,
+        bytes.len() as u64,
+        None,
+        None,
+        Some(normalized.to_string()),
+    );
+
     Ok(ScreenshotResult {
         url: normalized.to_string(),
         path: path.to_string_lossy().into_owned(),
         size_bytes: bytes.len() as u64,
+        artifact_handle,
     })
 }
 
@@ -118,4 +133,33 @@ async fn capture_screenshot_bytes(
     .map_err(|e| format!("screenshot task failed: {e}"))?;
 
     task.map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_screenshot_result;
+
+    #[test]
+    fn map_screenshot_result_preserves_artifact_handle() {
+        let result = map_screenshot_result(&serde_json::json!({
+            "url": "https://example.com",
+            "path": "/srv/axon/artifacts/screenshots/shot.png",
+            "size_bytes": 42,
+            "artifact_handle": {
+                "kind": "screenshot",
+                "relative_path": "screenshots/shot.png",
+                "display_path": "/srv/axon/artifacts/screenshots/shot.png",
+                "bytes": 42,
+                "line_count": null,
+                "job_id": null,
+                "url": "https://example.com"
+            }
+        }))
+        .expect("screenshot payload");
+
+        let handle = result.artifact_handle.expect("artifact handle");
+        assert_eq!(handle.relative_path, "screenshots/shot.png");
+        assert_eq!(handle.kind, "screenshot");
+        assert_eq!(handle.url.as_deref(), Some("https://example.com"));
+    }
 }

@@ -42,6 +42,24 @@ Behavior:
 - Runs ignored `worker_e2e` tests explicitly.
 - Requires local infra dependencies to be reachable.
 
+### Client/server smoke lane
+
+Use this when touching `AXON_SERVER_URL`, `/v1/actions`, artifact handles, or
+Docker/systemd runtime wiring. The smoke must not edit `~/.axon/.env` or
+`~/.axon/config.toml`; pass temporary env overrides in the command invocation.
+
+```bash
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+just client-server-smoke
+```
+
+Expected behavior:
+- `status` and stateful commands call the server, not local workers.
+- scrape/crawl responses include server-owned output/artifact handles.
+- host-local scrape markdown is not created as the CLI source of truth.
+- token-auth failures, dead server failures, and schema mismatches fail clearly.
+
 ### Integration suite lane (infra-backed, skip-on-missing)
 
 A separate set of integration tests targets live Qdrant instances and other external services.

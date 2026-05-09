@@ -62,6 +62,9 @@ axon scrape https://example.com --json
 
 # Disable embedding
 axon scrape https://example.com --embed false
+
+# Run through the canonical server; output/artifacts are server-owned
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 ```
 
 ## Behavior Notes
@@ -70,3 +73,4 @@ axon scrape https://example.com --embed false
 - `--output` with multiple URLs is rejected to prevent overwrite.
 - Scrape errors are reported per URL; other URLs continue.
 - When `--embed true`, markdown is written under `<output-dir>/scrape-markdown/runs/<uuid>/` (isolated per run) and embedded once at the end. Each scrape invocation writes into its own run directory so only the current session's files are indexed, not historical outputs.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), scrape runs on `axon serve`. The CLI prints the server result and portable artifact handle; it does not write host-local markdown as the source of truth. Use `--local` to force the local behavior above.

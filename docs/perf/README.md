@@ -8,7 +8,7 @@ end-to-end on the Gemini headless synthesis path.
 Prereqs:
 - `axon` binary built (`just build` or `cargo build --release --bin axon`)
 - Infra services up: `rtk just services-up` (qdrant, tei, chrome)
-- For warm mode: `axon serve` running and `AXON_ASK_SERVER_URL` set
+- For warm mode: `axon serve` running and `AXON_SERVER_URL` set
 - `jq`, `bash 4+`
 
 Run:
@@ -50,8 +50,8 @@ Output schema:
 
 ## Cold Vs Warm
 
-- **cold**: `axon ask` runs with `--no-server-url`, forcing in-process startup each invocation.
-- **warm**: assumes `axon serve` is already running and reuses it through `AXON_ASK_SERVER_URL`.
+- **cold**: `axon ask` runs with `--local`, forcing in-process startup each invocation.
+- **warm**: assumes `axon serve` is already running and reuses it through `AXON_SERVER_URL`.
 
 Do not average them. Report cold and warm side-by-side.
 

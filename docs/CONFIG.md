@@ -66,6 +66,35 @@ cp .env.example ~/.axon/.env
 chmod 600 ~/.axon/.env
 ```
 
+## CLI server mode
+
+`AXON_SERVER_URL` is the generic client/server switch for the CLI. When it is
+set, supported stateful commands call a running `axon serve` HTTP endpoint
+instead of executing locally:
+
+```bash
+AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+```
+
+Server mode currently covers `status`, `scrape`, `crawl`, `extract`, `embed`,
+`ingest`, `sessions`, and `screenshot`. The server owns SQLite job state,
+output files, screenshots, and artifacts under its `AXON_DATA_DIR` (default
+`~/.axon`). CLI responses use server-owned artifact handles and root-relative
+identifiers; absolute paths are display/debug information only.
+
+Use `--local` or `AXON_LOCAL_MODE=1` to force local execution for one command
+or shell:
+
+```bash
+axon scrape https://example.com --local
+AXON_LOCAL_MODE=1 axon crawl https://example.com
+```
+
+If `AXON_MCP_HTTP_TOKEN` is set, the CLI refuses to send it over plaintext
+HTTP to non-loopback hosts. Use loopback, HTTPS, or set
+`AXON_SERVER_INSECURE=1` only for an explicitly trusted network.
+
 ## ~/.axon/config.toml
 
 `~/.axon/config.toml` holds tuning knobs — parameters that are safe to commit to source control because they contain no secrets or security toggles. Copy `config.example.toml` from the repo root and place it at `~/.axon/config.toml` (create `~/.axon/` with `chmod 700` and the file with `chmod 600`).
@@ -115,6 +144,9 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `AXON_SERVER_URL` | -- | Generic CLI server-mode endpoint. When set, supported stateful CLI commands call `axon serve` through `/v1/actions`. |
+| `AXON_LOCAL_MODE` | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. |
+| `AXON_SERVER_INSECURE` | -- | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Not recommended; prefer HTTPS. |
 | `AXON_MCP_HTTP_PUBLISH` | `127.0.0.1:8001` | Docker Compose host publish address for the `axon` MCP HTTP service. Set to `0.0.0.0:8001` only when intentionally exposing beyond the host and `AXON_MCP_HTTP_TOKEN` is configured. |
 | `AXON_SERVE_HOST` | `127.0.0.1` | Backend bridge bind address |
 | `AXON_SERVE_PORT` | `49000` | Backend bridge port |

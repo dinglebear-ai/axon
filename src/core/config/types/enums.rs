@@ -1,7 +1,7 @@
 use clap::ValueEnum;
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
     Scrape,
     Crawl,
@@ -31,6 +31,21 @@ pub enum CommandKind {
     Serve,
     Setup,
     Migrate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientMode {
+    Local,
+    Server,
+}
+
+impl fmt::Display for ClientMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Local => "local",
+            Self::Server => "server",
+        })
+    }
 }
 
 impl CommandKind {

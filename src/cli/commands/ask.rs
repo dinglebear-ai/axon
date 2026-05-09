@@ -1,15 +1,12 @@
+use crate::cli::client::ServerClient;
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
-use crate::core::http::build_client;
 use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary};
 use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::types::AskResult;
 use std::error::Error;
-use std::net::IpAddr;
-
-const ASK_VIA_SERVER_TIMEOUT_SECS: u64 = 300;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
@@ -86,7 +83,7 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
 pub(crate) fn hint_for_ask_error(msg: &str) -> Option<&'static str> {
     if msg.starts_with("connect to ") {
         return Some(
-            "ensure `axon serve` is running there, or unset --server-url / AXON_ASK_SERVER_URL to fall back to in-process ask.",
+            "ensure `axon serve` is running there, or unset --server-url / AXON_SERVER_URL to fall back to in-process ask.",
         );
     }
     if msg.starts_with("server returned 401") || msg.starts_with("server returned 403") {
@@ -101,47 +98,9 @@ pub(crate) fn hint_for_ask_error(msg: &str) -> Option<&'static str> {
         );
     }
     if msg.starts_with("refusing to send AXON_MCP_HTTP_TOKEN") {
-        return Some(
-            "set AXON_ASK_INSECURE=1 to override (not recommended), or use https / a loopback host.",
-        );
+        return Some("set AXON_SERVER_INSECURE=1 to override, or use https / a loopback host.");
     }
     None
-}
-
-/// Returns true when `host_str` represents a loopback destination
-/// (127.0.0.0/8, ::1, or the literal "localhost").
-fn is_loopback_host(host_str: &str) -> bool {
-    if host_str.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    // Strip optional bracketed IPv6 form ("[::1]") before parsing.
-    let trimmed = host_str
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(host_str);
-    if let Ok(ip) = trimmed.parse::<IpAddr>() {
-        return ip.is_loopback();
-    }
-    false
-}
-
-/// Returns Ok(()) if it is safe to attach a bearer token to a request to `url`.
-/// Refuses cleartext-bearer over `http://` to non-loopback hosts unless the user
-/// has set `AXON_ASK_INSECURE=1`.
-pub(crate) fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), String> {
-    if url.scheme() != "http" {
-        return Ok(());
-    }
-    let host = url.host_str().unwrap_or("");
-    if is_loopback_host(host) {
-        return Ok(());
-    }
-    if std::env::var("AXON_ASK_INSECURE").ok().as_deref() == Some("1") {
-        return Ok(());
-    }
-    Err(format!(
-        "refusing to send AXON_MCP_HTTP_TOKEN over plaintext HTTP to non-loopback host '{host}'; set AXON_ASK_INSECURE=1 to override (not recommended)"
-    ))
 }
 
 /// POST the ask request to a running `axon serve` instance and deserialize the
@@ -222,36 +181,20 @@ pub(crate) async fn ask_via_server(
         serde_json::Value::from(cfg.ask_authoritative_boost),
     );
 
-    let client = build_client(ASK_VIA_SERVER_TIMEOUT_SECS, None)
-        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
-    let mut req = client.post(&endpoint).json(&payload);
-    if let Ok(token) = std::env::var("AXON_MCP_HTTP_TOKEN")
-        && !token.trim().is_empty()
-    {
-        // Cleartext-bearer guard: refuse to send the token over `http://` to a
-        // non-loopback host unless the user explicitly opts in. The check lives
-        // here (not in the type's constructor) because the token is read from
-        // env at request time, not at config-build time.
-        check_cleartext_token_allowed(server_url).map_err(|e| -> Box<dyn Error> { e.into() })?;
-        req = req.bearer_auth(token.trim());
-    }
-
-    let resp = req
-        .send()
+    let client =
+        ServerClient::new(server_url.clone()).map_err(|e| -> Box<dyn Error> { e.into() })?;
+    let result: AskResult = client
+        .post_json(&endpoint_path(server_url, &endpoint), &payload, "AskResult")
         .await
-        .map_err(|e| -> Box<dyn Error> { format!("connect to {endpoint}: {e}").into() })?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<body read failed: {e}>"));
-        return Err(format!("server returned {status}: {body}").into());
-    }
-    let result: AskResult = resp.json().await.map_err(|e| -> Box<dyn Error> {
-        format!("decode AskResult from {endpoint}: {e}").into()
-    })?;
+        .map_err(|e| -> Box<dyn Error> { e.into() })?;
     Ok(result)
+}
+
+fn endpoint_path(server_url: &reqwest::Url, endpoint: &str) -> String {
+    endpoint
+        .trim_start_matches(server_url.as_str().trim_end_matches('/'))
+        .trim_start_matches('/')
+        .to_string()
 }
 
 fn print_diagnostics(diag: &Option<crate::services::types::AskDiagnostics>) {

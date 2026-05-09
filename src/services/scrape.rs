@@ -3,7 +3,7 @@ use crate::core::content::build_selector_config;
 use crate::core::http::normalize_url;
 use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
 use crate::services::events::ServiceEvent;
-use crate::services::types::ScrapeResult;
+use crate::services::types::{ArtifactHandle, ScrapeResult};
 use std::error::Error;
 use tokio::sync::mpsc;
 
@@ -27,6 +27,7 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         url,
         markdown,
         output,
+        artifact_handle: None,
     })
 }
 
@@ -78,5 +79,33 @@ pub async fn scrape(
     )?;
     let mut result = map_scrape_payload(payload)?;
     result.output = output;
+    result.artifact_handle = cfg.output_path.as_ref().and_then(|path| {
+        ArtifactHandle::try_from_path(
+            "scrape",
+            &cfg.output_dir,
+            path,
+            result.output.len() as u64,
+            Some(result.output.lines().count() as u64),
+            None,
+            Some(normalized.to_string()),
+        )
+    });
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_scrape_payload;
+
+    #[test]
+    fn map_scrape_payload_initializes_without_artifact_handle() {
+        let result = map_scrape_payload(serde_json::json!({
+            "url": "https://example.com",
+            "markdown": "# Example"
+        }))
+        .expect("scrape payload");
+
+        assert_eq!(result.url, "https://example.com");
+        assert!(result.artifact_handle.is_none());
+    }
 }

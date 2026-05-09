@@ -58,6 +58,16 @@ QDRANT_URL=http://axon-qdrant:6333
 TEI_URL=http://axon-tei:80
 ```
 
+Optional client/server mode for host CLI calls:
+
+```bash
+# Server listens on the MCP/action HTTP port.
+AXON_SERVER_URL=http://127.0.0.1:8001
+
+# For non-loopback published servers, set the same token on server and client.
+AXON_MCP_HTTP_TOKEN=
+```
+
 See [CONFIG.md](CONFIG.md) for the full variable reference.
 
 ## 4. Start infrastructure
@@ -90,6 +100,9 @@ Axon runs in lite mode by default — workers run in-process, no external queue 
 
 # Test a scrape
 ./scripts/axon scrape https://example.com --wait true
+
+# Test host CLI against a running axon serve process
+AXON_SERVER_URL=http://127.0.0.1:8001 ./scripts/axon status --json
 
 # Check the web UI
 # Open http://localhost:49010

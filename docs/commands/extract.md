@@ -67,6 +67,9 @@ axon extract --urls "https://a.dev,https://b.dev" --query "extract contact info"
 
 # Job status
 axon extract status 550e8400-e29b-41d4-a716-446655440000
+
+# Enqueue through the canonical server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon extract https://example.com --query "extract title" --json
 ```
 
 ## Sync Output Artifacts
@@ -80,5 +83,6 @@ Summary includes page counts, deterministic vs LLM fallback counts, token usage,
 ## Behavior Notes
 
 - Async mode returns immediately with a job ID.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), extract submit and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.
 - `clear` is destructive and prompts unless `--yes` is passed.
 - `extract` runs URLs concurrently in sync mode and aggregates metrics across runs.

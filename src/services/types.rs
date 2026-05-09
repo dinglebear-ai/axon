@@ -5,8 +5,10 @@
 //! All public types are re-exported here for backward compatibility so that
 //! `use crate::services::types::SomeType` continues to work unchanged.
 
+pub mod client_server;
 mod contracts;
 mod service;
 
+pub use client_server::*;
 pub use contracts::*;
 pub use service::*;

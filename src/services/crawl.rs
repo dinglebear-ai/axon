@@ -7,8 +7,8 @@ use crate::services::events::ServiceEvent;
 use crate::services::jobs as job_service;
 use crate::services::runtime::WorkerMode;
 use crate::services::types::{
-    CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode, JobStartOutcome,
-    StartDisposition,
+    ArtifactHandle, CrawlJobResult, CrawlStartJob, CrawlStartResult, ExecutionMode,
+    JobStartOutcome, StartDisposition,
 };
 use spider::url::Url;
 use std::error::Error;
@@ -51,6 +51,38 @@ pub fn predict_crawl_output_paths(output_dir: &Path, url: &str) -> Vec<String> {
     .collect()
 }
 
+fn crawl_artifact_kind(path: &Path) -> &'static str {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("manifest.jsonl") => "crawl-manifest",
+        Some("markdown") => "crawl-markdown",
+        Some(name) if name.ends_with("-diff-report.json") => "crawl-audit",
+        _ => "crawl-output",
+    }
+}
+
+fn crawl_artifact_handles(
+    base_output_dir: &Path,
+    paths: &[String],
+    job_id: Option<&str>,
+    url: Option<&str>,
+) -> Vec<ArtifactHandle> {
+    paths
+        .iter()
+        .filter_map(|path| {
+            let path_buf = PathBuf::from(path);
+            ArtifactHandle::try_from_path(
+                crawl_artifact_kind(&path_buf),
+                base_output_dir,
+                &path_buf,
+                0,
+                None,
+                job_id.map(ToString::to_string),
+                url.map(ToString::to_string),
+            )
+        })
+        .collect()
+}
+
 pub fn map_crawl_start_result(
     base_output_dir: &Path,
     jobs: &[(String, String)],
@@ -59,11 +91,18 @@ pub fn map_crawl_start_result(
         .iter()
         .map(|(url, job_id)| {
             let output_dir = predict_crawl_output_dir(base_output_dir, url, job_id);
+            let predicted_paths = predict_crawl_output_paths(&output_dir, url);
             CrawlStartJob {
                 job_id: job_id.clone(),
                 url: url.clone(),
                 output_dir: output_dir.to_string_lossy().into_owned(),
-                predicted_paths: predict_crawl_output_paths(&output_dir, url),
+                predicted_artifact_handles: crawl_artifact_handles(
+                    base_output_dir,
+                    &predicted_paths,
+                    Some(job_id),
+                    Some(url),
+                ),
+                predicted_paths,
             }
         })
         .collect();
@@ -73,26 +112,85 @@ pub fn map_crawl_start_result(
         .first()
         .map(|job| job.predicted_paths.clone())
         .unwrap_or_default();
+    let predicted_artifact_handles = jobs
+        .first()
+        .map(|job| job.predicted_artifact_handles.clone())
+        .unwrap_or_default();
     CrawlStartResult {
         job_ids,
         output_dir,
         predicted_paths,
+        predicted_artifact_handles,
         jobs,
     }
 }
 
 pub fn map_crawl_job_result(payload: serde_json::Value) -> CrawlJobResult {
-    let output_files = payload.get("output_files").and_then(|value| {
+    map_crawl_job_result_with_root(payload, None)
+}
+
+pub fn map_crawl_job_result_with_root(
+    payload: serde_json::Value,
+    base_output_dir: Option<&Path>,
+) -> CrawlJobResult {
+    let output_files = output_files_from_payload(&payload);
+    let job_id = payload
+        .get("id")
+        .and_then(|value| value.as_str())
+        .or_else(|| payload.get("job_id").and_then(|value| value.as_str()));
+    let url = payload
+        .get("url")
+        .and_then(|value| value.as_str())
+        .or_else(|| payload.get("target").and_then(|value| value.as_str()));
+    let output_file_handles = base_output_dir
+        .zip(output_files.as_ref())
+        .map(|(root, files)| crawl_artifact_handles(root, files, job_id, url))
+        .unwrap_or_default();
+    CrawlJobResult {
+        payload,
+        output_files,
+        output_file_handles,
+    }
+}
+
+fn output_files_from_payload(payload: &serde_json::Value) -> Option<Vec<String>> {
+    if let Some(files) = payload.get("output_files").and_then(|value| {
         value.as_array().map(|items| {
             items
                 .iter()
                 .filter_map(|item| item.as_str().map(ToString::to_string))
                 .collect::<Vec<_>>()
         })
-    });
-    CrawlJobResult {
-        payload,
-        output_files,
+    }) {
+        return Some(files);
+    }
+    let result = payload.get("result").and_then(serde_json::Value::as_object);
+    let mut files = Vec::new();
+    if let Some(output_dir) = result
+        .and_then(|value| value.get("output_dir"))
+        .and_then(serde_json::Value::as_str)
+    {
+        files.push(PathBuf::from(output_dir).join("manifest.jsonl"));
+        files.push(PathBuf::from(output_dir).join("markdown"));
+    }
+    if let Some(output_path) = result
+        .and_then(|value| value.get("output_path"))
+        .and_then(serde_json::Value::as_str)
+    {
+        let output_path = PathBuf::from(output_path);
+        if !files.iter().any(|path| path == &output_path) {
+            files.push(output_path);
+        }
+    }
+    if files.is_empty() {
+        None
+    } else {
+        Some(
+            files
+                .into_iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+        )
     }
 }
 
@@ -180,7 +278,10 @@ pub async fn crawl_status(
 ) -> Result<CrawlJobResult, Box<dyn Error>> {
     let job = job_service::job_status(service_context, JobKind::Crawl, job_id).await?;
     let payload = serde_json::to_value(job)?;
-    Ok(map_crawl_job_result(payload))
+    Ok(map_crawl_job_result_with_root(
+        payload,
+        Some(&service_context.cfg.output_dir),
+    ))
 }
 
 pub async fn crawl_list(
@@ -189,7 +290,10 @@ pub async fn crawl_list(
     offset: i64,
 ) -> Result<CrawlJobResult, Box<dyn Error>> {
     let jobs = job_service::list_jobs(service_context, JobKind::Crawl, limit, offset).await?;
-    Ok(map_crawl_job_result(serde_json::to_value(jobs)?))
+    Ok(map_crawl_job_result_with_root(
+        serde_json::to_value(jobs)?,
+        Some(&service_context.cfg.output_dir),
+    ))
 }
 
 pub async fn crawl_cancel(
@@ -525,6 +629,19 @@ mod tests {
                     .to_string(),
             ]
         );
+        assert_eq!(result.predicted_artifact_handles.len(), 3);
+        assert_eq!(
+            result.predicted_artifact_handles[0].relative_path,
+            "domains/docs.rs/job-123/manifest.jsonl"
+        );
+        assert_eq!(
+            result.predicted_artifact_handles[0].job_id.as_deref(),
+            Some("job-123")
+        );
+        assert_eq!(
+            result.predicted_artifact_handles[0].url.as_deref(),
+            Some("https://docs.rs")
+        );
         assert_eq!(result.jobs.len(), 1);
         let job = &result.jobs[0];
         assert_eq!(job.url, "https://docs.rs");
@@ -541,6 +658,7 @@ mod tests {
                     .to_string(),
             ]
         );
+        assert_eq!(job.predicted_artifact_handles.len(), 3);
     }
 
     #[test]
@@ -658,13 +776,18 @@ mod tests {
 
     #[test]
     fn map_crawl_job_result_preserves_output_files() {
-        let result = super::map_crawl_job_result(serde_json::json!({
-            "phase": "completed",
-            "output_files": [
-                "/tmp/axon-output/manifest.jsonl",
-                "/tmp/axon-output/markdown/index.md"
-            ]
-        }));
+        let result = super::map_crawl_job_result_with_root(
+            serde_json::json!({
+                "id": "job-123",
+                "url": "https://docs.rs",
+                "phase": "completed",
+                "output_files": [
+                    "/tmp/axon-output/manifest.jsonl",
+                    "/tmp/axon-output/markdown/index.md"
+                ]
+            }),
+            Some(Path::new("/tmp/axon-output")),
+        );
 
         assert_eq!(
             result.output_files.as_ref(),
@@ -672,6 +795,44 @@ mod tests {
                 "/tmp/axon-output/manifest.jsonl".to_string(),
                 "/tmp/axon-output/markdown/index.md".to_string(),
             ])
+        );
+        assert_eq!(result.output_file_handles.len(), 2);
+        assert_eq!(
+            result.output_file_handles[0].relative_path,
+            "manifest.jsonl"
+        );
+        assert_eq!(
+            result.output_file_handles[0].job_id.as_deref(),
+            Some("job-123")
+        );
+        assert_eq!(
+            result.output_file_handles[0].url.as_deref(),
+            Some("https://docs.rs")
+        );
+    }
+
+    #[test]
+    fn map_crawl_job_result_derives_handles_from_result_json_paths() {
+        let result = super::map_crawl_job_result_with_root(
+            serde_json::json!({
+                "id": "job-456",
+                "url": "https://docs.rs",
+                "result": {
+                    "output_dir": "/tmp/axon-output/domains/docs.rs/job-456",
+                    "output_path": "/tmp/axon-output/domains/docs.rs/job-456/markdown"
+                }
+            }),
+            Some(Path::new("/tmp/axon-output")),
+        );
+
+        assert_eq!(result.output_file_handles.len(), 2);
+        assert_eq!(
+            result.output_file_handles[0].relative_path,
+            "domains/docs.rs/job-456/manifest.jsonl"
+        );
+        assert_eq!(
+            result.output_file_handles[1].relative_path,
+            "domains/docs.rs/job-456/markdown"
         );
     }
 }

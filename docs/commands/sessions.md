@@ -66,9 +66,13 @@ axon sessions --claude --gemini --project axon --wait true
 
 # Check job status
 axon sessions status 550e8400-e29b-41d4-a716-446655440000
+
+# Enqueue through the canonical server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon sessions --codex --json
 ```
 
 ## Notes
 
 - Session ingest uses an incremental state tracker table: `axon_session_ingest_state`.
 - Job records for queued runs are stored in `axon_ingest_jobs` with `source_type='sessions'`.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), session ingest and lifecycle subcommands call `axon serve`; `--wait true` polls server job state and does not spawn host-local workers.

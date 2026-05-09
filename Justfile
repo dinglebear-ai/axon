@@ -27,6 +27,9 @@ test-infra:
 mcp-smoke:
     ./scripts/test-mcp-tools-mcporter.sh
 
+client-server-smoke:
+    ./scripts/test-client-server-mode.sh
+
 test-all:
     {{rust_dev_env}}; cargo test --all-targets --all-features --locked
 

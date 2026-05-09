@@ -2,7 +2,7 @@
 //!
 //! Network calls are isolated via `httpmock` (binds 127.0.0.1, which our
 //! loopback detection treats as safe). Tests that mutate environment
-//! variables (`AXON_MCP_HTTP_TOKEN`, `AXON_ASK_INSECURE`) use `serial_test`
+//! variables (`AXON_MCP_HTTP_TOKEN`, `AXON_SERVER_INSECURE`) use `serial_test`
 //! to avoid cross-test races and snapshot+restore the previous value
 //! inside each test.
 //!
@@ -12,7 +12,8 @@
 //! state, and it's gated behind `#[serial]` to prevent races.
 #![allow(unsafe_code)]
 
-use super::{ask_via_server, check_cleartext_token_allowed, hint_for_ask_error};
+use super::{ask_via_server, hint_for_ask_error};
+use crate::cli::client::check_cleartext_token_allowed;
 use crate::core::config::Config;
 use crate::core::http::set_allow_loopback;
 use httpmock::prelude::*;
@@ -21,7 +22,7 @@ use serial_test::serial;
 use std::net::TcpListener;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
-const INSECURE_ENV: &str = "AXON_ASK_INSECURE";
+const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
 
 struct LoopbackGuard;
 
@@ -122,7 +123,7 @@ fn hint_for_ask_error_routes_each_class_correctly() {
     assert!(
         hint_for_ask_error("refusing to send AXON_MCP_HTTP_TOKEN over plaintext HTTP ...")
             .unwrap()
-            .contains("AXON_ASK_INSECURE=1")
+            .contains("AXON_SERVER_INSECURE=1")
     );
     assert!(hint_for_ask_error("server returned 500 ...").is_none());
     assert!(hint_for_ask_error("totally unrelated").is_none());
@@ -170,9 +171,10 @@ fn cleartext_gate_refuses_http_non_loopback() {
     let _g = EnvGuard::set(INSECURE_ENV, None);
     let url = reqwest::Url::parse("http://example.com:8001/").unwrap();
     let err = check_cleartext_token_allowed(&url).unwrap_err();
-    assert!(err.contains("refusing to send AXON_MCP_HTTP_TOKEN"));
-    assert!(err.contains("example.com"));
-    assert!(err.contains("AXON_ASK_INSECURE=1"));
+    let msg = err.to_string();
+    assert!(msg.contains("refusing to send AXON_MCP_HTTP_TOKEN"));
+    assert!(msg.contains("example.com"));
+    assert!(msg.contains("AXON_SERVER_INSECURE=1"));
 }
 
 #[test]
@@ -364,7 +366,7 @@ async fn ask_via_server_refuses_token_over_http_to_non_loopback() {
     assert!(
         hint_for_ask_error(&msg)
             .unwrap()
-            .contains("AXON_ASK_INSECURE=1")
+            .contains("AXON_SERVER_INSECURE=1")
     );
 }
 

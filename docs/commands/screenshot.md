@@ -61,10 +61,14 @@ axon screenshot https://example.com --output ./shot.png
 
 # JSON output
 axon screenshot https://example.com --json
+
+# Capture through the canonical server
+AXON_SERVER_URL=http://127.0.0.1:8001 axon screenshot https://example.com --json
 ```
 
 ## Behavior Notes
 
 - Screenshots are PNG byte captures from Chrome.
+- In server mode (`AXON_SERVER_URL` / `--server-url`), screenshot capture runs on `axon serve` and returns a server-owned artifact handle/root-relative path. The host CLI does not write the PNG locally unless you force `--local`.
 - With multiple URLs and `--output` set, each URL writes to the same path in sequence (last write wins). Prefer default generated paths for multi-URL runs.
 - Non-2xx pages or Chrome navigation/capture errors fail the current URL.
