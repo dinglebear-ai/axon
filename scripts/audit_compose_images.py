@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_COMPOSE_FILES = ("config/docker-compose.services.yaml",)
+DEFAULT_COMPOSE_FILES = ("docker-compose.yaml",)
 
 
 def image_tag(image: str) -> str | None:

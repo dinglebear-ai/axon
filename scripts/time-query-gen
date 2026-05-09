@@ -7,8 +7,15 @@ set -euo pipefail
 
 TOPIC="${*:-how do you create a claude code plugin that has hooks, commands, agents, skills, and mcp server?}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AXON_HOME="${AXON_HOME:-$HOME/.axon}"
+ENV_FILE="${AXON_ENV_FILE:-$AXON_HOME/.env}"
 
-if [[ -f "${SCRIPT_DIR}/../.env" ]]; then
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+    set +a
+elif [[ -f "${SCRIPT_DIR}/../.env" ]]; then
     set -a
     # shellcheck source=/dev/null
     source "${SCRIPT_DIR}/../.env"

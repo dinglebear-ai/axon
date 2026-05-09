@@ -94,7 +94,7 @@ The stack has the following components:
 | `src/mcp/` | MCP server, tool schema, action router |
 | `src/services/` | Typed service entry points for CLI, MCP, and web |
 | `apps/web/` | Next.js dashboard at port 49010 |
-| `config/docker-compose.services.yaml` | Infrastructure deployment |
+| `docker-compose.yaml` | Infrastructure deployment |
 
 ---
 
@@ -119,7 +119,7 @@ This script:
 - Installs `just`, `lefthook`, `cargo-nextest`, `cargo-watch`, `sccache`
 - Checks Node.js ≥ v24 and pnpm ≥ v10
 - Runs `pnpm install` for `apps/web`
-- Creates `.env` from `.env.example` and auto-generates secrets
+- Creates `~/.axon/.env` from `.env.example` and auto-generates secrets
 - Starts production infrastructure containers
 
 Optional flags:
@@ -129,7 +129,7 @@ Optional flags:
 ./scripts/dev-setup.sh --no-docker   # skip Docker startup
 ```
 
-After the script, edit `.env` to set `TEI_URL`, `OPENAI_*`, and `TAVILY_API_KEY`.
+After the script, edit `~/.axon/.env` to set `TEI_URL`, `OPENAI_*`, and `TAVILY_API_KEY`.
 
 ### Build
 
@@ -677,7 +677,7 @@ axon migrate --from <source> --to <destination>
 
 ```bash
 axon migrate --from cortex --to cortex_v2
-# then update .env: AXON_COLLECTION=cortex_v2
+# then update ~/.axon/.env: AXON_COLLECTION=cortex_v2
 # then restart all workers
 ```
 
@@ -901,10 +901,11 @@ The Web UI MCP settings page writes MCP server definitions to `${AXON_DATA_DIR}/
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in values. Two env files are used:
+Copy `.env.example` to `~/.axon/.env` and fill in values. `~/.axon` is the canonical Axon appdata root for config, secrets, Docker/systemd server state, jobs, output, logs, artifacts, Qdrant data, and TEI cache data.
 
-- `.env` — app runtime variables + shared Docker Compose interpolation
-- `services.env` — infrastructure container credentials, stored at the repository root and referenced from `config/docker-compose.services.yaml` as `../services.env`
+- `~/.axon/.env` — canonical app runtime variables, secrets, and Docker Compose interpolation
+- `~/.axon/config.toml` — non-secret tuning knobs
+- repo-root `.env` — development fallback only, used when `~/.axon/.env` is absent
 
 ### Environment Variables
 
@@ -928,6 +929,8 @@ The minimum set needed to start:
 | `AXON_CHROME_REMOTE_URL` | For Chrome rendering | Chrome management API URL (e.g. `http://axon-chrome:6000`) |
 | `AXON_COLLECTION` | No | Default Qdrant collection name (default: `cortex`) |
 | `AXON_DATA_DIR` | No | Persistent data root (default: `~/.axon`, flat layout — no nested `axon/` subdir) |
+| `AXON_HOME` | Docker only | Host appdata root for Compose bind mounts (default: `${HOME}/.axon`; keep aligned with `AXON_DATA_DIR`) |
+| `AXON_MCP_HTTP_PUBLISH` | Docker only | Compose host publish address for Axon MCP HTTP (default: `127.0.0.1:8001`; use `0.0.0.0:8001` only intentionally) |
 | `AXON_LITE` | No | Accepted for compatibility only. Lite is the only runtime; setting this has no effect beyond signalling intent. |
 | `AXON_SQLITE_PATH` | No | SQLite jobs database path (default: `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`) |
 
@@ -939,12 +942,11 @@ The minimum set needed to start:
 
 ### Docker Compose Stack
 
-The local stack uses one tracked compose file for infrastructure services on
-the `axon` bridge network:
+The local stack uses one tracked compose file for the Axon server plus infrastructure services on the `axon` bridge network. Host-side state defaults to `~/.axon`; the container sees that same appdata tree as `/home/axon/.axon`.
 
 | File | Contents |
 |---|---|
-| `config/docker-compose.services.yaml` | Infrastructure services (Qdrant, TEI, Chrome) |
+| `docker-compose.yaml` | Axon server, Qdrant, TEI, Chrome |
 
 Infrastructure services:
 
@@ -954,12 +956,12 @@ Infrastructure services:
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | `52000` | Embedding generation (NVIDIA GPU) |
 | `axon-chrome` | built from `config/chrome/Dockerfile` | `9222` (CDP), `6000` (management) | Headless browser for JavaScript rendering |
 
-All ports are bound to `127.0.0.1` (loopback only) by default.
+Infrastructure service ports are bound to `127.0.0.1` (loopback only) by default. The optional `axon` HTTP service also publishes `127.0.0.1:8001` by default; set `AXON_MCP_HTTP_PUBLISH=0.0.0.0:8001` only when intentionally exposing it beyond the host and `AXON_MCP_HTTP_TOKEN` is configured.
 
 Start infrastructure:
 
 ```bash
-docker compose --env-file .env -f config/docker-compose.services.yaml up -d
+docker compose --env-file ~/.axon/.env up -d axon-qdrant axon-tei axon-chrome
 # or: just services-up
 ```
 
@@ -1209,7 +1211,7 @@ cd apps/web && npm run lint     # lint
 
 ### Wrapper Script
 
-Use `./scripts/axon` instead of the cargo binary for local dev — it auto-sources `.env`:
+Use `./scripts/axon` instead of the cargo binary for local dev — it auto-sources `~/.axon/.env` and falls back to repo `.env` only when the canonical env file is absent:
 
 ```bash
 ./scripts/axon doctor

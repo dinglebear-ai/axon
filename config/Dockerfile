@@ -17,6 +17,14 @@ WORKDIR /build
 # straightforward — no Cargo workspace member juggling needed.
 COPY . .
 
+# The embedded web bundle is generated output. Fail closed if a stale local
+# export contains secrets before RustEmbed bakes it into the binary.
+RUN if [ -d apps/web/out ]; then \
+        ! grep -RIEn \
+          'AXON_.*TOKEN|NEXT_PUBLIC_.*TOKEN|OPENAI_API_KEY|TAVILY_API_KEY|REDDIT_CLIENT_SECRET|Bearer[[:space:]]+[A-Za-z0-9._~+/-]+' \
+          apps/web/out; \
+    fi
+
 # Use BuildKit cache mounts for the Cargo registry, git index, and target
 # directory. Keeps incremental rebuilds fast while still producing a clean
 # output binary.

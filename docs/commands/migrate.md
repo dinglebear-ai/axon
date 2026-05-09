@@ -23,7 +23,7 @@ axon migrate --from <source> --to <destination>
 axon migrate --from cortex --to cortex_v2
 ```
 
-After migration, update `.env` to point to the new collection:
+After migration, update `~/.axon/.env` to point to the new collection:
 
 ```bash
 AXON_COLLECTION=cortex_v2
@@ -43,4 +43,4 @@ AXON_COLLECTION=cortex_v2
 
 - Migration is a one-time operation. New collections created after migration are already in named-mode and do not require this command.
 - At 2.57M points: expect roughly 1–2 hours. At 7M+ points: plan for longer.
-- After migration, hybrid RRF search (dense + BM42) is active on the new collection. The old collection remains available for rollback — simply revert `AXON_COLLECTION` in `.env`.
+- After migration, hybrid RRF search (dense + BM42) is active on the new collection. The old collection remains available for rollback — simply revert `AXON_COLLECTION` in `~/.axon/.env`.

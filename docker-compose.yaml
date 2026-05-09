@@ -1,8 +1,9 @@
 name: axon
 
 # Full axon stack: axon (HTTP), qdrant, tei, chrome.
-#   docker compose --env-file .env up -d
-# Reads URLs/secrets/tuning knobs from the repo-root .env file via interpolation.
+#   docker compose --env-file ~/.axon/.env up -d
+# ~/.axon is the canonical host appdata root. Override AXON_HOME only when
+# relocating the full Axon appdata tree to another absolute path.
 
 x-common-service: &common-service
   networks:
@@ -31,9 +32,10 @@ services:
       dockerfile: config/Dockerfile
     user: "1000:1000"
     env_file:
-      - ./.env
+      - path: ${AXON_HOME:-${HOME}/.axon}/.env
+        required: false
     environment:
-      # Container-internal service DNS (overrides any host-side values in .env).
+      # Container-internal service DNS (overrides host-side values from ~/.axon/.env).
       QDRANT_URL: http://axon-qdrant:6333
       TEI_URL: http://axon-tei:80
       AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
@@ -43,12 +45,16 @@ services:
       AXON_MCP_HTTP_PORT: "8001"
       # ~/.axon canonical layout inside the container.
       HOME: /home/axon
+      AXON_HOME: /home/axon/.axon
       AXON_DATA_DIR: /home/axon/.axon
     volumes:
       # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
-      - ${AXON_HOME:-~/.axon}:/home/axon/.axon
+      - ${AXON_HOME:-${HOME}/.axon}:/home/axon/.axon
+      # Persist OAuth client registrations, refresh tokens, and JWT signing key
+      # across container recreates so upstream gateways don't hold stale client IDs.
+      - ${AXON_HOME:-${HOME}/.axon}/lab-auth:/home/axon/.lab
     ports:
-      - "127.0.0.1:8001:8001"
+      - "${AXON_MCP_HTTP_PUBLISH:-127.0.0.1:8001}:8001"
     command: ["serve"]
     depends_on:
       axon-qdrant:
@@ -58,7 +64,7 @@ services:
       axon-chrome:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/mcp -X POST -H 'Content-Type: application/json' -H \"Authorization: Bearer ${AXON_MCP_HTTP_TOKEN:-}\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H \"Authorization: Bearer ${AXON_MCP_HTTP_TOKEN:-}\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"docker-healthcheck\",\"version\":\"1.0\"}}}' >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -72,7 +78,7 @@ services:
       - "127.0.0.1:53333:6333"
       - "127.0.0.1:53334:6334"  # gRPC
     volumes:
-      - ${AXON_DATA_DIR:-./data}/axon/qdrant:/qdrant/storage
+      - ${AXON_HOME:-${HOME}/.axon}/qdrant:/qdrant/storage
       - ./config/qdrant/production.yaml:/qdrant/config/production.yaml:ro
     deploy:
       resources:
@@ -102,7 +108,7 @@ services:
     ports:
       - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
     volumes:
-      - ${AXON_DATA_DIR:-./data}/tei:/data
+      - ${AXON_HOME:-${HOME}/.axon}/tei:/data
     command:
       - --model-id
       - ${TEI_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}

@@ -179,9 +179,9 @@ Recommendations:
 
 ## 7. Secrets Handling
 
-### 7.1 `.env` is the only secret store
+### 7.1 `~/.axon/.env` is the only secret store
 
-- Service URLs and credentials live in `.env` (gitignored). `.env.example` is the tracked template.
+- Service URLs and credentials live in `~/.axon/.env`. Repo-local `.env` is a gitignored development fallback only. `.env.example` is the tracked template.
 - `~/.axon/config.toml` is for **non-secret** tuning knobs only (search params, worker limits). The loader treats unknown fields as fatal so accidentally pasting a secret there fails fast (`crates/core/config/parse/toml_config.rs`).
 - The MCP HTTP token is `AXON_MCP_HTTP_TOKEN`. No other static auth tokens exist in the current binary.
 
@@ -222,9 +222,9 @@ path.
 
 | Service | Default bind | Notes |
 |---------|--------------|-------|
-| `axon mcp` (HTTP) | `127.0.0.1:8001` | Non-loopback bind requires `AXON_MCP_HTTP_TOKEN` (startup policy). |
+| `axon mcp` / Compose `axon` (HTTP) | `127.0.0.1:8001` | Non-loopback bind requires `AXON_MCP_HTTP_TOKEN` (startup policy). Compose defaults to loopback via `AXON_MCP_HTTP_PUBLISH=127.0.0.1:8001`; set `0.0.0.0:8001` only intentionally. |
 | `axon serve` (unified web + MCP) | `127.0.0.1:49000` | Same MCP token policy applies. |
-| `axon-qdrant` (compose) | `127.0.0.1:53333`, `:53334` | Loopback in `config/docker-compose.services.yaml`. |
+| `axon-qdrant` (compose) | `127.0.0.1:53333`, `:53334` | Loopback in `docker-compose.yaml`. |
 | `axon-tei` (compose) | `127.0.0.1:52000` | Loopback. |
 | `axon-chrome` (compose) | `127.0.0.1:6000`, `:9222`, `:9223` | Loopback. Ports: 6000 = `headless_browser` management API, 9222 = CDP proxy, 9223 = raw Chrome DevTools. **All three are unauthenticated control planes** and rely on the loopback bind for access control. |
 
@@ -245,7 +245,7 @@ Cross-host deployments (`crates/services/setup/deploy.rs` / `axon serve` setup w
 
 Before deploy:
 
-1. `.env` exists, is not committed, and contains every required secret.
+1. `~/.axon/.env` exists and contains every required secret. Repo-local `.env`, if present for development fallback, is not committed.
 2. `git diff -- . ':!*.lock'` shows no secret material in the changeset.
 3. For history scans, run a dedicated tool (`gitleaks detect --source=. --log-opts="HEAD~50..HEAD"` or similar). `git diff` only sees uncommitted changes.
 4. `AXON_MCP_HTTP_TOKEN` is set if `AXON_MCP_HTTP_HOST` is anything other than `127.0.0.1` / `localhost` / `::1`.

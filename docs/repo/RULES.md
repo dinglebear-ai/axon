@@ -24,7 +24,7 @@ Standards and conventions enforced across the Axon codebase.
 
 ### Never commit
 
-- `.env` or `services.env` files
+- `.env` files
 - API keys, tokens, or passwords
 - Large binary files
 - `target/`, `node_modules/`, `.next/`

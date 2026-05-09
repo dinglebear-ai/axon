@@ -68,8 +68,14 @@ mod tests {
         worker.chrome_proxy = Some("http://worker-proxy:8080".to_string());
         worker.custom_headers = vec!["Authorization: Bearer worker".to_string()];
 
-        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
-        let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
+        let config_json = match lite_config_snapshot_json(&submitted) {
+            Ok(json) => json,
+            Err(err) => panic!("snapshot should encode: {err}"),
+        };
+        let effective = match apply_lite_config_snapshot(&worker, &config_json) {
+            Ok(cfg) => cfg,
+            Err(err) => panic!("snapshot should apply: {err}"),
+        };
 
         assert_eq!(effective.collection, "submitted_collection");
         assert_eq!(effective.output_dir, PathBuf::from("/tmp/axon-submitted"));
@@ -135,6 +141,28 @@ mod tests {
         assert!(!config_json.contains("token=abc"));
         assert!(!config_json.contains("api_key"));
         assert!(!config_json.contains("user:"));
+
+        let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
+        assert_eq!(effective.tei_url, "http://worker-tei:80");
+        assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
+        assert_eq!(effective.openai_base_url, "http://worker-llm/v1");
+    }
+
+    #[test]
+    fn lite_config_snapshot_does_not_serialize_process_local_endpoint_urls() {
+        let mut submitted = Config::test_default();
+        submitted.tei_url = "http://127.0.0.1:52000".to_string();
+        submitted.qdrant_url = "http://localhost:53333".to_string();
+        submitted.openai_base_url = "http://[::1]:8317/v1".to_string();
+        let mut worker = Config::test_default();
+        worker.tei_url = "http://worker-tei:80".to_string();
+        worker.qdrant_url = "http://worker-qdrant:6333".to_string();
+        worker.openai_base_url = "http://worker-llm/v1".to_string();
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        assert!(!config_json.contains("127.0.0.1"));
+        assert!(!config_json.contains("localhost"));
+        assert!(!config_json.contains("[::1]"));
 
         let effective = apply_lite_config_snapshot(&worker, &config_json).expect("apply snapshot");
         assert_eq!(effective.tei_url, "http://worker-tei:80");

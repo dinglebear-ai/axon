@@ -140,7 +140,7 @@ All MCP actions are also available as CLI commands:
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/axon` | Wrapper script (auto-sources .env) |
+| `scripts/axon` | Wrapper script (auto-sources `~/.axon/.env`, with repo `.env` fallback) |
 | `scripts/dev-setup.sh` | Bootstrap development environment |
 | `scripts/rebuild-fresh.sh` | Build + start Docker containers |
 | `scripts/check-container-revisions.sh` | Verify container git SHA matches |

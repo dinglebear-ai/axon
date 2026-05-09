@@ -6,10 +6,10 @@ Safety and security patterns enforced across the Axon stack.
 
 ### Storage
 
-- All credentials live in `.env` and `services.env` with `chmod 600` permissions
-- Never commit `.env` or `services.env`
+- All credentials live in `~/.axon/.env` with `chmod 600` permissions
+- Never commit real `.env` files
 - Use `.env.example` as a tracked template with placeholder values only
-- Direct Docker Compose commands should pass `--env-file .env` so repo-root `.env` is used for `${VAR}` interpolation; service containers receive credentials via the repo-root `services.env` referenced by `config/docker-compose.services.yaml`
+- Direct Docker Compose commands should pass `--env-file ~/.axon/.env` so the canonical env file is used for `${VAR}` interpolation; service containers also read `${AXON_HOME:-${HOME}/.axon}/.env`
 
 ### Ignore files
 
@@ -17,7 +17,6 @@ Safety and security patterns enforced across the Axon stack.
 
 ```
 .env
-services.env
 *.secret
 *.pem
 *.key

@@ -46,17 +46,18 @@ just services-up
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `config/docker-compose.services.yaml` | Infrastructure (Qdrant, TEI, Chrome) | repo-root `services.env` |
+| `docker-compose.yaml` | Axon server, Qdrant, TEI, Chrome | `~/.axon/.env` |
 
-The compose file creates the `axon` bridge network. Pass `--env-file .env` when
-running it directly so repo-root `.env` is used for `${VAR}` interpolation.
+The compose file creates the `axon` bridge network. Pass `--env-file ~/.axon/.env`
+when running it directly so the canonical appdata env file is used for `${VAR}`
+interpolation.
 
 ### GPU acceleration
 
 For NVIDIA hosts with GPU-accelerated TEI:
 
 ```bash
-docker compose --env-file .env -f config/docker-compose.services.yaml up -d
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
 ```
 
 CPU-only hosts should override the TEI image/settings or point `TEI_URL` at an
@@ -64,25 +65,26 @@ external CPU embedding endpoint.
 
 ### Local app runtime
 
-The tracked compose file starts infrastructure only. Run `axon serve` locally to
-supervise the MCP HTTP server, backend bridge, workers, shell server, and web UI.
+The tracked compose file starts the Axon server plus Qdrant, TEI, and Chrome.
+Run `axon serve` locally only when you want to bypass Compose and supervise the
+MCP HTTP server, backend bridge, workers, shell server, and web UI directly.
 
 ### Build
 
 ```bash
 # Build Chrome image
-docker compose --env-file .env -f config/docker-compose.services.yaml build axon-chrome
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml build axon-chrome
 ```
 
-Run compose commands from the repo root. The services compose file lives under
-`config/`, so paths inside it resolve relative to `config/`; its `env_file`
-entry intentionally points back to the repo-root `services.env`.
+Run compose commands from the repo root. Host-side state defaults to
+`${HOME}/.axon` through `AXON_HOME`; the container sees that same appdata tree as
+`/home/axon/.axon`.
 
 ### Health checks
 
 ```bash
 # Infrastructure
-docker compose --env-file .env -f config/docker-compose.services.yaml ps
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps
 
 # Service connectivity
 ./scripts/axon doctor
@@ -90,13 +92,13 @@ docker compose --env-file .env -f config/docker-compose.services.yaml ps
 
 ## Data volumes
 
-All persistent data uses `${AXON_DATA_DIR:-~/.axon}/...` (flat layout — no nested `axon/` subdir):
+Runtime data uses `${AXON_DATA_DIR:-~/.axon}/...`; Docker bind mounts use `${AXON_HOME:-$HOME/.axon}/...`. Keep them aligned unless relocating the entire Axon appdata tree.
 
 | Volume | Content |
 |--------|---------|
 | `$AXON_DATA_DIR/jobs.db` | SQLite job database |
 | `$AXON_DATA_DIR/qdrant` | Qdrant vector storage |
-| `$AXON_DATA_DIR/tei-data` | TEI model cache |
+| `$AXON_DATA_DIR/tei` | TEI model cache |
 | `$AXON_DATA_DIR/artifacts` | MCP response artifacts |
 | `$AXON_DATA_DIR/output` | CLI output files |
 

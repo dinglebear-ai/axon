@@ -310,7 +310,7 @@ fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, Str
             .or_else(|| toml.services.tei_url.clone())
             .ok_or_else(|| {
                 "TEI_URL environment variable is required (or pass --tei-url). \
-                 Copy .env.example to .env and fill in credentials."
+                 Copy .env.example to ~/.axon/.env and fill in credentials."
                     .to_string()
             })?,
     ))
@@ -325,7 +325,7 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
             .or_else(|| toml.services.qdrant_url.clone())
             .ok_or_else(|| {
                 "QDRANT_URL environment variable is required (or pass --qdrant-url). \
-                 Copy .env.example to .env and fill in credentials."
+                 Copy .env.example to ~/.axon/.env and fill in credentials."
                     .to_string()
             })?,
     ))

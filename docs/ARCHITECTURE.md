@@ -68,7 +68,7 @@ flowchart LR
 | `crates/jobs/*` | SQLite-backed worker runtime + job state transitions |
 | `crates/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
 | `crates/services/llm_backend/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
-| `config/docker-compose.services.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
+| `docker-compose.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
 

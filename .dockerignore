@@ -19,6 +19,12 @@ http-cacache/
 
 # Frontend — not needed for the Rust worker image
 /apps
+!/apps
+/apps/*
+!/apps/web
+/apps/web/*
+!/apps/web/out
+!/apps/web/out/**
 **/node_modules
 
 **/.DS_Store

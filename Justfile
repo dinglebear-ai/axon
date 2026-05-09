@@ -1,5 +1,4 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
-set dotenv-load
 rust_dev_env := "if command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi; if command -v mold >/dev/null 2>&1; then export RUSTFLAGS=\"${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold\"; fi"
 
 default:
@@ -147,11 +146,11 @@ clean:
 
 # Start infrastructure services (qdrant, tei, chrome)
 services-up:
-    docker compose -f config/docker-compose.services.yaml up -d
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome
 
 # Stop infrastructure services
 services-down:
-    docker compose -f config/docker-compose.services.yaml down
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml down
 
 # Backward-compatible aliases used by setup/docs for local infra.
 test-infra-up:
@@ -186,7 +185,7 @@ dev:
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"
-    docker compose -f config/docker-compose.services.yaml up -d --wait axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d --wait axon-qdrant axon-tei axon-chrome
     "$AXON_BIN" mcp
 
 # ── Perf bench ────────────────────────────────────────────────────────────────

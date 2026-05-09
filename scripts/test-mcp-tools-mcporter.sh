@@ -300,12 +300,14 @@ build_suite_config() {
     --arg server "$SERVER" \
     --arg lite "$lite_value" \
     --arg repo_root "$REPO_ROOT" \
+    --arg axon_home "$HOME/.axon" \
     --arg data_dir "$runtime_root" \
-    --arg log_file "$runtime_root/axon/logs/axon.log" \
-    --arg sqlite_path "$runtime_root/axon/mcporter-jobs.db" \
+    --arg log_file "$runtime_root/logs/axon.log" \
+    --arg sqlite_path "$runtime_root/mcporter-jobs.db" \
     '.mcpServers[$server].env = ((.mcpServers[$server].env // {}) + {
         AXON_LITE: $lite,
         AXON_REPO_ROOT: $repo_root,
+        AXON_HOME: $axon_home,
         AXON_DATA_DIR: $data_dir,
         AXON_LOG_FILE: $log_file,
         AXON_SQLITE_PATH: $sqlite_path
