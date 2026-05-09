@@ -1,4 +1,6 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 
 #[test]
 fn services_compose_reads_canonical_axon_home_env() {
@@ -135,6 +137,81 @@ fn plugin_setup_uses_canonical_axon_home() {
         readme.contains("~/.axon/.env"),
         "plugin docs should document the canonical env path"
     );
+}
+
+#[test]
+fn plugin_setup_smoke_restarts_when_env_changes() {
+    let temp_root =
+        std::env::temp_dir().join(format!("axon-plugin-setup-smoke-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_root);
+    let home = temp_root.join("home");
+    let fake_bin = temp_root.join("bin");
+    let plugin_root = temp_root.join("plugin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir should be created");
+    fs::create_dir_all(plugin_root.join("bin")).expect("plugin bin dir should be created");
+    fs::create_dir_all(&home).expect("home dir should be created");
+
+    let axon_bin = plugin_root.join("bin/axon");
+    fs::write(&axon_bin, "#!/usr/bin/env bash\nexit 0\n").expect("fake axon should be written");
+    let mut axon_perms = fs::metadata(&axon_bin)
+        .expect("fake axon metadata")
+        .permissions();
+    axon_perms.set_mode(0o755);
+    fs::set_permissions(&axon_bin, axon_perms).expect("fake axon should be executable");
+
+    let systemctl_log = temp_root.join("systemctl.log");
+    let fake_systemctl = fake_bin.join("systemctl");
+    fs::write(
+        &fake_systemctl,
+        format!(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nif [ \"$*\" = '--user is-active --quiet axon-mcp' ]; then exit 1; fi\nexit 0\n",
+            systemctl_log.display()
+        ),
+    )
+    .expect("fake systemctl should be written");
+    let mut systemctl_perms = fs::metadata(&fake_systemctl)
+        .expect("fake systemctl metadata")
+        .permissions();
+    systemctl_perms.set_mode(0o755);
+    fs::set_permissions(&fake_systemctl, systemctl_perms)
+        .expect("fake systemctl should be executable");
+
+    let path = format!(
+        "{}:{}",
+        fake_bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let run_setup = |token: &str| {
+        Command::new("bash")
+            .arg("scripts/plugin-setup.sh")
+            .env("HOME", &home)
+            .env("PATH", &path)
+            .env("CLAUDE_PLUGIN_ROOT", &plugin_root)
+            .env("CLAUDE_PLUGIN_OPTION_API_TOKEN", token)
+            .status()
+            .expect("plugin setup should run")
+    };
+
+    assert!(run_setup("first-token").success());
+    assert!(run_setup("second-token").success());
+
+    let log = fs::read_to_string(&systemctl_log).expect("fake systemctl log should exist");
+    assert!(
+        log.contains("--user daemon-reload") && log.contains("--user enable axon-mcp"),
+        "unit changes should reload and enable systemd user service"
+    );
+    assert!(
+        log.matches("--user restart axon-mcp").count() >= 2,
+        "initial setup and env changes should restart the service"
+    );
+
+    let env_file = fs::read_to_string(home.join(".axon/.env")).expect("env should be written");
+    assert!(
+        env_file.contains("AXON_MCP_HTTP_TOKEN=second-token"),
+        "rerun should update managed token in canonical env"
+    );
+
+    fs::remove_dir_all(&temp_root).ok();
 }
 
 #[test]
