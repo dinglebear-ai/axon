@@ -51,6 +51,7 @@ Docker/systemd runtime wiring. The smoke must not edit `~/.axon/.env` or
 ```bash
 AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
 AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
+just client-server-smoke
 ```
 
 Expected behavior:
