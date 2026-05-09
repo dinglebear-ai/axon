@@ -10,9 +10,11 @@ Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optiona
 claude plugin install <path>
 ```
 
-The plugin manifest declares a `userConfig` block — Claude Code prompts for Qdrant URL, TEI URL, collection name, LLM endpoint/model/API key, Tavily API key, and Chrome remote URL on install. These flow into the MCP server via `${user_config.*}` substitution in `.mcp.json`.
+The plugin manifest declares a `userConfig` block — Claude Code prompts for Qdrant URL, TEI URL, collection name, LLM endpoint/model/API key, Tavily API key, Chrome remote URL, MCP URL, and API token on install.
 
-The `axon` binary must be on `$PATH` (e.g., `cargo install --path . --bin axon`). The MCP server starts on demand via `axon mcp` (stdio transport).
+The SessionStart hook (`scripts/plugin-setup.sh`) is the deployment path: it links the plugin binary into `~/.local/bin/axon`, writes the canonical runtime env to `~/.axon/.env`, and installs/restarts the `axon-mcp.service` systemd user service. The `.mcp.json` then connects Claude Code to that HTTP server at `${user_config.server_url}/mcp` with the configured bearer token.
+
+`~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 
 ## MCP Server
 
@@ -31,7 +33,7 @@ Response envelope:
 { "ok": true, "action": "...", "subaction": "...", "data": { ... } }
 ```
 
-Default `response_mode: "path"` writes large outputs to `.cache/axon-mcp/` and returns a compact `shape` summary plus an artifact pointer. See the `axon` skill for the full action map.
+Default `response_mode: "path"` writes large outputs under the configured Axon appdata root (default `~/.axon/artifacts`) and returns a compact `shape` summary plus an artifact pointer. See the `axon` skill for the full action map.
 
 ## Skills (16)
 

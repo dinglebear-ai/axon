@@ -41,17 +41,17 @@ This installs the Rust toolchain, cargo tools, `just`, pnpm, and verifies all pr
 ## 3. Configure environment
 
 ```bash
-cp .env.example .env
-chmod 600 .env
-cp .env.example services.env
-chmod 600 services.env
+mkdir -m 700 -p ~/.axon
+cp .env.example ~/.axon/.env
+chmod 600 ~/.axon/.env
 ```
 
-Edit `.env` and set required values:
+Edit `~/.axon/.env` and set required values:
 
 ```bash
-# Host paths
-AXON_DATA_DIR=/path/to/persistent/data
+# Host appdata root (optional; default is ~/.axon)
+AXON_HOME=/home/you/.axon
+AXON_DATA_DIR=/home/you/.axon
 
 # Qdrant and TEI
 QDRANT_URL=http://axon-qdrant:6333
@@ -66,12 +66,12 @@ See [CONFIG.md](CONFIG.md) for the full variable reference.
 just services-up
 ```
 
-This starts Qdrant, TEI, and Chrome via `config/docker-compose.services.yaml`.
+This starts Qdrant, TEI, and Chrome via `docker-compose.yaml`.
 
 For GPU-accelerated embeddings (NVIDIA):
 
 ```bash
-docker compose --env-file .env -f config/docker-compose.services.yaml up -d axon-tei
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-tei
 ```
 
 ## 5. Run axon
@@ -117,8 +117,8 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 
 ### "doctor" reports service unreachable
 
-- Confirm infrastructure is running: `docker compose --env-file .env -f config/docker-compose.services.yaml ps`
-- Check that `.env` credentials match `services.env`
+- Confirm infrastructure is running: `docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps`
+- Check that `~/.axon/.env` has the expected service URLs and token values
 - For local dev, Qdrant URLs auto-normalize to localhost ports
 
 ### Build fails with spider_agent path error
@@ -129,7 +129,7 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 
 - TEI requires a GPU with NVIDIA drivers for the default image
 - CPU-only hosts: override the TEI image/settings or point `TEI_URL` at an external CPU endpoint
-- Check model download: `docker compose --env-file .env -f config/docker-compose.services.yaml logs axon-tei`
+- Check model download: `docker compose --env-file ~/.axon/.env -f docker-compose.yaml logs axon-tei`
 
 ### Web UI shows "connection refused"
 

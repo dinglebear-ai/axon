@@ -13,7 +13,7 @@ Pre-release quality checklist. Complete all items before tagging a release.
 - [ ] `.env.example` documents every environment variable the binary reads
 - [ ] `.env.example` has no actual secrets -- only placeholders
 - [ ] `.env` is in `.gitignore` and `.dockerignore`
-- [ ] `services.env` is in `.gitignore` and `.dockerignore`
+- [ ] `~/.axon/.env` is used for local secrets and Compose interpolation
 
 ## Build and test
 
@@ -27,15 +27,15 @@ Pre-release quality checklist. Complete all items before tagging a release.
 ## Security
 
 - [ ] No credentials in code, docs, or git history
-- [ ] `.gitignore` includes `.env`, `services.env`, `*.secret`
-- [ ] `.dockerignore` includes `.env`, `services.env`, `.git/`
+- [ ] `.gitignore` includes `.env`, `*.secret`
+- [ ] `.dockerignore` includes `.env`, `.git/`
 - [ ] Docker containers run as non-root (s6-setuidgid, UID 1001)
 - [ ] No baked environment variables in Docker images
 - [ ] `AXON_WEB_API_TOKEN` is not exposed as `NEXT_PUBLIC_*`
 
 ## Infrastructure
 
-- [ ] `config/docker-compose.services.yaml` starts cleanly (Qdrant, TEI, Chrome)
+- [ ] `docker-compose.yaml` starts cleanly with `--env-file ~/.axon/.env` (Axon server, Qdrant, TEI, Chrome)
 - [ ] All worker types start (crawl, embed, extract, ingest)
 - [ ] SQLite schema auto-creates via `ensure_schema()`
 

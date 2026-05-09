@@ -59,6 +59,14 @@ async fn run_status_impl(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let (jobs, _totals) = load_status_jobs(service_context).await?;
+    let crawl_url_map: HashMap<uuid::Uuid, &str> = jobs
+        .crawl
+        .iter()
+        .filter_map(|job| {
+            let url = job.url.as_deref()?;
+            Some((job.id, url))
+        })
+        .collect();
     let embed_jobs_by_id: HashMap<String, &ServiceJob> = jobs
         .embed
         .iter()
@@ -85,7 +93,12 @@ async fn run_status_impl(
     print_status_section(
         "Embed",
         &jobs.embed,
-        |job| job.target.clone().unwrap_or_else(|| job.id.to_string()),
+        |job| {
+            job.target
+                .as_deref()
+                .map(|target| metrics::display_embed_input(target, &crawl_url_map).into_owned())
+                .unwrap_or_else(|| job.id.to_string())
+        },
         |job| embed_progress_summary(job, embed_doc_totals.get(&job.id.to_string()).copied()),
     );
     print_status_section(

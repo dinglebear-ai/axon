@@ -74,7 +74,7 @@ just services-up
 
 TEI benefits from GPU acceleration for embedding generation:
 - NVIDIA GPU with CUDA drivers
-- `docker compose --env-file .env -f config/docker-compose.services.yaml up -d`
+- `docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d`
 - CPU-only: use an external `TEI_URL` or override the TEI image/settings to remove
   the NVIDIA device reservation before starting the default services compose file.
 
@@ -94,8 +94,9 @@ Recommended minimums for local development:
 git clone https://github.com/jmagar/axon.git ~/workspace/axon_rust
 cd ~/workspace/axon_rust
 just setup               # Install all tools
-cp .env.example .env && chmod 600 .env
-# Edit .env with credentials
+mkdir -m 700 -p ~/.axon
+cp .env.example ~/.axon/.env && chmod 600 ~/.axon/.env
+# Edit ~/.axon/.env with credentials
 just services-up          # Start infrastructure
 just dev                  # Build + run full stack
 ```

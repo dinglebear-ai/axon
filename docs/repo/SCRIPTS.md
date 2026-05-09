@@ -6,7 +6,7 @@ Scripts in the `scripts/` directory for maintenance, testing, and development.
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/axon` | Shell wrapper that auto-sources `.env` before running the binary. Use this instead of the bare binary for local dev. |
+| `scripts/axon` | Shell wrapper that auto-sources `~/.axon/.env` before running the binary, with repo `.env` fallback for local dev. Use this instead of the bare binary for local dev. |
 
 Usage:
 ```bash
@@ -48,7 +48,7 @@ The five enforcement checks below were ported from shell scripts to the `xtask` 
 | `rebuild-fresh.sh` | Build Docker images and start containers |
 | `check-container-revisions.sh` | Verify container git SHA matches local HEAD |
 | `check_docker_context_size.sh` | Audit Docker build context for large files |
-| `audit_compose_images.py` | Audit image references from `config/docker-compose.services.yaml`, including GHCR images |
+| `audit_compose_images.py` | Audit image references from `docker-compose.yaml`, including GHCR images |
 | `cache-guard.sh` | Build cache management (status/prune) |
 
 ## Testing

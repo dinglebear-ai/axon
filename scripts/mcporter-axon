@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${AXON_REPO_ROOT:-$(cd -- "$SCRIPT_DIR/.." && pwd -P)}"
+cd "$REPO_ROOT"
+
+# shellcheck source=scripts/lib/axon-env.sh
+source "$REPO_ROOT/scripts/lib/axon-env.sh"
+load_axon_env_file "$REPO_ROOT"
+
+AXON_HOME="${AXON_HOME:-$HOME/.axon}"
+export AXON_HOME
+export AXON_DATA_DIR="${AXON_DATA_DIR:-$AXON_HOME}"
+export AXON_LOG_FILE="${AXON_LOG_FILE:-$AXON_HOME/logs/mcporter-axon.log}"
+export AXON_SQLITE_PATH="${AXON_SQLITE_PATH:-$AXON_HOME/mcporter-jobs.db}"
+export AXON_LITE="${AXON_LITE:-0}"
+export AXON_MCP_TRANSPORT=stdio
+export AXON_PG_URL="${AXON_PG_MCP_URL:-${AXON_PG_URL:-}}"
+
+exec ./target/debug/axon mcp

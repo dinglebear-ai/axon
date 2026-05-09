@@ -1,6 +1,6 @@
 # Configuration Reference -- Axon
 
-> **Source of truth.** This file is the canonical reference for all Axon environment variables. When in doubt, this file wins over README.md, MCP.md, or any other doc. Keep `.env.example` in sync — every variable listed here that has a sensible example value should appear there, and every variable in `.env.example` should be documented here.
+> **Source of truth.** This file is the canonical reference for all Axon environment variables. When in doubt, this file wins over README.md, MCP.md, or any other doc. Keep `.env.example` in sync — every variable listed here that has a sensible example value should appear there, and every variable in `.env.example` should be documented here. User-level values live in `~/.axon/.env`.
 
 Axon is configured through three layers: `~/.axon/config.toml`, environment variables, and CLI flags.
 
@@ -13,7 +13,7 @@ Axon is configured through three layers: `~/.axon/config.toml`, environment vari
 
 ## Canonical `~/.axon/` layout
 
-`~/.axon/` is the canonical home for axon's user-level config, secrets, and persistent data. All flat — no nested `axon/` subdirectory.
+`~/.axon/` is the canonical home for all Axon user-level config, secrets, runtime state, infrastructure data, and generated output. All app data lives directly under this directory — no nested `axon/` subdirectory.
 
 ```
 ~/.axon/
@@ -30,10 +30,14 @@ Axon is configured through three layers: `~/.axon/config.toml`, environment vari
 │   └── axon.log             # size-rotated, 10 MiB default
 ├── artifacts/               # MCP JSON artifacts (response_mode=path)
 ├── screenshots/             # spider chrome_store_page captures
-└── chrome-diagnostics/      # opt-in browser diagnostics
+├── chrome-diagnostics/      # opt-in browser diagnostics
+│
+├── qdrant/                  # Docker Compose Qdrant bind mount
+├── tei/                     # Docker Compose TEI model/cache data
+└── lab-auth/                # OAuth/lab-auth state for server deployments
 ```
 
-`AXON_DATA_DIR` defaults to `~/.axon`. Override it to relocate every persistent path above.
+`AXON_DATA_DIR` defaults to `~/.axon` for the binary. Docker Compose uses `AXON_HOME` for host-side bind mounts and defaults it to `${HOME}/.axon`; keep `AXON_HOME` and `AXON_DATA_DIR` aligned unless you are deliberately relocating the entire Axon appdata tree.
 
 ### Migration from `~/.local/share/axon`
 
@@ -47,20 +51,19 @@ Three env files are auto-loaded in this order; the first one that exists and par
 |-------|------|-------|
 | 1 | `$AXON_ENV_FILE` | Explicit override; only consulted when set |
 | 2 | `~/.axon/.env` | Canonical user-level secrets, loaded automatically |
-| 3 | First `.env` found by walking ancestors of CWD (or the binary's parent) | Repo-root `.env` for dev |
+| 3 | First `.env` found by walking ancestors of CWD (or the binary's parent) | Repo-root `.env` fallback for development only |
 
-A separate `services.env` file is used by Docker Compose only:
+Docker Compose also reads `~/.axon/.env` by default as the service env file and uses `AXON_HOME` for host bind mounts:
 
 | File | Purpose | Loaded by |
 |------|---------|-----------|
-| `~/.axon/.env` or repo `.env` | App runtime + shared Docker Compose interpolation | `dotenvy` in binary |
-| `services.env` | Infrastructure container credentials | Docker Compose `env_file:` directive in `config/docker-compose.services.yaml` via `../services.env` |
+| `~/.axon/.env` | Canonical app runtime variables, secrets, and Docker Compose interpolation | `dotenvy` in binary; `docker compose --env-file ~/.axon/.env`; compose service `env_file` |
+| Repo `.env` | Development fallback only | `dotenvy` ancestor walk; `scripts/axon` only when `~/.axon/.env` is absent |
 
 ```bash
-cp .env.example .env
-chmod 600 .env
-cp .env.example services.env
-chmod 600 services.env
+mkdir -m 700 -p ~/.axon
+cp .env.example ~/.axon/.env
+chmod 600 ~/.axon/.env
 ```
 
 ## ~/.axon/config.toml
@@ -85,7 +88,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
-URLs, API keys, secrets, and Gemini headless runtime controls belong in `.env` — not in `config.toml`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 
@@ -112,6 +115,7 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `.env` �
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `AXON_MCP_HTTP_PUBLISH` | `127.0.0.1:8001` | Docker Compose host publish address for the `axon` MCP HTTP service. Set to `0.0.0.0:8001` only when intentionally exposing beyond the host and `AXON_MCP_HTTP_TOKEN` is configured. |
 | `AXON_SERVE_HOST` | `127.0.0.1` | Backend bridge bind address |
 | `AXON_SERVE_PORT` | `49000` | Backend bridge port |
 | `AXON_WEB_DEV_PORT` | `49010` | Next.js dev server port |

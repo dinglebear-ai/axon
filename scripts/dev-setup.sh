@@ -271,7 +271,11 @@ ok "apps/web dependencies installed"
 
 # ── Environment File ───────────────────────────────────────────────────────────
 sep
-info "Checking .env..."
+AXON_HOME="${AXON_HOME:-$HOME/.axon}"
+ENV_FILE="$AXON_HOME/.env"
+info "Checking ~/.axon/.env..."
+mkdir -p "$AXON_HOME"
+chmod 700 "$AXON_HOME" 2>/dev/null || true
 
 # Helpers — defined here so they're available for both fresh installs and reruns.
 gen_secret() { python3 -c "import secrets; print(secrets.token_urlsafe(32))"; }
@@ -279,100 +283,110 @@ gen_secret() { python3 -c "import secrets; print(secrets.token_urlsafe(32))"; }
 set_env() {
   # Replace existing key or append — always writes the supplied value.
   local key="$1" val="$2"
-  if grep -q "^${key}=" "$REPO/.env"; then
-    sed_i "s|^${key}=.*|${key}=${val}|" "$REPO/.env"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed_i "s|^${key}=.*|${key}=${val}|" "$ENV_FILE"
   else
-    echo "${key}=${val}" >> "$REPO/.env"
+    echo "${key}=${val}" >> "$ENV_FILE"
   fi
 }
 
 set_env_if_missing() {
   # Only write if the key is absent or has an empty value.
   local key="$1" val="$2"
-  grep -q "^${key}=." "$REPO/.env" 2>/dev/null || set_env "$key" "$val"
+  grep -q "^${key}=." "$ENV_FILE" 2>/dev/null || set_env "$key" "$val"
 }
 
-if [[ -f "$REPO/.env" ]]; then
-  ok ".env already exists — backfilling any missing entries"
+if [[ -f "$ENV_FILE" ]]; then
+  ok "$ENV_FILE already exists — backfilling any missing entries"
 else
-  cp "$REPO/.env.example" "$REPO/.env"
-  ok ".env created from .env.example"
+  cp "$REPO/.env.example" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  CREATED_INITIAL_ENV=true
+  ok "$ENV_FILE created from .env.example"
 fi
+CREATED_INITIAL_ENV="${CREATED_INITIAL_ENV:-false}"
 
-# ── AXON_DATA_DIR — always resolve and ensure directories exist ────────────────
-DEFAULT_DATA_DIR="$HOME/.local/share/axon"
-# Read the current value from .env (empty string if absent or placeholder).
-AXON_DATA_DIR="$(grep '^AXON_DATA_DIR=' "$REPO/.env" 2>/dev/null | cut -d= -f2- | tr -d "'\"")"
-if [[ -z "$AXON_DATA_DIR" || "$AXON_DATA_DIR" == *CHANGE_ME* ]]; then
-  if [[ -t 0 ]]; then
-    echo ""
-    echo "  AXON_DATA_DIR — root directory for all persistent data (Postgres, Qdrant, etc.)"
-    echo "  Press Enter to accept the default."
-    read -r -p "  AXON_DATA_DIR [${DEFAULT_DATA_DIR}]: " USER_DATA_DIR
-    AXON_DATA_DIR="${USER_DATA_DIR:-$DEFAULT_DATA_DIR}"
-  else
-    AXON_DATA_DIR="$DEFAULT_DATA_DIR"
-    info "Non-interactive mode: AXON_DATA_DIR=${AXON_DATA_DIR}"
+# ── AXON_HOME / AXON_DATA_DIR — keep Compose and CLI aligned ──────────────────
+SOURCE_ENV_FILE="$ENV_FILE"
+EXISTING_AXON_HOME="$(grep '^AXON_HOME=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d "'\"")"
+if [[ -n "$EXISTING_AXON_HOME" && "$AXON_HOME" == "$HOME/.axon" ]]; then
+  AXON_HOME="${EXISTING_AXON_HOME/#\~/$HOME}"
+  ENV_FILE="$AXON_HOME/.env"
+  mkdir -p "$AXON_HOME"
+  chmod 700 "$AXON_HOME" 2>/dev/null || true
+  if [[ ! -f "$ENV_FILE" && -f "$SOURCE_ENV_FILE" ]]; then
+    cp "$SOURCE_ENV_FILE" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    ok "Migrated existing env to ${ENV_FILE}"
   fi
 fi
-# Expand ~ if the user typed it
-AXON_DATA_DIR="${AXON_DATA_DIR/#\~/$HOME}"
+
+if [[ -z "$AXON_HOME" || "$AXON_HOME" == *CHANGE_ME* ]]; then
+  AXON_HOME="$HOME/.axon"
+fi
+
+if [[ "$AXON_HOME" == "$HOME/.axon" ]]; then
+  if [[ -t 0 ]]; then
+    echo ""
+    echo "  AXON_HOME — root directory for all persistent Axon data"
+    echo "  Press Enter to accept the default."
+    read -r -p "  AXON_HOME [${AXON_HOME}]: " USER_AXON_HOME
+    AXON_HOME="${USER_AXON_HOME:-$AXON_HOME}"
+  else
+    info "Non-interactive mode: AXON_HOME=${AXON_HOME}"
+  fi
+fi
+AXON_HOME="${AXON_HOME/#\~/$HOME}"
+AXON_DATA_DIR="$AXON_HOME"
+ENV_FILE="$AXON_HOME/.env"
+mkdir -p "$AXON_HOME"
+chmod 700 "$AXON_HOME" 2>/dev/null || true
+if [[ ! -f "$ENV_FILE" && "$CREATED_INITIAL_ENV" == "true" && "$SOURCE_ENV_FILE" != "$ENV_FILE" && -f "$SOURCE_ENV_FILE" ]]; then
+  mv "$SOURCE_ENV_FILE" "$ENV_FILE"
+  rmdir "$(dirname "$SOURCE_ENV_FILE")" 2>/dev/null || true
+  ok "Moved initial env to ${ENV_FILE}"
+fi
+if [[ ! -f "$ENV_FILE" ]]; then
+  cp "$REPO/.env.example" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+fi
+set_env AXON_HOME "$AXON_HOME"
 set_env AXON_DATA_DIR "$AXON_DATA_DIR"
+ok "AXON_HOME=${AXON_HOME}"
 ok "AXON_DATA_DIR=${AXON_DATA_DIR}"
 
 # Always ensure volume-mount directories exist (idempotent).
 info "Ensuring data directories under ${AXON_DATA_DIR}..."
 mkdir -p \
-  "${AXON_DATA_DIR}/axon/postgres" \
-  "${AXON_DATA_DIR}/axon/redis" \
-  "${AXON_DATA_DIR}/axon/rabbitmq" \
-  "${AXON_DATA_DIR}/axon/qdrant" \
-  "${AXON_DATA_DIR}/axon/output" \
-  "${AXON_DATA_DIR}/axon/artifacts"
+  "${AXON_DATA_DIR}/qdrant" \
+  "${AXON_DATA_DIR}/tei" \
+  "${AXON_DATA_DIR}/output" \
+  "${AXON_DATA_DIR}/artifacts" \
+  "${AXON_DATA_DIR}/logs" \
+  "${AXON_DATA_DIR}/screenshots" \
+  "${AXON_DATA_DIR}/chrome-diagnostics" \
+  "${AXON_DATA_DIR}/lab-auth"
 ok "Data directories ready"
 
 # ── Secrets — backfill only; never overwrite existing values ──────────────────
 info "Checking secrets..."
-PG_PASS="$(grep '^POSTGRES_PASSWORD=' "$REPO/.env" 2>/dev/null | cut -d= -f2-)"
-if [[ -z "$PG_PASS" ]]; then
-  PG_PASS="$(gen_secret)"
-  set_env POSTGRES_PASSWORD "$PG_PASS"
-  set_env_if_missing AXON_PG_URL "postgresql://axon:${PG_PASS}@axon-postgres:5432/axon"
-fi
-
-REDIS_PASS="$(grep '^REDIS_PASSWORD=' "$REPO/.env" 2>/dev/null | cut -d= -f2-)"
-if [[ -z "$REDIS_PASS" ]]; then
-  REDIS_PASS="$(gen_secret)"
-  set_env REDIS_PASSWORD "$REDIS_PASS"
-  set_env_if_missing AXON_REDIS_URL "redis://:${REDIS_PASS}@axon-redis:6379"
-fi
-
-RABBIT_PASS="$(grep '^RABBITMQ_PASS=' "$REPO/.env" 2>/dev/null | cut -d= -f2-)"
-if [[ -z "$RABBIT_PASS" ]]; then
-  RABBIT_PASS="$(gen_secret)"
-  set_env RABBITMQ_PASS "$RABBIT_PASS"
-  set_env_if_missing AXON_AMQP_URL "amqp://axon:${RABBIT_PASS}@axon-rabbitmq:5672"
-fi
-
-WEB_TOKEN="$(grep '^AXON_WEB_API_TOKEN=' "$REPO/.env" 2>/dev/null | cut -d= -f2-)"
+WEB_TOKEN="$(grep '^AXON_WEB_API_TOKEN=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)"
 if [[ -z "$WEB_TOKEN" ]]; then
   WEB_TOKEN="$(gen_secret)"
   set_env AXON_WEB_API_TOKEN         "$WEB_TOKEN"
   set_env NEXT_PUBLIC_AXON_API_TOKEN "$WEB_TOKEN"
 fi
+set_env_if_missing AXON_MCP_HTTP_TOKEN "$(gen_secret)"
 ok "Secrets verified"
 
 # ── Test infrastructure URLs — static values, backfill if absent ──────────────
-set_env_if_missing AXON_TEST_PG_URL    "postgresql://axon:axontest@127.0.0.1:53434/axon_test"
-set_env_if_missing AXON_TEST_AMQP_URL  "amqp://axon:axontest@127.0.0.1:45536/%2f"
-set_env_if_missing AXON_TEST_REDIS_URL  "redis://127.0.0.1:53380"
 set_env_if_missing AXON_TEST_QDRANT_URL "http://127.0.0.1:53335"
 ok "Test service URLs verified"
 
-CHANGE_ME_COUNT="$(grep -c 'CHANGE_ME' "$REPO/.env" || true)"
+CHANGE_ME_COUNT="$(grep -c 'CHANGE_ME' "$ENV_FILE" || true)"
 if (( CHANGE_ME_COUNT > 0 )); then
-  warn "$CHANGE_ME_COUNT value(s) in .env still need manual configuration:"
-  grep -n 'CHANGE_ME' "$REPO/.env" | sed 's/^/  /' >&2
+  warn "$CHANGE_ME_COUNT value(s) in $ENV_FILE still need manual configuration:"
+  grep -n 'CHANGE_ME' "$ENV_FILE" | sed 's/^/  /' >&2
 fi
 
 # ── Docker Infrastructure ──────────────────────────────────────────────────────
@@ -382,9 +396,9 @@ if [[ "$NO_DOCKER" == "false" ]]; then
   (cd "$REPO" && just services-up)
 
   ok "Infrastructure containers:"
-  (cd "$REPO" && docker compose -f config/docker-compose.services.yaml ps --format "  {{.Name}}: {{.Status}}" \
+  (cd "$REPO" && docker compose --env-file "$ENV_FILE" -f docker-compose.yaml ps --format "  {{.Name}}: {{.Status}}" \
     axon-qdrant axon-tei axon-chrome 2>/dev/null \
-    || docker compose -f config/docker-compose.services.yaml ps axon-qdrant axon-tei axon-chrome)
+    || docker compose --env-file "$ENV_FILE" -f docker-compose.yaml ps axon-qdrant axon-tei axon-chrome)
 fi
 
 # ── Git Hooks ──────────────────────────────────────────────────────────────────
@@ -408,7 +422,7 @@ fi
 sep
 info "Done! Next steps:"
 echo ""
-echo "  1. Edit .env and fill in any remaining CHANGE_ME values"
+echo "  1. Edit $ENV_FILE and fill in any remaining CHANGE_ME values"
 echo "     Required for full functionality:"
 echo "       TEI_URL           — text embedding service"
 echo "       OPENAI_BASE_URL   — LLM endpoint (for ask/extract)"

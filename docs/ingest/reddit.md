@@ -24,7 +24,7 @@ A Reddit **script app** with client credentials. Both `REDDIT_CLIENT_ID` and `RE
 3. Copy the **client ID** (displayed under the app name) and **client secret**
 
 ```bash
-# .env
+# ~/.axon/.env
 REDDIT_CLIENT_ID=your_client_id
 REDDIT_CLIENT_SECRET=your_client_secret
 ```
@@ -86,7 +86,7 @@ Name contains invalid characters or wrong length. Remove any `r/` prefix.
 
 **`401 Unauthorized`**
 
-Wrong `REDDIT_CLIENT_ID` or `REDDIT_CLIENT_SECRET`. Verify in `.env` and confirm the app type is **"script"** on reddit.com/prefs/apps.
+Wrong `REDDIT_CLIENT_ID` or `REDDIT_CLIENT_SECRET`. Verify in `~/.axon/.env` and confirm the app type is **"script"** on reddit.com/prefs/apps.
 
 **`403 Forbidden`**
 

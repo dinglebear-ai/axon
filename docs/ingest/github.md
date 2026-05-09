@@ -60,7 +60,7 @@ A running Qdrant + TEI stack. `GITHUB_TOKEN` is optional for public repositories
 | `TEI_URL` | Required | TEI embedding service URL |
 
 ```bash
-# .env
+# ~/.axon/.env
 GITHUB_TOKEN=ghp_your_token_here
 ```
 
@@ -169,7 +169,7 @@ All GitHub chunks carry a **unified** set of 31 `gh_*` payload fields built by `
 
 **`403 Forbidden` / rate limit errors**
 
-Set `GITHUB_TOKEN` in `.env`. Verify the token has `contents:read` access (fine-grained) or `repo` scope (classic).
+Set `GITHUB_TOKEN` in `~/.axon/.env`. Verify the token has `contents:read` access (fine-grained) or `repo` scope (classic).
 
 **`repository not found`**
 

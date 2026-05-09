@@ -19,7 +19,6 @@ from pathlib import Path
 
 REPO = Path(__file__).parent.parent
 BINARY = REPO / "target" / "release" / "axon"
-ENV_FILE = REPO / ".env"
 EXPORT = (
     REPO / ".cache/axon-rust/output/live-export-20260320-v3-rebuild-after-scrape2.json"
 )
@@ -31,8 +30,17 @@ for i, arg in enumerate(sys.argv[1:]):
     if arg == "--only" and i + 1 < len(sys.argv) - 1:
         only = sys.argv[i + 2]
 
-# ── Load .env ─────────────────────────────────────────────────────────────────
+# ── Load env ──────────────────────────────────────────────────────────────────
+def env_file_path() -> Path:
+    if path := os.environ.get("AXON_ENV_FILE"):
+        return Path(path).expanduser()
+    axon_home = Path(os.environ.get("AXON_HOME", "~/.axon")).expanduser()
+    canonical = axon_home / ".env"
+    return canonical if canonical.exists() else REPO / ".env"
+
+
 env = os.environ.copy()
+ENV_FILE = env_file_path()
 if ENV_FILE.exists():
     for line in ENV_FILE.read_text().splitlines():
         line = line.strip()

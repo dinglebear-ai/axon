@@ -68,9 +68,8 @@ axon_rust/
 ├── renovate.json                    # Dependency update bot
 ├── rust-toolchain.toml              # Rust 1.94.0 pinned toolchain
 │
-├── config/docker-compose.services.yaml # Infrastructure services
+├── docker-compose.yaml                 # Axon server + infrastructure services
 ├── .env.example                     # Environment variable template
-├── services.env                     # Infrastructure container credentials
 │
 ├── CLAUDE.md                        # Project instructions for Claude Code
 ├── AGENTS.md -> CLAUDE.md           # Codex agent alias
@@ -136,4 +135,4 @@ landing the change and add the new module under the standard `foo.rs` plus
 
 | File | Contents | Network |
 |------|----------|---------|
-| `config/docker-compose.services.yaml` | Qdrant, TEI, Chrome | `axon` bridge |
+| `docker-compose.yaml` | Axon server, Qdrant, TEI, Chrome | `axon` bridge |

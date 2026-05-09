@@ -52,7 +52,7 @@ This means they run in `just test` without error, but only exercise real I/O whe
 Start the required services explicitly, then run the full suite normally:
 
 ```bash
-just services-up      # Qdrant, TEI, Chrome from config/docker-compose.services.yaml
+just services-up      # Qdrant, TEI, Chrome from docker-compose.yaml
 just test
 ```
 
@@ -64,13 +64,13 @@ Integration suites currently covered:
 
 ## Test Infrastructure Environment Variables
 
-Set these in `.env`:
+Set these in `~/.axon/.env`:
 
 | Variable | Default (test containers) | Purpose |
 |----------|--------------------------|---------|
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Qdrant integration tests |
 
-The tracked local compose file is `config/docker-compose.services.yaml`. It
+The tracked local compose file is `docker-compose.yaml`. It
 starts the dev infrastructure stack on loopback-bound host ports:
 
 | Service | Image | Test port |
@@ -184,7 +184,7 @@ just verify
 - `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. Uses GitHub Actions service containers for Postgres, Redis, and RabbitMQ.
 - `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra` against GitHub Actions service containers.
 - `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
-- `mcp-smoke` job: builds the release binary, starts `config/docker-compose.services.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
+- `mcp-smoke` job: builds the release binary, starts `docker-compose.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
 - `msrv` job: validates declared MSRV separately.
 

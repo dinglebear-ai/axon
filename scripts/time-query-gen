@@ -7,13 +7,10 @@ set -euo pipefail
 
 TOPIC="${*:-how do you create a claude code plugin that has hooks, commands, agents, skills, and mcp server?}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if [[ -f "${SCRIPT_DIR}/../.env" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    source "${SCRIPT_DIR}/../.env"
-    set +a
-fi
+REPO="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+# shellcheck source=scripts/lib/axon-env.sh
+source "$SCRIPT_DIR/lib/axon-env.sh"
+load_axon_env_file "$REPO"
 
 PROMPT="Generate exactly 3 search queries to thoroughly research the following topic.
 Each query should approach the topic from a different angle: one broad/conceptual,

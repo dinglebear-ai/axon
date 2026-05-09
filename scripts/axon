@@ -4,13 +4,9 @@ set -euo pipefail
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd -P)"
 REPO="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
-CLI_ENV="$REPO/.env"
 
-if [[ -f "$CLI_ENV" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$CLI_ENV"
-  set +a
-fi
+# shellcheck source=scripts/lib/axon-env.sh
+source "$SCRIPT_DIR/lib/axon-env.sh"
+load_axon_env_file "$REPO"
 
 exec cargo run -q --locked --manifest-path "$REPO/Cargo.toml" --bin axon -- "$@"

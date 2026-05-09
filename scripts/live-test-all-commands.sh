@@ -17,8 +17,12 @@ SUMMARY="$OUTDIR/summary.txt"
 
 printf "id\tcommand\tinvocation\texit\tresult\tembed_expected\tembed_verified\tqdrant_before\tqdrant_after\tjob_family\tjob_id\tnotes\tlog\n" > "$REPORT"
 
-QURL="$(grep -E '^QDRANT_URL=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
-COL="$(grep -E '^AXON_COLLECTION=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
+# shellcheck source=scripts/lib/axon-env.sh
+source "$ROOT_DIR/scripts/lib/axon-env.sh"
+ENV_FILE="$(resolve_axon_env_file "$ROOT_DIR")"
+
+QURL="$(grep -E '^QDRANT_URL=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
+COL="$(grep -E '^AXON_COLLECTION=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
 [ -z "$COL" ] && COL="cortex"
 if echo "$QURL" | grep -q 'axon-qdrant'; then
   QURL="http://127.0.0.1:53333"

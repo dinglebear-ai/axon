@@ -7,8 +7,9 @@ Day-to-day development guide for the Axon MCP server.
 ```bash
 git clone https://github.com/jmagar/axon.git
 cd axon_rust
-cp .env.example .env && chmod 600 .env
-# Edit .env with your credentials
+mkdir -m 700 -p ~/.axon
+cp .env.example ~/.axon/.env && chmod 600 ~/.axon/.env
+# Edit ~/.axon/.env with your credentials
 
 just dev          # Starts infrastructure + axon serve (includes MCP HTTP on port 8001)
 ```

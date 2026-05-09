@@ -10,8 +10,13 @@ from qdrant_quality_models import NormalizedExcludePrefixes
 
 
 def load_dotenv_file() -> dict[str, str]:
-    """Parse repository .env file into key/value pairs."""
-    env_path = Path(__file__).resolve().parents[1] / ".env"
+    """Parse canonical Axon env file into key/value pairs."""
+    if env_override := os.getenv("AXON_ENV_FILE"):
+        env_path = Path(env_override).expanduser()
+    else:
+        canonical = Path(os.getenv("AXON_HOME", "~/.axon")).expanduser() / ".env"
+        repo_env = Path(__file__).resolve().parents[1] / ".env"
+        env_path = canonical if canonical.exists() else repo_env
     values: dict[str, str] = {}
     if not env_path.exists():
         return values
