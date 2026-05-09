@@ -11,7 +11,6 @@ pub const SERVER_POLL_TIMEOUT_SECS: u64 = 30;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
 const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
-const ASK_INSECURE_ENV: &str = "AXON_ASK_INSECURE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerClientErrorKind {
@@ -184,7 +183,7 @@ pub(crate) fn is_loopback_host(host_str: &str) -> bool {
 }
 
 /// Refuse cleartext bearer tokens over `http://` to non-loopback hosts unless
-/// explicitly allowed. `AXON_ASK_INSECURE` is retained as a compatibility alias.
+/// explicitly allowed.
 pub fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), ServerClientError> {
     if url.scheme() != "http" {
         return Ok(());
@@ -193,9 +192,7 @@ pub fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), ServerCli
     if is_loopback_host(host) {
         return Ok(());
     }
-    if std::env::var(INSECURE_ENV).ok().as_deref() == Some("1")
-        || std::env::var(ASK_INSECURE_ENV).ok().as_deref() == Some("1")
-    {
+    if std::env::var(INSECURE_ENV).ok().as_deref() == Some("1") {
         return Ok(());
     }
     Err(ServerClientError::new(

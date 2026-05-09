@@ -91,9 +91,6 @@ axon scrape https://example.com --local
 AXON_LOCAL_MODE=1 axon crawl https://example.com
 ```
 
-`AXON_ASK_SERVER_URL` is retained only as a compatibility alias for `axon ask`
-when `AXON_SERVER_URL` is unset. New setups should use `AXON_SERVER_URL`.
-
 If `AXON_MCP_HTTP_TOKEN` is set, the CLI refuses to send it over plaintext
 HTTP to non-loopback hosts. Use loopback, HTTPS, or set
 `AXON_SERVER_INSECURE=1` only for an explicitly trusted network.

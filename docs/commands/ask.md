@@ -28,7 +28,6 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
 | `AXON_SERVER_URL` | Optional generic server endpoint. If set, server-mode capable commands use `axon serve`; `ask` uses the same server URL. |
-| `AXON_ASK_SERVER_URL` | Deprecated compatibility alias for `ask` only when `AXON_SERVER_URL` is unset. |
 
 `ask` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
 

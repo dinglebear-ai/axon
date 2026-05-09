@@ -6,7 +6,7 @@
 //! same as the previous flat literal.
 
 use super::super::super::cli::GlobalArgs;
-use super::super::super::types::{ClientMode, CommandKind, Config};
+use super::super::super::types::{ClientMode, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_port, parse_csv_env, parse_origin_allowlist, resolve_mcp_transport, validate_custom_headers,
@@ -290,7 +290,7 @@ fn populate_misc(
     cfg.server_url = if cfg.local_mode {
         None
     } else {
-        resolve_server_url(g, cfg.command)?
+        resolve_server_url(g)?
     };
     cfg.client_mode = if cfg.server_url.is_some() {
         ClientMode::Server
@@ -300,23 +300,12 @@ fn populate_misc(
     Ok(())
 }
 
-fn resolve_server_url(
-    g: &GlobalArgs,
-    command: CommandKind,
-) -> Result<Option<reqwest::Url>, String> {
+fn resolve_server_url(g: &GlobalArgs) -> Result<Option<reqwest::Url>, String> {
     let candidate = g
         .server_url
         .as_ref()
         .map(|value| ("--server-url / AXON_SERVER_URL", value.trim().to_string()))
-        .filter(|(_, value)| !value.is_empty())
-        .or_else(|| {
-            (command == CommandKind::Ask).then(|| {
-                env::var("AXON_ASK_SERVER_URL")
-                    .ok()
-                    .map(|value| ("AXON_ASK_SERVER_URL", value.trim().to_string()))
-                    .filter(|(_, value)| !value.is_empty())
-            })?
-        });
+        .filter(|(_, value)| !value.is_empty());
 
     candidate
         .map(|(source, raw)| {

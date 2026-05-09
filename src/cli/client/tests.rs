@@ -10,7 +10,6 @@ use serial_test::serial;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
 const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
-const ASK_INSECURE_ENV: &str = "AXON_ASK_INSECURE";
 
 struct LoopbackGuard;
 
@@ -61,7 +60,6 @@ fn exposes_polling_timeout_constant() {
 #[serial]
 fn cleartext_guard_refuses_non_loopback_http() {
     let _i = EnvGuard::set(INSECURE_ENV, None);
-    let _ai = EnvGuard::set(ASK_INSECURE_ENV, None);
     let url = reqwest::Url::parse("http://example.com:8001/").unwrap();
     let err = check_cleartext_token_allowed(&url).unwrap_err();
     assert_eq!(err.kind(), ServerClientErrorKind::CleartextBearer);

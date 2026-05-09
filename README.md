@@ -227,8 +227,7 @@ All commands share global flags documented below. Commands listed as **async by 
 `AXON_SERVER_URL` turns the host CLI into a client for a running `axon serve`
 process. Supported stateful commands execute on the server and use
 server-owned job/output/artifact state. Use `--local` to force in-process CLI
-execution for one command. `AXON_ASK_SERVER_URL` is kept only as an older
-`ask` alias when `AXON_SERVER_URL` is unset.
+execution for one command.
 
 ---
 

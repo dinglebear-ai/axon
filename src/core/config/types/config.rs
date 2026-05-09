@@ -560,9 +560,7 @@ pub struct Config {
     pub local_mode: bool,
 
     /// When set, CLI commands with server-client support target this running
-    /// `axon serve` endpoint. `AXON_ASK_SERVER_URL` is accepted as an ask-era
-    /// compatibility alias only when the generic URL is unset. Flag: `--server-url`,
-    /// env: `AXON_SERVER_URL`.
+    /// `axon serve` endpoint. Flag: `--server-url`, env: `AXON_SERVER_URL`.
     ///
     /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
     /// rejected at config-build time rather than at request time.

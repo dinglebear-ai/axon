@@ -98,9 +98,7 @@ pub(crate) fn hint_for_ask_error(msg: &str) -> Option<&'static str> {
         );
     }
     if msg.starts_with("refusing to send AXON_MCP_HTTP_TOKEN") {
-        return Some(
-            "set AXON_SERVER_INSECURE=1 to override (AXON_ASK_INSECURE=1 is also accepted for compatibility), or use https / a loopback host.",
-        );
+        return Some("set AXON_SERVER_INSECURE=1 to override, or use https / a loopback host.");
     }
     None
 }

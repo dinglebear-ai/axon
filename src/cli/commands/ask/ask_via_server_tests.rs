@@ -2,7 +2,7 @@
 //!
 //! Network calls are isolated via `httpmock` (binds 127.0.0.1, which our
 //! loopback detection treats as safe). Tests that mutate environment
-//! variables (`AXON_MCP_HTTP_TOKEN`, `AXON_ASK_INSECURE`) use `serial_test`
+//! variables (`AXON_MCP_HTTP_TOKEN`, `AXON_SERVER_INSECURE`) use `serial_test`
 //! to avoid cross-test races and snapshot+restore the previous value
 //! inside each test.
 //!
@@ -22,7 +22,7 @@ use serial_test::serial;
 use std::net::TcpListener;
 
 const TOKEN_ENV: &str = "AXON_MCP_HTTP_TOKEN";
-const INSECURE_ENV: &str = "AXON_ASK_INSECURE";
+const INSECURE_ENV: &str = "AXON_SERVER_INSECURE";
 
 struct LoopbackGuard;
 
@@ -123,7 +123,7 @@ fn hint_for_ask_error_routes_each_class_correctly() {
     assert!(
         hint_for_ask_error("refusing to send AXON_MCP_HTTP_TOKEN over plaintext HTTP ...")
             .unwrap()
-            .contains("AXON_ASK_INSECURE=1")
+            .contains("AXON_SERVER_INSECURE=1")
     );
     assert!(hint_for_ask_error("server returned 500 ...").is_none());
     assert!(hint_for_ask_error("totally unrelated").is_none());
@@ -366,7 +366,7 @@ async fn ask_via_server_refuses_token_over_http_to_non_loopback() {
     assert!(
         hint_for_ask_error(&msg)
             .unwrap()
-            .contains("AXON_ASK_INSECURE=1")
+            .contains("AXON_SERVER_INSECURE=1")
     );
 }
 

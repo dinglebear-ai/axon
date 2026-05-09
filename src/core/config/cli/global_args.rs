@@ -375,9 +375,6 @@ pub(in crate::core::config) struct GlobalArgs {
 
     /// Route supported commands through a running `axon serve` HTTP endpoint.
     /// Example: `--server-url http://127.0.0.1:8001`. Env: `AXON_SERVER_URL`.
-    /// `AXON_ASK_SERVER_URL` remains an ask-era compatibility alias when this
-    /// generic URL is unset.
-    ///
     /// Parsed into a `url::Url` at config-build time; malformed values are rejected with a
     /// clear error before any command runs. If the resolved scheme is `http` and the host
     /// is non-loopback, the CLI refuses to attach `AXON_MCP_HTTP_TOKEN` (cleartext-bearer
