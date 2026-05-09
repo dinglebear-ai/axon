@@ -64,7 +64,7 @@ services:
       axon-chrome:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H \"Authorization: Bearer ${AXON_MCP_HTTP_TOKEN:-}\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"docker-healthcheck\",\"version\":\"1.0\"}}}' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8001/mcp -X POST -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H \"Authorization: Bearer $${AXON_MCP_HTTP_TOKEN:-}\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"docker-healthcheck\",\"version\":\"1.0\"}}}' >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -305,12 +305,18 @@ else
 fi
 
 # ── AXON_HOME / AXON_DATA_DIR — keep Compose and CLI aligned ──────────────────
+SOURCE_ENV_FILE="$ENV_FILE"
 EXISTING_AXON_HOME="$(grep '^AXON_HOME=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d "'\"")"
 if [[ -n "$EXISTING_AXON_HOME" && "$AXON_HOME" == "$HOME/.axon" ]]; then
   AXON_HOME="${EXISTING_AXON_HOME/#\~/$HOME}"
   ENV_FILE="$AXON_HOME/.env"
   mkdir -p "$AXON_HOME"
   chmod 700 "$AXON_HOME" 2>/dev/null || true
+  if [[ ! -f "$ENV_FILE" && -f "$SOURCE_ENV_FILE" ]]; then
+    cp "$SOURCE_ENV_FILE" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    ok "Migrated existing env to ${ENV_FILE}"
+  fi
 fi
 
 if [[ -z "$AXON_HOME" || "$AXON_HOME" == *CHANGE_ME* ]]; then

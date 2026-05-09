@@ -150,7 +150,8 @@ services-up:
 
 # Stop infrastructure services
 services-down:
-    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml down
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml stop axon-qdrant axon-tei axon-chrome
+    docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml rm -f axon-qdrant axon-tei axon-chrome
 
 # Backward-compatible aliases used by setup/docs for local infra.
 test-infra-up:

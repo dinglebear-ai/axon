@@ -17,11 +17,9 @@ SUMMARY="$OUTDIR/summary.txt"
 
 printf "id\tcommand\tinvocation\texit\tresult\tembed_expected\tembed_verified\tqdrant_before\tqdrant_after\tjob_family\tjob_id\tnotes\tlog\n" > "$REPORT"
 
-AXON_HOME="${AXON_HOME:-$HOME/.axon}"
-ENV_FILE="${AXON_ENV_FILE:-$AXON_HOME/.env}"
-if [ ! -f "$ENV_FILE" ] && [ -f "$ROOT_DIR/.env" ]; then
-  ENV_FILE="$ROOT_DIR/.env"
-fi
+# shellcheck source=scripts/lib/axon-env.sh
+source "$ROOT_DIR/scripts/lib/axon-env.sh"
+ENV_FILE="$(resolve_axon_env_file "$ROOT_DIR")"
 
 QURL="$(grep -E '^QDRANT_URL=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
 COL="$(grep -E '^AXON_COLLECTION=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"

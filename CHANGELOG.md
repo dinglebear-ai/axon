@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-05-09
+
 ### Changed
 
 - config: make `~/.axon` the canonical appdata root for Compose, plugin setup, CLI wrappers, generated artifacts, and service state; keep Docker-host relocation behind `AXON_HOME` and publish MCP HTTP loopback-only by default.

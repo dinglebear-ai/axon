@@ -22,8 +22,23 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.yaml must keep MCP HTTP loopback-only by default"
     );
     assert!(
+        compose.contains("$${AXON_MCP_HTTP_TOKEN:-}"),
+        "docker-compose.yaml healthcheck must read the token from the container env"
+    );
+    assert!(
         compose.contains("AXON_HOME: /home/axon/.axon"),
         "docker-compose.yaml must override host AXON_HOME inside the container"
+    );
+}
+
+#[test]
+fn dockerfile_secret_scan_fails_closed() {
+    let dockerfile =
+        fs::read_to_string("config/Dockerfile").expect("Dockerfile should be readable");
+
+    assert!(
+        dockerfile.contains("status=\"$?\"") && dockerfile.contains("\"$status\" -ne 1"),
+        "Dockerfile secret scan should treat grep errors as build failures"
     );
 }
 
@@ -55,6 +70,36 @@ fn ci_env_file_contains_compose_interpolation_values() {
 }
 
 #[test]
+fn version_bearing_files_stay_in_sync() {
+    let cargo = fs::read_to_string("Cargo.toml").expect("Cargo.toml should be readable");
+    let package =
+        fs::read_to_string("apps/web/package.json").expect("web package should be readable");
+    let changelog = fs::read_to_string("CHANGELOG.md").expect("CHANGELOG should be readable");
+    let readme = fs::read_to_string("README.md").expect("README should be readable");
+
+    let version_line = cargo
+        .lines()
+        .find(|line| line.starts_with("version = "))
+        .expect("Cargo.toml should declare package version");
+    let version = version_line
+        .trim_start_matches("version = ")
+        .trim_matches('"');
+
+    assert!(
+        package.contains(&format!("\"version\": \"{version}\"")),
+        "apps/web/package.json should match Cargo.toml version"
+    );
+    assert!(
+        changelog.contains(&format!("## [{version}]")),
+        "CHANGELOG.md should contain a section for the Cargo.toml version"
+    );
+    assert!(
+        readme.contains(&format!("Version: {version}")),
+        "README.md version line should match Cargo.toml version"
+    );
+}
+
+#[test]
 fn plugin_setup_uses_canonical_axon_home() {
     let setup = fs::read_to_string("scripts/plugin-setup.sh")
         .expect("scripts/plugin-setup.sh should be readable");
@@ -82,6 +127,11 @@ fn plugin_setup_uses_canonical_axon_home() {
         "plugin setup should preserve existing canonical values when plugin options are omitted"
     );
     assert!(
+        setup.contains("systemctl --user enable axon-mcp")
+            && setup.contains("systemctl --user restart axon-mcp"),
+        "plugin setup should restart an active unit after env or unit changes"
+    );
+    assert!(
         readme.contains("~/.axon/.env"),
         "plugin docs should document the canonical env path"
     );
@@ -94,6 +144,15 @@ fn services_up_starts_only_infrastructure_services() {
     assert!(
         justfile.contains("up -d axon-qdrant axon-tei axon-chrome"),
         "just services-up should keep its infrastructure-only contract"
+    );
+    assert!(
+        justfile.contains("stop axon-qdrant axon-tei axon-chrome")
+            && justfile.contains("rm -f axon-qdrant axon-tei axon-chrome"),
+        "just services-down should stop only infrastructure services"
+    );
+    assert!(
+        !justfile.contains("-f docker-compose.yaml down"),
+        "just services-down must not tear down the whole compose project"
     );
 }
 
@@ -164,4 +223,32 @@ fn dev_setup_keeps_axon_home_and_data_dir_aligned() {
         !setup.contains("read -r -p \"  AXON_DATA_DIR"),
         "dev setup should not prompt separately for AXON_DATA_DIR"
     );
+    assert!(
+        setup.contains("Migrated existing env to"),
+        "dev setup should migrate an existing canonical env when AXON_HOME relocates"
+    );
+}
+
+#[test]
+fn shell_scripts_share_canonical_env_resolution() {
+    let helper =
+        fs::read_to_string("scripts/lib/axon-env.sh").expect("env helper should be readable");
+
+    assert!(
+        helper.contains("resolve_axon_env_file") && helper.contains("load_axon_env_file"),
+        "shared env helper should expose resolution and loading functions"
+    );
+
+    for path in [
+        "scripts/axon",
+        "scripts/searxng-research",
+        "scripts/time-query-gen",
+        "scripts/live-test-all-commands.sh",
+    ] {
+        let script = fs::read_to_string(path).expect("script should be readable");
+        assert!(
+            script.contains("scripts/lib/axon-env.sh") || script.contains("lib/axon-env.sh"),
+            "{path} should use the shared canonical env resolver"
+        );
+    }
 }

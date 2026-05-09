@@ -70,18 +70,18 @@ AXON_MCP_HTTP_PORT=${mcp_port}
 AXON_MCP_HTTP_TOKEN=${API_TOKEN}
 EOF
 )
-  [[ -n "${allowed_origins}" ]] && managed_env="${managed_env}
-AXON_MCP_ALLOWED_ORIGINS=${allowed_origins}"
-  [[ -n "${auth_mode}" ]] && managed_env="${managed_env}
-AXON_MCP_AUTH_MODE=${auth_mode}"
-  [[ -n "${public_url}" ]] && managed_env="${managed_env}
-AXON_MCP_PUBLIC_URL=${public_url}"
-  [[ -n "${google_client_id}" ]] && managed_env="${managed_env}
-AXON_MCP_GOOGLE_CLIENT_ID=${google_client_id}"
-  [[ -n "${google_client_secret}" ]] && managed_env="${managed_env}
-AXON_MCP_GOOGLE_CLIENT_SECRET=${google_client_secret}"
-  [[ -n "${admin_email}" ]] && managed_env="${managed_env}
-AXON_MCP_AUTH_ADMIN_EMAIL=${admin_email}"
+  append_managed_env_if_set() {
+    local key="$1" value="$2"
+    [[ -n "${value}" ]] || return 0
+    managed_env="${managed_env}
+${key}=${value}"
+  }
+  append_managed_env_if_set AXON_MCP_ALLOWED_ORIGINS "${allowed_origins}"
+  append_managed_env_if_set AXON_MCP_AUTH_MODE "${auth_mode}"
+  append_managed_env_if_set AXON_MCP_PUBLIC_URL "${public_url}"
+  append_managed_env_if_set AXON_MCP_GOOGLE_CLIENT_ID "${google_client_id}"
+  append_managed_env_if_set AXON_MCP_GOOGLE_CLIENT_SECRET "${google_client_secret}"
+  append_managed_env_if_set AXON_MCP_AUTH_ADMIN_EMAIL "${admin_email}"
 
   local managed_keys=(
     QDRANT_URL TEI_URL AXON_COLLECTION AXON_HOME AXON_DATA_DIR
@@ -154,8 +154,10 @@ EOF
 
   if [[ "${unit_changed}" == "true" ]]; then
     systemctl --user daemon-reload
-    systemctl --user enable --now axon-mcp
-  elif [[ "${env_changed}" == "true" ]]; then
+    systemctl --user enable axon-mcp
+  fi
+
+  if [[ "${unit_changed}" == "true" || "${env_changed}" == "true" ]]; then
     systemctl --user restart axon-mcp
   elif ! systemctl --user is-active --quiet axon-mcp; then
     systemctl --user start axon-mcp

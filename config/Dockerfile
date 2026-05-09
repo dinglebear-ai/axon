@@ -20,9 +20,17 @@ COPY . .
 # The embedded web bundle is generated output. Fail closed if a stale local
 # export contains secrets before RustEmbed bakes it into the binary.
 RUN if [ -d apps/web/out ]; then \
-        ! grep -RIEn \
+        grep -RIEn \
           'AXON_.*TOKEN|NEXT_PUBLIC_.*TOKEN|OPENAI_API_KEY|TAVILY_API_KEY|REDDIT_CLIENT_SECRET|Bearer[[:space:]]+[A-Za-z0-9._~+/-]+' \
           apps/web/out; \
+        status="$?"; \
+        if [ "$status" -eq 0 ]; then \
+          echo "secret-like content found in apps/web/out" >&2; \
+          exit 1; \
+        elif [ "$status" -ne 1 ]; then \
+          echo "secret scan failed for apps/web/out" >&2; \
+          exit "$status"; \
+        fi; \
     fi
 
 # Use BuildKit cache mounts for the Cargo registry, git index, and target

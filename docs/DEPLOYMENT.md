@@ -59,7 +59,7 @@ It is idempotent — safe to re-run. What it does:
 6. Checks Node.js ≥ v24 and pnpm ≥ v10; installs if missing.
 7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
-9. **Prompts for `AXON_DATA_DIR`** (default `~/.axon`, flat layout — no nested `axon/` subdir) and pre-creates all container volume directories under it.
+9. **Prompts for `AXON_HOME`** (default `~/.axon`, flat layout — no nested `axon/` subdir), derives `AXON_DATA_DIR="$AXON_HOME"`, and pre-creates all container volume directories under it.
 10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome`).
 11. Installs git hooks via `scripts/install-git-hooks.sh`.
 
@@ -99,13 +99,10 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 
 ### Test infrastructure
 
-These are backfilled automatically by `dev-setup.sh` and point to the test infrastructure stack:
+This is backfilled automatically by `dev-setup.sh` and points to the current lite test infrastructure:
 
 | Variable | Default |
 |----------|---------|
-| `AXON_TEST_PG_URL` | `postgresql://axon:axontest@127.0.0.1:53434/axon_test` |
-| `AXON_TEST_AMQP_URL` | `amqp://axon:axontest@127.0.0.1:45536/%2f` |
-| `AXON_TEST_REDIS_URL` | `redis://127.0.0.1:53380` |
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` |
 
 ### CLI binary override

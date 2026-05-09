@@ -15,21 +15,11 @@ set -euo pipefail
 QUERY="${*:?Usage: $(basename "$0") <query>}"
 SEARXNG_URL="${SEARXNG_URL:-https://s.tootie.tv}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 AXON="${AXON:-$SCRIPT_DIR/axon}"
-AXON_HOME="${AXON_HOME:-$HOME/.axon}"
-ENV_FILE="${AXON_ENV_FILE:-$AXON_HOME/.env}"
-
-if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    source "$ENV_FILE"
-    set +a
-elif [[ -f "${SCRIPT_DIR}/../.env" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    source "${SCRIPT_DIR}/../.env"
-    set +a
-fi
+# shellcheck source=scripts/lib/axon-env.sh
+source "$SCRIPT_DIR/lib/axon-env.sh"
+load_axon_env_file "$REPO"
 
 t0=$(date +%s%3N)
 ts() { echo $(( $(date +%s%3N) - t0 ))ms; }
