@@ -318,8 +318,9 @@ fn toml_ask_min_relevance_score_clamps_upper_bound() {
 fn server_url_trims_and_ignores_empty_values() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut got = false;
-    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
-        env::set_var("AXON_ASK_SERVER_URL", "   ");
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_SERVER_URL", "   ");
+        env::remove_var("AXON_ASK_SERVER_URL");
         got = into_config(cli_with_services(&["status"]))
             .unwrap()
             .server_url
@@ -334,11 +335,12 @@ fn server_url_trims_and_ignores_empty_values() {
 fn server_url_rejects_malformed_values() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut err = String::new();
-    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
-        env::set_var("AXON_ASK_SERVER_URL", "://not-a-url");
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_SERVER_URL", "://not-a-url");
+        env::remove_var("AXON_ASK_SERVER_URL");
         err = into_config(cli_with_services(&["status"])).unwrap_err();
     });
-    assert!(err.contains("invalid --server-url / AXON_ASK_SERVER_URL"));
+    assert!(err.contains("invalid --server-url / AXON_SERVER_URL"));
 }
 
 #[allow(unsafe_code)]
@@ -347,8 +349,9 @@ fn server_url_rejects_malformed_values() {
 fn server_url_accepts_trimmed_values() {
     let _guard = ENV_LOCK.lock().unwrap();
     let mut got = String::new();
-    with_env_saved(&["AXON_ASK_SERVER_URL"], || unsafe {
-        env::set_var("AXON_ASK_SERVER_URL", "  http://127.0.0.1:8001/base  ");
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_SERVER_URL", "  http://127.0.0.1:8001/base  ");
+        env::remove_var("AXON_ASK_SERVER_URL");
         got = into_config(cli_with_services(&["status"]))
             .unwrap()
             .server_url
@@ -356,4 +359,102 @@ fn server_url_accepts_trimmed_values() {
             .to_string();
     });
     assert_eq!(got, "http://127.0.0.1:8001/base");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn generic_server_url_env_enables_server_mode() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut got = None;
+    let mut mode = crate::core::config::types::ClientMode::Local;
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001");
+        env::remove_var("AXON_ASK_SERVER_URL");
+        let cfg = into_config(cli_with_services(&["status"])).unwrap();
+        got = cfg.server_url.map(|url| url.to_string());
+        mode = cfg.client_mode;
+    });
+    assert_eq!(got.as_deref(), Some("http://127.0.0.1:8001/"));
+    assert_eq!(mode, crate::core::config::types::ClientMode::Server);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn cli_server_url_overrides_generic_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut got = String::new();
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001/env");
+        env::remove_var("AXON_ASK_SERVER_URL");
+        got = into_config(cli_with_services(&[
+            "--server-url",
+            "http://127.0.0.1:9000/cli",
+            "status",
+        ]))
+        .unwrap()
+        .server_url
+        .unwrap()
+        .to_string();
+    });
+    assert_eq!(got, "http://127.0.0.1:9000/cli");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn ask_server_url_alias_used_only_when_generic_unset() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut alias = String::new();
+    let mut generic = String::new();
+    let mut status_url_is_none = false;
+    with_env_saved(&["AXON_SERVER_URL", "AXON_ASK_SERVER_URL"], || unsafe {
+        env::remove_var("AXON_SERVER_URL");
+        env::set_var("AXON_ASK_SERVER_URL", "http://127.0.0.1:8001/ask-alias");
+        alias = into_config(cli_with_services(&["ask", "what is indexed?"]))
+            .unwrap()
+            .server_url
+            .unwrap()
+            .to_string();
+        status_url_is_none = into_config(cli_with_services(&["status"]))
+            .unwrap()
+            .server_url
+            .is_none();
+
+        env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001/generic");
+        generic = into_config(cli_with_services(&["ask", "what is indexed?"]))
+            .unwrap()
+            .server_url
+            .unwrap()
+            .to_string();
+    });
+    assert_eq!(alias, "http://127.0.0.1:8001/ask-alias");
+    assert!(status_url_is_none);
+    assert_eq!(generic, "http://127.0.0.1:8001/generic");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn explicit_local_mode_bypasses_server_url() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut server_url_is_none = false;
+    let mut local_mode = false;
+    let mut mode = crate::core::config::types::ClientMode::Server;
+    with_env_saved(
+        &["AXON_SERVER_URL", "AXON_ASK_SERVER_URL", "AXON_LOCAL_MODE"],
+        || unsafe {
+            env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001");
+            env::remove_var("AXON_ASK_SERVER_URL");
+            env::remove_var("AXON_LOCAL_MODE");
+            let cfg = into_config(cli_with_services(&["--local", "status"])).unwrap();
+            server_url_is_none = cfg.server_url.is_none();
+            local_mode = cfg.local_mode;
+            mode = cfg.client_mode;
+        },
+    );
+    assert!(server_url_is_none);
+    assert!(local_mode);
+    assert_eq!(mode, crate::core::config::types::ClientMode::Local);
 }

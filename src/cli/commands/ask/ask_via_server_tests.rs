@@ -12,7 +12,8 @@
 //! state, and it's gated behind `#[serial]` to prevent races.
 #![allow(unsafe_code)]
 
-use super::{ask_via_server, check_cleartext_token_allowed, hint_for_ask_error};
+use super::{ask_via_server, hint_for_ask_error};
+use crate::cli::client::check_cleartext_token_allowed;
 use crate::core::config::Config;
 use crate::core::http::set_allow_loopback;
 use httpmock::prelude::*;
@@ -170,9 +171,10 @@ fn cleartext_gate_refuses_http_non_loopback() {
     let _g = EnvGuard::set(INSECURE_ENV, None);
     let url = reqwest::Url::parse("http://example.com:8001/").unwrap();
     let err = check_cleartext_token_allowed(&url).unwrap_err();
-    assert!(err.contains("refusing to send AXON_MCP_HTTP_TOKEN"));
-    assert!(err.contains("example.com"));
-    assert!(err.contains("AXON_ASK_INSECURE=1"));
+    let msg = err.to_string();
+    assert!(msg.contains("refusing to send AXON_MCP_HTTP_TOKEN"));
+    assert!(msg.contains("example.com"));
+    assert!(msg.contains("AXON_SERVER_INSECURE=1"));
 }
 
 #[test]

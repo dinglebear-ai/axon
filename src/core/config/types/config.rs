@@ -1,6 +1,6 @@
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    ClientMode, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
+    RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 use std::path::PathBuf;
 
@@ -551,9 +551,18 @@ pub struct Config {
     /// Suppress spinners and progress output while keeping JSON/data output intact. Flag: `--quiet`.
     pub quiet: bool,
 
-    /// When set, `axon ask` POSTs to `<server_url>/v1/ask` on a running `axon serve` instance
-    /// instead of running Gemini synthesis in-process. Reuses the server path so LLM startup (~45s) is paid once at server boot. Flag: `--server-url`,
-    /// env: `AXON_ASK_SERVER_URL`. When unset, ask runs in-process.
+    /// CLI execution mode. `Server` means the command should use the configured
+    /// `axon serve` endpoint when the command has a server client path.
+    pub client_mode: ClientMode,
+
+    /// Explicit local override. When true, CLI commands bypass server-client
+    /// dispatch even if `--server-url` / `AXON_SERVER_URL` is configured.
+    pub local_mode: bool,
+
+    /// When set, CLI commands with server-client support target this running
+    /// `axon serve` endpoint. `AXON_ASK_SERVER_URL` is accepted as an ask-era
+    /// compatibility alias only when the generic URL is unset. Flag: `--server-url`,
+    /// env: `AXON_SERVER_URL`.
     ///
     /// Stored as a parsed `reqwest::Url` (re-export of `url::Url`) so malformed values are
     /// rejected at config-build time rather than at request time.
