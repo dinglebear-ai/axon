@@ -162,20 +162,23 @@ fn mcporter_prefers_canonical_env_with_repo_fallback() {
         .expect("config/mcporter.json should be readable");
 
     assert!(
-        config.contains("ENV_FILE=\\\"${AXON_ENV_FILE:-$AXON_HOME/.env}\\\""),
-        "mcporter config should prefer the canonical env file"
-    );
-    assert!(
-        config.contains("elif [ -f ./.env ]; then source ./.env; fi"),
-        "mcporter config may keep repo .env as an explicit development fallback"
+        config.contains("scripts/mcporter-axon"),
+        "mcporter config should delegate shell setup to a wrapper script"
     );
     assert!(
         !config.contains("\"AXON_HOME\": \"${HOME}/.axon\""),
         "mcporter static env must not preserve a literal ${{HOME}} value"
     );
+
+    let wrapper =
+        fs::read_to_string("scripts/mcporter-axon").expect("mcporter wrapper should be readable");
     assert!(
-        config.contains("AXON_HOME=\\\"${AXON_HOME:-$HOME/.axon}\\\""),
-        "mcporter shell command should compute AXON_HOME after env loading"
+        wrapper.contains("load_axon_env_file \"$REPO_ROOT\""),
+        "mcporter wrapper should prefer the shared canonical env loader"
+    );
+    assert!(
+        wrapper.contains("AXON_HOME=\"${AXON_HOME:-$HOME/.axon}\""),
+        "mcporter wrapper should compute AXON_HOME after env loading"
     );
 }
 
@@ -226,6 +229,10 @@ fn dev_setup_keeps_axon_home_and_data_dir_aligned() {
     assert!(
         setup.contains("Migrated existing env to"),
         "dev setup should migrate an existing canonical env when AXON_HOME relocates"
+    );
+    assert!(
+        setup.contains("Moved initial env to"),
+        "dev setup should move the initial env when an interactive AXON_HOME override relocates it"
     );
 }
 

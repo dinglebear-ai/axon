@@ -4,7 +4,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "REPO_ROOT=\"${AXON_REPO_ROOT:-$PWD}\" && cd \"$REPO_ROOT\" && AXON_HOME=\"${AXON_HOME:-$HOME/.axon}\" && ENV_FILE=\"${AXON_ENV_FILE:-$AXON_HOME/.env}\" && set -a && if [ -f \"$ENV_FILE\" ]; then source \"$ENV_FILE\"; elif [ -f ./.env ]; then source ./.env; fi && set +a && AXON_HOME=\"${AXON_HOME:-$HOME/.axon}\" && export AXON_HOME AXON_DATA_DIR=\"${AXON_DATA_DIR:-$AXON_HOME}\" AXON_LOG_FILE=\"${AXON_LOG_FILE:-$AXON_HOME/logs/mcporter-axon.log}\" AXON_SQLITE_PATH=\"${AXON_SQLITE_PATH:-$AXON_HOME/mcporter-jobs.db}\" AXON_LITE=\"${AXON_LITE:-0}\" AXON_MCP_TRANSPORT=stdio AXON_PG_URL=\"${AXON_PG_MCP_URL:-${AXON_PG_URL:-}}\" && exec ./target/debug/axon mcp"
+        "exec \"${AXON_REPO_ROOT:-$PWD}/scripts/mcporter-axon\""
       ],
       "env": {
         "AXON_MCP_TRANSPORT": "stdio"

@@ -180,10 +180,8 @@ mod tests {
 
     #[test]
     fn display_embed_input_uses_crawl_url_for_domain_output_path() {
-        let crawl_id = match uuid::Uuid::parse_str("2313c2c5-29b8-46a6-a98d-2338f6b09a9d") {
-            Ok(id) => id,
-            Err(err) => panic!("test UUID should parse: {err}"),
-        };
+        let crawl_id = uuid::Uuid::parse_str("2313c2c5-29b8-46a6-a98d-2338f6b09a9d")
+            .expect("test UUID should parse");
         let mut crawl_url_map = std::collections::HashMap::new();
         crawl_url_map.insert(crawl_id, "https://mem0.ai/");
 

@@ -129,13 +129,13 @@ Ensure `.env` is never committed. `.env.example` remains tracked.
 ./scripts/dev-setup.sh
 ```
 
-2. Pull/build images:
+1. Pull/build images:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.yaml build
 ```
 
-3. Start the stack:
+1. Start the stack:
 
 **Local service deployment** (infra in Docker, app stack supervised locally):
 
@@ -167,7 +167,7 @@ just dev
 
 `axon serve` now verifies required infra health, then supervises the bridge backend, MCP HTTP server, local workers, shell server, and Next.js dev server. `just dev` is a thin wrapper that starts infra first and then runs `axon serve`.
 
-4. Verify health:
+1. Verify health:
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps

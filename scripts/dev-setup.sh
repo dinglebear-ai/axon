@@ -301,8 +301,10 @@ if [[ -f "$ENV_FILE" ]]; then
 else
   cp "$REPO/.env.example" "$ENV_FILE"
   chmod 600 "$ENV_FILE"
+  CREATED_INITIAL_ENV=true
   ok "$ENV_FILE created from .env.example"
 fi
+CREATED_INITIAL_ENV="${CREATED_INITIAL_ENV:-false}"
 
 # ── AXON_HOME / AXON_DATA_DIR — keep Compose and CLI aligned ──────────────────
 SOURCE_ENV_FILE="$ENV_FILE"
@@ -339,6 +341,11 @@ AXON_DATA_DIR="$AXON_HOME"
 ENV_FILE="$AXON_HOME/.env"
 mkdir -p "$AXON_HOME"
 chmod 700 "$AXON_HOME" 2>/dev/null || true
+if [[ ! -f "$ENV_FILE" && "$CREATED_INITIAL_ENV" == "true" && "$SOURCE_ENV_FILE" != "$ENV_FILE" && -f "$SOURCE_ENV_FILE" ]]; then
+  mv "$SOURCE_ENV_FILE" "$ENV_FILE"
+  rmdir "$(dirname "$SOURCE_ENV_FILE")" 2>/dev/null || true
+  ok "Moved initial env to ${ENV_FILE}"
+fi
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$REPO/.env.example" "$ENV_FILE"
   chmod 600 "$ENV_FILE"

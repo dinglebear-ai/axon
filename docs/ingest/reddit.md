@@ -24,7 +24,7 @@ A Reddit **script app** with client credentials. Both `REDDIT_CLIENT_ID` and `RE
 3. Copy the **client ID** (displayed under the app name) and **client secret**
 
 ```bash
-# .env
+# ~/.axon/.env
 REDDIT_CLIENT_ID=your_client_id
 REDDIT_CLIENT_SECRET=your_client_secret
 ```

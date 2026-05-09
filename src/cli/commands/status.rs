@@ -62,7 +62,10 @@ async fn run_status_impl(
     let crawl_url_map: HashMap<uuid::Uuid, &str> = jobs
         .crawl
         .iter()
-        .filter_map(|job| job.url.as_deref().map(|url| (job.id, url)))
+        .filter_map(|job| {
+            let url = job.url.as_deref()?;
+            Some((job.id, url))
+        })
         .collect();
     let embed_jobs_by_id: HashMap<String, &ServiceJob> = jobs
         .embed

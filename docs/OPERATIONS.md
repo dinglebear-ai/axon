@@ -253,7 +253,7 @@ restart from `pending`.
 
 Qdrant data is persisted at the host bind mount declared in `docker-compose.yaml`:
 
-```
+```bash
 ${AXON_HOME:-$HOME/.axon}/qdrant
 ```
 
