@@ -1,5 +1,6 @@
 use super::super::common::{internal_error, invalid_params};
 use crate::core::paths::axon_data_base_dir;
+use crate::services::types::ArtifactHandle;
 use rmcp::ErrorData;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -176,6 +177,12 @@ pub async fn validate_artifact_path(raw: &str) -> Result<PathBuf, ErrorData> {
         .await
         .map_err(|e| internal_error(e.to_string()))?;
     let candidate = PathBuf::from(raw);
+    if candidate.as_os_str().is_empty() {
+        return Err(invalid_params("artifact path cannot be empty"));
+    }
+    if !candidate.is_absolute() {
+        reject_relative_traversal(&candidate, "artifact path")?;
+    }
     let canonical = if candidate.is_absolute() {
         tokio::fs::canonicalize(&candidate)
             .await
@@ -208,6 +215,46 @@ pub async fn validate_artifact_path(raw: &str) -> Result<PathBuf, ErrorData> {
     Ok(canonical)
 }
 
+fn reject_relative_traversal(candidate: &Path, label: &str) -> Result<(), ErrorData> {
+    if candidate.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    }) {
+        return Err(invalid_params(format!(
+            "{label} cannot contain traversal components"
+        )));
+    }
+    Ok(())
+}
+
+pub async fn artifact_handle_for_path(
+    kind: &str,
+    path: &Path,
+    bytes: u64,
+    line_count: Option<u64>,
+    job_id: Option<String>,
+    url: Option<String>,
+) -> Result<ArtifactHandle, ErrorData> {
+    let root = tokio::fs::canonicalize(ensure_artifact_root().await?)
+        .await
+        .map_err(|e| internal_error(e.to_string()))?;
+    let canonical = tokio::fs::canonicalize(path)
+        .await
+        .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?;
+    if !canonical.starts_with(&root) {
+        return Err(invalid_params(format!(
+            "artifact path must be inside {}",
+            root.display()
+        )));
+    }
+    ArtifactHandle::try_from_path(kind, &root, &canonical, bytes, line_count, job_id, url)
+        .ok_or_else(|| invalid_params(format!("artifact path must be inside {}", root.display())))
+}
+
 pub async fn resolve_artifact_output_path(raw: &str) -> Result<PathBuf, ErrorData> {
     let candidate = PathBuf::from(raw);
     if candidate.as_os_str().is_empty() {
@@ -219,22 +266,28 @@ pub async fn resolve_artifact_output_path(raw: &str) -> Result<PathBuf, ErrorDat
             ensure_artifact_root().await?.display()
         )));
     }
-    if candidate.components().any(|c| {
-        matches!(
-            c,
-            std::path::Component::ParentDir
-                | std::path::Component::RootDir
-                | std::path::Component::Prefix(_)
-        )
-    }) {
-        return Err(invalid_params(
-            "output path cannot contain traversal components",
-        ));
+    reject_relative_traversal(&candidate, "output path")?;
+    let root = ensure_artifact_root().await?;
+    let resolved = root.join(candidate);
+    if let Some(parent) = resolved.parent() {
+        let canonical_root = tokio::fs::canonicalize(&root)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+        if tokio::fs::try_exists(parent)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?
+        {
+            let canonical_parent = tokio::fs::canonicalize(parent)
+                .await
+                .map_err(|e| invalid_params(format!("output path parent invalid: {e}")))?;
+            if !canonical_parent.starts_with(&canonical_root) {
+                return Err(invalid_params(format!(
+                    "output path must stay inside {}",
+                    canonical_root.display()
+                )));
+            }
+        }
     }
-    // No symlink check needed here. The path is constructed from
-    // ensure_artifact_root() + a validated relative candidate with no traversal
-    // components. Write targets stay within the root's subtree by construction.
-    let resolved = ensure_artifact_root().await?.join(candidate);
     Ok(resolved)
 }
 
@@ -325,6 +378,78 @@ mod tests {
         assert_eq!(path, root.join("crawl").join("status-1234.json"));
 
         // SAFETY: guarded by ENV_CWD_LOCK; no concurrent env mutation in this module.
+        unsafe {
+            env::remove_var(MCP_ARTIFACT_DIR_ENV);
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn validate_artifact_path_rejects_relative_traversal() {
+        let _guard = ENV_CWD_LOCK.lock().expect("lock poisoned");
+        let tmp = tempdir().expect("tempdir");
+        unsafe {
+            env::set_var(MCP_ARTIFACT_DIR_ENV, tmp.path());
+        }
+
+        let err = validate_artifact_path("../outside.json")
+            .await
+            .expect_err("traversal must fail");
+        assert!(err.message.contains("traversal"));
+
+        unsafe {
+            env::remove_var(MCP_ARTIFACT_DIR_ENV);
+        }
+    }
+
+    #[cfg(unix)]
+    #[allow(unsafe_code)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn validate_artifact_path_rejects_symlink_escape() {
+        let _guard = ENV_CWD_LOCK.lock().expect("lock poisoned");
+        let tmp = tempdir().expect("tempdir");
+        unsafe {
+            env::set_var(MCP_ARTIFACT_DIR_ENV, tmp.path());
+        }
+
+        let root = ensure_artifact_root().await.expect("artifact root");
+        let outside = tmp.path().join("outside.txt");
+        fs::write(&outside, "outside").expect("outside file");
+        std::os::unix::fs::symlink(&outside, root.join("escape.txt")).expect("symlink");
+
+        let err = validate_artifact_path("escape.txt")
+            .await
+            .expect_err("symlink escape must fail");
+        assert!(err.message.contains("inside"));
+
+        unsafe {
+            env::remove_var(MCP_ARTIFACT_DIR_ENV);
+        }
+    }
+
+    #[cfg(unix)]
+    #[allow(unsafe_code)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn resolve_artifact_output_path_rejects_symlink_parent_escape() {
+        let _guard = ENV_CWD_LOCK.lock().expect("lock poisoned");
+        let tmp = tempdir().expect("tempdir");
+        unsafe {
+            env::set_var(MCP_ARTIFACT_DIR_ENV, tmp.path());
+        }
+
+        let root = ensure_artifact_root().await.expect("artifact root");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&outside).expect("outside dir");
+        std::os::unix::fs::symlink(&outside, root.join("escape")).expect("symlink");
+
+        let err = resolve_artifact_output_path("escape/shot.png")
+            .await
+            .expect_err("symlink parent escape must fail before write");
+        assert!(err.message.contains("inside"));
+
         unsafe {
             env::remove_var(MCP_ARTIFACT_DIR_ENV);
         }

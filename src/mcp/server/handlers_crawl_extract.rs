@@ -172,12 +172,14 @@ impl AxonMcpServer {
                     .await
                     .map_err(|e| logged_internal_error("crawl.status", e.as_ref()))?;
                 let output_files = result.output_files;
+                let output_file_handles = result.output_file_handles;
                 Ok(AxonToolResponse::ok(
                     "crawl",
                     "status",
                     serde_json::json!({
                         "job": result.payload,
                         "output_files": output_files,
+                        "output_file_handles": output_file_handles,
                     }),
                 ))
             }

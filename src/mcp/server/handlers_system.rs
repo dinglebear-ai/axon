@@ -1,8 +1,8 @@
 use super::AxonMcpServer;
 use super::artifacts::{
-    InlineHint, artifact_root, clean_artifact_files, client_context_name, delete_artifact_file,
-    line_count, list_artifact_files, respond_with_mode, search_artifact_files,
-    validate_artifact_path,
+    InlineHint, artifact_handle_for_path, artifact_root, clean_artifact_files, client_context_name,
+    delete_artifact_file, line_count, list_artifact_files, respond_with_mode,
+    search_artifact_files, validate_artifact_path,
 };
 use super::common::{
     MCP_TOOL_SCHEMA_URI, internal_error, invalid_params, logged_internal_error, parse_limit_usize,
@@ -15,7 +15,6 @@ use crate::mcp::schema::{
 use crate::services::system;
 use regex::Regex;
 use rmcp::ErrorData;
-use std::path::Path;
 
 #[path = "handlers_system/screenshot.rs"]
 mod screenshot;
@@ -24,13 +23,15 @@ mod screenshot;
 
 impl AxonMcpServer {
     fn artifacts_grep_file(
-        path: &Path,
+        artifact_handle: serde_json::Value,
         text: &str,
         pattern: &str,
         limit: usize,
         offset: usize,
         ctx: usize,
     ) -> Result<AxonToolResponse, ErrorData> {
+        let relative_path = artifact_handle["relative_path"].clone();
+        let display_path = artifact_handle["display_path"].clone();
         if pattern.len() > 1024 {
             return Err(invalid_params("regex pattern too long (max 1024 chars)"));
         }
@@ -59,7 +60,9 @@ impl AxonMcpServer {
             "artifacts",
             "grep",
             serde_json::json!({
-                "path": path,
+                "artifact_handle": artifact_handle,
+                "path": relative_path,
+                "display_path": display_path,
                 "pattern": pattern,
                 "context_lines": ctx,
                 "limit": limit,
@@ -70,13 +73,15 @@ impl AxonMcpServer {
     }
 
     fn artifacts_read_file(
-        path: &Path,
+        artifact_handle: serde_json::Value,
         text: &str,
         pattern: Option<&str>,
         full: bool,
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> Result<AxonToolResponse, ErrorData> {
+        let relative_path = artifact_handle["relative_path"].clone();
+        let display_path = artifact_handle["display_path"].clone();
         match (pattern, full) {
             (Some(pattern), _) => {
                 if pattern.len() > 1024 {
@@ -98,7 +103,9 @@ impl AxonMcpServer {
                     "artifacts",
                     "read",
                     serde_json::json!({
-                        "path": path,
+                        "artifact_handle": artifact_handle,
+                        "path": relative_path,
+                        "display_path": display_path,
                         "filter": "pattern",
                         "pattern": pattern,
                         "offset": offset,
@@ -120,7 +127,9 @@ impl AxonMcpServer {
                     "artifacts",
                     "read",
                     serde_json::json!({
-                        "path": path,
+                        "artifact_handle": artifact_handle,
+                        "path": relative_path,
+                        "display_path": display_path,
                         "filter": "full",
                         "offset": offset,
                         "limit": limit,
@@ -204,11 +213,23 @@ impl AxonMcpServer {
 
         if matches!(req.subaction, ArtifactsSubaction::Delete) {
             let path = validate_artifact_path(raw_path).await?;
+            let meta = tokio::fs::metadata(&path)
+                .await
+                .map_err(|e| logged_internal_error("artifacts delete metadata", &e))?;
+            let artifact_handle =
+                artifact_handle_for_path("artifact", &path, meta.len(), None, None, None).await?;
+            let deleted = artifact_handle.relative_path.clone();
+            let display_path = artifact_handle.display_path.clone();
             let bytes_freed = delete_artifact_file(&path).await?;
             return Ok(AxonToolResponse::ok(
                 "artifacts",
                 "delete",
-                serde_json::json!({ "deleted": path, "bytes_freed": bytes_freed }),
+                serde_json::json!({
+                    "artifact_handle": artifact_handle,
+                    "deleted": deleted,
+                    "display_path": display_path,
+                    "bytes_freed": bytes_freed,
+                }),
             ));
         }
 
@@ -217,6 +238,17 @@ impl AxonMcpServer {
         let text = tokio::fs::read_to_string(&path).await.map_err(|e| {
             logged_internal_error(&format!("artifacts read '{}'", path.display()), &e)
         })?;
+        let artifact_handle = artifact_handle_for_path(
+            "artifact",
+            &path,
+            text.len() as u64,
+            Some(line_count(&text) as u64),
+            None,
+            None,
+        )
+        .await?;
+        let artifact_handle_value =
+            serde_json::to_value(&artifact_handle).map_err(|e| internal_error(e.to_string()))?;
 
         match req.subaction {
             ArtifactsSubaction::Head => {
@@ -226,7 +258,9 @@ impl AxonMcpServer {
                     "artifacts",
                     "head",
                     serde_json::json!({
-                        "path": path,
+                        "artifact_handle": artifact_handle_value,
+                        "path": artifact_handle.relative_path,
+                        "display_path": artifact_handle.display_path,
                         "limit": limit,
                         "line_count": line_count(&text),
                         "head": head,
@@ -241,19 +275,21 @@ impl AxonMcpServer {
                 let limit = parse_limit_usize(req.limit, 25, 500);
                 let offset = parse_offset(req.offset);
                 let ctx = req.context_lines.unwrap_or(0).min(20);
-                Self::artifacts_grep_file(&path, &text, pattern, limit, offset, ctx)
+                Self::artifacts_grep_file(artifact_handle_value, &text, pattern, limit, offset, ctx)
             }
             ArtifactsSubaction::Wc => Ok(AxonToolResponse::ok(
                 "artifacts",
                 "wc",
                 serde_json::json!({
-                    "path": path,
+                    "artifact_handle": artifact_handle_value,
+                    "path": artifact_handle.relative_path,
+                    "display_path": artifact_handle.display_path,
                     "bytes": text.len(),
                     "lines": line_count(&text),
                 }),
             )),
             ArtifactsSubaction::Read => Self::artifacts_read_file(
-                &path,
+                artifact_handle_value,
                 &text,
                 req.pattern.as_deref(),
                 req.full.unwrap_or(false),

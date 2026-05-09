@@ -1,5 +1,6 @@
 use super::super::common::{internal_error, invalid_params};
 use super::path::ensure_artifact_root;
+use crate::services::types::ArtifactHandle;
 use regex::Regex;
 use rmcp::ErrorData;
 use std::path::{Path, PathBuf};
@@ -13,7 +14,32 @@ struct ArtifactFile {
     relative_path: String,
     path: PathBuf,
     bytes: u64,
+    line_count: Option<u64>,
     modified_secs_ago: u64,
+    artifact_handle: ArtifactHandle,
+}
+
+/// Maximum file size (in bytes) that `search_artifact_files` will read.
+/// Files larger than this are skipped to avoid memory pressure.
+const MAX_SEARCH_FILE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
+fn artifact_kind(path: &Path) -> &'static str {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("json") => "json",
+        Some("png") => "screenshot",
+        Some("md") | Some("markdown") => "markdown",
+        Some("txt") => "text",
+        Some("jsonl") => "jsonl",
+        _ => "artifact",
+    }
+}
+
+async fn count_text_lines(path: &Path, bytes: u64) -> Option<u64> {
+    if bytes > MAX_SEARCH_FILE_BYTES {
+        return None;
+    }
+    let text = tokio::fs::read_to_string(path).await.ok()?;
+    Some(text.lines().count() as u64)
 }
 
 async fn collect_artifact_files(root: &Path) -> Result<Vec<ArtifactFile>, ErrorData> {
@@ -59,12 +85,36 @@ async fn collect_artifact_files(root: &Path) -> Result<Vec<ArtifactFile>, ErrorD
                 .strip_prefix(root)
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
                 .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+            let bytes = meta.len();
+            let line_count = count_text_lines(&path, bytes).await;
+            let artifact_handle = ArtifactHandle::try_from_path(
+                artifact_kind(&path),
+                root,
+                &path,
+                bytes,
+                line_count,
+                None,
+                None,
+            )
+            .unwrap_or_else(|| {
+                ArtifactHandle::new(
+                    artifact_kind(&path),
+                    relative_path.clone(),
+                    path.to_string_lossy().into_owned(),
+                    bytes,
+                    line_count,
+                    None,
+                    None,
+                )
+            });
             files.push(ArtifactFile {
                 name: entry.file_name().to_string_lossy().into_owned(),
                 relative_path,
                 path,
-                bytes: meta.len(),
+                bytes,
+                line_count,
                 modified_secs_ago,
+                artifact_handle,
             });
         }
     }
@@ -86,12 +136,16 @@ pub async fn list_artifact_files(
         .skip(offset)
         .take(limit)
         .map(|file| {
+            let relative_path = file.relative_path.clone();
             serde_json::json!({
                 "name": file.name,
-                "relative_path": file.relative_path,
+                "artifact_handle": file.artifact_handle,
+                "relative_path": relative_path,
+                "path": relative_path,
+                "display_path": file.path,
                 "bytes": file.bytes,
+                "line_count": file.line_count,
                 "modified_secs_ago": file.modified_secs_ago,
-                "path": file.path,
             })
         })
         .collect();
@@ -125,44 +179,61 @@ pub async fn clean_artifact_files(
     let cutoff_secs = max_age_hours * 3600;
     let all_files = collect_artifact_files(&root).await?;
     let scanned = all_files.len();
-    let mut candidates: Vec<serde_json::Value> = Vec::new();
+    let mut candidates: Vec<(PathBuf, serde_json::Value)> = Vec::new();
     for file in all_files {
         let age_secs = file.modified_secs_ago;
         if age_secs >= cutoff_secs {
             let age_hours = (age_secs as f64 / 3600.0 * 10.0).round() / 10.0;
-            candidates.push(serde_json::json!({
-                "name": file.name,
-                "relative_path": file.relative_path,
-                "path": file.path,
-                "age_hours": age_hours,
-                "bytes": file.bytes,
-            }));
+            let relative_path = file.relative_path.clone();
+            candidates.push((
+                file.path.clone(),
+                serde_json::json!({
+                    "name": file.name,
+                    "artifact_handle": file.artifact_handle,
+                    "relative_path": relative_path,
+                    "path": relative_path,
+                    "display_path": file.path,
+                    "age_hours": age_hours,
+                    "bytes": file.bytes,
+                    "line_count": file.line_count,
+                }),
+            ));
         }
     }
-    let would_free: u64 = candidates.iter().filter_map(|c| c["bytes"].as_u64()).sum();
+    let would_free: u64 = candidates
+        .iter()
+        .filter_map(|(_, c)| c["bytes"].as_u64())
+        .sum();
+    let candidate_values: Vec<serde_json::Value> =
+        candidates.iter().map(|(_, value)| value.clone()).collect();
     if dry_run {
         return Ok(serde_json::json!({
             "dry_run": true,
             "max_age_hours": max_age_hours,
             "scanned": scanned,
-            "would_delete": candidates.len(),
+            "would_delete": candidate_values.len(),
             "would_free_bytes": would_free,
-            "files": candidates,
+            "files": candidate_values,
         }));
     }
     let mut deleted = 0u64;
     let mut freed = 0u64;
     let mut errors: Vec<serde_json::Value> = Vec::new();
-    for candidate in &candidates {
-        let path_str = candidate["path"].as_str().unwrap_or("");
-        match tokio::fs::remove_file(path_str).await {
+    for (delete_path, candidate) in &candidates {
+        match tokio::fs::remove_file(delete_path).await {
             Ok(_) => {
                 deleted += 1;
                 freed += candidate["bytes"].as_u64().unwrap_or(0);
             }
-            Err(e) => errors.push(serde_json::json!({ "path": path_str, "error": e.to_string() })),
+            Err(e) => errors.push(serde_json::json!({
+                "path": candidate["path"].clone(),
+                "display_path": delete_path,
+                "error": e.to_string(),
+            })),
         }
     }
+    let candidate_values: Vec<serde_json::Value> =
+        candidates.iter().map(|(_, value)| value.clone()).collect();
     Ok(serde_json::json!({
         "dry_run": false,
         "max_age_hours": max_age_hours,
@@ -170,13 +241,9 @@ pub async fn clean_artifact_files(
         "deleted": deleted,
         "freed_bytes": freed,
         "errors": errors,
-        "files": candidates,
+        "files": candidate_values,
     }))
 }
-
-/// Maximum file size (in bytes) that `search_artifact_files` will read.
-/// Files larger than this are skipped to avoid memory pressure.
-const MAX_SEARCH_FILE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 
 pub async fn search_artifact_files(
     pattern: &str,
@@ -202,6 +269,7 @@ pub async fn search_artifact_files(
         let re = Arc::clone(&re);
         let sem = Arc::clone(&sem);
         let relative_path = file.relative_path;
+        let artifact_handle = file.artifact_handle;
         let path = file.path;
         set.spawn(async move {
             let _permit = match sem.acquire_owned().await {
@@ -217,7 +285,8 @@ pub async fn search_artifact_files(
                 .filter(|(_, line)| re.is_match(line))
                 .map(|(idx, line)| {
                     serde_json::json!({
-                        "file": relative_path,
+                        "artifact_handle": artifact_handle.clone(),
+                        "file": relative_path.clone(),
                         "line": idx + 1,
                         "text": line,
                     })
