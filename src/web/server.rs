@@ -11,7 +11,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use subtle::ConstantTimeEq;
 
 /// Hard limit on `/v1/ask` request bodies. Matches the existing 64 KiB cap used
 /// by `dispatch_vector_search` so the web surface mirrors MCP behavior.
@@ -95,9 +94,10 @@ impl PanelRuntimeState {
 pub(crate) fn router(
     cfg: Arc<crate::core::config::Config>,
     panel: Arc<PanelRuntimeState>,
+    service_context: Arc<tokio::sync::OnceCell<Arc<crate::services::context::ServiceContext>>>,
 ) -> Router {
     let state = AppState { panel };
-    Router::new()
+    let panel_router = Router::new()
         .route("/api/panel/state", get(panel_state))
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
@@ -109,7 +109,8 @@ pub(crate) fn router(
             post(v1_ask).layer(DefaultBodyLimit::max(ASK_BODY_LIMIT)),
         )
         .fallback(super::static_assets::serve_static)
-        .with_state((state, cfg))
+        .with_state((state, Arc::clone(&cfg)));
+    panel_router.merge(super::actions::router(cfg, service_context))
 }
 
 async fn panel_state(
@@ -429,37 +430,7 @@ async fn v1_ask(
 /// MCP HTTP server's loopback-only convention (binding to non-loopback hosts
 /// without a token is rejected at startup elsewhere).
 fn ask_authorized(headers: &HeaderMap) -> bool {
-    let raw = match std::env::var("AXON_MCP_HTTP_TOKEN") {
-        Ok(value) => Some(value),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(std::env::VarError::NotUnicode(_)) => return false,
-    };
-    let configured = raw.as_deref().map(str::trim).filter(|v| !v.is_empty());
-    let Some(expected) = configured else {
-        // Distinguish "env unset" (allow) from "env set but empty/whitespace"
-        // (fail closed — operator clearly meant to enable auth).
-        if raw.is_some() {
-            return false;
-        }
-        return true;
-    };
-    let bearer = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .and_then(|v| {
-            let (scheme, token) = v.split_once(' ')?;
-            scheme
-                .eq_ignore_ascii_case("Bearer")
-                .then_some(token.trim())
-                .filter(|s| !s.is_empty())
-        });
-    let api_key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
-    let matches_expected = |token: &str| {
-        let token = token.trim();
-        !token.is_empty() && bool::from(token.as_bytes().ct_eq(expected.as_bytes()))
-    };
-    bearer.is_some_and(matches_expected) || api_key.is_some_and(matches_expected)
+    crate::mcp::auth::authorize_mcp_http_headers_from_env(headers).is_ok()
 }
 
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to

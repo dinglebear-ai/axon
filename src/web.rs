@@ -1,3 +1,5 @@
+#[path = "web/actions.rs"]
+pub(crate) mod actions;
 #[path = "web/auth.rs"]
 pub(crate) mod auth;
 #[path = "web/security.rs"]
