@@ -1,4 +1,5 @@
 use crate::core::config::{Config, ConfigOverrides, RenderMode, ScrapeFormat};
+use crate::core::content::url_to_filename;
 use crate::jobs::backend::JobKind;
 use crate::mcp::schema::{
     CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest, ExtractSubaction,
@@ -225,11 +226,25 @@ pub(super) async fn dispatch_scrape(
         embed: req.embed,
         root_selector: req.root_selector,
         exclude_selector: req.exclude_selector,
+        output_path: Some(Some(server_scrape_output_path(
+            service_context.cfg.as_ref(),
+            &url,
+        ))),
         ..ConfigOverrides::default()
     });
     let result = scrape_svc::scrape(&cfg, &url, None)
         .await
         .map_err(internal_error)?;
+    if let Some(path) = cfg.output_path.as_ref() {
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|err| internal_message(format!("create scrape output dir: {err}")))?;
+        }
+        tokio::fs::write(path, &result.output)
+            .await
+            .map_err(|err| internal_message(format!("write scrape output: {err}")))?;
+    }
     Ok(serde_json::json!({
         "url": result.url,
         "markdown": result.markdown,
@@ -237,6 +252,14 @@ pub(super) async fn dispatch_scrape(
         "payload": result.payload,
         "artifact_handle": result.artifact_handle,
     }))
+}
+
+fn server_scrape_output_path(cfg: &Config, url: &str) -> std::path::PathBuf {
+    cfg.output_dir
+        .join("scrape-markdown")
+        .join("runs")
+        .join(Uuid::new_v4().to_string())
+        .join(url_to_filename(url, 1))
 }
 
 pub(super) async fn dispatch_screenshot(
@@ -483,4 +506,8 @@ fn parse_job_id(raw: Option<&str>) -> Result<Uuid, ClientActionError> {
             Some("job_id must be a UUID returned by a start action".to_string()),
         )
     })
+}
+
+fn internal_message(message: String) -> ClientActionError {
+    ClientActionError::new("internal", message, true, None)
 }

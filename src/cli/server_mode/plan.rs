@@ -51,16 +51,10 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
             poll_family: None,
         }),
         CommandKind::Scrape => {
-            let urls = cli::commands::common::parse_urls(cfg);
-            if urls.is_empty() {
-                return Err("scrape requires at least one URL (positional or --urls)".into());
-            }
-            if urls.len() > 1 {
-                return Err("server mode scrape accepts one URL per command for now".into());
-            }
+            let url = single_url(cfg, "scrape")?;
             Ok(ServerActionPlan {
                 action: AxonRequest::Scrape(ScrapeRequest {
-                    url: urls.first().cloned(),
+                    url: Some(url),
                     render_mode: Some(mcp_render_mode(cfg.render_mode)),
                     format: Some(mcp_scrape_format(cfg.format)),
                     embed: Some(cfg.embed),
@@ -78,16 +72,10 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
         CommandKind::Ingest => ingest_server_action_plan(cfg, false),
         CommandKind::Sessions => ingest_server_action_plan(cfg, true),
         CommandKind::Screenshot => {
-            let urls = cli::commands::common::parse_urls(cfg);
-            if urls.is_empty() {
-                return Err("screenshot requires at least one URL (positional or --urls)".into());
-            }
-            if urls.len() > 1 {
-                return Err("server mode screenshot accepts one URL per command for now".into());
-            }
+            let url = single_url(cfg, "screenshot")?;
             Ok(ServerActionPlan {
                 action: AxonRequest::Screenshot(ScreenshotRequest {
-                    url: urls.first().cloned(),
+                    url: Some(url),
                     full_page: Some(cfg.screenshot_full_page),
                     viewport: Some(format!("{}x{}", cfg.viewport_width, cfg.viewport_height)),
                     output: None,
@@ -99,6 +87,17 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
         }
         _ => Err(format!("{} is not routed through server mode", cfg.command).into()),
     }
+}
+
+fn single_url(cfg: &Config, command: &str) -> Result<String, Box<dyn Error>> {
+    let mut urls = cli::commands::common::parse_urls(cfg).into_iter();
+    let Some(url) = urls.next() else {
+        return Err(format!("{command} requires at least one URL (positional or --urls)").into());
+    };
+    if urls.next().is_some() {
+        return Err(format!("server mode {command} accepts one URL per command for now").into());
+    }
+    Ok(url)
 }
 
 fn crawl_server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<dyn Error>> {

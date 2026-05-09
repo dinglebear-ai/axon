@@ -150,9 +150,10 @@ fn classify_status(status: StatusCode, body: &str) -> ServerClientErrorKind {
     if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
         return ServerClientErrorKind::Auth;
     }
+    let body_lower = body.to_ascii_lowercase();
     if status == StatusCode::UPGRADE_REQUIRED
-        || body.to_ascii_lowercase().contains("schema")
-        || body.to_ascii_lowercase().contains("version mismatch")
+        || body_lower.contains("schema")
+        || body_lower.contains("version mismatch")
     {
         return ServerClientErrorKind::VersionMismatch;
     }

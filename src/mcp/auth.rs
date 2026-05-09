@@ -291,7 +291,7 @@ fn build_allowed_redirect_uris() -> String {
     if let Ok(extra) = std::env::var("AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS") {
         for u in extra.split(',') {
             let u = u.trim();
-            if !u.is_empty() && !uris.contains(&u.to_string()) {
+            if !u.is_empty() && !uris.iter().any(|existing| existing == u) {
                 uris.push(u.to_string());
             }
         }

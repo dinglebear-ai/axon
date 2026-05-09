@@ -175,6 +175,7 @@ fn render_server_status(result: &serde_json::Value) {
 }
 
 fn render_server_job_command(title: &str, result: &serde_json::Value) {
+    let job_ids = job_ids_from_result(result);
     let status = result
         .get("status")
         .or_else(|| result.get("job").and_then(|job| job.get("status")))
@@ -185,10 +186,10 @@ fn render_server_job_command(title: &str, result: &serde_json::Value) {
         symbol_for_status(status),
         primary(&format!("{title} request handled by server"))
     );
-    for id in job_ids_from_result(result) {
-        println!("  {} {}", muted("Job:"), accent(&id));
+    for id in &job_ids {
+        println!("  {} {}", muted("Job:"), accent(id));
     }
-    if job_ids_from_result(result).is_empty() {
+    if job_ids.is_empty() {
         println!(
             "{}",
             serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
