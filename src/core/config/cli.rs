@@ -3,7 +3,7 @@ mod global_args;
 use super::types::{EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
-pub(super) use global_args::GlobalArgs;
+pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
 
 #[derive(Debug, Parser)]
 #[command(

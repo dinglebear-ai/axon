@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ── Builder ───────────────────────────────────────────────────────────────────
-FROM rust:1.83-bookworm AS builder
+FROM rust:1.94.0-bookworm AS builder
 
 # Build deps for sqlx-sqlite (libsqlite3), reqwest+rustls (pkg-config), and
 # anything that links against system libraries during cargo build.

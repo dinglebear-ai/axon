@@ -17,6 +17,7 @@ pub(super) use crate::core::config::parse::docker::normalize_local_service_url;
 pub(super) use clap::Parser;
 pub(super) use std::env;
 pub(super) use std::io::Write as _;
+pub(super) use std::path::Path;
 pub(super) use std::sync::Mutex;
 pub(super) use tempfile::Builder as TempfileBuilder;
 
@@ -51,4 +52,73 @@ pub(super) fn with_env_saved<F: FnOnce()>(keys: &[&str], body: F) {
             }
         }
     }
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn empty_output_dir_env_falls_through_to_default_data_dir_output() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_OUTPUT_DIR", "AXON_DATA_DIR"], || unsafe {
+        env::set_var("AXON_OUTPUT_DIR", "");
+        env::remove_var("AXON_DATA_DIR");
+
+        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+            .expect("empty AXON_OUTPUT_DIR should not fail clap/config parsing");
+
+        assert_eq!(
+            cfg.output_dir,
+            crate::core::paths::axon_data_base_dir().join("output")
+        );
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn empty_sqlite_path_env_falls_through_to_default_jobs_db() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_SQLITE_PATH", "AXON_DATA_DIR"], || unsafe {
+        env::set_var("AXON_SQLITE_PATH", "");
+        env::remove_var("AXON_DATA_DIR");
+
+        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+            .expect("empty AXON_SQLITE_PATH should not produce an empty database path");
+
+        assert_eq!(
+            cfg.sqlite_path,
+            crate::core::paths::axon_data_base_dir().join("jobs.db")
+        );
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn nonempty_output_dir_env_overrides_default() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
+        env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
+
+        let cfg = into_config(cli_with_services(&["crawl", "https://example.com"]))
+            .expect("non-empty AXON_OUTPUT_DIR should parse");
+
+        assert_eq!(cfg.output_dir, Path::new("/tmp/axon-output-from-env"));
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn output_dir_flag_wins_over_env() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
+        env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
+
+        let cfg = into_config(cli_with_services(&[
+            "--output-dir",
+            "/tmp/axon-output-from-flag",
+            "crawl",
+            "https://example.com",
+        ]))
+        .expect("--output-dir flag should parse");
+
+        assert_eq!(cfg.output_dir, Path::new("/tmp/axon-output-from-flag"));
+    });
 }

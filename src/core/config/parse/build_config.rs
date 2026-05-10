@@ -13,7 +13,7 @@ mod post_init;
 #[cfg(test)]
 mod tests;
 
-use super::super::cli::Cli;
+use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};
 use super::super::types::{CommandKind, Config};
 use super::excludes;
 use super::helpers::{
@@ -23,7 +23,6 @@ use super::helpers::{
 // inside `config_literal::build` (via `resolve_mcp_transport`) so the
 // `cargo xtask check-mcp-http` grep keeps finding the canonical knob name.
 use super::toml_config::load_toml_config;
-use std::env;
 
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let mut global = cli.global;
@@ -74,12 +73,14 @@ pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
     let sqlite_path = global
         .sqlite_path
         .take()
-        .or_else(|| {
-            env::var("AXON_SQLITE_PATH")
-                .ok()
-                .map(std::path::PathBuf::from)
-        })
+        .or_else(|| read_env("AXON_SQLITE_PATH").map(std::path::PathBuf::from))
         .unwrap_or_else(default_sqlite_path);
+
+    if global.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR)
+        && let Some(output_dir) = read_env("AXON_OUTPUT_DIR")
+    {
+        global.output_dir = std::path::PathBuf::from(output_dir);
+    }
 
     let mut crawl_concurrency_limit = global.crawl_concurrency_limit;
     let mut backfill_concurrency_limit = global.backfill_concurrency_limit;

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-05-10
+
+### Fixed
+
+- config: ignore blank optional path env vars such as `AXON_OUTPUT_DIR`, `AXON_SQLITE_PATH`, and `AXON_LOG_DIR`, falling back to canonical `~/.axon` defaults instead of treating empty strings as real paths.
+- docker: align the builder image with the pinned Rust `1.94.0` toolchain so cached Docker rebuilds avoid repeated Rust toolchain installation.
+
 ## [1.9.0] - 2026-05-09
 
 ### Changed

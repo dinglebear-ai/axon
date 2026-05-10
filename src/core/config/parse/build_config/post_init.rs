@@ -4,8 +4,9 @@
 //!   * Validates the parent of `output_path` exists when explicitly set.
 //!   * Restores default exclude-path prefixes when the user did not opt out.
 //!   * Applies `performance::profile_settings()` to fields the user did not set.
-//!   * Derives `output_dir` from `AXON_DATA_DIR` when still at the clap default.
+//!   * Derives `output_dir` from the canonical Axon data directory when still at the clap default.
 
+use super::super::super::cli::DEFAULT_OUTPUT_DIR;
 use super::super::super::types::Config;
 use super::super::excludes;
 use super::super::performance;
@@ -54,11 +55,9 @@ pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
     cfg.crawl_broadcast_buffer_min = ps.broadcast_buffer_min;
     cfg.crawl_broadcast_buffer_max = ps.broadcast_buffer_max;
 
-    // Derive output_dir from AXON_DATA_DIR when still at the clap default.
-    if cfg.output_dir == std::path::Path::new(".cache/axon-rust/output")
-        && let Some(data_dir) = crate::core::paths::axon_data_dir()
-    {
-        cfg.output_dir = data_dir.join("output");
+    // Derive output_dir from the canonical data directory when still at the clap default.
+    if cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
+        cfg.output_dir = crate::core::paths::axon_data_base_dir().join("output");
     }
     Ok(())
 }
