@@ -1,5 +1,5 @@
-# crates/crawl — Spider.rs Crawl Engine
-Last Modified: 2026-03-21
+# src/crawl — Spider.rs Crawl Engine
+Last Modified: 2026-05-09
 
 Wraps spider.rs for site crawling with HTTP and Chrome rendering paths.
 
@@ -93,27 +93,24 @@ Relative URLs (no `://`) always pass the cross-domain check; they resolve agains
 
 Returns `CaseInsensitiveString::default()` to reject; returns the original `(url, html)` pair to allow.
 
-### Mid-Crawl Cancellation (Redis + Spider Control)
-Two-layer cancel: Redis for cross-process signaling, spider `control` feature for in-process graceful shutdown.
+### Mid-Crawl Cancellation (SQLite + Spider Control)
+Cancellation is SQLite-backed plus in-process cancellation tokens. There is no Redis cancel path.
 
-**Redis layer** — `run_active_crawl_job` in `process.rs` races the crawl future against `poll_cancel_key`:
-- Polls Redis key `axon:crawl:cancel:{job_id}` every **3 seconds**
-- **Fail-safe:** returns `false` on any Redis error — a Redis outage never false-cancels a crawl
-- Cancel a running crawl: `axon crawl cancel <job_id>` (sets the Redis key)
+**Job layer**:
+- `axon crawl cancel <job_id>` calls the service runtime, which flips the SQLite row to `canceled` through `CancelStore::cancel`.
+- The active worker registers a `CancellationToken` for each claimed job; canceling the token lets the runner stop without waiting for a stale-job reclaim.
+- Pending jobs are canceled by the row update alone; running jobs also observe the in-memory token.
 
-**Spider control layer** — when the Redis cancel key is detected:
-1. Calls `spider::utils::shutdown("{crawl_id}{url}")` — signals spider's in-process control thread via `AtomicI8`
-2. Spider stops dispatching new pages immediately, drains in-flight requests gracefully
-3. The crawl future is **awaited** (not dropped) with a 30s timeout, returning partial results
-4. Partial results (`pages_crawled`, `md_created`, `elapsed_ms`) are saved to `result_json` in the DB
-5. Job is marked `canceled` (not `failed`) — the `WHERE status='running'` guard prevents racing with natural completion
+**Spider control layer**:
+1. The crawl runner observes cancellation and calls `spider::utils::shutdown("{job_id}{url}")` for the active Spider control target.
+2. Spider stops dispatching new pages and drains in-flight requests where possible.
+3. Crawl progress JSON written before cancellation remains on the row, including output paths and counts when available.
+4. The job remains `canceled`, not `failed`, unless the runner hits an unrelated execution error before observing cancellation.
 
-**crawl_id wiring:** `configure_website_with_crawl_id()` in `runtime.rs` sets `website.with_crawl_id(job_uuid)`. The control target is `"{job_uuid}{start_url}"` — must match spider's `target_id()` format exactly.
-
-**Fallback:** If the 30s drain timeout expires or spider errors during shutdown, the cancel path falls back to the original hard-cancel behavior (no partial results saved).
+**crawl_id wiring:** `configure_website_with_crawl_id()` in `runtime.rs` sets `website.with_crawl_id(job_uuid)`. The control target is `"{job_uuid}{start_url}"` — it must match Spider's `target_id()` format exactly.
 
 ### readability: false (DO NOT CHANGE)
-`build_transform_config()` in `crates/core/content.rs` sets `readability: false`. Changing to `true` causes Mozilla Readability to score VitePress/sidebar docs as low-quality and strip them to just the title — produces ~97% thin pages on most doc sites. `main_content: true` handles structural extraction without the scoring penalty.
+`build_transform_config()` in `src/core/content.rs` sets `readability: false`. Changing to `true` causes Mozilla Readability to score VitePress/sidebar docs as low-quality and strip them to just the title — produces ~97% thin pages on most doc sites. `main_content: true` handles structural extraction without the scoring penalty.
 
 ### Sitemap Backfill
 `append_sitemap_backfill()` runs after the main crawl, discovers URLs from sitemap.xml that the crawler missed, and fetches them individually. Respects `--max-sitemaps` (default 512) and `--include-subdomains`. Safe to skip if `--discover-sitemaps false`.

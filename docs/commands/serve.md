@@ -1,77 +1,66 @@
 # axon serve
-Last Modified: 2026-03-25
+Last Modified: 2026-05-09
 
-Start Axon's local stack supervisor.
+Start Axon's unified HTTP server.
 
 ## Synopsis
 
 ```bash
-axon serve [FLAGS]
+axon serve
+axon serve mcp [--transport http|both]
 ```
 
-## Flags
+## What It Runs
 
-All global flags apply. Key flags for this command:
+`axon serve` starts one Axum HTTP server on `AXON_MCP_HTTP_HOST:AXON_MCP_HTTP_PORT` (default `127.0.0.1:8001`).
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--port <n>` | `49000` | Port for the Rust websocket/download bridge. Env: `AXON_SERVE_PORT`. |
+Mounted surfaces:
 
-Host binding is controlled by `AXON_SERVE_HOST` (default `127.0.0.1`).
+- `POST /mcp` - MCP streamable HTTP transport.
+- `GET /v1/capabilities` - first-party CLI client/server capability metadata.
+- `POST /v1/actions` - first-party CLI action dispatch for supported stateful commands.
+- `POST /v1/ask` - ask endpoint used by `axon ask` when `AXON_SERVER_URL` is set.
+- `/api/panel/*` - local setup/config panel APIs.
+- Static web panel assets.
+- OAuth metadata and auth routes when `AXON_MCP_AUTH_MODE=oauth`.
 
-## Managed Processes
+`serve` does not supervise Next.js, a shell WebSocket server, or separate worker
+processes. In-process workers are initialized lazily by the service context when
+server-side commands need them.
 
-- Rust websocket/download bridge on `AXON_SERVE_PORT` (default `49000`)
-- MCP HTTP server on `AXON_MCP_HTTP_PORT` (default `8001`)
-- `apps/web/shell-server.mjs` on `SHELL_SERVER_PORT` (default `49011`)
-- `apps/web` Next.js dev server on `AXON_WEB_DEV_PORT` (default `49010`)
-- Full-mode workers: crawl, embed, extract, ingest, refresh, and graph when Neo4j is configured
+## Environment
 
-## Container Preflight
-
-`axon serve` fails fast if required infrastructure containers are not running and healthy.
-
-Required infrastructure:
-
-- `axon-qdrant`
-- `axon-tei`
-- `axon-chrome` (for Chrome render mode)
-
-## Bridge Endpoints
-
-- `GET /v1/capabilities` - first-party CLI client/server capability metadata
-- `POST /v1/actions` - first-party CLI action dispatch for supported stateful commands
-- `GET /ws` - command execution WebSocket bridge
-- `GET /ws/shell` - shell WebSocket (loopback-only)
-- `GET /output/{*path}` - serve generated output files
-- `GET /download/{job_id}/pack.md` - download job output as markdown pack
-- `GET /download/{job_id}/pack.xml` - download job output as XML pack
-- `GET /download/{job_id}/archive.zip` - download job output as zip archive
-- `GET /download/{job_id}/file/{*path}` - download individual job artifact file
+| Variable | Default | Description |
+|---|---|---|
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind host. Non-loopback binds require auth. |
+| `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port. |
+| `AXON_MCP_HTTP_TOKEN` | unset | Static bearer / `x-api-key` token. Required for non-loopback bearer mode. |
+| `AXON_MCP_AUTH_MODE` | `bearer` | `bearer` for static token mode, `oauth` for Google OAuth + DCR through lab-auth. |
+| `AXON_MCP_PUBLIC_URL` | unset | Public origin used by OAuth metadata, for example `https://axon.example.com`. |
+| `AXON_SERVER_URL` | unset | CLI client/server endpoint. Set on client shells, not required by the server. |
 
 ## Examples
 
 ```bash
-# Default localhost bind on :49000 and supervise the local stack
+# Local loopback server
 axon serve
 
-# Custom port
-axon serve --port 8080
+# HTTP MCP-only entrypoint
+axon serve mcp
 
-# Bind the Rust bridge on all interfaces
-AXON_SERVE_HOST=0.0.0.0 axon serve --port 49000
+# Bind for LAN/reverse-proxy use with static bearer auth
+AXON_MCP_HTTP_HOST=0.0.0.0 \
+AXON_MCP_HTTP_TOKEN="$(openssl rand -hex 32)" \
+axon serve
 
-# Point host CLI commands at this server
+# Host CLI talking to the running server
 AXON_SERVER_URL=http://127.0.0.1:8001 axon status --json
+AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 ```
 
 ## Notes
 
-- `serve` is now the primary local dev entrypoint.
-- `serve` is the recommended execution boundary for Docker/systemd client/server mode. It owns job state, generated output, screenshots, and artifacts under its `AXON_DATA_DIR`.
-- `AXON_MCP_HTTP_TOKEN` protects both `/mcp` and `/v1/actions` when token auth is configured.
-- `serve` restarts failed child processes with bounded exponential backoff.
-- `serve` aborts the whole stack after repeated fast failures instead of crash-looping forever.
-- `serve` does not auto-start Docker containers; it only checks them.
-- `/ws/shell` rejects non-loopback clients with HTTP 403.
-> Note: this doc was flagged for rewrite in the 2026-05-06 stale-docs audit — the description above predates the lite-mode simplification. The current `axon serve` runs the MCP HTTP server only (see `crates/cli/commands/serve.rs`).
+- Docker Compose publishes the server with `AXON_MCP_HTTP_PUBLISH` while the container binds `AXON_MCP_HTTP_HOST=0.0.0.0` internally.
+- `/mcp` and `/v1/actions` share the same auth boundary.
+- Server-owned jobs, output, screenshots, and artifacts live under the server process `AXON_DATA_DIR`.
+- The old port `49000` websocket bridge, `49010` Next.js dev server, `49011` shell server, `/download/*`, and `/ws*` routes are not part of the current `axon serve` runtime.

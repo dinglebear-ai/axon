@@ -32,7 +32,7 @@ just test-fast
 Use while iterating on library logic; excludes `worker_e2e`.
 
 ### Infra lane (explicit)
-Use this when touching queue/worker/DB/integration behavior:
+Use this when touching ignored infra-backed tests:
 
 ```bash
 just test-infra
@@ -78,7 +78,10 @@ Integration suites currently covered:
 
 | File | Env var required | What it tests |
 |------|-----------------|---------------|
-| `crates/web/execute/tests/ws_protocol_tests.rs` | none | WebSocket protocol frame serialization/deserialization |
+| `tests/client_server_mode.rs` | none | CLI server-mode planning and action contracts |
+| `tests/compose_env_contract.rs` | none | Compose/env contract shape |
+| `src/web/server/tests.rs` | none | Web panel/server route helpers |
+| `src/web/actions/tests.rs` | none | `/v1/actions` dispatch behavior |
 
 ## Test Infrastructure Environment Variables
 
@@ -97,13 +100,13 @@ starts the dev infrastructure stack on loopback-bound host ports:
 | `axon-tei` | `ghcr.io/huggingface/text-embeddings-inference:89-1.9` | `52000` (HTTP) |
 | `axon-chrome` | local Chrome image | `6000`, `9222`, `9223` |
 
-CI still provisions Postgres, Redis, and RabbitMQ as GitHub Actions service
-containers for legacy ignored worker tests. Those services are not part of the
-tracked local compose stack.
+The tracked local compose stack does not include Postgres, Redis, or RabbitMQ.
+Current runtime tests should target SQLite jobs plus Qdrant/TEI/Chrome where
+needed.
 
 ## Coverage Areas (v0.11.1+)
 
-### Rust: `crates/services/`
+### Rust: `src/services/`
 
 Integration tests under `tests/` cover the LLM backend and services layer end-to-end:
 
@@ -115,16 +118,15 @@ Integration tests under `tests/` cover the LLM backend and services layer end-to
 | `tests/services_system_services.rs` | 8 | System-level service operations |
 | `tests/services_compile_services_smoke.rs` | 1 | Services crate compile smoke |
 
-### Rust: `crates/web/`
+### Rust: `src/web/`
 
-WebSocket and execute-path tests:
+Web panel and first-party HTTP action tests:
 
 | File | Tests | What is covered |
 |------|-------|----------------|
-| `tests/web_ws_async_fire_and_forget.rs` | 9 | Async WS fire-and-forget execution paths |
-| `tests/web_ws_override_mapping.rs` | 19 | WS mode and flag override mapping |
-| `crates/web/execute/tests/ws_protocol_tests.rs` | (inline) | WS protocol frame encode/decode |
-| `crates/web/execute/tests/ws_event_v2_tests.rs` | (inline) | WS event v2 serialization |
+| `tests/client_server_mode.rs` | 4 | Server-mode command planning, auth, and artifact behavior |
+| `src/web/server/tests.rs` | (inline) | Panel/server route helper behavior |
+| `src/web/actions/tests.rs` | (inline) | Action API dispatch and job runtime behavior |
 
 ### Rust: CLI and MCP contracts
 
@@ -142,33 +144,27 @@ Property-based tests with randomized inputs:
 
 | File | Subject |
 |------|---------|
-| `crates/core/http/proptest_tests.rs` | HTTP SSRF validator (`validate_url`) — arbitrary host/IP/port inputs |
-| `crates/crawl/engine/url_utils_proptest.rs` | `is_junk_discovered_url` — arbitrary URL strings |
-| `crates/vector/ops/input_proptest.rs` | Vector input chunking — arbitrary text lengths and overlaps |
+| `src/core/http/proptest_tests.rs` | HTTP SSRF validator (`validate_url`) — arbitrary host/IP/port inputs |
+| `src/crawl/engine/url_utils_proptest.rs` | `is_junk_discovered_url` — arbitrary URL strings |
+| `src/vector/ops/input_proptest.rs` | Vector input chunking — arbitrary text lengths and overlaps |
 
-### TypeScript: `apps/web/__tests__/`
+### TypeScript: `apps/web/`
 
-New TypeScript test files added in v0.11.1:
+The current browser surface is a static setup/config panel built by Next. There
+is no checked-in TypeScript test suite under `apps/web` today.
 
-| File | What is covered |
-|------|----------------|
-| `api-fetch.test.ts` | `apiFetch` utility — token injection, error handling |
-| `api/cortex-routes.test.ts` | `/api/cortex/*` route handlers |
-| `api/sessions-routes.test.ts` | `/api/sessions/*` route handlers |
-| `api/workspace-route.test.ts` | `/api/workspace` route handler |
-| `pulse-chat-api-lib.test.ts` | Pulse chat API library — streaming, message assembly |
-| `pulse-session-store.test.ts` | Pulse session store — persistence, hydration, eviction |
+Use `cd apps/web && npm run build` when changing panel assets.
 
 ## Test-Only Security Escape Hatches
 
 Several tests deliberately use narrow exceptions that must not be copied into
 production code:
 
-- `crates/core/http/client.rs` leaks one `reqwest::Client` per test call with
+- `src/core/http/client.rs` leaks one `reqwest::Client` per test call with
   `Box::leak` so each async test gets a client bound to its own Tokio runtime.
   This is `#[cfg(test)]` only; production uses the process-wide `HTTP_CLIENT`
   singleton.
-- `crates/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
+- `src/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
   test builds. It lets httpmock-based tests reach `127.0.0.1` while keeping
   `validate_url()` loopback blocking active by default.
 
@@ -191,7 +187,6 @@ just verify
 ```
 
 `just verify` runs:
-- `./scripts/check_dockerignore_guards.sh`
 - `fmt-check`
 - `clippy`
 - `check`
@@ -199,8 +194,8 @@ just verify
 
 ## CI Mapping
 
-- `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. Uses GitHub Actions service containers for Postgres, Redis, and RabbitMQ.
-- `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra` against GitHub Actions service containers.
+- `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. The workflow still declares legacy Postgres/Redis/RabbitMQ service containers, but the current runtime does not require them.
+- `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra`; current ignored worker tests should not add a non-SQLite job backend dependency.
 - `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
 - `mcp-smoke` job: builds the release binary, starts `docker-compose.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
@@ -234,7 +229,9 @@ mcporter --config config/mcporter.json call axon.axon action:crawl subaction:lis
 
 Notes:
 - Script artifacts/logs are written under `.cache/mcporter-test/`.
-- The script generates suite-specific mcporter configs under `.cache/mcporter-test/` and runs with `AXON_LITE=1`.
+- The script generates suite-specific mcporter configs under `.cache/mcporter-test/`.
+  It may set `AXON_LITE=1` for compatibility, but SQLite/in-process jobs are
+  always used.
 - The suite requires Qdrant and TEI to be running.
 - `screenshot` uses a higher mcporter call timeout than the default because Chrome startup can exceed 60s on some machines.
 - CI parity: the `mcp-smoke` workflow job runs this same script in GitHub Actions.
@@ -267,16 +264,15 @@ just coverage-branch
 
 ### Integration tests silently skipping
 - Cause: the relevant `AXON_TEST_*` URL for that suite is unset.
-- Fix: start the needed service and set the matching env var. For Qdrant, use `just services-up` and `AXON_TEST_QDRANT_URL=http://127.0.0.1:53333`. For legacy worker tests, provide Postgres/Redis/RabbitMQ URLs or run the CI `test-infra` lane.
+- Fix: start the needed service and set the matching env var. For Qdrant, use `just services-up` and `AXON_TEST_QDRANT_URL=http://127.0.0.1:53333`.
 
 ### Lockfile errors in CI/local commands
 - Cause: dependency graph changed but lockfile not updated.
 - Fix: run a lockfile-refreshing command locally, then rerun `just verify`.
 
-### DB test connection/auth failures
-- Check `AXON_TEST_PG_URL` first.
-- If unset, test resolver falls back to `.env` and then defaults.
-- Ensure credentials in local `.env` match running Postgres.
+### SQLite test path issues
+- Check `AXON_SQLITE_PATH` or the test-specific temporary directory first.
+- Ensure the parent directory exists and is writable.
 
 
 ## Pull Request Checklist (Testing)

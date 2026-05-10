@@ -9,7 +9,7 @@ Documentation for the Axon MCP server (`axon mcp`).
 | [TOOLS.md](TOOLS.md) | Tool actions, subactions, parameters, and response format |
 | [ENV.md](ENV.md) | MCP-specific environment variables |
 | [TRANSPORT.md](TRANSPORT.md) | stdio, HTTP, and streamable-http transport configuration |
-| [DEPLOY.md](DEPLOY.md) | Deployment patterns -- local dev, Docker, lite mode |
+| [DEPLOY.md](DEPLOY.md) | Deployment patterns -- local dev, Docker, SQLite runtime |
 | [CONNECT.md](CONNECT.md) | Connect from Claude Code, Codex CLI, Gemini CLI |
 | [DEV.md](DEV.md) | MCP development workflow and adding new actions |
 | [PATTERNS.md](PATTERNS.md) | Code patterns -- dispatch, artifacts, error handling |

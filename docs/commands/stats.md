@@ -22,7 +22,8 @@ None.
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`stats` runs in lite mode by default. Pipeline metrics come from the local SQLite jobs database (no Postgres, Redis, or AMQP needed).
+`stats` reads Qdrant collection data and SQLite job metrics. It does not require
+Postgres, Redis, or AMQP.
 
 ## Flags
 

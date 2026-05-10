@@ -6,7 +6,7 @@ Last Updated: 01:26:53 | 02/25/2026 EST
 
 > CLI reference (flags, subcommands, examples): [`docs/commands/sessions.md`](../commands/sessions.md)
 
-Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Uses a Postgres-backed state tracker to avoid re-processing unchanged files on subsequent runs.
+Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, builds `PreparedDoc` values, and embeds them through the shared TEI/Qdrant pipeline.
 
 ## Supported Formats
 
@@ -24,27 +24,16 @@ Each parser (`claude.rs`, `codex.rs`, `gemini.rs`) extracts message pairs (human
 - Session metadata embedded as Qdrant point payload: source path, provider, project name
 - Each changed session file produces one or more Qdrant points
 
-## Incremental Indexing (State Tracker)
+## Size and Safety Limits
 
-Processed files are tracked in the `axon_session_ingest_state` Postgres table (auto-created on first run):
-
-| Column | Description |
-|--------|-------------|
-| `file_path` | Absolute path to the session file (primary key) |
-| `last_modified` | File mtime at index time |
-| `file_size` | File size at index time |
-| `indexed_at` | Timestamp of last successful index |
-
-On each run, a file is skipped if its mtime **and** size match the tracked values. Only new or modified session files are re-embedded.
+Each session file is bounded by `AXON_SESSION_INGEST_MAX_BYTES` (default: 20 MiB). Files above that limit fail closed. Secret-like tokens such as `sk-*`, `ghp_*`, `github_pat_*`, `atk_*`, and long mixed alphanumeric tokens are redacted before embedding.
 
 ## How It Works
 
 1. Discovers all session files under each provider's scan path
-2. For each file, checks the state tracker — skips unchanged files
-3. Dispatches to the matching parser based on path/provider
-4. Parser extracts message turns and formats them as text chunks
-5. Chunks embedded via `embed_prepared_docs()` → TEI → Qdrant
-6. State tracker updated with new mtime/size
+2. Dispatches to the matching parser based on path/provider
+3. Parser extracts message turns and formats them as text chunks
+4. Chunks embedded via `embed_prepared_docs()` → TEI → Qdrant
 
 Sessions defaults to **async queued execution** when `--wait false` (default): it enqueues an ingest job and returns a job ID.
 
@@ -52,16 +41,13 @@ Use `--wait true` for synchronous execution.
 
 ## Git Enrichment (repo and branch fields)
 
-As of v0.11.0, session metadata includes `repo` and `branch` fields derived from the git history of the project the session belongs to. This enrichment happens at the **project level** in the session scanner (`apps/web/lib/sessions/session-scanner.ts`) — once per project directory, not per session file — and the result is shared across all sessions within that project.
+Session metadata includes project and repository context where it can be resolved. Claude project directories are decoded back to filesystem paths and the git `origin` remote is read once per project directory. The result is shared across all sessions within that project.
 
 ### How enrichment works
 
 1. The session scanner decodes the Claude CLI project folder name (e.g. `-home-jmagar-workspace-axon-rust`) back to a filesystem path via `decodeProjectPath()`.
 2. `enrichWithGit(projectPath)` walks up the directory tree looking for a `.git` directory.
-3. If a git root is found, two `git` subprocesses are run (both with a 3-second timeout):
-   - `git rev-parse --abbrev-ref HEAD` → `branch` (truncated to 40 chars if longer; omitted on detached HEAD)
-   - `git remote get-url origin` → `repo` (parsed to `owner/repo` format, supporting both HTTPS and SSH remote URLs)
-4. Results are cached per project path for the process lifetime — git is not re-queried on subsequent requests.
+3. If a git root is found, `git remote get-url origin` is read and normalized to a GitHub slug when possible.
 
 ### Fallback for hyphenated directory names
 
@@ -71,21 +57,16 @@ Because the Claude CLI encodes path separators and literal hyphens identically (
 
 | Field | Type | Value |
 |-------|------|-------|
-| `repo` | `string \| undefined` | `owner/repo` string parsed from the `origin` remote URL; absent if no remote or parse fails |
-| `branch` | `string \| undefined` | Current branch name; absent on detached HEAD or if git is unavailable |
-
-Both fields are present on `SessionFile` (scanner), `SessionSummary` (frontend interface), and the `/api/sessions/list` JSON response. Never throws — returns `{}` on any error.
-
-### AxonSidebar filtering
-
-`components/reboot/axon-sidebar.tsx` uses `repo` and `branch` to filter sessions in the sidebar search. A search query is matched against `session.repo`, `session.branch`, and `session.project` — so users can filter by repository name or branch.
+| `project` | `string` | Project/display name derived from the session path |
+| `project_path` | `string \| undefined` | Decoded local project path when resolvable |
+| `gh_repo` | `string \| undefined` | `owner/repo` string parsed from the `origin` remote URL; absent if no remote or parse fails |
 
 ## Adding a New Session Format
 
-1. Create `crates/ingest/sessions/<provider>.rs` (or add provider parser logic under `crates/ingest/sessions.rs` if keeping a single module)
+1. Create `src/ingest/sessions/<provider>.rs` (or add provider parser logic under `src/ingest/sessions.rs` if keeping a single module)
 2. Implement `ingest_<provider>_sessions(cfg, state, multi)` following the pattern in `claude.rs`
-3. Register it in sessions dispatch (`crates/ingest/sessions.rs`) with a `cfg.sessions_<provider>` flag check
-4. Add the `--sessions-<provider>` flag in `crates/core/config/cli.rs` and wire it in `crates/core/config/parse/build_config.rs`
+3. Register it in sessions dispatch (`src/ingest/sessions.rs`) with a `cfg.sessions_<provider>` flag check
+4. Add the `--sessions-<provider>` flag in `src/core/config/cli.rs` and wire it in `src/core/config/parse/build_config.rs`
 5. Add a unit test with a minimal sample file in `#[cfg(test)]`
 
 ## Troubleshooting
@@ -97,18 +78,10 @@ Session export files don't exist at the scanned paths. Export conversations from
 - Codex: `codex export` or check `~/.codex/sessions/` after running sessions
 - Gemini: Check `~/.gemini/history/` after using Gemini CLI
 
-**File skipped on re-run**
-
-State tracker has seen this file before with the same mtime/size. Touch the file to force re-index:
-```bash
-touch ~/.claude/projects/<project>/<session>.jsonl
-axon sessions
-```
-
 **Parse errors on a `.jsonl` / `.json` file**
 
-The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `crates/ingest/sessions/<provider>.rs` for the expected fields.
+The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `src/ingest/sessions/<provider>.rs` for the expected fields.
 
-**`repo` or `branch` missing from session list**
+**`gh_repo` missing**
 
-The project directory either does not exist on disk, is not inside a git repository, or has no `origin` remote configured. `enrichWithGit` never throws — it returns `{}` silently. Run `git remote -v` in the project directory to verify the remote is set up correctly.
+The decoded project directory either does not exist on disk, is not inside a git repository, or has no `origin` remote configured. Run `git remote -v` in the project directory to verify the remote is set up correctly.

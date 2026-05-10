@@ -6,7 +6,8 @@ allowed-tools: mcp__plugin_axon_axon__axon
 
 # axon
 
-axon is a self-hosted RAG engine. Two surfaces, same backend (Spider.rs/Chrome → Qdrant → Postgres, optional Neo4j, Tavily for web search):
+axon is a self-hosted RAG engine. Two surfaces, same backend
+(Spider.rs/Chrome -> Qdrant, SQLite jobs, Tavily for web search):
 
 - **MCP (preferred)** — single tool `mcp__axon__axon`, routed by `action` (and `subaction` for lifecycle families). Default `response_mode=path` writes artifacts to `.cache/axon-mcp/` and returns a compact `shape` summary.
 - **CLI (fallback)** — `axon <command> [flags]`. Use for shell scripting, cron, or when the MCP server is down.
@@ -50,7 +51,7 @@ Once per session, confirm the live action map and that services are healthy:
 { "action": "doctor" }
 ```
 
-`help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, Postgres, Chrome, Tavily, and the embedding service.
+`help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, Chrome, Tavily, Gemini headless readiness, and the embedding service.
 
 CLI equivalents: `axon doctor`. (No CLI `help` for the action map — use the MCP one.)
 
@@ -132,7 +133,6 @@ CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-sourc
 { "action": "ask", "query": "How does axon handle Chrome auto-switching?" }
 { "action": "ask", "query": "...", "since": "7d" }
 { "action": "ask", "query": "...", "since": "2026-01-01", "before": "2026-03-01" }
-{ "action": "ask", "query": "...", "graph": true }
 { "action": "ask", "query": "...", "diagnostics": true }
 { "action": "ask", "query": "...", "hybrid_search": false }
 ```
@@ -142,13 +142,12 @@ CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-sourc
 - **Hybrid search** (dense + BM42 sparse + RRF) is on by default; `hybrid_search: false` forces dense-only for A/B comparison or when sparse is misbehaving. Server default: env `AXON_HYBRID_SEARCH`.
 - Temporal filters (`since`/`before`) accept `7d`, `30d`, `YYYY-MM-DD`, or RFC3339. They filter on **indexing date**, not publication date.
 - `collection` overrides the default `cortex` collection per request.
-- `graph: true` enables graph-enhanced retrieval (requires Neo4j; silently no-ops if unreachable — check `doctor`).
 
 ```json
 { "action": "retrieve", "url": "https://example.com/article" }
 ```
 
-CLI: `axon query "…"` / `axon ask "…" --since 7d --graph --diagnostics` / `axon retrieve <url>`.
+CLI: `axon query "…"` / `axon ask "…" --since 7d --diagnostics` / `axon retrieve <url>`.
 
 `evaluate` is CLI-only: `axon evaluate "<question>" --retrieval-ab` compares hybrid-RAG vs dense-only with an independent LLM judge scoring accuracy/relevance/completeness.
 
@@ -186,7 +185,7 @@ Default `response_mode` is `path` — responses include a `shape` summary and an
 | User wants only recent content | `ask` / `query` with `since: "7d"` |
 | User wants citations / verification | `ask` with `diagnostics: true` |
 | Ranking looks wrong | Try `hybrid_search: false` and compare |
-| Need entity/relationship reasoning | `ask` with `graph: true` (requires Neo4j) |
+| Need entity/relationship reasoning | `ask` with `diagnostics: true`; graph retrieval is not available in the current runtime |
 | Crawled the wrong thing | `crawl` `subaction: "clear"` or per-family `cleanup` |
 | RAG quality regression | CLI `axon evaluate <q> --retrieval-ab` |
 | Debug "nothing happened" | `action: "doctor"` first, then `action: "status"` |
@@ -198,7 +197,7 @@ Default `response_mode` is `path` — responses include a `shape` summary and an
 - **`help` and `doctor` are cheap.** Call `help` once per session to confirm the live action map; call `doctor` whenever something looks wrong.
 - **Async by default.** Lifecycle actions return a `job_id`; poll with `subaction: "status"`. CLI users can pass `--wait true` for synchronous one-shots.
 - **Cache reuse is opt-in (CLI flag).** `--cache true` reuses prior crawl artifacts; combine with `--cache-skip-browser true` to force the HTTP path even when the cached job used Chrome.
-- **`graph: true` silently no-ops without Neo4j.** Check `doctor` if results look unchanged.
+- **`graph: true` is deprecated.** Use hybrid search diagnostics and source coverage checks for retrieval debugging.
 - **Temporal filters use indexing date**, not document publication date — useful for "what did I add this week", not "what was published this week".
 - **`evaluate` uses an independent LLM judge.** The judge is not the model that generated the answer, so its scores are usable as-is. Currently CLI-only.
 - **`subaction` defaults to `start`** for lifecycle families — `{ "action": "crawl", "urls": [...] }` is enough to enqueue a job.

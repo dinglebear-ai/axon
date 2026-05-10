@@ -1,5 +1,5 @@
 # MCP Auth — Axon
-Last Modified: 2026-05-06
+Last Modified: 2026-05-09
 
 ## Table of Contents
 
@@ -21,20 +21,27 @@ authentication on the HTTP transport. The `stdio` transport runs as a child proc
 of the MCP client and has no network listener, so no auth is applied there.
 
 The HTTP transport exposes a single MCP tool (`axon`) over streamable HTTP at `/mcp`.
-Access is gated by a simple bearer token (`AXON_MCP_HTTP_TOKEN`). There is **no
-OAuth broker, no Google sign-in, no dynamic client registration, and no `atk_`
-token issuance** in the current code base — those features are not implemented.
+HTTP auth has two modes:
+
+- **Bearer mode** (default): static `AXON_MCP_HTTP_TOKEN` accepted as
+  `Authorization: Bearer ...` or `x-api-key`.
+- **OAuth mode**: `AXON_MCP_AUTH_MODE=oauth` initializes lab-auth with Google
+  OAuth, dynamic client registration, JWT bearer validation, and OAuth metadata
+  endpoints. The static bearer token continues to work in dual mode when set.
 
 **Key facts:**
-- Auth is enforced by `crates/mcp/auth.rs` via `mcp_auth_middleware`.
-- A single shared static token is configured via `AXON_MCP_HTTP_TOKEN`.
+- Auth is enforced by `src/mcp/auth.rs` via lab-auth `AuthLayer`.
+- A shared static token can be configured via `AXON_MCP_HTTP_TOKEN`.
+- OAuth mode is configured through `AXON_MCP_AUTH_MODE=oauth` and the
+  `AXON_MCP_*` Google/public URL variables below.
 - Clients authenticate using either header:
   - `Authorization: Bearer <AXON_MCP_HTTP_TOKEN>`
   - `x-api-key: <AXON_MCP_HTTP_TOKEN>`
 - Token comparison uses constant-time equality (`subtle::ConstantTimeEq`).
-- Loopback binds (`127.0.0.1`, `::1`, `localhost`) may run **without** a token —
+- Loopback binds (`127.0.0.1`, `::1`, `localhost`) may run **without** auth —
   startup logs a warning. Non-loopback binds (`0.0.0.0`, public hostnames) **require**
-  a token; otherwise the server refuses to start (`enforce_mcp_http_startup_policy`).
+  `AXON_MCP_HTTP_TOKEN` or `AXON_MCP_AUTH_MODE=oauth`; otherwise the server refuses
+  to start in `build_auth_policy`.
 
 ---
 
@@ -45,32 +52,37 @@ token issuance** in the current code base — those features are not implemented
     │  POST /mcp
     │  Authorization: Bearer <AXON_MCP_HTTP_TOKEN>
     ▼
-[axum router (crates/mcp/server/http.rs)]
+[axum router (src/mcp/server/http.rs)]
     │  └─ host_validation_middleware  (HostAllowlist)
     │  └─ mcp_http_cors_middleware    (AXON_MCP_ALLOWED_ORIGINS)
-    │  └─ mcp_auth_middleware         (AXON_MCP_HTTP_TOKEN check)
+    │  └─ AuthLayer                   (static bearer and/or OAuth JWT)
     ▼
 [StreamableHttpService → AxonMcpServer]
     │  Tool dispatch by action / subaction
 ```
 
-The middleware extracts the token from the `Authorization: Bearer …` or
-`x-api-key` header. If `AXON_MCP_HTTP_TOKEN` is unset, the middleware allows the
-request through and emits a one-time warning (allowed only because the startup
-policy already verified the bind is loopback).
+Bearer mode normalizes `x-api-key` to `Authorization: Bearer ...` before
+lab-auth checks the request. If `AXON_MCP_HTTP_TOKEN` is unset and OAuth mode is
+not active, the server runs unauthenticated only for loopback binds.
+
+OAuth mode mounts the lab-auth router beside `/mcp`, including OAuth metadata,
+JWKS, authorization, token, Google callback, and dynamic registration routes.
 
 ---
 
 ## Setup
 
-### 1. Pick a strong token
+### 1. Choose auth mode
+
+For a private loopback-only development server, no auth is required. For
+network-accessible servers, use either a static bearer token or OAuth.
+
+### 2. Static bearer setup
 
 ```bash
 # Generate a token (any cryptographically random secret works)
 openssl rand -hex 32
 ```
-
-### 2. Set environment variables in `.env`
 
 ```bash
 # Required for non-loopback binds
@@ -85,7 +97,26 @@ AXON_MCP_HTTP_PORT=8001
 AXON_MCP_ALLOWED_ORIGINS=
 ```
 
-### 3. Start the MCP server
+### 3. OAuth setup
+
+```bash
+AXON_MCP_AUTH_MODE=oauth
+AXON_MCP_PUBLIC_URL=https://axon.example.com
+AXON_MCP_GOOGLE_CLIENT_ID=your-google-client-id
+AXON_MCP_GOOGLE_CLIENT_SECRET=your-google-client-secret
+AXON_MCP_AUTH_ADMIN_EMAIL=you@example.com
+
+# Optional. Claude's MCP callback is always included by default.
+AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS=https://callback.example.com/callback/*
+```
+
+OAuth mode also accepts `AXON_MCP_HTTP_TOKEN` when set, so existing bearer
+clients can continue working while OAuth clients use dynamic registration and
+JWT bearer tokens. OAuth/JWT callers are scope-checked by MCP action: write
+actions require `axon:write`, read actions require `axon:read`, and
+`axon:write` satisfies read.
+
+### 4. Start the MCP server
 
 ```bash
 # stdio transport (default for `axon mcp`)
@@ -98,7 +129,7 @@ axon mcp --transport both              # stdio + HTTP concurrently
 ```
 
 The unified `axon serve` command (no subcommand) also starts MCP HTTP at
-`/mcp` on the same port as the web UI.
+`/mcp` on the same port as the web panel.
 
 ---
 
@@ -111,11 +142,12 @@ The unified `axon serve` command (no subcommand) also starts MCP HTTP at
 | `AXON_MCP_HTTP_TOKEN` | conditional | unset | Bearer / `x-api-key` token. Required when bind is non-loopback. |
 | `AXON_MCP_ALLOWED_ORIGINS` | no | unset | Comma-separated CORS allowlist. Unset = strict default (same-origin/loopback browsers only; non-browser tools unaffected). |
 | `AXON_MCP_TRANSPORT` | no | per-command | Override transport for `axon mcp` / `axon serve mcp` (`stdio`, `http`, `both`). |
-
-**There are no `GOOGLE_OAUTH_*` variables, no `AXON_MCP_API_KEY`, and no Redis
-prefix used by the MCP HTTP server.** Earlier revisions of this document
-referenced an OAuth broker — that feature was never implemented. Search
-`crates/mcp/auth.rs` for the full set of token-related code.
+| `AXON_MCP_AUTH_MODE` | no | `bearer` | Set to `oauth` to enable Google OAuth + DCR. |
+| `AXON_MCP_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata, e.g. `https://axon.example.com`. |
+| `AXON_MCP_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID. |
+| `AXON_MCP_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret. |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer. |
+| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs. |
 
 ---
 
@@ -225,13 +257,14 @@ curl -s -X POST http://localhost:8001/mcp \
 ## Security Model
 
 - **Static bearer token** — single shared secret, comparable in constant time.
-- **Loopback default** — startup refuses non-loopback binds without a token, so a
-  forgotten env var on a public host fails closed instead of running unauthenticated.
+- **OAuth mode** — Google OAuth + lab-auth JWT validation and dynamic client
+  registration. OAuth mode can run alongside the static bearer token.
+- **Loopback default** — startup refuses non-loopback binds without bearer or OAuth
+  auth, so a forgotten env var on a public host fails closed instead of running
+  unauthenticated.
 - **Host allowlist** — `host_validation_middleware` rejects requests whose `Host`
   header is not in the loopback set or `AXON_MCP_ALLOWED_ORIGINS`.
 - **CORS allowlist** — `mcp_http_cors_middleware` restricts browser-origin requests.
-- **No user accounts** — there is no per-user auth, no OAuth, no DCR. Any caller
-  with the token has full access to the `axon` tool.
 - **stdio is unauthenticated** — relies on OS process boundaries: the MCP client
   spawns the server with its own environment.
 
@@ -253,8 +286,10 @@ header or sent the wrong value.
 
 ### Server refuses to start with `refusing to start unauthenticated MCP HTTP server`
 
-You bound to a non-loopback address (e.g. `0.0.0.0`) without setting
-`AXON_MCP_HTTP_TOKEN`. Either bind to `127.0.0.1` / `localhost` or set the token.
+You bound to a non-loopback address (e.g. `0.0.0.0`) without configuring bearer
+or OAuth auth. Either bind to `127.0.0.1` / `localhost`, set
+`AXON_MCP_HTTP_TOKEN`, or set `AXON_MCP_AUTH_MODE=oauth` with the required OAuth
+variables.
 
 ### MCP client cannot connect
 
@@ -263,11 +298,8 @@ You bound to a non-loopback address (e.g. `0.0.0.0`) without setting
 3. For remote clients, confirm the host firewall allows inbound traffic.
 4. Run `axon doctor` to verify infrastructure connectivity (Qdrant, TEI).
 
-### Where is the OAuth flow?
+### OAuth metadata is missing
 
-It does not exist. Earlier docs referenced a Google OAuth broker / `atk_`
-tokens / `/.well-known/oauth-*` endpoints — none of that is implemented in
-`crates/mcp/`. The only auth path is `AXON_MCP_HTTP_TOKEN` enforced by
-`mcp_auth_middleware` in `crates/mcp/auth.rs`. If you need OAuth, run the MCP
-server behind a reverse proxy that performs the OAuth handshake and forwards
-the bearer token (or none, on loopback) to `/mcp`.
+OAuth routes are only mounted when `AXON_MCP_AUTH_MODE=oauth`. Confirm
+`AXON_MCP_PUBLIC_URL`, Google client credentials, and admin email are present in
+the server environment, then restart `axon serve`.

@@ -27,7 +27,8 @@ axon suggest --query "<focus>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for suggestion generation. |
 
-`suggest` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
+`suggest` uses Qdrant state and Gemini headless synthesis. It does not require
+Postgres, Redis, or AMQP.
 
 ## Flags
 

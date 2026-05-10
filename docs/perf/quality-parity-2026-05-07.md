@@ -24,17 +24,17 @@ Status meanings:
 
 Current implementation status:
 
-| Agent | ACP | Headless |
-|-------|-----|----------|
-| Claude | Supported through existing ACP path. | Implemented with no-tool stream-json command builder and parser. |
-| Codex | Supported through existing ACP path when configured. | Unavailable until a no-tool synthesis posture is proven. |
-| Gemini | Supported through existing ACP path when configured. | Unavailable until a no-tool synthesis posture is proven. |
+| Agent | Status |
+|-------|--------|
+| Gemini headless | Current first-party ask/evaluate/suggest/research synthesis path. |
+| Claude/Codex ACP | Removed from the active ask backend surface. Historical parity rows may exist in older reports only. |
 
 Threshold:
 
-Headless must be within 2 percentage points of same-agent ACP on accuracy,
-relevance, completeness, and specificity. Cells marked unavailable are not zero
-scores and require follow-up before parity can be claimed.
+Gemini headless regression runs should stay within the approved golden-answer
+quality envelope for accuracy, relevance, completeness, and specificity. Cells
+marked unavailable are not zero scores and require follow-up before parity can
+be claimed.
 
 Run command:
 

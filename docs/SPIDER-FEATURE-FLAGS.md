@@ -33,31 +33,31 @@ spider_transformations = "2"  # no feature flags — full crate used as-is
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
-| `basic` | Core | Meta-feature — enables core crawl engine. Used everywhere spider is imported (`crates/crawl/engine/`, `crates/crawl/engine/collector.rs`, etc.) |
+| `basic` | Core | Meta-feature — enables core crawl engine. Used everywhere spider is imported (`src/crawl/engine/`, `src/crawl/engine/collector.rs`, etc.) |
 | `regex` | Core | URL blacklist/whitelist pattern matching. Powers `--exclude-path-prefix` and `--url-whitelist` flags in crawl config |
 | `sitemap` | Core | `append_sitemap_backfill()` in `src/crawl/engine/`. Drives `--discover-sitemaps` and `--sitemap-since-days` flags before sync inline embed or async dependent embed handoff |
 | `simd` | Core | SIMD-accelerated JSON/text parsing. Performance optimization — no direct call site; implicit via spider internals |
-| `chrome` | Chrome / Browser | `RenderMode::Chrome` and `RenderMode::AutoSwitch` paths in `crates/crawl/engine/runtime.rs`. Imports `spider::features::chrome_common::{RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector}` |
-| `chrome_stealth` | Chrome / Browser | Passed to `spider::website::Website` in `configure_website()` in `crates/crawl/engine/`. Enables headless detection evasion |
-| `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `crates/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
+| `chrome` | Chrome / Browser | `RenderMode::Chrome` and `RenderMode::AutoSwitch` paths in `src/crawl/engine/runtime.rs`. Imports `spider::features::chrome_common::{RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector}` |
+| `chrome_stealth` | Chrome / Browser | Passed to `spider::website::Website` in `configure_website()` in `src/crawl/engine/`. Enables headless detection evasion |
+| `chrome_screenshot` | Chrome / Browser | `ScreenshotParams` usage in `src/crawl/engine/runtime.rs`. Powers screenshot capture during crawls |
 | `adblock` | Chrome / Browser | Implicit ad/tracker request filtering during crawl. No local toggle — always active when chrome features are in use |
 | `cache_mem` | Caching | In-memory page/request deduplication during crawls. No local call site; spider uses it internally for request memoization |
 
-| `hedge` | Core | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `crates/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+| `hedge` | Core | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `src/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
 
 
 ### spider_agent crate — 2 flags enabled
 
 | Flag | Category | Where Used in Source |
 |------|----------|----------------------|
-| `search_tavily` | Search | `crates/cli/commands/search.rs:4` — `use spider_agent::{Agent, SearchOptions, TimeRange}` (Tavily web search command) · `crates/cli/commands/research.rs:4` — same imports · `crates/mcp/server/common.rs:9` — `use spider_agent::TimeRange` (MCP TimeRange type) |
-| `openai` | AI / LLM | `crates/cli/commands/research.rs:4` — `Agent::builder().with_openai_compatible().with_search_tavily(key).build()?.research(ResearchOptions)` — LLM synthesis for the `research` command |
+| `search_tavily` | Search | `src/cli/commands/search.rs:4` — `use spider_agent::{Agent, SearchOptions, TimeRange}` (Tavily web search command) · `src/cli/commands/research.rs:4` — same imports · `src/mcp/server/common.rs:9` — `use spider_agent::TimeRange` (MCP TimeRange type) |
+| `openai` | AI / LLM | `src/cli/commands/research.rs:4` — `Agent::builder().with_openai_compatible().with_search_tavily(key).build()?.research(ResearchOptions)` — LLM synthesis for the `research` command |
 
 ### spider_transformations crate — no feature flags
 
 Used in two files for HTML→Markdown content transformation:
-- `crates/crawl/engine/collector.rs:6` — `use spider_transformations::transformation::content::{TransformInput, transform_content_input}`
-- `crates/core/content.rs:14` — `use spider_transformations::transformation::content::{...}`
+- `src/crawl/engine/collector.rs:6` — `use spider_transformations::transformation::content::{TransformInput, transform_content_input}`
+- `src/core/content.rs:14` — `use spider_transformations::transformation::content::{...}`
 
 ---
 
@@ -99,7 +99,7 @@ Used in two files for HTML→Markdown content transformation:
 | `simd` | ✅ | SIMD-accelerated text/JSON parsing |
 | `inline-more` | ✅ | Aggressive function inlining in spider internals for runtime perf |
 
-| `hedge` | ✅ | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `crates/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
+| `hedge` | ✅ | Hedged duplicate HTTP request for resilience — races a second request after the default 3s delay. Doubles HTTP traffic for pages that take >3s. Used in `src/crawl/engine/runtime.rs` via `HedgeConfig::default()`. |
 
 
 ### Storage (3)

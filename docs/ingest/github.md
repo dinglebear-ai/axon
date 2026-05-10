@@ -15,7 +15,7 @@ Ingests a GitHub repository — source code, documentation, issues, pull request
 | Pull requests | Open and closed, title + body |
 | Wiki pages | When the repo has a public wiki |
 
-**Excluded** regardless of flags: `target/`, `node_modules/`, `dist/`, `__pycache__/`, `.lock` files, `-lock.json` files. See `is_indexable_source_path()` in `crates/ingest/github.rs` for the full list.
+**Excluded** regardless of flags: `target/`, `node_modules/`, `dist/`, `__pycache__/`, `.lock` files, `-lock.json` files. See `is_indexable_source_path()` in `src/ingest/github.rs` for the full list.
 
 ### Code Chunking (tree-sitter AST)
 
@@ -32,11 +32,11 @@ Source code files are chunked via **tree-sitter AST-aware splitting** when a gra
 
 Files in unsupported languages fall back to standard 2000-char prose chunking with 200-char overlap.
 
-Implementation: `chunk_code()` in `crates/vector/ops/input/code.rs`, used to pre-chunk code files before passing to `embed_prepared_docs()` via `PreparedDoc`.
+Implementation: `chunk_code()` in `src/vector/ops/input/code.rs`, used to pre-chunk code files before passing to `embed_prepared_docs()` via `PreparedDoc`.
 
 ### File Classification
 
-Each file is classified by `classify_file_type()` in `crates/vector/ops/input/classify.rs`:
+Each file is classified by `classify_file_type()` in `src/vector/ops/input/classify.rs`:
 
 | Type | Detection |
 |------|-----------|
@@ -81,7 +81,7 @@ The argument accepts:
 6. Code files are chunked via `chunk_code()` (tree-sitter AST when available, prose fallback); doc files use `chunk_text()`. Chunks are embedded through `embed_prepared_docs()` in batches
 7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
 8. Clones the wiki separately via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files when GitHub reports a wiki exists
-9. All chunk types carry unified `gh_*` metadata payload via `build_github_payload()` in `crates/ingest/github/meta.rs`
+9. All chunk types carry unified `gh_*` metadata payload via `build_github_payload()` in `src/ingest/github/meta.rs`
 
 ### Clone Authentication and Fallback
 
@@ -107,7 +107,7 @@ The current threshold is fixed and conservative: any failed embed batch makes th
 
 ## Qdrant Metadata Fields
 
-All GitHub chunks carry a **unified** set of 31 `gh_*` payload fields built by `build_github_payload()` in `crates/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Every chunk type gets the same field schema — unused fields are set to `null`/`""` /`[]`/`0`/`false`.
+All GitHub chunks carry a **unified** set of 31 `gh_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Every chunk type gets the same field schema — unused fields are set to `null`/`""` /`[]`/`0`/`false`.
 
 ### Repository-level fields (all chunk types)
 

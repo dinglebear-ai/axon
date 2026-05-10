@@ -1,4 +1,4 @@
-# crates/vector
+# src/vector
 Last Modified: 2026-03-03
 
 Embedding, vector storage, retrieval, and RAG operations.
@@ -26,9 +26,9 @@ Embedding, vector storage, retrieval, and RAG operations.
 - `ops/commands/suggest.rs`: complementary source suggestion flow.
 
 ## Integration Points
-- `crates/cli/commands/*` invoke these operations for interactive and batch usage.
-- `crates/jobs/embed` and ingest workflows rely on vector upsert paths.
-- Depends on `TEI_URL` and `QDRANT_URL` runtime config from `crates/core/config`.
+- `src/cli/commands/*` invoke these operations for interactive and batch usage.
+- `src/jobs/embed` and ingest workflows rely on vector upsert paths.
+- Depends on `TEI_URL` and `QDRANT_URL` runtime config from `src/core/config`.
 
 ## Notes
 - Retry/splitting behavior for TEI overload and payload limits is handled in embedding paths and should remain conservative for stability.

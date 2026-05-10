@@ -15,7 +15,6 @@ Axon exposes one MCP tool with the full operation space routed via the `action` 
 | Action | Description |
 |--------|-------------|
 | `ask` | RAG: semantic search + LLM answer synthesis |
-| `export` | Export full index manifest to JSON |
 | `map` | Discover all URLs at a domain without scraping |
 | `query` | Semantic vector search |
 | `research` | Web research via Tavily with LLM synthesis |
@@ -32,8 +31,6 @@ Axon exposes one MCP tool with the full operation space routed via the `action` 
 | `extract` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | LLM-powered structured extraction |
 | `embed` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | Vector embedding into Qdrant |
 | `ingest` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | External source ingestion (GitHub, Reddit, YouTube, sessions) |
-| `refresh` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`, `schedule` | Periodic URL re-indexing |
-| `graph` | `build`, `status`, `explore`, `stats` | Neo4j knowledge graph operations |
 | `artifacts` | `head`, `grep`, `wc`, `read`, `list`, `delete`, `clean`, `search` | MCP artifact file management |
 
 ### Info actions
@@ -66,7 +63,6 @@ All MCP actions are also available as CLI commands:
 | `search <query>` | No | Web search via Tavily |
 | `research <query>` | No | Web research with LLM synthesis |
 | `embed [input]` | Yes | Embed into Qdrant |
-| `export` | No | Export index manifest |
 | `query <text>` | No | Semantic vector search |
 | `retrieve <url>` | No | Fetch stored chunks |
 | `ask <question>` | No | RAG search + answer |
@@ -81,9 +77,7 @@ All MCP actions are also available as CLI commands:
 | `doctor` | No | Service connectivity check |
 | `debug` | No | Doctor + LLM troubleshooting |
 | `mcp` | No | Start MCP stdio server |
-| `refresh <url>` | Yes | Periodic re-indexing |
-| `graph <sub>` | Depends | Knowledge graph operations |
-| `serve` | No | Start web UI supervisor |
+| `serve` | No | Start unified HTTP server (`/mcp`, web panel, `/v1/*`) |
 | `watch <sub>` | Depends | Scheduled task management |
 | `migrate` | No | Collection upgrade (unnamed to named vectors) |
 
@@ -93,39 +87,36 @@ All MCP actions are also available as CLI commands:
 |---------|-------|-------------|---------|
 | `axon-qdrant` | qdrant/qdrant:v1.13.1 | 53333, 53334 (gRPC) | Vector store |
 | `axon-tei` | ghcr.io/huggingface/text-embeddings-inference | 52000 | Embedding generation |
-| `axon-chrome` | docker/chrome/Dockerfile | 6000, 9222 (CDP) | Headless browser |
+| `axon-chrome` | config/chrome/Dockerfile | 6000, 9222/9223 (CDP) | Headless browser |
 
 ## App services
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
-| `axon-workers` | docker/Dockerfile | 49000, 8001 | Workers + serve + MCP HTTP |
-| `axon-web` | docker/web/Dockerfile | 49010 | Next.js dashboard |
+| `axon` | config/Dockerfile | 8001 | Unified Axon HTTP server (`serve`) |
 
 ## Worker types
 
-| Worker | Queue | Description |
-|--------|-------|-------------|
-| Crawl | `axon.crawl.jobs` | Full site crawling with sitemap backfill |
-| Extract | `axon.extract.jobs` | LLM-powered structured data extraction |
-| Embed | `axon.embed.jobs` | TEI embedding + Qdrant upsert |
-| Ingest | `axon.ingest.jobs` | GitHub/Reddit/YouTube source ingestion |
-| Refresh | `axon.refresh.jobs` | Periodic URL re-indexing |
-| Graph | `axon.graph.jobs` | Neo4j entity extraction and graph building |
+| Worker | SQLite table | Description |
+|--------|--------------|-------------|
+| Crawl | `axon_crawl_jobs` | Full site crawling with sitemap backfill |
+| Extract | `axon_extract_jobs` | LLM-powered structured data extraction |
+| Embed | `axon_embed_jobs` | TEI embedding + Qdrant upsert |
+| Ingest | `axon_ingest_jobs` | GitHub/Reddit/YouTube/source-session ingestion |
 
-## Workspace crates
+## Source modules
 
-| Crate | Path | Purpose |
+| Module | Path | Purpose |
 |-------|------|---------|
-| `cli` | `crates/cli/` | Command handlers for all CLI subcommands |
-| `core` | `crates/core/` | Config, HTTP client, content processing |
-| `crawl` | `crates/crawl/` | Spider-based crawl engine |
-| `ingest` | `crates/ingest/` | GitHub, Reddit, YouTube ingest adapters |
-| `jobs` | `crates/jobs/` | Async job framework (AMQP + SQLite backends) |
-| `mcp` | `crates/mcp/` | MCP server schema and handlers |
-| `services` | `crates/services/` | Typed service layer (consumed by CLI, MCP, web) |
-| `vector` | `crates/vector/` | Qdrant ops, TEI embedding, hybrid search |
-| `web` | `crates/web/` | WebSocket execution bridge |
+| `cli` | `src/cli/` | Command handlers for all CLI subcommands |
+| `core` | `src/core/` | Config, HTTP client, content processing |
+| `crawl` | `src/crawl/` | Spider-based crawl engine |
+| `ingest` | `src/ingest/` | GitHub, Reddit, YouTube ingest adapters |
+| `jobs` | `src/jobs/` | SQLite-backed job framework |
+| `mcp` | `src/mcp/` | MCP server schema and handlers |
+| `services` | `src/services/` | Typed service layer (consumed by CLI, MCP, web) |
+| `vector` | `src/vector/` | Qdrant ops, TEI embedding, hybrid search |
+| `web` | `src/web/` | Static setup panel, `/v1/ask`, and client/server action routes |
 
 ## Database tables
 
@@ -142,10 +133,8 @@ All MCP actions are also available as CLI commands:
 |--------|---------|
 | `scripts/axon` | Wrapper script (auto-sources `~/.axon/.env`, with repo `.env` fallback) |
 | `scripts/dev-setup.sh` | Bootstrap development environment |
-| `scripts/rebuild-fresh.sh` | Build + start Docker containers |
-| `scripts/check-container-revisions.sh` | Verify container git SHA matches |
-| `scripts/check_dockerignore_guards.sh` | Verify .dockerignore patterns |
 | `scripts/enforce_monoliths.py` | Enforce file/function size limits |
 | `scripts/generate_mcp_schema_doc.py` | Regenerate MCP-TOOL-SCHEMA.md |
 | `scripts/live-test-all-commands.sh` | Integration test all CLI commands |
+| `scripts/test-client-server-mode.sh` | CLI client/server smoke test |
 | `scripts/test-mcp-tools-mcporter.sh` | MCP smoke test suite |

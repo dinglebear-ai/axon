@@ -1,7 +1,7 @@
-# crates/services — Typed Service Layer
-Last Modified: 2026-03-28
+# src/services — Typed Service Layer
+Last Modified: 2026-05-09
 
-The contract boundary between all entry points (CLI commands, MCP handlers, web routes) and the underlying business logic crates (`vector`, `jobs`, `crawl`, `ingest`). Every external caller goes through a service function — no entry point calls `crates/vector/ops/*` directly.
+The contract boundary between all entry points (CLI commands, MCP handlers, web routes) and the underlying business logic crates (`vector`, `jobs`, `crawl`, `ingest`). Every external caller goes through a service function — no entry point calls `src/vector/ops/*` directly.
 
 ## Module Layout
 
@@ -38,7 +38,7 @@ services/
 ├── types/
 │   ├── contracts.rs        # External-facing service contract types
 │   └── service.rs          # All typed result structs (QueryResult, AskResult, ...)
-└── watch.rs                # CRUD shim — actual scheduler runtime lives in crates/jobs/watch_lite.rs
+└── watch.rs                # CRUD shim — actual scheduler runtime lives in src/jobs/watch_lite.rs
 ```
 
 ## `ServiceContext` — The Entry Point
@@ -89,7 +89,7 @@ CLI fire-and-forget contexts must use `new()`. Spawning workers in a short-lived
 
 ## Architecture Contract
 
-**Rule:** CLI handlers, MCP handlers, and web API routes call **service functions only** — never raw `crates/vector/ops/*` or `crates/jobs/*` functions directly.
+**Rule:** CLI handlers, MCP handlers, and web API routes call **service functions only** — never raw `src/vector/ops/*` or `src/jobs/*` functions directly.
 
 ```
 CLI handler (run_ask)
@@ -175,18 +175,18 @@ cargo test emit              # ServiceEvent channel tests
 cargo test -- --nocapture    # show log output
 ```
 
-Pure mapping tests (`map_*` functions) and channel tests run without live services. Tests for `query`, `ask`, `sources`, etc. that call into `crates/vector` require Qdrant + TEI.
+Pure mapping tests (`map_*` functions) and channel tests run without live services. Tests for `query`, `ask`, `sources`, etc. that call into `src/vector` require Qdrant + TEI.
 
 ## Adding a New Service Function
 
-1. Add the function to the appropriate `crates/services/<name>.rs` — signature takes `&ServiceContext`
-2. Add a typed result struct to `crates/services/types/service.rs`
-3. Call from the CLI handler in `crates/cli/commands/<name>.rs` — receives `&ServiceContext`
-4. Call from the MCP handler in `crates/mcp/server/handlers_*.rs` — receives `&ServiceContext`
+1. Add the function to the appropriate `src/services/<name>.rs` — signature takes `&ServiceContext`
+2. Add a typed result struct to `src/services/types/service.rs`
+3. Call from the CLI handler in `src/cli/commands/<name>.rs` — receives `&ServiceContext`
+4. Call from the MCP handler in `src/mcp/server/handlers_*.rs` — receives `&ServiceContext`
 5. If the feature is unavailable in the current runtime, return an appropriate error
 6. Add mapping helpers and unit tests for pure logic (no live services needed)
 7. Never print, log, or serialize inside the service function — return the typed result
 
 ## `watch.rs` and `events.rs` — Live Streaming
 
-`crates/services/watch.rs` is a thin CRUD layer (~2 KB) that exposes watch definition + run lookups to CLI/MCP/web. The actual scheduler runtime lives in `crates/jobs/watch_lite.rs` (SQLite-backed, in-process). Streaming is plumbed through `ServiceEvent` so the watch runner can emit progress that the web/WS layer forwards to clients in real time.
+`src/services/watch.rs` is a thin CRUD layer (~2 KB) that exposes watch definition + run lookups to CLI, MCP, and HTTP callers. The actual scheduler runtime lives in `src/jobs/watch_lite.rs` (SQLite-backed, in-process). Streaming is plumbed through `ServiceEvent` so callers can forward progress without putting logging or serialization inside the service function.

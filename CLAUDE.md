@@ -1,11 +1,11 @@
 # Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-05-06
+Last Modified: 2026-05-09
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
 ## Quick Start
 
-> **Lite mode is the only runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. There is no Postgres/Redis/RabbitMQ path; the `--lite` flag and `AXON_LITE=1` env are accepted for backwards compatibility but always resolve to lite mode.
+> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. There is no Postgres/Redis/RabbitMQ path; the `--lite` flag and `AXON_LITE=1` env are accepted for backwards compatibility only.
 
 ```bash
 # Recommended: use the wrapper script (auto-sources .env)
@@ -63,12 +63,12 @@ MCP docs:
 | `doctor` | Diagnose service connectivity | No |
 | `debug` | Run doctor + LLM-assisted troubleshooting | No |
 | `mcp` | Start MCP stdio/HTTP server | No |
-| `serve` | Start the local app stack supervisor (axum WS bridge, MCP HTTP, in-process workers) | No |
+| `serve` | Start the unified HTTP server (web panel, MCP HTTP, `/v1/ask`, `/v1/actions`, in-process workers) | No |
 | `setup` | First-run + remote SSH deploy helper | No |
 | `screenshot <url>` | Capture a full-page screenshot via headless Chrome | No |
 | `dedupe` | Deduplicate near-identical chunks within a Qdrant collection | No |
 | `completions <shell>` | Emit shell completion scripts | No |
-| `watch <sub>` | Scheduled task management. Lite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
+| `watch <sub>` | Scheduled task management. SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
 
 ### Job Subcommands (for crawl / extract / embed / ingest / sessions)
@@ -164,51 +164,51 @@ High-level subsystem map:
   - `main.rs` loads environment and calls `axon::run()`
   - `lib.rs` owns `run`/`run_once` and command dispatch
 - Command + config:
-  - `crates/cli/*` command handlers
-  - `crates/core/config/{cli,parse,types}.rs` flag/env parsing and runtime config resolution
+  - `src/cli/*` command handlers
+  - `src/core/config/{cli,parse,types}.rs` flag/env parsing and runtime config resolution
 - Crawl + content:
-  - `crates/crawl/engine.rs`
-  - `crates/core/http.rs` and `crates/core/content.rs`
-- Async jobs (lite-only):
-  - `crates/jobs/lite.rs` + `crates/jobs/lite/` (SQLite-backed enqueue/query/store/cancel)
-  - `crates/jobs/lite/workers.rs` + `crates/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
-  - `crates/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
-  - `crates/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog support)
-  - `crates/jobs/watch_lite.rs` (recurring task scheduler — list/create/run-now/history)
-  - `crates/jobs/backend.rs` (`JobBackend` trait + `LiteBackend` only)
-  - job states in `crates/jobs/status.rs`
+  - `src/crawl/engine.rs`
+  - `src/core/http.rs` and `src/core/content.rs`
+- Async jobs:
+  - `src/jobs/lite.rs` + `src/jobs/lite/` (SQLite-backed enqueue/query/store/cancel)
+  - `src/jobs/lite/workers.rs` + `src/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
+  - `src/jobs/{crawl,embed,extract,ingest}.rs` (per-family job payload + dispatch helpers)
+  - `src/jobs/crawl/` (manifest, processor, repo, sitemap, watchdog support)
+  - `src/jobs/watch_lite.rs` (recurring task scheduler — list/create/run-now/history)
+  - `src/jobs/backend.rs` (`JobBackend` trait + `LiteBackend` only)
+  - job states in `src/jobs/status.rs`
 - Vector + RAG:
-  - `crates/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
-  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `crates/vector/CLAUDE.md`.
-- Services layer (services-first contract) — see `crates/services/CLAUDE.md`:
-  - `crates/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
-  - CLI commands call `crates/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
-  - Each service function returns a typed result struct (defined in `crates/services/types/service.rs`) — no raw JSON printing or stdout side-effects
+  - `src/vector/ops/*` (TEI embedding, Qdrant upsert/search, ask/evaluate/query)
+  - Hybrid search: new collections use named `dense` + `bm42` sparse vectors with Reciprocal Rank Fusion (RRF) via Qdrant `/query` when hybrid search is active; falls back to dense-only when the sparse query is empty or hybrid is disabled. Legacy collections use dense-only. See `src/vector/CLAUDE.md`.
+- Services layer (services-first contract) — see `src/services/CLAUDE.md`:
+  - `src/services/` — typed entry points consumed by both CLI handlers and MCP/web routes
+  - CLI commands call `src/services::{query,retrieve,ask,sources,domains,stats,system}` — **not** raw `run_*_native()` functions (those public call-site entry points are removed from the API surface; callers must go through the services layer)
+  - Each service function returns a typed result struct (defined in `src/services/types/service.rs`) — no raw JSON printing or stdout side-effects
   - MCP handlers and web routes call the same service functions, mapping typed results to wire format
-  - Gemini headless LLM completions live in `crates/services/llm_backend/` — used by ask synthesis, research, evaluate, suggest, debug, and extract fallback
+  - Gemini headless LLM completions live in `src/services/llm_backend/` — used by ask synthesis, research, evaluate, suggest, debug, and extract fallback
 - MCP server:
-  - `crates/mcp/` (schema, server routing, handler modules, config)
+  - `src/mcp/` (schema, server routing, handler modules, config)
   - Single `axon` tool with `action`/`subaction` routing
 
 ## Infrastructure
 
 ### Docker Compose
 
-The stack uses a single compose file for infrastructure services shared on the `axon` bridge network:
+The stack uses one compose file for the Axon server plus infrastructure services on the `axon` bridge network:
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `config/docker-compose.services.yaml` | Infrastructure (qdrant, chrome, TEI) | `services.env` |
+| `docker-compose.yaml` | Axon server, Qdrant, Chrome, TEI | `~/.axon/.env` |
 
-**GPU acceleration:** On NVIDIA hosts, `config/docker-compose.services.yaml` includes NVIDIA reservations for `axon-tei`.
+**GPU acceleration:** On NVIDIA hosts, `docker-compose.yaml` includes NVIDIA reservations for `axon-tei`.
 
 ```bash
-docker compose -f config/docker-compose.services.yaml up -d
+docker compose --env-file ~/.axon/.env up -d
 ```
 
 CPU-only hosts should override the TEI image/settings or run an external TEI endpoint.
 
-### Infrastructure Services (`config/docker-compose.services.yaml`)
+### Infrastructure Services (`docker-compose.yaml`)
 
 | Service | Image | Exposed Port | Purpose |
 |---------|-------|-------------|---------|
@@ -219,10 +219,10 @@ CPU-only hosts should override the TEI image/settings or run an external TEI end
 ```bash
 # Start infrastructure (qdrant, tei, chrome)
 just services-up
-# or: docker compose -f config/docker-compose.services.yaml up -d
+# or: docker compose --env-file ~/.axon/.env up -d axon-qdrant axon-tei axon-chrome
 
 # Check infra health
-docker compose -f config/docker-compose.services.yaml ps
+docker compose --env-file ~/.axon/.env ps
 
 # Stop everything
 just services-down
@@ -266,7 +266,7 @@ Copy `.env.example` → `.env`, then fill in values:
 
 ```bash
 # Data root on host
-AXON_DATA_DIR=/home/yourname/appdata
+AXON_DATA_DIR=
 
 # Qdrant
 QDRANT_URL=http://axon-qdrant:6333
@@ -303,43 +303,56 @@ REDDIT_CLIENT_SECRET=               # required for Reddit ingest targets
 # Worker tuning (optional, defaults shown)
 AXON_INGEST_LANES=2                 # parallel ingest worker lanes
 AXON_EMBED_DOC_TIMEOUT_SECS=300     # per-document embed timeout
-AXON_EMBED_STRICT_PREDELETE=true    # delete existing points before re-embedding
 AXON_JOB_STALE_TIMEOUT_SECS=300    # seconds before a running job is considered stale
 AXON_JOB_STALE_CONFIRM_SECS=60     # additional grace period before stale reclaim
 ```
 
 ### MCP Security Env
 
-MCP OAuth (`atk_` tokens) is the auth system for MCP clients:
+MCP HTTP auth is selected at startup:
+- `AXON_MCP_AUTH_MODE=oauth` enables the lab-auth Google OAuth/JWT flow and mounts `/.well-known/*`, `/authorize`, `/token`, `/register`, and related routes.
+- `AXON_MCP_HTTP_TOKEN` enables static bearer auth and also remains accepted in OAuth dual-mode.
+- Tokenless HTTP is allowed only for loopback development binds; non-loopback binds require either OAuth mode or a static token.
 
 ```bash
+# Static bearer token accepted as Authorization: Bearer ... or x-api-key
+AXON_MCP_HTTP_TOKEN=
+
+# OAuth mode (optional; HTTP transport only)
+AXON_MCP_AUTH_MODE=oauth
+AXON_MCP_PUBLIC_URL=https://axon.example.com
+AXON_MCP_GOOGLE_CLIENT_ID=
+AXON_MCP_GOOGLE_CLIENT_SECRET=
+AXON_MCP_AUTH_ADMIN_EMAIL=
+AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS=
+
 # MCP allowed origins (comma-separated)
 AXON_MCP_ALLOWED_ORIGINS=
 ```
 
-## Runtime Mode (lite-only)
+## Runtime Mode
 
-Lite is the only supported runtime. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path has been removed; the `--lite` flag and `AXON_LITE=1` env var are accepted for compatibility but always resolve to lite mode.
+Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path has been removed; the `--lite` flag and `AXON_LITE=1` env var are accepted for compatibility only.
 
 ```bash
-axon scrape https://example.com           # lite by default — no external services needed
-AXON_LITE=1 axon scrape https://example.com   # equivalent
-axon --lite scrape https://example.com        # equivalent
+axon scrape https://example.com           # SQLite/in-process runtime
+AXON_LITE=1 axon scrape https://example.com   # accepted, no behavior change
+axon --lite scrape https://example.com        # accepted, no behavior change
 ```
 
 **Supported commands:** scrape, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
 
-**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `crates/services/watch.rs` → `crates/jobs/watch_lite.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
+**Watch scheduler:** `watch list`, `watch create`, `watch run-now`, and `watch history` are wired through `src/services/watch.rs` → `src/jobs/watch_lite.rs` and work today. `watch get`, `watch update`, `watch pause`, `watch resume`, `watch delete`, and `watch artifacts` parse but are not yet implemented.
 
 ```bash
 # Env vars for runtime tuning
-AXON_LITE=1                              # accepted for compatibility (lite is mandatory)
+AXON_LITE=1                              # accepted for compatibility
 AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/jobs.db (i.e. ~/.axon/jobs.db)
 ```
 
-The `ServiceContext` (in `crates/services/context.rs`) is constructed at startup and carries `cfg: Arc<Config>` plus `jobs: Arc<dyn ServiceJobRuntime>`. CLI fire-and-forget callers use `ServiceContext::new(cfg)` (no in-process workers); long-running services (`serve`, `mcp`, sync `--wait true` paths) use `ServiceContext::new_with_workers(cfg)`.
+The `ServiceContext` (in `src/services/context.rs`) is constructed at startup and carries `cfg: Arc<Config>` plus `jobs: Arc<dyn ServiceJobRuntime>`. CLI fire-and-forget callers use `ServiceContext::new(cfg)` (no in-process workers); long-running services (`serve`, `mcp`, sync `--wait true` paths) use `ServiceContext::new_with_workers(cfg)`.
 
-See `crates/jobs/CLAUDE.md` for the `JobBackend` trait and `LiteBackend` details, and `crates/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
+See `src/jobs/CLAUDE.md` for the `JobBackend` trait and `LiteBackend` details, and `src/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
 
 ## Gotchas
 
@@ -372,7 +385,7 @@ On HTTP 429, any 5xx status, transport errors, or response decode failures, `tei
 Pages with fewer than `--min-markdown-chars` (default: 200) are flagged as thin. If `--drop-thin-markdown true` (default), thin pages are skipped — not saved to disk or embedded.
 
 ### `readability: false` — do NOT change
-`build_transform_config()` in `crates/core/content.rs` sets `readability: false`. Changing this to `true` causes Mozilla Readability to score VitePress/sidebar doc layouts as low-quality and strip them to just the page title — produces ~97% thin pages on most documentation sites. `main_content: true` handles structural extraction without the scoring penalty. This setting is the result of a confirmed production regression; do not "improve" it.
+`build_transform_config()` in `src/core/content.rs` sets `readability: false`. Changing this to `true` causes Mozilla Readability to score VitePress/sidebar doc layouts as low-quality and strip them to just the page title — produces ~97% thin pages on most documentation sites. `main_content: true` handles structural extraction without the scoring penalty. This setting is the result of a confirmed production regression; do not "improve" it.
 
 ### Collection must exist before upsert
 `ensure_collection()` does a GET first; only issues PUT on 404 (collection not found). This means it's safe on existing collections — no 409 Conflict. Safe to call on every embed.
@@ -417,22 +430,19 @@ spider_agent = { version = "2.45", default-features = false, features = ["search
 - Full flag inventory: [`docs/SPIDER-FEATURE-FLAGS.md`](docs/SPIDER-FEATURE-FLAGS.md)
 
 ### Subprocess stdout vs stderr
-CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). The web UI streams both: stdout as `"type": "output"`, stderr as `"type": "log"`. ANSI codes stripped via `console::strip_ansi_codes()`.
+CLI commands output JSON data to stdout and progress/logs to stderr (Spinner via indicatif, tracing via `log_info`/`log_done`). Keep this split intact so server-mode and MCP callers can safely parse command output.
 
 ### Crawl queue cap (`AXON_MAX_PENDING_CRAWL_JOBS`)
-New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `crates/jobs/lite/ops/enqueue.rs` via `check_pending_cap_for()`.
-
-### Crawl size warning (`AXON_CRAWL_SIZE_WARN_THRESHOLD`)
-After an uncapped crawl completes (`--max-pages 0`, the default), if the total pages crawled exceeds `AXON_CRAWL_SIZE_WARN_THRESHOLD` (default 10,000), a warning is logged suggesting the user add `--max-pages`. Set to 0 to disable the warning.
+New crawl job submissions check the count of pending jobs before inserting. If the count is ≥ `AXON_MAX_PENDING_CRAWL_JOBS` (default 100, 0 = unlimited), the submission is rejected with a human-readable error. Set to 0 to disable. Implemented in `src/jobs/lite/ops/enqueue.rs` via `check_pending_cap_for()`.
 
 ### Auto path-prefix scoping
 When crawling a URL with ≥2 path segments and no explicit `--url-whitelist`, the crawl is automatically scoped to the directory subtree of the start URL via a derived whitelist regex. For example, crawling `https://ai.google.dev/api/python/google/generativeai/GenerativeModel` auto-scopes to `^https?://ai\.google\.dev/api/python/google/generativeai(/|$)`. Root paths (`/`) and single-segment paths (`/docs`) are not scoped — they're already broad enough. Pass `--url-whitelist <pattern>` to override auto-scoping.
 
 ### Adding fields to `Config` struct
-When adding a new non-`Option` field to `Config` in `crates/core/config/types/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:
-- `crates/cli/commands/research.rs`
-- `crates/cli/commands/search.rs`
-- Any `make_test_config()` helpers in `crates/jobs/common/`
+When adding a new non-`Option` field to `Config` in `src/core/config/types/config.rs`, you **must** also update the inline `Config { .. }` struct literals used in test helpers:
+- `src/cli/commands/research.rs`
+- `src/cli/commands/search.rs`
+- Any `make_test_config()` helpers in `src/jobs/common/`
 
 These are struct literals — the compiler will fail if a new field is missing, but only at test compilation time, not `cargo check`.
 
@@ -481,10 +491,10 @@ just verify      # fmt-check + clippy + check + test (pre-PR gate)
 just fix         # cargo fmt + clippy --fix (auto-repair)
 just precommit   # full pre-commit: monolith check + verify
 just watch-check # cargo watch: check + test-lib on every file save
-just rebuild     # check + test + docker-build (pre-deploy gate)
+just rebuild     # check + test
 just services-up # start infra (qdrant, tei, chrome)
 just services-down # stop infra
-just stop        # stop running serve and worker processes
+just stop        # stop running mcp and worker processes
 ```
 
 ### Run directly
@@ -521,7 +531,7 @@ Checks: Qdrant, TEI, LLM endpoint reachability.
 
 ## Database Schema
 
-Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Schema lives in SQLite (lite mode).
+Tables are auto-created via `ensure_schema()` in each `*_jobs.rs`. Schema lives in SQLite.
 
 | Table | Key columns |
 |-------|-------------|
@@ -561,7 +571,7 @@ foo/
 - Module root always lives in `foo.rs`, never `foo/mod.rs`
 - Submodules live in `foo/bar.rs`, declared with `mod bar;` inside `foo.rs`
 - When splitting an existing `foo/mod.rs`: copy it to `foo.rs`, delete `foo/mod.rs` — the submodule files stay in `foo/` unchanged
-- This applies everywhere: `crates/`, `crates/*/`, nested modules — no exceptions
+- This applies everywhere: `src/`, `src/*/`, nested modules — no exceptions
 
 ## Worktrees
 

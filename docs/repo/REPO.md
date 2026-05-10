@@ -5,18 +5,12 @@
 ```
 axon_rust/
 ├── apps/
-│   └── web/                         # Next.js dashboard (Pulse workspace, omnibox)
-│       ├── app/                     # Next.js app router pages
-│       ├── components/              # React components
-│       ├── hooks/                   # React hooks (WebSocket, API)
-│       ├── lib/                     # Shared utilities
-│       ├── proxy.ts                 # API proxy with token auth
-│       ├── shell-server.mjs         # Shell WebSocket server
-│       ├── biome.json               # Linter/formatter config
+│   └── web/                         # Static setup/config panel source
+│       ├── app/                     # Next static app files
 │       ├── package.json             # Node dependencies
 │       └── CLAUDE.md                # Web-specific development instructions
 │
-├── crates/                          # Rust workspace crates (module roots)
+├── src/                             # Rust module roots and submodules
 │   ├── cli.rs                       # CLI module root
 │   ├── cli/                         # Command handlers
 │   │   └── commands/                # Per-command handlers (scrape, crawl, ask, etc.)
@@ -28,26 +22,24 @@ axon_rust/
 │   ├── ingest.rs                    # Ingest module root
 │   ├── ingest/                      # GitHub, Reddit, YouTube adapters
 │   ├── jobs.rs                      # Jobs module root
-│   ├── jobs/                        # Async job framework
-│   │   ├── common/                  # Shared job infrastructure
-│   │   ├── crawl/                   # Crawl job processor, worker, runtime
-│   │   ├── extract/                 # Extract job processor
-│   │   ├── embed/                   # Embed job processor
-│   │   └── ingest.rs               # Ingest job processor
+│   ├── jobs/                        # SQLite job runtime and workers
+│   │   ├── lite.rs                  # SQLite runtime module root
+│   │   ├── lite/                    # migrations, store, workers, runners
+│   │   └── watch_lite.rs            # recurring watch scheduler
 │   ├── mcp.rs                       # MCP module root
 │   ├── mcp/                         # MCP schema and server
 │   │   ├── schema.rs               # Tool input schema, action enums
 │   │   └── server.rs               # Handler dispatch, transport setup
 │   ├── services.rs                  # Services module root
 │   ├── services/                    # Typed service layer
-│   │   ├── context.rs              # ServiceContext and capabilities
+│   │   ├── context.rs              # ServiceContext
 │   │   ├── types/                  # Result structs
 │   │   ├── llm_backend/            # Gemini headless completions
 │   ├── vector.rs                    # Vector module root
 │   ├── vector/                      # Qdrant ops, TEI, hybrid search
 │   │   └── ops/                    # TEI embed, Qdrant upsert/search, ask
-│   ├── web.rs                       # WebSocket execution bridge
-│   └── web/                         # Web-specific handlers
+│   ├── web.rs                       # Unified HTTP server module root
+│   └── web/                         # Static panel, /v1/ask, /v1/actions
 │
 ├── docs/                            # Documentation (this directory)
 ├── migrations/                      # SQL migrations
@@ -58,7 +50,6 @@ axon_rust/
 │
 ├── main.rs                          # Binary entry point
 ├── lib.rs                           # Library root (run/run_once, command dispatch)
-├── crates.rs                        # Workspace crate re-exports
 ├── Cargo.toml                       # Rust package manifest
 ├── Cargo.lock                       # Dependency lock file
 ├── Justfile                         # Task runner recipes
@@ -78,21 +69,21 @@ axon_rust/
 └── CHANGELOG.md                     # Version history
 ```
 
-## Workspace crates
+## Runtime modules
 
-Axon uses a flat module layout rooted at `crates/`. Each crate has a module root file (`crates/<name>.rs`) and a subdirectory (`crates/<name>/`).
+Axon uses a flat module layout rooted at `src/`. Each module has a module root file (`src/<name>.rs`) and a subdirectory (`src/<name>/`).
 
-| Crate | Module root | Purpose |
+| Module | Module root | Purpose |
 |-------|------------|---------|
-| cli | `crates/cli.rs` | CLI command handlers -- one file per subcommand |
-| core | `crates/core.rs` | Config parsing, HTTP client, content/markdown processing |
-| crawl | `crates/crawl.rs` | Spider-based crawl engine, render mode switching |
-| ingest | `crates/ingest.rs` | Source adapters (GitHub, Reddit, YouTube) |
-| jobs | `crates/jobs.rs` | Async job framework with AMQP and SQLite backends |
-| mcp | `crates/mcp.rs` | MCP server schema definition and handler dispatch |
-| services | `crates/services.rs` | Typed service layer consumed by CLI, MCP, and web |
-| vector | `crates/vector.rs` | Qdrant operations, TEI embedding, hybrid search |
-| web | `crates/web.rs` | WebSocket execution bridge for web UI |
+| cli | `src/cli.rs` | CLI command handlers -- one file per subcommand |
+| core | `src/core.rs` | Config parsing, HTTP client, content/markdown processing |
+| crawl | `src/crawl.rs` | Spider-based crawl engine, render mode switching |
+| ingest | `src/ingest.rs` | Source adapters (GitHub, Reddit, YouTube, sessions) |
+| jobs | `src/jobs.rs` | SQLite-backed async job framework with in-process workers |
+| mcp | `src/mcp.rs` | MCP server schema definition and handler dispatch |
+| services | `src/services.rs` | Typed service layer consumed by CLI, MCP, and HTTP routes |
+| vector | `src/vector.rs` | Qdrant operations, TEI embedding, hybrid search |
+| web | `src/web.rs` | Unified HTTP server for panel, `/v1/ask`, and `/v1/actions` |
 
 ### Module layout convention (enforced)
 

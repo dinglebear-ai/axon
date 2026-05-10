@@ -8,7 +8,7 @@ Axon uses a single MCP tool (`axon`) with `action`/`subaction` routing. All oper
 
 ### Schema parsing
 
-Input is parsed strictly with serde in `crates/mcp/schema.rs`:
+Input is parsed strictly with serde in `src/mcp/schema.rs`:
 
 ```rust
 #[derive(Deserialize)]
@@ -31,7 +31,7 @@ Rules:
 
 ### Handler dispatch
 
-In `crates/mcp/server.rs`, the main handler matches on action:
+In `src/mcp/server.rs`, the main handler matches on action:
 
 ```rust
 match input.action {
@@ -50,7 +50,7 @@ Each handler calls the services layer and maps the typed result to MCP wire form
 
 ## Services layer
 
-All MCP handlers call through the services layer (`crates/services/`), never directly to infrastructure:
+All MCP handlers call through the services layer (`src/services/`), never directly to infrastructure:
 
 ```
 MCP handler -> services::query() -> vector::ops::search() -> Qdrant
@@ -59,7 +59,7 @@ CLI handler -> services::query() -> (same path)
 Web route   -> services::query() -> (same path)
 ```
 
-Each service function returns a typed result struct defined in `crates/services/types/service.rs`. No raw JSON printing or stdout side-effects in the service layer.
+Each service function returns a typed result struct defined in `src/services/types/service.rs`. No raw JSON printing or stdout side-effects in the service layer.
 
 ## Artifact response pattern
 
@@ -128,7 +128,7 @@ pub enum AxonError {
 ## ServiceContext
 
 The `ServiceContext` is constructed at startup and shared across all handlers
-(definition in `crates/services/context.rs`):
+(definition in `src/services/context.rs`):
 
 ```rust
 pub struct ServiceContext {
@@ -138,15 +138,15 @@ pub struct ServiceContext {
 ```
 
 There is no separate `capabilities` struct on `ServiceContext` and no embedded
-Postgres / Redis / AMQP connection pools — lite mode is the only mode and jobs
-are backed by SQLite via `LiteServiceRuntime`. Two construction modes exist:
+Postgres, Redis, or AMQP connection pools. Jobs are backed by SQLite via
+`LiteServiceRuntime`. Two construction modes exist:
 
 - `ServiceContext::new(cfg)` — enqueue-only, no in-process workers (CLI default).
 - `ServiceContext::new_with_workers(cfg)` — spawns in-process workers for jobs.
   Used by `axon serve` and the MCP server.
 
 The MCP server constructs its `ServiceContext` once via `new_with_workers` (see
-`AxonMcpServer::base_service_context` in `crates/mcp/server.rs`) so jobs
+`AxonMcpServer::base_service_context` in `src/mcp/server.rs`) so jobs
 enqueued via MCP are drained by the same process.
 
 ## Lifecycle job pattern
@@ -162,9 +162,10 @@ Lifecycle actions (crawl, extract, embed, ingest) share a common pattern:
 7. `recover` -- reclaim stale/interrupted jobs
 
 Each job type has:
-- A `Processor` trait implementation in `crates/jobs/<type>/`
-- A SQLite table (e.g., `axon_crawl_jobs`) created by `ensure_schema()` in `crates/jobs/<type>_jobs.rs`
-- An in-process worker started by `LiteBackend::new_with_workers`
+- A payload/schema helper in `src/jobs/<type>.rs`
+- A SQLite table (e.g., `axon_crawl_jobs`) created by the migrations under `src/jobs/lite/migrations/`
+- A runner under `src/jobs/lite/workers/runners/`
+- An in-process worker lane started by `LiteBackend::new_with_workers`
 
 ## Hybrid search pattern
 

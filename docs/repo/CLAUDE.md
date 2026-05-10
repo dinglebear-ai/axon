@@ -7,8 +7,8 @@ Reference documentation for the repository structure, conventions, and tooling.
 | File | Purpose |
 |------|---------|
 | [CLAUDE.md](CLAUDE.md) | This file -- index for repo/ documentation |
-| [REPO.md](REPO.md) | Repository structure -- directory tree, workspace crates, root files |
-| [RECIPES.md](RECIPES.md) | Justfile recipes -- dev, docker, quality, web |
+| [REPO.md](REPO.md) | Repository structure -- directory tree, runtime modules, root files |
+| [RECIPES.md](RECIPES.md) | Justfile recipes -- dev, infra, quality, build |
 | [SCRIPTS.md](SCRIPTS.md) | Scripts reference -- maintenance, hooks, testing |
 | [RULES.md](RULES.md) | Coding rules -- git workflow, versioning, monolith policy |
 | [MEMORY.md](MEMORY.md) | Memory files -- beads issue tracker and knowledge persistence |

@@ -10,7 +10,7 @@ Axon is a trimodal application:
 |------|-------------|------|---------|
 | CLI | `axon <command>` | -- | Interactive command-line tool for crawl, scrape, embed, query, ask |
 | MCP server | `axon mcp` | 8001 | Single-tool MCP server exposing all CLI operations to AI agents |
-| Web UI | `axon serve` | 49000 (backend), 49010 (Next.js) | Supervisor that runs backend bridge, MCP HTTP, workers, shell server, and Next.js dashboard |
+| Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, `/v1/ask`, and `/v1/actions` |
 
 All three modes share the same Rust binary, the same services layer, and the same infrastructure stack.
 
@@ -22,7 +22,7 @@ All three modes share the same Rust binary, the same services layer, and the sam
 |------|-------------|
 | [README.md](README.md) | This file -- documentation index |
 | [SETUP.md](SETUP.md) | Step-by-step setup for local dev and Docker |
-| [CONFIG.md](CONFIG.md) | Configuration reference -- axon.json and environment variables |
+| [CONFIG.md](CONFIG.md) | Configuration reference -- `~/.axon/config.toml` and environment variables |
 | [CHECKLIST.md](CHECKLIST.md) | Pre-release quality checklist |
 | [GUARDRAILS.md](GUARDRAILS.md) | Security guardrails and safety patterns |
 | [INVENTORY.md](INVENTORY.md) | Complete component inventory |
@@ -35,7 +35,7 @@ All three modes share the same Rust binary, the same services layer, and the sam
 | [mcp/TOOLS.md](mcp/TOOLS.md) | Tool actions, subactions, parameters, examples |
 | [mcp/ENV.md](mcp/ENV.md) | MCP-specific environment variables |
 | [mcp/TRANSPORT.md](mcp/TRANSPORT.md) | stdio, HTTP, streamable-http transport config |
-| [mcp/DEPLOY.md](mcp/DEPLOY.md) | Deployment patterns -- local, Docker, lite mode |
+| [mcp/DEPLOY.md](mcp/DEPLOY.md) | Deployment patterns -- local, Docker, SQLite runtime |
 | [mcp/CONNECT.md](mcp/CONNECT.md) | Connect from Claude Code, Codex, Gemini |
 | [mcp/DEV.md](mcp/DEV.md) | MCP development workflow |
 | [mcp/PATTERNS.md](mcp/PATTERNS.md) | Code patterns -- dispatch, artifacts, error handling |

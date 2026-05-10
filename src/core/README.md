@@ -1,4 +1,4 @@
-# crates/core
+# src/core
 Last Modified: 2026-03-03
 
 Shared runtime primitives used across CLI, jobs, crawl, vector, and web modules.
@@ -23,14 +23,14 @@ Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirector
 - `health.rs` + `health/doctor*`: service health probes (TEI, OpenAI, browser).
 - `logging.rs`: structured logging helpers used across runtime.
 - `paths.rs`: filesystem-path helpers (data/output/cache).
-- `neo4j.rs`: Neo4j client wiring (graph-enhanced retrieval).
+- `neo4j.rs`: Legacy Neo4j client helper; graph retrieval is not wired in the current runtime.
 - `ui.rs`: spinner / colored output / `confirm_destructive`.
 
 ## Integration Points
 - `lib.rs` command dispatch consumes config produced here.
-- `crates/cli` command handlers depend on `Config` and utility helpers.
-- `crates/crawl` and `crates/vector` use HTTP/content layers.
-- `crates/jobs` workers use config, health, and logging utilities.
+- `src/cli` command handlers depend on `Config` and utility helpers.
+- `src/crawl` and `src/vector` use HTTP/content layers.
+- `src/jobs` workers use config, health, and logging utilities.
 
 ## Notes
 - Config changes should be coordinated with command handlers and test config builders that construct `Config` literals.

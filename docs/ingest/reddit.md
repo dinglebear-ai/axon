@@ -52,7 +52,7 @@ Subreddit ingest treats per-post comment fetch failures as partial failures: the
 
 ## Qdrant Metadata Fields
 
-All Reddit post chunks carry structured `reddit_*` payload fields built in `crates/ingest/reddit/meta.rs`. Fields are sourced from the `post["data"]` object in the Reddit API JSON response.
+All Reddit post chunks carry structured `reddit_*` payload fields built in `src/ingest/reddit/meta.rs`. Fields are sourced from the `post["data"]` object in the Reddit API JSON response.
 
 | Field | Type | Description |
 |-------|------|-------------|

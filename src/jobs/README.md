@@ -1,7 +1,7 @@
-# crates/jobs
+# src/jobs
 Last Modified: 2026-05-06
 
-Async job runtime and lifecycle management for axon's lite-mode backend.
+Async job runtime and lifecycle management for axon's SQLite backend.
 
 ## Purpose
 - Persist crawl/extract/embed/ingest jobs in SQLite.
@@ -30,14 +30,14 @@ Async job runtime and lifecycle management for axon's lite-mode backend.
 - `error.rs`: job error types.
 
 ## Integration Points
-- Enqueue is initiated from `crates/services/<kind>::*_start` via `ServiceContext.jobs`.
-- Crawl execution delegates into `crates/crawl`.
-- Embed/query workflows interact with `crates/vector/ops`.
-- Service callers go through `ServiceJobRuntime` (`crates/services/runtime.rs`),
+- Enqueue is initiated from `src/services/<kind>::*_start` via `ServiceContext.jobs`.
+- Crawl execution delegates into `src/crawl`.
+- Embed/query workflows interact with `src/vector/ops`.
+- Service callers go through `ServiceJobRuntime` (`src/services/runtime.rs`),
   not `JobBackend` directly.
 
 ## Notes
-- SQLite is the source of truth for job state; lite mode is the only supported runtime.
+- SQLite is the source of truth for job state; there is no alternate Postgres/Redis/AMQP runtime.
 - `LiteBackend::new(cfg)` is enqueue-only — safe for fire-and-forget CLI commands.
   Use `LiteBackend::new_with_workers(cfg)` for serve / mcp / web (anywhere the process
   must drain the queue itself).

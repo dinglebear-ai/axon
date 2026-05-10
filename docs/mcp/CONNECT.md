@@ -64,8 +64,8 @@ claude mcp add --transport http axon http://localhost:8001/mcp \
 }
 ```
 
-Lite mode is the only runtime mode — Postgres / Redis / AMQP env vars are not
-required (and not read by the MCP server).
+MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
+Postgres, Redis, and AMQP env vars are not required by the MCP server.
 
 ### HTTP
 
@@ -130,9 +130,9 @@ required (and not read by the MCP server).
 | Gemini CLI | Project | `gemini-extension.json` |
 | Gemini CLI | Global | `~/.gemini/gemini-extension.json` |
 
-## Lite mode connection
+## Local stdio connection
 
-For lite-mode MCP (SQLite-backed, no external queue broker):
+For local stdio MCP with SQLite-backed jobs and no external queue broker:
 
 ```json
 {
@@ -141,7 +141,6 @@ For lite-mode MCP (SQLite-backed, no external queue broker):
       "command": "/path/to/axon",
       "args": ["mcp"],
       "env": {
-        "AXON_LITE": "1",
         "QDRANT_URL": "http://127.0.0.1:53333",
         "TEI_URL": "http://127.0.0.1:52000"
       }

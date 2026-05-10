@@ -13,7 +13,7 @@ Last Updated: 2026-02-25T01:26:53-05:00
 5. Worker and Queue Tuning
 6. Embedding and Qdrant Tuning
 7. Ask/RAG Tuning
-8. Pulse API Tuning
+8. Server-Mode HTTP Tuning
 9. Benchmark Workflow
 10. Symptom -> Tuning Matrix
 11. Source Map
@@ -30,7 +30,7 @@ Overall throughput is constrained by the slowest stage:
 2. Content transform/chunking
 3. TEI embedding throughput
 4. Qdrant upsert/search throughput
-5. LLM response time for `ask`/pulse
+5. LLM response time for `ask`
 
 Tune one bottleneck at a time.
 
@@ -81,12 +81,8 @@ Guidance:
 
 ## Worker and Queue Tuning
 
-Queue and worker controls:
+Worker controls:
 
-- `AXON_CRAWL_QUEUE`
-- `AXON_EXTRACT_QUEUE`
-- `AXON_EMBED_QUEUE`
-- `AXON_INGEST_QUEUE`
 - `AXON_INGEST_LANES`
 
 Watchdog controls:
@@ -96,7 +92,7 @@ Watchdog controls:
 
 Operational guidance:
 
-- Increase lanes only when DB/AMQP/TEI headroom exists.
+- Increase lanes only when SQLite, Qdrant, and TEI headroom exists.
 - If watchdog reclaim triggers frequently, reduce concurrency or raise stale timeout.
 
 ## Embedding and Qdrant Tuning
@@ -110,7 +106,6 @@ TEI behavior:
 Embed pipeline controls:
 
 - `AXON_EMBED_DOC_TIMEOUT_SECS`
-- `AXON_EMBED_STRICT_PREDELETE`
 
 Qdrant controls:
 
@@ -137,15 +132,17 @@ Tuning strategy:
 2. To reduce latency, lower candidate/chunk limits and context chars.
 3. For low answer quality on long docs, increase `FULL_DOCS` and backfill chunks gradually.
 
-## Pulse API Tuning
+## Server-Mode HTTP Tuning
 
-Pulse endpoints (`/api/pulse/chat`, `/api/ai/copilot`) enforce upstream timeouts in their route handlers; treat route source as the current source of truth.
+`axon serve` exposes MCP, `/v1/ask`, `/v1/actions`, and the setup/config panel
+on one Axum listener. Stateful CLI server-mode commands run through
+`/v1/actions` and share the same service layer as local CLI/MCP execution.
 
-For high-latency models:
+For high-latency LLM or embedding paths:
 
-- use lower-latency request model (Pulse request `model` field: `haiku`/`sonnet`/`opus`)
-- reduce context or citation count at caller level
-- ensure TEI/Qdrant are local and low-latency
+- keep TEI/Qdrant local or on low-latency links
+- reduce ask context/candidate limits before increasing worker lanes
+- run CLI commands with `AXON_LOCAL_MODE=1` when you need to bypass a remote server
 
 ## Benchmark Workflow
 
@@ -190,16 +187,14 @@ Track:
 | embed backlog grows | TEI throughput | lower batch/lane pressure, increase TEI capacity |
 | frequent stale reclaim | worker overload | reduce concurrency, raise stale timeout |
 | `ask` too slow | context size/LLM latency | lower candidate/chunk/context limits |
-| pulse appears slow | upstream LLM | faster model, lower context, verify env endpoints |
+| server-mode action appears slow | upstream TEI/Qdrant/LLM or remote latency | compare with `AXON_LOCAL_MODE=1`, lower ask context, verify service endpoints |
 
 ## Source Map
 
 - `README.md` (profiles and tuning flags)
-- `crates/core/config/*`
-- `crates/crawl/engine.rs`
-- `crates/jobs/worker_lane.rs`
-- `crates/jobs/common/watchdog.rs`
-- `crates/vector/ops/tei/tei_client.rs`
-- `crates/vector/ops/commands/*`
-- `apps/web/app/api/pulse/chat/route.ts`
-- `apps/web/app/api/ai/copilot/route.ts`
+- `src/core/config/*`
+- `src/crawl/engine.rs`
+- `src/vector/ops/tei/tei_client.rs`
+- `src/vector/ops/commands/*`
+- `src/web/actions.rs`
+- `src/web/server.rs`

@@ -1,12 +1,12 @@
 # Operations Runbook
 Last Modified: 2026-05-06
 
-Operator runbook for Axon (lite-mode, SQLite-backed). Task-oriented: one heading per
+Operator runbook for Axon (SQLite-backed). Task-oriented: one heading per
 operational task. Every command in this file is verified against the current
 codebase — see the cited source paths in each section.
 
-> **Lite mode is the only supported runtime.** All jobs persist in SQLite and
-> all workers run in-process inside the `axon mcp` (or `axon serve`) tokio
+> **SQLite/in-process jobs are the runtime.** All jobs persist in SQLite and
+> workers run in-process inside the `axon mcp` (or `axon serve`) tokio
 > runtime. The only required external services are **Qdrant** and **TEI**;
 > **Chrome** is required for `--render-mode chrome` / `auto-switch` and for
 > `screenshot`. There is no Postgres, Redis, or AMQP/RabbitMQ.
@@ -90,7 +90,7 @@ processed by that running `axon mcp` (or `axon serve`).
 ./scripts/axon status
 ```
 
-`axon doctor` (lite-mode probe at `crates/core/health/doctor/lite.rs`) reports:
+`axon doctor` (SQLite-runtime probe at `src/core/health/doctor/lite.rs`) reports:
 
 - **SQLite** — file exists at `cfg.sqlite_path`
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
@@ -180,9 +180,8 @@ Two failure modes, two recovery paths.
 The watchdog reclaims jobs whose `updated_at` heartbeat goes stale. Defaults:
 `AXON_JOB_STALE_TIMEOUT_SECS=300` + `AXON_JOB_STALE_CONFIRM_SECS=60`.
 
-> **Stale reclaim is startup-only.** A periodic watchdog is not implemented —
-> the reclaim runs when `LiteBackend` is created (i.e. when `axon mcp` /
-> `axon serve` boots). To force a reclaim mid-run:
+Stale reclaim runs when `LiteBackend` starts and on the periodic worker
+watchdog tick. To force a reclaim immediately:
 
 ```bash
 ./scripts/axon crawl recover
@@ -192,7 +191,7 @@ The watchdog reclaims jobs whose `updated_at` heartbeat goes stale. Defaults:
 ```
 
 This re-queues stale jobs as `pending`. Implemented in
-`crates/cli/commands/crawl/subcommands.rs:60` and the equivalent
+`src/cli/commands/crawl/subcommands.rs:60` and the equivalent
 ingest/extract/embed handlers via `services::jobs::recover_jobs`.
 
 ### Process alive but job hung
@@ -200,7 +199,7 @@ ingest/extract/embed handlers via `services::jobs::recover_jobs`.
 In-process workers track per-job heartbeats. When `result_json` does not
 advance for 6 × 30s = 3 min the worker logs a warning; at 20 × 30s = 10 min
 the worker kills the job and marks it `failed`. No operator action is
-required — see `crates/jobs/CLAUDE.md` "Liveness Enforcement (Two Tiers)".
+required — see `src/jobs/CLAUDE.md` "Liveness Enforcement (Two Tiers)".
 
 ### Cancel a running job
 
@@ -222,7 +221,7 @@ fetch will complete first.
 ```
 
 Same pattern for `extract`, `embed`, `ingest`. `clear` requires confirmation
-unless `--yes` is set or stdout is not a TTY (see `crates/core/ui.rs::confirm_destructive`).
+unless `--yes` is set or stdout is not a TTY (see `src/core/ui.rs::confirm_destructive`).
 
 For non-interactive automation:
 
@@ -241,7 +240,7 @@ ${AXON_DATA_DIR}/jobs.db          # default: ~/.axon/jobs.db
 ```
 
 Override path with `AXON_SQLITE_PATH`. Schema is auto-created at startup by
-`ensure_schema()` in each `crates/jobs/lite/store.rs`-driven worker — there
+`ensure_schema()` in each `src/jobs/lite/store.rs`-driven worker — there
 is no migration file to apply manually.
 
 ### Hot backup (process running)
@@ -331,7 +330,7 @@ This is faster for one-shot full backups and includes index state.
 
 ### Application logs (Rust)
 
-`init_tracing()` in `crates/core/logging.rs` writes to two sinks:
+`init_tracing()` in `src/core/logging.rs` writes to two sinks:
 
 - **stderr**, default level `WARN` (overridable with `RUST_LOG=info`)
 - **size-rotated JSON file** at `${AXON_LOG_DIR}/${AXON_LOG_FILE}` (defaults
@@ -345,7 +344,7 @@ This is faster for one-shot full backups and includes index state.
 tail -f "${AXON_DATA_DIR:-$HOME/.axon}/logs/axon.log"
 
 # noisier output for one run
-RUST_LOG=info,crates::jobs::lite=debug just dev
+RUST_LOG=info,axon::jobs::lite=debug just dev
 ```
 
 `tracing` filters honor `RUST_LOG`. CDP decoder noise is suppressed by
@@ -370,7 +369,7 @@ AXON_CHROME_DIAGNOSTICS_DIR=.cache/chrome-diagnostics \
 ./scripts/axon crawl https://example.com --render-mode chrome --wait true
 ```
 
-Enables screenshot + event capture. See `crates/core/health.rs`.
+Enables screenshot + event capture. See `src/core/health.rs`.
 
 ---
 
@@ -400,9 +399,8 @@ Watchdog and queue cap tuning:
 | `AXON_MAX_PENDING_EMBED_JOBS` | 50 | Same, for embed |
 | `AXON_MAX_PENDING_EXTRACT_JOBS` | 50 | Same, for extract |
 | `AXON_MAX_PENDING_INGEST_JOBS` | 50 | Same, for ingest |
-| `AXON_CRAWL_SIZE_WARN_THRESHOLD` | 10000 | After uncapped crawl, warn if pages > N (`0` disables) |
 
-Implemented in `crates/jobs/lite/ops/enqueue.rs`.
+Implemented in `src/jobs/lite/ops/enqueue.rs`.
 
 ---
 
@@ -425,11 +423,11 @@ For document-level surgery (single URL):
 
 ```bash
 ./scripts/axon retrieve https://example.com/page    # see what's stored
-./scripts/axon embed https://example.com/page --wait true   # re-embeds; predelete on
+./scripts/axon embed https://example.com/page --wait true   # re-embeds the URL
 ```
 
-`AXON_EMBED_STRICT_PREDELETE=true` (default) deletes existing points for the
-URL before upsert.
+Embedding the same URL again replaces existing points for that URL before
+upsert.
 
 ---
 
@@ -442,7 +440,7 @@ search requires named `dense` + `bm42` sparse vectors. Migrate with:
 ./scripts/axon migrate --from cortex --to cortex_v2
 ```
 
-The migrate command (handler at `crates/cli/commands/migrate.rs:11`) scrolls
+The migrate command (handler at `src/cli/commands/migrate.rs:11`) scrolls
 all points from the source, computes BM42 sparse vectors locally from the
 existing `chunk_text` payload (no TEI calls), and writes named-mode points to
 the destination. After it finishes:
@@ -478,10 +476,9 @@ The `to` collection is created if missing; re-running is idempotent.
 | Jobs sit `pending` forever | No `axon mcp` / `axon serve` process running | Start `just dev` or pass `--wait true` |
 | Job stuck `running` past 10 min | Worker hang | Heartbeat watchdog will mark `failed` automatically; or run `axon <kind> recover` |
 | Hybrid search returns dense-only results | Collection is in legacy unnamed mode | `axon doctor` will surface `mode_mismatch_warning`; run `axon migrate --from <old> --to <new>` and restart |
-| Most pages flagged as thin | Site is JS-rendered | `--render-mode chrome` or `auto-switch`; do NOT change `readability: false` in `crates/core/content.rs` (confirmed regression) |
+| Most pages flagged as thin | Site is JS-rendered | `--render-mode chrome` or `auto-switch`; do NOT change `readability: false` in `src/core/content.rs` (confirmed regression) |
 | `Chrome` probe fails in doctor | `axon-chrome` container down | `docker compose --env-file ~/.axon/.env -f docker-compose.yaml restart axon-chrome` |
-| `Pulse "Claude CLI exited 1"` (web UI) | Root-owned `~/.claude` from prior container run | Remove root-owned files in the data dir; see project memory note on cont-init script |
-| Streaming `ask` panics on multibyte char | Out-of-date binary | Pull `main`, rebuild — `crates/vector/ops/commands/ask/context/retrieval.rs` uses `.get(i..)` |
+| Streaming `ask` panics on multibyte char | Out-of-date binary | Pull `main`, rebuild — `src/vector/ops/commands/ask/context/retrieval.rs` uses `.get(i..)` |
 
 ---
 
@@ -515,13 +512,13 @@ Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the h
 | `Justfile` | `services-up`, `services-down`, `stop`, `dev` |
 | `scripts/axon` | Wrapper that auto-sources `~/.axon/.env` and runs `cargo run --bin axon` |
 | `scripts/dev-setup.sh` | First-run bootstrap |
-| `crates/cli/commands/doctor.rs` | `axon doctor` entry point |
-| `crates/core/health/doctor/lite.rs` | Lite-mode doctor probe |
-| `crates/cli/commands/status.rs` | `axon status` entry point |
-| `crates/cli/commands/crawl/subcommands.rs` | `crawl status/cancel/errors/list/cleanup/clear/recover` |
-| `crates/cli/commands/migrate.rs` | `axon migrate` |
-| `crates/jobs/lite/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
-| `crates/jobs/lite/store.rs` | SQLite schema bootstrap + lifecycle SQL |
-| `crates/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`/`AXON_LOG_FILE`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
-| `crates/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
-| `crates/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |
+| `src/cli/commands/doctor.rs` | `axon doctor` entry point |
+| `src/core/health/doctor/lite.rs` | SQLite-runtime doctor probe |
+| `src/cli/commands/status.rs` | `axon status` entry point |
+| `src/cli/commands/crawl/subcommands.rs` | `crawl status/cancel/errors/list/cleanup/clear/recover` |
+| `src/cli/commands/migrate.rs` | `axon migrate` |
+| `src/jobs/lite/ops/enqueue.rs` | Queue caps, `AXON_MAX_PENDING_*` |
+| `src/jobs/lite/store.rs` | SQLite schema bootstrap + lifecycle SQL |
+| `src/core/logging.rs` | `init_tracing`, `AXON_LOG_DIR`/`AXON_LOG_FILE`, size-based rotation (`AXON_LOG_MAX_BYTES`, `AXON_LOG_MAX_FILES`) |
+| `src/core/logging/size_rotating.rs` | `SizeRotatingFile`: byte-budget rotation writer |
+| `src/core/paths.rs` | `axon_data_dir()`, `axon_data_base_dir()` |

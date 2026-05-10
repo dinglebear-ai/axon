@@ -9,6 +9,12 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_MCP_HTTP_HOST` | no | `127.0.0.1` | Bind address for HTTP transport; non-loopback requires `AXON_MCP_HTTP_TOKEN` | no |
 | `AXON_MCP_HTTP_PORT` | no | `8001` | Listen port for HTTP transport | no |
 | `AXON_MCP_HTTP_TOKEN` | no | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds | yes |
+| `AXON_MCP_AUTH_MODE` | no | `bearer` | Set to `oauth` to enable lab-auth Google OAuth/JWT mode | no |
+| `AXON_MCP_PUBLIC_URL` | oauth | -- | Public origin used in OAuth metadata and protected-resource responses | no |
+| `AXON_MCP_GOOGLE_CLIENT_ID` | oauth | -- | Google OAuth client ID | yes |
+| `AXON_MCP_GOOGLE_CLIENT_SECRET` | oauth | -- | Google OAuth client secret | yes |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | oauth | -- | Admin email accepted by the auth layer | yes |
+| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | no | Claude callback included | Additional comma-separated OAuth redirect URIs | no |
 | `AXON_MCP_ALLOWED_ORIGINS` | no | -- | Comma-separated allowed origins for MCP HTTP CORS (unset = strict default: only same-origin/loopback browser requests pass; non-browser tools unaffected) | no |
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts | no |
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
@@ -44,18 +50,19 @@ The MCP server reads existing Axon stack variables at startup:
 | `OPENAI_API_KEY` | LLM auth |
 | `AXON_HEADLESS_GEMINI_MODEL` | Model override for Gemini headless completions |
 | `TAVILY_API_KEY` | Web search and research |
-| `AXON_LITE` | Enable lite mode (SQLite-backed, default) |
+| `AXON_LITE` | Compatibility no-op; SQLite/in-process jobs are always used |
 | `AXON_COLLECTION` | Default Qdrant collection |
 
-## Lite mode
+## Job runtime
 
-The MCP server runs in lite mode by default. Jobs use SQLite and run in-process.
+The MCP server uses SQLite for job state and runs workers in-process when the
+hosting command creates a worker-enabled service context.
 
 | Operation | Available |
 |-----------|-----------|
 | scrape, query, ask, search | Yes |
 | crawl (sync), embed, ingest | Yes |
-| watch scheduler | No |
+| watch scheduler | Yes for wired subcommands (`create`, `list`, `run-now`, `history`) |
 
 ## Precedence
 

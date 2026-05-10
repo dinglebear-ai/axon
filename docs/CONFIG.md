@@ -135,10 +135,7 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_DATA_DIR` | `~/.axon` | Root directory for all persistent data (flat — no `axon/` subdir nesting) |
-| `HOST_HOME` | -- | Host user home (for session ingestion bind mount) |
-| `AXON_WORKSPACE` | -- | Host workspace dir mounted into axon-web |
-| `HOST_WORKSPACE` | -- | Host path to axon_rust repo |
-| `AXON_BIN` | -- | Path to pre-built axon binary inside container |
+| `HOST_HOME` | -- | Host user home for optional session-ingest bind mounts |
 
 ### Server ports
 
@@ -148,26 +145,24 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 | `AXON_LOCAL_MODE` | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. |
 | `AXON_SERVER_INSECURE` | -- | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Not recommended; prefer HTTPS. |
 | `AXON_MCP_HTTP_PUBLISH` | `127.0.0.1:8001` | Docker Compose host publish address for the `axon` MCP HTTP service. Set to `0.0.0.0:8001` only when intentionally exposing beyond the host and `AXON_MCP_HTTP_TOKEN` is configured. |
-| `AXON_SERVE_HOST` | `127.0.0.1` | Backend bridge bind address |
-| `AXON_SERVE_PORT` | `49000` | Backend bridge port |
-| `AXON_WEB_DEV_PORT` | `49010` | Next.js dev server port |
-| `SHELL_SERVER_PORT` | `49011` | Shell WebSocket server port |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address for `axon serve` / MCP HTTP. Non-loopback requires bearer or OAuth auth. |
+| `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port for `axon serve` / MCP HTTP. |
 
-### Lite mode
+### SQLite job runtime
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_LITE` | -- | Set to `1` to enable lite mode (default; uses SQLite) |
-| `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite path for lite mode |
+| `AXON_LITE` | -- | Accepted for compatibility only; SQLite/in-process jobs are always used. |
+| `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite jobs database path |
 
-**Worker spawn is conditional**, not unconditional, in lite mode. The `LiteBackend` has two construction modes:
+**Worker spawn is conditional**, not unconditional. The SQLite backend has two construction modes:
 
 - `LiteBackend::new(cfg)` — **enqueue-only**. No workers spawn. Used by `ServiceContext::new()` for short-lived CLI commands (status/list/cancel/fire-and-forget submit).
 - `LiteBackend::new_with_workers(cfg)` — spawns in-process tokio workers (crawl + N×embed + extract + N×ingest). Used by `ServiceContext::new_with_workers()` for long-running processes: `axon serve`, MCP server, web routes, and CLI commands that block on `--wait true`.
 
 Spawning workers in a fire-and-forget CLI process orphans claimed jobs at process exit, so the CLI defaults to enqueue-only and lets a separate `serve`/`mcp` process drain the queue.
 
-`--wait false` is intentionally fire-and-forget for lite crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
+`--wait false` is intentionally fire-and-forget for crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
 
 ### TEI embedding
 
@@ -198,16 +193,11 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent Gemini headless completion requests. |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | `300` | Runtime-only timeout for each Gemini headless completion request. |
 
-### Queues and collections
+### Collections and worker lanes
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
-| `AXON_CRAWL_QUEUE` | `axon.crawl.jobs` | Crawl job queue |
-| `AXON_EXTRACT_QUEUE` | `axon.extract.jobs` | Extract job queue |
-| `AXON_EMBED_QUEUE` | `axon.embed.jobs` | Embed job queue |
-| `AXON_INGEST_QUEUE` | `axon.ingest.jobs` | Ingest job queue |
-| `AXON_GRAPH_QUEUE` | `axon.graph.jobs` | Graph job queue |
 | `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
 
 ### Search and research
@@ -276,26 +266,11 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 
-### Web app
+### Web panel
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AXON_BACKEND_URL` | `http://axon-workers:49000` | Backend URL for Next.js rewrites |
-| `AXON_WEB_API_TOKEN` | -- | Primary API/WS auth token (server-only) |
-| `AXON_WEB_BROWSER_API_TOKEN` | -- | Second-tier /api/* token (browser) |
-| `NEXT_PUBLIC_AXON_API_TOKEN` | -- | Browser-exposed API token |
-| `AXON_WEB_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins |
-| `AXON_WEB_ALLOW_INSECURE_DEV` | `false` | Allow localhost without auth |
-| `AXON_SHELL_WS_TOKEN` | -- | Shell WebSocket auth token |
-| `AXON_ALLOWED_CLAUDE_BETAS` | `interleaved-thinking` | Allowed Claude betas for Pulse |
-
-### Neo4j / GraphRAG
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AXON_NEO4J_URL` | -- | Neo4j HTTP URL (empty = graph features disabled) |
-| `AXON_NEO4J_USER` | `neo4j` | Neo4j username |
-| `AXON_NEO4J_PASSWORD` | -- | Neo4j password |
+The setup/config panel is served by `axon serve` and uses a file-backed panel
+password under `~/.axon/panel-password`. MCP and `/v1/actions` use
+`AXON_MCP_HTTP_TOKEN` or OAuth; see the MCP auth section above.
 
 ### Logging
 
@@ -314,6 +289,12 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port |
 | `AXON_MCP_HTTP_TOKEN` | -- | Bearer or `x-api-key` token; required for non-loopback binds |
+| `AXON_MCP_AUTH_MODE` | `bearer` | Set to `oauth` to enable Google OAuth + DCR through lab-auth. |
+| `AXON_MCP_PUBLIC_URL` | -- | Public origin used for OAuth metadata, e.g. `https://axon.example.com`. |
+| `AXON_MCP_GOOGLE_CLIENT_ID` | -- | Google OAuth client ID for MCP OAuth mode. |
+| `AXON_MCP_GOOGLE_CLIENT_SECRET` | -- | Google OAuth client secret for MCP OAuth mode. |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | -- | Admin email accepted by OAuth mode. |
+| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | Claude callback included | Additional comma-separated OAuth redirect URI allowlist. |
 | `AXON_MCP_ALLOWED_ORIGINS` | -- | Comma-separated allowed origins for MCP HTTP CORS |
 | `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline triggers (0 = disable) |
@@ -338,7 +319,6 @@ containing cached source text.
 | `AXON_NO_COLOR` | -- | Disable ANSI color output (any non-empty value) |
 | `AXON_NO_WIPE` | -- | Prevent destructive cache wipes |
 | `AXON_DOMAINS_DETAILED` | -- | Enable detailed per-domain breakdown in `axon domains` |
-| `AXON_EXTRACT_EST_COST_PER_1K_TOKENS` | -- | Estimated cost per 1k tokens shown in `axon extract` output |
 | `AXON_SOURCES_FACET_LIMIT` | `100000` | Facet limit for `axon sources` |
 | `AXON_DOMAINS_FACET_LIMIT` | `100000` | Facet limit for `axon domains` |
 | `AXON_SESSION_INGEST_MAX_BYTES` | -- | Max bytes per session ingest payload |
@@ -347,7 +327,6 @@ containing cached source text.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_GIT_SHA` | `dev` | Git SHA baked into Docker image labels |
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53333` | Host-accessible Qdrant URL for integration tests |
 
 ## Dev vs container URL resolution

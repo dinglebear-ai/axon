@@ -26,9 +26,6 @@ Usage:
 |--------|---------|
 | `enforce_monoliths.py` | Enforce file size (500 lines) and function size (120 lines) limits on `.rs` files |
 | `enforce_no_legacy_symbols.py` | Block deprecated function/type names |
-| `check_dockerignore_guards.sh` | Verify `.dockerignore` contains required patterns |
-| `check_no_next_middleware.sh` | Block Next.js middleware files |
-| `check_pg_advisory_lock.sh` | Verify advisory lock usage |
 | `check_shell_completions.sh` | Verify shell completion generation |
 
 The five enforcement checks below were ported from shell scripts to the `xtask` crate (see `axon_rust-pp5`). Run via `cargo xtask <name>` or in lefthook:
@@ -45,11 +42,8 @@ The five enforcement checks below were ported from shell scripts to the `xtask` 
 
 | Script | Purpose |
 |--------|---------|
-| `rebuild-fresh.sh` | Build Docker images and start containers |
-| `check-container-revisions.sh` | Verify container git SHA matches local HEAD |
-| `check_docker_context_size.sh` | Audit Docker build context for large files |
 | `audit_compose_images.py` | Audit image references from `docker-compose.yaml`, including GHCR images |
-| `cache-guard.sh` | Build cache management (status/prune) |
+| `plugin-setup.sh` | Configure the local plugin/systemd integration around `~/.axon` |
 
 ## Testing
 
@@ -57,6 +51,7 @@ The five enforcement checks below were ported from shell scripts to the `xtask` 
 |--------|---------|
 | `test-mcp-tools-mcporter.sh` | MCP smoke test suite (50+ tool calls) |
 | `live-test-all-commands.sh` | Integration test all CLI commands against live services |
+| `test-client-server-mode.sh` | CLI client/server smoke against a running `axon serve` |
 | `test-ask-quality-regressions.sh` | RAG answer quality regression tests |
 | `test-mcp-oauth-protection.sh` | MCP OAuth endpoint security tests |
 | `test_qdrant_quality.py` | Qdrant data quality analysis |

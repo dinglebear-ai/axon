@@ -17,7 +17,7 @@ Run `just --list` to see all available recipes.
 | `just fmt-check` | Check formatting without modifying |
 | `just clippy` | Run clippy lints |
 | `just fix` | Auto-fix: format + clippy --fix |
-| `just fix-all` | Fix Rust + web (pnpm format) |
+| `just fix-all` | Alias for `just fix` |
 | `just clean` | Remove build artifacts |
 
 ## Quality gates
@@ -33,33 +33,16 @@ Run `just --list` to see all available recipes.
 
 | Recipe | Purpose |
 |--------|---------|
-| `just docker-build` | Build workers Docker image (`axon:local`) |
 | `just services-up` | Start infrastructure (Qdrant, TEI, Chrome) |
 | `just services-down` | Stop infrastructure |
-| `just up` | Build and start app containers (workers + web) |
-| `just down` | Stop app containers |
-| `just down-all` | Stop everything (app + infrastructure) |
-| `just rebuild-fresh` | Full rebuild: check + build + start containers |
-| `just rebuild` | check + test + docker-build |
+| `just rebuild` | check + test |
 
 ## Local stack
 
 | Recipe | Purpose |
 |--------|---------|
-| `just dev` | Full local dev: stop existing, start infra, build, run `axon serve` |
-| `just serve [port]` | Run `axon serve` (debug build, default port 49000) |
-| `just serve-release [port]` | Run `axon serve` (release build) |
-| `just workers` | Start all 6 worker types as background processes |
-| `just stop` | Kill running axon serve, workers, and Next.js processes |
-
-## Web UI
-
-| Recipe | Purpose |
-|--------|---------|
-| `just web-dev` | Start Next.js dev server standalone |
-| `just web-build` | Build Next.js for production |
-| `just web-lint` | Run Biome linter on web code |
-| `just web-format` | Format web code with Biome |
+| `just dev` | Start infra, build, and run `axon mcp` as the local worker daemon |
+| `just stop` | Kill running `axon mcp` and worker processes |
 
 ## Testing
 
@@ -84,10 +67,6 @@ Run `just --list` to see all available recipes.
 | Recipe | Purpose |
 |--------|---------|
 | `just gen-mcp-schema` | Regenerate MCP-TOOL-SCHEMA.md from source |
-| `just cache-status` | Check build cache status |
-| `just cache-prune` | Prune build cache |
-| `just docker-context-probe` | Check Docker build context size |
-| `just check-container-revisions` | Verify container git SHA matches |
 | `just watch-check` | cargo-watch: check + test on every save |
 
 ## Chaining

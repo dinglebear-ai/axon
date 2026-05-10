@@ -61,7 +61,9 @@ All global flags apply. Key flags:
 | `--collection <name>` | `cortex` | Target Qdrant collection. |
 | `--json` | `false` | Machine-readable output. |
 
-Lite mode preserves fire-and-forget semantics for `--wait false`: `ingest` enqueues the job and exits without draining unrelated ingest rows. Use `--wait true` to run ingestion synchronously and block until it finishes.
+With `--wait false`, `ingest` writes a SQLite job row and exits without draining
+unrelated ingest rows. Use `--wait true` to run ingestion synchronously and block
+until it finishes.
 
 ### GitHub-specific flags
 

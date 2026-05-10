@@ -24,11 +24,6 @@ With diagnostics (shows retrieval scores):
 { "action": "ask", "query": "embedding pipeline", "diagnostics": true }
 ```
 
-With graph-enhanced retrieval (requires Neo4j):
-```json
-{ "action": "ask", "query": "how do services relate to workers?", "graph": true }
-```
-
 ## CLI fallback
 
 ```bash
@@ -43,7 +38,7 @@ axon ask "how does axon handle Chrome auto-switching?" --since 7d --diagnostics
 | `before` | — | Upper date bound |
 | `diagnostics` | `false` | Show retrieval scores and sources |
 | `hybrid_search` | `true` | `false` for dense-only comparison |
-| `graph` | `false` | Graph-enhanced retrieval via Neo4j |
+| `graph` | `false` | Deprecated compatibility option; graph retrieval is not available in the current runtime |
 | `collection` | `cortex` | Override collection per-request |
 
 ## When results are poor

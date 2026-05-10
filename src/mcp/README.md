@@ -1,4 +1,4 @@
-# crates/mcp
+# src/mcp
 Last Modified: 2026-03-10
 
 Axon MCP server crate backing the `axon mcp` command.
@@ -30,7 +30,7 @@ cargo run --bin axon -- mcp --transport stdio
 cargo run --bin axon -- mcp --transport both
 ```
 
-HTTP MCP transport is still the default and is commonly managed via container runtime/s6 (`mcp-http`), but the CLI now also supports stdio-only and dual-transport modes. See `docs/MCP.md`.
+HTTP MCP transport is the default, and the CLI also supports stdio-only and dual-transport modes. See `docs/MCP.md`.
 
 ## Schema Validation / Smoke Tests
 Primary MCP smoke path:
@@ -45,12 +45,13 @@ mcporter --config config/mcporter.json call axon.axon action:doctor --output jso
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
 ```
 
-The smoke harness runs against `AXON_LITE=1` (lite mode is the only supported runtime). Legacy `export` and `graph:*` actions were removed.
+The smoke harness may set `AXON_LITE=1` for compatibility, but SQLite/in-process
+jobs are always used. Legacy `export` and `graph:*` actions were removed.
 
 ## Change Rule
 When changing tool behavior, update in the same commit:
-1. `crates/mcp/schema.rs`
-2. `crates/mcp/server.rs`
+1. `src/mcp/schema.rs`
+2. `src/mcp/server.rs`
 3. `docs/MCP.md`
 4. `docs/MCP-TOOL-SCHEMA.md`
 

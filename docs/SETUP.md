@@ -10,8 +10,8 @@ Step-by-step instructions to get Axon running locally or via Docker.
 | Docker | 24+ | Infrastructure services |
 | Docker Compose | v2+ | Service orchestration |
 | just | latest | Task runner |
-| Node.js | 24+ | Web UI (Next.js) |
-| pnpm | 10+ | Web UI package manager |
+| Node.js | 24+ | Web panel asset build |
+| pnpm | 10+ | Web panel package manager |
 
 Optional but recommended:
 
@@ -87,10 +87,10 @@ docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-tei
 ## 5. Run axon
 
 ```bash
-./scripts/axon --lite scrape https://example.com --wait true
+./scripts/axon scrape https://example.com --wait true
 ```
 
-Axon runs in lite mode by default — workers run in-process, no external queue broker required. Qdrant and TEI are the only external services needed.
+Axon uses SQLite-backed jobs and in-process workers. Qdrant and TEI are the only external services needed.
 
 ## 6. Verify
 
@@ -104,13 +104,13 @@ Axon runs in lite mode by default — workers run in-process, no external queue 
 # Test host CLI against a running axon serve process
 AXON_SERVER_URL=http://127.0.0.1:8001 ./scripts/axon status --json
 
-# Check the web UI
-# Open http://localhost:49010
+# Check the web panel
+# Open http://localhost:8001
 ```
 
-## Lite mode (default)
+## Job runtime
 
-Axon uses SQLite for job storage and runs workers in-process by default. Qdrant and TEI are required for embeddings. See the `AXON_LITE` section in [CONFIG.md](CONFIG.md).
+Axon uses SQLite for job storage and runs workers in-process. Qdrant and TEI are required for embeddings. `AXON_LITE` / `--lite` are accepted only for backwards compatibility.
 
 ## Docker deployment
 
@@ -120,8 +120,8 @@ For production or containerized deployment:
 # Start infrastructure
 just services-up
 
-# Build and start app containers (workers + web)
-just up
+# Build and start the full stack
+docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d
 ```
 
 See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
@@ -144,7 +144,7 @@ See [mcp/DEPLOY.md](mcp/DEPLOY.md) for detailed Docker deployment patterns.
 - CPU-only hosts: override the TEI image/settings or point `TEI_URL` at an external CPU endpoint
 - Check model download: `docker compose --env-file ~/.axon/.env -f docker-compose.yaml logs axon-tei`
 
-### Web UI shows "connection refused"
+### Web panel shows "connection refused"
 
-- Verify `axon serve` is running (it starts Next.js as a supervised child)
-- Check port 49010 is not in use: `lsof -i :49010`
+- Verify `axon serve` or the Compose `axon` service is running
+- Check port 8001 is not in use: `lsof -i :8001`

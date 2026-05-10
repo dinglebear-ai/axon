@@ -1,5 +1,5 @@
-# crates/ingest — Source Ingestion Handlers
-Last Modified: 2026-03-24
+# src/ingest — Source Ingestion Handlers
+Last Modified: 2026-05-09
 
 Ingests external sources (GitHub, Reddit, YouTube, AI sessions) into Qdrant.
 
@@ -42,7 +42,7 @@ ingest/
 - Files are fetched tree-first (one API call), then content per file concurrently via `buffer_unordered(16)` — can be slow without token on large repos
 - `wiki.rs` runs `git clone --depth=1` as a subprocess — requires `git` in PATH/container. Non-zero exit = no wiki = `Ok(0)` (not an error)
 - **Metadata**: `github/meta.rs` builds a **unified** 31-field `gh_*` payload via `GitHubPayloadParams` struct and `build_github_payload()`. All chunk types (file, issue, PR, wiki) share the same field schema — unused fields are null/default. Includes repo-level (owner, stars, forks, topics, pushed_at), file-level (path, language, file_type, is_test, chunking_method), and issue/PR-level (number, state, author, labels, merged_at, is_draft) fields.
-- **File classification**: `classify_file_type()` in `crates/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `gh_file_type`
+- **File classification**: `classify_file_type()` in `src/vector/ops/input/classify.rs` tags each file as `test`/`config`/`doc`/`source` — stored in `gh_file_type`
 
 ### Reddit (`reddit.rs` + `reddit/`)
 - Reddit OAuth2 **client credentials** flow (app-only, no user login)
@@ -63,9 +63,9 @@ ingest/
 - No API key needed; yt-dlp handles auth for publicly accessible videos
 
 ### Sessions (`sessions/`)
-- Parses exported conversation files from Claude (`.json`), Codex (`.md`), Gemini (`.json`)
-- Each parser (`claude.rs`, `codex.rs`, `gemini.rs`) extracts message pairs → flat text chunks
-- Called by `crates/cli/commands/sessions.rs` — synchronous (no AMQP), like `ask`/`query`
+- Parses exported conversation files from Claude (`.jsonl`), Codex (`.jsonl`), and Gemini (`.json`)
+- Each parser (`claude.rs`, `codex.rs`, `gemini.rs`) extracts message pairs into flat text chunks
+- Called by `src/cli/commands/sessions.rs`; async submissions use the SQLite job runtime, while `--wait true` runs through the services ingest path with in-process workers
 
 ## Testing
 
@@ -90,9 +90,9 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `url` | `String` | Yes | Stable identifier for this document — used to derive the deterministic UUID v5 point ID. For code chunks, append `#L{start}-L{end}` for direct GitHub linking. |
-| `domain` | `String` | Yes | Hostname only — `"github.com"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `crates/core/content.rs` to extract. |
+| `domain` | `String` | Yes | Hostname only — `"github.com"`, `"reddit.com"`, `"youtube.com"`. Use `url_to_domain(url)` from `src/core/content.rs` to extract. |
 | `chunks` | `Vec<String>` | Yes | Pre-chunked content. Pipeline expects chunks **already split** — do not pass the full raw text. |
-| `source_type` | `String` | Yes | One of: `"github"` / `"reddit"` / `"youtube"` / `"sessions"` / `"refresh"` / `"embed"`. Stored in Qdrant payload for filtering. |
+| `source_type` | `String` | Yes | Ingest payloads use `"github"` / `"reddit"` / `"youtube"` / `"sessions"`. Session parsers may write more specific Qdrant payload values such as `"claude_session"` or `"codex_session"`. |
 | `content_type` | `&'static str` | Yes | `"text"` or `"markdown"`. Stored in Qdrant payload — affects nothing in the embed pipeline itself, but is queryable. |
 | `title` | `Option<String>` | No | Human-readable label (file path, video title, issue title). Stored in Qdrant payload. |
 | `extra` | `Option<Value>` | No | Source-specific metadata as a flat JSON object. All keys stored in Qdrant payload and queryable. Use `gh_*` / `reddit_*` / `yt_*` prefixes per source. |
@@ -100,11 +100,11 @@ All ingest sources use the unified `embed_prepared_docs` pipeline via `PreparedD
 ### Canonical Pattern
 
 ```rust
-use crate::crates::core::content::url_to_domain;
-use crate::crates::vector::ops::PreparedDoc;
-use crate::crates::vector::ops::tei::embed_prepared_docs;
-use crate::crates::vector::ops::input::chunk_text;       // prose: 2000-char with 200-char overlap
-use crate::crates::vector::ops::input::code::chunk_code;  // tree-sitter AST-aware chunking
+use crate::core::content::url_to_domain;
+use crate::vector::ops::PreparedDoc;
+use crate::vector::ops::tei::embed_prepared_docs;
+use crate::vector::ops::input::chunk_text;       // prose: 2000-char with 200-char overlap
+use crate::vector::ops::input::code::chunk_code;  // tree-sitter AST-aware chunking
 
 let url = "https://github.com/rust-lang/rust/blob/main/src/lib.rs".to_string();
 let domain = url_to_domain(&url);  // → "github.com"
@@ -142,9 +142,9 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 
 ## ingest_jobs Schema
 `axon_ingest_jobs` differs from other job tables:
-- Uses `source_type TEXT` (`github`/`reddit`/`youtube`) + `target TEXT` (repo name, subreddit, video URL)
+- Uses `source_type TEXT` (`github`/`reddit`/`youtube`/`sessions`) + `target TEXT` (repo name, subreddit, video URL, session target)
 - Does **NOT** have `url` or `urls_json` columns
-- Ingest worker lifecycle is owned by the lite worker subsystem (`crates/jobs/lite/workers.rs`); the legacy `worker_lane.rs` was removed when full mode was retired. Whether `AXON_INGEST_LANES` is still respected should be confirmed against the lite ingest worker.
+- Ingest worker lifecycle is owned by the SQLite worker subsystem (`src/jobs/lite/workers.rs`); the legacy `worker_lane.rs` was removed with the old queue runtime. `AXON_INGEST_LANES` is wired through config and clamped to 1-16.
 
 ## Known Gaps
 
@@ -153,7 +153,7 @@ let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
 | YouTube age-restricted / private videos | `yt-dlp` exits non-zero; error is a per-video skip warning in playlist mode, job failure in single-video mode. No friendly message. |
 | YouTube manual captions | Only `--write-auto-sub` is passed; `--write-subs` (manual captions) is not requested. Videos with manual but no auto-generated captions will fail. |
 | GitHub file stream resilience | `flush_batch` errors are logged and counted (not propagated via `?`). A single TEI/Qdrant failure discards that batch and continues with remaining files. Batch timeout: 120s. |
-| Ingest job hang detection | Per-job heartbeat (30s touch, `crates/jobs/lite/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `crates/jobs/lite/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
+| Ingest job hang detection | Per-job heartbeat (30s touch, `src/jobs/lite/workers/heartbeat.rs`) + periodic watchdog (60s sweep, `src/jobs/lite/workers.rs`) reclaim jobs whose `updated_at` exceeds `watchdog_stale_timeout_secs + watchdog_confirm_secs` (default 360s). Reclaimed rows are reset to `pending` (not `failed`). |
 
 ## yt-dlp Requirement
 
@@ -164,8 +164,8 @@ No such file or directory (os error 2)
 Install: `pip install yt-dlp` or `brew install yt-dlp`. Verify: `yt-dlp --version`.
 
 ## Adding a New Ingest Source
-1. Add parser in `crates/ingest/<source>.rs`
-2. Extend `classify_target()` in `crates/ingest/classify.rs` to recognize the new source
-3. Add a per-source variant in the relevant ingest service entry point (`crates/services/ingest.rs`)
-4. Add `source_type` variant handling in the lite ingest worker (`crates/jobs/lite/workers.rs` and the ingest payload schema)
+1. Add parser in `src/ingest/<source>.rs`
+2. Extend `classify_target()` in `src/ingest/classify.rs` to recognize the new source
+3. Add a per-source variant in the relevant ingest service entry point (`src/services/ingest.rs`)
+4. Add `source_type` variant handling in the SQLite ingest worker (`src/jobs/lite/workers.rs` and the ingest payload schema)
 5. Add env vars to `.env.example`

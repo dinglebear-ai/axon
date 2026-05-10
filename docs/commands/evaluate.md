@@ -31,7 +31,8 @@ axon evaluate --query "<question>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for all evaluate LLM calls. |
 
-`evaluate` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
+`evaluate` uses Qdrant + TEI retrieval and Gemini headless judging. It does not
+require Postgres, Redis, or AMQP.
 
 ## Flags
 

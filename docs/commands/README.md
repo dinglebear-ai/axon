@@ -32,6 +32,7 @@ Use `--local` to bypass server mode for one command.
 - [screenshot](./screenshot.md)
 - [search](./search.md)
 - [serve](./serve.md)
+- [setup](./setup.md)
 - [sessions](./sessions.md)
 - [sources](./sources.md)
 - [stats](./stats.md)

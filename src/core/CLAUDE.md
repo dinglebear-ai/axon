@@ -1,5 +1,5 @@
-# crates/core — Shared Infrastructure
-Last Modified: 2026-03-28
+# src/core — Shared Infrastructure
+Last Modified: 2026-05-09
 
 Foundational crate. Owns configuration parsing, the `Config` struct, HTTP client + SSRF protection, content transformation, logging, terminal UI, and health checks. Every other crate imports from here.
 
@@ -15,7 +15,7 @@ core/
 │   ├── help.rs           # maybe_print_top_level_help_and_exit(): colored help text
 │   ├── parse.rs          # Module root for the parse subtree
 │   ├── parse/
-│   │   ├── build_config.rs  # into_config(): CliArgs → Config (env vars, clamps, normalization, lite-mode)
+│   │   ├── build_config.rs  # into_config(): CliArgs -> Config (env vars, clamps, normalization)
 │   │   ├── performance.rs   # profile_settings(): PerformanceProfile → concrete concurrency values
 │   │   ├── excludes.rs      # default_exclude_prefixes(): default path exclusions
 │   │   ├── helpers.rs       # viewport parsing, flag helpers, env_usize_clamped, env_f64_clamped
@@ -51,11 +51,11 @@ core/
 ├── health/
 │   └── doctor.rs         # probe_tei_info, probe_openai, build_browser_runtime
 │   └── doctor/
-│       └── lite.rs       # Lite-mode doctor probe orchestration
+│       └── lite.rs       # SQLite-runtime doctor probe orchestration
 ├── logging.rs            # init_tracing(), log_info/log_warn/log_done
 ├── logging/
 │   └── size_rotating.rs  # SizeRotatingFile: byte-budget rotation writer
-├── neo4j.rs              # Neo4j client wiring (used by graph-enhanced retrieval)
+├── neo4j.rs              # Legacy Neo4j client helper; graph retrieval is not wired in the current runtime
 ├── paths.rs              # Path helpers (data dir, output dir, cache dir)
 └── ui.rs                 # Spinner, primary/accent/muted(), symbol_for_status(), confirm_destructive()
 ```
@@ -82,24 +82,24 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Auto-switch | `auto_switch_thin_ratio` (0.60), `auto_switch_min_pages` (10) |
 | Spider tuning | `url_whitelist`, `block_assets`, `max_page_bytes`, `redirect_policy_strict`, `bypass_csp`, `accept_invalid_certs`, `custom_headers` |
 | Job watchdog | `watchdog_stale_timeout_secs` (300), `watchdog_confirm_secs` (60) |
-| Web UI | `serve_port` (default 49000, env: `AXON_SERVE_PORT`) |
-| Lite mode | `lite_mode: bool` (set by `AXON_LITE=1` or `--lite`; skips PG/Redis/AMQP checks), `sqlite_path: PathBuf` (default `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`, env: `AXON_SQLITE_PATH`). `axon_data_base_dir()` defaults to `~/.axon` — flat layout, no nested `axon/` subdir |
+| HTTP server | `mcp_http_host` / `mcp_http_port` (default `127.0.0.1:8001`) |
+| Job runtime | SQLite-backed in-process jobs; `AXON_LITE=1` / `--lite` are compatibility no-ops. `sqlite_path: PathBuf` defaults to `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`. `axon_data_base_dir()` defaults to `~/.axon` — flat layout, no nested `axon/` subdir |
 
-**Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `crates/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
+**Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `src/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
 
 ## CommandKind Enum (`config/types/enums.rs`)
 
-28 variants (verify against `crates/core/config/types/enums.rs:5-34`):
+28 variants (verify against `src/core/config/types/enums.rs:5-34`):
 `Scrape`, `Crawl`, `Watch`, `Map`, `Extract`, `Search`, `Embed`, `Debug`, `Doctor`, `Query`, `Retrieve`, `Ask`, `Evaluate`, `Suggest`, `Sources`, `Domains`, `Stats`, `Status`, `Dedupe`, `Ingest`, `Sessions`, `Research`, `Screenshot`, `Completions`, `Mcp`, `Serve`, `Setup`, `Migrate`.
 
-The legacy `Refresh`, `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `crates/ingest/classify.rs`.
+The legacy `Refresh`, `Github`, `Reddit`, `Youtube` variants were removed: GitHub/Reddit/YouTube are now subtypes routed through `CommandKind::Ingest` and the auto-classifier in `src/ingest/classify.rs`.
 
 Other enums: `RenderMode` (Http/Chrome/AutoSwitch), `ScrapeFormat` (Markdown/Html/RawHtml/Json), `PerformanceProfile` (HighStable/Extreme/Balanced/Max), `RedditSort` (Hot/Top/New/Rising), `RedditTime` (Hour/Day/Week/Month/Year/All)
 
 ## `into_config()` — CLI → Config Translation (`config/parse/build_config.rs`)
 
 Translates `clap` output into the runtime `Config` struct:
-1. Resolves `lite_mode` from `--lite` flag and `AXON_LITE` env (lite mode is the only supported runtime)
+1. Accepts the legacy `--lite` flag and `AXON_LITE` env for compatibility; runtime remains SQLite/in-process either way.
 2. Extracts command-specific args (ask_diagnostics, github_include_source (default: true, disabled by `--no-source`), reddit_*, sessions_*, serve_port)
 3. Maps `CliCommand` → `(CommandKind, Vec<String> positional)`
 4. Normalizes service URLs via `normalize_local_service_url()` (Docker detection)
@@ -110,7 +110,7 @@ Translates `clap` output into the runtime `Config` struct:
 
 ## `Config::default_lite()`
 
-`Config::default_lite()` (in `config_impls.rs`) is a convenience constructor for lite mode. It sets `lite_mode: true` and fills service URLs with dummy values — use this in tests that need a `Config` without real service credentials. Do **not** use `Config::default()` for lite mode tests; use `Config::default_lite()`.
+`Config::default_lite()` (in `config_impls.rs`) is the test convenience constructor for the current SQLite runtime. It sets the legacy `lite_mode` field to true and fills service URLs with dummy values — use this in tests that need a `Config` without real service credentials.
 
 ## CRITICAL: Adding a Field to `Config`
 
@@ -118,25 +118,23 @@ When adding a **non-`Option`** field:
 1. Add the field to `Config` in `config/types/config.rs`
 2. Add a default in both `Config::default()` and `Config::default_lite()` in `config_impls.rs`
 3. **Update inline struct literals** in:
-   - `crates/cli/commands/research.rs` (`make_test_config()`)
-   - `crates/cli/commands/search.rs` (`make_test_config()`)
-   - Any `make_test_config()` in `crates/jobs/common/`
+   - `src/cli/commands/research.rs` (`make_test_config()`)
+   - `src/cli/commands/search.rs` (`make_test_config()`)
+   - Any `make_test_config()` in `src/jobs/common/`
 4. The compiler only catches missing struct literal fields at **test build time**, not `cargo check`.
 
 ## Docker URL Rewriting (`config/parse/docker.rs`)
 
 `normalize_local_service_url(url: String) -> String`:
 - Checks if `/.dockerenv` exists
-- **Inside Docker:** returns URL unchanged (container DNS resolves `axon-postgres`, etc.)
+- **Inside Docker:** returns URL unchanged (container DNS resolves service hostnames)
 - **Outside Docker:** rewrites container hostnames to `127.0.0.1` with mapped ports:
 
 | Container hostname | Rewrites to |
 |--------------------|-------------|
-| `axon-postgres` | `127.0.0.1:53432` |
-| `axon-redis` | `127.0.0.1:53379` |
-| `axon-rabbitmq` | `127.0.0.1:45535` |
 | `axon-qdrant` | `127.0.0.1:53333` |
 | `axon-tei` | `127.0.0.1:52000` |
+| `axon-ollama` | `127.0.0.1:11434` |
 | `axon-chrome` | `127.0.0.1:6000` |
 
 `.env` can safely use container-internal DNS — the CLI rewrites transparently.
@@ -259,7 +257,7 @@ if !confirm_destructive(cfg, "Delete all jobs?")? { return Ok(()); }
 
 ## Health Checks (`health.rs` + `health/doctor*`)
 
-`health.rs` itself exports `browser_diagnostics_pattern()` plus the Chrome diagnostics env wiring. Active service probes live under `health/doctor.rs` (e.g. `probe_tei_info`, `probe_openai`, `build_browser_runtime`) and `health/doctor/lite.rs` (lite-mode orchestration). There is no `redis_healthy()` — Redis was removed when the runtime collapsed to lite mode.
+`health.rs` itself exports `browser_diagnostics_pattern()` plus the Chrome diagnostics env wiring. Active service probes live under `health/doctor.rs` (e.g. `probe_tei_info`, `probe_openai`, `build_browser_runtime`) and `health/doctor/lite.rs` (current SQLite-runtime orchestration). There is no `redis_healthy()` — Redis was removed with the legacy queue runtime.
 
 **Chrome diagnostics (env-controlled):**
 - `AXON_CHROME_DIAGNOSTICS=1` — enable screenshot/event capture

@@ -18,7 +18,8 @@ created, when it is required, and what fails without it.
 | Token | Type | Surface | Required? | Section |
 |-------|------|---------|-----------|---------|
 | `AXON_MCP_HTTP_TOKEN` | Env-set bearer | `axon mcp --transport http` (`/mcp`) | Loopback: optional. Non-loopback: yes. | [MCP HTTP token](#mcp-http-token) |
-| Web panel password | Auto-generated, file-backed | `axon serve` web UI (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
+| MCP OAuth env | Google OAuth + JWT | `/mcp`, `/v1/actions` | OAuth mode only | [MCP OAuth](#mcp-oauth) |
+| Web panel password | Auto-generated, file-backed | `axon serve` web panel (`/api/panel/*`) | Always (no anonymous access) | [Web panel password](#web-panel-password) |
 
 User-supplied third-party credentials (Tavily, OpenAI, GitHub, Reddit) are
 **not** axon-issued tokens — see [Third-party credentials](#third-party-credentials)
@@ -29,7 +30,7 @@ for how they differ.
 ## MCP HTTP token
 
 **Variable:** `AXON_MCP_HTTP_TOKEN`
-**Source:** `crates/mcp/auth.rs`, `crates/mcp/server/http.rs`
+**Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
 **Detailed reference:** [`docs/auth/MCP-AUTH.md`](MCP-AUTH.md)
 
 Bearer token gating the MCP HTTP transport. Applied only to
@@ -44,7 +45,7 @@ listener and performs no auth.
 | Headers accepted | `Authorization: Bearer <token>` or `x-api-key: <token>` |
 | Comparison | Constant-time (`subtle::ConstantTimeEq`) |
 | Loopback bind (`127.0.0.1`, `::1`, `localhost`) | Optional — server starts and emits a one-time warning when unset |
-| Non-loopback bind (`0.0.0.0`, public hostname) | **Required** — startup refuses to launch without it |
+| Non-loopback bind (`0.0.0.0`, public hostname) | Required unless OAuth mode is configured |
 | Failure mode | `401 Unauthorized` on each request when token is set but request omits / mismatches header |
 
 ### Setting it
@@ -61,9 +62,26 @@ security model, see [`docs/auth/MCP-AUTH.md`](MCP-AUTH.md).
 
 ---
 
+---
+
+## MCP OAuth
+
+**Variables:** `AXON_MCP_AUTH_MODE`, `AXON_MCP_PUBLIC_URL`,
+`AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`,
+`AXON_MCP_AUTH_ADMIN_EMAIL`, `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`
+**Source:** `src/mcp/auth.rs`, `src/mcp/server/http.rs`
+**Detailed reference:** [`docs/auth/MCP-AUTH.md`](MCP-AUTH.md)
+
+OAuth mode is enabled with `AXON_MCP_AUTH_MODE=oauth`. It mounts lab-auth OAuth
+metadata, Google login, token, JWKS, and dynamic registration routes beside
+`/mcp`. Static bearer auth remains accepted when `AXON_MCP_HTTP_TOKEN` is also
+set.
+
+---
+
 ## Web panel password
 
-**Source:** `crates/web/auth.rs`, `crates/web/server.rs`
+**Source:** `src/web/auth.rs`, `src/web/server.rs`
 **File:** `~/.axon/panel-password` (mode `0600`, owner-only)
 
 Single shared password gating the `axon serve` admin panel. There are no
@@ -89,7 +107,7 @@ When `axon serve` generates a new password it logs it to stderr **once**:
 
 ```
 Axon web panel password: <token>
-Open: http://127.0.0.1:49000
+Open: http://127.0.0.1:8001
 ```
 
 If you miss the line, copy it back:
@@ -116,7 +134,7 @@ axon serve
 These are **not** axon-issued tokens. They are credentials you obtain
 from a third-party provider and supply via environment variables so that
 Axon can call the upstream API on your behalf. They are listed here only
-to disambiguate them from the four axon-issued secrets above.
+to disambiguate them from Axon-issued auth secrets above.
 
 | Variable | Provider | Used by |
 |----------|----------|---------|
@@ -144,7 +162,7 @@ test -f ~/.axon/panel-password && echo "panel password present"
 ls -l ~/.axon/panel-password   # mode 0600
 
 # Panel login round-trip
-curl -s -X POST http://localhost:49000/api/panel/login \
+curl -s -X POST http://localhost:8001/api/panel/login \
   -H "Content-Type: application/json" \
   -d "{\"password\":\"$(cat ~/.axon/panel-password)\"}"
 # → {"ok":true,"token":"..."}

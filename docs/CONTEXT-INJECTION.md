@@ -33,7 +33,7 @@ Context:
 
 `retrieval.rs → retrieve_ask_candidates`
 
-Query vectors are encoded with `QUERY_INSTRUCTION` from `crates/vector/ops/tei/tei_client.rs`:
+Query vectors are encoded with `QUERY_INSTRUCTION` from `src/vector/ops/tei/tei_client.rs`:
 
 ```
 Instruct: Given a web search query, retrieve relevant passages that answer the query
@@ -89,11 +89,11 @@ URLs matching these patterns are dropped unless the query itself is about sessio
 
 The query is allowed to opt-in: if the query contains tokens like `session`, `log`, `history`, or the substring `docs/sessions`, the low-signal filter is bypassed.
 
-### Authoritative allowlist filter
+### Authoritative domain boost
 
-If `AXON_ASK_AUTHORITATIVE_ALLOWLIST` is set (comma-separated domains), any chunk whose URL does not match those domains (exact host or subdomain) is dropped entirely. This count is exposed in diagnostics as `dropped_by_allowlist`.
+If `AXON_ASK_AUTHORITATIVE_DOMAINS` is set (comma-separated domains), matching chunks receive the configured `AXON_ASK_AUTHORITATIVE_BOOST`. Matches use exact host or subdomain checks.
 
-When the allowlist is empty (the default), all candidates pass.
+When the domain list is empty (the default), no authority boost is applied.
 
 ---
 
@@ -241,10 +241,9 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 | `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 120000 |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
-| `AXON_ASK_AUTHORITATIVE_ALLOWLIST` | Restrict candidates to these domains only | (empty) |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |
 
-Defaults in this table are owned by `crates/core/config/parse/build_config.rs` and `crates/core/config/types/config_impls.rs`. Re-check both when changing defaults because tests and direct `Config::default()` callers can differ from CLI/env construction.
+Defaults in this table are owned by `src/core/config/parse/build_config.rs` and `src/core/config/types/config_impls.rs`. Re-check both when changing defaults because tests and direct `Config::default()` callers can differ from CLI/env construction.
 
 ---
 

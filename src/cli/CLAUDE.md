@@ -1,7 +1,7 @@
-# crates/cli — Command Orchestration Layer
-Last Modified: 2026-03-15
+# src/cli — Command Orchestration Layer
+Last Modified: 2026-05-09
 
-Translates parsed `Config` state into command execution. Delegates all business logic to `crates/jobs`, `crates/crawl`, `crates/vector`, and `crates/ingest`. This crate owns routing, output formatting, and job lifecycle UX — not business logic.
+Translates parsed `Config` state into command execution. Delegates all business logic to `src/jobs`, `src/crawl`, `src/vector`, and `src/ingest`. This crate owns routing, output formatting, and job lifecycle UX — not business logic.
 
 ## Module Layout
 
@@ -35,7 +35,7 @@ cli/
     ├── scrape.rs                 # Scrape URLs to markdown/html/json
     ├── screenshot.rs             # Screenshot entry: URL loop, Chrome requirement check
     ├── search.rs                 # Web search via Tavily API
-    ├── serve.rs                  # axum web UI + WebSocket server entry point
+    ├── serve.rs                  # unified Axum HTTP server entry point
     ├── services_migration_tests.rs # Migration tests for the services-layer refactor
     ├── sessions.rs               # Ingest AI session exports (Claude/Codex/Gemini)
     ├── setup.rs                  # First-run / interactive config setup
@@ -46,8 +46,8 @@ cli/
     ├── watch.rs                  # Watch definition and run management
     ├── crawl/
     │   ├── subcommands.rs        # Job lifecycle routing: status/cancel/errors/list/cleanup/clear/worker/recover/audit/diff
-    │   ├── runtime.rs            # Thin shim — delegates to crates/crawl/engine::resolve_cdp_ws_url
-    │   ├── sync_crawl.rs         # Thin shim — sync-crawl logic lives in crates/services/crawl_sync.rs
+    │   ├── runtime.rs            # Thin shim — delegates to src/crawl/engine::resolve_cdp_ws_url
+    │   ├── sync_crawl.rs         # Thin shim — sync-crawl logic lives in src/services/crawl_sync.rs
     │   ├── runtime_migration_tests.rs
     │   ├── sync_backfill_migration_tests.rs
     │   ├── sync_crawl_migration_tests.rs
@@ -75,7 +75,7 @@ cli/
         └── map_sitemap_tests.rs
 ```
 
-> There is **no `commands/graph.rs`** and no `Graph` `CommandKind` variant. The `graph` ask flag survives as a per-request boolean (see `crates/mcp/schema.rs`), not a dedicated CLI subcommand.
+> There is **no `commands/graph.rs`** and no `Graph` `CommandKind` variant. The `graph` ask flag survives as a per-request boolean (see `src/mcp/schema.rs`), not a dedicated CLI subcommand.
 
 ## Dispatch
 
@@ -166,9 +166,9 @@ Current guard list:
 
 All `handle_job_*` functions accept `T: JobStatus + Serialize` — new job types must implement both.
 
-### `crates/core/ui.rs` — UI helpers
+### `src/core/ui.rs` — UI helpers
 
-`confirm_destructive(cfg, prompt)` lives in `crates/core/ui.rs` (not in the CLI common modules). It returns `Ok(true)` if `cfg.yes` is set OR if stdout is not a TTY.
+`confirm_destructive(cfg, prompt)` lives in `src/core/ui.rs` (not in the CLI common modules). It returns `Ok(true)` if `cfg.yes` is set OR if stdout is not a TTY.
 
 ## `commands/job_contracts.rs` — Stable Output Types
 
@@ -214,7 +214,7 @@ if cfg.json_output {
 
 JSON output is always **pretty-printed** (`to_string_pretty`). Use types from `job_contracts.rs` for job responses; use `serde_json::json!()` for simple ad-hoc responses.
 
-Human output uses `primary()`, `accent()`, `muted()`, `symbol_for_status()`, `status_text()` from `crates/core/ui`.
+Human output uses `primary()`, `accent()`, `muted()`, `symbol_for_status()`, `status_text()` from `src/core/ui`.
 
 ## Confirmation Prompts
 
@@ -230,11 +230,11 @@ if !confirm_destructive(cfg, "This will delete all jobs. Continue?")? {
 
 ## `crawl/runtime.rs` — Chrome Bootstrap (thin shim)
 
-`crates/cli/commands/crawl/runtime.rs` is a small (≈1 KB) shim that delegates to the shared engine resolver `crates/crawl/engine::resolve_cdp_ws_url`. All real resolution logic (Docker host rewrite, `/json/version` discovery, `ws://` shortcut, retries) lives in the crawl engine. Always call the bootstrap entry point once before Chrome-mode crawls so each worker doesn't probe independently.
+`src/cli/commands/crawl/runtime.rs` is a small (≈1 KB) shim that delegates to the shared engine resolver `src/crawl/engine::resolve_cdp_ws_url`. All real resolution logic (Docker host rewrite, `/json/version` discovery, `ws://` shortcut, retries) lives in the crawl engine. Always call the bootstrap entry point once before Chrome-mode crawls so each worker doesn't probe independently.
 
 ## `crawl/sync_crawl.rs` — Synchronous Crawl (thin shim)
 
-`crates/cli/commands/crawl/sync_crawl.rs` is a thin shim. The synchronous crawl logic — 24-hour disk cache, sitemap-only mode, HTTP→Chrome fallback, sitemap backfill — lives in `crates/services/crawl_sync.rs`. The shim exists so the CLI handler can stay tiny and the same logic can be reused by other entry points.
+`src/cli/commands/crawl/sync_crawl.rs` is a thin shim. The synchronous crawl logic — 24-hour disk cache, sitemap-only mode, HTTP→Chrome fallback, sitemap backfill — lives in `src/services/crawl_sync.rs`. The shim exists so the CLI handler can stay tiny and the same logic can be reused by other entry points.
 
 ## Testing
 
@@ -251,9 +251,9 @@ Tests are in `common.rs` (pure functions) and `job_contracts.rs` (serialization)
 
 1. Create `commands/<name>.rs` with `pub async fn run_<name>(cfg: &Config) -> Result<(), Box<dyn Error>>`
 2. Add `pub mod <name>;` and `pub use <name>::run_<name>;` to `commands.rs`
-3. Add `CommandKind::<Name>` variant to `crates/core/config/types/enums.rs`
-4. Add field(s) to `Config` in `crates/core/config/types/config.rs` and `Config::default()` in `config_impls.rs`
+3. Add `CommandKind::<Name>` variant to `src/core/config/types/enums.rs`
+4. Add field(s) to `Config` in `src/core/config/types/config.rs` and `Config::default()` in `config_impls.rs`
 5. Add flag(s) to `GlobalArgs` or a new command-specific `Args` struct in `config/cli/`
 6. Add the parse logic to `config/parse/build_config.rs`
 7. Add match arm to `lib.rs::run_once()`
-8. **Update inline `Config { ... }` literals** in `crates/cli/commands/research.rs`, `search.rs`, and any `make_test_config()` helpers — compiler only catches this at test build time
+8. **Update inline `Config { ... }` literals** in `src/cli/commands/research.rs`, `search.rs`, and any `make_test_config()` helpers — compiler only catches this at test build time

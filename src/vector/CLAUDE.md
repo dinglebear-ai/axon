@@ -1,5 +1,5 @@
-# crates/vector — Embeddings & Vector Search
-Last Modified: 2026-03-16
+# src/vector — Embeddings & Vector Search
+Last Modified: 2026-05-09
 
 TEI embedding + Qdrant vector store ops. Supports both dense-only and hybrid (dense + sparse BM42) search depending on collection type.
 
@@ -202,7 +202,7 @@ TEI_URL=http://steamy-wsl:52000
 ### Query Instruction (Asymmetric Encoding)
 `--default-prompt` has been **removed** from the TEI Docker config. The instruction is now applied in Rust at query time only.
 
-- **`QUERY_INSTRUCTION`** constant in `crates/vector/ops/tei/tei_client.rs` — single source of truth
+- **`QUERY_INSTRUCTION`** constant in `src/vector/ops/tei/tei_client.rs` — single source of truth
 - Prepended by `query.rs`, `ask/context/retrieval.rs` (NL question only), and `evaluate/scoring.rs` before calling `tei_embed`
 - Dual-embedding for ask: when the keyword form differs from the NL form, both are embedded in a single TEI batch. The **NL form gets `QUERY_INSTRUCTION`; the keyword form does not** — keyword tokens are document-shaped, so prefixing them would push the vector into query space and defeat the dual-embedding pass (D-C2 / bd axon_rust-d71.5).
 - Document embeds (`pipeline.rs`) do **not** get the prefix — raw text only
@@ -213,11 +213,11 @@ TEI_URL=http://steamy-wsl:52000
 ### Connectivity
 - TEI is on `jakenet` (external Docker network, Tailscale-accessible)
 - It is **never** on `127.0.0.1` — `axon doctor` will fail on TEI if run without Tailscale connectivity
-- The `axon` Docker workers inside docker-compose reach it via `TEI_URL` env var (must be set in `.env`)
+- The `axon` Docker service reaches TEI through the container-internal `TEI_URL` env var.
 
 ## Adding a New Vector Command
 1. Add to `vector/ops/commands/` (one file per command)
 2. Re-export from `ops/commands.rs`
-3. Add `CommandKind::*` variant to `crates/core/config.rs`
+3. Add `CommandKind::*` variant to `src/core/config.rs`
 4. Call `ensure_collection(&cfg).await?` before any Qdrant write
 5. Prefer `tei_embed_batch()` over `tei_embed()` for multiple texts

@@ -1,20 +1,20 @@
-# crates/mcp — Axon MCP Server Guide
-Last Modified: 2026-03-28
+# src/mcp — Axon MCP Server Guide
+Last Modified: 2026-05-09
 
 ## Purpose
-`crates/mcp` implements the Axon Model Context Protocol server (`axon mcp`) that exposes crawler/RAG capabilities through a single MCP tool.
+`src/mcp` implements the Axon Model Context Protocol server (`axon mcp`) that exposes crawler/RAG capabilities through a single MCP tool.
 
 - CLI entrypoint: `main.rs` subcommand `mcp`
-- Transport: RMCP streamable HTTP on `/mcp` (CLI entrypoint uses HTTP)
+- Transport: RMCP stdio by default, streamable HTTP on `/mcp` when `--transport http|both` or `axon serve` is used
 - MCP tool: `axon`
 - Routing model: consolidated `action` + `subaction`
 
 ## Module Layout
 
 ```
-crates/mcp.rs           # Crate-root re-export shim (sibling to crates/mcp/)
+src/mcp.rs           # Crate-root re-export shim (sibling to src/mcp/)
 mcp/
-├── auth.rs                     # OAuth token storage + auth helpers
+├── auth.rs                     # AuthPolicy, lab-auth OAuth/JWT, static bearer, x-api-key normalization
 ├── cors.rs                     # CORS middleware for the HTTP transport
 ├── schema.rs                   # AxonRequest / AxonToolResponse types, action/subaction enums
 ├── schema/
@@ -41,17 +41,32 @@ mcp/
     └── status_dashboard.html       # MCP App resource for `ui://axon/status-dashboard`
 ```
 
-There is no `crates/mcp/config.rs`. The `load_mcp_config()` helper that used to live here was removed when the MCP server adopted the unified `build_config()` path; OAuth token storage helpers live in `auth.rs`.
+There is no `src/mcp/config.rs`. The `load_mcp_config()` helper that used to live here was removed when the MCP server adopted the unified `build_config()` path. MCP auth policy lives in `auth.rs`; OAuth state is created through `lab_auth::state::AuthState` when `AXON_MCP_AUTH_MODE=oauth`.
 
 ## Source-of-Truth References
 - Wire contract schema doc: `docs/MCP-TOOL-SCHEMA.md`
 - MCP runtime/design doc: `docs/MCP.md`
-- Tool request/response types: `crates/mcp/schema.rs`
-- Tool router and dispatch: `crates/mcp/server.rs`
-- Handler implementations: `crates/mcp/server/handlers_*.rs`
-- Runtime config: threaded in via `build_config()` from `crates/core/config/parse/build_config.rs` (no dedicated MCP config loader)
+- Tool request/response types: `src/mcp/schema.rs`
+- Tool router and dispatch: `src/mcp/server.rs`
+- Handler implementations: `src/mcp/server/handlers_*.rs`
+- Runtime config: threaded in via `build_config()` from `src/core/config/parse/build_config.rs` (no dedicated MCP config loader)
+- Auth policy: `src/mcp/auth.rs` + `src/mcp/server/http.rs`
 
 If documentation and code diverge, update both in the same change.
+
+## Auth Modes
+
+HTTP transport chooses one auth policy at startup:
+
+| Mode | Env | Behavior |
+|------|-----|----------|
+| OAuth | `AXON_MCP_AUTH_MODE=oauth` | Builds `lab_auth::AuthState`, validates JWT bearers, mounts OAuth routes, and keeps the static bearer token working if `AXON_MCP_HTTP_TOKEN` is set. |
+| Bearer-only | default mode + `AXON_MCP_HTTP_TOKEN` set | Validates `Authorization: Bearer <token>` or `x-api-key: <token>` through `lab_auth::AuthLayer::with_static_token`. |
+| Loopback dev | default mode + no token + loopback bind | No auth layer; loopback bind is the trust boundary. |
+
+OAuth env vars use the `AXON_MCP_*` prefix: `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL`, and `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`. Do not document the old `GOOGLE_OAUTH_*` names as current Axon config.
+
+Mounted auth inserts `AuthContext`; tool calls then enforce `axon:read` / `axon:write` scopes in `server.rs`. Unknown actions fail closed.
 
 ## Consolidated Tool Pattern
 The single `axon` tool is the only public MCP tool. All operations route through:
@@ -91,23 +106,23 @@ This pattern is mandatory. Do not add separate MCP tools for each operation.
 
 ### `crawl`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/jobs/crawl.rs`
+- Integration: `src/jobs/crawl.rs`
 
 ### `extract`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/jobs/extract.rs`
+- Integration: `src/jobs/extract.rs`
 
 ### `embed`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/jobs/embed.rs`
+- Integration: `src/jobs/embed.rs`
 
 ### `ingest`
 - `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover`
-- Integration: `crates/jobs/ingest.rs`
+- Integration: `src/jobs/ingest.rs`
 
 ### `ask`
 - Direct action (no subaction)
-- Integration: `crates/vector/ops/commands/ask/`
+- Integration: `src/vector/ops/commands/ask/`
 
 ### `research`
 - Direct action (no subaction)
@@ -115,17 +130,17 @@ This pattern is mandatory. Do not add separate MCP tools for each operation.
 
 ### `screenshot`
 - Direct action (no subaction)
-- Integration: `crates/cli/commands/screenshot/`
+- Integration: `src/cli/commands/screenshot/`
 
 ### `status`
 - Direct action (no subaction)
 - Integration: job queue status across all job types
 
 ### `query` / `retrieve`
-- Integration: `crates/vector/ops/tei.rs`, `crates/vector/ops/qdrant/*`
+- Integration: `src/vector/ops/tei.rs`, `src/vector/ops/qdrant/*`
 
 ### `search` / `map` / `scrape`
-- Integration: `crates/core/http.rs`, `crates/core/content.rs`, `crates/crawl/engine.rs`, `spider_agent`
+- Integration: `src/core/http.rs`, `src/core/content.rs`, `src/crawl/engine.rs`, `spider_agent`
 
 ### `doctor` / `domains` / `sources` / `stats`
 - Integration: lightweight probes + qdrant endpoints
@@ -169,7 +184,7 @@ Default response behavior is artifact-first:
 
 ## Configuration Model
 
-MCP config is threaded in directly via `build_config()` from `crates/core/config/parse/build_config.rs`. There is no `load_mcp_config()` function — it was removed when config was unified (commit `54244286`). The MCP server reads the standard `Config` struct like every other command.
+MCP config is threaded in directly via `build_config()` from `src/core/config/parse/build_config.rs`. There is no `load_mcp_config()` function — it was removed when config was unified (commit `54244286`). The MCP server reads the standard `Config` struct like every other command.
 
 Expected runtime model:
 - `axon mcp` runs inside the same stack environment as workers.
@@ -177,7 +192,7 @@ Expected runtime model:
 
 ## `ServiceContext` Wiring
 
-All MCP action handlers receive a `&ServiceContext` (from `crates/services/context.rs`) constructed once at server startup:
+All MCP action handlers receive a `&ServiceContext` (from `src/services/context.rs`) constructed once at server startup:
 
 ```rust
 // In handler dispatch
@@ -186,7 +201,7 @@ let ctx = ServiceContext::new_with_workers(Arc::new(cfg)).await?;
 self.handle_crawl(request).await
 ```
 
-`ServiceContext` carries exactly two fields — `cfg: Arc<Config>` and `jobs: Arc<dyn ServiceJobRuntime>`. **There is no `capabilities` field and no `ServiceCapabilities` struct.** Any documentation referring to `ctx.capabilities.<cap>.supported` is stale; gating now lives inside the individual service functions (e.g. the watch scheduler returns its own "not supported" error). The legacy `graph`, `refresh`, and `export` MCP actions were removed entirely when full mode was retired.
+`ServiceContext` carries exactly two fields — `cfg: Arc<Config>` and `jobs: Arc<dyn ServiceJobRuntime>`. **There is no `capabilities` field and no `ServiceCapabilities` struct.** Any documentation referring to `ctx.capabilities.<cap>.supported` is stale; unsupported behavior is handled by the individual service or omitted from the MCP action schema. The legacy `graph`, `refresh`, and `export` MCP actions were removed entirely when full mode was retired.
 
 ## Implementation Rules
 1. Keep one tool (`axon`) only.
@@ -225,7 +240,9 @@ mcporter --config config/mcporter.json call axon.axon action:sources limit:5 --o
 mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 --output json
 ```
 
-Lite mode is the only mode. The smoke harness runs against `AXON_LITE=1`; when adding a new action or subaction, add at least one smoke case.
+The smoke harness may set `AXON_LITE=1` for compatibility, but SQLite/in-process
+jobs are always used. When adding a new action or subaction, add at least one
+smoke case.
 
 ## Change Checklist (Mandatory)
 - [ ] `schema.rs` updated

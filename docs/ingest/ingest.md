@@ -13,23 +13,23 @@ Per-source implementation and operations docs:
 
 ## Storage Schema
 
-Ingest jobs are persisted in the `axon_ingest_jobs` PostgreSQL table. The table is auto-created by `ensure_schema()` in `crates/jobs/ingest.rs`.
+Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is created by migrations under `src/jobs/lite/migrations/` and used through the SQLite job runtime.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | `UUID` | Job identifier |
+| `id` | `TEXT` | Job identifier |
 | `source_type` | `TEXT` | One of `github`, `reddit`, `youtube` |
 | `target` | `TEXT` | The original target string (slug, URL, handle, etc.) |
 | `status` | `TEXT` | `pending`, `running`, `completed`, `failed`, or `canceled` |
-| `config_json` | `JSONB` | Serialized job configuration (flags at submission time) |
-| `result_json` | `JSONB` | Serialized result (chunk counts, errors, etc.) |
+| `config_json` | `TEXT` | Serialized job configuration (flags at submission time) |
+| `result_json` | `TEXT` | Serialized result (chunk counts, errors, etc.) |
 | `error_text` | `TEXT` | Human-readable error message on failure |
-| `created_at` | `TIMESTAMPTZ` | When the job was enqueued |
-| `updated_at` | `TIMESTAMPTZ` | Last status update |
-| `started_at` | `TIMESTAMPTZ` | When a worker claimed the job |
-| `finished_at` | `TIMESTAMPTZ` | When the job reached a terminal state |
+| `created_at` | `INTEGER` | Milliseconds since epoch when the job was enqueued |
+| `updated_at` | `INTEGER` | Last status update / heartbeat |
+| `started_at` | `INTEGER` | When a worker claimed the job |
+| `finished_at` | `INTEGER` | When the job reached a terminal state |
 
-A partial index on `(status)` WHERE `status = 'pending'` speeds up worker claim queries.
+Indexes on status/source fields speed up worker claim and list queries.
 
 ## External Dependencies
 

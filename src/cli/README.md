@@ -1,4 +1,4 @@
-# crates/cli
+# src/cli
 Last Modified: 2026-03-03
 
 CLI command routing and command handlers for the `axon` binary.
@@ -24,10 +24,10 @@ CLI command routing and command handlers for the `axon` binary.
 - `commands/ingest.rs` + `commands/ingest_common.rs`: shared ingest CLI wiring.
 
 ## Integration Points
-- Receives `Config` resolved by `crates/core/config/*`.
-- Calls crawl runtime in `crates/crawl`.
-- Dispatches async workloads into `crates/jobs` workers/queues.
-- Uses vector operations in `crates/vector/ops` for query/retrieve/ask/evaluate flows.
+- Receives `Config` resolved by `src/core/config/*`.
+- Calls crawl runtime in `src/crawl`.
+- Dispatches async workloads into `src/jobs` workers/queues.
+- Uses vector operations in `src/vector/ops` for query/retrieve/ask/evaluate flows.
 - Bridges web execution path via `commands/serve.rs`.
 
 ## Notes

@@ -1,5 +1,5 @@
 # Axon MCP Server Guide
-Last Modified: 2026-03-11
+Last Modified: 2026-05-09
 
 ## Purpose
 `axon mcp` exposes Axon through one MCP tool named `axon`.
@@ -36,15 +36,19 @@ Core stack env vars are reused:
 MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
-- `AXON_MCP_HTTP_TOKEN` (required for non-loopback binds; enforced on all MCP HTTP requests when set)
+- `AXON_MCP_HTTP_TOKEN` (static bearer token; required for non-loopback binds unless OAuth mode is enabled)
+- `AXON_MCP_AUTH_MODE=oauth` (optional lab-auth Google OAuth/JWT mode)
+- `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`, `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL` for OAuth mode
 
 ## Authentication
 
-HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when configured. Tokenless HTTP is
-allowed only on loopback binds (`127.0.0.1`, `::1`, or `localhost`). Binding the
-MCP HTTP server to a non-loopback address such as `0.0.0.0` requires
-`AXON_MCP_HTTP_TOKEN`; otherwise startup is rejected. External OAuth gateways or
-reverse proxies may add additional ingress controls.
+HTTP transport installs one auth policy at startup:
+
+- OAuth mode (`AXON_MCP_AUTH_MODE=oauth`) uses lab-auth Google OAuth/JWT validation, mounts OAuth metadata/token/registration routes, and enforces `axon:read` / `axon:write` scopes.
+- Bearer-only mode uses `AXON_MCP_HTTP_TOKEN`.
+- Tokenless HTTP is allowed only on loopback binds (`127.0.0.1`, `::1`, or `localhost`).
+
+Binding the MCP HTTP server to a non-loopback address such as `0.0.0.0` requires OAuth mode or `AXON_MCP_HTTP_TOKEN`; otherwise startup is rejected.
 
 Clients can authenticate with either header:
 

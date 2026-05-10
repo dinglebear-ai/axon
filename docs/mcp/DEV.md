@@ -17,12 +17,12 @@ just dev          # Starts infrastructure + axon serve (includes MCP HTTP on por
 ## MCP source structure
 
 ```
-crates/
+src/
 ├── mcp.rs                           # Crate-root re-exports
 ├── mcp/
 │   ├── schema.rs                    # AxonRequest / AxonToolResponse + action/subaction enums
 │   ├── server.rs                    # AxonMcpServer + tool dispatch + stdio entry point
-│   ├── auth.rs                      # AXON_MCP_HTTP_TOKEN bearer/x-api-key middleware
+│   ├── auth.rs                      # AuthPolicy, lab-auth OAuth/JWT, static bearer/x-api-key
 │   ├── cors.rs                      # AXON_MCP_ALLOWED_ORIGINS CORS middleware
 │   └── server/
 │       ├── http.rs                  # Streamable HTTP server + auth + host allowlist
@@ -46,7 +46,7 @@ The MCP server calls the services layer, which is the same layer used by CLI han
 
 ## Development cycle
 
-1. **Edit source** -- modify handlers in `crates/mcp/server.rs` or service functions in `crates/services/`
+1. **Edit source** -- modify handlers in `src/mcp/server.rs` or service functions in `src/services/`
 2. **Build** -- `cargo check` or `just check` for fast feedback
 3. **Test** -- `cargo test` or `just test`
 4. **Run** -- `just dev` starts the full stack including MCP HTTP
@@ -56,19 +56,19 @@ The MCP server calls the services layer, which is the same layer used by CLI han
 
 ### Direct action (no subaction)
 
-1. **Add enum variant** in `crates/mcp/schema.rs`:
+1. **Add enum variant** in `src/mcp/schema.rs`:
    - Add to the action enum
    - Define required and optional parameters
 
-2. **Implement service function** in `crates/services/`:
+2. **Implement service function** in `src/services/`:
    - Create a function that returns a typed result struct
-   - Define the result struct in `crates/services/types/service.rs`
+   - Define the result struct in `src/services/types/service.rs`
 
-3. **Add CLI handler** in `crates/cli/commands/`:
+3. **Add CLI handler** in `src/cli/commands/`:
    - Create a new command file
    - Call the service function, format output for stdout
 
-4. **Wire MCP dispatch** in `crates/mcp/server.rs`:
+4. **Wire MCP dispatch** in `src/mcp/server.rs`:
    - Add match arm for the new action
    - Call the service function
    - Map the typed result to MCP response format
@@ -87,7 +87,7 @@ The MCP server calls the services layer, which is the same layer used by CLI han
 Lifecycle actions (crawl, extract, embed, ingest) follow a common pattern with
 `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` subactions.
 
-1. Use the existing `crates/jobs/` framework
+1. Use the existing `src/jobs/` framework
 2. Implement a `Processor` trait for the new job type
 3. Wire the in-process worker into `LiteBackend::new_with_workers`
 4. Wire into MCP dispatch with subaction routing
@@ -162,7 +162,7 @@ just fix         # auto-fix: fmt + clippy --fix
 Set `RUST_LOG` for MCP-specific filtering:
 
 ```bash
-RUST_LOG=info,axon::crates::mcp=debug axon mcp
+RUST_LOG=info,axon::axon::mcp=debug axon mcp
 ```
 
 ### Response artifacts
@@ -176,9 +176,9 @@ cat .cache/axon-mcp/latest-response.json | jq .
 
 ### Service context
 
-The `ServiceContext` in `crates/services/context.rs` carries `cfg` and `jobs`
-fields only. There is no `ServiceCapabilities` struct on the context — lite
-mode is the only mode and the job runtime is always available. Operations that
+The `ServiceContext` in `src/services/context.rs` carries `cfg` and `jobs`
+fields only. There is no `ServiceCapabilities` struct on the context. The
+SQLite/in-process job runtime is always available. Operations that
 were previously gated (graph, refresh, watch scheduler) have either been
 removed or now return runtime errors when their backing service is missing.
 

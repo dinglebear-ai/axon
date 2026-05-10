@@ -19,25 +19,25 @@ Pre-release quality checklist. Complete all items before tagging a release.
 
 - [ ] `just verify` passes (fmt-check + clippy + check + test)
 - [ ] `just precommit` passes (monolith check + verify)
-- [ ] `just docker-build` succeeds
-- [ ] Web UI builds: `cd apps/web && pnpm build`
+- [ ] Web panel builds: `cd apps/web && npm run build`
 - [ ] Doctor reports all services healthy: `axon doctor`
 - [ ] MCP smoke test passes: `just mcp-smoke`
+- [ ] Client/server smoke test passes: `just client-server-smoke`
 
 ## Security
 
 - [ ] No credentials in code, docs, or git history
 - [ ] `.gitignore` includes `.env`, `*.secret`
 - [ ] `.dockerignore` includes `.env`, `.git/`
-- [ ] Docker containers run as non-root (s6-setuidgid, UID 1001)
+- [ ] Docker containers run as non-root (`user: "1000:1000"`)
 - [ ] No baked environment variables in Docker images
-- [ ] `AXON_WEB_API_TOKEN` is not exposed as `NEXT_PUBLIC_*`
+- [ ] MCP/action auth uses `AXON_MCP_HTTP_TOKEN` or OAuth for non-loopback binds
 
 ## Infrastructure
 
 - [ ] `docker-compose.yaml` starts cleanly with `--env-file ~/.axon/.env` (Axon server, Qdrant, TEI, Chrome)
-- [ ] All worker types start (crawl, embed, extract, ingest)
-- [ ] SQLite schema auto-creates via `ensure_schema()`
+- [ ] `axon serve` starts and owns in-process crawl/embed/extract/ingest workers
+- [ ] SQLite schema migrations apply under `src/jobs/lite/migrations/`
 
 ## Documentation
 
@@ -52,15 +52,14 @@ Pre-release quality checklist. Complete all items before tagging a release.
 - [ ] No functions exceed 120 lines
 - [ ] `scripts/enforce_monoliths.py` passes on staged files
 
-## Database
+## SQLite
 
-- [ ] Migrations in `migrations/` are sequential
-- [ ] Schema changes reflected in the corresponding `ensure_schema()` in `crates/jobs/*_jobs.rs`
-- [ ] `ensure_schema()` handles upgrade path from previous version
+- [ ] Migrations in `src/jobs/lite/migrations/` are sequential
+- [ ] Schema changes are reflected in SQLite store/list/recover paths
+- [ ] Migration upgrade path works against an existing `~/.axon/jobs.db`
 
-## Web UI
+## Web Panel
 
 - [ ] `apps/web` builds without errors
-- [ ] Biome lint passes: `cd apps/web && pnpm lint`
+- [ ] Panel routes in `src/web/*` still require panel password/session or MCP/action auth as appropriate
 - [ ] No `NEXT_PUBLIC_*` variables leak server-side secrets
-- [ ] WebSocket auth token handling is correct (two-tier model)

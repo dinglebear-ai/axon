@@ -23,7 +23,8 @@ axon embed <SUBCOMMAND> [ARGS] [FLAGS]
 | `TEI_URL` | TEI embeddings base URL. |
 | `QDRANT_URL` | Qdrant base URL. |
 
-`embed` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
+`embed` writes vectors to Qdrant through TEI embeddings and does not require
+Postgres, Redis, or AMQP.
 
 ## Flags
 
@@ -36,7 +37,9 @@ All global flags apply. Key flags for this command:
 | `--json` | `false` | Machine-readable JSON output. |
 | `--yes` | `false` | Skip destructive confirmation prompts (used by `embed clear`). |
 
-Lite mode preserves fire-and-forget semantics for `--wait false`: `embed` enqueues the job and exits without draining the embed table. Use `--wait true` to run the embed operation inline and block until that operation finishes.
+With `--wait false`, `embed` writes a SQLite job row and exits without draining
+the embed table. Use `--wait true` to run the embed operation inline and block
+until that operation finishes.
 
 Note: `embed` does not use `--limit`.
 
@@ -80,7 +83,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon embed https://example.com/docs --json
 - Subcommands and input names can collide. If you need to embed a local path named `status`, pass it as a real path (`./status`) so it is treated as input, not a subcommand.
 - In server mode (`AXON_SERVER_URL` / `--server-url`), URL and text inputs are submitted to `axon serve`. Host-local paths such as `./README.md` are rejected with a clear error because the server may be a container or systemd process with a different filesystem. Use `--local` for local file/directory embedding until upload/import support is added.
 - `embed clear` is destructive and prompts unless `--yes` is set.
-- Full mode (`AXON_LITE=0`) returns a queued async job by default when `--wait false`, and jobs stay pending until a worker (`axon embed worker` or `axon-workers`) consumes them.
-- Lite mode (`AXON_LITE=1`) runs embed jobs in-process. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
+- `--wait false` returns a queued job by default, and jobs stay pending until a worker process (`axon embed worker`) or long-running server process consumes them.
+- `--wait true` runs the submitted embed job in-process and blocks until it finishes. In that mode, `axon embed <input> --json` returns a single top-level object such as `{"job_id":"...","status":"completed"}`.
 - `axon embed status <job_id> --json` returns a single top-level job object. The stable fields for automation are `id`, `status`, `target`, `collection`, `metrics`, `result_json`, and `config_json`.
 - The local source identifier for file embeds is the `target` field. Do not expect a nested `data.url` / `data.collection` envelope from the CLI.

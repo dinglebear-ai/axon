@@ -24,7 +24,7 @@ None.
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`domains` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
+`domains` reads Qdrant metadata and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 

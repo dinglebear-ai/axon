@@ -89,17 +89,16 @@ Enforcement: `cargo xtask check-no-mod-rs`.
 
 ### Services layer contract
 
-- CLI commands, MCP handlers, and web routes all call through `crates/services/`
+- CLI commands, MCP handlers, and HTTP routes all call through `src/services/`
 - Each service function returns a typed result struct (no raw JSON, no stdout side-effects)
-- Service result types live in `crates/services/types/service.rs`
+- Service result types live in `src/services/types/service.rs`
 
-## TypeScript code standards (web UI)
+## TypeScript code standards (web panel)
 
 - ESM modules, `import` syntax
-- Biome for linting and formatting
 - No `any` types
 - Strict mode in `tsconfig.json`
-- Next.js App Router conventions
+- Static Next.js export only; runtime APIs are served by Rust under `src/web`
 
 ## Pre-commit hooks (lefthook)
 
@@ -107,7 +106,6 @@ Enforcement: `cargo xtask check-no-mod-rs`.
 |------|---------|
 | `enforce_monoliths.py` | File and function size limits |
 | `enforce_no_legacy_symbols.py` | Block deprecated names |
-| `check_dockerignore_guards.sh` | Docker ignore patterns |
 | `cargo xtask check-env-staged` | Block .env commits |
 | `cargo xtask check-no-mod-rs` | No mod.rs files |
 | `cargo xtask check-unwraps` | Flag new .unwrap() calls (warn-only) |

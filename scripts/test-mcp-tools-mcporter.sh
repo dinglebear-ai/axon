@@ -12,9 +12,6 @@ mkdir -p "$BASE_OUTDIR"
 : >"$SUMMARY"
 
 REAL_PAGE_URL="${REAL_PAGE_URL:-https://www.rust-lang.org/learn/get-started}"
-GRAPH_ENTITY="${GRAPH_ENTITY:-Axon}"
-GRAPH_BUILD_URL="${GRAPH_BUILD_URL:-https://www.rust-lang.org/learn}"
-
 pass=0
 fail=0
 
@@ -23,13 +20,6 @@ CONFIG_PATH=""
 MCPORTER=()
 
 EXPECTED_ROUTES="$(cat <<'EOF'
-acp:ext_method
-acp:ext_notification
-acp:fork_session
-acp:list_sessions
-acp:logout
-acp:resume_session
-acp:set_model
 artifacts:clean
 artifacts:delete
 artifacts:grep
@@ -57,7 +47,6 @@ embed:recover
 embed:start
 embed:status
 evaluate
-export
 extract:cancel
 extract:cleanup
 extract:clear
@@ -65,10 +54,6 @@ extract:list
 extract:recover
 extract:start
 extract:status
-graph:build
-graph:explore
-graph:stats
-graph:status
 help
 ingest:cancel
 ingest:cleanup
@@ -79,19 +64,6 @@ ingest:start
 ingest:status
 map
 query
-refresh:cancel
-refresh:cleanup
-refresh:clear
-refresh:list
-refresh:recover
-refresh:schedule
-refresh:schedule:create
-refresh:schedule:delete
-refresh:schedule:disable
-refresh:schedule:enable
-refresh:schedule:list
-refresh:start
-refresh:status
 research
 retrieve
 scrape
@@ -104,9 +76,8 @@ suggest
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","evaluate","export","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest"]'
+DIRECT_ACTIONS_JSON='["ask","doctor","domains","elicit_demo","evaluate","help","map","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
-acp
 artifacts
 ask
 crawl
@@ -115,14 +86,11 @@ domains
 elicit_demo
 embed
 evaluate
-export
 extract
-graph
 help
 ingest
 map
 query
-refresh
 research
 retrieve
 scrape
@@ -135,8 +103,8 @@ suggest
 EOF
 )"
 
-LITE_EXPECTED_ROUTES="$(printf '%s\n' "$EXPECTED_ROUTES" | grep -Ev '^(export|graph:|refresh:)')"
-LITE_EXPECTED_TOP_LEVEL_ACTIONS="$(printf '%s\n' "$EXPECTED_TOP_LEVEL_ACTIONS" | grep -Ev '^(export|graph|refresh)$')"
+LITE_EXPECTED_ROUTES="$EXPECTED_ROUTES"
+LITE_EXPECTED_TOP_LEVEL_ACTIONS="$EXPECTED_TOP_LEVEL_ACTIONS"
 
 if ! command -v mcporter >/dev/null 2>&1; then
   echo "FAIL: mcporter not found in PATH" >&2
@@ -241,9 +209,7 @@ normalize_discovered_routes() {
     .data.inline.actions
     | to_entries[]
     | .key as $action
-    | if $action == "refresh_schedule" then
-        .value[] | "refresh:schedule:\(.)"
-      elif (($direct | index($action)) != null) or (.value | length == 0) then
+    | if (($direct | index($action)) != null) or (.value | length == 0) then
         $action
       else
         .value[] | "\($action):\(.)"
@@ -256,7 +222,6 @@ normalize_help_top_actions() {
   json_payload "$help_file" | jq -r '
     .data.inline.actions
     | keys[]
-    | select(. != "refresh_schedule")
   ' | sort -u
 }
 
@@ -362,13 +327,6 @@ run_suite() {
   run_json_case "${prefix}_stats" '.ok == true and .action == "stats" and .subaction == "stats" and (.data.data.collection | type == "string") and (.data.data.collection | length) > 0 and (.data.data.counts | type == "object")' call_tool action:stats
   run_json_case "${prefix}_domains" '.ok == true and .action == "domains" and .subaction == "domains" and (.data.data.domains | type == "array") and .data.data.limit == 5' call_tool action:domains limit:5 offset:0
   run_json_case "${prefix}_sources" '.ok == true and .action == "sources" and .subaction == "sources" and (.data.data.urls | type == "array") and .data.data.limit == 5' call_tool action:sources limit:5 offset:0
-  if [[ "$lite_value" == "0" ]]; then
-    run_json_case "${prefix}_export" '.ok == true and .action == "export"' call_tool action:export
-  elif [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_export_unavailable" "unknown variant \`export\`" call_tool action:export
-  else
-    run_error_case "${prefix}_export_unavailable" "export is not available in lite mode because it requires Postgres-backed history" call_tool action:export
-  fi
   run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk"' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
   run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
   run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.markdown | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.markdown | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:scrape url:"$REAL_PAGE_URL"
@@ -433,15 +391,6 @@ run_suite() {
   run_json_case "${prefix}_ingest_cancel" '.ok == true and .action == "ingest" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:ingest subaction:cancel job_id:"$ingest_job_id"
   run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0
 
-  if [[ "$lite_value" == "0" ]]; then
-    run_json_case "${prefix}_refresh_start" '.ok == true and .action == "refresh" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"refresh\",\"subaction\":\"start\",\"url\":\"$REAL_PAGE_URL\"}"
-    local refresh_job_id
-    refresh_job_id="$(extract_json_field "$OUTDIR/${prefix}_refresh_start.log" '.data.job_id')"
-    run_json_case "${prefix}_refresh_status" '.ok == true and .action == "refresh" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:refresh subaction:status job_id:"$refresh_job_id"
-    run_json_case "${prefix}_refresh_cancel" '.ok == true and .action == "refresh" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:refresh subaction:cancel job_id:"$refresh_job_id"
-    run_json_case "${prefix}_refresh_list" '.ok == true and .action == "refresh" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:refresh subaction:list limit:5 offset:0
-  fi
-
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_crawl_cleanup" '.ok == true and .action == "crawl" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:crawl subaction:cleanup
   run_json_case "${prefix}_crawl_recover" '.ok == true and .action == "crawl" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:crawl subaction:recover
@@ -455,29 +404,6 @@ run_suite() {
   run_json_case "${prefix}_ingest_cleanup" '.ok == true and .action == "ingest" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:ingest subaction:cleanup
   run_json_case "${prefix}_ingest_recover" '.ok == true and .action == "ingest" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:ingest subaction:recover
   run_json_case "${prefix}_ingest_clear" '.ok == true and .action == "ingest" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:ingest subaction:clear
-  if [[ "$lite_value" == "0" ]]; then
-    run_json_case "${prefix}_refresh_cleanup" '.ok == true and .action == "refresh" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:refresh subaction:cleanup
-    run_json_case "${prefix}_refresh_recover" '.ok == true and .action == "refresh" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:refresh subaction:recover
-    run_json_case "${prefix}_refresh_clear" '.ok == true and .action == "refresh" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:refresh subaction:clear
-  fi
-
-  local schedule_name="mcporter-smoke-$mode-$$"
-  if [[ "$lite_value" == "0" ]]; then
-    echo "== $mode refresh schedules ==" | tee -a "$SUMMARY"
-    run_json_case "${prefix}_refresh_schedule_list" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.data.schedules | type == "array")' call_tool action:refresh subaction:schedule schedule_subaction:list
-    run_json_case "${prefix}_refresh_schedule_create" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.created.name | type == "string")' call_tool action:refresh subaction:schedule schedule_subaction:create schedule_name:"$schedule_name" url:"$REAL_PAGE_URL"
-    run_json_case "${prefix}_refresh_schedule_disable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == false and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:disable schedule_name:"$schedule_name"
-    run_json_case "${prefix}_refresh_schedule_enable" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and .data.enabled == true and (.data.updated | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:enable schedule_name:"$schedule_name"
-    run_json_case "${prefix}_refresh_schedule_delete" '.ok == true and .action == "refresh" and .subaction == "schedule" and (.data.name | type == "string") and (.data.deleted | type == "boolean")' call_tool action:refresh subaction:schedule schedule_subaction:delete schedule_name:"$schedule_name"
-  fi
-
-  if [[ "$lite_value" == "0" ]]; then
-    echo "== $mode graph ==" | tee -a "$SUMMARY"
-    run_json_case "${prefix}_graph_status" '.ok == true and .action == "graph" and .subaction == "status" and (.data.response_mode | type == "string") and ((.data.data.counts | type == "object") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:status
-    run_json_case "${prefix}_graph_stats" '.ok == true and .action == "graph" and .subaction == "stats" and (.data.response_mode | type == "string") and ((.data.data.rows | type == "array") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:stats
-    run_json_case "${prefix}_graph_explore" '.ok == true and .action == "graph" and .subaction == "explore" and (.data.response_mode | type == "string") and ((.data.data.entity | type == "string") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:explore entity:"$GRAPH_ENTITY"
-    run_json_case "${prefix}_graph_build" '.ok == true and .action == "graph" and .subaction == "build" and (.data.response_mode | type == "string") and ((.data.data.queued | type == "number") or (.data.artifact.path | type == "string"))' call_tool action:graph subaction:build url:"$GRAPH_BUILD_URL"
-  fi
 }
 
 if [[ "$URL_MODE" == "1" ]]; then

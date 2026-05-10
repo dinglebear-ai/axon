@@ -40,7 +40,7 @@ Embed is async:
 
 ## Re-embedding
 
-Re-running embed on the same input deletes existing points first (`AXON_EMBED_STRICT_PREDELETE=true` by default), then re-indexes cleanly.
+Re-running embed on the same input replaces existing points for that source, then re-indexes cleanly.
 
 ## Verify results
 

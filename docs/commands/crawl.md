@@ -58,7 +58,11 @@ All global flags apply. Key flags:
 | `--embed <bool>` | `true` | Queue embed job from crawl output. |
 | `--json` | `false` | JSON output for job metadata/status responses. |
 
-Lite mode preserves fire-and-forget semantics for `--wait false`: `crawl` enqueues and exits without draining other pending crawl rows. Workers run the same Axon sitemap backfill before auto-embedding the crawl output, so sitemap-added pages are visible to the dependent embed job. Use `--wait true` to wait for the submitted crawl and its explicit dependent embed job, if one is created.
+With `--wait false`, `crawl` writes a SQLite job row and exits without draining
+other pending crawl rows. Workers run the same Axon sitemap backfill before
+auto-embedding the crawl output, so sitemap-added pages are visible to the
+dependent embed job. Use `--wait true` to wait for the submitted crawl and its
+explicit dependent embed job, if one is created.
 
 ## Examples
 

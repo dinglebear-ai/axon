@@ -58,7 +58,7 @@ axon search "tokio task cancellation" --limit 5 --search-time-range month
 
 ## Behavior Notes
 
-- `search` is synchronous and does not use the AMQP job queue.
+- `search` is synchronous and does not enqueue a background job.
 - `--wait` has no effect for this command.
 - With `--json`, output is strict JSON on stdout.
 - `search` does not enqueue crawl jobs.

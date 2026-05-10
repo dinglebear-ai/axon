@@ -28,7 +28,7 @@ Does not require immediate refactors of existing legacy command paths. Existing 
 
 ### Rule 1: Service-First
 
-All new feature logic must live in `crates/services/*`.
+All new feature logic must live in `src/services/*`.
 
 Adapters must be thin:
 - CLI: argument/flag mapping + output formatting only.
@@ -69,7 +69,7 @@ Use this matrix before implementation:
 |---|---|---|
 | CLI only | Operator-first capability, local workflows, scripting | command routing, human output, `--json` output parity |
 | MCP only | Tooling/agent integration only | schema enum entry, handler branch, response_mode policy |
-| Web only | UI-native interaction not exposed as command | API route/websocket binding, progress stream UX |
+| Web only | UI-native interaction not exposed as command | `src/web` route binding, panel UX |
 | CLI + MCP | Same capability needed by humans and agents | shared service, thin wrappers, output/schema parity |
 | CLI + Web | Feature needs terminal and UI visibility | shared service, consistent progress semantics |
 | MCP + Web | Agent and UI workflows, no shell requirement | shared service, consistent event model |
@@ -100,7 +100,7 @@ Design event taxonomy before implementation to guarantee streamability.
 
 ### Phase 2: Service Implementation
 
-Implement only in `crates/services` first.
+Implement only in `src/services` first.
 
 Required in service layer:
 - total and phase timing (ms),
@@ -127,11 +127,11 @@ Ship only after Definition of Done passes.
 ### Shared Service Layer (Required for all new features)
 
 1. Add module and exports:
-- `crates/services.rs`
-- `crates/services/<feature>.rs`
+- `src/services.rs`
+- `src/services/<feature>.rs`
 
 Also wire the module graph:
-- `crates.rs` (`pub mod services;`)
+- `src/lib.rs` / module roots as needed (`pub mod services;`)
 
 2. Add service contracts and orchestrator:
 - request/event/result/error types
@@ -142,18 +142,18 @@ Also wire the module graph:
 ### CLI Integration (if selected)
 
 1. Add command handler:
-- `crates/cli/commands/<feature>.rs`
+- `src/cli/commands/<feature>.rs`
 
 2. Export in:
-- `crates/cli/commands.rs`
+- `src/cli/commands.rs`
 
 3. Route command in:
 - `lib.rs` (`run_once` match arm)
 
 4. Add command kind + parser wiring:
-- `crates/core/config/types/config.rs` (`CommandKind`)
-- `crates/core/config/cli.rs` (clap spec)
-- `crates/core/config/parse.rs` (arg -> `Config` mapping)
+- `src/core/config/types/config.rs` (`CommandKind`)
+- `src/core/config/cli.rs` (clap spec)
+- `src/core/config/parse.rs` (arg -> `Config` mapping)
 
 5. Ensure CLI output modes:
 - human-readable mode
@@ -162,17 +162,17 @@ Also wire the module graph:
 ### MCP Integration (if selected)
 
 1. Add schema request shape:
-- `crates/mcp/schema.rs` (`AxonRequest` + request struct)
+- `src/mcp/schema.rs` (`AxonRequest` + request struct)
 
 2. Add server handler route:
-- `crates/mcp/server.rs` (`handle_<feature>` and match arm)
+- `src/mcp/server.rs` (`handle_<feature>` and match arm)
 
 3. Follow MCP envelope policy:
 - `ok/action/subaction/data`
 - `response_mode` behavior (`path|inline|both`)
 
 4. Keep MCP discoverability in sync:
-- update `handle_help` action map in `crates/mcp/server.rs` for new actions/subactions.
+- update `handle_help` action map in `src/mcp/server.rs` for new actions/subactions.
 
 5. Update docs:
 - `docs/MCP-TOOL-SCHEMA.md`
@@ -181,12 +181,14 @@ Also wire the module graph:
 ### Web Integration (if selected)
 
 1. Route to service from web runtime:
-- core axum websocket runtime bridge: `crates/web.rs` and/or `crates/web/execute/*`
-- Next.js app: `apps/web/app/api/**` or websocket flow hooks/components
+- Axum runtime: `src/web.rs`, `src/web/server.rs`, `src/web/actions.rs`
+- Static panel assets: `apps/web/app/**` when the browser-facing setup/config UI changes
 
-2. Stream progress events to UI in real-time.
+2. Keep long-running operations server-owned. Browser and CLI clients should
+receive job IDs, artifact handles, or action responses rather than relying on
+host-local output paths.
 
-3. Keep transport mapping in web layer; business logic stays in service.
+3. Keep transport mapping in the web layer; business logic stays in services.
 
 ### Docs Integration (Always)
 
@@ -257,7 +259,7 @@ Minimum required tests for new features:
 
 A feature is complete only when all are true:
 
-1. Core logic is implemented in `crates/services`.
+1. Core logic is implemented in `src/services`.
 2. Selected adapters are thin and wired.
 3. Streaming/progress is visible for long-running steps.
 4. Timing is captured and surfaced in outputs.
@@ -284,13 +286,13 @@ Use this checklist before merge:
 Legacy feature paths can remain as-is until scheduled refactor work.
 
 When touching a legacy command significantly:
-- prefer extracting new logic into `crates/services` instead of expanding legacy adapter logic,
+- prefer extracting new logic into `src/services` instead of expanding legacy adapter logic,
 - migrate incrementally (service extraction first, adapter simplification second),
 - preserve external command behavior unless a deliberate breaking change is approved.
 
 ## Initial Implementation Notes
 
 To establish this pattern immediately:
-- Create `crates/services/` for all net-new capabilities starting now.
+- Create `src/services/` for all net-new capabilities starting now.
 - Keep existing `research` behavior intact while introducing new service-based capabilities.
 - Use this framework as the checklist for `fastlearn` and future features.

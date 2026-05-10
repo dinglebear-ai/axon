@@ -4,8 +4,8 @@
 
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
-| Core binary | Rust | 1.94+ (edition 2024) | CLI, MCP server, workers, backend bridge |
-| Web UI | TypeScript + Next.js | Node 22+ | Dashboard, Pulse workspace |
+| Core binary | Rust | 1.94+ (edition 2024) | CLI, MCP server, workers, HTTP server |
+| Web panel assets | TypeScript | Node 22+ | Embedded setup/config panel assets |
 | Scripts | Bash + Python | -- | Maintenance, testing, analysis |
 
 ## Key dependencies
@@ -18,9 +18,9 @@
 | `spider_agent` | 2.47+ | Tavily search integration |
 | `spider_transformations` | 2.x | Content transformation (markdown, readability) |
 | `rmcp` | 1.1+ | MCP server framework (stdio + streamable-http) |
-| `axum` | 0.8 | HTTP server + WebSocket for backend bridge |
+| `axum` | 0.8 | HTTP server for web panel, MCP, and first-party action routes |
 | `tokio` | 1.x | Async runtime (multi-threaded) |
-| `sqlx` | 0.8 | SQLite async driver (lite mode) |
+| `sqlx` | 0.8 | SQLite async driver |
 | `reqwest` | 0.13 | HTTP client (rustls, streaming) |
 | `clap` | 4.x | CLI argument parsing |
 | `serde` / `serde_json` | 1.x | Serialization |
@@ -38,14 +38,12 @@
 | TEI | HuggingFace latest | Text embedding generation |
 | Chrome | Custom Dockerfile | Headless browser for JavaScript rendering |
 
-### Web UI (Next.js)
+### Web panel assets
 
 | Package | Purpose |
 |---------|---------|
-| Next.js (App Router) | React framework |
 | Biome | Linter and formatter |
-| shadcn/ui | Component library |
-| pnpm | Package manager |
+| pnpm | Package manager/build runner |
 
 ## Embedding pipeline
 

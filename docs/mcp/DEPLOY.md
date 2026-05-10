@@ -10,7 +10,9 @@ Deployment patterns for the Axon MCP server. Choose the method that fits your en
 just dev
 ```
 
-This starts infrastructure services, builds the binary, and launches `axon serve` which supervises the MCP HTTP server (port 8001) alongside the backend, workers, and web UI.
+This starts infrastructure services, builds the binary, and launches `axon serve`
+with the unified HTTP API, MCP HTTP endpoint, web panel, and in-process workers
+on port 8001.
 
 ### MCP server only
 
@@ -25,13 +27,15 @@ axon mcp
 axon serve mcp
 ```
 
-### Lite mode (zero infrastructure)
+### Minimal local runtime
 
 ```bash
-AXON_LITE=1 axon mcp
+axon mcp
 ```
 
-Runs with SQLite for job storage. Requires Qdrant and TEI for embedding/search. The watch scheduler is the only feature unavailable in lite mode (see `crates/services/context.rs` and `crates/jobs/CLAUDE.md`).
+Jobs use SQLite and in-process workers. Qdrant and TEI are still required for
+embedding/search paths. `AXON_LITE=1` is accepted for backwards compatibility
+but does not select a different runtime.
 
 ## Docker
 
@@ -66,8 +70,8 @@ external CPU embedding endpoint.
 ### Local app runtime
 
 The tracked compose file starts the Axon server plus Qdrant, TEI, and Chrome.
-Run `axon serve` locally only when you want to bypass Compose and supervise the
-MCP HTTP server, backend bridge, workers, shell server, and web UI directly.
+Run `axon serve` locally only when you want to bypass Compose and run the
+unified HTTP API, MCP HTTP endpoint, web panel, and in-process workers directly.
 
 ### Build
 

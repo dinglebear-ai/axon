@@ -1,7 +1,7 @@
-# crates/
+# src/
 Last Modified: 2026-03-03
 
-Module index for Axon’s Rust crate directories.
+Module index for Axon's Rust module directories.
 
 ## Runtime Modules
 - [cli](./cli/README.md): command routing and CLI command handlers.
@@ -12,7 +12,7 @@ Module index for Axon’s Rust crate directories.
 - [mcp](./mcp/README.md): MCP server crate for `axon mcp`.
 - [services](./services/CLAUDE.md): typed service layer — canonical entry contract for CLI/MCP/web handlers.
 - [vector](./vector/README.md): embeddings, Qdrant operations, retrieval, and RAG.
-- web: core `axon serve` runtime providing `/ws`, `/ws/shell`, `/download/*`, and `/output/*` for `apps/web`. (No README in this crate yet.)
+- web: unified `axon serve` HTTP runtime for the static panel, `/v1/ask`, `/v1/actions`, `/v1/capabilities`, and MCP HTTP mounting.
 
 ## Re-export Shims
 These top-level Rust files re-export module roots used by the workspace crate graph:

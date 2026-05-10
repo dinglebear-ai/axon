@@ -16,12 +16,11 @@ Last Updated: 01:26:53 | 02/25/2026 EST
 8. [Vector and RAG Pipeline](#vector-and-rag-pipeline)
 9. [Ingest Pipeline](#ingest-pipeline)
 10. [Web Runtime Architecture](#web-runtime-architecture)
-11. [Omnibox and Pulse Flows](#omnibox-and-pulse-flows)
-12. [Data Model and Persistence](#data-model-and-persistence)
-13. [Configuration Resolution](#configuration-resolution)
-14. [Failure Handling and Recovery](#failure-handling-and-recovery)
-15. [End-to-End Flows](#end-to-end-flows)
-16. [Key Source Map](#key-source-map)
+11. [Data Model and Persistence](#data-model-and-persistence)
+12. [Configuration Resolution](#configuration-resolution)
+13. [Failure Handling and Recovery](#failure-handling-and-recovery)
+14. [End-to-End Flows](#end-to-end-flows)
+15. [Key Source Map](#key-source-map)
 
 ## Purpose and Scope
 
@@ -30,10 +29,11 @@ This document defines the current architecture of `axon_rust` across:
 - CLI command execution and dispatch
 - Crawl/extract/embed/ingest asynchronous pipelines
 - Vector storage and retrieval (Qdrant + TEI)
-- Web runtimes (`serve` websocket/download bridge and `apps/web` Next.js UI)
-- Omnibox/pulse interaction and data flow
+- Unified HTTP runtime (`axon serve` web panel, MCP, `/v1/ask`, `/v1/actions`)
+- CLI client/server data flow
 
-It supersedes the previous omnibox-only architecture note.
+It supersedes the previous architecture notes for the removed omnibox/Pulse web
+runtime.
 
 ## System Context
 
@@ -62,12 +62,12 @@ flowchart LR
 | Component | Role |
 |---|---|
 | `main.rs` + `lib.rs` | Binary entry and top-level command loop/dispatch |
-| `crates/cli/*` | Command handlers and subcommand routing |
-| `crates/core/*` | Config parsing, HTTP safety, content transforms, logging |
-| `crates/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
-| `crates/jobs/*` | SQLite-backed worker runtime + job state transitions |
-| `crates/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
-| `crates/services/llm_backend/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
+| `src/cli/*` | Command handlers and subcommand routing |
+| `src/core/*` | Config parsing, HTTP safety, content transforms, logging |
+| `src/crawl/*` | Crawl engine, render mode strategy, sitemap backfill |
+| `src/jobs/*` | SQLite-backed worker runtime + job state transitions |
+| `src/vector/*` | Embed/query/retrieve/ask/evaluate/suggest operations |
+| `src/services/llm_backend/` | Gemini headless completion gateway, process isolation, timeout, concurrency, env allowlist |
 | `docker-compose.yaml` | Self-hosted infrastructure services (Qdrant, TEI, Chrome) |
 
 ## Execution Entry Points
@@ -107,10 +107,10 @@ sequenceDiagram
 
 Key points:
 
-- Argument schema is defined in `crates/core/config/cli.rs` and `crates/core/config/cli/global_args.rs`.
-- Parsing/normalization is in `crates/core/config/parse.rs`.
-- Effective runtime settings are stored in `crates/core/config/types/config.rs::Config`.
-- URL seed handling is consolidated in `crates/cli/commands/common.rs` (`parse_urls`, `start_url_from_cfg`).
+- Argument schema is defined in `src/core/config/cli.rs` and `src/core/config/cli/global_args.rs`.
+- Parsing/normalization is in `src/core/config/parse.rs`.
+- Effective runtime settings are stored in `src/core/config/types/config.rs::Config`.
+- URL seed handling is consolidated in `src/cli/commands/common.rs` (`parse_urls`, `start_url_from_cfg`).
 
 ## Crawl and Content Pipeline
 
@@ -131,28 +131,28 @@ flowchart TD
   I --> J[sitemap backfill]
   J --> K[manifest + output files]
   K --> L{embed enabled?}
-  L -->|yes| M[queue/embed now]
+  L -->|yes| M[enqueue or embed now]
   L -->|no| N[store output only]
 ```
 
 Key responsibilities:
 
-- HTTP safety, SSRF guarding, and client setup in `crates/core/http.rs`.
-- Content transformation and markdown extraction in `crates/core/content.rs`.
-- Crawl orchestration in `crates/crawl/engine.rs`.
+- HTTP safety, SSRF guarding, and client setup in `src/core/http.rs`.
+- Content transformation and markdown extraction in `src/core/content.rs`.
+- Crawl orchestration in `src/crawl/engine.rs`.
 - Auto-switch mode evaluates crawl quality and can rerun with Chrome.
 - Sitemap backfill extends coverage beyond direct traversal.
 
 ### Map Command
 
-`map` consumes a unified URL set from the crawl engine (`map_with_sitemap` in `crates/crawl/engine.rs`).
+`map` consumes a unified URL set from the crawl engine (`map_with_sitemap` in `src/crawl/engine.rs`).
 The CLI no longer merges or deduplicates sitemap URLs itself — the engine owns the full URL set with
 deterministic sort+dedup before returning `MapResult`. This keeps the CLI handler as a thin
 delegation layer and ensures the output contract is tested at the engine level.
 
 ## Async Job Architecture
 
-Jobs are persisted in SQLite (lite mode). Workers run in-process within the same tokio runtime.
+Jobs are persisted in SQLite. Workers run in-process within the same tokio runtime.
 
 ```mermaid
 flowchart LR
@@ -167,41 +167,34 @@ flowchart LR
 
 State model:
 
-- Shared statuses in `crates/jobs/status.rs`: `pending`, `running`, `completed`, `failed`, `canceled`.
-- Atomic claim/fail/update helpers in `crates/jobs/common/job_ops.rs`.
-- Worker lane orchestration in `crates/jobs/worker_lane.rs`.
-- Stale job watchdog in `crates/jobs/common/watchdog.rs`.
+- Shared statuses in `src/jobs/status.rs`: `pending`, `running`, `completed`, `failed`, `canceled`.
+- Atomic claim/fail/update helpers in `src/jobs/lite/ops/lifecycle.rs`.
+- Queue-cap checks in `src/jobs/lite/ops/enqueue.rs`.
+- Stale job reclaim in `src/jobs/lite/store.rs`.
 
 Job families:
 
-- Crawl: `crates/jobs/crawl/runtime/worker/loops.rs` (own polling loop — see Worker Architecture below)
-- Extract: `crates/jobs/extract/worker.rs` (uses `worker_lane.rs`)
-- Embed: `crates/jobs/embed/worker.rs` (uses `worker_lane.rs`)
-- Ingest (unified `axon ingest <target>`): `crates/jobs/ingest/process.rs` (uses `worker_lane.rs`; target auto-detected by `crates/ingest/classify.rs`)
+- Crawl: `src/jobs/lite/workers/runners/crawl.rs`
+- Extract: `src/jobs/lite/workers/runners/extract.rs`
+- Embed: `src/jobs/lite/workers/runners/embed.rs`
+- Ingest: `src/jobs/lite/workers/runners/ingest.rs`
 
 ### Worker Architecture
 
-#### Generic Worker Lane (worker_lane.rs)
+#### In-Process SQLite Workers
 
-`worker_lane.rs` provides a generic polling consumer loop shared by:
-- Embed worker (`crates/jobs/embed/worker.rs`)
-- Extract worker (`crates/jobs/extract/worker.rs`)
-- Ingest worker (`crates/jobs/ingest/process.rs`)
+`src/jobs/lite/workers.rs` provides the generic worker loop. Each lane claims a
+pending row from SQLite, updates heartbeat state while running, calls the
+per-kind runner, and records completion or failure.
 
-Each worker type creates N lanes (configurable via `AXON_*_LANES` env vars).
-Each lane processes jobs sequentially.
+Lane counts are resolved per job family, with ingest and embed exposing tuning
+env vars. Each lane processes jobs sequentially.
 
-#### Why the Crawl Worker Doesn't Use worker_lane.rs
+#### Crawl Runner and Spider Control
 
-The crawl worker has its own loop in `crates/jobs/crawl/runtime/worker/loops.rs`.
-
-**Root cause**: `spider.rs` futures are `!Send`. They cannot be:
-- Spawned with `tokio::spawn()` (requires `Send + 'static`)
-- Moved across thread boundaries (including `FuturesUnordered`)
-
-The crawl worker works around this by pinning futures with `tokio::pin!()` and
-polling them inside a `select!` loop on a single task. This preserves the
-1-job-per-lane guarantee while keeping the non-Send future alive on the same thread.
+The crawl runner wires cancellation into Spider control IDs so a canceled job can
+stop dispatching new pages and record partial progress before the row reaches a
+terminal state.
 
 ## Vector and RAG Pipeline
 
@@ -222,16 +215,16 @@ flowchart TD
 
 Key behaviors:
 
-- Embedding implementation in `crates/vector/ops/tei.rs`.
-- Qdrant operations and collection lifecycle in `crates/vector/ops/qdrant/*`.
-- Command-level vector flows in `crates/vector/ops/commands/*`.
+- Embedding implementation in `src/vector/ops/tei.rs`.
+- Qdrant operations and collection lifecycle in `src/vector/ops/qdrant/*`.
+- Command-level vector flows in `src/vector/ops/commands/*`.
 - Ingest sources eventually call vector embedding paths so all content lands in Qdrant with metadata.
 
 ## Ingest Pipeline
 
 ### Unified Ingest Entry Point (v0.12.0)
 
-`axon ingest <target>` replaces the three separate `github`, `reddit`, and `youtube` CLI commands. `crates/ingest/classify.rs` auto-detects the source type from the target string:
+`axon ingest <target>` replaces the three separate `github`, `reddit`, and `youtube` CLI commands. `src/ingest/classify.rs` auto-detects the source type from the target string:
 
 ```mermaid
 flowchart TD
@@ -239,9 +232,9 @@ flowchart TD
   B -->|r/ prefix or reddit.com| C[IngestSource::Reddit]
   B -->|@handle / known YT host / 11-char ID| D[IngestSource::YouTube]
   B -->|github.com or owner/repo| E[IngestSource::GitHub]
-  C --> F[crates/ingest/reddit.rs]
-  D --> G[crates/ingest/youtube.rs]
-  E --> H[crates/ingest/github.rs]
+  C --> F[src/ingest/reddit.rs]
+  D --> G[src/ingest/youtube.rs]
+  E --> H[src/ingest/github.rs]
   F --> I[embed_prepared_docs -> Qdrant]
   G --> I
   H --> I
@@ -252,7 +245,7 @@ Detection order: Reddit → YouTube → GitHub (first match wins).
 ### Ingest Submodule Layout
 
 ```text
-crates/ingest/
+src/ingest/
 ├── classify.rs          # auto-detection: classify_target()
 ├── github.rs            # module root
 ├── github/
@@ -273,7 +266,7 @@ crates/ingest/
 └── sessions.rs          # AI session export ingest
 ```
 
-### MCP Artifacts Module (`crates/mcp/server/artifacts/`)
+### MCP Artifacts Module (`src/mcp/server/artifacts/`)
 
 Added in v0.12.0 to manage MCP tool response artifacts:
 
@@ -285,7 +278,7 @@ Added in v0.12.0 to manage MCP tool response artifacts:
 | `artifacts/respond.rs` | Build MCP tool response payloads embedding artifact refs |
 | `artifacts/shape.rs` | `ArtifactShape` enum: `Blob`, `Text`, `Json`, `Image` |
 
-### LLM Backend (`crates/services/llm_backend/`)
+### LLM Backend (`src/services/llm_backend/`)
 
 `services/llm_backend` is the sole LLM synthesis gateway. It serves `ask`,
 `evaluate`, `suggest`, `research`, `debug`, and extract fallback by launching
@@ -337,7 +330,7 @@ Important behavior:
 
 - Container DNS endpoints are normalized for local execution when needed.
 - Profiles (`high-stable`, `balanced`, `extreme`, `max`) apply batch, timeout, retry, and concurrency defaults.
-- Queue names and collection names are centrally configurable.
+- Collection names and worker/concurrency knobs are centrally configurable.
 
 ## Failure Handling and Recovery
 
@@ -346,22 +339,22 @@ Resilience patterns implemented:
 - Atomic row claiming prevents duplicate worker ownership.
 - Watchdog can reclaim stale `running` jobs.
 - Embedding retries handle transient TEI overload and payload limits.
-- Command/output streams include typed error events over websocket.
+- Service calls return typed errors and diagnostics for CLI, MCP, and HTTP callers.
 - Job subcommands (`status`, `errors`, `list`, `recover`, `cancel`) provide operational control.
 
 ## End-to-End Flows
 
-### 1) Crawl with Async Queue
+### 1) Crawl with Async Job
 
 1. User runs `axon crawl <url>` (default async).
-2. Command inserts `pending` job row and publishes job id to queue.
+2. Command inserts a `pending` job row into SQLite.
 3. Worker claims row, marks `running`, executes crawl.
 4. Results and artifacts are written, optional embedding happens.
 5. Job row is finalized with `completed` or `failed`.
 
 ### 2) Ask/RAG Query
 
-1. User runs `axon ask <question>` or pulse sends a chat request.
+1. User runs `axon ask <question>`, sends an MCP action, or calls the HTTP action API.
 2. Query retrieves candidates from Qdrant.
 3. Ranking/context assembly builds prompt context.
 4. LLM endpoint generates final answer.
@@ -372,45 +365,45 @@ Core runtime:
 
 - `main.rs`
 - `lib.rs`
-- `crates/core/config/cli.rs`
-- `crates/core/config/cli/global_args.rs`
-- `crates/core/config/parse.rs`
-- `crates/core/config/types/config.rs`
-- `crates/core/config/types.rs`
-- `crates/core/http.rs`
-- `crates/core/content.rs`
+- `src/core/config/cli.rs`
+- `src/core/config/cli/global_args.rs`
+- `src/core/config/parse.rs`
+- `src/core/config/types/config.rs`
+- `src/core/config/types.rs`
+- `src/core/http.rs`
+- `src/core/content.rs`
 
 Crawl/jobs/vector:
 
-- `crates/crawl/engine.rs`
-- `crates/jobs/status.rs`
-- `crates/jobs/common/job_ops.rs`
-- `crates/jobs/worker_lane.rs`
-- `crates/jobs/crawl/runtime/worker/loops.rs`
-- `crates/jobs/extract/worker.rs`
-- `crates/jobs/embed/worker.rs`
-- `crates/jobs/ingest/process.rs`
-- `crates/vector/ops.rs`
-- `crates/vector/ops/tei.rs`
+- `src/crawl/engine.rs`
+- `src/jobs/status.rs`
+- `src/jobs/lite.rs`
+- `src/jobs/lite/workers.rs`
+- `src/jobs/lite/ops/enqueue.rs`
+- `src/jobs/lite/ops/lifecycle.rs`
+- `src/jobs/lite/store.rs`
+- `src/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs`
+- `src/vector/ops.rs`
+- `src/vector/ops/tei.rs`
 
 Ingest:
 
-- `crates/ingest/classify.rs`
-- `crates/ingest/github.rs` + `crates/ingest/github/` (files, issues, meta, wiki)
-- `crates/ingest/reddit.rs` + `crates/ingest/reddit/` (client, comments, meta, types)
-- `crates/ingest/youtube.rs` + `crates/ingest/youtube/` (meta, vtt)
-- `crates/ingest/sessions.rs`
+- `src/ingest/classify.rs`
+- `src/ingest/github.rs` + `src/ingest/github/` (files, issues, meta, wiki)
+- `src/ingest/reddit.rs` + `src/ingest/reddit/` (client, comments, meta, types)
+- `src/ingest/youtube.rs` + `src/ingest/youtube/` (meta, vtt)
+- `src/ingest/sessions.rs`
 
 LLM backend:
 
-- `crates/services/llm_backend.rs`
-- `crates/services/llm_backend/concurrency.rs`
-- `crates/services/llm_backend/headless/dispatch.rs`
-- `crates/services/llm_backend/headless/env.rs`
-- `crates/services/llm_backend/headless/gemini.rs`
-- `crates/services/llm_backend/types.rs`
-- `crates/mcp/server/artifacts.rs`
-- `crates/mcp/server/artifacts/` (lifecycle, path, respond, shape)
+- `src/services/llm_backend.rs`
+- `src/services/llm_backend/concurrency.rs`
+- `src/services/llm_backend/headless/dispatch.rs`
+- `src/services/llm_backend/headless/env.rs`
+- `src/services/llm_backend/headless/gemini.rs`
+- `src/services/llm_backend/types.rs`
+- `src/mcp/server/artifacts.rs`
+- `src/mcp/server/artifacts/` (lifecycle, path, respond, shape)
 
 ## Security: Destructive Operations
 

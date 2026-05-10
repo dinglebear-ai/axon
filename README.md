@@ -2,7 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/axon)](https://crates.io/crates/axon)
 
-Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web UI. Self-hosted research and knowledge-base backbone.
+Rust-based crawl, scrape, ingest, embed, query, and RAG engine with a unified CLI, MCP server, async workers, and web panel. Self-hosted research and knowledge-base backbone.
 
 Version: 1.9.0 | License: MIT
 
@@ -77,7 +77,7 @@ Axon is three things simultaneously:
 
 - A CLI binary: `axon`
 - An MCP server: `axon mcp`
-- A local stack supervisor: `axon serve`
+- A unified HTTP server: `axon serve`
 - An SSH deployment helper: `axon setup`
 
 The stack has the following components:
@@ -93,8 +93,8 @@ The stack has the following components:
 | `src/ingest/` | GitHub, Reddit, YouTube, AI session ingestion |
 | `src/mcp/` | MCP server, tool schema, action router |
 | `src/services/` | Typed service entry points for CLI, MCP, and web |
-| `apps/web/` | Next.js dashboard at port 49010 |
-| `docker-compose.yaml` | Infrastructure deployment |
+| `apps/web/` | Static web panel source/assets |
+| `docker-compose.yaml` | Axon server and infrastructure deployment |
 
 ---
 
@@ -161,7 +161,7 @@ All commands share global flags documented below. Commands listed as **async by 
 | `--wait <bool>` | bool | `false` | Block until async job completes. Without this, async commands return a job ID immediately. |
 | `--yes` | flag | — | Skip destructive confirmation prompts. |
 | `--json` | flag | — | Machine-readable JSON output on stdout. |
-| `--lite` | flag | — | Accepted for backwards compatibility. Lite is the only runtime; this flag is a no-op beyond setting `AXON_LITE=1`. |
+| `--lite` | flag | — | Accepted for backwards compatibility; SQLite/in-process jobs are always used. |
 
 #### Crawl and Scrape
 
@@ -605,7 +605,7 @@ axon watch run-now <uuid>
 axon watch history <uuid> --limit 20
 ```
 
-Note: `watch list`, `watch create`, `watch run-now`, and `watch history` work in lite mode (the only mode). The other listed subcommands parse but are not yet wired to a scheduler.
+Note: `watch list`, `watch create`, `watch run-now`, and `watch history` work with the current SQLite scheduler. The other listed subcommands parse but are not yet wired to a scheduler.
 
 ---
 
@@ -694,13 +694,12 @@ Progress is logged every 100 pages (~25,600 points). At 2.57M points, expect 1�
 
 ### serve
 
-Start the local app stack supervisor. Manages the WebSocket bridge backend, MCP HTTP server, all workers, shell server, and Next.js (port 49010).
+Start Axon's unified HTTP server. It mounts MCP HTTP, the web panel, `/v1/ask`,
+and first-party CLI client/server routes on `AXON_MCP_HTTP_PORT` (default 8001).
 
 ```bash
-axon serve [--port <n>]   # default port 49000
+axon serve
 ```
-
-The web UI is served separately by `apps/web` at port 49010.
 
 ```bash
 cargo run --bin axon -- serve
@@ -761,7 +760,10 @@ AXON_MCP_HTTP_PORT=8001            # default
 AXON_MCP_HTTP_TOKEN=               # required for non-loopback binds
 ```
 
-HTTP transport enforces `AXON_MCP_HTTP_TOKEN` when it is set. Tokenless HTTP is allowed only for loopback binds; non-loopback binds such as `0.0.0.0` are rejected at startup unless `AXON_MCP_HTTP_TOKEN` is configured. Reverse proxies can still add OAuth or other ingress controls in front of the token gate.
+HTTP transport uses static bearer auth by default and can use Google OAuth/DCR
+when `AXON_MCP_AUTH_MODE=oauth` is configured. Tokenless HTTP is allowed only
+for loopback binds; non-loopback binds such as `0.0.0.0` are rejected at
+startup unless bearer or OAuth auth is configured.
 
 Authenticated clients send either `Authorization: Bearer $AXON_MCP_HTTP_TOKEN`
 or `x-api-key: $AXON_MCP_HTTP_TOKEN` on every `/mcp` request.
@@ -952,7 +954,11 @@ The minimum set needed to start:
 | `AXON_DATA_DIR` | No | Persistent data root (default: `~/.axon`, flat layout — no nested `axon/` subdir) |
 | `AXON_HOME` | Docker only | Host appdata root for Compose bind mounts (default: `${HOME}/.axon`; keep aligned with `AXON_DATA_DIR`) |
 | `AXON_MCP_HTTP_PUBLISH` | Docker only | Compose host publish address for Axon MCP HTTP (default: `127.0.0.1:8001`; use `0.0.0.0:8001` only intentionally) |
-| `AXON_LITE` | No | Accepted for compatibility only. Lite is the only runtime; setting this has no effect beyond signalling intent. |
+| `AXON_MCP_AUTH_MODE` | For MCP OAuth | `bearer` by default; set `oauth` for Google OAuth + DCR through lab-auth |
+| `AXON_MCP_PUBLIC_URL` | For MCP OAuth | Public origin used in OAuth metadata |
+| `AXON_MCP_GOOGLE_CLIENT_ID` / `AXON_MCP_GOOGLE_CLIENT_SECRET` | For MCP OAuth | Google OAuth app credentials |
+| `AXON_MCP_AUTH_ADMIN_EMAIL` | For MCP OAuth | Admin email accepted by the auth layer |
+| `AXON_LITE` | No | Accepted for compatibility only; setting this has no effect beyond signalling intent. |
 | `AXON_SQLITE_PATH` | No | SQLite jobs database path (default: `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`) |
 
 > **Full reference:** See [`docs/CONFIG.md`](docs/CONFIG.md) for every environment variable, its default, and description. `docs/CONFIG.md` is the single authoritative source — when in doubt, it wins over this file.
@@ -986,7 +992,7 @@ docker compose --env-file ~/.axon/.env up -d axon-qdrant axon-tei axon-chrome
 # or: just services-up
 ```
 
-Start local development (infra + supervisor process):
+Start local development (infra + Axon server process):
 
 ```bash
 just dev
@@ -999,9 +1005,9 @@ Stop infrastructure:
 just services-down
 ```
 
-### Runtime Mode
+### Job Runtime
 
-Lite is the only supported runtime. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Postgres, Redis, and RabbitMQ are no longer used.
+Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Postgres, Redis, and RabbitMQ are no longer used.
 
 ```bash
 axon scrape https://example.com               # default
@@ -1009,7 +1015,7 @@ AXON_LITE=1 axon scrape https://example.com   # accepted, no behavior change
 axon --lite scrape https://example.com        # accepted, no behavior change
 ```
 
-All commands run in lite mode. The `watch` scheduler exposes `list`, `create`, `run-now`, and `history` today; the remaining `watch` subcommands (`get`, `update`, `pause`, `resume`, `delete`, `artifacts`) parse but are not yet implemented.
+All commands use the SQLite/in-process runtime. The `watch` scheduler exposes `list`, `create`, `run-now`, and `history` today; the remaining `watch` subcommands (`get`, `update`, `pause`, `resume`, `delete`, `artifacts`) parse but are not yet implemented.
 
 ---
 
@@ -1127,25 +1133,22 @@ Override individual limits with `--crawl-concurrency-limit`, `--sitemap-concurre
 
 ---
 
-## Web UI
+## Web Panel
 
-The Next.js dashboard runs at `http://localhost:49010` (port `AXON_WEB_DEV_PORT`).
+`axon serve` serves the embedded setup/config panel on the same HTTP listener as
+MCP, default `http://127.0.0.1:8001`.
 
-Features:
-- Omnibox command interface (press `/` to focus)
-- Crawl, scrape, embed, query, and ask commands via WebSocket
-- Pulse workspace: AI-assisted research with conversation context
-- Results panel with job output streaming
-- MCP server settings page (`/api/mcp`)
-- Docker container stats in the status bar
+Mounted routes include:
 
-The web UI connects to the axum WebSocket bridge at `AXON_BACKEND_URL` (default port 49000). The bridge provides:
-- `/ws` — command execution and Docker stats broadcast
-- `/ws/shell` — PTY bridge for terminal UI (loopback only)
-- `/output/{*path}` — serve generated output files
-- `/download/{job_id}/pack.md|pack.xml|archive.zip` — crawl artifact download
+- `/` - static web panel assets.
+- `/api/panel/state`, `/api/panel/login`, `/api/panel/config`, `/api/panel/ops` - setup and config APIs.
+- `/api/panel/setup/targets`, `/api/panel/setup/deploy` - remote setup helpers.
+- `/v1/ask` - ask endpoint used by `axon ask` when `AXON_SERVER_URL` is set.
+- `/v1/capabilities` and `/v1/actions` - first-party CLI client/server mode.
+- `/mcp` - MCP streamable HTTP transport.
 
-WebSocket authentication is controlled by `AXON_WEB_API_TOKEN`. The gate is disabled (open) when the variable is not set.
+The older Next.js dashboard, websocket bridge, shell websocket, and `/download/*`
+routes are not part of the current `axon serve` runtime.
 
 ---
 
@@ -1160,9 +1163,11 @@ All user-provided URLs are validated before any network request:
 
 DNS rebinding is mitigated via `SsrfBlockingResolver`, which re-checks resolved IPs at TCP connect time.
 
-### WebSocket Authentication
+### HTTP Authentication
 
-The `/ws` gate activates when `AXON_WEB_API_TOKEN` is set. Unset means open (trusted-network deployments). The browser sends the token as `?token=` on the WebSocket URL. MCP OAuth clients (`atk_` tokens) use `/mcp` only.
+MCP and first-party server actions share the same HTTP auth boundary. Static
+bearer auth uses `AXON_MCP_HTTP_TOKEN`; OAuth mode uses
+`AXON_MCP_AUTH_MODE=oauth` with Google OAuth and lab-auth.
 
 ### LLM Process Isolation
 
@@ -1176,7 +1181,7 @@ The following operations are unauthenticated at the application level (network-l
 
 Axon is designed for self-hosted single-user operation. All service ports are loopback-bound by default.
 
-Never commit `.env`. Always set `AXON_WEB_ALLOW_INSECURE_DEV=false` in any network-accessible deployment.
+Never commit `.env`. For network-accessible deployments, configure `AXON_MCP_HTTP_TOKEN` or OAuth and avoid exposing service ports directly.
 
 ---
 
@@ -1200,7 +1205,7 @@ just fix            # cargo fmt + clippy --fix
 
 ```bash
 just services-up    # start infra (Qdrant, TEI, Chrome)
-just dev            # infra + axon serve supervisor (builds debug binary)
+just dev            # infra + axon serve (builds debug binary)
 just stop           # kill running serve and worker processes
 ```
 
@@ -1208,7 +1213,7 @@ just stop           # kill running serve and worker processes
 
 ```bash
 just mcp-smoke
-# Runs both full mode (AXON_LITE=0) and lite mode (AXON_LITE=1) suites
+# Runs the MCP smoke suite against the SQLite/in-process runtime
 ```
 
 Manual mcporter commands:
@@ -1222,10 +1227,9 @@ mcporter --config config/mcporter.json call axon.axon action:crawl subaction:lis
 mcporter --config config/mcporter.json call axon.axon action:artifacts subaction:list --output json
 ```
 
-### Web UI Development
+### Web Panel Assets
 
 ```bash
-cd apps/web && npm run dev      # Next.js dev server
 cd apps/web && npm run build    # production build
 cd apps/web && npm run lint     # lint
 ```
@@ -1250,7 +1254,7 @@ Ingest a repository, embed it, and ask questions over the indexed content.
 # 1. Start infrastructure
 just services-up
 
-# 2. Run the local supervisor (starts workers and web UI)
+# 2. Run the local server (starts workers and web panel)
 just dev
 
 # 3. Verify connectivity
@@ -1304,7 +1308,7 @@ axon sources
 | `docs/TESTING.md` | Test strategy and mcporter smoke harness |
 | `docs/commands/` | Per-command reference documentation |
 | `docs/ingest/` | Per-source ingest deep dives |
-| `docs/archive/pre-lite-mode/` | Historical docs from the pre-lite-mode runtime (Postgres/Redis/RabbitMQ era) |
+| `docs/archive/pre-lite-mode/` | Historical docs from the removed Postgres/Redis/RabbitMQ runtime |
 | `CHANGELOG.md` | Release history |
 
 ---

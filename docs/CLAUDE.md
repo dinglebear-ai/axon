@@ -1,5 +1,5 @@
 # docs/ — Documentation Structure
-Last Modified: 2026-05-06
+Last Modified: 2026-05-09
 
 All project documentation lives here. This file defines the layout and the rules for what goes where.
 
@@ -8,13 +8,18 @@ All project documentation lives here. This file defines the layout and the rules
 ```
 docs/
 ├── commands/                 # CLI command reference — one file per command
+├── eval/                     # Evaluation datasets, metrics, and judge outputs
 ├── ingest/                   # Ingest system docs — one file per ingest source
+├── mcp/                      # MCP connection, transport, deployment, and action docs
+├── perf/                     # Performance reports and tuning snapshots
 ├── plans/                    # Active implementation plans (move to plans/complete/ when done)
 │   └── complete/             # Archived plans
+├── repo/                     # Repository structure, rules, recipes, scripts
 ├── reports/                  # Code reviews, audits, analysis
 ├── screenshots/              # UI screenshots and visual references
 ├── sessions/                 # Session logs: YYYY-MM-DD-HH-MM-description.md
-├── archive/                  # Pre-lite-mode docs kept for historical reference (do not edit)
+├── stack/                    # Architecture, technology stack, prerequisites
+├── archive/                  # Historical removed-runtime docs (do not edit)
 │
 ├── ARCHITECTURE.md           # System architecture diagrams and data-flow
 ├── DEPLOYMENT.md             # Production deployment guide
@@ -107,7 +112,7 @@ Code reviews, audits, security analysis. Named by date and scope: `2026-02-22-fu
 
 ### Database schema
 
-The schema is auto-created at runtime by `ensure_schema()` in each `crates/jobs/*_jobs.rs` file — there is no separate schema doc. Read those files for the canonical column list.
+The SQLite schema is auto-created by lite migrations under `src/jobs/lite/migrations/` plus store helpers in `src/jobs/lite/store.rs`. There is no separate hand-maintained schema doc.
 
 ---
 

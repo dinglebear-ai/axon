@@ -1,4 +1,4 @@
-# crates/crawl
+# src/crawl
 Last Modified: 2026-03-03
 
 Crawl engine and crawl artifact manifest logic for Axon.
@@ -22,12 +22,12 @@ Crawl engine and crawl artifact manifest logic for Axon.
 - `chrome_bootstrap.rs`: Chrome runtime bootstrap utilities.
 
 ## Integration Points
-- Invoked by `crates/cli/commands/crawl*`.
-- Downstream async processing and status tracking live in `crates/jobs/crawl/*`.
-- Embedding handoff flows into `crates/vector/ops` when enabled.
+- Invoked by `src/cli/commands/crawl*`.
+- Downstream async processing and status tracking live in `src/jobs/crawl/*`.
+- Embedding handoff flows into `src/vector/ops` when enabled.
 
 ## Notes
-- Keep crawl behavior and job lifecycle concerns separated: traversal belongs here; queue and persistence state belong in `crates/jobs`.
+- Keep crawl behavior and job lifecycle concerns separated: traversal belongs here; queue and persistence state belong in `src/jobs`.
 - Manifest format changes should be validated against downstream consumers that read crawl artifacts.
 
 ## Related Docs

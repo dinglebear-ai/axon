@@ -148,6 +148,7 @@ List/search style endpoints default to low limits and accept `limit` + `offset`.
 ## MCP Resources
 Implemented resource(s):
 - `axon://schema/mcp-tool`
+- `ui://axon/status-dashboard`
 
 ## Runtime Dependencies
 Server reads existing Axon stack vars:
@@ -162,20 +163,14 @@ MCP transport env vars:
 - `AXON_MCP_HTTP_HOST`
 - `AXON_MCP_HTTP_PORT`
 
-Optional OAuth broker env vars:
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_AUTH_URL`
-- `GOOGLE_OAUTH_TOKEN_URL`
-- `GOOGLE_OAUTH_REDIRECT_PATH`
-- `GOOGLE_OAUTH_REDIRECT_HOST`
-- `GOOGLE_OAUTH_REDIRECT_URI`
-- `GOOGLE_OAUTH_BROKER_ISSUER`
-- `GOOGLE_OAUTH_SCOPES`
-- `GOOGLE_OAUTH_DCR_TOKEN`
-- `GOOGLE_OAUTH_REDIRECT_POLICY`
-- `GOOGLE_OAUTH_REDIS_URL`
-- `GOOGLE_OAUTH_REDIS_PREFIX`
+MCP auth env vars:
+- `AXON_MCP_HTTP_TOKEN` for static bearer / `x-api-key` auth.
+- `AXON_MCP_AUTH_MODE=oauth` to enable lab-auth Google OAuth/JWT mode.
+- `AXON_MCP_PUBLIC_URL` for OAuth metadata and protected-resource URLs.
+- `AXON_MCP_GOOGLE_CLIENT_ID`
+- `AXON_MCP_GOOGLE_CLIENT_SECRET`
+- `AXON_MCP_AUTH_ADMIN_EMAIL`
+- `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` for extra redirect URIs; Claude's MCP callback is always included.
 
 ## Error Semantics
 - Input or shape failures -> MCP `invalid_params`

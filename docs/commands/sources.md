@@ -22,7 +22,7 @@ None.
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`sources` runs in lite mode by default and does not require Postgres, Redis, or AMQP.
+`sources` reads Qdrant metadata and does not require Postgres, Redis, or AMQP.
 
 ## Flags
 

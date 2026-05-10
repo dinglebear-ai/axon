@@ -1,5 +1,5 @@
-# crates/jobs — Job Workers (Lite)
-Last Modified: 2026-04-27
+# src/jobs — SQLite Job Workers
+Last Modified: 2026-05-09
 
 Async job workers. The single backend is `LiteBackend` — SQLite persistence + in-process tokio workers.
 
@@ -10,7 +10,7 @@ jobs/
 ├── backend.rs       # JobBackend trait + JobPayload + JobKind + JobStatusRow + JobSummary
 ├── lite.rs          # LiteBackend: SQLite pool + in-process worker spawning
 ├── lite/
-│   ├── cancel.rs            # Lite-mode cancel signaling (status update + spider control)
+│   ├── cancel.rs            # SQLite-runtime cancel signaling (status update + spider control)
 │   ├── config_snapshot.rs   # Config snapshotting per-job
 │   ├── ops.rs / ops/        # Insert/claim/mark/list helpers
 │   ├── query.rs             # Service-job query helpers (lite_query::*)
@@ -28,11 +28,11 @@ jobs/
 └── watch_lite.rs    # Watch task scheduler (SQLite-backed, in-process)
 ```
 
-There are no longer separate `crawl/{processor,repo,watchdog,worker,runtime}.rs` or `embed/`/`extract/` worker subdirs — those workers were consolidated into `crates/jobs/lite/workers.rs` (and its sibling `workers/` submodule directory) when full mode was retired.
+There are no longer separate `crawl/{processor,repo,watchdog,worker,runtime}.rs` or `embed/`/`extract/` worker subdirs — those workers were consolidated into `src/jobs/lite/workers.rs` (and its sibling `workers/` submodule directory) when full mode was retired.
 
 ## Backend Selection
 
-`ServiceContext::new(cfg)` calls `resolve_runtime(cfg)` in `crates/services/runtime.rs`, which always returns a `LiteServiceRuntime`:
+`ServiceContext::new(cfg)` calls `resolve_runtime(cfg)` in `src/services/runtime.rs`, which always returns a `LiteServiceRuntime`:
 
 ```rust
 LiteServiceRuntime { backend: LiteBackend::new(cfg).await? }
@@ -51,7 +51,7 @@ LiteServiceRuntime { backend: LiteBackend::new(cfg).await? }
 
 ## `JobBackend` Trait (`backend.rs`)
 
-> **`JobBackend` is NOT the canonical abstraction.** The canonical trait consumed by all callers (CLI, MCP) is [`ServiceJobRuntime`](../services/runtime.rs) in `crates/services/runtime.rs`, which returns the richer `ServiceJob` type and adds pagination, `has_active_jobs`, `recover_jobs`, and `run_worker`.
+> **`JobBackend` is NOT the canonical abstraction.** The canonical trait consumed by all callers (CLI, MCP) is [`ServiceJobRuntime`](../services/runtime.rs) in `src/services/runtime.rs`, which returns the richer `ServiceJob` type and adds pagination, `has_active_jobs`, `recover_jobs`, and `run_worker`.
 >
 > In practice, only **3 of 8** `JobBackend` methods are delegated through the trait by the service layer: `enqueue`, `wait_for_job`, and `job_errors`. These return simple types (`Uuid`, `String`, `Option<String>`) that need no mapping. The remaining methods (`list_jobs`, `job_status`, `cancel_job`, `cleanup_jobs`, `clear_jobs`) are **bypassed** — `LiteServiceRuntime` calls `lite_query::*` directly to avoid lossy type mapping from `JobStatusRow`/`JobSummary` → `ServiceJob`.
 
@@ -81,7 +81,7 @@ pub trait JobBackend: Send + Sync {
 
 ### Job Lifecycle
 
-Always use the lite store functions — never write raw SQL job state updates:
+Always use the SQLite store functions — never write raw SQL job state updates:
 
 ```text
 claim_next_pending() → mark_job_started() → mark_job_completed() / mark_job_failed()
@@ -106,7 +106,7 @@ All internal async channels use `tokio::sync::mpsc::channel(256)` — **never** 
 Two cooperating mechanisms keep job state honest:
 
 **Heartbeat (per running job):**
-- `HeartbeatGuard` in `crates/jobs/lite/workers/heartbeat.rs` is spawned by `worker_loop` for every claimed job and aborted (RAII drop) when the runner returns.
+- `HeartbeatGuard` in `src/jobs/lite/workers/heartbeat.rs` is spawned by `worker_loop` for every claimed job and aborted (RAII drop) when the runner returns.
 - Loops every 30s and calls `touch_heartbeat()` (in `lite/ops/lifecycle.rs`) which bumps `updated_at` only on rows still in `running` state. It never writes `result_json` — that column is owned by the progress persisters.
 - Purpose: keep `updated_at` advancing during long blocking phases (crawl rendering a single page, embed pipeline mid-batch) where no progress event has fired yet.
 
@@ -130,7 +130,7 @@ When the runner exits with `Err("<kind> canceled")`, the worker loop calls `mark
 
 ### Stale Job Recovery
 
-- The lite-mode watchdog (in `crates/jobs/lite/store.rs::reclaim_stale_running_jobs`) marks jobs stuck in `running` state as `pending` after the stale timeout, both at startup and on the periodic 60s tick from `spawn_workers`.
+- The SQLite-runtime watchdog (in `src/jobs/lite/store.rs::reclaim_stale_running_jobs`) marks jobs stuck in `running` state as `pending` after the stale timeout, both at startup and on the periodic 60s tick from `spawn_workers`.
 - `axon crawl recover` subcommand: reclaims all stale jobs (re-queues them as `pending`).
 
 ## ingest_jobs Schema Difference

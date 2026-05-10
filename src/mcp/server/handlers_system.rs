@@ -333,7 +333,6 @@ impl AxonMcpServer {
                     "sources": ["sources"],
                     "stats": ["stats"],
                     "artifacts": ["head", "grep", "wc", "read", "list", "delete", "clean", "search"],
-                    "acp": ["list_sessions", "fork_session", "resume_session", "set_model", "ext_method", "ext_notification", "logout"],
                     "elicit_demo": []
                 },
                 "resources": [
