@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::vector::ops::qdrant::qdrant_base;
 use std::error::Error;
 use std::future::Future;
@@ -12,7 +12,7 @@ type IndexFut<'a> =
 /// These indexes are required by the Qdrant `/facet` endpoint used by the
 /// `domains` and `sources` MCP actions. The operation is idempotent.
 pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let index_url = format!(
         "{}/collections/{}/index?wait=false",
         qdrant_base(cfg),

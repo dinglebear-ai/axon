@@ -15,10 +15,24 @@ pub(crate) static HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyL
 });
 
 #[cfg(not(test))]
+pub(crate) static INTERNAL_SERVICE_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> =
+    LazyLock::new(|| {
+        let ua = std::env::var("AXON_CHROME_USER_AGENT").ok();
+        build_client_without_ssrf_resolver(30, ua.as_deref()).map_err(|e| e.to_string())
+    });
+
+#[cfg(not(test))]
 pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
     HTTP_CLIENT
         .as_ref()
         .map_err(|err| anyhow::Error::msg(format!("failed to initialize HTTP client: {err}")))
+}
+
+#[cfg(not(test))]
+pub(crate) fn internal_service_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    INTERNAL_SERVICE_HTTP_CLIENT.as_ref().map_err(|err| {
+        anyhow::Error::msg(format!("failed to initialize internal HTTP client: {err}"))
+    })
 }
 
 #[cfg(test)]
@@ -35,10 +49,34 @@ pub fn http_client() -> anyhow::Result<&'static reqwest::Client> {
     Ok(Box::leak(Box::new(client)))
 }
 
+#[cfg(test)]
+pub(crate) fn internal_service_http_client() -> anyhow::Result<&'static reqwest::Client> {
+    http_client()
+}
+
 pub fn build_client(
     timeout_secs: u64,
     user_agent: Option<&str>,
 ) -> Result<reqwest::Client, HttpError> {
+    build_client_with_options(timeout_secs, user_agent, true)
+}
+
+#[cfg(not(test))]
+fn build_client_without_ssrf_resolver(
+    timeout_secs: u64,
+    user_agent: Option<&str>,
+) -> Result<reqwest::Client, HttpError> {
+    build_client_with_options(timeout_secs, user_agent, false)
+}
+
+fn build_client_with_options(
+    timeout_secs: u64,
+    user_agent: Option<&str>,
+    ssrf_dns_guard: bool,
+) -> Result<reqwest::Client, HttpError> {
+    #[cfg(test)]
+    let _ = ssrf_dns_guard;
+
     // Explicit connection pool sizing. reqwest defaults `pool_max_idle_per_host`
     // to `usize::MAX`, which under sustained dual-Qdrant + TEI load on a single
     // host can drift toward ephemeral-port pressure (Linux default range ~28K).
@@ -64,7 +102,9 @@ pub fn build_client(
     // validate_url() still guards parse-time SSRF checks in tests.
     #[cfg(not(test))]
     {
-        builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
+        if ssrf_dns_guard {
+            builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
+        }
     }
     if let Some(ua) = user_agent {
         builder = builder.user_agent(ua);

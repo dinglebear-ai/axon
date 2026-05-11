@@ -2,6 +2,8 @@ use crate::core::config::types::{PerformanceProfile, RenderMode, ScrapeFormat};
 use clap::{ArgAction, Args};
 use std::path::PathBuf;
 
+pub(in crate::core::config) const DEFAULT_OUTPUT_DIR: &str = ".cache/axon-rust/output";
+
 #[derive(Debug, Args)]
 pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, default_value = "")]
@@ -24,12 +26,7 @@ pub(in crate::core::config) struct GlobalArgs {
     pub(in crate::core::config) exclude_path_prefix: Vec<String>,
 
     /// Directory for saved markdown/HTML output files
-    #[arg(
-        global = true,
-        long,
-        default_value = ".cache/axon-rust/output",
-        env = "AXON_OUTPUT_DIR"
-    )]
+    #[arg(global = true, long, default_value = DEFAULT_OUTPUT_DIR)]
     pub(in crate::core::config) output_dir: PathBuf,
 
     /// Explicit output file path (overrides --output-dir)

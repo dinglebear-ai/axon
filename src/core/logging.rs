@@ -13,6 +13,13 @@ use tracing_subscriber::fmt::{
 };
 use tracing_subscriber::registry::LookupSpan;
 
+fn read_trimmed_env(var: &str) -> Option<String> {
+    std::env::var(var)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 // ── Console event formatter ──────────────────────────────────────────────────
 //
 // Renders log lines on stderr as:
@@ -232,14 +239,10 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     //
     // tracing_appender::non_blocking serialises writes through one worker
     // thread, so the guard MUST be held for the process lifetime.
-    let log_dir: PathBuf = std::env::var("AXON_LOG_DIR")
+    let log_dir: PathBuf = read_trimmed_env("AXON_LOG_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            super::paths::axon_data_dir()
-                .map(|d| d.join("logs"))
-                .unwrap_or_else(|| PathBuf::from("logs"))
-        });
-    let log_file_name = std::env::var("AXON_LOG_FILE").unwrap_or_else(|_| "axon.log".to_string());
+        .unwrap_or_else(|| super::paths::axon_data_base_dir().join("logs"));
+    let log_file_name = read_trimmed_env("AXON_LOG_FILE").unwrap_or_else(|| "axon.log".to_string());
 
     let max_bytes = std::env::var("AXON_LOG_MAX_BYTES")
         .ok()

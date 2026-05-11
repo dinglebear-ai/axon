@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-05-11
+
+### Fixed
+
+- ci: make the Claude review workflow best-effort so Anthropic quota or service outages warn instead of failing the PR.
+
+## [1.9.4] - 2026-05-11
+
+### Fixed
+
+- dev: remove user-specific `sccache` wrapper paths and socket defaults from `Justfile` so local recipes stay portable across developers and machines.
+- config: preserve an explicit `--output-dir` even when it matches the clap default, instead of letting `AXON_OUTPUT_DIR` or post-init default derivation override it.
+
+## [1.9.3] - 2026-05-10
+
+### Fixed
+
+- http: route internal Qdrant and TEI calls through the internal service client so `AXON_SERVER_URL` does not accidentally bounce container-local maintenance traffic back through the public server endpoint.
+- serve: initialize the unified server service context eagerly and clear `AXON_SERVER_URL` inside the Docker service so container-local commands stay on direct service URLs.
+- dev: wire the local sccache wrapper defaults into `just` recipes for faster, consistent local builds.
+
+## [1.9.2] - 2026-05-10
+
+### Fixed
+
+- status: make `axon status --server-url ...` reuse the same detailed human renderer as local mode instead of collapsing server responses to totals-only output.
+- http: keep the shared client builder warning-free in test builds so clippy/hooks no longer fail on dead code and unused SSRF-guard plumbing.
+
+## [1.9.1] - 2026-05-10
+
+### Fixed
+
+- config: ignore blank optional path env vars such as `AXON_OUTPUT_DIR`, `AXON_SQLITE_PATH`, and `AXON_LOG_DIR`, falling back to canonical `~/.axon` defaults instead of treating empty strings as real paths.
+- docker: align the builder image with the pinned Rust `1.94.0` toolchain so cached Docker rebuilds avoid repeated Rust toolchain installation.
+
 ## [1.9.0] - 2026-05-09
 
 ### Changed

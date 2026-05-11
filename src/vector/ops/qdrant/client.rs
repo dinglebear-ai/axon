@@ -8,7 +8,7 @@
 //! - All delete operations use [`qdrant_delete_with_retry`] with exponential backoff.
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::log_warn;
 use anyhow::{Result, anyhow};
 use reqwest::StatusCode;
@@ -173,7 +173,7 @@ pub(crate) async fn qdrant_scroll_pages_selective(
     with_payload: serde_json::Value,
     process_page: impl FnMut(&[serde_json::Value]) -> bool,
 ) -> Result<()> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let body = serde_json::json!({
         "limit": 256,
@@ -191,7 +191,7 @@ async fn scroll_url_set(
     filter: serde_json::Value,
     limit: Option<usize>,
 ) -> Result<HashSet<String>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let mut seen = HashSet::new();
     let body = serde_json::json!({
@@ -242,7 +242,7 @@ pub async fn qdrant_urls_for_domain(cfg: &Config, domain: &str) -> Result<HashSe
 /// Delete all Qdrant points matching `url` via payload filter.
 #[cfg(test)]
 pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Result<()> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
     qdrant_delete_with_retry(
         client,
@@ -273,7 +273,7 @@ pub(crate) async fn qdrant_delete_stale_tail(
     url: &str,
     new_chunk_count: usize,
 ) -> Result<()> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/delete?wait=false")?;
     qdrant_delete_with_retry(
         client,
@@ -313,7 +313,7 @@ pub async fn qdrant_delete_stale_domain_urls(
         .iter()
         .map(|url| serde_json::json!({"key": "url", "match": {"value": url}}))
         .collect();
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     // Use wait=false for maintenance deletes — matches qdrant_delete_stale_tail pattern.
     // The preceding scroll already verified which URLs are stale; no immediate
     // consistency is needed, and wait=true blocks on HNSW index rebuild per batch.
@@ -337,7 +337,7 @@ pub(crate) async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result
     if ids.is_empty() {
         return Ok(0);
     }
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/delete?wait=true")?;
     for batch in ids.chunks(1000) {
         qdrant_delete_with_retry(
@@ -376,7 +376,7 @@ pub(crate) async fn qdrant_facet_filtered(
     limit: usize,
     filter: serde_json::Value,
 ) -> Result<Vec<(String, usize)>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "facet")?;
     let mut body = serde_json::json!({
         "key": key,
@@ -461,7 +461,7 @@ pub(crate) async fn qdrant_retrieve_by_url_details(
     url_match: &str,
     max_points: Option<usize>,
 ) -> Result<QdrantRetrieveByUrlResult> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let endpoint = qdrant_collection_endpoint(cfg, "points/scroll")?;
     let url_filter = super::filter::url_filter(url_match);
     let filter =

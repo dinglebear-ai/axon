@@ -4,7 +4,7 @@
 //! Only called for collections in `VectorMode::Named` (named dense + sparse vectors).
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::log_debug;
 use crate::vector::ops::sparse::SparseVector;
 use anyhow::Result;
@@ -98,7 +98,7 @@ pub(crate) async fn qdrant_hybrid_search(
     candidates_override: Option<usize>,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/query")?;
 
     let candidates = candidates_override
@@ -172,7 +172,7 @@ pub(crate) async fn qdrant_named_dense_search(
     limit: usize,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/query")?;
 
     let hnsw_ef = cfg.hnsw_ef_search;

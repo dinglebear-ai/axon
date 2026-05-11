@@ -34,7 +34,7 @@
 //!   process for legacy collections, then the VectorMode cache kicks in).
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::log_debug;
 use crate::vector::ops::sparse::SparseVector;
 use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
@@ -171,7 +171,7 @@ pub(crate) async fn qdrant_dual_search(
         "searches": [primary_body, secondary_body],
     });
 
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/query/batch")?;
 
     let started = Instant::now();
