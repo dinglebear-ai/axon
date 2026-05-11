@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::{log_debug, log_warn};
 use crate::vector::ops::qdrant::env_usize_clamped;
 use rand::RngExt as _;
@@ -251,7 +251,7 @@ async fn tei_embed_raw(cfg: &Config, inputs: &[String]) -> Result<Vec<Vec<f32>>,
     if inputs.is_empty() {
         return Ok(Vec::new());
     }
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let mut vectors = Vec::new();
 
     let batch_size = cfg.tei_max_client_batch_size.clamp(1, 128);

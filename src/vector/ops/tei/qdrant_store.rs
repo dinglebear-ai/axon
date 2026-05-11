@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::{log_debug, log_info, log_warn};
 use crate::vector::ops::qdrant::{env_usize_clamped, qdrant_base};
 use reqwest::StatusCode;
@@ -141,7 +141,7 @@ pub(crate) async fn get_or_fetch_vector_mode(cfg: &Config) -> Result<VectorMode,
             cfg.collection, mode
         ));
     }
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
     const MODE_PROBE_MAX_ATTEMPTS: usize = 3;
     let mut resp = None;
@@ -279,7 +279,7 @@ pub(super) async fn ensure_collection(
     cfg: &Config,
     dim: usize,
 ) -> Result<VectorMode, Box<dyn Error>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
 
     let get_resp = client.get(&url).send().await?;
@@ -359,7 +359,7 @@ pub(super) async fn ensure_collection(
 
 /// PATCH an existing Named collection to add the `bm42` sparse vector config.
 async fn patch_add_sparse(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = format!("{}/collections/{}", qdrant_base(cfg), cfg.collection);
     client
         .patch(&url)
@@ -393,7 +393,7 @@ pub(super) async fn qdrant_upsert(
     if points.is_empty() {
         return Ok(());
     }
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let upsert_batch_size = env_usize_clamped("AXON_QDRANT_UPSERT_BATCH_SIZE", 256, 1, 4096);
     let url = format!(
         "{}/collections/{}/points?wait=true",

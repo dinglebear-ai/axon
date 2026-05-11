@@ -3,11 +3,11 @@ mod pg;
 mod qdrant_fetch;
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use std::error::Error;
 
 pub async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let (info, count, docs_count) = qdrant_fetch::fetch_qdrant_snapshots(cfg, client).await?;
 
     let points_count = count["result"]["count"].as_u64().unwrap_or(0);

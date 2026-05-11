@@ -1,5 +1,5 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
-rust_dev_env := "if command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi; if command -v mold >/dev/null 2>&1; then export RUSTFLAGS=\"${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold\"; fi"
+rust_dev_env := "export SCCACHE_SERVER_UDS=${SCCACHE_SERVER_UDS:-/tmp/sccache-jmagar.sock}; export SCCACHE_LOG=${SCCACHE_LOG:-error}; if [ -x /home/jmagar/.local/bin/sccache-wrapper ]; then export RUSTC_WRAPPER=/home/jmagar/.local/bin/sccache-wrapper; elif command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi; if command -v mold >/dev/null 2>&1; then export RUSTFLAGS=\"${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold\"; fi"
 
 default:
     @just --list
@@ -185,7 +185,9 @@ dev:
     just stop
     sleep 1
     export RUST_LOG="${RUST_LOG:-info,axon.mcp.oauth=info,axon::crates::mcp=info}"
-    if command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi
+    export SCCACHE_SERVER_UDS="${SCCACHE_SERVER_UDS:-/tmp/sccache-jmagar.sock}"
+    export SCCACHE_LOG="${SCCACHE_LOG:-error}"
+    if [ -x /home/jmagar/.local/bin/sccache-wrapper ]; then export RUSTC_WRAPPER=/home/jmagar/.local/bin/sccache-wrapper; elif command -v sccache >/dev/null 2>&1; then export RUSTC_WRAPPER=sccache; fi
     if command -v mold >/dev/null 2>&1; then export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"; fi
     cargo build --locked --bin axon
     AXON_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/axon"

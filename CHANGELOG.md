@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-05-10
+
+### Fixed
+
+- http: route internal Qdrant and TEI calls through the internal service client so `AXON_SERVER_URL` does not accidentally bounce container-local maintenance traffic back through the public server endpoint.
+- serve: initialize the unified server service context eagerly and clear `AXON_SERVER_URL` inside the Docker service so container-local commands stay on direct service URLs.
+- dev: wire the local sccache wrapper defaults into `just` recipes for faster, consistent local builds.
+
 ## [1.9.2] - 2026-05-10
 
 ### Fixed

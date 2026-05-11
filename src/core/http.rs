@@ -17,6 +17,7 @@ mod ssrf;
 mod tests;
 
 // Re-export the full public API so downstream `use crate::core::http::*` continues to work.
+pub(crate) use client::internal_service_http_client;
 pub use client::{build_client, fetch_html, http_client};
 pub use error::HttpError;
 pub use headers::parse_custom_headers;

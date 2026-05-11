@@ -5,7 +5,7 @@
 //! [`hybrid`](super::hybrid).
 
 use crate::core::config::Config;
-use crate::core::http::http_client;
+use crate::core::http::internal_service_http_client;
 use crate::core::logging::log_debug;
 use anyhow::Result;
 use std::time::Instant;
@@ -28,7 +28,7 @@ pub(crate) async fn qdrant_search(
     limit: usize,
     filter: Option<&serde_json::Value>,
 ) -> Result<Vec<QdrantSearchHit>> {
-    let client = http_client()?;
+    let client = internal_service_http_client()?;
     let url = qdrant_collection_endpoint(cfg, "points/search")?;
     let hnsw_ef = cfg.hnsw_ef_search_legacy;
     let search_start = Instant::now();
