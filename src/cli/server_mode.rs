@@ -141,7 +141,7 @@ fn render_server_result(
     }
 
     match cfg.command {
-        CommandKind::Status => render_server_status(result),
+        CommandKind::Status => render_server_status(result)?,
         CommandKind::Crawl => render_server_job_command("Crawl", result),
         CommandKind::Extract => render_server_job_command("Extract", result),
         CommandKind::Embed => render_server_job_command("Embed", result),
@@ -156,22 +156,13 @@ fn render_server_result(
     Ok(())
 }
 
-fn render_server_status(result: &serde_json::Value) {
-    println!("{}", primary("Axon Status (server mode)"));
-    if let Some(totals) = result.get("totals").and_then(|value| value.as_object()) {
-        for name in ["crawl", "extract", "embed", "ingest"] {
-            let count = totals
-                .get(name)
-                .and_then(|value| value.as_i64())
-                .unwrap_or(0);
-            println!("  {} {} total", muted(&format!("{name:<7}")), count);
-        }
-    } else {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
-        );
-    }
+fn render_server_status(result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
+    print!("{}", server_status_text(result)?);
+    Ok(())
+}
+
+fn server_status_text(result: &serde_json::Value) -> Result<String, Box<dyn Error>> {
+    cli::commands::status::render_status_payload(result)
 }
 
 fn render_server_job_command(title: &str, result: &serde_json::Value) {
@@ -306,6 +297,10 @@ fn server_mode_rejects_host_local_embed_input(input: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::types::ServiceJob;
+    use chrono::Utc;
+    use serde_json::json;
+    use uuid::Uuid;
 
     fn cfg(command: CommandKind, positional: &[&str]) -> Config {
         let mut cfg = Config::test_default();
@@ -416,5 +411,49 @@ mod tests {
                 .contains("server mode does not accept host-local embed paths yet"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn server_status_text_matches_local_status_renderer() {
+        let job = ServiceJob {
+            id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
+            status: "completed".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            error_text: None,
+            url: Some("https://example.com/docs".to_string()),
+            source_type: None,
+            target: Some("https://example.com/docs".to_string()),
+            urls_json: None,
+            result_json: Some(json!({
+                "md_created": 2,
+                "elapsed_ms": 1200,
+                "docs_embedded": 2,
+                "docs_total": 2,
+                "chunks_embedded": 8
+            })),
+            config_json: None,
+        };
+        let payload = json!({
+            "local_crawl_jobs": [job.clone()],
+            "local_extract_jobs": [],
+            "local_embed_jobs": [job],
+            "local_ingest_jobs": [],
+            "totals": {
+                "crawl": 1,
+                "extract": 0,
+                "embed": 1,
+                "ingest": 0
+            }
+        });
+
+        let rendered = server_status_text(&payload).expect("status payload should render");
+
+        assert!(rendered.contains("Crawl"));
+        assert!(rendered.contains("Embed"));
+        assert!(!rendered.contains("server mode"));
+        assert!(rendered.contains("2 docs"));
     }
 }

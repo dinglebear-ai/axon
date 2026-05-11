@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-05-10
+
+### Fixed
+
+- status: make `axon status --server-url ...` reuse the same detailed human renderer as local mode instead of collapsing server responses to totals-only output.
+- http: keep the shared client builder warning-free in test builds so clippy/hooks no longer fail on dead code and unused SSRF-guard plumbing.
+
 ## [1.9.1] - 2026-05-10
 
 ### Fixed

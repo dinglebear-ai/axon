@@ -9,6 +9,7 @@ use crate::services::system::{build_status_payload, load_status_jobs};
 use crate::services::types::ServiceJob;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Write as _;
 
 pub async fn run_status(
     cfg: &Config,
@@ -59,29 +60,62 @@ async fn run_status_impl(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let (jobs, _totals) = load_status_jobs(service_context).await?;
-    let crawl_url_map: HashMap<uuid::Uuid, &str> = jobs
-        .crawl
+    print!("{}", render_status_jobs(&jobs));
+    Ok(())
+}
+
+pub(crate) fn render_status_payload(payload: &serde_json::Value) -> Result<String, Box<dyn Error>> {
+    #[derive(serde::Deserialize)]
+    struct StatusPayload {
+        local_crawl_jobs: Vec<ServiceJob>,
+        local_extract_jobs: Vec<ServiceJob>,
+        local_embed_jobs: Vec<ServiceJob>,
+        local_ingest_jobs: Vec<ServiceJob>,
+    }
+
+    let payload: StatusPayload = serde_json::from_value(payload.clone())?;
+    Ok(render_status_jobs_from_slices(
+        &payload.local_crawl_jobs,
+        &payload.local_extract_jobs,
+        &payload.local_embed_jobs,
+        &payload.local_ingest_jobs,
+    ))
+}
+
+fn render_status_jobs(jobs: &crate::services::system::StatusJobs) -> String {
+    render_status_jobs_from_slices(&jobs.crawl, &jobs.extract, &jobs.embed, &jobs.ingest)
+}
+
+fn render_status_jobs_from_slices(
+    crawl_jobs: &[ServiceJob],
+    extract_jobs: &[ServiceJob],
+    embed_jobs: &[ServiceJob],
+    ingest_jobs: &[ServiceJob],
+) -> String {
+    let crawl_url_map: HashMap<uuid::Uuid, &str> = crawl_jobs
         .iter()
         .filter_map(|job| {
             let url = job.url.as_deref()?;
             Some((job.id, url))
         })
         .collect();
-    let embed_jobs_by_id: HashMap<String, &ServiceJob> = jobs
-        .embed
+    let embed_jobs_by_id: HashMap<String, &ServiceJob> = embed_jobs
         .iter()
         .map(|job| (job.id.to_string(), job))
         .collect();
-    let embed_doc_totals = embed_doc_totals_from_crawls(&jobs.crawl);
-    print_status_section(
+    let embed_doc_totals = embed_doc_totals_from_crawls(crawl_jobs);
+    let mut out = String::new();
+    write_status_section(
+        &mut out,
         "Crawl",
-        &jobs.crawl,
+        crawl_jobs,
         |job| job.url.clone().unwrap_or_else(|| job.id.to_string()),
         |job| crawl_progress_summary(job, &embed_jobs_by_id, &embed_doc_totals),
     );
-    print_status_section(
+    write_status_section(
+        &mut out,
         "Extract",
-        &jobs.extract,
+        extract_jobs,
         |job| {
             job.urls_json
                 .as_ref()
@@ -90,9 +124,10 @@ async fn run_status_impl(
         },
         extract_progress_summary,
     );
-    print_status_section(
+    write_status_section(
+        &mut out,
         "Embed",
-        &jobs.embed,
+        embed_jobs,
         |job| {
             job.target
                 .as_deref()
@@ -101,9 +136,10 @@ async fn run_status_impl(
         },
         |job| embed_progress_summary(job, embed_doc_totals.get(&job.id.to_string()).copied()),
     );
-    print_status_section(
+    write_status_section(
+        &mut out,
         "Ingest",
-        &jobs.ingest,
+        ingest_jobs,
         |job| match (&job.source_type, &job.target) {
             (Some(source_type), Some(target)) => format!("{source_type}: {target}"),
             (_, Some(target)) => target.clone(),
@@ -111,7 +147,7 @@ async fn run_status_impl(
         },
         ingest_progress_summary,
     );
-    Ok(())
+    out
 }
 
 fn crawl_progress_summary(
@@ -253,23 +289,25 @@ fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
     Some(format!("{chunks} chunks"))
 }
 
-fn print_status_section(
+fn write_status_section(
+    out: &mut String,
     title: &str,
     jobs: &[ServiceJob],
     label_for: impl Fn(&ServiceJob) -> String,
     progress_for: impl Fn(&ServiceJob) -> Option<String>,
 ) {
-    println!("{}", primary(title));
+    let _ = writeln!(out, "{}", primary(title));
     if jobs.is_empty() {
-        println!("  {}", muted("None."));
-        println!();
+        let _ = writeln!(out, "  {}", muted("None."));
+        let _ = writeln!(out);
         return;
     }
 
     for job in jobs.iter().take(10) {
         let label = label_for(job);
         if let Some(p) = progress_for(job) {
-            println!(
+            let _ = writeln!(
+                out,
                 "  {} {} {} {}  {}",
                 symbol_for_status(&job.status),
                 human_status_text(&job.status),
@@ -278,7 +316,8 @@ fn print_status_section(
                 muted(&p),
             );
         } else {
-            println!(
+            let _ = writeln!(
+                out,
                 "  {} {} {} {}",
                 symbol_for_status(&job.status),
                 human_status_text(&job.status),
@@ -291,10 +330,10 @@ fn print_status_section(
             .as_deref()
             .and_then(|err| job_error_hint(&job.status, err))
         {
-            println!("    {}", muted(&err));
+            let _ = writeln!(out, "    {}", muted(&err));
         }
     }
-    println!();
+    let _ = writeln!(out);
 }
 
 fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
@@ -309,4 +348,63 @@ fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
         };
     }
     Some(error_text.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::system::StatusJobs;
+    use chrono::Utc;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn job(status: &str) -> ServiceJob {
+        ServiceJob {
+            id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
+            status: status.to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            error_text: None,
+            url: Some("https://example.com/docs".to_string()),
+            source_type: None,
+            target: Some("https://example.com/docs".to_string()),
+            urls_json: None,
+            result_json: Some(json!({
+                "pages_crawled": 3,
+                "md_created": 2,
+                "elapsed_ms": 1200,
+                "docs_embedded": 2,
+                "docs_total": 2,
+                "chunks_embedded": 8
+            })),
+            config_json: None,
+        }
+    }
+
+    #[test]
+    fn render_status_payload_matches_local_renderer() {
+        let jobs = StatusJobs {
+            crawl: vec![job("completed")],
+            extract: Vec::new(),
+            embed: vec![job("completed")],
+            ingest: Vec::new(),
+        };
+        let payload = build_status_payload(
+            &jobs.crawl,
+            &jobs.extract,
+            &jobs.embed,
+            &jobs.ingest,
+            &crate::services::types::StatusTotals::default(),
+        );
+
+        let from_jobs = render_status_jobs(&jobs);
+        let from_payload = render_status_payload(&payload).expect("payload should render");
+
+        assert_eq!(from_payload, from_jobs);
+        assert!(from_payload.contains("Crawl"));
+        assert!(from_payload.contains("Embed"));
+        assert!(from_payload.contains("2 docs"));
+    }
 }
