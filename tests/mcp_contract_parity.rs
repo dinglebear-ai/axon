@@ -50,17 +50,26 @@ fn pagination_limit_clamped_to_maximum_500() {
 
 #[test]
 fn retrieve_options_none_passes_through() {
-    let r = to_retrieve_options(None);
-    assert_eq!(r, RetrieveOptions { max_points: None });
+    let r = to_retrieve_options(None, None, None);
+    assert_eq!(
+        r,
+        RetrieveOptions {
+            max_points: None,
+            cursor: None,
+            token_budget: None,
+        }
+    );
 }
 
 #[test]
 fn retrieve_options_some_value_passes_through() {
-    let r = to_retrieve_options(Some(128));
+    let r = to_retrieve_options(Some(128), Some("abc".to_string()), Some(2048));
     assert_eq!(
         r,
         RetrieveOptions {
-            max_points: Some(128)
+            max_points: Some(128),
+            cursor: Some("abc".to_string()),
+            token_budget: Some(2048),
         }
     );
 }
@@ -202,6 +211,11 @@ fn retrieve_result_chunks_are_empty_for_zero_count() {
         truncated: false,
         warnings: Vec::new(),
         variant_errors: Vec::new(),
+        token_estimate: None,
+        next_cursor: None,
+        remaining_tokens_estimate: None,
+        backend: None,
+        refresh_status: None,
     };
     assert_eq!(r.chunk_count, 0);
     assert!(r.content.is_empty());
@@ -300,9 +314,13 @@ fn search_options_equality() {
 fn retrieve_options_equality() {
     let a = RetrieveOptions {
         max_points: Some(50),
+        cursor: Some("cursor".to_string()),
+        token_budget: Some(10_000),
     };
     let b = RetrieveOptions {
         max_points: Some(50),
+        cursor: Some("cursor".to_string()),
+        token_budget: Some(10_000),
     };
     assert_eq!(a, b);
 }

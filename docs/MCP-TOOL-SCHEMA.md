@@ -9,7 +9,7 @@ Last Modified: 2026-05-08
 - Tool name: `axon`
 - Primary route field: `action`
 - Canonical route form: `action` + optional `subaction`
-- Response control field: `response_mode` (`path|inline|both|auto_inline`, default `path`)
+- Response control field: `response_mode` (`path|inline|both|auto_inline`; most actions default `path`, while `scrape`/`retrieve` default to inline paged reads)
 
 Code references:
 - `src/mcp/schema.rs`
@@ -46,7 +46,8 @@ For lifecycle management (`status|cancel|list|cleanup|clear|recover`), use canon
 ```
 
 ## Response Policy (Context-Safe Defaults)
-- Default is artifact-first (`response_mode=path`).
+- Most actions default to artifact-first (`response_mode=path`).
+- `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.
 - Heavy operations write result artifacts to `.cache/axon-mcp/`.
 - Tool response returns compact metadata only by default:
   - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`
@@ -67,8 +68,8 @@ These actions do not require `subaction`:
 | `map` | `url` (string) | `limit`, `offset`, `response_mode` |
 | `query` | `query` (string) | `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `research` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
-| `retrieve` | `url` (string) | `max_points`, `collection`, `since`, `before`, `response_mode` |
-| `scrape` | `url` (string) | `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector` |
+| `retrieve` | `url` (string) | `max_points`, `collection`, `since`, `before`, `response_mode`, `cursor`, `token_budget` |
+| `scrape` | `url` (string) | `render_mode`, `format`, `embed`, `response_mode`, `root_selector`, `exclude_selector`, `cursor`, `token_budget` |
 | `screenshot` | `url` (string) | `full_page`, `viewport`, `output`, `response_mode` |
 | `search` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
 | `sources` | -- | `limit`, `offset`, `response_mode` |

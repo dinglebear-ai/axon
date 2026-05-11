@@ -3,6 +3,7 @@ pub mod context;
 pub mod crawl;
 pub mod crawl_sync;
 pub mod debug;
+pub mod document;
 pub mod embed;
 pub mod error;
 pub mod events;

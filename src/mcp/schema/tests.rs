@@ -119,7 +119,9 @@ fn parse_retrieve_action_with_collection_and_time_filters() {
         "collection": "docs_v2",
         "since": "7d",
         "before": "2026-05-03T00:00:00Z",
-        "response_mode": "inline"
+        "response_mode": "inline",
+        "cursor": "opaque-cursor",
+        "token_budget": 8192
     }));
     let result = parse_axon_request(raw);
     assert!(
@@ -132,6 +134,8 @@ fn parse_retrieve_action_with_collection_and_time_filters() {
         assert_eq!(req.collection.as_deref(), Some("docs_v2"));
         assert_eq!(req.since.as_deref(), Some("7d"));
         assert_eq!(req.before.as_deref(), Some("2026-05-03T00:00:00Z"));
+        assert_eq!(req.cursor.as_deref(), Some("opaque-cursor"));
+        assert_eq!(req.token_budget, Some(8192));
         assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
     } else {
         panic!("expected Retrieve variant");
@@ -191,12 +195,16 @@ fn parse_embed_start_action() {
 fn parse_scrape_action() {
     let raw = obj(json!({
         "action": "scrape",
-        "url": "https://example.com/page"
+        "url": "https://example.com/page",
+        "cursor": "opaque-cursor",
+        "token_budget": 4096
     }));
     let result = parse_axon_request(raw);
     assert!(result.is_ok(), "scrape should parse successfully");
     if let Ok(AxonRequest::Scrape(s)) = result {
         assert_eq!(s.url.as_deref(), Some("https://example.com/page"));
+        assert_eq!(s.cursor.as_deref(), Some("opaque-cursor"));
+        assert_eq!(s.token_budget, Some(4096));
     } else {
         panic!("expected Scrape variant");
     }

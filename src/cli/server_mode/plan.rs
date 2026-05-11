@@ -61,6 +61,8 @@ pub(super) fn server_action_plan(cfg: &Config) -> Result<ServerActionPlan, Box<d
                     response_mode: Some(ResponseMode::Inline),
                     root_selector: cfg.root_selector.clone(),
                     exclude_selector: cfg.exclude_selector.clone(),
+                    cursor: None,
+                    token_budget: None,
                 }),
                 label: "scrape",
                 poll_family: None,

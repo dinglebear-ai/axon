@@ -323,10 +323,17 @@ fn smoke_pagination_type_is_constructible() {
 fn smoke_retrieve_options_type_is_constructible() {
     let r = RetrieveOptions {
         max_points: Some(100),
+        cursor: Some("cursor".to_string()),
+        token_budget: Some(4096),
     };
     assert_eq!(r.max_points, Some(100));
+    assert_eq!(r.cursor.as_deref(), Some("cursor"));
 
-    let r2 = RetrieveOptions { max_points: None };
+    let r2 = RetrieveOptions {
+        max_points: None,
+        cursor: None,
+        token_budget: None,
+    };
     assert!(r2.max_points.is_none());
 }
 

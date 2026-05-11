@@ -9,6 +9,7 @@ use crate::mcp::schema::{
     AskRequest, AxonToolResponse, EvaluateRequest, MapRequest, QueryRequest, ResearchRequest,
     RetrieveRequest, ScrapeRequest, SearchRequest, SuggestRequest,
 };
+use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
     map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
 };
@@ -68,7 +69,7 @@ impl AxonMcpServer {
             .url
             .ok_or_else(|| invalid_params("url is required for retrieve"))?;
         let response_mode = req.response_mode;
-        let opts = to_retrieve_options(req.max_points);
+        let opts = to_retrieve_options(req.max_points, req.cursor.clone(), req.token_budget);
         let collection = req
             .collection
             .as_deref()
@@ -89,12 +90,9 @@ impl AxonMcpServer {
             "retrieve",
             response_mode,
             &format!("retrieve-{}", slugify(&target, 56)),
-            serde_json::json!({
-                "url": target,
-                "chunks": result.chunk_count,
-                "content": result.content,
-            }),
-            InlineHint::AlwaysPath,
+            serde_json::to_value(result)
+                .map_err(|e| internal_error(format!("serialize retrieve result: {e}")))?,
+            InlineHint::Document,
         )
         .await
     }
@@ -290,13 +288,34 @@ impl AxonMcpServer {
         let result = scrape_svc::scrape(&cfg, &url, None)
             .await
             .map_err(|e| logged_internal_error(&format!("scrape '{url}'"), e.as_ref()))?;
+        let page = document_svc::paginate_document(
+            &result.output,
+            req.cursor.as_deref(),
+            req.token_budget,
+            DocumentBackend::LiveScrape,
+        )
+        .map_err(|e| invalid_params(format!("invalid scrape pagination parameters: {e}")))?;
+        let payload = serde_json::json!({
+            "url": result.url,
+            "status_code": result.payload.get("status_code").cloned().unwrap_or(serde_json::Value::Null),
+            "title": result.payload.get("title").cloned().unwrap_or(serde_json::Value::Null),
+            "description": result.payload.get("description").cloned().unwrap_or(serde_json::Value::Null),
+            "content": page.content,
+            "truncated": page.truncated,
+            "token_estimate": page.token_estimate,
+            "next_cursor": page.next_cursor,
+            "remaining_tokens_estimate": page.remaining_tokens_estimate,
+            "backend": page.backend,
+            "content_format": format!("{:?}", cfg.format),
+            "artifact_handle": result.artifact_handle,
+        });
         respond_with_mode(
             "scrape",
             "scrape",
             response_mode,
             &format!("scrape-{}", slugify(&url, 56)),
-            result.payload,
-            InlineHint::AlwaysPath,
+            payload,
+            InlineHint::Document,
         )
         .await
     }

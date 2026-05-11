@@ -336,9 +336,17 @@ pub fn to_map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions
     }
 }
 
-/// Map MCP `RetrieveOptions` (max_points field) to service `RetrieveOptions`.
-pub fn to_retrieve_options(max_points: Option<usize>) -> RetrieveOptions {
-    RetrieveOptions { max_points }
+/// Map MCP retrieve params to service `RetrieveOptions`.
+pub fn to_retrieve_options(
+    max_points: Option<usize>,
+    cursor: Option<String>,
+    token_budget: Option<usize>,
+) -> RetrieveOptions {
+    RetrieveOptions {
+        max_points,
+        cursor,
+        token_budget: token_budget.map(|budget| budget.clamp(1, 50_000)),
+    }
 }
 
 /// Map MCP `SearchTimeRange` enum to service `ServiceTimeRange`.

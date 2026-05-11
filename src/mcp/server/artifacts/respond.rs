@@ -13,6 +13,8 @@ use uuid::Uuid;
 pub enum InlineHint {
     /// Normal auto-inline behavior based on payload size.
     Default,
+    /// Document reads default to inline mode and use a larger clip budget.
+    Document,
     /// Extract these top-level fields into `key_fields` in the response.
     /// The full payload is still written to the artifact.
     Fields(&'static [&'static str]),
@@ -111,6 +113,7 @@ pub async fn respond_with_mode(
     payload: serde_json::Value,
     hint: InlineHint,
 ) -> Result<AxonToolResponse, ErrorData> {
+    let is_document = matches!(hint, InlineHint::Document);
     // AlwaysPath overrides everything.
     if matches!(hint, InlineHint::AlwaysPath) {
         let artifact = write_json_artifact(artifact_stem, &payload).await?;
@@ -146,6 +149,7 @@ pub async fn respond_with_mode(
     }
 
     let effective_mode = match mode {
+        None if is_document => ResponseMode::Inline,
         Some(ResponseMode::AutoInline) | None => {
             let payload_bytes = serde_json::to_string(&payload)
                 .map(|s| s.len())
@@ -181,7 +185,7 @@ pub async fn respond_with_mode(
             }),
         )),
         ResponseMode::Inline => {
-            let (inline, truncated) = clip_inline_json(&payload, 12_000);
+            let (inline, truncated) = clip_inline_json(&payload, inline_clip_chars(is_document));
             Ok(AxonToolResponse::ok(
                 action,
                 subaction,
@@ -195,7 +199,7 @@ pub async fn respond_with_mode(
             ))
         }
         ResponseMode::Both => {
-            let (inline, truncated) = clip_inline_json(&payload, 12_000);
+            let (inline, truncated) = clip_inline_json(&payload, inline_clip_chars(is_document));
             Ok(AxonToolResponse::ok(
                 action,
                 subaction,
@@ -215,6 +219,10 @@ pub async fn respond_with_mode(
 
 fn inline_bytes_threshold() -> usize {
     env_usize_clamped("AXON_INLINE_BYTES_THRESHOLD", 8_192, 0, usize::MAX)
+}
+
+fn inline_clip_chars(is_document: bool) -> usize {
+    if is_document { 60_000 } else { 12_000 }
 }
 
 /// Extract named top-level fields from `payload` into a new object.
@@ -326,6 +334,30 @@ mod tests {
         );
         assert!(resp.data["artifact_handle"]["display_path"].is_string());
         assert!(resp.data["shape"].is_object());
+        restore_artifact_env(prev);
+    }
+
+    #[tokio::test]
+    #[allow(unsafe_code)]
+    #[allow(clippy::await_holding_lock)]
+    async fn document_hint_defaults_to_inline_mode() {
+        let _guard = ARTIFACT_ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let (_tmp, prev) = scoped_artifact_root();
+        let payload = serde_json::json!({"content": "hello", "truncated": false});
+        let resp = respond_with_mode(
+            "retrieve",
+            "retrieve",
+            None,
+            "retrieve-doc",
+            payload.clone(),
+            InlineHint::Document,
+        )
+        .await
+        .unwrap();
+        assert_eq!(resp.data["response_mode"], "inline");
+        assert_eq!(resp.data["inline"], payload);
         restore_artifact_env(prev);
     }
 

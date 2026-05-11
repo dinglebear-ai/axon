@@ -248,7 +248,7 @@ Valid `response_mode` values: `path|inline|both|auto_inline`. The hyphenated `au
 **Per-action response overrides (InlineHint):** Some actions override the standard response behavior regardless of `response_mode`:
 
 - **`ask`** and **`research`**: Always write the full payload to an artifact AND include `key_fields.answer` / `key_fields.summary` directly in the path-mode response. This means the LLM answer is always immediately readable without an `artifacts.head` follow-up, regardless of its length.
-- **`scrape`** and **`retrieve`**: Always return path mode regardless of the requested `response_mode`. These payloads can be megabytes of content — use `artifacts.head` or `artifacts.grep` with `relative_path` to access the content.
+- **`scrape`** and **`retrieve`**: Default to inline-first paged document responses. Use `cursor` to continue reading large documents, or `response_mode=path|both` when you want an artifact copy for inspection/debugging.
 
 ### Unified Artifact Access Model
 
@@ -264,6 +264,17 @@ The `path` field (absolute filesystem path) is present in artifact metadata for 
 ### Auto-inline for Small Payloads
 
 When `response_mode` is omitted or set to `auto_inline`, any payload serializing to ≤ `AXON_INLINE_BYTES_THRESHOLD` bytes (default 8 192) is returned inline without requiring an `artifacts.read` follow-up call. The response includes `"response_mode": "auto-inline"` and the full `data` object. Larger auto-mode payloads fall back to path metadata. Set `AXON_INLINE_BYTES_THRESHOLD=0` to disable automatic inlining.
+
+Document-reading actions are an exception: `scrape` and `retrieve` default to inline paged responses even when `response_mode` is omitted. Both actions share the same continuation contract:
+
+- `content` — current slice of the document
+- `truncated` — whether more content remains or the reconstructed source was incomplete
+- `token_estimate` — conservative token estimate for this slice
+- `next_cursor` — opaque cursor for the next slice
+- `remaining_tokens_estimate` — conservative estimate of unread content
+- `backend` — `qdrant`, `stored_source`, or `live_scrape`
+
+`retrieve` also returns `requested_url`, `matched_url`, `warnings`, `variant_errors`, and `refresh_status` so callers can see whether the content came from indexed chunks, a stored source file, or an on-demand live refresh.
 
 ### Shape Preview Improvements
 

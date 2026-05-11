@@ -276,6 +276,10 @@ pub struct RetrieveRequest {
     /// Restricts retrieved chunks to content indexed on or before this date.
     pub before: Option<String>,
     pub response_mode: Option<ResponseMode>,
+    /// Opaque cursor for fetching the next slice of document content.
+    pub cursor: Option<String>,
+    /// Maximum tokens to return in a single response slice. Default: 10,000.
+    pub token_budget: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -385,6 +389,10 @@ pub struct ScrapeRequest {
     pub root_selector: Option<String>,
     /// CSS selector to exclude elements from extraction (e.g. ".sidebar, .ads").
     pub exclude_selector: Option<String>,
+    /// Opaque cursor for fetching the next slice of document content.
+    pub cursor: Option<String>,
+    /// Maximum tokens to return in a single response slice. Default: 10,000.
+    pub token_budget: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

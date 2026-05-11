@@ -29,7 +29,7 @@ This single-tool pattern routes all operations through `action` + optional `suba
 |-----------|------|----------|-------------|
 | `action` | enum | yes | Operation to perform |
 | `subaction` | enum | for lifecycle families | Sub-operation (start, status, cancel, etc.) |
-| `response_mode` | enum | no | Response format: `path` (default), `inline`, `both`, `auto_inline` |
+| `response_mode` | enum | no | Response format: `path`, `inline`, `both`, `auto_inline` (most actions default to `path`; `scrape` and `retrieve` default to inline paged reads) |
 
 Additional parameters vary by action. See sections below.
 
@@ -59,10 +59,12 @@ Error responses:
 
 | Mode | Behavior |
 |------|----------|
-| `path` (default) | Write result to `.cache/axon-mcp/` artifact file, return metadata (path, bytes, sha256, preview) |
+| `path` | Write result to `.cache/axon-mcp/` artifact file, return metadata (path, bytes, sha256, preview) |
 | `inline` | Return full result inline (capped/truncated) |
 | `both` | Write artifact and return inline content |
 | `auto_inline` | Inline if payload is below `AXON_INLINE_BYTES_THRESHOLD` (default 8192), otherwise artifact |
+
+`scrape` and `retrieve` are the document-reading exceptions: when `response_mode` is omitted they return inline paged content first, with `next_cursor` for continuation.
 
 ## Direct actions
 
@@ -84,6 +86,10 @@ Scrape one or more URLs to markdown.
 | `embed` | bool | `true` | Auto-embed content into Qdrant |
 | `root_selector` | string | -- | CSS selector for content root |
 | `exclude_selector` | string | -- | CSS selector for elements to exclude |
+| `cursor` | string | -- | Opaque continuation cursor for the next document slice |
+| `token_budget` | usize | `10000` | Approximate max tokens to return in this slice |
+
+Returns inline page content with `content`, `truncated`, `token_estimate`, `next_cursor`, `remaining_tokens_estimate`, and `backend`.
 
 ### query
 
@@ -179,7 +185,7 @@ Parameters are the same as `search`.
 
 ### retrieve
 
-Fetch stored document chunks from Qdrant by URL.
+Read a known document URL from the best available backend: Qdrant chunks first, then stored source text, then live scrape refresh on miss or stale stored content.
 
 ```json
 { "action": "retrieve", "url": "https://docs.example.com/guide" }
@@ -189,6 +195,10 @@ Fetch stored document chunks from Qdrant by URL.
 |-----------|------|---------|-------------|
 | `url` | string | -- | URL to retrieve chunks for |
 | `max_points` | usize | -- | Limit returned chunks |
+| `cursor` | string | -- | Opaque continuation cursor for the next document slice |
+| `token_budget` | usize | `10000` | Approximate max tokens to return in this slice |
+
+Returns inline page content with `requested_url`, `matched_url`, `backend`, `warnings`, `variant_errors`, `refresh_status`, and the shared paging fields.
 
 ### map
 
@@ -272,6 +282,8 @@ MCP artifact file management:
 ```
 
 Subactions: `head`, `grep`, `wc`, `read`, `list`, `delete`, `clean`, `search`.
+
+Use `artifacts` for raw file/debug/admin access. Prefer `scrape`, `retrieve`, `query`, and `ask` for normal document consumption.
 
 ## Info actions
 

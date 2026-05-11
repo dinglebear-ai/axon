@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-05-11
+
+### Changed
+
+- mcp: make `scrape` and `retrieve` inline-first document readers with a shared paged-content contract (`content`, `token_estimate`, `next_cursor`, `remaining_tokens_estimate`, `backend`) instead of forcing artifact-path responses.
+- retrieval: promote `retrieve` to the canonical document reader by unifying Qdrant, stored source, and live scrape refresh backends behind one typed response with explicit warnings and refresh metadata.
+
+### Fixed
+
+- cli: surface retrieve backend, continuation, and refresh metadata in human and JSON output so large document reads can continue without falling back to raw artifacts.
+- docs: reposition `artifacts` as a debug/admin surface and document the new content-first `scrape`/`retrieve` flows across MCP references.
+
 ## [1.9.5] - 2026-05-11
 
 ### Fixed

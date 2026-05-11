@@ -63,7 +63,7 @@ Each service function returns a typed result struct defined in `src/services/typ
 
 ## Artifact response pattern
 
-Heavy operations write results to artifact files instead of returning inline:
+Most heavy operations write results to artifact files instead of returning inline:
 
 ```
 1. Handler executes operation
@@ -90,6 +90,8 @@ enum ResponseMode {
 ```
 
 `auto_inline` checks `AXON_INLINE_BYTES_THRESHOLD` (default 8192 bytes). Payloads at or below the threshold are returned inline without requiring a separate artifact read.
+
+`scrape` and `retrieve` are the document-reader exceptions: they default to inline paged responses and use artifacts as a secondary debug/inspection path rather than the primary reading UX.
 
 ## Error handling
 

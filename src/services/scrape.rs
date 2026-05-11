@@ -3,7 +3,7 @@ use crate::core::content::build_selector_config;
 use crate::core::http::normalize_url;
 use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
 use crate::services::events::ServiceEvent;
-use crate::services::types::{ArtifactHandle, ScrapeResult};
+use crate::services::types::{ArtifactHandle, DocumentBackend, ScrapeResult};
 use std::error::Error;
 use tokio::sync::mpsc;
 
@@ -28,6 +28,11 @@ pub fn map_scrape_payload(payload: serde_json::Value) -> Result<ScrapeResult, Bo
         markdown,
         output,
         artifact_handle: None,
+        truncated: false,
+        token_estimate: None,
+        next_cursor: None,
+        remaining_tokens_estimate: None,
+        backend: Some(DocumentBackend::LiveScrape),
     })
 }
 

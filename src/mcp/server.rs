@@ -49,7 +49,7 @@ static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
     let schema = rmcp::schemars::schema_for!(AxonRequest);
     let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
     format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for subaction families\n- `response_mode` supports `path|inline|both|auto_inline` and defaults to `path`\n\n## JSON Schema\n\n```json\n{}\n```\n",
+        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for subaction families\n- `response_mode` supports `path|inline|both|auto_inline`; most actions default to `path`, while `scrape` and `retrieve` default to inline paged document reads\n\n## JSON Schema\n\n```json\n{}\n```\n",
         MCP_TOOL_SCHEMA_URI, schema_json
     )
 });

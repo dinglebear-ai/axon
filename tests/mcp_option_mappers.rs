@@ -60,17 +60,26 @@ fn pagination_limit_clamped_at_1_minimum() {
 
 #[test]
 fn retrieve_options_none_passthrough() {
-    let r = to_retrieve_options(None);
-    assert_eq!(r, RetrieveOptions { max_points: None });
+    let r = to_retrieve_options(None, None, None);
+    assert_eq!(
+        r,
+        RetrieveOptions {
+            max_points: None,
+            cursor: None,
+            token_budget: None,
+        }
+    );
 }
 
 #[test]
 fn retrieve_options_some_passthrough() {
-    let r = to_retrieve_options(Some(42));
+    let r = to_retrieve_options(Some(42), Some("cursor".to_string()), Some(5000));
     assert_eq!(
         r,
         RetrieveOptions {
-            max_points: Some(42)
+            max_points: Some(42),
+            cursor: Some("cursor".to_string()),
+            token_budget: Some(5000),
         }
     );
 }
