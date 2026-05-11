@@ -27,7 +27,7 @@ pub(super) async fn maybe_handle_subcommand(
         "status" => {
             let id = parse_required_job_id(cfg, "status")?;
             let job = job_service::job_status(service_context, JobKind::Crawl, id).await?;
-            handle_status_subcommand(cfg, job, id).await?;
+            render_status_subcommand(cfg, job, id)?;
         }
         "cancel" => {
             let id = parse_required_job_id(cfg, "cancel")?;
@@ -151,7 +151,7 @@ fn print_status_metrics(metrics: &serde_json::Value) {
     }
 }
 
-async fn handle_status_subcommand(
+pub(crate) fn render_status_subcommand(
     cfg: &Config,
     job: Option<ServiceJob>,
     id: Uuid,
@@ -249,12 +249,11 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
     }
 }
 
-async fn handle_list_subcommand(
+pub(crate) fn render_list_subcommand(
     cfg: &Config,
-    service_context: &ServiceContext,
+    all_jobs: Vec<ServiceJob>,
+    total: i64,
 ) -> Result<(), Box<dyn Error>> {
-    let all_jobs = job_service::list_jobs(service_context, JobKind::Crawl, 50, 0).await?;
-    let total = all_jobs.len() as i64;
     let jobs = filter_jobs_for_status_view(cfg, all_jobs);
     if cfg.json_output {
         let entries: Vec<JobSummaryEntry> =
@@ -298,4 +297,13 @@ async fn handle_list_subcommand(
         print_list_footer(jobs.len(), total, 50, 0);
     }
     Ok(())
+}
+
+async fn handle_list_subcommand(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
+    let all_jobs = job_service::list_jobs(service_context, JobKind::Crawl, 50, 0).await?;
+    let total = all_jobs.len() as i64;
+    render_list_subcommand(cfg, all_jobs, total)
 }

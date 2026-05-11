@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-05-11
+
+### Fixed
+
+- cli: finish the server-mode renderer split so scrape, screenshot, crawl, extract, embed, ingest, and sessions reuse a shared typed response renderer instead of duplicating per-command formatting logic.
+- cli: keep the command-level emit/render helpers aligned across local and server paths, and update the CLI contract smoke tests for the expanded retrieve option/result types.
+
 ## [1.10.0] - 2026-05-11
 
 ### Changed

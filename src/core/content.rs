@@ -448,31 +448,28 @@ pub fn is_excluded_url_path(url: &str, prefixes: &[String]) -> bool {
 
 fn is_excluded_path(path: &str, prefixes: &[String]) -> bool {
     prefixes.iter().any(|raw| {
-        // Inline normalize_prefix logic without allocating — prefixes are pre-validated
-        // at config time so the hot path is the common case (already has leading slash).
         let p = raw.trim().trim_end_matches('/');
         if p.is_empty() || p == "/" {
             return false;
         }
-        // Common case: prefix already has leading slash (no allocation needed).
-        // Treat `/` and `-` as word boundaries to match engine.rs locale logic
-        // (e.g. `/ja` blocks `/ja/docs` AND `/ja-jp/docs`).
         if p.starts_with('/') {
-            return path == p
-                || (path.starts_with(p)
+            return path.eq_ignore_ascii_case(p)
+                || (path.len() > p.len()
+                    && path[..p.len()].eq_ignore_ascii_case(p)
                     && matches!(
                         path.as_bytes().get(p.len()),
                         Some(&b'/') | Some(&b'-') | None
                     ));
         }
-        // Rare case: prefix lacks leading slash — compare with implicit "/".
-        path == format!("/{p}")
-            || path.starts_with('/')
-                && path[1..].starts_with(p)
+        let implicit_p = format!("/{p}");
+        path.eq_ignore_ascii_case(&implicit_p)
+            || (path.starts_with('/')
+                && path.len() > p.len()
+                && path[1..p.len() + 1].eq_ignore_ascii_case(p)
                 && matches!(
                     path.as_bytes().get(p.len() + 1),
                     Some(&b'/') | Some(&b'-') | None
-                )
+                ))
     })
 }
 
@@ -536,6 +533,19 @@ mod exclude_path_tests {
         ));
         assert!(!is_excluded_url_path(
             "https://example.com/docs/javascript",
+            &prefixes
+        ));
+    }
+
+    #[test]
+    fn excludes_case_insensitive() {
+        let prefixes = vec!["/zh-tw".to_string(), "/ZH-CN".to_string()];
+        assert!(is_excluded_url_path(
+            "https://example.com/zh-TW/mcp",
+            &prefixes
+        ));
+        assert!(is_excluded_url_path(
+            "https://example.com/zh-cn/mcp",
             &prefixes
         ));
     }

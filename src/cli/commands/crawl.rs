@@ -1,6 +1,6 @@
 mod audit;
 mod runtime;
-mod subcommands;
+pub(crate) mod subcommands;
 mod sync_crawl;
 
 #[cfg(test)]
@@ -218,11 +218,12 @@ fn print_crawl_overrides(cfg: &Config) {
     }
 }
 
-fn print_async_crawl_result(
+pub(crate) fn print_async_crawl_result(
     cfg: &Config,
     display: &str,
     jobs: &[CrawlStartJob],
     disposition: StartDisposition,
+    via_server: bool,
 ) {
     let queued = disposition == StartDisposition::Enqueued;
     let headline = if queued {
@@ -241,7 +242,13 @@ fn print_async_crawl_result(
     print_summary_row(
         "Runtime",
         if queued {
-            "background workers"
+            if via_server {
+                "server workers"
+            } else {
+                "background workers"
+            }
+        } else if via_server {
+            "completed on server"
         } else {
             "completed in process"
         },
@@ -311,7 +318,13 @@ async fn run_async_enqueue_multi(
         }
     }
     if !cfg.json_output {
-        print_async_crawl_result(cfg, &display, &outcome.result.jobs, outcome.disposition);
+        print_async_crawl_result(
+            cfg,
+            &display,
+            &outcome.result.jobs,
+            outcome.disposition,
+            false,
+        );
     }
     Ok(())
 }

@@ -14,6 +14,37 @@ use crate::services::types::{JobListResult, StartDisposition};
 use std::error::Error;
 use uuid::Uuid;
 
+pub(crate) fn render_extract_enqueue_result(
+    cfg: &Config,
+    job_id: &str,
+    disposition: StartDisposition,
+    via_server: bool,
+) {
+    let status = if disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
+    };
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({"job_id": job_id, "status": status})
+        );
+    } else {
+        println!("  {} {}", primary("Extract Job"), accent(job_id));
+        println!("  {}", muted(&format!("Status: {status}")));
+        if disposition == StartDisposition::Completed {
+            let message = if via_server {
+                "Server completed the extract before returning."
+            } else {
+                "Lite mode completed the extract in-process."
+            };
+            println!("  {}", muted(message));
+        }
+        println!("Job ID: {job_id}");
+    }
+}
+
 pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
         if maybe_handle_extract_subcommand(cfg, service_context).await? {
@@ -144,16 +175,8 @@ async fn enqueue_extract_job(
     } else {
         "pending"
     };
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({"job_id": job_id, "status": status})
-        );
-    } else {
-        println!("  {} {}", primary("Extract Job"), accent(&job_id));
-        println!("  {}", muted(&format!("Status: {status}")));
-        println!("Job ID: {job_id}");
-    }
+    let _ = status;
+    render_extract_enqueue_result(cfg, &job_id, outcome.disposition, false);
     Ok(())
 }
 

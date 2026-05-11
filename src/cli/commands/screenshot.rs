@@ -12,6 +12,41 @@ use crate::services::screenshot::screenshot_capture;
 use std::error::Error;
 use util::require_chrome;
 
+pub(crate) fn print_screenshot_preamble(cfg: &Config, normalized: &str) {
+    print_phase("◐", "Screenshot", normalized);
+    println!("  {}", primary("Options:"));
+    print_option("fullPage", &cfg.screenshot_full_page.to_string());
+    print_option(
+        "viewport",
+        &format!("{}x{}", cfg.viewport_width, cfg.viewport_height),
+    );
+    print_option(
+        "chromeRemoteUrl",
+        cfg.chrome_remote_url.as_deref().unwrap_or("none"),
+    );
+    println!();
+}
+
+pub(crate) fn emit_screenshot_result(
+    cfg: &Config,
+    normalized: &str,
+    result: &crate::services::types::ScreenshotResult,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string(result)?);
+        log_done(&format!(
+            "command=screenshot url={normalized} bytes={} format=png",
+            result.size_bytes
+        ));
+    } else {
+        log_done(&format!(
+            "saved: {} ({} bytes) url={normalized} format=png",
+            result.path, result.size_bytes
+        ));
+    }
+    Ok(())
+}
+
 pub async fn run_screenshot(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let urls = parse_urls(cfg);
     if urls.is_empty() {
@@ -31,33 +66,10 @@ async fn screenshot_one(cfg: &Config, url: &str) -> Result<(), Box<dyn Error>> {
     let normalized = normalize_url(url);
     validate_url(&normalized)?;
 
-    print_phase("◐", "Screenshot", &normalized);
-    println!("  {}", primary("Options:"));
-    print_option("fullPage", &cfg.screenshot_full_page.to_string());
-    print_option(
-        "viewport",
-        &format!("{}x{}", cfg.viewport_width, cfg.viewport_height),
-    );
-    print_option(
-        "chromeRemoteUrl",
-        cfg.chrome_remote_url.as_deref().unwrap_or("none"),
-    );
-    println!();
+    print_screenshot_preamble(cfg, &normalized);
 
     let result = screenshot_capture(cfg, &normalized).await?;
-
-    if cfg.json_output {
-        println!("{}", serde_json::to_string(&result)?);
-        log_done(&format!(
-            "command=screenshot url={normalized} bytes={} format=png",
-            result.size_bytes
-        ));
-    } else {
-        log_done(&format!(
-            "saved: {} ({} bytes) url={normalized} format=png",
-            result.path, result.size_bytes
-        ));
-    }
+    emit_screenshot_result(cfg, &normalized, &result)?;
 
     Ok(())
 }

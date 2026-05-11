@@ -37,7 +37,7 @@ pub async fn maybe_handle_ingest_subcommand(
         "status" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "status")?;
             let job = job_service::job_status(service_context, JobKind::Ingest, id).await?;
-            handle_ingest_status(cfg, job, id).await?;
+            render_ingest_status(cfg, job, id)?;
         }
         "cancel" => {
             let id = parse_ingest_job_id(cfg, cmd_name, "cancel")?;
@@ -57,7 +57,7 @@ pub async fn maybe_handle_ingest_subcommand(
             };
             let jobs = job_service::list_ingest_jobs(service_context, source_filter, 50, 0).await?;
             let total = jobs.len() as i64;
-            handle_ingest_list(cfg, jobs, total, cmd_name).await?;
+            render_ingest_list(cfg, jobs, total, cmd_name)?;
         }
         "cleanup" => {
             let removed = job_service::cleanup_jobs(service_context, JobKind::Ingest).await?;
@@ -160,7 +160,7 @@ fn ingest_progress(result_json: &Option<serde_json::Value>) -> Option<String> {
     None
 }
 
-async fn handle_ingest_status(
+pub(crate) fn render_ingest_status(
     cfg: &Config,
     job: Option<ServiceJob>,
     id: Uuid,
@@ -204,7 +204,7 @@ async fn handle_ingest_status(
     Ok(())
 }
 
-async fn handle_ingest_list(
+pub(crate) fn render_ingest_list(
     cfg: &Config,
     all_jobs: Vec<ServiceJob>,
     total: i64,

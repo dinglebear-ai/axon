@@ -1,8 +1,8 @@
 mod plan;
+mod render;
 
 use crate::cli;
 use crate::core::config::{CommandKind, Config};
-use crate::core::ui::{accent, muted, primary, success, symbol_for_status};
 use crate::mcp::schema::AxonRequest;
 use crate::services::types::{ClientActionRequest, ClientActionResponse};
 use std::error::Error;
@@ -69,7 +69,7 @@ pub(crate) async fn run_server_mode_command(cfg: &Config) -> Result<(), Box<dyn 
     };
     let response = post_server_action(&client, &request, plan.label).await?;
     let result = server_action_result(response)?;
-    render_server_result(cfg, plan.label, &result)?;
+    render::render_server_result(cfg, plan.label, &result)?;
     if cfg.wait
         && let Some(family) = plan.poll_family
     {
@@ -130,87 +130,6 @@ fn server_client_error(label: &'static str, err: cli::client::ServerClientError)
     format!("server mode {label} failed: {err}\n{hint}").into()
 }
 
-fn render_server_result(
-    cfg: &Config,
-    label: &'static str,
-    result: &serde_json::Value,
-) -> Result<(), Box<dyn Error>> {
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(result)?);
-        return Ok(());
-    }
-
-    match cfg.command {
-        CommandKind::Status => render_server_status(result)?,
-        CommandKind::Crawl => render_server_job_command("Crawl", result),
-        CommandKind::Extract => render_server_job_command("Extract", result),
-        CommandKind::Embed => render_server_job_command("Embed", result),
-        CommandKind::Ingest | CommandKind::Sessions => render_server_job_command("Ingest", result),
-        CommandKind::Scrape => render_server_payload("Scrape", result),
-        CommandKind::Screenshot => render_server_payload("Screenshot", result),
-        _ => {
-            println!("{} {}", success("✓ Server mode"), label);
-            println!("{}", serde_json::to_string_pretty(result)?);
-        }
-    }
-    Ok(())
-}
-
-fn render_server_status(result: &serde_json::Value) -> Result<(), Box<dyn Error>> {
-    print!("{}", server_status_text(result)?);
-    Ok(())
-}
-
-fn server_status_text(result: &serde_json::Value) -> Result<String, Box<dyn Error>> {
-    cli::commands::status::render_status_payload(result)
-}
-
-fn render_server_job_command(title: &str, result: &serde_json::Value) {
-    let job_ids = job_ids_from_result(result);
-    let status = result
-        .get("status")
-        .or_else(|| result.get("job").and_then(|job| job.get("status")))
-        .and_then(|value| value.as_str())
-        .unwrap_or("pending");
-    println!(
-        "{} {}",
-        symbol_for_status(status),
-        primary(&format!("{title} request handled by server"))
-    );
-    for id in &job_ids {
-        println!("  {} {}", muted("Job:"), accent(id));
-    }
-    if job_ids.is_empty() {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string())
-        );
-    }
-}
-
-fn render_server_payload(title: &str, result: &serde_json::Value) {
-    println!(
-        "{} {}",
-        success("✓"),
-        primary(&format!("{title} handled by server"))
-    );
-    if let Some(url) = result
-        .get("url")
-        .or_else(|| result.get("data").and_then(|data| data.get("url")))
-        .and_then(|value| value.as_str())
-    {
-        println!("  {} {}", muted("URL:"), accent(url));
-    }
-    if let Some(handle) = result.get("artifact_handle").or_else(|| {
-        result
-            .get("data")
-            .and_then(|data| data.get("artifact_handle"))
-    }) && let Some(path) = handle.get("relative_path").and_then(|value| value.as_str())
-    {
-        println!("  {} {}", muted("Artifact:"), accent(path));
-    }
-}
-
 async fn poll_server_jobs(
     cfg: &Config,
     client: &cli::client::ServerClient,
@@ -237,7 +156,7 @@ async fn poll_server_jobs(
             if let Some(status) = job_status_from_result(&result)
                 && matches!(status, "completed" | "failed" | "canceled")
             {
-                render_server_result(cfg, "job status", &result)?;
+                render::render_server_result(cfg, "job status", &result)?;
                 break;
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -449,7 +368,7 @@ mod tests {
             }
         });
 
-        let rendered = server_status_text(&payload).expect("status payload should render");
+        let rendered = render::server_status_text(&payload).expect("status payload should render");
 
         assert!(rendered.contains("Crawl"));
         assert!(rendered.contains("Embed"));

@@ -13,6 +13,60 @@ use futures::stream::{self, StreamExt};
 use std::error::Error;
 use uuid::Uuid;
 
+pub(crate) fn print_scrape_preamble(cfg: &Config, url: &str) {
+    print_phase("◐", "Scraping", url);
+    println!("  {}", primary("Options:"));
+    print_option("format", &format!("{:?}", cfg.format));
+    print_option("renderMode", &cfg.render_mode.to_string());
+    print_option("proxy", cfg.chrome_proxy.as_deref().unwrap_or("none"));
+    print_option(
+        "userAgent",
+        cfg.chrome_user_agent.as_deref().unwrap_or("spider-default"),
+    );
+    print_option(
+        "timeoutMs",
+        &cfg.request_timeout_ms.unwrap_or(20_000).to_string(),
+    );
+    print_option("fetchRetries", &cfg.fetch_retries.to_string());
+    print_option("retryBackoffMs", &cfg.retry_backoff_ms.to_string());
+    print_option("chromeAntiBot", &cfg.chrome_anti_bot.to_string());
+    print_option("chromeStealth", &cfg.chrome_stealth.to_string());
+    print_option("chromeIntercept", &cfg.chrome_intercept.to_string());
+    print_option("embed", &cfg.embed.to_string());
+    println!();
+}
+
+pub(crate) fn emit_scrape_result(
+    cfg: &Config,
+    result: &crate::services::types::ScrapeResult,
+) -> Result<(), Box<dyn Error>> {
+    let normalized = &result.url;
+    let bytes = result.output.len();
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&result.payload)?);
+        log_done(&format!(
+            "command=scrape url={normalized} bytes={bytes} format={:?}",
+            cfg.format
+        ));
+    } else if let Some(path) = &cfg.output_path {
+        std::fs::write(path, &result.output)?;
+        log_done(&format!(
+            "wrote output: {} url={normalized} bytes={bytes} format={:?}",
+            path.to_string_lossy(),
+            cfg.format
+        ));
+    } else {
+        println!("{} {}", primary("Scrape Results for"), normalized);
+        println!("{}\n", muted("As of: now"));
+        println!("{}", result.output);
+        log_done(&format!(
+            "command=scrape url={normalized} bytes={bytes} format={:?}",
+            cfg.format
+        ));
+    }
+    Ok(())
+}
+
 pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let urls = parse_urls(cfg);
     if urls.is_empty() {
@@ -86,26 +140,7 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
 /// Returns `Some((normalized_url, markdown))` when `cfg.embed` is true so the
 /// caller can batch-embed after all scrapes complete. Returns `None` otherwise.
 async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>, Box<dyn Error>> {
-    print_phase("◐", "Scraping", url);
-    println!("  {}", primary("Options:"));
-    print_option("format", &format!("{:?}", cfg.format));
-    print_option("renderMode", &cfg.render_mode.to_string());
-    print_option("proxy", cfg.chrome_proxy.as_deref().unwrap_or("none"));
-    print_option(
-        "userAgent",
-        cfg.chrome_user_agent.as_deref().unwrap_or("spider-default"),
-    );
-    print_option(
-        "timeoutMs",
-        &cfg.request_timeout_ms.unwrap_or(20_000).to_string(),
-    );
-    print_option("fetchRetries", &cfg.fetch_retries.to_string());
-    print_option("retryBackoffMs", &cfg.retry_backoff_ms.to_string());
-    print_option("chromeAntiBot", &cfg.chrome_anti_bot.to_string());
-    print_option("chromeStealth", &cfg.chrome_stealth.to_string());
-    print_option("chromeIntercept", &cfg.chrome_intercept.to_string());
-    print_option("embed", &cfg.embed.to_string());
-    println!();
+    print_scrape_preamble(cfg, url);
 
     // SSRF guard: validate before creating Website — must run before any
     // network activity so private-IP seeds are rejected immediately.
@@ -113,31 +148,8 @@ async fn scrape_one(cfg: &Config, url: &str) -> Result<Option<(String, String)>,
     let result = scrape_service::scrape(cfg, url, None).await?;
     let normalized = result.url.clone();
     let markdown = result.markdown.clone();
-    let output = result.output;
 
-    let bytes = output.len();
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result.payload)?);
-        log_done(&format!(
-            "command=scrape url={normalized} bytes={bytes} format={:?}",
-            cfg.format
-        ));
-    } else if let Some(path) = &cfg.output_path {
-        tokio::fs::write(path, &output).await?;
-        log_done(&format!(
-            "wrote output: {} url={normalized} bytes={bytes} format={:?}",
-            path.to_string_lossy(),
-            cfg.format
-        ));
-    } else {
-        println!("{} {}", primary("Scrape Results for"), normalized);
-        println!("{}\n", muted("As of: now"));
-        println!("{output}");
-        log_done(&format!(
-            "command=scrape url={normalized} bytes={bytes} format={:?}",
-            cfg.format
-        ));
-    }
+    emit_scrape_result(cfg, &result)?;
 
     if cfg.embed {
         Ok(Some((normalized, markdown)))

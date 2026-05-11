@@ -8,6 +8,37 @@ use crate::services::ingest::{self as ingest_service, IngestSource};
 use crate::services::types::StartDisposition;
 use std::error::Error;
 
+pub(crate) fn render_ingest_enqueue_result(
+    cfg: &Config,
+    job_id: &str,
+    disposition: StartDisposition,
+    via_server: bool,
+) -> Result<(), Box<dyn Error>> {
+    let status = if disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
+    };
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({"job_id": job_id, "status": status}))?
+        );
+    } else {
+        println!("  {} {}", primary("Ingest Job"), accent(job_id));
+        if disposition == StartDisposition::Completed {
+            let message = if via_server {
+                "Server completed the ingest before returning."
+            } else {
+                "Lite mode completed the ingest in-process."
+            };
+            println!("  {}", muted(message));
+        }
+        println!("Job ID: {job_id}");
+    }
+    Ok(())
+}
+
 pub fn run_ingest<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
         if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "ingest").await? {
@@ -53,19 +84,8 @@ async fn enqueue_ingest_job(
     } else {
         "pending"
     };
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({"job_id": job_id, "status": status}))?
-        );
-    } else {
-        println!("  {} {}", primary("Ingest Job"), accent(&job_id));
-        if outcome.disposition == StartDisposition::Completed {
-            println!("  {}", muted("Lite mode completed the ingest in-process."));
-        }
-        println!("Job ID: {job_id}");
-    }
-    Ok(())
+    let _ = status;
+    render_ingest_enqueue_result(cfg, &job_id, outcome.disposition, false)
 }
 
 #[cfg(test)]

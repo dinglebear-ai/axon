@@ -22,6 +22,103 @@ use std::error::Error;
 use std::path::Path;
 use uuid::Uuid;
 
+pub(crate) fn render_embed_list(
+    cfg: &Config,
+    all_jobs: Vec<crate::services::types::ServiceJob>,
+    total: i64,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        let result = crate::services::types::JobListResult::new(all_jobs, total, 50, 0);
+        return handle_job_list(cfg, &result, "Embed");
+    }
+    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
+
+    println!("{}", primary("Embed Jobs"));
+    if jobs.is_empty() {
+        println!("  {}", muted("No embed jobs found."));
+        return Ok(());
+    }
+
+    let empty_crawl_map = std::collections::HashMap::new();
+    for job in &jobs {
+        let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
+        let metrics = embed_metrics_suffix(&job.status, job.result_json.as_ref());
+        let collection =
+            collection_from_config(job.config_json.as_ref().unwrap_or(&serde_json::Value::Null));
+        let age = job_runtime_text(
+            &job.status,
+            job.started_at.as_ref(),
+            job.finished_at.as_ref(),
+            &job.updated_at,
+        );
+        let collection_str = collection
+            .map(|c| format!("{}{}", subtle(" | "), accent(c)))
+            .unwrap_or_default();
+        let label = status_label(&job.status);
+        let prefix = if label.is_empty() {
+            format!("  {} ", symbol_for_status(&job.status))
+        } else {
+            format!("  {} {} ", symbol_for_status(&job.status), label)
+        };
+        let age_str = format!("{}{}", subtle(" | "), accent(&age));
+        println!(
+            "{}{}{}{}{} {} {}",
+            prefix,
+            primary(&target),
+            metrics,
+            collection_str,
+            age_str,
+            subtle("|"),
+            muted(&job.id.to_string()),
+        );
+        if let Some(err) = format_error(job.error_text.as_deref()) {
+            let err_line = error(&format!("↳ {err}"));
+            println!("       {err_line}");
+        }
+    }
+
+    print_list_footer(jobs.len(), total, 50, 0);
+    Ok(())
+}
+
+pub(crate) fn render_embed_enqueue_result(
+    cfg: &Config,
+    input: &str,
+    job_id: &str,
+    disposition: StartDisposition,
+    via_server: bool,
+) {
+    let status = if disposition == StartDisposition::Completed {
+        "completed"
+    } else {
+        "pending"
+    };
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::json!({
+                "job_id": job_id,
+                "status": status,
+                "target": input,
+                "collection": cfg.collection,
+                "source": "rust",
+            })
+        );
+    } else {
+        println!("  {} {}", primary("Embed Job"), accent(job_id));
+        println!("  {}", muted(&format!("Input: {input}")));
+        if disposition == StartDisposition::Completed {
+            let message = if via_server {
+                "Server completed the embed before returning."
+            } else {
+                "Lite mode completed the embed in-process."
+            };
+            println!("  {}", muted(message));
+        }
+        println!("Job ID: {job_id}");
+    }
+}
+
 pub fn run_embed<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> CommandFuture<'a> {
     Box::pin(async move {
         if maybe_handle_embed_subcommand(cfg, service_context).await? {
@@ -123,59 +220,7 @@ async fn handle_embed_list(
 ) -> Result<(), Box<dyn Error>> {
     let all_jobs = job_service::list_jobs(service_context, JobKind::Embed, 50, 0).await?;
     let total = all_jobs.len() as i64;
-    if cfg.json_output {
-        let result = crate::services::types::JobListResult::new(all_jobs, total, 50, 0);
-        return handle_job_list(cfg, &result, "Embed");
-    }
-    let jobs = filter_jobs_for_status_view(cfg, all_jobs);
-
-    println!("{}", primary("Embed Jobs"));
-    if jobs.is_empty() {
-        println!("  {}", muted("No embed jobs found."));
-        return Ok(());
-    }
-
-    // Empty map: URLs and paths display as-is; UUID-based paths show parent/markdown.
-    let empty_crawl_map = std::collections::HashMap::new();
-    for job in &jobs {
-        let target = display_embed_input(job.target.as_deref().unwrap_or(""), &empty_crawl_map);
-        let metrics = embed_metrics_suffix(&job.status, job.result_json.as_ref());
-        let collection =
-            collection_from_config(job.config_json.as_ref().unwrap_or(&serde_json::Value::Null));
-        let age = job_runtime_text(
-            &job.status,
-            job.started_at.as_ref(),
-            job.finished_at.as_ref(),
-            &job.updated_at,
-        );
-        let collection_str = collection
-            .map(|c| format!("{}{}", subtle(" | "), accent(c)))
-            .unwrap_or_default();
-        let label = status_label(&job.status);
-        let prefix = if label.is_empty() {
-            format!("  {} ", symbol_for_status(&job.status))
-        } else {
-            format!("  {} {} ", symbol_for_status(&job.status), label)
-        };
-        let age_str = format!("{}{}", subtle(" | "), accent(&age));
-        println!(
-            "{}{}{}{}{} {} {}",
-            prefix,
-            primary(&target),
-            metrics,
-            collection_str,
-            age_str,
-            subtle("|"),
-            muted(&job.id.to_string()),
-        );
-        if let Some(err) = format_error(job.error_text.as_deref()) {
-            let err_line = error(&format!("↳ {err}"));
-            println!("       {err_line}");
-        }
-    }
-
-    print_list_footer(jobs.len(), total, 50, 0);
-    Ok(())
+    render_embed_list(cfg, all_jobs, total)
 }
 
 async fn handle_embed_cleanup(
@@ -233,24 +278,7 @@ async fn enqueue_embed_job(
     } else {
         "pending"
     };
-    if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::json!({
-                "job_id": job_id,
-                "status": status,
-                "target": input,
-                "collection": cfg.collection,
-                "source": "rust",
-            })
-        );
-    } else {
-        println!("  {} {}", primary("Embed Job"), accent(&job_id));
-        println!("  {}", muted(&format!("Input: {input}")));
-        if outcome.disposition == StartDisposition::Completed {
-            println!("  {}", muted("Lite mode completed the embed in-process."));
-        }
-        println!("Job ID: {job_id}");
-    }
+    let _ = status;
+    render_embed_enqueue_result(cfg, input, &job_id, outcome.disposition, false);
     Ok(())
 }
