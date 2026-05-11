@@ -10,7 +10,7 @@ use super::cli::Cli;
 use super::help::maybe_print_top_level_help_and_exit;
 use super::types::Config;
 use crate::core::ui::report_error;
-use clap::{Command, CommandFactory, Parser};
+use clap::{Command, CommandFactory, FromArgMatches, parser::ValueSource};
 
 pub(crate) use docker::is_docker_service_host;
 
@@ -20,8 +20,11 @@ pub fn build_cli_command() -> Command {
 
 pub fn parse_args() -> Config {
     maybe_print_top_level_help_and_exit();
-    let cli = Cli::parse();
-    match build_config::into_config(cli) {
+    let matches = Cli::command().get_matches();
+    let output_dir_was_explicit =
+        matches.value_source("output_dir") == Some(ValueSource::CommandLine);
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
+    match build_config::into_config_with_sources(cli, output_dir_was_explicit) {
         Ok(cfg) => cfg,
         Err(msg) => {
             report_error(&msg);

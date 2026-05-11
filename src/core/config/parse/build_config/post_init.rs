@@ -16,6 +16,7 @@ pub(super) struct PostInit {
     pub disable_default_excludes: bool,
     pub fetch_retries_was_set: bool,
     pub retry_backoff_was_set: bool,
+    pub output_dir_was_explicit: bool,
 }
 
 pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
@@ -56,7 +57,7 @@ pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
     cfg.crawl_broadcast_buffer_max = ps.broadcast_buffer_max;
 
     // Derive output_dir from the canonical data directory when still at the clap default.
-    if cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
+    if !ctx.output_dir_was_explicit && cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
         cfg.output_dir = crate::core::paths::axon_data_base_dir().join("output");
     }
     Ok(())

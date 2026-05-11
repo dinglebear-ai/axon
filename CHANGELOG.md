@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-05-11
+
+### Fixed
+
+- dev: remove user-specific `sccache` wrapper paths and socket defaults from `Justfile` so local recipes stay portable across developers and machines.
+- config: preserve an explicit `--output-dir` even when it matches the clap default, instead of letting `AXON_OUTPUT_DIR` or post-init default derivation override it.
+
 ## [1.9.3] - 2026-05-10
 
 ### Fixed
