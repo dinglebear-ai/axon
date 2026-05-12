@@ -194,7 +194,7 @@ async fn process_received_page(
     );
 
     let html_bytes: Vec<u8> = page.get_html_bytes_u8().to_vec();
-    let outcome = process_page(&html_bytes, &url, col, summary.markdown_files + 1);
+    let outcome = process_page(&html_bytes, &url, col);
     let _skip = apply_page_outcome(
         outcome,
         html_bytes,

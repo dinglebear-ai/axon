@@ -49,14 +49,63 @@ build:
     {{rust_dev_env}}; cargo build --release --locked
     mkdir -p bin
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; cp "$AXON_TARGET_DIR/release/axon" bin/axon
+    just link-bin
 
 debug:
     {{rust_dev_env}}; cargo build --locked --bin axon
 
+# Symlink the compiled release binary into PATH and all known plugin cache slots.
+# Called automatically by `just build` and `just install`. Safe to call manually
+# after `cargo build --release` so that `axon` on $PATH always matches the DB state.
+link-bin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    case "$AXON_TARGET_DIR" in
+      /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;;
+      *)  AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;;
+    esac
+    if [ ! -x "$AXON_BIN" ]; then
+      echo "release binary not found at $AXON_BIN — run 'just build' first" >&2
+      exit 1
+    fi
+    mkdir -p ~/.local/bin
+    ln -sf "$AXON_BIN" ~/.local/bin/axon
+    # Update every versioned slot under the plugin cache so whichever version
+    # the plugin manager activates, it always runs the workspace binary.
+    while IFS= read -r -d '' plugin_bin; do
+      ln -sf "$AXON_BIN" "$plugin_bin"
+    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    systemctl --user restart axon-mcp 2>/dev/null || true
+    echo "axon → $AXON_BIN"
+
 install:
     {{rust_dev_env}}; cargo build --release --locked
-    mkdir -p ~/.local/bin
-    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"; case "$AXON_TARGET_DIR" in /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;; *) AXON_BIN="$(pwd)/$AXON_TARGET_DIR/release/axon" ;; esac; ln -sf "$AXON_BIN" ~/.local/bin/axon; PLUGIN_BIN="${AXON_PLUGIN_BIN:-$HOME/.claude/plugins/cache/jmagar-lab/axon/575c090bcaf5/bin/axon}"; if [ -e "$PLUGIN_BIN" ] || [ -L "$PLUGIN_BIN" ]; then mkdir -p "$(dirname "$PLUGIN_BIN")"; ln -sf "$AXON_BIN" "$PLUGIN_BIN"; systemctl --user restart axon-mcp 2>/dev/null || true; fi
+    just link-bin
+
+# Build release binary, sync PATH symlinks, rebuild container image, restart container.
+# Synchronous version of what `scripts/axon` does automatically in the background.
+sync-container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh; load_axon_env_file "$(pwd)"
+    export SCCACHE_SERVER_UDS="${SCCACHE_SERVER_UDS:-/tmp/sccache-${USER:-$(id -u)}.sock}"
+    export SCCACHE_LOG="${SCCACHE_LOG:-error}"
+    if [ -n "${HOME:-}" ] && [ -x "${HOME}/.local/bin/sccache-wrapper" ]; then
+        export RUSTC_WRAPPER="${HOME}/.local/bin/sccache-wrapper"
+    elif command -v sccache >/dev/null 2>&1; then
+        export RUSTC_WRAPPER=sccache
+    fi
+    if command -v mold >/dev/null 2>&1; then
+        export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
+    fi
+    cargo build --release --locked
+    just link-bin
+    docker compose build axon
+    docker compose up -d axon --no-deps
+    AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    touch "${AXON_TARGET_DIR}/.container-built"
+    echo "container synced"
 
 install-debug:
     #!/usr/bin/env bash
@@ -83,15 +132,13 @@ install-debug:
     else
       echo "debug binary is current: $AXON_BIN"
     fi
+    mkdir -p ~/.local/bin
     ln -sf "$AXON_BIN" ~/.local/bin/axon
-    PLUGIN_BIN="${AXON_PLUGIN_BIN:-$HOME/.claude/plugins/cache/jmagar-lab/axon/575c090bcaf5/bin/axon}"
-    if [ -e "$PLUGIN_BIN" ] || [ -L "$PLUGIN_BIN" ]; then
-      mkdir -p "$(dirname "$PLUGIN_BIN")"
-      ln -sf "$AXON_BIN" "$PLUGIN_BIN"
-      if systemctl --user list-unit-files axon-mcp.service >/dev/null 2>&1; then
-        systemctl --user restart axon-mcp || true
-      fi
-    fi
+    while IFS= read -r -d '' plugin_bin; do
+      ln -sf "$AXON_BIN" "$plugin_bin"
+    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    systemctl --user restart axon-mcp 2>/dev/null || true
+    echo "axon → $AXON_BIN"
 
 lint-all:
     just fmt-check

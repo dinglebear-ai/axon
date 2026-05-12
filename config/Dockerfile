@@ -48,14 +48,20 @@ FROM debian:bookworm-slim AS runtime
 # Runtime deps:
 #   ca-certificates — TLS to qdrant/tei/openai/etc.
 #   libsqlite3-0    — sqlx-sqlite runtime
-#   curl            — healthcheck
+#   curl            — healthcheck + NodeSource setup
 #   tini            — PID 1 reaper for clean signal handling
+#   nodejs (22 LTS) — required to run the Gemini CLI (ask/evaluate/research synthesis)
+#                     Debian bookworm ships Node 18 which is too old for @google/gemini-cli;
+#                     use NodeSource for Node 22 LTS.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         libsqlite3-0 \
         curl \
         tini \
-    && rm -rf /var/lib/apt/lists/*
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @google/gemini-cli \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
 
 # Non-root user with stable UID/GID 1000 — matches the host user that owns
 # bind-mounted ~/.axon, avoiding permission churn on writes.

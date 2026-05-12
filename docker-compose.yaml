@@ -57,6 +57,9 @@ services:
       # Persist OAuth client registrations, refresh tokens, and JWT signing key
       # across container recreates so upstream gateways don't hold stale client IDs.
       - ${AXON_HOME:-${HOME}/.axon}/lab-auth:/home/axon/.lab
+      # Gemini CLI auth files — headless ask/evaluate/research synthesis reads
+      # oauth_creds.json, gemini-credentials.json, google_accounts.json from here.
+      - ${HOME}/.gemini:/home/axon/.gemini:ro
     ports:
       - "${AXON_MCP_HTTP_PUBLISH:-127.0.0.1:8001}:8001"
     command: ["serve"]
