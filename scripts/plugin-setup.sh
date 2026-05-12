@@ -4,7 +4,7 @@
 set -euo pipefail
 
 AXON_HOME="${AXON_HOME:-${HOME}/.axon}"
-INSTALL_URL="${AXON_INSTALL_URL:-https://raw.githubusercontent.com/jmagar/axon/main/install.sh}"
+INSTALL_URL="${AXON_INSTALL_URL:-https://raw.githubusercontent.com/jmagar/axon/v1.10.1/install.sh}"
 
 reject_unsafe_value() {
   local name="$1" value="${2:-}"

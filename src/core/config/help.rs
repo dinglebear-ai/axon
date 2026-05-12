@@ -227,17 +227,58 @@ fn print_top_level_help() {
 }
 
 fn print_setup_help() {
-    println!("Setup and deploy Axon Docker infrastructure");
+    let colors_enabled = env::var("AXON_NO_COLOR").is_err();
+    let colorize = |code: &str, text: &str| {
+        if colors_enabled {
+            format!("{code}{text}\x1b[0m")
+        } else {
+            text.to_string()
+        }
+    };
+    let bold = |text: &str| {
+        if colors_enabled {
+            format!("\x1b[1m{text}\x1b[0m")
+        } else {
+            text.to_string()
+        }
+    };
+    let primary = "\x1b[38;2;244;143;177m";
+    let accent = "\x1b[38;2;144;202;249m";
+    let section = |name: &str| bold(&colorize(primary, name));
+    let cmd = |name: &str| colorize(accent, name);
+
+    println!(
+        "{}",
+        bold(&colorize(
+            primary,
+            "Setup and deploy Axon Docker infrastructure"
+        ))
+    );
     println!();
-    println!("Usage: axon setup [COMMAND]");
+    println!("{} {}", section("Usage:"), cmd("axon setup [COMMAND]"));
     println!();
-    println!("Commands:");
-    println!("  check    Check local Docker prerequisites without mutating files or services");
-    println!("  repair   Repair local Axon config, compose assets, and Docker stack");
-    println!("  targets  List Docker deployment targets from ~/.ssh/config");
-    println!("  deploy   Deploy the Axon Docker Compose stack to an SSH target");
-    println!("  help     Print this message or the help of the given subcommand(s)");
+    println!("{}", section("Commands:"));
+    println!(
+        "  {:<8} Check local Docker prerequisites without mutating files or services",
+        cmd("check")
+    );
+    println!(
+        "  {:<8} Repair local Axon config, compose assets, and Docker stack",
+        cmd("repair")
+    );
+    println!(
+        "  {:<8} List Docker deployment targets from ~/.ssh/config",
+        cmd("targets")
+    );
+    println!(
+        "  {:<8} Deploy the Axon Docker Compose stack to an SSH target",
+        cmd("deploy")
+    );
+    println!(
+        "  {:<8} Print this message or the help of the given subcommand(s)",
+        cmd("help")
+    );
     println!();
-    println!("Options:");
-    println!("  -h, --help  Print help");
+    println!("{}", section("Options:"));
+    println!("  {}  Print help", cmd("-h, --help"));
 }

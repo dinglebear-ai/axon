@@ -195,27 +195,37 @@ export default function Page() {
   async function runFirstCrawl() {
     setFirstRunBusy(true);
     setFirstRunResult('');
-    const res = await fetch('/api/panel/first-run/crawl', {
-      method: 'POST',
-      headers: authedHeaders,
-      body: JSON.stringify({ url: firstUrl })
-    });
-    setFirstRunBusy(false);
-    const body = await res.text();
-    setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    try {
+      const res = await fetch('/api/panel/first-run/crawl', {
+        method: 'POST',
+        headers: authedHeaders,
+        body: JSON.stringify({ url: firstUrl })
+      });
+      const body = await res.text();
+      setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    } catch (error) {
+      setFirstRunResult(`Error: ${String(error)}`);
+    } finally {
+      setFirstRunBusy(false);
+    }
   }
 
   async function runFirstAsk() {
     setFirstRunBusy(true);
     setFirstRunResult('');
-    const res = await fetch('/api/panel/first-run/ask', {
-      method: 'POST',
-      headers: authedHeaders,
-      body: JSON.stringify({ query: firstQuestion })
-    });
-    setFirstRunBusy(false);
-    const body = await res.text();
-    setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    try {
+      const res = await fetch('/api/panel/first-run/ask', {
+        method: 'POST',
+        headers: authedHeaders,
+        body: JSON.stringify({ query: firstQuestion })
+      });
+      const body = await res.text();
+      setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    } catch (error) {
+      setFirstRunResult(`Error: ${String(error)}`);
+    } finally {
+      setFirstRunBusy(false);
+    }
   }
 
   if (!token) {

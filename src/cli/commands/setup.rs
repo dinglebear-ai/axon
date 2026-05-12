@@ -8,7 +8,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         None => {
             let result = setup::run_local_setup(LocalSetupMode::FirstRun).await?;
             print_local_setup_report(cfg, &result)?;
-            Ok(())
+            fail_if_setup_failed(&result)
         }
         Some("check") => {
             let result = setup::run_local_setup(LocalSetupMode::Check).await?;
@@ -18,7 +18,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         Some("repair") => {
             let result = setup::run_local_setup(LocalSetupMode::Repair).await?;
             print_local_setup_report(cfg, &result)?;
-            Ok(())
+            fail_if_setup_failed(&result)
         }
         Some("targets") => {
             let targets = match setup::list_ssh_targets() {
@@ -88,9 +88,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 "usage": [
                     "axon setup",
                     "axon setup check",
-                    "axon setup repair",
-                    "axon setup targets",
-                    "axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
+                    "axon setup repair"
                 ]
             });
             if cfg.json_output {
@@ -100,13 +98,19 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("  axon setup");
                 println!("  axon setup check");
                 println!("  axon setup repair");
-                println!("  axon setup targets");
-                println!(
-                    "  axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
-                );
             }
             Ok(())
         }
+    }
+}
+
+fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
+    if report.has_errors {
+        Err("axon setup completed with failed phases".into())
+    } else if report.exceeded_hard_max {
+        Err("axon setup exceeded the hard maximum setup time".into())
+    } else {
+        Ok(())
     }
 }
 
@@ -126,7 +130,7 @@ fn print_local_setup_report(
     println!("Compose: {}", report.compose_dir.display());
     println!("Web panel: {}", report.web_panel_url);
     println!("MCP: {}", report.mcp_url);
-    println!("Token: {}", report.token_path.display());
+    println!("Token: {} (AXON_MCP_HTTP_TOKEN)", report.env_path.display());
     println!(
         "Timing: {:.1}s (target {}s, hard max {}s)",
         report.elapsed_ms as f64 / 1000.0,

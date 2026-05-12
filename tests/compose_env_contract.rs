@@ -114,25 +114,24 @@ fn plugin_setup_uses_canonical_axon_home() {
         "plugin setup should default AXON_HOME to ~/.axon"
     );
     assert!(
-        setup.contains("ENV_FILE=\"${AXON_HOME}/.env\""),
-        "plugin setup should write the canonical ~/.axon/.env file"
+        setup.contains("mkdir -p \"${AXON_HOME}\""),
+        "plugin setup should ensure the canonical ~/.axon home exists"
     );
     assert!(
-        setup.contains("EnvironmentFile=${ENV_FILE}"),
-        "plugin systemd unit should read the canonical env file"
+        setup.contains("axon setup repair"),
+        "plugin setup should delegate to the shared Docker setup repair path"
     );
     assert!(
-        setup.contains("preserved_env") && setup.contains("managed_keys"),
-        "plugin setup should preserve unrelated entries when updating the canonical env file"
+        setup.contains("warn_stale_systemd_unit"),
+        "plugin setup should warn about stale systemd units without managing systemd"
     );
     assert!(
-        setup.contains("value_from_option_or_env"),
-        "plugin setup should preserve existing canonical values when plugin options are omitted"
+        !setup.contains("systemctl --user"),
+        "plugin setup must not create or manage systemd units"
     );
     assert!(
-        setup.contains("systemctl --user enable axon-mcp")
-            && setup.contains("systemctl --user restart axon-mcp"),
-        "plugin setup should restart an active unit after env or unit changes"
+        setup.contains("export_if_set AXON_MCP_HTTP_TOKEN CLAUDE_PLUGIN_OPTION_API_TOKEN"),
+        "plugin setup should pass plugin options through to the shared setup command"
     );
     assert!(
         readme.contains("~/.axon/.env"),
@@ -141,7 +140,7 @@ fn plugin_setup_uses_canonical_axon_home() {
 }
 
 #[test]
-fn plugin_setup_smoke_restarts_when_env_changes() {
+fn plugin_setup_smoke_delegates_to_shared_setup() {
     let temp_root =
         std::env::temp_dir().join(format!("axon-plugin-setup-smoke-{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_root);
@@ -152,30 +151,21 @@ fn plugin_setup_smoke_restarts_when_env_changes() {
     fs::create_dir_all(plugin_root.join("bin")).expect("plugin bin dir should be created");
     fs::create_dir_all(&home).expect("home dir should be created");
 
-    let axon_bin = plugin_root.join("bin/axon");
-    fs::write(&axon_bin, "#!/usr/bin/env bash\nexit 0\n").expect("fake axon should be written");
+    let axon_log = temp_root.join("axon.log");
+    let axon_bin = fake_bin.join("axon");
+    fs::write(
+        &axon_bin,
+        format!(
+            "#!/usr/bin/env bash\nprintf '%s|%s|%s\\n' \"$*\" \"${{AXON_HOME:-}}\" \"${{AXON_MCP_HTTP_TOKEN:-}}\" >> '{}'\nexit 0\n",
+            axon_log.display()
+        ),
+    )
+    .expect("fake axon should be written");
     let mut axon_perms = fs::metadata(&axon_bin)
         .expect("fake axon metadata")
         .permissions();
     axon_perms.set_mode(0o755);
     fs::set_permissions(&axon_bin, axon_perms).expect("fake axon should be executable");
-
-    let systemctl_log = temp_root.join("systemctl.log");
-    let fake_systemctl = fake_bin.join("systemctl");
-    fs::write(
-        &fake_systemctl,
-        format!(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nif [ \"$*\" = '--user is-active --quiet axon-mcp' ]; then exit 1; fi\nexit 0\n",
-            systemctl_log.display()
-        ),
-    )
-    .expect("fake systemctl should be written");
-    let mut systemctl_perms = fs::metadata(&fake_systemctl)
-        .expect("fake systemctl metadata")
-        .permissions();
-    systemctl_perms.set_mode(0o755);
-    fs::set_permissions(&fake_systemctl, systemctl_perms)
-        .expect("fake systemctl should be executable");
 
     let path = format!(
         "{}:{}",
@@ -196,20 +186,18 @@ fn plugin_setup_smoke_restarts_when_env_changes() {
     assert!(run_setup("first-token").success());
     assert!(run_setup("second-token").success());
 
-    let log = fs::read_to_string(&systemctl_log).expect("fake systemctl log should exist");
+    let log = fs::read_to_string(&axon_log).expect("fake axon log should exist");
     assert!(
-        log.contains("--user daemon-reload") && log.contains("--user enable axon-mcp"),
-        "unit changes should reload and enable systemd user service"
+        log.lines().all(|line| line.starts_with("setup repair|")),
+        "plugin setup should call axon setup repair on each run"
     );
     assert!(
-        log.matches("--user restart axon-mcp").count() >= 2,
-        "initial setup and env changes should restart the service"
+        log.contains("first-token") && log.contains("second-token"),
+        "plugin setup should export the current token for shared setup"
     );
-
-    let env_file = fs::read_to_string(home.join(".axon/.env")).expect("env should be written");
     assert!(
-        env_file.contains("AXON_MCP_HTTP_TOKEN=second-token"),
-        "rerun should update managed token in canonical env"
+        home.join(".axon").is_dir(),
+        "plugin setup should create the canonical Axon home before delegation"
     );
 
     fs::remove_dir_all(&temp_root).ok();
@@ -416,12 +404,21 @@ fn env_example_only_contains_production_runtime_keys() {
     .collect();
 
     let actual = env_example_keys();
+    let missing: Vec<_> = allowed
+        .iter()
+        .filter(|key| !actual.contains(**key))
+        .copied()
+        .collect();
     let unexpected: Vec<_> = actual
         .iter()
         .filter(|key| !allowed.contains(key.as_str()))
         .cloned()
         .collect();
 
+    assert!(
+        missing.is_empty(),
+        "required production env keys missing from .env.example: {missing:?}"
+    );
     assert!(
         unexpected.is_empty(),
         "unexpected production env keys in .env.example: {unexpected:?}"

@@ -21,6 +21,8 @@ All global flags apply. Key flags for this command:
 
 `doctor` probes and reports:
 
+For implementation details and troubleshooting see [`docs/ingest/doctor.md`](../ingest/doctor.md)
+
 - Job pipeline readiness for `crawl`, `extract`, `embed`, `ingest`
 - Service health for Qdrant, TEI, and optional Chrome endpoint
 - Gemini headless command/config readiness for LLM-backed commands

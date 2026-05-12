@@ -1,6 +1,7 @@
 # axon setup
 
 First-run local Docker setup and remote Docker deployment helpers.
+For implementation details and troubleshooting see [`docs/ingest/setup.md`](../ingest/setup.md)
 
 ## Synopsis
 
