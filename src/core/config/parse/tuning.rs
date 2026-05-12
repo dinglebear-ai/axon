@@ -12,7 +12,7 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.ask_doc_fetch_concurrency =
         performance::env_usize_clamped("AXON_ASK_DOC_FETCH_CONCURRENCY", 4, 1, 16);
     cfg.ask_doc_chunk_limit =
-        performance::env_usize_clamped("AXON_ASK_DOC_CHUNK_LIMIT", 192, 8, 2000);
+        performance::env_usize_clamped("AXON_ASK_DOC_CHUNK_LIMIT", 48, 8, 2000);
     cfg.ask_min_relevance_score = ask_min_relevance_score(toml);
     cfg.ask_authoritative_boost =
         performance::env_f64_clamped("AXON_ASK_AUTHORITATIVE_BOOST", 0.0, 0.0, 0.5);
@@ -29,7 +29,7 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         .max_capacity_bytes
         .unwrap_or(256 * 1024 * 1024);
     cfg.ask_cache_ttl_secs = toml.ask.cache.ttl_secs.unwrap_or(300).min(300);
-    cfg.ask_fulldoc_skip_enabled = toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(false);
+    cfg.ask_fulldoc_skip_enabled = toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(true);
     cfg.ask_fulldoc_skip_min_urls = toml
         .ask
         .adaptive
