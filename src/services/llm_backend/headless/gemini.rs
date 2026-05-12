@@ -25,7 +25,7 @@ pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec
         "--prompt".to_string(),
         String::new(),
         "--approval-mode".to_string(),
-        "plan".to_string(),
+        "yolo".to_string(),
         "--extensions".to_string(),
         String::new(),
         "--output-format".to_string(),
@@ -296,7 +296,25 @@ fn prepare_gemini_home(
     }
 
     write_isolated_settings(&gemini_dir.join("settings.json"))?;
+    write_axon_rag_synthesize_skill(&gemini_dir)?;
     Ok(temp)
+}
+
+/// Write the axon-rag-synthesize skill into the isolated Gemini home so Gemini CLI
+/// can discover and invoke it via the native activate_skill tool. The SKILL.md
+/// content is embedded at compile time — no separate disk location needed.
+fn write_axon_rag_synthesize_skill(
+    gemini_dir: &Path,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let skill_dir = gemini_dir.join("skills").join("axon-rag-synthesize");
+    fs::create_dir_all(&skill_dir)
+        .map_err(|err| format!("failed to create skill directory: {err}"))?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        crate::vector::ops::commands::ask::synthesis_prompt::SKILL_MD,
+    )
+    .map_err(|err| format!("failed to write axon-rag-synthesize skill: {err}"))?;
+    Ok(())
 }
 
 fn gemini_source_home(
@@ -349,7 +367,7 @@ fn write_isolated_settings(path: &Path) -> Result<(), Box<dyn StdError + Send + 
         "admin": {
             "mcp": { "enabled": false },
             "extensions": { "enabled": false },
-            "skills": { "enabled": false }
+            "skills": { "enabled": true }
         },
         "mcpServers": {},
         "hooks": {},
@@ -383,8 +401,24 @@ impl GeminiStreamState {
         let value: Value = serde_json::from_str(trimmed)
             .map_err(|err| format!("malformed Gemini stream JSON: {err}: {trimmed}"))?;
         match value.get("type").and_then(Value::as_str) {
-            Some("tool_use" | "tool_result") => {
-                return Err("Gemini headless emitted a tool event in synthesis-only mode".into());
+            Some("tool_use") => {
+                // activate_skill is the only permitted tool call — it loads the
+                // axon-rag-synthesize skill into the model's context. All other
+                // tool_use events indicate unexpected tool execution and are rejected.
+                if value.get("name").and_then(Value::as_str) != Some("activate_skill") {
+                    return Err(format!(
+                        "Gemini headless emitted unexpected tool call '{}' in synthesis mode",
+                        value
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown")
+                    )
+                    .into());
+                }
+            }
+            Some("tool_result") => {
+                // tool_result from activate_skill — skill content injected into context.
+                // No text to accumulate; continue to collect the model's final response.
             }
             Some("error") => {
                 return Err(format!("Gemini headless stream error: {value}").into());
@@ -409,12 +443,17 @@ impl GeminiStreamState {
         if value.get("status").and_then(Value::as_str) != Some("success") {
             return Err(format!("Gemini headless returned unsuccessful result: {value}").into());
         }
-        if value
+        // activate_skill counts as 1 tool call — allow it. Reject if any other
+        // tool was called (indicates unexpected tool execution beyond skill loading).
+        let tool_calls = value
             .pointer("/stats/tool_calls")
             .and_then(Value::as_u64)
-            .is_some_and(|count| count > 0)
-        {
-            return Err("Gemini headless reported tool calls in synthesis-only mode".into());
+            .unwrap_or(0);
+        if tool_calls > 1 {
+            return Err(format!(
+                "Gemini headless made {tool_calls} tool calls; only activate_skill is permitted"
+            )
+            .into());
         }
         if let Some(text) = value.get("response").and_then(Value::as_str)
             && !text.trim().is_empty()
@@ -505,7 +544,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gemini_headless_command_avoids_yolo() {
+    fn gemini_headless_command_uses_yolo_for_skill_activation() {
         let spec = build_command(&HeadlessCommandRequest::new(
             None,
             Some("system".to_string()),
@@ -513,11 +552,9 @@ mod tests {
         .unwrap();
         let joined = spec.args.join(" ");
         assert_eq!(spec.prompt_transport, PromptTransport::Stdin);
-        assert!(joined.contains("--approval-mode plan"));
+        assert!(joined.contains("--approval-mode yolo"));
         assert!(spec.args.windows(2).any(|w| w == ["--extensions", ""]));
         assert!(joined.contains("--model gemini-3.1-flash-lite-preview"));
-        assert!(!joined.contains("--yolo"));
-        assert!(!joined.contains("--approval-mode=yolo"));
     }
 
     #[test]
@@ -567,24 +604,50 @@ mod tests {
     }
 
     #[test]
-    fn gemini_headless_parser_rejects_tool_events() {
+    fn gemini_headless_parser_rejects_non_skill_tool_events() {
         let mut state = GeminiStreamState::default();
         let err = state
             .handle_line(r#"{"type":"tool_use","name":"shell"}"#, &mut |_| Ok(()))
-            .expect_err("tool events must fail closed");
-        assert!(err.to_string().contains("tool event"));
+            .expect_err("non-skill tool calls must fail closed");
+        assert!(err.to_string().contains("unexpected tool call"));
     }
 
     #[test]
-    fn gemini_headless_parser_rejects_reported_tool_calls() {
+    fn gemini_headless_parser_allows_activate_skill_tool_event() {
         let mut state = GeminiStreamState::default();
+        // activate_skill is the one permitted tool call for skill loading
+        state
+            .handle_line(
+                r#"{"type":"tool_use","name":"activate_skill","input":{"name":"axon-rag-synthesize"}}"#,
+                &mut |_| Ok(()),
+            )
+            .expect("activate_skill tool_use must be allowed");
+    }
+
+    #[test]
+    fn gemini_headless_parser_rejects_multiple_tool_calls_in_result() {
+        let mut state = GeminiStreamState::default();
+        // 1 tool call (activate_skill) is allowed; 2+ are rejected
         let err = state
+            .handle_line(
+                r#"{"type":"result","status":"success","stats":{"tool_calls":2}}"#,
+                &mut |_| Ok(()),
+            )
+            .expect_err("multiple tool calls must fail closed");
+        assert!(err.to_string().contains("tool call"));
+    }
+
+    #[test]
+    fn gemini_headless_parser_allows_single_tool_call_in_result() {
+        let mut state = GeminiStreamState::default();
+        // 1 tool call = activate_skill — allowed
+        state
             .handle_line(
                 r#"{"type":"result","status":"success","stats":{"tool_calls":1}}"#,
                 &mut |_| Ok(()),
             )
-            .expect_err("reported tool calls must fail closed");
-        assert!(err.to_string().contains("tool calls"));
+            .expect("single activate_skill tool call must be allowed in result stats");
+        assert!(state.saw_success);
     }
 
     #[test]
