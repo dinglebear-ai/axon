@@ -19,6 +19,20 @@ type OpsResponse = {
   mcp_http_url: string;
 };
 
+type StackCheck = {
+  label: string;
+  status: 'ok' | 'warn' | 'error' | string;
+  detail: string;
+};
+
+type StackResponse = {
+  server_url: string;
+  mcp_url: string;
+  log_dir: string;
+  compose_file: string;
+  checks: StackCheck[];
+};
+
 type SshTarget = {
   alias: string;
   host_name?: string;
@@ -47,12 +61,17 @@ export default function Page() {
   const [panelState, setPanelState] = useState<PanelState | null>(null);
   const [config, setConfig] = useState('');
   const [ops, setOps] = useState<OpsResponse | null>(null);
+  const [stack, setStack] = useState<StackResponse | null>(null);
   const [targets, setTargets] = useState<SshTarget[]>([]);
   const [selectedTarget, setSelectedTarget] = useState('');
   const [publicExposure, setPublicExposure] = useState(false);
   const [acceptNewHostKey, setAcceptNewHostKey] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+  const [firstUrl, setFirstUrl] = useState('https://example.com');
+  const [firstQuestion, setFirstQuestion] = useState('What did we crawl?');
+  const [firstRunResult, setFirstRunResult] = useState('');
+  const [firstRunBusy, setFirstRunBusy] = useState(false);
   const [targetError, setTargetError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -94,6 +113,8 @@ export default function Page() {
       })
       .catch((error) => setMessage(String(error)));
 
+    void refreshStack();
+
     void fetch('/api/panel/setup/targets', { headers: authedHeaders })
       .then(async (res) => {
         if (!res.ok) throw new Error(await res.text());
@@ -106,6 +127,16 @@ export default function Page() {
       })
       .catch((error) => setTargetError(String(error)));
   }, [token, authedHeaders]);
+
+  async function refreshStack() {
+    if (!token) return;
+    const res = await fetch('/api/panel/stack', { headers: authedHeaders });
+    if (!res.ok) {
+      setMessage(await res.text());
+      return;
+    }
+    setStack((await res.json()) as StackResponse);
+  }
 
   async function login() {
     const res = await fetch('/api/panel/login', {
@@ -161,6 +192,32 @@ export default function Page() {
     setMessage('Deployment complete');
   }
 
+  async function runFirstCrawl() {
+    setFirstRunBusy(true);
+    setFirstRunResult('');
+    const res = await fetch('/api/panel/first-run/crawl', {
+      method: 'POST',
+      headers: authedHeaders,
+      body: JSON.stringify({ url: firstUrl })
+    });
+    setFirstRunBusy(false);
+    const body = await res.text();
+    setFirstRunResult(res.ok ? body : `Error: ${body}`);
+  }
+
+  async function runFirstAsk() {
+    setFirstRunBusy(true);
+    setFirstRunResult('');
+    const res = await fetch('/api/panel/first-run/ask', {
+      method: 'POST',
+      headers: authedHeaders,
+      body: JSON.stringify({ query: firstQuestion })
+    });
+    setFirstRunBusy(false);
+    const body = await res.text();
+    setFirstRunResult(res.ok ? body : `Error: ${body}`);
+  }
+
   if (!token) {
     return (
       <main className="shell narrow">
@@ -214,10 +271,57 @@ export default function Page() {
         <Metric label="MCP HTTP" value={ops?.mcp_http_url ?? '...'} />
       </section>
 
+      <section className="stack-panel">
+        <div className="section-heading">
+          <div>
+            <h2>Docker Stack</h2>
+            <p>{stack ? `${stack.server_url} · ${stack.log_dir}` : 'Checking local runtime'}</p>
+          </div>
+          <button className="ghost" onClick={() => void refreshStack()}>
+            Refresh
+          </button>
+        </div>
+        <div className="check-grid">
+          {(stack?.checks ?? []).map((check) => (
+            <div className={`check-card ${check.status}`} key={check.label}>
+              <span>{check.label}</span>
+              <strong>{check.status}</strong>
+              <p>{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="first-run-panel">
+        <div className="section-heading">
+          <div>
+            <h2>First Run</h2>
+            <p>{stack?.mcp_url ?? ops?.mcp_http_url ?? 'Server-backed crawl and ask'}</p>
+          </div>
+        </div>
+        <div className="first-run-controls">
+          <label>
+            URL
+            <input value={firstUrl} onChange={(event) => setFirstUrl(event.target.value)} />
+          </label>
+          <button onClick={() => void runFirstCrawl()} disabled={firstRunBusy}>
+            Crawl
+          </button>
+          <label>
+            Question
+            <input value={firstQuestion} onChange={(event) => setFirstQuestion(event.target.value)} />
+          </label>
+          <button onClick={() => void runFirstAsk()} disabled={firstRunBusy}>
+            Ask
+          </button>
+        </div>
+        {firstRunResult && <pre className="result-box">{firstRunResult}</pre>}
+      </section>
+
       <section className="deploy-panel">
         <div className="section-heading">
           <div>
-            <h2>Remote Deploy</h2>
+            <h2>Remote Docker Deploy</h2>
             <p>
               {targetError ||
                 (targets.length ? `${targets.length} SSH target${targets.length === 1 ? '' : 's'}` : '~/.ssh/config')}
