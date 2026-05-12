@@ -164,7 +164,7 @@ fn ask_hybrid_candidates(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_ASK_HYBRID_CANDIDATES",
         toml.search.ask_hybrid_candidates,
-        150,
+        100,
         10,
         500,
     )
