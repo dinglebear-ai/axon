@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "axon",
-  "description": "Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query via MCP or CLI. 16 skills covering web crawling, GitHub/Reddit/YouTube ingest, semantic vector search, and grounded LLM answers over indexed content.",
+  "description": "Spider-powered self-hosted RAG engine \u2014 scrape, map, extract, crawl, embed, and query via MCP or CLI. 16 skills covering web crawling, GitHub/Reddit/YouTube ingest, semantic vector search, and grounded LLM answers over indexed content.",
   "author": {
     "name": "Jacob Magar",
     "email": "jmagar@gmail.com",
@@ -29,75 +29,65 @@
     "api_token": {
       "type": "string",
       "title": "API token",
-      "description": "Bearer token for MCP authentication (AXON_MCP_HTTP_TOKEN).",
+      "description": "Bearer token for Axon MCP authentication. If ~/.axon/.env already has AXON_MCP_HTTP_TOKEN, use the same value here.",
       "sensitive": true,
       "required": true
     },
     "server_url": {
       "type": "string",
-      "title": "MCP server URL",
-      "description": "axon MCP HTTP server base URL. Leave as default unless running on a remote host.",
-      "default": "http://localhost:8001"
-    },
-    "mcp_host": {
-      "type": "string",
-      "title": "MCP bind host",
-      "description": "Network interface to bind the MCP HTTP server to. Keep 127.0.0.1 unless you set AXON_MCP_HTTP_TOKEN (non-loopback requires auth).",
-      "default": "127.0.0.1"
-    },
-    "mcp_port": {
-      "type": "number",
-      "title": "MCP HTTP port",
-      "description": "Port for the axon MCP HTTP server.",
-      "default": 8001
-    },
-    "qdrant_url": {
-      "type": "string",
-      "title": "Qdrant URL",
-      "description": "URL of your Qdrant vector store (e.g. http://localhost:53333)",
-      "required": true,
-      "default": "http://localhost:53333"
-    },
-    "tei_url": {
-      "type": "string",
-      "title": "TEI embedding server URL",
-      "description": "URL of your Text Embeddings Inference server (e.g. http://localhost:52000)",
-      "required": true,
-      "default": "http://localhost:52000"
-    },
-    "collection": {
-      "type": "string",
-      "title": "Qdrant collection name",
-      "description": "Collection to read and write vectors (default: cortex)",
-      "default": "cortex"
-    },
-    "openai_base_url": {
-      "type": "string",
-      "title": "LLM base URL",
-      "description": "OpenAI-compatible LLM endpoint URL (used for ask, research, extract)"
-    },
-    "openai_api_key": {
-      "type": "string",
-      "title": "LLM API key",
-      "description": "API key for the LLM endpoint",
-      "sensitive": true
-    },
-    "openai_model": {
-      "type": "string",
-      "title": "LLM model name",
-      "description": "Model identifier passed to the LLM endpoint"
+      "title": "Axon server URL",
+      "description": "Base URL for the shared Axon Docker server. Local Docker setup uses the default.",
+      "default": "http://127.0.0.1:8001"
     },
     "tavily_api_key": {
       "type": "string",
       "title": "Tavily API key",
-      "description": "API key for Tavily web search (required for search/research commands)",
+      "description": "Optional key for search and research commands.",
       "sensitive": true
     },
-    "chrome_remote_url": {
+    "github_token": {
       "type": "string",
-      "title": "Chrome remote URL",
-      "description": "Headless Chrome management API URL (e.g. http://localhost:6000)",
-      "default": "http://localhost:6000"
+      "title": "GitHub token",
+      "description": "Optional token for higher GitHub ingest rate limits.",
+      "sensitive": true
+    },
+    "reddit_client_id": {
+      "type": "string",
+      "title": "Reddit client ID",
+      "description": "Optional Reddit ingest credential."
+    },
+    "reddit_client_secret": {
+      "type": "string",
+      "title": "Reddit client secret",
+      "description": "Optional Reddit ingest credential.",
+      "sensitive": true
+    },
+    "auth_mode": {
+      "type": "string",
+      "title": "MCP auth mode",
+      "description": "Optional: set to oauth to enable lab-auth Google OAuth/JWT mode. Static bearer token mode is the default.",
+      "default": "bearer"
+    },
+    "public_url": {
+      "type": "string",
+      "title": "OAuth public URL",
+      "description": "Required only for OAuth mode; public URL used in protected-resource metadata."
+    },
+    "google_client_id": {
+      "type": "string",
+      "title": "Google OAuth client ID",
+      "description": "Required only for OAuth mode."
+    },
+    "google_client_secret": {
+      "type": "string",
+      "title": "Google OAuth client secret",
+      "description": "Required only for OAuth mode.",
+      "sensitive": true
+    },
+    "auth_admin_email": {
+      "type": "string",
+      "title": "OAuth admin email",
+      "description": "Required only for OAuth mode."
     }
   }
 }
