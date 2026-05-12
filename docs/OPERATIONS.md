@@ -9,7 +9,7 @@ codebase — see the cited source paths in each section.
 > workers run in-process inside the `axon mcp` (or `axon serve`) tokio
 > runtime. The only required external services are **Qdrant** and **TEI**;
 > **Chrome** is required for `--render-mode chrome` / `auto-switch` and for
-> `screenshot`. There is no Postgres, Redis, or AMQP/RabbitMQ.
+> `screenshot`.
 
 ## Related docs
 
@@ -50,7 +50,7 @@ Required values in `~/.axon/.env`:
 | `QDRANT_URL` | Default: `http://127.0.0.1:53333` |
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
 | `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
-| `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` | LLM endpoint used as model override |
+| `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override |
 | `TAVILY_API_KEY` | Required for `search` and `research` |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Required for Reddit ingest |
 
@@ -96,7 +96,7 @@ processed by that running `axon mcp` (or `axon serve`).
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
 - **Qdrant** — `GET /healthz`, plus `/collections/{name}` for vector mode (named/unnamed)
 - **Chrome** — `chrome_remote_url` if configured
-- **Gemini headless LLM** — base URL + model reachability
+- **Gemini headless LLM** — command/auth/model readiness
 - **Vector mode mismatch** — warns if collection is unnamed but `AXON_HYBRID_SEARCH=true`
 
 `axon status` reports per-kind job counts (Crawl / Extract / Embed / Ingest)
@@ -108,7 +108,7 @@ and recent jobs (top 10).
 
 ### Host CLI against a running server
 
-For Docker/systemd-style operation, keep `axon serve` as the authoritative
+For Docker Compose operation, keep `axon serve` as the authoritative
 process and point host CLI calls at it:
 
 ```bash

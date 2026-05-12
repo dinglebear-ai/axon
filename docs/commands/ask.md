@@ -29,8 +29,7 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
 | `AXON_SERVER_URL` | Optional generic server endpoint. If set, server-mode capable commands use `axon serve`; `ask` uses the same server URL. |
 
-`ask` uses Qdrant + TEI retrieval and Gemini headless synthesis. It does not
-require Postgres, Redis, or AMQP.
+`ask` uses Qdrant + TEI retrieval and Gemini headless synthesis.
 
 ## Flags
 

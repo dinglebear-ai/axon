@@ -22,8 +22,7 @@ None.
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`stats` reads Qdrant collection data and SQLite job metrics. It does not require
-Postgres, Redis, or AMQP.
+`stats` reads Qdrant collection data and SQLite job metrics.
 
 ## Flags
 

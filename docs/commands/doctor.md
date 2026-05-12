@@ -52,6 +52,6 @@ axon doctor --json
 
 ## Notes
 
-- `OPENAI_BASE_URL` and `OPENAI_MODEL` affect OpenAI probe and extract LLM-readiness fields.
+- Gemini CLI auth and `AXON_HEADLESS_GEMINI_*` settings control LLM readiness.
 - Chrome is optional; report includes `configured` and probe status separately.
 - `all_ok` focuses on core pipeline + TEI + Qdrant readiness.
