@@ -10,6 +10,13 @@ type PanelState = {
 type ConfigResponse = {
   path: string;
   raw_toml: string;
+  restart_required: boolean;
+};
+
+type SaveConfigResponse = {
+  ok: boolean;
+  restart_required: boolean;
+  message: string;
 };
 
 type OpsResponse = {
@@ -180,7 +187,12 @@ export default function Page() {
       headers: authedHeaders,
       body: JSON.stringify({ raw_toml: config })
     });
-    setMessage(res.ok ? 'Config saved' : await res.text());
+    if (!res.ok) {
+      setMessage(await res.text());
+      return;
+    }
+    const body = (await res.json()) as SaveConfigResponse;
+    setMessage(body.message);
   }
 
   async function deployRemote() {
@@ -416,7 +428,7 @@ export default function Page() {
           <button onClick={() => void saveConfig()}>Save</button>
         </div>
         <textarea value={config} onChange={(event) => setConfig(event.target.value)} spellCheck={false} />
-        {message && <p className={message === 'Config saved' ? 'ok' : 'error'}>{message}</p>}
+        {message && <p className={message.startsWith('Config saved') ? 'ok' : 'error'}>{message}</p>}
       </section>
     </main>
   );

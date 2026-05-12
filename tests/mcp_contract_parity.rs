@@ -45,6 +45,8 @@ fn ask_request_accepts_graph_false_and_flags_graph_true_as_unsupported() {
     if let Ok(AxonRequest::Ask(req)) = parsed {
         assert_eq!(req.graph, Some(false));
         assert_eq!(req.unsupported_graph_error(), None);
+    } else {
+        panic!("expected Ask request");
     }
 
     let raw = json!({

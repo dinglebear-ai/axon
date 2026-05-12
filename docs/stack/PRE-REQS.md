@@ -10,7 +10,7 @@ Required tools and versions before developing or deploying.
 | Docker | 24+ | [docs.docker.com](https://docs.docker.com/get-docker/) | Infrastructure services |
 | Docker Compose | v2+ | Bundled with Docker | Service orchestration |
 | just | latest | `cargo install just` | Task runner |
-| Node.js | 24+ | [nodejs.org](https://nodejs.org/) | Web UI runtime and npm |
+| Node.js | 20.9+ | [nodejs.org](https://nodejs.org/) | Web UI runtime and npm |
 | jq | 1.6+ | System package manager | JSON parsing in scripts |
 | curl | any | System package manager | HTTP testing |
 | Python | 3.10+ | System package manager | Scripts and analysis tools |
@@ -23,7 +23,7 @@ cargo --version          # cargo 1.94.x
 docker --version         # Docker 24+
 docker compose version   # Docker Compose v2+
 just --version           # just x.y.z
-node --version           # v24.x.x
+node --version           # v20.9.0 or newer
 npm --version            # npm bundled with Node.js
 jq --version             # jq-1.6+
 python3 --version        # Python 3.10+

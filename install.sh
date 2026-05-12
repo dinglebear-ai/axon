@@ -63,7 +63,8 @@ download_and_verify() {
       ""|"/") fail "unsafe AXON_INSTALL_TMPDIR: $tmpdir" ;;
     esac
     [ -d "$tmpdir" ] || fail "AXON_INSTALL_TMPDIR must be an existing directory"
-    [ -O "$tmpdir" ] || fail "AXON_INSTALL_TMPDIR must be owned by the current user"
+    tmp_owner="$(ls -nd "$tmpdir" | awk '{print $3}')"
+    [ "$tmp_owner" = "$(id -u)" ] || fail "AXON_INSTALL_TMPDIR must be owned by the current user"
   else
     tmpdir="$(mktemp -d)"
     CREATED_TMPDIR=1

@@ -104,10 +104,20 @@ async fn panel_service_context(
 }
 
 fn validate_first_run_url(url: &str) -> Result<&str, &'static str> {
-    if url.trim().is_empty() {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
         Err("url is required")
+    } else if !is_http_url(trimmed) {
+        Err("url must be an http or https URL")
     } else {
-        Ok(url.trim())
+        Ok(trimmed)
+    }
+}
+
+fn is_http_url(url: &str) -> bool {
+    match url::Url::parse(url) {
+        Ok(parsed) => matches!(parsed.scheme(), "http" | "https"),
+        Err(_) => false,
     }
 }
 
@@ -137,6 +147,18 @@ mod tests {
         assert_eq!(
             validate_first_run_url(" https://example.com/docs ").unwrap(),
             "https://example.com/docs"
+        );
+    }
+
+    #[test]
+    fn first_run_url_rejects_non_http_urls() {
+        assert_eq!(
+            validate_first_run_url("file:///etc/passwd").unwrap_err(),
+            "url must be an http or https URL"
+        );
+        assert_eq!(
+            validate_first_run_url("not a url").unwrap_err(),
+            "url must be an http or https URL"
         );
     }
 

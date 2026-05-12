@@ -17,6 +17,16 @@ const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8001";
 const DEFAULT_QDRANT_URL: &str = "http://127.0.0.1:53333";
 const DEFAULT_TEI_URL: &str = "http://127.0.0.1:52000";
 const DEFAULT_CHROME_URL: &str = "http://127.0.0.1:6000";
+const REQUIRED_CHILD_DIRS: &[&str] = &[
+    "output",
+    "logs",
+    "artifacts",
+    "screenshots",
+    "chrome-diagnostics",
+    "lab-auth",
+    "tei",
+    "qdrant",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalSetupMode {
@@ -114,78 +124,42 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
     let mut phases = Vec::new();
 
     phases.push(run_filesystem_phase(&axon_home, mode)?);
-    let config_init = if mode.mutates() {
-        let timer = PhaseTimer::start("config");
-        let init = config_store::ensure_user_config()?;
-        phases.push(timer.finish(
-            LocalSetupStatus::Ok,
-            if init.created {
-                format!("created {}", init.path.display())
-            } else {
-                format!("preserved {}", init.path.display())
-            },
-        ));
-        init
-    } else {
-        let timer = PhaseTimer::start("config");
-        let path = crate::core::paths::axon_config_path().ok_or_else(|| {
-            io::Error::new(
-                ErrorKind::NotFound,
-                "HOME is unset or invalid; cannot resolve ~/.axon/config.toml",
-            )
-        })?;
-        phases.push(timer.finish(
-            if path.exists() {
-                LocalSetupStatus::Ok
-            } else {
-                LocalSetupStatus::Warn
-            },
-            if path.exists() {
-                format!("found {}", path.display())
-            } else {
-                format!(
-                    "missing {}; run axon setup or axon setup repair",
-                    path.display()
-                )
-            },
-        ));
-        config_store::ConfigInit {
-            path,
-            created: false,
-        }
-    };
-
-    let finalized_env = if mode.mutates() {
-        let env_result = env::ensure_env_file(&env_path)?;
-        let finalized_env = Some(env_result.values);
-        phases.push(env_result.phase);
-        phases.push(compose::write_compose_assets(&compose_dir)?);
-        finalized_env
-    } else {
-        phases.push(env::check_env_file(&env_path));
-        phases.push(compose::check_compose_assets(&compose_dir));
-        None
-    };
+    let config_init = run_config_phase(mode, &mut phases)?;
+    let env_state = run_env_and_compose_phases(mode, &env_path, &compose_dir, &mut phases)?;
 
     phases.push(check_command("docker", ["--version"]).await);
     phases.push(check_command("docker compose", ["compose", "version"]).await);
     phases.push(check_command("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]).await);
     phases.push(check_gemini_cli().await);
-    phases.push(check_oauth_config());
+    let oauth_env = env_state.finalized.as_ref().or(env_state.checked.as_ref());
+    phases.push(check_oauth_config(oauth_env));
 
-    if let Some(env_values) = finalized_env.as_ref() {
+    let prereq_failed = phases
+        .iter()
+        .any(|phase| matches!(phase.status, LocalSetupStatus::Error));
+    if let Some(env_values) = env_state.finalized.as_ref().filter(|_| !prereq_failed) {
         phases.extend(run_mutating_runtime_phases(&compose_dir, &env_path, env_values).await);
     } else {
+        let skipped_detail = if prereq_failed {
+            "setup skipped because earlier prerequisite checks failed"
+        } else {
+            "check mode does not start Docker services"
+        };
         phases.push(LocalSetupPhase {
             name: "compose-up",
             status: LocalSetupStatus::Skipped,
-            detail: "check mode does not start Docker services".to_string(),
+            detail: skipped_detail.to_string(),
             elapsed_ms: 0,
         });
         phases.push(LocalSetupPhase {
             name: "smoke",
             status: LocalSetupStatus::Skipped,
-            detail: "check mode does not run crawl/ask smoke".to_string(),
+            detail: if prereq_failed {
+                "smoke skipped because earlier prerequisite checks failed"
+            } else {
+                "check mode does not run crawl/ask smoke"
+            }
+            .to_string(),
             elapsed_ms: 0,
         });
     }
@@ -210,6 +184,81 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
         phases,
         has_errors,
     })
+}
+
+struct EnvPhaseState {
+    finalized: Option<BTreeMap<String, String>>,
+    checked: Option<BTreeMap<String, String>>,
+}
+
+fn run_config_phase(
+    mode: LocalSetupMode,
+    phases: &mut Vec<LocalSetupPhase>,
+) -> io::Result<config_store::ConfigInit> {
+    let timer = PhaseTimer::start("config");
+    if mode.mutates() {
+        let init = config_store::ensure_user_config()?;
+        phases.push(timer.finish(
+            LocalSetupStatus::Ok,
+            if init.created {
+                format!("created {}", init.path.display())
+            } else {
+                format!("preserved {}", init.path.display())
+            },
+        ));
+        return Ok(init);
+    }
+
+    let path = crate::core::paths::axon_config_path().ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::NotFound,
+            "HOME is unset or invalid; cannot resolve ~/.axon/config.toml",
+        )
+    })?;
+    phases.push(timer.finish(
+        if path.exists() {
+            LocalSetupStatus::Ok
+        } else {
+            LocalSetupStatus::Warn
+        },
+        if path.exists() {
+            format!("found {}", path.display())
+        } else {
+            format!(
+                "missing {}; run axon setup or axon setup repair",
+                path.display()
+            )
+        },
+    ));
+    Ok(config_store::ConfigInit {
+        path,
+        created: false,
+    })
+}
+
+fn run_env_and_compose_phases(
+    mode: LocalSetupMode,
+    env_path: &Path,
+    compose_dir: &Path,
+    phases: &mut Vec<LocalSetupPhase>,
+) -> io::Result<EnvPhaseState> {
+    if mode.mutates() {
+        let env_result = env::ensure_env_file(env_path)?;
+        let finalized = Some(env_result.values);
+        phases.push(env_result.phase);
+        phases.push(compose::write_compose_assets(compose_dir)?);
+        Ok(EnvPhaseState {
+            finalized,
+            checked: None,
+        })
+    } else {
+        phases.push(env::check_env_file(env_path));
+        phases.push(compose::check_compose_assets(compose_dir));
+        Ok(EnvPhaseState {
+            finalized: None,
+            checked: Some(env::read_env_file_values(env_path)?),
+        })
+    }
 }
 
 async fn run_mutating_runtime_phases(
@@ -255,16 +304,7 @@ fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<Lo
     let timer = PhaseTimer::start("filesystem");
     if mode.mutates() {
         ensure_private_dir(axon_home)?;
-        for child in [
-            "output",
-            "logs",
-            "artifacts",
-            "screenshots",
-            "chrome-diagnostics",
-            "lab-auth",
-            "tei",
-            "qdrant",
-        ] {
+        for child in REQUIRED_CHILD_DIRS {
             ensure_private_dir(&axon_home.join(child))?;
         }
         Ok(timer.finish(
@@ -272,18 +312,35 @@ fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<Lo
             format!("initialized {}", axon_home.display()),
         ))
     } else {
-        Ok(timer.finish(
-            if axon_home.exists() {
-                LocalSetupStatus::Ok
-            } else {
-                LocalSetupStatus::Warn
-            },
-            if axon_home.exists() {
-                format!("found {}", axon_home.display())
-            } else {
-                format!("missing {}; run axon setup", axon_home.display())
-            },
-        ))
+        if !axon_home.exists() {
+            return Ok(timer.finish(
+                LocalSetupStatus::Warn,
+                format!("missing {}; run axon setup", axon_home.display()),
+            ));
+        }
+        let missing: Vec<&str> = REQUIRED_CHILD_DIRS
+            .iter()
+            .copied()
+            .filter(|child| !axon_home.join(child).is_dir())
+            .collect();
+        if missing.is_empty() {
+            Ok(timer.finish(
+                LocalSetupStatus::Ok,
+                format!(
+                    "found {} with required child directories",
+                    axon_home.display()
+                ),
+            ))
+        } else {
+            Ok(timer.finish(
+                LocalSetupStatus::Warn,
+                format!(
+                    "missing child directories under {}: {}; run axon setup repair",
+                    axon_home.display(),
+                    missing.join(", ")
+                ),
+            ))
+        }
     }
 }
 
@@ -344,10 +401,10 @@ async fn check_gemini_cli() -> LocalSetupPhase {
     }
 }
 
-fn check_oauth_config() -> LocalSetupPhase {
+fn check_oauth_config(env_values: Option<&BTreeMap<String, String>>) -> LocalSetupPhase {
     let timer = PhaseTimer::start("oauth");
-    match std::env::var("AXON_MCP_AUTH_MODE") {
-        Ok(value) if value.trim().eq_ignore_ascii_case("oauth") => {
+    match setup_env_value(env_values, "AXON_MCP_AUTH_MODE") {
+        Some(value) if value.trim().eq_ignore_ascii_case("oauth") => {
             let missing: Vec<&str> = [
                 "AXON_MCP_PUBLIC_URL",
                 "AXON_MCP_GOOGLE_CLIENT_ID",
@@ -356,9 +413,7 @@ fn check_oauth_config() -> LocalSetupPhase {
             ]
             .into_iter()
             .filter(|key| {
-                std::env::var(key)
-                    .ok()
-                    .is_none_or(|value| value.trim().is_empty())
+                setup_env_value(env_values, key).is_none_or(|value| value.trim().is_empty())
             })
             .collect();
             if missing.is_empty() {
@@ -375,4 +430,10 @@ fn check_oauth_config() -> LocalSetupPhase {
             "static bearer token mode; OAuth not requested",
         ),
     }
+}
+
+fn setup_env_value(env_values: Option<&BTreeMap<String, String>>, key: &str) -> Option<String> {
+    env_values
+        .and_then(|values| values.get(key).cloned())
+        .or_else(|| std::env::var(key).ok())
 }

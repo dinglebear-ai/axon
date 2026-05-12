@@ -90,7 +90,7 @@ axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--public-exposure]
 
 Remote deploy is Docker Compose orchestration over SSH. It does not install or supervise a systemd Axon binary.
 
-The warm-path target is under 2 minutes. Cold starts that pull images and model weights can take longer; 5 minutes is the hard maximum target for the initial production flow.
+The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
 
 ## Docker Stack
 
