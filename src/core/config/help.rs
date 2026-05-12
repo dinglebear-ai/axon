@@ -229,9 +229,11 @@ fn print_top_level_help() {
 fn print_setup_help() {
     println!("Setup and deploy Axon Docker infrastructure");
     println!();
-    println!("Usage: axon setup <COMMAND>");
+    println!("Usage: axon setup [COMMAND]");
     println!();
     println!("Commands:");
+    println!("  check    Check local Docker prerequisites without mutating files or services");
+    println!("  repair   Repair local Axon config, compose assets, and Docker stack");
     println!("  targets  List Docker deployment targets from ~/.ssh/config");
     println!("  deploy   Deploy the Axon Docker Compose stack to an SSH target");
     println!("  help     Print this message or the help of the given subcommand(s)");
