@@ -46,11 +46,8 @@ The MCP server reads existing Axon stack variables at startup:
 |----------|---------|
 | `QDRANT_URL` | Vector search and retrieval |
 | `TEI_URL` | Embedding generation |
-| `OPENAI_BASE_URL` | LLM provider (legacy path) |
-| `OPENAI_API_KEY` | LLM auth |
 | `AXON_HEADLESS_GEMINI_MODEL` | Model override for Gemini headless completions |
 | `TAVILY_API_KEY` | Web search and research |
-| `AXON_LITE` | Compatibility no-op; SQLite/in-process jobs are always used |
 | `AXON_COLLECTION` | Default Qdrant collection |
 
 ## Job runtime

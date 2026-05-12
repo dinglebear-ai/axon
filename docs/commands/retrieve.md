@@ -24,8 +24,7 @@ axon retrieve <url> [FLAGS]
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`retrieve` reads existing points from Qdrant and does not call TEI. It does not
-require Postgres, Redis, or AMQP.
+`retrieve` reads existing points from Qdrant and does not call TEI.
 
 ## Flags
 

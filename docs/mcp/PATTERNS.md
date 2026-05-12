@@ -139,8 +139,7 @@ pub struct ServiceContext {
 }
 ```
 
-There is no separate `capabilities` struct on `ServiceContext` and no embedded
-Postgres, Redis, or AMQP connection pools. Jobs are backed by SQLite via
+There is no separate `capabilities` struct on `ServiceContext`. Jobs are backed by SQLite via
 `LiteServiceRuntime`. Two construction modes exist:
 
 - `ServiceContext::new(cfg)` — enqueue-only, no in-process workers (CLI default).
