@@ -345,6 +345,20 @@ mod tests {
     }
 
     #[test]
+    fn config_example_toml_parses() {
+        let contents = include_str!("../../../../config.example.toml");
+        let cfg = load_toml_config_from_str(contents).expect("config.example.toml should parse");
+        assert!(
+            cfg.search.ask_hybrid_candidates.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+        assert!(
+            cfg.tei.max_retries.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+    }
+
+    #[test]
     fn valid_toml_parses_ask_section() {
         let mut f = NamedTempFile::new().unwrap();
         writeln!(

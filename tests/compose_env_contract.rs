@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
@@ -335,4 +336,94 @@ fn shell_scripts_share_canonical_env_resolution() {
             "{path} should use the shared canonical env resolver"
         );
     }
+}
+
+fn env_example_keys() -> BTreeSet<String> {
+    include_str!("../.env.example")
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            line.split_once('=').map(|(key, _)| key.trim().to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn env_example_only_contains_production_runtime_keys() {
+    let allowed: BTreeSet<&str> = [
+        "AXON_HOME",
+        "AXON_DATA_DIR",
+        "AXON_SQLITE_PATH",
+        "AXON_ENV_FILE",
+        "AXON_CONFIG_PATH",
+        "AXON_SERVER_URL",
+        "AXON_LOCAL_MODE",
+        "AXON_SERVER_INSECURE",
+        "AXON_IMAGE",
+        "AXON_MCP_HTTP_PUBLISH",
+        "AXON_MCP_TRANSPORT",
+        "AXON_MCP_HTTP_HOST",
+        "AXON_MCP_HTTP_PORT",
+        "AXON_MCP_HTTP_TOKEN",
+        "AXON_MCP_AUTH_MODE",
+        "AXON_MCP_PUBLIC_URL",
+        "AXON_MCP_GOOGLE_CLIENT_ID",
+        "AXON_MCP_GOOGLE_CLIENT_SECRET",
+        "AXON_MCP_AUTH_ADMIN_EMAIL",
+        "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+        "AXON_MCP_ALLOWED_ORIGINS",
+        "AXON_MCP_ARTIFACT_DIR",
+        "AXON_MCP_EMBED_ALLOWED_ROOTS",
+        "AXON_MCP_EMBED_MAX_LOCAL_BYTES",
+        "QDRANT_URL",
+        "TEI_URL",
+        "TEI_HTTP_PORT",
+        "TEI_EMBEDDING_MODEL",
+        "TEI_MAX_CONCURRENT_REQUESTS",
+        "TEI_MAX_BATCH_TOKENS",
+        "TEI_MAX_BATCH_REQUESTS",
+        "TEI_MAX_CLIENT_BATCH_SIZE",
+        "TEI_POOLING",
+        "TEI_TOKENIZATION_WORKERS",
+        "NVIDIA_VISIBLE_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+        "AXON_CHROME_REMOTE_URL",
+        "AXON_CHROME_PROXY",
+        "AXON_HEADLESS_GEMINI_CMD",
+        "AXON_HEADLESS_GEMINI_HOME",
+        "AXON_HEADLESS_GEMINI_MODEL",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "GOOGLE_GENAI_USE_VERTEXAI",
+        "HF_TOKEN",
+        "TAVILY_API_KEY",
+        "GITHUB_TOKEN",
+        "REDDIT_CLIENT_ID",
+        "REDDIT_CLIENT_SECRET",
+        "AXON_OUTPUT_DIR",
+        "SCREENSHOT_DIRECTORY",
+        "AXON_LOG_DIR",
+        "AXON_LOG_FILE",
+        "RUST_LOG",
+    ]
+    .into_iter()
+    .collect();
+
+    let actual = env_example_keys();
+    let unexpected: Vec<_> = actual
+        .iter()
+        .filter(|key| !allowed.contains(key.as_str()))
+        .cloned()
+        .collect();
+
+    assert!(
+        unexpected.is_empty(),
+        "unexpected production env keys in .env.example: {unexpected:?}"
+    );
 }
