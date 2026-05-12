@@ -23,7 +23,6 @@ None.
 | `QDRANT_URL` | Qdrant base URL. |
 
 `sources` reads Qdrant metadata.
-For implementation details and troubleshooting see [`docs/ingest/sources.md`](../ingest/sources.md)
 
 ## Flags
 

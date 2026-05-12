@@ -28,9 +28,10 @@ pub(super) async fn first_run_crawl(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let url = req.url.trim();
-    if url.is_empty() {
-        return (StatusCode::BAD_REQUEST, "url is required").into_response();
-    }
+    let url = match validate_first_run_url(url) {
+        Ok(url) => url,
+        Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
+    };
     let ctx = match panel_service_context(&state, cfg).await {
         Ok(ctx) => ctx,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
@@ -66,15 +67,17 @@ pub(super) async fn first_run_ask(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let query = req.query.trim();
-    if query.is_empty() {
-        return (StatusCode::BAD_REQUEST, "query is required").into_response();
-    }
+    let query = match validate_first_run_query(query) {
+        Ok(query) => query,
+        Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
+    };
     let ctx = match panel_service_context(&state, cfg).await {
         Ok(ctx) => ctx,
         Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
     };
     let action = crate::mcp::schema::AxonRequest::Ask(crate::mcp::schema::AskRequest {
         query: Some(query.to_string()),
+        graph: None,
         diagnostics: Some(false),
         collection: None,
         since: None,
@@ -98,4 +101,62 @@ async fn panel_service_context(
         .await
         .map(Arc::clone)
         .map_err(|err| format!("failed to initialize service context: {err}"))
+}
+
+fn validate_first_run_url(url: &str) -> Result<&str, &'static str> {
+    if url.trim().is_empty() {
+        Err("url is required")
+    } else {
+        Ok(url.trim())
+    }
+}
+
+fn validate_first_run_query(query: &str) -> Result<&str, &'static str> {
+    if query.trim().is_empty() {
+        Err("query is required")
+    } else {
+        Ok(query.trim())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_first_run_query, validate_first_run_url};
+
+    #[test]
+    fn first_run_url_rejects_empty_values() {
+        assert_eq!(validate_first_run_url("").unwrap_err(), "url is required");
+        assert_eq!(
+            validate_first_run_url("  \t").unwrap_err(),
+            "url is required"
+        );
+    }
+
+    #[test]
+    fn first_run_url_trims_non_empty_values() {
+        assert_eq!(
+            validate_first_run_url(" https://example.com/docs ").unwrap(),
+            "https://example.com/docs"
+        );
+    }
+
+    #[test]
+    fn first_run_query_rejects_empty_values() {
+        assert_eq!(
+            validate_first_run_query("").unwrap_err(),
+            "query is required"
+        );
+        assert_eq!(
+            validate_first_run_query("  \n").unwrap_err(),
+            "query is required"
+        );
+    }
+
+    #[test]
+    fn first_run_query_trims_non_empty_values() {
+        assert_eq!(
+            validate_first_run_query(" what changed? ").unwrap(),
+            "what changed?"
+        );
+    }
 }

@@ -11,7 +11,7 @@ Step-by-step instructions to get Axon running locally or via Docker.
 | Docker Compose | v2+ | Service orchestration |
 | just | latest | Task runner |
 | Node.js | 24+ | Web panel asset build |
-| pnpm | 10+ | Web panel package manager |
+| npm | bundled with Node.js | Web panel package manager |
 
 Optional but recommended:
 
@@ -36,7 +36,7 @@ cd ~/workspace/axon_rust
 ./scripts/dev-setup.sh
 ```
 
-This installs the Rust toolchain, cargo tools, `just`, pnpm, and verifies all prerequisites. The script is idempotent — safe to re-run.
+This installs the Rust toolchain, cargo tools, `just`, runs `npm ci` for the web panel, and verifies all prerequisites. The script is idempotent — safe to re-run.
 
 ## 3. Configure environment
 
@@ -53,9 +53,9 @@ Edit `~/.axon/.env` and set required values:
 AXON_HOME=/home/you/.axon
 AXON_DATA_DIR=/home/you/.axon
 
-# Qdrant and TEI
-QDRANT_URL=http://axon-qdrant:6333
-TEI_URL=http://axon-tei:80
+# Host-reachable Qdrant and TEI
+QDRANT_URL=http://127.0.0.1:53333
+TEI_URL=http://127.0.0.1:52000
 ```
 
 Optional client/server mode for host CLI calls:

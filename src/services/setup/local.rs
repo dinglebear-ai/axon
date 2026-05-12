@@ -1,6 +1,7 @@
 use super::config_store;
 use crate::core::paths::{axon_home_dir, ensure_private_dir};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -154,22 +155,26 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
         }
     };
 
-    if mode.mutates() {
-        phases.push(env::ensure_env_file(&env_path)?);
+    let finalized_env = if mode.mutates() {
+        let env_result = env::ensure_env_file(&env_path)?;
+        let finalized_env = Some(env_result.values);
+        phases.push(env_result.phase);
         phases.push(compose::write_compose_assets(&compose_dir)?);
+        finalized_env
     } else {
         phases.push(env::check_env_file(&env_path));
         phases.push(compose::check_compose_assets(&compose_dir));
-    }
+        None
+    };
 
     phases.push(check_command("docker", ["--version"]).await);
     phases.push(check_command("docker compose", ["compose", "version"]).await);
     phases.push(check_command("nvidia-smi", ["--query-gpu=name", "--format=csv,noheader"]).await);
-    phases.push(check_gemini_auth().await);
+    phases.push(check_gemini_cli().await);
     phases.push(check_oauth_config());
 
-    if mode.mutates() {
-        phases.extend(run_mutating_runtime_phases(&compose_dir, &env_path).await);
+    if let Some(env_values) = finalized_env.as_ref() {
+        phases.extend(run_mutating_runtime_phases(&compose_dir, &env_path, env_values).await);
     } else {
         phases.push(LocalSetupPhase {
             name: "compose-up",
@@ -207,13 +212,14 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
     })
 }
 
-async fn run_mutating_runtime_phases(compose_dir: &Path, env_path: &Path) -> Vec<LocalSetupPhase> {
-    let qdrant_url = env_value_from_file(env_path, "QDRANT_URL")
-        .unwrap_or_else(|| DEFAULT_QDRANT_URL.to_string());
-    let tei_url =
-        env_value_from_file(env_path, "TEI_URL").unwrap_or_else(|| DEFAULT_TEI_URL.to_string());
-    let chrome_url = env_value_from_file(env_path, "AXON_CHROME_REMOTE_URL")
-        .unwrap_or_else(|| DEFAULT_CHROME_URL.to_string());
+async fn run_mutating_runtime_phases(
+    compose_dir: &Path,
+    env_path: &Path,
+    env_values: &BTreeMap<String, String>,
+) -> Vec<LocalSetupPhase> {
+    let qdrant_url = env_value(env_values, "QDRANT_URL", DEFAULT_QDRANT_URL);
+    let tei_url = env_value(env_values, "TEI_URL", DEFAULT_TEI_URL);
+    let chrome_url = env_value(env_values, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
 
     vec![
         runtime::run_compose(compose_dir, env_path, ["pull"]).await,
@@ -225,7 +231,7 @@ async fn run_mutating_runtime_phases(compose_dir: &Path, env_path: &Path) -> Vec
         .await,
         runtime::wait_http("tei", format!("{}/health", tei_url.trim_end_matches('/'))).await,
         runtime::wait_http("chrome", chrome_url).await,
-        runtime::wait_http("axon", "http://127.0.0.1:8001/healthz").await,
+        runtime::wait_http("axon", "http://127.0.0.1:8001/readyz").await,
         runtime::prewarm_tei(&tei_url).await,
         runtime::run_smoke(
             "crawl-smoke",
@@ -236,18 +242,13 @@ async fn run_mutating_runtime_phases(compose_dir: &Path, env_path: &Path) -> Vec
     ]
 }
 
-fn env_value_from_file(path: &Path, key: &str) -> Option<String> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    raw.lines().find_map(|line| {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            return None;
-        }
-        let (candidate, value) = line.split_once('=')?;
-        (candidate.trim() == key)
-            .then(|| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-    })
+fn env_value(env_values: &BTreeMap<String, String>, key: &str, default: &str) -> String {
+    env_values
+        .get(key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default)
+        .to_string()
 }
 
 fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<LocalSetupPhase> {
@@ -288,75 +289,58 @@ fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<Lo
 
 async fn check_command<const N: usize>(name: &'static str, args: [&str; N]) -> LocalSetupPhase {
     let timer = PhaseTimer::start(name);
-    let mut command = if name == "docker compose" {
-        let mut cmd = Command::new("docker");
-        cmd.args(args);
-        cmd
+    let result = if name == "docker compose" {
+        super::diagnostics::check_command("docker", args, Duration::from_secs(10)).await
     } else {
-        let mut cmd = Command::new(name);
-        cmd.args(args);
-        cmd
+        super::diagnostics::check_command(name, args, Duration::from_secs(10)).await
     };
-    match tokio::time::timeout(Duration::from_secs(10), command.output()).await {
-        Ok(Ok(output)) if output.status.success() => timer.finish(
-            LocalSetupStatus::Ok,
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .unwrap_or("available")
-                .to_string(),
-        ),
-        Ok(Ok(output)) => timer.finish(
-            LocalSetupStatus::Error,
-            String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .next()
-                .unwrap_or("command failed")
-                .to_string(),
-        ),
-        Ok(Err(err)) if err.kind() == ErrorKind::NotFound => {
-            timer.finish(LocalSetupStatus::Error, "not found on PATH")
-        }
-        Ok(Err(err)) => timer.finish(LocalSetupStatus::Error, err.to_string()),
-        Err(_) => timer.finish(LocalSetupStatus::Error, "timed out"),
-    }
+
+    let status = match result.status {
+        super::diagnostics::CommandStatus::Ok => LocalSetupStatus::Ok,
+        super::diagnostics::CommandStatus::Failed
+        | super::diagnostics::CommandStatus::NotFound
+        | super::diagnostics::CommandStatus::TimedOut => LocalSetupStatus::Error,
+    };
+    timer.finish(status, result.detail)
 }
 
-async fn check_gemini_auth() -> LocalSetupPhase {
+async fn check_gemini_cli() -> LocalSetupPhase {
     let timer = PhaseTimer::start("gemini");
-    let home = std::env::var("HOME").unwrap_or_default();
-    let gemini_home = std::env::var("AXON_HEADLESS_GEMINI_HOME")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(home).join(".gemini"));
     let mut cmd = Command::new("gemini");
     cmd.arg("--version");
     match tokio::time::timeout(Duration::from_secs(10), cmd.output()).await {
-        Ok(Ok(output)) if output.status.success() && gemini_home.exists() => timer.finish(
-            LocalSetupStatus::Ok,
-            format!("gemini CLI available; auth home {}", gemini_home.display()),
-        ),
         Ok(Ok(output)) if output.status.success() => timer.finish(
-            LocalSetupStatus::Warn,
+            LocalSetupStatus::Ok,
             format!(
-                "gemini CLI available, but {} is missing",
-                gemini_home.display()
+                "gemini CLI present: {}; ask-smoke verifies auth/completion",
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or("version unavailable")
             ),
         ),
         Ok(Ok(output)) => timer.finish(
-            LocalSetupStatus::Error,
-            String::from_utf8_lossy(&output.stderr)
-                .lines()
-                .next()
-                .unwrap_or("gemini --version failed")
-                .to_string(),
+            LocalSetupStatus::Warn,
+            format!(
+                "gemini CLI version check failed: {}; ask-smoke verifies auth/completion",
+                String::from_utf8_lossy(&output.stderr)
+                    .lines()
+                    .next()
+                    .unwrap_or("gemini --version failed")
+            ),
         ),
-        Ok(Err(err)) if err.kind() == ErrorKind::NotFound => {
-            timer.finish(LocalSetupStatus::Error, "gemini CLI not found on PATH")
-        }
-        Ok(Err(err)) => timer.finish(LocalSetupStatus::Error, err.to_string()),
-        Err(_) => timer.finish(LocalSetupStatus::Error, "timed out"),
+        Ok(Err(err)) if err.kind() == ErrorKind::NotFound => timer.finish(
+            LocalSetupStatus::Warn,
+            "gemini CLI not found on PATH; ask-smoke is the auth/completion proof",
+        ),
+        Ok(Err(err)) => timer.finish(
+            LocalSetupStatus::Warn,
+            format!("gemini CLI check failed: {err}; ask-smoke verifies auth/completion"),
+        ),
+        Err(_) => timer.finish(
+            LocalSetupStatus::Warn,
+            "gemini CLI version check timed out; ask-smoke verifies auth/completion",
+        ),
     }
 }
 

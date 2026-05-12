@@ -9,7 +9,7 @@ All project documentation lives here. This file defines the layout and the rules
 docs/
 ├── commands/                 # CLI command reference — one file per command
 ├── eval/                     # Evaluation datasets, metrics, and judge outputs
-├── ingest/                   # Ingest system docs — one file per ingest source
+├── ingest/                   # Ingest pipeline docs and one deep-dive per ingest source
 ├── mcp/                      # MCP connection, transport, deployment, and action docs
 ├── perf/                     # Performance reports and tuning snapshots
 ├── plans/                    # Active implementation plans (move to plans/complete/ when done)
@@ -38,7 +38,7 @@ docs/
 
 ## The Split: commands/ vs ingest/
 
-These two directories cover the four ingest commands (`github`, `reddit`, `sessions`, `youtube`). They serve different readers and different questions.
+These two directories cover different readers and different questions. `docs/commands/` is the CLI reference for every command. `docs/ingest/` is only for the ingest pipeline and real source deep-dives (`ingest`, `github`, `reddit`, `sessions`, `youtube`).
 
 ### `docs/commands/` — "How do I use this command?"
 
@@ -51,17 +51,17 @@ The CLI reference. Written for someone at a terminal who needs to know what flag
 - Job subcommands (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`, `worker`)
 - Concrete usage examples
 - Required environment variables (brief — what to set, not why)
-- One-line install instructions for external dependencies (link to ingest/ for details)
+- One-line install instructions for external dependencies, linking to an ingest deep-dive only when one exists
 
 **Does not belong here:**
 - Step-by-step pipeline internals ("first it calls X, then Y…")
-- Troubleshooting sections (→ ingest/)
-- Known limitations tables (→ ingest/)
+- Troubleshooting sections for ingest sources (→ ingest/)
+- Known limitations tables for ingest sources (→ ingest/)
 - Implementation details (function names, data structures)
 
 ### `docs/ingest/` — "How does this work / how do I set it up?"
 
-The implementation and operations reference. Written for someone debugging a failure, setting up a new environment, or contributing to the ingest code.
+The implementation and operations reference for the ingest pipeline and supported ingest sources. Written for someone debugging a failure, setting up a new environment, or contributing to the ingest code.
 
 **Belongs here:**
 - Prerequisites with full installation instructions (Docker + local dev)
@@ -80,7 +80,7 @@ The implementation and operations reference. Written for someone debugging a fai
 
 ### Cross-Linking Rule
 
-Every `commands/` file links to its `ingest/` counterpart:
+Only commands with real ingest deep-dives link to `docs/ingest/`:
 ```markdown
 > For implementation details and troubleshooting see [`docs/ingest/<name>.md`](../ingest/<name>.md).
 ```
@@ -89,6 +89,8 @@ Every `ingest/` file opens with a back-link to its `commands/` counterpart:
 ```markdown
 > CLI reference (flags, subcommands, examples): [`docs/commands/<name>.md`](../commands/<name>.md)
 ```
+
+Do not create tiny command stubs in `docs/ingest/` for commands such as `ask`, `doctor`, `domains`, `embed`, `evaluate`, `query`, `retrieve`, `setup`, `sources`, `stats`, or `suggest`. Keep their operational notes in `docs/commands/<name>.md` unless they grow into a true deep-dive.
 
 ---
 

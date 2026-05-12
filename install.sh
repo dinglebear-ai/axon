@@ -50,7 +50,8 @@ check_setup_prereqs() {
   need docker
   docker compose version >/dev/null 2>&1 || fail "docker compose is required"
   command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi is required for the RTX 4070 production target"
-  command -v gemini >/dev/null 2>&1 || fail "gemini CLI is required and must already be authenticated"
+  command -v gemini >/dev/null 2>&1 || fail "gemini CLI is required on PATH; axon setup ask-smoke verifies auth and completion"
+  say "Gemini CLI found; axon setup ask-smoke verifies auth and completion"
 }
 
 download_and_verify() {

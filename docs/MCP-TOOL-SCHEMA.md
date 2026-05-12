@@ -59,7 +59,7 @@ These actions do not require `subaction`:
 
 | Action | Required Fields | Optional Fields |
 |--------|----------------|-----------------|
-| `ask` | `query` (string) | `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
+| `ask` | `query` (string) | `graph`, `diagnostics`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `doctor` | -- | `response_mode` |
 | `domains` | -- | `limit`, `offset`, `response_mode` |
 | `elicit_demo` | -- | `message`, `response_mode` |
@@ -77,7 +77,7 @@ These actions do not require `subaction`:
 | `status` | -- | `response_mode` |
 | `suggest` | -- | `focus` (aliases: `query`), `limit`, `collection`, `response_mode` |
 
-Note: graph retrieval is not part of the production MCP schema. Requests that include `graph` are rejected as unknown fields.
+Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production.
 
 ## Crawl Start Parameters
 Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
@@ -87,7 +87,7 @@ Optional fields accepted on `{ "action": "crawl", "subaction": "start", ... }`:
 | `subaction` | CrawlSubaction | -- |  |
 | `urls` | string[] | -- | Seed URLs (required, non-empty array) |
 | `max_pages` | u32 | 0 (uncapped) | Page limit |
-| `max_depth` | usize | 5 | Max crawl depth |
+| `max_depth` | usize | 10 | Max crawl depth |
 | `include_subdomains` | bool | false | Include subdomains |
 | `respect_robots` | bool | false | Honour robots.txt |
 | `discover_sitemaps` | bool | true | Run sitemap backfill after crawl |

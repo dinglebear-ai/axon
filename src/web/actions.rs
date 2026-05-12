@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
+    oauth_resource_url,
 };
 use crate::services::action_api::{dispatch_action, required_scope};
 use crate::services::context::ServiceContext;
@@ -179,18 +180,6 @@ async fn jsonize_auth_error(request: Request<Body>, next: Next) -> Response {
         );
     }
     response
-}
-
-fn oauth_resource_url(auth_policy: &AuthPolicy) -> Option<Arc<str>> {
-    match auth_policy {
-        AuthPolicy::Mounted {
-            auth_state: Some(_),
-        } => std::env::var("AXON_MCP_PUBLIC_URL")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map(|u| Arc::from(format!("{}/mcp", u.trim_end_matches('/')))),
-        _ => None,
-    }
 }
 
 fn authorize_action(

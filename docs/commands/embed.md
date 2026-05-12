@@ -24,7 +24,6 @@ axon embed <SUBCOMMAND> [ARGS] [FLAGS]
 | `QDRANT_URL` | Qdrant base URL. |
 
 `embed` writes vectors to Qdrant through TEI embeddings.
-For implementation details and troubleshooting see [`docs/ingest/embed.md`](../ingest/embed.md)
 
 ## Flags
 
