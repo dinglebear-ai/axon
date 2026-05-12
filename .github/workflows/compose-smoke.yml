@@ -1,0 +1,36 @@
+name: Compose smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  compose-config:
+    name: compose-config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate production compose
+        run: docker compose --env-file .env.example -f docker-compose.yaml config --quiet
+
+      - name: Validate development compose override
+        run: docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.dev.yaml config --quiet
+
+  image-build-smoke:
+    name: image-build-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Axon image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: config/Dockerfile
+          push: false
+          tags: axon:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -25,11 +25,8 @@ x-common-service: &common-service
 services:
   axon:
     <<: *common-service
-    image: axon:local
+    image: ${AXON_IMAGE:-ghcr.io/jmagar/axon:latest}
     container_name: axon
-    build:
-      context: .
-      dockerfile: config/Dockerfile
     user: "1000:1000"
     env_file:
       - path: ${AXON_HOME:-${HOME}/.axon}/.env
@@ -119,11 +116,11 @@ services:
       - --dtype
       - float16
       - --max-concurrent-requests
-      - "${TEI_MAX_CONCURRENT_REQUESTS:-512}"
+      - "${TEI_MAX_CONCURRENT_REQUESTS:-32}"
       - --max-batch-tokens
-      - "${TEI_MAX_BATCH_TOKENS:-163840}"
+      - "${TEI_MAX_BATCH_TOKENS:-65536}"
       - --max-batch-requests
-      - "${TEI_MAX_BATCH_REQUESTS:-128}"
+      - "${TEI_MAX_BATCH_REQUESTS:-64}"
       - --max-client-batch-size
       - "${TEI_MAX_CLIENT_BATCH_SIZE:-96}"
       - --pooling
