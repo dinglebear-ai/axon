@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
+# ── Web assets ────────────────────────────────────────────────────────────────
+FROM node:24-bookworm-slim AS web-builder
+
+WORKDIR /web
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
+COPY apps/web ./
+RUN npm run build
+
 # ── Builder ───────────────────────────────────────────────────────────────────
 FROM rust:1.94.0-bookworm AS builder
 
@@ -16,6 +25,8 @@ WORKDIR /build
 # Copy the full workspace. Single-crate workspace at repo root, so this is
 # straightforward — no Cargo workspace member juggling needed.
 COPY . .
+COPY --from=web-builder /web/out apps/web/out
+RUN test -d apps/web/out
 
 # The embedded web bundle is generated output. Fail closed if a stale local
 # export contains secrets before RustEmbed bakes it into the binary.
