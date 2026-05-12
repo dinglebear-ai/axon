@@ -24,18 +24,14 @@ pub(super) fn ensure_env_file(path: &Path) -> io::Result<LocalSetupPhase> {
 
     env.entry("AXON_HOME".to_string()).or_insert(home.clone());
     env.entry("AXON_DATA_DIR".to_string()).or_insert(home);
-    env.entry("AXON_SERVER_URL".to_string())
-        .or_insert_with(|| DEFAULT_SERVER_URL.to_string());
-    env.entry("QDRANT_URL".to_string())
-        .or_insert_with(|| DEFAULT_QDRANT_URL.to_string());
-    env.entry("TEI_URL".to_string())
-        .or_insert_with(|| DEFAULT_TEI_URL.to_string());
-    env.entry("AXON_CHROME_REMOTE_URL".to_string())
-        .or_insert_with(|| DEFAULT_CHROME_URL.to_string());
-    env.entry("AXON_MCP_HTTP_PUBLISH".to_string())
-        .or_insert_with(|| "127.0.0.1:8001".to_string());
+    insert_process_or_default(&mut env, "AXON_SERVER_URL", DEFAULT_SERVER_URL);
+    insert_process_or_default(&mut env, "QDRANT_URL", DEFAULT_QDRANT_URL);
+    insert_process_or_default(&mut env, "TEI_URL", DEFAULT_TEI_URL);
+    insert_process_or_default(&mut env, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
+    insert_process_or_default(&mut env, "AXON_MCP_HTTP_PUBLISH", "127.0.0.1:8001");
     if !env.contains_key("AXON_MCP_HTTP_TOKEN") {
-        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), generate_token()?);
+        let token = process_env_value("AXON_MCP_HTTP_TOKEN").map_or_else(generate_token, Ok)?;
+        env.insert("AXON_MCP_HTTP_TOKEN".to_string(), token);
     }
     env.entry("TEI_EMBEDDING_MODEL".to_string())
         .or_insert_with(|| "Qwen/Qwen3-Embedding-0.6B".to_string());
@@ -52,6 +48,18 @@ pub(super) fn ensure_env_file(path: &Path) -> io::Result<LocalSetupPhase> {
         LocalSetupStatus::Ok,
         format!("{} {} keys; added {added}", path.display(), env.len()),
     ))
+}
+
+fn insert_process_or_default(env: &mut BTreeMap<String, String>, key: &str, default: &str) {
+    env.entry(key.to_string())
+        .or_insert_with(|| process_env_value(key).unwrap_or_else(|| default.to_string()));
+}
+
+fn process_env_value(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 pub(super) fn check_env_file(path: &Path) -> LocalSetupPhase {
