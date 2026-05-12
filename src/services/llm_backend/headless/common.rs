@@ -6,7 +6,6 @@ const FORBIDDEN_FLAGS: &[&str] = &[
     "--dangerously-skip-permissions",
     "--allow-dangerously-skip-permissions",
     "--yolo",
-    "--approval-mode=yolo",
     "danger-full-access",
     "bypassPermissions",
 ];
@@ -37,9 +36,12 @@ impl HeadlessCommandSpec {
                 ));
             }
         }
-        if self.args.iter().any(|arg| arg == "yolo") {
+        // "--yolo" as a standalone flag is forbidden; the value "yolo" in
+        // ["--approval-mode", "yolo"] is permitted — it enables native skill
+        // activation via activate_skill tool calls in the isolated Gemini home.
+        if self.args.iter().any(|arg| arg == "--yolo") {
             return Err(format!(
-                "headless {} command includes forbidden yolo approval mode",
+                "headless {} command includes forbidden --yolo flag",
                 self.agent
             ));
         }
