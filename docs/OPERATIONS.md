@@ -94,9 +94,9 @@ processed by that running `axon mcp` (or `axon serve`).
 
 - **SQLite** — file exists at `cfg.sqlite_path`
 - **TEI** — `GET /health`, plus `/info` for embedding model + summary
-- **Qdrant** — `GET /healthz`, plus `/collections/{name}` for vector mode (named/unnamed)
+- **Qdrant** — `GET /readyz`, plus `/collections/{name}` for vector mode (named/unnamed)
 - **Chrome** — `chrome_remote_url` if configured
-- **Gemini headless LLM** — command/auth/model readiness
+- **Gemini headless LLM** — command/config status; first `axon ask` smoke proves auth and completion
 - **Vector mode mismatch** — warns if collection is unnamed but `AXON_HYBRID_SEARCH=true`
 
 `axon status` reports per-kind job counts (Crawl / Extract / Embed / Ingest)
@@ -471,7 +471,7 @@ The `to` collection is created if missing; re-running is idempotent.
 |---|---|---|
 | `axon doctor` shows `tei.ok=false` | TEI container down or model still loading | `docker compose --env-file ~/.axon/.env -f docker-compose.yaml ps`; wait for healthcheck (`start_period: 20s`); check `docker logs axon-tei` for CUDA OOM |
 | `tei` returns `503` mid-run | Model overload / CUDA pressure | Reduce `TEI_MAX_BATCH_TOKENS` / `TEI_MAX_CONCURRENT_REQUESTS` in `~/.axon/.env`; lower `--batch-concurrency`; TEI client auto-retries on 429/5xx (see CLAUDE.md "TEI retries") |
-| `qdrant connection refused` | Qdrant not started or `QDRANT_URL` wrong | `just services-up`; verify `curl ${QDRANT_URL}/healthz` |
+| `qdrant connection refused` | Qdrant not started or `QDRANT_URL` wrong | `just services-up`; verify `curl ${QDRANT_URL}/readyz` |
 | `queue cap exceeded` on submit | `AXON_MAX_PENDING_*` reached | Run `axon <kind> list` to inspect; `axon <kind> cleanup` removes terminal rows; raise the cap or set to `0` |
 | Jobs sit `pending` forever | No `axon mcp` / `axon serve` process running | Start `just dev` or pass `--wait true` |
 | Job stuck `running` past 10 min | Worker hang | Heartbeat watchdog will mark `failed` automatically; or run `axon <kind> recover` |

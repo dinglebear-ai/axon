@@ -26,6 +26,7 @@ type StackCheck = {
 };
 
 type StackResponse = {
+  runtime_mode: 'host' | 'container' | string;
   server_url: string;
   mcp_url: string;
   log_dir: string;
@@ -62,6 +63,8 @@ export default function Page() {
   const [config, setConfig] = useState('');
   const [ops, setOps] = useState<OpsResponse | null>(null);
   const [stack, setStack] = useState<StackResponse | null>(null);
+  const [stackLoading, setStackLoading] = useState(false);
+  const [stackStatus, setStackStatus] = useState('');
   const [targets, setTargets] = useState<SshTarget[]>([]);
   const [selectedTarget, setSelectedTarget] = useState('');
   const [publicExposure, setPublicExposure] = useState(false);
@@ -130,12 +133,28 @@ export default function Page() {
 
   async function refreshStack() {
     if (!token) return;
-    const res = await fetch('/api/panel/stack', { headers: authedHeaders });
-    if (!res.ok) {
-      setMessage(await res.text());
-      return;
+    setStackLoading(true);
+    setStackStatus('');
+    try {
+      const res = await fetch('/api/panel/stack', { headers: authedHeaders });
+      const body = await res.text();
+      if (!res.ok) {
+        setStack(null);
+        setStackStatus(body || `Stack check failed with HTTP ${res.status}`);
+        return;
+      }
+      try {
+        setStack(JSON.parse(body) as StackResponse);
+      } catch (error) {
+        setStack(null);
+        setStackStatus(`Stack check returned invalid JSON: ${String(error)}`);
+      }
+    } catch (error) {
+      setStack(null);
+      setStackStatus(`Stack check failed: ${String(error)}`);
+    } finally {
+      setStackLoading(false);
     }
-    setStack((await res.json()) as StackResponse);
   }
 
   async function login() {
@@ -285,12 +304,19 @@ export default function Page() {
         <div className="section-heading">
           <div>
             <h2>Docker Stack</h2>
-            <p>{stack ? `${stack.server_url} · ${stack.log_dir}` : 'Checking local runtime'}</p>
+            <p>
+              {stack
+                ? `${stack.runtime_mode} · ${stack.server_url} · ${stack.log_dir}`
+                : stackLoading
+                  ? 'Checking runtime'
+                  : stackStatus || 'Runtime status unavailable'}
+            </p>
           </div>
-          <button className="ghost" onClick={() => void refreshStack()}>
-            Refresh
+          <button className="ghost" onClick={() => void refreshStack()} disabled={stackLoading}>
+            {stackLoading ? 'Refreshing' : 'Refresh'}
           </button>
         </div>
+        {stackStatus && <p className="error">{stackStatus}</p>}
         <div className="check-grid">
           {(stack?.checks ?? []).map((check) => (
             <div className={`check-card ${check.status}`} key={check.label}>

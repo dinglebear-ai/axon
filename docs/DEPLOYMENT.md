@@ -56,8 +56,8 @@ It is idempotent — safe to re-run. What it does:
 3. Installs `rustup` and the pinned Rust toolchain (from `rust-toolchain.toml`) if missing.
 4. Installs `just` (task runner) using a prebuilt binary for x86\_64/aarch64 Linux, or Homebrew on macOS.
 5. Installs `lefthook` (git hooks) and optional dev tools (`cargo-nextest`, `cargo-watch`, `sccache`).
-6. Checks Node.js ≥ v24 and pnpm ≥ v10; installs if missing.
-7. Runs `pnpm install --frozen-lockfile` for `apps/web`.
+6. Checks Node.js ≥ v24 and npm.
+7. Runs `npm ci` for `apps/web` using `apps/web/package-lock.json`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.
 9. **Prompts for `AXON_HOME`** (default `~/.axon`, flat layout — no nested `axon/` subdir), derives `AXON_DATA_DIR="$AXON_HOME"`, and pre-creates all container volume directories under it.
 10. Starts production infrastructure (`docker compose --env-file ~/.axon/.env -f docker-compose.yaml up -d axon-qdrant axon-tei axon-chrome`).

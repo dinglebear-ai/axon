@@ -4,7 +4,7 @@ use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::setup::{self, config_store};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
     middleware,
@@ -104,25 +104,11 @@ pub(crate) fn router(
         panel,
         service_context: Arc::clone(&service_context),
     };
-    let ask_router = Router::new()
-        .route(
-            "/v1/ask",
-            post(v1_ask).layer(DefaultBodyLimit::max(ASK_BODY_LIMIT)),
-        )
-        .with_state((state.clone(), Arc::clone(&cfg)));
-    let ask_router = if let Some(layer) = crate::mcp::auth::build_auth_layer(
-        &auth_policy,
-        crate::mcp::auth::configured_mcp_http_token().map(Arc::from),
-        oauth_resource_url(&auth_policy),
-    ) {
-        ask_router.layer(layer).layer(middleware::from_fn(
-            crate::mcp::auth::normalize_api_key_header,
-        ))
-    } else {
-        ask_router
-    };
+    let ask_router =
+        ask_router::<(AppState, Arc<crate::core::config::Config>)>(Arc::clone(&cfg), &auth_policy);
     let panel_router = Router::new()
-        .route("/healthz", get(healthz))
+        .route("/healthz", get(super::health::healthz))
+        .route("/readyz", get(super::health::readyz))
         .route("/api/panel/state", get(panel_state))
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
@@ -144,19 +130,27 @@ pub(crate) fn router(
     panel_router.merge(super::actions::router(cfg, service_context, auth_policy))
 }
 
-async fn healthz() -> impl IntoResponse {
-    (StatusCode::OK, "ok")
-}
-
-fn oauth_resource_url(policy: &crate::mcp::auth::AuthPolicy) -> Option<Arc<str>> {
-    match policy {
-        crate::mcp::auth::AuthPolicy::Mounted {
-            auth_state: Some(_),
-        } => std::env::var("AXON_MCP_PUBLIC_URL")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .map(|url| Arc::from(format!("{}/mcp", url.trim_end_matches('/')))),
-        _ => None,
+fn ask_router<S>(
+    cfg: Arc<crate::core::config::Config>,
+    auth_policy: &crate::mcp::auth::AuthPolicy,
+) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    let ask_router = Router::<S>::new()
+        .route("/v1/ask", post(v1_ask))
+        .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
+        .layer(Extension(cfg));
+    if let Some(layer) = crate::mcp::auth::build_auth_layer(
+        auth_policy,
+        crate::mcp::auth::configured_mcp_http_token().map(Arc::from),
+        crate::mcp::auth::oauth_resource_url(auth_policy),
+    ) {
+        ask_router.layer(layer).layer(middleware::from_fn(
+            crate::mcp::auth::normalize_api_key_header,
+        ))
+    } else {
+        ask_router
     }
 }
 
@@ -279,6 +273,10 @@ struct AskRequestBody {
     before: Option<String>,
     #[serde(default)]
     diagnostics: Option<bool>,
+    /// Deprecated compatibility field. `false`/unset is accepted as a no-op;
+    /// `true` is rejected before any ask execution.
+    #[serde(default)]
+    graph: Option<bool>,
     #[serde(default)]
     hybrid_search: Option<bool>,
     #[serde(default)]
@@ -404,9 +402,21 @@ fn classify_ask_error(err: &(dyn std::error::Error + 'static)) -> (StatusCode, &
 }
 
 async fn v1_ask(
-    State((_, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
+    Extension(cfg): Extension<Arc<crate::core::config::Config>>,
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
+    if req.graph.unwrap_or(false) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(AskErrorBody {
+                kind: "bad_request",
+                message: "graph retrieval is not supported; omit graph or set graph to false"
+                    .to_string(),
+                diagnostics: None,
+            }),
+        )
+            .into_response();
+    }
     if req.query.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,

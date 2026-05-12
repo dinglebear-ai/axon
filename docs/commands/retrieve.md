@@ -25,7 +25,6 @@ axon retrieve <url> [FLAGS]
 | `QDRANT_URL` | Qdrant base URL. |
 
 `retrieve` reads existing points from Qdrant and does not call TEI.
-For implementation details and troubleshooting see [`docs/ingest/retrieve.md`](../ingest/retrieve.md)
 
 ## Flags
 

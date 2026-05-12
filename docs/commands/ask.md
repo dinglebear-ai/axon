@@ -30,7 +30,6 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_SERVER_URL` | Optional generic server endpoint. If set, server-mode capable commands use `axon serve`; `ask` uses the same server URL. |
 
 `ask` uses Qdrant + TEI retrieval and Gemini headless synthesis.
-For implementation details and troubleshooting see [`docs/ingest/ask.md`](../ingest/ask.md)
 
 ## Flags
 

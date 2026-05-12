@@ -184,7 +184,7 @@ def _emit_direct_actions(
     if "ask" in direct_actions:
         emit()
         emit(
-            "Note: graph retrieval is not part of the production MCP schema. Requests that include `graph` are rejected as unknown fields."
+            "Note: `graph` is a deprecated compatibility field. `false`/unset is accepted as a no-op; `true` is rejected because graph retrieval is not wired in production."
         )
     emit()
 

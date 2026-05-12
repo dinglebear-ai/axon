@@ -137,7 +137,7 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
     # field_name: (default, description)
     "urls": ("--", "Seed URLs (required, non-empty array)"),
     "max_pages": ("0 (uncapped)", "Page limit"),
-    "max_depth": ("5", "Max crawl depth"),
+    "max_depth": ("10", "Max crawl depth"),
     "include_subdomains": ("false", "Include subdomains"),
     "respect_robots": ("false", "Honour robots.txt"),
     "discover_sitemaps": ("true", "Run sitemap backfill after crawl"),

@@ -1,7 +1,7 @@
 # axon setup
 
 First-run local Docker setup and remote Docker deployment helpers.
-For implementation details and troubleshooting see [`docs/ingest/setup.md`](../ingest/setup.md)
+Local setup creates `~/.axon`, writes shared config/env files, installs compose assets, starts the Docker stack, checks health, prewarms TEI, and runs first-run smoke checks.
 
 ## Synopsis
 

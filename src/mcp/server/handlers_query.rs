@@ -361,6 +361,9 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_ask(&self, req: AskRequest) -> Result<AxonToolResponse, ErrorData> {
+        if let Some(message) = req.unsupported_graph_error() {
+            return Err(invalid_params(message));
+        }
         let query = req
             .query
             .ok_or_else(|| invalid_params("query is required for ask"))?;
