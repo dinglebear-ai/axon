@@ -258,6 +258,16 @@ pub(in crate::core::config) struct GlobalArgs {
     )]
     pub(in crate::core::config) watchdog_confirm_secs: i64,
 
+    /// Seconds between periodic watchdog sweeps. Smaller = stale jobs are
+    /// reclaimed sooner, larger = fewer SQL writes when nothing is stale.
+    #[arg(
+        global = true,
+        long,
+        env = "AXON_WATCHDOG_SWEEP_SECS",
+        default_value_t = 15
+    )]
+    pub(in crate::core::config) watchdog_sweep_secs: i64,
+
     /// Cron interval: re-run the command every N seconds
     #[arg(global = true, long)]
     pub(in crate::core::config) cron_every_seconds: Option<u64>,

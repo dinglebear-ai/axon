@@ -258,13 +258,35 @@ pub async fn list_service_jobs(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ServiceJob>, sqlx::Error> {
+    let order_by = match kind {
+        JobKind::Crawl => {
+            "ORDER BY CASE status \
+                WHEN 'running' THEN 0 \
+                WHEN 'pending' THEN 1 \
+                WHEN 'completed' THEN 2 \
+                WHEN 'failed' THEN 3 \
+                WHEN 'canceled' THEN 4 \
+                ELSE 5 \
+             END, \
+             created_at DESC, \
+             updated_at DESC, \
+             id ASC"
+        }
+        _ => "ORDER BY created_at DESC, updated_at DESC, id ASC",
+    };
+    // SAFETY: service_select_from(kind) and order_by are compile-time `&'static
+    // str` from a closed enum dispatch; no caller-controlled values reach this
+    // format!(). Limit/offset are bound parameters.
     let query = format!(
-        "{} ORDER BY created_at DESC, id LIMIT {} OFFSET {}",
+        "{} {} LIMIT ?1 OFFSET ?2",
         service_select_from(kind),
-        limit,
-        offset
+        order_by,
     );
-    let rows: Vec<ServiceJobTuple> = sqlx::query_as(&query).fetch_all(pool).await?;
+    let rows: Vec<ServiceJobTuple> = sqlx::query_as(&query)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
     Ok(rows.into_iter().map(service_job_from_tuple).collect())
 }
 
@@ -381,6 +403,45 @@ mod tests {
         let id = Uuid::new_v4();
         let row = job_status_row(&pool, JobKind::Crawl, id).await.unwrap();
         assert!(row.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_service_jobs_prioritizes_running_crawl_rows_over_newer_pending_rows() {
+        let pool = open_sqlite_pool(":memory:").await.unwrap();
+        let older_running = Uuid::new_v4().to_string();
+        let newer_pending = Uuid::new_v4().to_string();
+
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at, started_at) \
+             VALUES (?, 'running', 'https://running.example', '{}', ?, ?, ?)",
+        )
+        .bind(&older_running)
+        .bind(1_000_i64)
+        .bind(1_000_i64)
+        .bind(1_000_i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO axon_crawl_jobs (id, status, url, config_json, created_at, updated_at) \
+             VALUES (?, 'pending', 'https://pending.example', '{}', ?, ?)",
+        )
+        .bind(&newer_pending)
+        .bind(2_000_i64)
+        .bind(2_000_i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let jobs = list_service_jobs(&pool, JobKind::Crawl, 20, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(jobs[0].id.to_string(), older_running);
+        assert_eq!(jobs[0].status, "running");
+        assert_eq!(jobs[1].id.to_string(), newer_pending);
+        assert_eq!(jobs[1].status, "pending");
     }
 
     #[tokio::test]

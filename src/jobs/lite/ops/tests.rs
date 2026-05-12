@@ -1,10 +1,11 @@
 use super::enqueue::check_pending_cap_for;
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
+use crate::jobs::error::JobError;
 use crate::jobs::lite::ops::{
     cancel_row, claim_next_pending, enqueue_job, mark_completed, mark_failed, update_result_json,
 };
-use crate::jobs::lite::store::open_sqlite_pool;
+use crate::jobs::lite::store::{RECLAIMED_ERROR_TEXT, open_sqlite_pool};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,9 +51,10 @@ async fn claim_clears_reclaimed_error_text() {
     sqlx::query(
         "INSERT INTO axon_embed_jobs \
          (id, status, input_text, config_json, created_at, updated_at, error_text) \
-         VALUES (?, 'pending', 'docs', '{}', 1, 1, 'reclaimed after unexpected shutdown')",
+         VALUES (?, 'pending', 'docs', '{}', 1, 1, ?)",
     )
     .bind(&id)
+    .bind(RECLAIMED_ERROR_TEXT)
     .execute(&pool)
     .await
     .expect("insert reclaimed pending embed job");
@@ -310,7 +312,7 @@ async fn embed_queue_cap_rejects_when_full() {
     .await
     .expect("seed rows");
 
-    let err = check_pending_cap_for(&pool, "axon_embed_jobs", "embed", 2)
+    let err = check_pending_cap_for(&pool, JobKind::Embed, 2)
         .await
         .expect_err("should be at capacity");
     let msg = err.to_string();
@@ -320,7 +322,7 @@ async fn embed_queue_cap_rejects_when_full() {
     );
 
     // limit=3 allows one more
-    check_pending_cap_for(&pool, "axon_embed_jobs", "embed", 3)
+    check_pending_cap_for(&pool, JobKind::Embed, 3)
         .await
         .expect("limit=3 should allow 2 pending jobs");
 }
@@ -337,7 +339,7 @@ async fn extract_queue_cap_rejects_when_full() {
     .await
     .expect("seed row");
 
-    let err = check_pending_cap_for(&pool, "axon_extract_jobs", "extract", 1)
+    let err = check_pending_cap_for(&pool, JobKind::Extract, 1)
         .await
         .expect_err("should be at capacity");
     let msg = err.to_string();
@@ -359,7 +361,7 @@ async fn ingest_queue_cap_rejects_when_full() {
     .await
     .expect("seed row");
 
-    let err = check_pending_cap_for(&pool, "axon_ingest_jobs", "ingest", 1)
+    let err = check_pending_cap_for(&pool, JobKind::Ingest, 1)
         .await
         .expect_err("should be at capacity");
     let msg = err.to_string();
@@ -386,7 +388,7 @@ async fn embed_queue_cap_zero_disables_limit() {
         .unwrap_or_else(|e| panic!("enqueue {i} failed: {e}"));
     }
     // With 5 pending jobs, limit=0 still allows more.
-    check_pending_cap_for(&pool, "axon_embed_jobs", "embed", 0)
+    check_pending_cap_for(&pool, JobKind::Embed, 0)
         .await
         .expect("limit=0 should be unlimited");
 }
@@ -406,7 +408,7 @@ async fn embed_queue_cap_allows_after_drain() {
     .expect("first enqueue");
 
     // Queue is at cap (1 pending, limit=1) — check should reject.
-    check_pending_cap_for(&pool, "axon_embed_jobs", "embed", 1)
+    check_pending_cap_for(&pool, JobKind::Embed, 1)
         .await
         .expect_err("should be at capacity");
 
@@ -419,7 +421,7 @@ async fn embed_queue_cap_allows_after_drain() {
         .expect("complete");
 
     // Now the cap check should pass (0 pending, limit=1).
-    check_pending_cap_for(&pool, "axon_embed_jobs", "embed", 1)
+    check_pending_cap_for(&pool, JobKind::Embed, 1)
         .await
         .expect("cap check after drain should succeed");
 }
@@ -480,6 +482,125 @@ async fn concurrent_claims_only_return_one_job() {
         .await
         .expect("fetch");
     assert_eq!(status.0, "running");
+
+    drop(pool_a);
+    drop(pool_b);
+    tokio::fs::remove_file(&path).await.ok();
+}
+
+#[tokio::test]
+async fn enqueue_retries_when_sqlite_write_lock_is_temporarily_held() {
+    let path = std::env::temp_dir()
+        .join(format!("axon-lite-enqueue-lock-{}.db", Uuid::new_v4()))
+        .to_string_lossy()
+        .into_owned();
+    let pool_a = open_sqlite_pool(&path).await.expect("pool a");
+    let pool_b = open_sqlite_pool(&path).await.expect("pool b");
+    let mut lock_conn = pool_a.acquire().await.expect("lock conn");
+
+    sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *lock_conn)
+        .await
+        .expect("hold write lock");
+
+    // 1.5s hold exercises the retry/wait path while staying well inside the
+    // 10s busy_timeout configured in open_sqlite_pool. The original 5.2s was
+    // chosen to outwait the prior 5s timeout — no longer needed.
+    let release = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1_500)).await;
+        sqlx::query("ROLLBACK")
+            .execute(&mut *lock_conn)
+            .await
+            .expect("release write lock");
+    });
+
+    let id = enqueue_job(
+        &pool_b,
+        &JobPayload::Crawl {
+            url: "https://locked.example".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_lite(),
+    )
+    .await
+    .expect("enqueue should wait/retry until the write lock clears");
+
+    release.await.expect("release task");
+    let row: (String,) = sqlx::query_as("SELECT url FROM axon_crawl_jobs WHERE id = ?")
+        .bind(id.to_string())
+        .fetch_one(&pool_b)
+        .await
+        .expect("fetch inserted row");
+    assert_eq!(row.0, "https://locked.example");
+
+    drop(pool_a);
+    drop(pool_b);
+    tokio::fs::remove_file(&path).await.ok();
+}
+
+#[tokio::test]
+async fn concurrent_enqueue_respects_pending_cap_atomically() {
+    let path = std::env::temp_dir()
+        .join(format!("axon-lite-enqueue-cap-{}.db", Uuid::new_v4()))
+        .to_string_lossy()
+        .into_owned();
+    let pool_a = Arc::new(open_sqlite_pool(&path).await.expect("pool a"));
+    let pool_b = Arc::new(open_sqlite_pool(&path).await.expect("pool b"));
+    let mut cfg = Config::default_lite();
+    cfg.max_pending_crawl_jobs = 1;
+
+    let cfg_a = cfg.clone();
+    let cfg_b = cfg;
+    let first = {
+        let pool = Arc::clone(&pool_a);
+        tokio::spawn(async move {
+            enqueue_job(
+                pool.as_ref(),
+                &JobPayload::Crawl {
+                    url: "https://cap-a.example".into(),
+                    config_json: "{}".into(),
+                },
+                &cfg_a,
+            )
+            .await
+        })
+    };
+    let second = {
+        let pool = Arc::clone(&pool_b);
+        tokio::spawn(async move {
+            enqueue_job(
+                pool.as_ref(),
+                &JobPayload::Crawl {
+                    url: "https://cap-b.example".into(),
+                    config_json: "{}".into(),
+                },
+                &cfg_b,
+            )
+            .await
+        })
+    };
+
+    let results = [
+        first.await.expect("first join"),
+        second.await.expect("second join"),
+    ];
+    let successes = results.iter().filter(|result| result.is_ok()).count();
+    let cap_rejections = results
+        .iter()
+        .filter(|result| matches!(result, Err(JobError::QueueCapacityExceeded { .. })))
+        .count();
+    assert_eq!(successes, 1, "exactly one enqueue should fit cap=1");
+    assert_eq!(
+        cap_rejections, 1,
+        "the other enqueue should see the serialized pending count"
+    );
+
+    let pending: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM axon_crawl_jobs WHERE status='pending'")
+            .fetch_one(pool_a.as_ref())
+            .await
+            .expect("pending count");
+    assert_eq!(pending.0, 1);
 
     drop(pool_a);
     drop(pool_b);

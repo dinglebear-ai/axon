@@ -245,6 +245,7 @@ fn populate_misc(
     cfg.cron_max_runs = g.cron_max_runs.filter(|v| *v > 0);
     cfg.watchdog_stale_timeout_secs = g.watchdog_stale_timeout_secs.max(30);
     cfg.watchdog_confirm_secs = g.watchdog_confirm_secs.max(10);
+    cfg.watchdog_sweep_secs = g.watchdog_sweep_secs.clamp(1, 600);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;
