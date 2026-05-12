@@ -1,6 +1,7 @@
 use super::*;
 use crate::core::config::Config;
 use crate::services::llm_backend::{CompletionRequest, CompletionRunner, CompletionTurnResult};
+use crate::vector::ops::commands::ask::synthesis_prompt::ASK_RAG_SYSTEM_PROMPT;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -182,7 +183,7 @@ async fn ask_llm_streaming_with_runner_builds_completion_request_and_collects_to
     assert_eq!(
         observed[0],
         CompletionRequest::new("Question: How?\n\nContext:\nContext block")
-            .system_prompt(ASK_RAG_SYSTEM_PROMPT)
+            .system_prompt(*ASK_RAG_SYSTEM_PROMPT)
             .backend_from_config(&cfg)
             .model("gemini-test-model")
             .stream(true)
@@ -204,7 +205,7 @@ async fn ask_llm_streaming_with_runner_omits_blank_model_for_completion_only_con
     assert_eq!(
         observed[0],
         CompletionRequest::new("Question: How?\n\nContext:\nContext block")
-            .system_prompt(ASK_RAG_SYSTEM_PROMPT)
+            .system_prompt(*ASK_RAG_SYSTEM_PROMPT)
             .backend_from_config(&cfg)
             .stream(true)
     );
