@@ -172,6 +172,26 @@ fn test_redact_url_unparseable() {
 }
 
 #[test]
+fn stable_url_filename_ignores_crawl_order() {
+    let url = "https://agentclientprotocol.com/protocol/initialization";
+
+    assert_eq!(url_to_stable_filename(url), url_to_stable_filename(url));
+    assert_ne!(url_to_filename(url, 1), url_to_filename(url, 11));
+}
+
+#[test]
+fn stable_url_filename_keeps_slug_and_hashes_identity() {
+    let base = url_to_stable_filename("https://example.com/docs/page");
+    let query = url_to_stable_filename("https://example.com/docs/page?version=2");
+    let fragment = url_to_stable_filename("https://example.com/docs/page#section");
+
+    assert!(base.starts_with("example-com-docs-page-"));
+    assert!(base.ends_with(".md"));
+    assert_ne!(base, query);
+    assert_eq!(base, fragment);
+}
+
+#[test]
 fn test_redact_url_username_only() {
     let url = "postgresql://admin@localhost:5432/db";
     let redacted = redact_url(url);

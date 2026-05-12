@@ -79,7 +79,21 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     sqlx::migrate!("src/jobs/lite/migrations")
         .run(&pool)
         .await
-        .map_err(|e| sqlx::Error::Configuration(e.into()))?;
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("was previously applied but is missing") {
+                sqlx::Error::Configuration(
+                    format!(
+                        "{msg}\n\nThe database has a migration from a newer build of axon \
+                         that this binary does not know about. Rebuild and reinstall: \
+                         run `just install` from the workspace root."
+                    )
+                    .into(),
+                )
+            } else {
+                sqlx::Error::Configuration(e.into())
+            }
+        })?;
 
     Ok(pool)
 }

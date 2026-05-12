@@ -1,5 +1,5 @@
 use super::{CollectorConfig, PageOutcome, write_page_to_manifest};
-use crate::core::content::url_to_filename;
+use crate::core::content::url_to_stable_filename;
 use crate::core::logging::{log_info, log_warn};
 use crate::crawl::engine::CrawlSummary;
 use crate::crawl::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
@@ -82,7 +82,7 @@ pub(super) async fn write_thin_page_if_needed(
     if trimmed.is_empty() {
         return Ok(());
     }
-    let filename = url_to_filename(url, summary.markdown_files + 1);
+    let filename = url_to_stable_filename(url);
     let entry = ManifestEntry {
         url: url.to_string(),
         relative_path: format!("markdown/{filename}"),
