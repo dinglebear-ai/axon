@@ -127,7 +127,6 @@ pub(crate) async fn ask_via_server(
         "diagnostics".into(),
         serde_json::Value::Bool(cfg.ask_diagnostics),
     );
-    payload.insert("graph".into(), serde_json::Value::Bool(cfg.ask_graph));
     payload.insert(
         "hybrid_search".into(),
         serde_json::Value::Bool(cfg.hybrid_search_enabled),

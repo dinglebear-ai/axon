@@ -25,8 +25,8 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.yaml must keep MCP HTTP loopback-only by default"
     );
     assert!(
-        compose.contains("$${AXON_MCP_HTTP_TOKEN:-}"),
-        "docker-compose.yaml healthcheck must read the token from the container env"
+        compose.contains("http://127.0.0.1:8001/healthz"),
+        "docker-compose.yaml healthcheck must work in bearer and OAuth-only auth modes"
     );
     assert!(
         compose.contains("AXON_HOME: /home/axon/.axon"),

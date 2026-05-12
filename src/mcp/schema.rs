@@ -409,9 +409,6 @@ pub struct ResearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
-    /// Deprecated/unavailable: graph retrieval is not wired in this build.
-    /// `graph: true` is rejected by the MCP ask handler.
-    pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,
     /// Qdrant collection to search. Defaults to the server's configured collection.

@@ -652,7 +652,7 @@ fn serde_ingest_source_type_variants() {
 }
 
 #[test]
-fn parse_ask_with_graph_and_diagnostics() {
+fn parse_ask_rejects_graph_and_accepts_diagnostics() {
     let raw = obj(json!({
         "action": "ask",
         "query": "test question",
@@ -660,10 +660,17 @@ fn parse_ask_with_graph_and_diagnostics() {
         "diagnostics": false
     }));
     let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "ask with graph/diagnostics should parse");
+    assert!(result.is_err(), "ask with graph should be rejected");
+
+    let raw = obj(json!({
+        "action": "ask",
+        "query": "test question",
+        "diagnostics": false
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "ask with diagnostics should parse");
     if let Ok(AxonRequest::Ask(a)) = result {
         assert_eq!(a.query.as_deref(), Some("test question"));
-        assert_eq!(a.graph, Some(true));
         assert_eq!(a.diagnostics, Some(false));
     } else {
         panic!("expected Ask variant");

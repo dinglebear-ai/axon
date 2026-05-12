@@ -32,17 +32,15 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::{
-    body::Body,
-    http::{HeaderMap, Request, StatusCode},
-    middleware::Next,
-    response::Response,
-};
+use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use lab_auth::{AuthLayer, state::AuthState};
-use subtle::ConstantTimeEq;
 
 #[cfg(test)]
+use axum::http::{HeaderMap, StatusCode};
+#[cfg(test)]
 use axum::response::IntoResponse;
+#[cfg(test)]
+use subtle::ConstantTimeEq;
 
 // ── AuthPolicy ────────────────────────────────────────────────────────────────
 
@@ -317,6 +315,7 @@ pub(crate) fn configured_mcp_http_token() -> Option<String> {
 /// `None` means token auth is not configured and the request is allowed. A
 /// configured empty/whitespace token should be handled by the env-aware wrapper
 /// below and fail closed.
+#[cfg(test)]
 pub(crate) fn authorize_mcp_http_headers(
     headers: &HeaderMap,
     configured_token: Option<&str>,
@@ -345,26 +344,6 @@ pub(crate) fn authorize_mcp_http_headers(
         return Ok(());
     }
     Err(StatusCode::UNAUTHORIZED)
-}
-
-/// Authorize first-party HTTP routes from `AXON_MCP_HTTP_TOKEN`.
-///
-/// Env unset means loopback-dev style unauthenticated mode. Env set to empty,
-/// whitespace, or non-UTF8 fails closed.
-pub(crate) fn authorize_mcp_http_headers_from_env(headers: &HeaderMap) -> Result<(), StatusCode> {
-    let raw = match std::env::var("AXON_MCP_HTTP_TOKEN") {
-        Ok(value) => Some(value),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(std::env::VarError::NotUnicode(_)) => return Err(StatusCode::UNAUTHORIZED),
-    };
-    let Some(raw) = raw else {
-        return Ok(());
-    };
-    let configured = raw.trim();
-    if configured.is_empty() {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    authorize_mcp_http_headers(headers, Some(configured))
 }
 
 /// Rewrite `x-api-key: <token>` to `Authorization: Bearer <token>` so legacy

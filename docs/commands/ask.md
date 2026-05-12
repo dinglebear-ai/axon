@@ -41,7 +41,6 @@ All global flags apply. Key flags:
 | `--query <text>` | — | Question text (alternative to positional argument). |
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
 | `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
-| `--graph` | `false` | Deprecated compatibility flag. Graph retrieval is not available in the current runtime. |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.

@@ -7,6 +7,11 @@ pub(super) fn maybe_print_top_level_help_and_exit() {
         print_top_level_help();
         process::exit(0);
     }
+    if args.len() == 3 && args[1] == "setup" && matches!(args[2].as_str(), "-h" | "--help" | "help")
+    {
+        print_setup_help();
+        process::exit(0);
+    }
 }
 
 fn print_top_level_help() {
@@ -219,4 +224,18 @@ fn print_top_level_help() {
             "→ Run {bin_name} <command> --help for command-specific flags"
         ))
     );
+}
+
+fn print_setup_help() {
+    println!("Setup and deploy Axon Docker infrastructure");
+    println!();
+    println!("Usage: axon setup <COMMAND>");
+    println!();
+    println!("Commands:");
+    println!("  targets  List Docker deployment targets from ~/.ssh/config");
+    println!("  deploy   Deploy the Axon Docker Compose stack to an SSH target");
+    println!("  help     Print this message or the help of the given subcommand(s)");
+    println!();
+    println!("Options:");
+    println!("  -h, --help  Print help");
 }

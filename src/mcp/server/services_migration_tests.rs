@@ -113,32 +113,3 @@ fn refresh_start_response_includes_all_job_ids() {
         "job_id must equal the last element of job_ids"
     );
 }
-
-#[tokio::test]
-async fn ask_graph_true_returns_invalid_params() {
-    use crate::core::config::Config;
-    use crate::mcp::schema::AskRequest;
-
-    let server = super::AxonMcpServer::new(Config::default());
-    let req = AskRequest {
-        query: Some("what is indexed?".to_string()),
-        graph: Some(true),
-        diagnostics: None,
-        collection: None,
-        since: None,
-        before: None,
-        hybrid_search: None,
-        response_mode: None,
-    };
-
-    let err = server
-        .handle_ask(req)
-        .await
-        .expect_err("graph=true should be rejected until graph retrieval exists");
-    assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
-    assert!(
-        err.message.contains("graph retrieval is unavailable"),
-        "unexpected error message: {}",
-        err.message
-    );
-}
