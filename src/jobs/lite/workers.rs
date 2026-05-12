@@ -158,40 +158,16 @@ pub fn spawn_workers(
         )));
     }
 
-    // Periodic watchdog: re-runs reclaim_stale_running_jobs every 60s while the
-    // process is alive. Pairs with the per-job HeartbeatGuard — heartbeat keeps
-    // updated_at fresh for live jobs; watchdog reclaims rows whose updated_at
-    // has gone stale (process died, runner panicked, etc.).
-    {
-        let pool = Arc::clone(&pool);
-        let cfg_for_watchdog = Arc::clone(&cfg);
-        let shutdown = shutdown.clone();
-        worker_handles.push(tokio::spawn(async move {
-            let stale_threshold_ms = (cfg_for_watchdog.watchdog_stale_timeout_secs
-                + cfg_for_watchdog.watchdog_confirm_secs)
-                .max(0)
-                * 1_000i64;
-            let mut ticker = tokio::time::interval(Duration::from_secs(60));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            // Skip immediate tick — startup-time reclaim already ran in LiteBackend::init.
-            ticker.tick().await;
-            loop {
-                tokio::select! {
-                    _ = shutdown.cancelled() => break,
-                    _ = ticker.tick() => {
-                        if let Err(e) = crate::jobs::lite::store::reclaim_stale_running_jobs(
-                            &pool,
-                            stale_threshold_ms,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = %e, "watchdog: periodic reclaim failed");
-                        }
-                    }
-                }
-            }
-        }));
-    }
+    // Periodic watchdog: sweeps all job tables every 15s; wakes workers on reclaim.
+    worker_handles.push(tokio::spawn(watchdog_loop(
+        Arc::clone(&pool),
+        Arc::clone(&cfg),
+        Arc::clone(&crawl_notify),
+        Arc::clone(&embed_notify),
+        Arc::clone(&extract_notify),
+        Arc::clone(&ingest_notify),
+        shutdown.clone(),
+    )));
 
     WorkerHandles {
         crawl: crawl_notify,
@@ -200,6 +176,68 @@ pub fn spawn_workers(
         ingest: ingest_notify,
         shutdown,
         worker_handles,
+    }
+}
+
+/// Periodic watchdog: sweeps all job tables on a config-driven interval
+/// (`cfg.watchdog_sweep_secs`, default 15s) while the process is alive.
+///
+/// Pairs with `HeartbeatGuard` — heartbeat keeps `updated_at` fresh for live jobs;
+/// watchdog reclaims rows whose `updated_at` has gone stale (process died, runner
+/// panicked, etc.). After a reclaim, wakes the worker channels whose kind had
+/// rows reclaimed — not the others — so untouched lanes stay parked.
+async fn watchdog_loop(
+    pool: Arc<SqlitePool>,
+    cfg: Arc<Config>,
+    crawl_notify: Arc<Notify>,
+    embed_notify: Arc<Notify>,
+    extract_notify: Arc<Notify>,
+    ingest_notify: Arc<Notify>,
+    shutdown: CancellationToken,
+) {
+    let stale_threshold_ms =
+        (cfg.watchdog_stale_timeout_secs + cfg.watchdog_confirm_secs).max(0) * 1_000i64;
+    let sweep_interval = Duration::from_secs(cfg.watchdog_sweep_secs.max(1) as u64);
+    let mut ticker = tokio::time::interval(sweep_interval);
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // Skip immediate tick — startup-time reclaim already ran in LiteBackend::init.
+    ticker.tick().await;
+    loop {
+        tokio::select! {
+            biased;
+            _ = shutdown.cancelled() => break,
+            _ = ticker.tick() => {
+                match crate::jobs::lite::store::reclaim_stale_running_jobs_detailed(
+                    &pool,
+                    stale_threshold_ms,
+                )
+                .await
+                {
+                    Ok(counts) if counts.total() > 0 => {
+                        // notify_waiters (not notify_one) so all parked lanes
+                        // for each kind wake — a single reclaim sweep can free
+                        // multiple jobs of the same kind, and embed/ingest run
+                        // multiple lanes that share one Notify handle.
+                        if counts.crawl > 0 {
+                            crawl_notify.notify_waiters();
+                        }
+                        if counts.embed > 0 {
+                            embed_notify.notify_waiters();
+                        }
+                        if counts.extract > 0 {
+                            extract_notify.notify_waiters();
+                        }
+                        if counts.ingest > 0 {
+                            ingest_notify.notify_waiters();
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "watchdog: periodic reclaim failed");
+                    }
+                }
+            }
+        }
     }
 }
 

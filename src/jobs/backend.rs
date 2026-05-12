@@ -34,6 +34,16 @@ impl JobKind {
         }
     }
 
+    /// Human-readable name used in queue-cap error messages.
+    pub fn queue_name(self) -> &'static str {
+        match self {
+            Self::Crawl => "crawl",
+            Self::Embed => "embed",
+            Self::Extract => "extract",
+            Self::Ingest => "ingest",
+        }
+    }
+
     pub fn all() -> &'static [JobKind] {
         &[Self::Crawl, Self::Embed, Self::Extract, Self::Ingest]
     }

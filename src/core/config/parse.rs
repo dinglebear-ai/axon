@@ -35,15 +35,11 @@ pub fn parse_args() -> Config {
 
 #[cfg(test)]
 mod tests {
+    use super::build_config::tests::ENV_LOCK;
     use super::docker::is_docker_service_host;
     use crate::core::config::types::{CommandKind, McpTransport};
     use clap::Parser;
     use std::env;
-    use std::sync::Mutex;
-
-    /// Serializes tests that mutate process-wide environment variables.
-    /// Prevents parallel test data races on `std::env::set_var` / `remove_var`.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[allow(unsafe_code)]
     #[test]

@@ -11,7 +11,7 @@ mod config_literal;
 mod post_init;
 
 #[cfg(test)]
-mod tests;
+pub(in crate::core::config::parse) mod tests;
 
 use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};
 use super::super::types::{CommandKind, Config};

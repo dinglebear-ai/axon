@@ -4,12 +4,17 @@ pub(crate) mod metrics;
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
+use crate::jobs::lite::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
 use crate::services::system::{build_status_payload, load_status_jobs};
 use crate::services::types::ServiceJob;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Write as _;
+
+/// Maximum number of rows rendered per section in the human status output.
+/// The truncation note ("showing N of M") is sized against this cap.
+const SECTION_DISPLAY_LIMIT: usize = 10;
 
 pub async fn run_status(
     cfg: &Config,
@@ -59,12 +64,12 @@ async fn run_status_impl(
     _cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let (jobs, _totals) = load_status_jobs(service_context).await?;
-    print!("{}", render_status_jobs(&jobs));
+    let (jobs, totals) = load_status_jobs(service_context).await?;
+    print!("{}", render_status_jobs(&jobs, totals.crawl));
     Ok(())
 }
 
-pub(crate) fn render_status_payload(payload: &serde_json::Value) -> Result<String, Box<dyn Error>> {
+pub(crate) fn render_status_payload(value: &serde_json::Value) -> Result<String, Box<dyn Error>> {
     #[derive(serde::Deserialize)]
     struct StatusPayload {
         local_crawl_jobs: Vec<ServiceJob>,
@@ -73,17 +78,46 @@ pub(crate) fn render_status_payload(payload: &serde_json::Value) -> Result<Strin
         local_ingest_jobs: Vec<ServiceJob>,
     }
 
-    let payload: StatusPayload = serde_json::from_value(payload.clone())?;
+    // Defensive: clamp negative totals to 0 so a malformed payload can't
+    // either suppress the truncation note or panic the formatter.
+    let crawl_total = value
+        .get("totals")
+        .and_then(|t| t.get("crawl"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        .max(0);
+
+    let parsed: StatusPayload = serde_json::from_value(value.clone())?;
+    let crawl_note = crawl_truncation_note(parsed.local_crawl_jobs.len(), crawl_total);
     Ok(render_status_jobs_from_slices(
-        &payload.local_crawl_jobs,
-        &payload.local_extract_jobs,
-        &payload.local_embed_jobs,
-        &payload.local_ingest_jobs,
+        &parsed.local_crawl_jobs,
+        &parsed.local_extract_jobs,
+        &parsed.local_embed_jobs,
+        &parsed.local_ingest_jobs,
+        crawl_note.as_deref(),
     ))
 }
 
-fn render_status_jobs(jobs: &crate::services::system::StatusJobs) -> String {
-    render_status_jobs_from_slices(&jobs.crawl, &jobs.extract, &jobs.embed, &jobs.ingest)
+fn render_status_jobs(jobs: &crate::services::system::StatusJobs, crawl_total: i64) -> String {
+    let crawl_note = crawl_truncation_note(jobs.crawl.len(), crawl_total.max(0));
+    render_status_jobs_from_slices(
+        &jobs.crawl,
+        &jobs.extract,
+        &jobs.embed,
+        &jobs.ingest,
+        crawl_note.as_deref(),
+    )
+}
+
+/// Returns "showing N of M …" when the renderer will hide rows. N reflects
+/// what `write_status_section` will actually display (capped at
+/// `SECTION_DISPLAY_LIMIT`), so the note never advertises a count the
+/// renderer won't show.
+fn crawl_truncation_note(slice_len: usize, total: i64) -> Option<String> {
+    let displayed = slice_len.min(SECTION_DISPLAY_LIMIT);
+    let displayed_i64 = i64::try_from(displayed).unwrap_or(i64::MAX);
+    (total > displayed_i64)
+        .then(|| format!("showing {displayed} of {total} total · running jobs listed first"))
 }
 
 fn render_status_jobs_from_slices(
@@ -91,6 +125,7 @@ fn render_status_jobs_from_slices(
     extract_jobs: &[ServiceJob],
     embed_jobs: &[ServiceJob],
     ingest_jobs: &[ServiceJob],
+    crawl_note: Option<&str>,
 ) -> String {
     let crawl_url_map: HashMap<uuid::Uuid, &str> = crawl_jobs
         .iter()
@@ -108,6 +143,7 @@ fn render_status_jobs_from_slices(
     write_status_section(
         &mut out,
         "Crawl",
+        crawl_note,
         crawl_jobs,
         |job| job.url.clone().unwrap_or_else(|| job.id.to_string()),
         |job| crawl_progress_summary(job, &embed_jobs_by_id, &embed_doc_totals),
@@ -115,6 +151,7 @@ fn render_status_jobs_from_slices(
     write_status_section(
         &mut out,
         "Extract",
+        None,
         extract_jobs,
         |job| {
             job.urls_json
@@ -127,6 +164,7 @@ fn render_status_jobs_from_slices(
     write_status_section(
         &mut out,
         "Embed",
+        None,
         embed_jobs,
         |job| {
             job.target
@@ -139,6 +177,7 @@ fn render_status_jobs_from_slices(
     write_status_section(
         &mut out,
         "Ingest",
+        None,
         ingest_jobs,
         |job| match (&job.source_type, &job.target) {
             (Some(source_type), Some(target)) => format!("{source_type}: {target}"),
@@ -292,18 +331,22 @@ fn ingest_progress_summary(job: &ServiceJob) -> Option<String> {
 fn write_status_section(
     out: &mut String,
     title: &str,
+    section_note: Option<&str>,
     jobs: &[ServiceJob],
     label_for: impl Fn(&ServiceJob) -> String,
     progress_for: impl Fn(&ServiceJob) -> Option<String>,
 ) {
     let _ = writeln!(out, "{}", primary(title));
+    if let Some(note) = section_note {
+        let _ = writeln!(out, "  {}", muted(note));
+    }
     if jobs.is_empty() {
         let _ = writeln!(out, "  {}", muted("None."));
         let _ = writeln!(out);
         return;
     }
 
-    for job in jobs.iter().take(10) {
+    for job in jobs.iter().take(SECTION_DISPLAY_LIMIT) {
         let label = label_for(job);
         if let Some(p) = progress_for(job) {
             let _ = writeln!(
@@ -337,7 +380,7 @@ fn write_status_section(
 }
 
 fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
-    if error_text.trim_start() == "reclaimed after unexpected shutdown" {
+    if error_text.trim_start() == RECLAIMED_ERROR_TEXT {
         return match status {
             "pending" => Some(
                 "recovered after worker shutdown; waiting for a worker to claim it".to_string(),
@@ -399,12 +442,64 @@ mod tests {
             &crate::services::types::StatusTotals::default(),
         );
 
-        let from_jobs = render_status_jobs(&jobs);
+        let totals = crate::services::types::StatusTotals::default();
+        let from_jobs = render_status_jobs(&jobs, totals.crawl);
         let from_payload = render_status_payload(&payload).expect("payload should render");
 
         assert_eq!(from_payload, from_jobs);
         assert!(from_payload.contains("Crawl"));
         assert!(from_payload.contains("Embed"));
         assert!(from_payload.contains("2 docs"));
+    }
+
+    #[test]
+    fn render_status_payload_mentions_when_crawl_rows_are_truncated() {
+        let payload = build_status_payload(
+            &[job("running"), job("pending")],
+            &[],
+            &[],
+            &[],
+            &crate::services::types::StatusTotals {
+                crawl: 24,
+                ..Default::default()
+            },
+        );
+
+        let rendered = render_status_payload(&payload).expect("payload should render");
+
+        assert!(
+            rendered.contains("showing 2 of 24"),
+            "expected truncation note; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("running jobs listed first"),
+            "expected ordering note; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_status_payload_surfaces_reclaimed_pending_crawl_rows() {
+        let mut reclaimed = job("pending");
+        reclaimed.error_text = Some(RECLAIMED_ERROR_TEXT.to_string());
+        reclaimed.result_json = None;
+
+        let payload = build_status_payload(
+            &[reclaimed],
+            &[],
+            &[],
+            &[],
+            &crate::services::types::StatusTotals::default(),
+        );
+
+        let rendered = render_status_payload(&payload).expect("payload should render");
+
+        assert!(
+            rendered.contains("recovered after worker shutdown"),
+            "expected reclaim hint; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(RECLAIMED_ERROR_TEXT),
+            "raw reclaim marker leaked into output:\n{rendered}"
+        );
     }
 }

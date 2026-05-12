@@ -21,7 +21,7 @@ pub(super) use std::path::Path;
 pub(super) use std::sync::Mutex;
 pub(super) use tempfile::Builder as TempfileBuilder;
 
-pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
+pub(in crate::core::config::parse) static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 // Convenience: build a CLI with stable service URLs via flags (avoids QDRANT_URL/TEI_URL env noise).
 pub(super) fn cli_with_services(extra: &[&str]) -> Cli {

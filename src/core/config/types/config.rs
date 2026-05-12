@@ -428,6 +428,11 @@ pub struct Config {
     /// Env: `AXON_JOB_STALE_CONFIRM_SECS`. Flag: `--watchdog-confirm-secs`.
     pub watchdog_confirm_secs: i64,
 
+    /// Seconds between periodic watchdog sweeps in the long-running worker process.
+    /// Smaller values reclaim stale jobs sooner at the cost of extra SQL writes.
+    /// Env: `AXON_WATCHDOG_SWEEP_SECS`. Default: 15.
+    pub watchdog_sweep_secs: i64,
+
     /// Emit machine-readable JSON output on stdout instead of human-readable text. Flag: `--json`.
     pub json_output: bool,
 
