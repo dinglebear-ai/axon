@@ -129,6 +129,14 @@ pub(super) fn check_env_file(path: &Path) -> LocalSetupPhase {
     )
 }
 
+pub(super) fn read_env_file_values(path: &Path) -> io::Result<BTreeMap<String, String>> {
+    if path.exists() {
+        Ok(parse_env_file(&std::fs::read_to_string(path)?))
+    } else {
+        Ok(BTreeMap::new())
+    }
+}
+
 fn parse_env_file(raw: &str) -> BTreeMap<String, String> {
     raw.lines()
         .filter_map(|line| {

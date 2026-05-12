@@ -38,7 +38,7 @@ docs/
 
 ## The Split: commands/ vs ingest/
 
-These two directories cover different readers and different questions. `docs/commands/` is the CLI reference for every command. `docs/ingest/` is only for the ingest pipeline and real source deep-dives (`ingest`, `github`, `reddit`, `sessions`, `youtube`).
+These two directories cover different readers and different questions. `docs/commands/` is the CLI reference for every command. `docs/ingest/` is only for the ingest pipeline and real source deep-dives (`ingest`, `GitHub`, `reddit`, `sessions`, `YouTube`).
 
 ### `docs/commands/` — "How do I use this command?"
 

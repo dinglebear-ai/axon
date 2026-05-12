@@ -54,6 +54,14 @@ struct LoginResponse {
 struct ConfigResponse {
     path: String,
     raw_toml: String,
+    restart_required: bool,
+}
+
+#[derive(Serialize)]
+struct SaveConfigResponse {
+    ok: bool,
+    restart_required: bool,
+    message: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -191,6 +199,7 @@ async fn get_config(
         Ok(raw_toml) => Json(ConfigResponse {
             path: state.panel.config_path.clone(),
             raw_toml,
+            restart_required: false,
         })
         .into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
@@ -206,7 +215,15 @@ async fn save_config(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     match config_store::write_config(&req.raw_toml) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => (
+            StatusCode::ACCEPTED,
+            Json(SaveConfigResponse {
+                ok: true,
+                restart_required: true,
+                message: "Config saved. Restart Axon for changes to affect live panel requests.",
+            }),
+        )
+            .into_response(),
         Err(err) if err.kind() == std::io::ErrorKind::InvalidInput => {
             (StatusCode::BAD_REQUEST, err.to_string()).into_response()
         }
