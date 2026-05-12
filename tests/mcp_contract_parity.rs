@@ -17,6 +17,7 @@ use axon::services::types::{
     QueryHit, QueryResult, RetrieveOptions, RetrieveResult, SearchOptions, SearchResult,
     ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
 };
+use serde_json::json;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Option mapper round-trips (verifies common.rs helpers)
@@ -27,6 +28,23 @@ fn pagination_default_values_when_both_none() {
     let p = to_pagination(None, None, 10);
     assert_eq!(p.limit, 10, "default limit should be 10");
     assert_eq!(p.offset, 0, "default offset should be 0");
+}
+
+#[test]
+fn ask_request_rejects_graph_field() {
+    let raw = json!({
+        "action": "ask",
+        "query": "what is indexed?",
+        "graph": true
+    })
+    .as_object()
+    .expect("object")
+    .clone();
+    let parsed = parse_axon_request(raw);
+    assert!(
+        parsed.is_err(),
+        "graph must not remain accepted in the production MCP ask schema"
+    );
 }
 
 #[test]

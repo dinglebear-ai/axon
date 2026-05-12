@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 
 from mcp_schema_models import (
     CRAWL_FIELD_DESCRIPTIONS,
+    MCP_AUTH_ENV_VARS,
     MCP_TRANSPORT_ENV_VARS,
-    OAUTH_BROKER_ENV_VARS,
     RUNTIME_ENV_VARS,
     STRUCT_TO_ACTION,
     EnumDef,
@@ -79,7 +79,7 @@ def _emit_contract(emit) -> None:
     emit("- Primary route field: `action`")
     emit("- Canonical route form: `action` + optional `subaction`")
     emit(
-        "- Response control field: `response_mode` (`path|inline|both|auto_inline`, default `path`)"
+        "- Response control field: `response_mode` (`path|inline|both|auto_inline`; most actions default `path`, while `scrape`/`retrieve` default to inline paged reads)"
     )
     emit()
     emit("Code references:")
@@ -139,7 +139,8 @@ def _emit_preferred_client_actions(
 
 def _emit_response_policy(emit) -> None:
     emit("## Response Policy (Context-Safe Defaults)")
-    emit("- Default is artifact-first (`response_mode=path`).")
+    emit("- Most actions default to artifact-first (`response_mode=path`).")
+    emit("- `scrape` and `retrieve` are document-reading actions and default to inline-first paged responses.")
     emit("- Heavy operations write result artifacts to `.cache/axon-mcp/`.")
     emit("- Tool response returns compact metadata only by default:")
     emit("  - `path`, `bytes`, `line_count`, `sha256`, `preview`, `preview_truncated`")
@@ -183,7 +184,7 @@ def _emit_direct_actions(
     if "ask" in direct_actions:
         emit()
         emit(
-            "Note: `ask.graph=true` is rejected because graph retrieval is not implemented; omit `graph` or pass `false`."
+            "Note: graph retrieval is not part of the production MCP schema. Requests that include `graph` are rejected as unknown fields."
         )
     emit()
 
@@ -309,6 +310,7 @@ def _emit_mcp_resources(emit) -> None:
     emit("## MCP Resources")
     emit("Implemented resource(s):")
     emit("- `axon://schema/mcp-tool`")
+    emit("- `ui://axon/status-dashboard`")
     emit()
 
 
@@ -322,8 +324,8 @@ def _emit_runtime_dependencies(emit) -> None:
     for var in MCP_TRANSPORT_ENV_VARS:
         emit(f"- `{var}`")
     emit()
-    emit("Optional OAuth broker env vars:")
-    for var in OAUTH_BROKER_ENV_VARS:
+    emit("MCP auth env vars:")
+    for var in MCP_AUTH_ENV_VARS:
         emit(f"- `{var}`")
     emit()
 

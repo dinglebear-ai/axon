@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
+    middleware,
     response::IntoResponse,
     routing::{get, post},
 };
@@ -98,20 +99,51 @@ pub(crate) fn router(
     auth_policy: crate::mcp::auth::AuthPolicy,
 ) -> Router {
     let state = AppState { panel };
+    let ask_router = Router::new()
+        .route(
+            "/v1/ask",
+            post(v1_ask).layer(DefaultBodyLimit::max(ASK_BODY_LIMIT)),
+        )
+        .with_state((state.clone(), Arc::clone(&cfg)));
+    let ask_router = if let Some(layer) = crate::mcp::auth::build_auth_layer(
+        &auth_policy,
+        crate::mcp::auth::configured_mcp_http_token().map(Arc::from),
+        oauth_resource_url(&auth_policy),
+    ) {
+        ask_router.layer(layer).layer(middleware::from_fn(
+            crate::mcp::auth::normalize_api_key_header,
+        ))
+    } else {
+        ask_router
+    };
     let panel_router = Router::new()
+        .route("/healthz", get(healthz))
         .route("/api/panel/state", get(panel_state))
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
         .route("/api/panel/ops", get(ops))
         .route("/api/panel/setup/targets", get(setup_targets))
         .route("/api/panel/setup/deploy", post(setup_deploy))
-        .route(
-            "/v1/ask",
-            post(v1_ask).layer(DefaultBodyLimit::max(ASK_BODY_LIMIT)),
-        )
+        .merge(ask_router)
         .fallback(super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));
     panel_router.merge(super::actions::router(cfg, service_context, auth_policy))
+}
+
+async fn healthz() -> impl IntoResponse {
+    (StatusCode::OK, "ok")
+}
+
+fn oauth_resource_url(policy: &crate::mcp::auth::AuthPolicy) -> Option<Arc<str>> {
+    match policy {
+        crate::mcp::auth::AuthPolicy::Mounted {
+            auth_state: Some(_),
+        } => std::env::var("AXON_MCP_PUBLIC_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(|url| Arc::from(format!("{}/mcp", url.trim_end_matches('/')))),
+        _ => None,
+    }
 }
 
 async fn panel_state(
@@ -222,6 +254,7 @@ async fn setup_deploy(
 
 /// Per-invocation `Config` overrides accepted by `/v1/ask`.
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct AskRequestBody {
     query: String,
     #[serde(default)]
@@ -232,8 +265,6 @@ struct AskRequestBody {
     before: Option<String>,
     #[serde(default)]
     diagnostics: Option<bool>,
-    #[serde(default)]
-    graph: Option<bool>,
     #[serde(default)]
     hybrid_search: Option<bool>,
     #[serde(default)]
@@ -283,9 +314,6 @@ fn apply_ask_overrides(req_cfg: &mut crate::core::config::Config, req: &AskReque
     }
     if let Some(d) = req.diagnostics {
         req_cfg.ask_diagnostics = d;
-    }
-    if let Some(g) = req.graph {
-        req_cfg.ask_graph = g;
     }
     if let Some(h) = req.hybrid_search {
         req_cfg.hybrid_search_enabled = h;
@@ -363,20 +391,8 @@ fn classify_ask_error(err: &(dyn std::error::Error + 'static)) -> (StatusCode, &
 
 async fn v1_ask(
     State((_, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
-    headers: HeaderMap,
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
-    if !ask_authorized(&headers) {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(AskErrorBody {
-                kind: "unauthorized",
-                message: "unauthorized".to_string(),
-                diagnostics: None,
-            }),
-        )
-            .into_response();
-    }
     if req.query.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -426,17 +442,9 @@ async fn v1_ask(
     }
 }
 
-/// Authorize `/v1/ask`. When `AXON_MCP_HTTP_TOKEN` is set, require it as a
-/// `Bearer` or `x-api-key` header. When unset, allow the request — matching the
-/// MCP HTTP server's loopback-only convention (binding to non-loopback hosts
-/// without a token is rejected at startup elsewhere).
-fn ask_authorized(headers: &HeaderMap) -> bool {
-    crate::mcp::auth::authorize_mcp_http_headers_from_env(headers).is_ok()
-}
-
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to
 /// empty/whitespace — the operator clearly meant to enable auth, and
-/// `ask_authorized` will fail closed in that case.
+/// mounted auth will fail closed in that case.
 pub(crate) fn warn_if_ask_token_set_but_empty() {
     if let Ok(raw) = std::env::var("AXON_MCP_HTTP_TOKEN")
         && !raw.is_empty()

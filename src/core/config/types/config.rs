@@ -252,7 +252,7 @@ pub struct Config {
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
     pub ask_diagnostics: bool,
 
-    /// Enable graph-enhanced retrieval during `ask` when Neo4j is configured. Flag: `--graph`.
+    /// Legacy internal graph toggle. Production request surfaces keep this disabled.
     pub ask_graph: bool,
 
     /// Output mode for live `evaluate` answer rendering (`inline`, `side-by-side`, `events`).
