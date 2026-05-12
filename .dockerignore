@@ -17,14 +17,13 @@ http-cacache/
 /logs
 /docker-build.log
 
-# Frontend — not needed for the Rust worker image
+# Frontend source is required by config/Dockerfile to build RustEmbed assets.
 /apps
 !/apps
 /apps/*
 !/apps/web
-/apps/web/*
-!/apps/web/out
-!/apps/web/out/**
+/apps/web/node_modules
+/apps/web/.next
 **/node_modules
 
 **/.DS_Store
