@@ -23,6 +23,7 @@ None.
 | `QDRANT_URL` | Qdrant base URL. |
 
 `stats` reads Qdrant collection data and SQLite job metrics.
+For implementation details and troubleshooting see [`docs/ingest/stats.md`](../ingest/stats.md)
 
 ## Flags
 

@@ -89,6 +89,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn config_example_toml_parses() {
+        let contents = include_str!("../../../config.example.toml");
+        let cfg = super::toml_config::load_toml_config_from_str(contents)
+            .expect("config.example.toml should parse");
+        assert!(
+            cfg.search.ask_hybrid_candidates.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+        assert!(
+            cfg.tei.max_retries.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+    }
+
     #[allow(unsafe_code)]
     #[test]
     fn parse_watch_run_now() {

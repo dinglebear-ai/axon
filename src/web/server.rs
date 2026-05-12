@@ -458,7 +458,7 @@ async fn v1_ask(
 
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to
 /// empty/whitespace — the operator clearly meant to enable auth, and
-/// mounted auth will fail closed in that case.
+/// the empty value is ignored and loopback-only tokenless mode may apply.
 pub(crate) fn warn_if_ask_token_set_but_empty() {
     if let Ok(raw) = std::env::var("AXON_MCP_HTTP_TOKEN")
         && !raw.is_empty()
@@ -466,7 +466,7 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
     {
         tracing::warn!(
             context = "v1_ask_startup",
-            "AXON_MCP_HTTP_TOKEN is set to whitespace \u{2014} /v1/ask will reject all requests"
+            "AXON_MCP_HTTP_TOKEN is set to whitespace \u{2014} the value is ignored; configure a non-empty token before exposing HTTP beyond loopback"
         );
     }
 }

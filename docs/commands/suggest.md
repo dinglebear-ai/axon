@@ -28,6 +28,7 @@ axon suggest --query "<focus>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for suggestion generation. |
 
 `suggest` uses Qdrant state and Gemini headless synthesis.
+For implementation details and troubleshooting see [`docs/ingest/suggest.md`](../ingest/suggest.md)
 
 ## Flags
 

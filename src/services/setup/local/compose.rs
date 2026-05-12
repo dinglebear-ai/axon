@@ -27,17 +27,26 @@ pub(super) fn write_compose_assets(compose_dir: &Path) -> io::Result<LocalSetupP
 
 pub(super) fn check_compose_assets(compose_dir: &Path) -> LocalSetupPhase {
     let timer = PhaseTimer::start("compose-assets");
-    let compose = compose_dir.join("docker-compose.yaml");
+    let required = [
+        compose_dir.join("docker-compose.yaml"),
+        compose_dir.join("config/chrome/Dockerfile"),
+        compose_dir.join("config/qdrant/production.yaml"),
+    ];
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|path| !path.exists())
+        .map(|path| path.display().to_string())
+        .collect();
     timer.finish(
-        if compose.exists() {
+        if missing.is_empty() {
             LocalSetupStatus::Ok
         } else {
             LocalSetupStatus::Warn
         },
-        if compose.exists() {
-            format!("found {}", compose.display())
+        if missing.is_empty() {
+            format!("found all compose assets under {}", compose_dir.display())
         } else {
-            format!("missing {}; run axon setup", compose.display())
+            format!("missing {}; run axon setup", missing.join(", "))
         },
     )
 }

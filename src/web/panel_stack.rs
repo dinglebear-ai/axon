@@ -36,36 +36,42 @@ pub(super) async fn stack_status(
     let home =
         crate::core::paths::axon_home_dir().unwrap_or_else(|| std::path::PathBuf::from("~/.axon"));
     let compose_file = home.join("compose/docker-compose.yaml");
-    let mut checks = Vec::new();
-    checks.push(command_check("Docker", "docker", ["--version"]).await);
-    checks.push(command_check("Docker Compose", "docker", ["compose", "version"]).await);
-    checks.push(
+    let qdrant_url = format!("{}/readyz", cfg.qdrant_url.trim_end_matches('/'));
+    let chrome_url = cfg.chrome_remote_url.clone();
+    let (docker, compose, nvidia, qdrant, tei, chrome, gemini) = tokio::join!(
+        command_check("Docker", "docker", ["--version"]),
+        command_check("Docker Compose", "docker", ["compose", "version"]),
         command_check(
             "NVIDIA runtime",
             "nvidia-smi",
             ["--query-gpu=name", "--format=csv,noheader"],
-        )
-        .await,
+        ),
+        http_check("Qdrant", &qdrant_url),
+        tei_check(&cfg.tei_url),
+        async {
+            if let Some(chrome_url) = chrome_url.as_deref() {
+                http_check("Chrome", chrome_url).await
+            } else {
+                check("Chrome", "warn", "AXON_CHROME_REMOTE_URL is unset")
+            }
+        },
+        gemini_check()
     );
-    checks.push(compose_file_check(&compose_file));
-    checks.push(
-        http_check(
-            "Qdrant",
-            &format!("{}/readyz", cfg.qdrant_url.trim_end_matches('/')),
-        )
-        .await,
-    );
-    checks.push(tei_check(&cfg.tei_url).await);
-    if let Some(chrome_url) = cfg.chrome_remote_url.as_deref() {
-        checks.push(http_check("Chrome", chrome_url).await);
-    } else {
-        checks.push(check("Chrome", "warn", "AXON_CHROME_REMOTE_URL is unset"));
-    }
-    checks.push(gemini_check().await);
-    checks.push(token_check());
-    checks.push(oauth_check());
+    let checks = vec![
+        docker,
+        compose,
+        nvidia,
+        compose_file_check(&compose_file),
+        qdrant,
+        tei,
+        chrome,
+        gemini,
+        token_check(),
+        oauth_check(),
+    ];
 
-    let server_url = format!("http://{}:{}", cfg.mcp_http_host, cfg.mcp_http_port);
+    let server_host = browser_display_host(&cfg.mcp_http_host);
+    let server_url = format!("http://{}:{}", server_host, cfg.mcp_http_port);
     Json(StackResponse {
         mcp_url: format!("{server_url}/mcp"),
         server_url,
@@ -74,6 +80,13 @@ pub(super) async fn stack_status(
         checks,
     })
     .into_response()
+}
+
+fn browser_display_host(bind_host: &str) -> &str {
+    match bind_host {
+        "0.0.0.0" | "::" | "[::]" => "127.0.0.1",
+        host => host,
+    }
 }
 
 async fn command_check<const N: usize>(

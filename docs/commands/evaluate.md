@@ -32,6 +32,7 @@ axon evaluate --query "<question>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for all evaluate LLM calls. |
 
 `evaluate` uses Qdrant + TEI retrieval and Gemini headless judging.
+For implementation details and troubleshooting see [`docs/ingest/evaluate.md`](../ingest/evaluate.md)
 
 ## Flags
 

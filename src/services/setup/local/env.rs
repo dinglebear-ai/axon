@@ -29,7 +29,10 @@ pub(super) fn ensure_env_file(path: &Path) -> io::Result<LocalSetupPhase> {
     insert_process_or_default(&mut env, "TEI_URL", DEFAULT_TEI_URL);
     insert_process_or_default(&mut env, "AXON_CHROME_REMOTE_URL", DEFAULT_CHROME_URL);
     insert_process_or_default(&mut env, "AXON_MCP_HTTP_PUBLISH", "127.0.0.1:8001");
-    if !env.contains_key("AXON_MCP_HTTP_TOKEN") {
+    if env
+        .get("AXON_MCP_HTTP_TOKEN")
+        .is_none_or(|value| value.trim().is_empty())
+    {
         let token = process_env_value("AXON_MCP_HTTP_TOKEN").map_or_else(generate_token, Ok)?;
         env.insert("AXON_MCP_HTTP_TOKEN".to_string(), token);
     }
@@ -51,15 +54,20 @@ pub(super) fn ensure_env_file(path: &Path) -> io::Result<LocalSetupPhase> {
 }
 
 fn insert_process_or_default(env: &mut BTreeMap<String, String>, key: &str, default: &str) {
-    env.entry(key.to_string())
-        .or_insert_with(|| process_env_value(key).unwrap_or_else(|| default.to_string()));
+    if env.get(key).is_some_and(|value| !value.trim().is_empty()) {
+        return;
+    }
+    env.insert(
+        key.to_string(),
+        process_env_value(key).unwrap_or_else(|| default.to_string()),
+    );
 }
 
 fn process_env_value(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
         .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty() && !value.contains(['\n', '\r']))
 }
 
 pub(super) fn check_env_file(path: &Path) -> LocalSetupPhase {
@@ -110,6 +118,11 @@ fn write_env_file(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()>
     #[cfg(unix)]
     options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     io::Write::write_all(&mut options.open(path)?, out.as_bytes())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
     Ok(())
 }
 
@@ -141,6 +154,18 @@ mod tests {
         assert!(raw.contains("TAVILY_API_KEY=also-keep"));
         assert!(raw.contains("AXON_SERVER_URL=http://127.0.0.1:8001"));
         assert!(raw.contains("TEI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B"));
+    }
+
+    #[test]
+    fn env_file_repairs_blank_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        std::fs::write(&env_path, "AXON_MCP_HTTP_TOKEN=   \n").unwrap();
+
+        ensure_env_file(&env_path).unwrap();
+        let raw = std::fs::read_to_string(&env_path).unwrap();
+        assert!(!raw.contains("AXON_MCP_HTTP_TOKEN=   "));
+        assert!(raw.contains("AXON_MCP_HTTP_TOKEN="));
     }
 
     #[test]

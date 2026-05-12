@@ -44,6 +44,9 @@ check_prereqs() {
   need curl
   need sha256sum
   need install
+}
+
+check_setup_prereqs() {
   need docker
   docker compose version >/dev/null 2>&1 || fail "docker compose is required"
   command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi is required for the RTX 4070 production target"
@@ -52,7 +55,18 @@ check_prereqs() {
 
 download_and_verify() {
   target="$1"
-  tmpdir="${AXON_INSTALL_TMPDIR:-$(mktemp -d)}"
+  CREATED_TMPDIR=0
+  if [ "${AXON_INSTALL_TMPDIR:-}" ]; then
+    tmpdir="$AXON_INSTALL_TMPDIR"
+    case "$tmpdir" in
+      ""|"/") fail "unsafe AXON_INSTALL_TMPDIR: $tmpdir" ;;
+    esac
+    [ -d "$tmpdir" ] || fail "AXON_INSTALL_TMPDIR must be an existing directory"
+    [ -O "$tmpdir" ] || fail "AXON_INSTALL_TMPDIR must be owned by the current user"
+  else
+    tmpdir="$(mktemp -d)"
+    CREATED_TMPDIR=1
+  fi
   bin_url="${AXON_INSTALL_BIN_URL:-$(asset_base_url "$target")}"
   sha_url="${AXON_INSTALL_SHA256_URL:-$bin_url.sha256}"
   archive="$tmpdir/axon"
@@ -70,6 +84,13 @@ download_and_verify() {
   chmod +x "$archive"
   DOWNLOADED_PATH="$archive"
   DOWNLOAD_TMPDIR="$tmpdir"
+  DOWNLOAD_TMPDIR_CREATED="$CREATED_TMPDIR"
+}
+
+cleanup_download() {
+  if [ "${DOWNLOAD_TMPDIR_CREATED:-0}" = "1" ] && [ -n "${DOWNLOAD_TMPDIR:-}" ]; then
+    rm -rf "$DOWNLOAD_TMPDIR"
+  fi
 }
 
 main() {
@@ -79,9 +100,12 @@ main() {
     say "Dry run OK: target=$target prefix=$PREFIX repo=$REPO version=$VERSION"
     exit 0
   fi
+  if [ "$SKIP_SETUP" != "1" ]; then
+    check_setup_prereqs
+  fi
 
   download_and_verify "$target"
-  trap 'rm -rf "$DOWNLOAD_TMPDIR"' EXIT HUP INT TERM
+  trap cleanup_download EXIT HUP INT TERM
   mkdir -p "$BIN_DIR"
   install -m 0755 "$DOWNLOADED_PATH" "$BIN"
   say "Installed $BIN"

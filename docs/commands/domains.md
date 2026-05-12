@@ -25,6 +25,7 @@ None.
 | `QDRANT_URL` | Qdrant base URL. |
 
 `domains` reads Qdrant metadata.
+For implementation details and troubleshooting see [`docs/ingest/domains.md`](../ingest/domains.md)
 
 ## Flags
 

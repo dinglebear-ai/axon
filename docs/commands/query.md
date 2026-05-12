@@ -27,6 +27,7 @@ axon query --query "<text>" [FLAGS]
 | `QDRANT_URL` | Qdrant base URL. |
 
 `query` searches Qdrant through TEI embeddings.
+For implementation details and troubleshooting see [`docs/ingest/query.md`](../ingest/query.md)
 
 ## Flags
 
