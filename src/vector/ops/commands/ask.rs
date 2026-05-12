@@ -5,6 +5,7 @@ use crate::services::llm_backend;
 mod context;
 mod normalize;
 mod output;
+pub(super) mod synthesis_prompt;
 #[cfg(test)]
 mod tests;
 pub(crate) mod timing;
