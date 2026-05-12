@@ -2,6 +2,10 @@
 pub(crate) mod actions;
 #[path = "web/auth.rs"]
 pub(crate) mod auth;
+#[path = "web/panel_first_run.rs"]
+pub(crate) mod panel_first_run;
+#[path = "web/panel_stack.rs"]
+pub(crate) mod panel_stack;
 #[path = "web/security.rs"]
 pub(crate) mod security;
 #[path = "web/server.rs"]

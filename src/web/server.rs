@@ -1,4 +1,5 @@
 use super::auth::{PanelPassword, init_panel_password};
+use crate::services::context::ServiceContext;
 use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::setup::{self, config_store};
@@ -27,8 +28,9 @@ pub(crate) struct PanelRuntimeState {
 }
 
 #[derive(Clone)]
-struct AppState {
-    panel: Arc<PanelRuntimeState>,
+pub(super) struct AppState {
+    pub(super) panel: Arc<PanelRuntimeState>,
+    pub(super) service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
 }
 
 #[derive(Serialize)]
@@ -95,10 +97,13 @@ impl PanelRuntimeState {
 pub(crate) fn router(
     cfg: Arc<crate::core::config::Config>,
     panel: Arc<PanelRuntimeState>,
-    service_context: Arc<tokio::sync::OnceCell<Arc<crate::services::context::ServiceContext>>>,
+    service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
     auth_policy: crate::mcp::auth::AuthPolicy,
 ) -> Router {
-    let state = AppState { panel };
+    let state = AppState {
+        panel,
+        service_context: Arc::clone(&service_context),
+    };
     let ask_router = Router::new()
         .route(
             "/v1/ask",
@@ -122,6 +127,15 @@ pub(crate) fn router(
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
         .route("/api/panel/ops", get(ops))
+        .route("/api/panel/stack", get(super::panel_stack::stack_status))
+        .route(
+            "/api/panel/first-run/crawl",
+            post(super::panel_first_run::first_run_crawl),
+        )
+        .route(
+            "/api/panel/first-run/ask",
+            post(super::panel_first_run::first_run_ask),
+        )
         .route("/api/panel/setup/targets", get(setup_targets))
         .route("/api/panel/setup/deploy", post(setup_deploy))
         .merge(ask_router)
@@ -457,7 +471,7 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
     }
 }
 
-fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
+pub(super) fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
     headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
