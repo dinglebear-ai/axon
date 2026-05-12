@@ -571,6 +571,41 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
+    fn parse_setup_without_subcommand_is_local_first_run() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let cli = super::Cli::parse_from(["axon", "setup"]);
+        let cfg = super::build_config::into_config(cli).expect("setup should parse");
+
+        assert!(matches!(cfg.command, CommandKind::Setup));
+        assert!(cfg.positional.is_empty());
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_setup_check_and_repair_modes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let check = super::Cli::parse_from(["axon", "setup", "check"]);
+        let check_cfg = super::build_config::into_config(check).expect("setup check should parse");
+        assert_eq!(check_cfg.positional, vec!["check".to_string()]);
+
+        let repair = super::Cli::parse_from(["axon", "setup", "repair"]);
+        let repair_cfg =
+            super::build_config::into_config(repair).expect("setup repair should parse");
+        assert_eq!(repair_cfg.positional, vec!["repair".to_string()]);
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
     fn parse_setup_deploy_preserves_target_and_remote_dir() {
         let _guard = ENV_LOCK.lock().unwrap();
         unsafe {

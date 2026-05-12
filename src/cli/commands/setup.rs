@@ -1,10 +1,25 @@
 use crate::core::config::Config;
-use crate::services::setup::{self, DeployRequest};
+use crate::services::setup::{self, DeployRequest, LocalSetupMode};
 use serde_json::json;
 use std::error::Error;
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
+        None => {
+            let result = setup::run_local_setup(LocalSetupMode::FirstRun).await?;
+            print_local_setup_report(cfg, &result)?;
+            Ok(())
+        }
+        Some("check") => {
+            let result = setup::run_local_setup(LocalSetupMode::Check).await?;
+            print_local_setup_report(cfg, &result)?;
+            Ok(())
+        }
+        Some("repair") => {
+            let result = setup::run_local_setup(LocalSetupMode::Repair).await?;
+            print_local_setup_report(cfg, &result)?;
+            Ok(())
+        }
         Some("targets") => {
             let targets = match setup::list_ssh_targets() {
                 Ok(targets) => targets,
@@ -71,6 +86,9 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         _ => {
             let payload = json!({
                 "usage": [
+                    "axon setup",
+                    "axon setup check",
+                    "axon setup repair",
                     "axon setup targets",
                     "axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
                 ]
@@ -79,6 +97,9 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             } else {
                 println!("Usage:");
+                println!("  axon setup");
+                println!("  axon setup check");
+                println!("  axon setup repair");
                 println!("  axon setup targets");
                 println!(
                     "  axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
@@ -87,6 +108,46 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             Ok(())
         }
     }
+}
+
+fn print_local_setup_report(
+    cfg: &Config,
+    report: &setup::LocalSetupReport,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Axon setup mode: {}", report.mode);
+    println!("Axon home: {}", report.axon_home.display());
+    println!("Config: {}", report.config_path.display());
+    println!("Env: {}", report.env_path.display());
+    println!("Compose: {}", report.compose_dir.display());
+    println!("Web panel: {}", report.web_panel_url);
+    println!("MCP: {}", report.mcp_url);
+    println!("Token: {}", report.token_path.display());
+    println!(
+        "Timing: {:.1}s (target {}s, hard max {}s)",
+        report.elapsed_ms as f64 / 1000.0,
+        report.target_seconds,
+        report.hard_max_seconds
+    );
+    if report.met_target {
+        println!("Timing status: met target");
+    } else if report.exceeded_hard_max {
+        println!("Timing status: exceeded hard maximum");
+    } else {
+        println!("Timing status: exceeded target");
+    }
+    for phase in &report.phases {
+        println!(
+            "{:?}\t{}\t{}ms\t{}",
+            phase.status, phase.name, phase.elapsed_ms, phase.detail
+        );
+    }
+    println!("Next diagnostic: axon doctor");
+    Ok(())
 }
 
 fn remote_dir_from_positional(positional: &[String]) -> Option<String> {
