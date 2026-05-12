@@ -118,7 +118,7 @@ impl Default for AskConfig {
             ask_full_docs: 4,
             ask_backfill_chunks: 3,
             ask_doc_fetch_concurrency: 4,
-            ask_doc_chunk_limit: 192,
+            ask_doc_chunk_limit: 48,
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,

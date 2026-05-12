@@ -115,10 +115,11 @@
 # `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" |
 # "insufficient_chars" | "low_top_scores" | "empty_top_k"`.
 #
-# Default: disabled. Validate against `axon evaluate` golden set before
-# enabling — quality gate is "no regression > 1pp on accuracy / relevance /
-# completeness".
-# fulldoc-skip-enabled = false
+# Default: enabled (true). The full-doc URL-disjoint bug previously produced
+# an implicit skip for narrow-domain queries; enabling the gate restores that
+# fast-path correctly. Disable only if `axon evaluate` shows a regression
+# (quality gate: no regression > 1pp on accuracy / relevance / completeness).
+fulldoc-skip-enabled = true
 
 # [wired] Minimum unique URLs required in reranked top-K (clamped 1–50).
 # Default: 3.

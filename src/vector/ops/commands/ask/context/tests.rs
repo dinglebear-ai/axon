@@ -149,7 +149,11 @@ fn supplemental_candidates_can_skip_score_threshold_on_rrf_path() {
 }
 
 #[test]
-fn context_chunk_and_full_doc_selections_are_url_disjoint() {
+fn context_full_doc_selection_is_independent_of_chunk_urls() {
+    // When all top-ranked URLs fill chunk slots, full_doc_indices must still
+    // return the top N sources — not an empty list.
+    // The old URL-exclusion produced top_full_doc_indices=[] for narrow-domain
+    // queries (observable as context_build_ms ≈ 5ms).
     let candidates = vec![
         test_candidate("https://a.dev/docs/one", 0.90),
         test_candidate("https://a.dev/docs/two", 0.80),
@@ -158,18 +162,22 @@ fn context_chunk_and_full_doc_selections_are_url_disjoint() {
     ];
 
     let (chunk_indices, full_doc_indices) = select_context_indices(&candidates, 2, 2);
-    let chunk_urls = chunk_indices
-        .iter()
-        .map(|&idx| candidates[idx].url.as_str())
-        .collect::<HashSet<_>>();
+    assert_eq!(chunk_indices.len(), 2, "should select 2 top chunks");
+    assert_eq!(full_doc_indices.len(), 2, "should select 2 full docs");
 
-    assert_eq!(chunk_indices.len(), 2);
-    assert_eq!(full_doc_indices.len(), 2);
-    assert!(
-        full_doc_indices
-            .iter()
-            .all(|&idx| !chunk_urls.contains(candidates[idx].url.as_str())),
-        "full-doc selection must exclude URLs already selected as top chunks"
+    // Both sets pick the two highest-scoring unique URLs (intentional overlap).
+    // append_top_chunks_to_context will skip snippets for planned_full_doc_urls.
+    let chunk_urls: HashSet<&str> = chunk_indices
+        .iter()
+        .map(|&i| candidates[i].url.as_str())
+        .collect();
+    let full_doc_urls: HashSet<&str> = full_doc_indices
+        .iter()
+        .map(|&i| candidates[i].url.as_str())
+        .collect();
+    assert_eq!(
+        chunk_urls, full_doc_urls,
+        "both sets should pick the two highest-scoring URLs"
     );
 }
 
