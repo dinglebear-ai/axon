@@ -29,8 +29,7 @@ axon ask --query "<question>" [FLAGS]
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
 | `AXON_SERVER_URL` | Optional generic server endpoint. If set, server-mode capable commands use `axon serve`; `ask` uses the same server URL. |
 
-`ask` uses Qdrant + TEI retrieval and Gemini headless synthesis. It does not
-require Postgres, Redis, or AMQP.
+`ask` uses Qdrant + TEI retrieval and Gemini headless synthesis.
 
 ## Flags
 
@@ -41,7 +40,6 @@ All global flags apply. Key flags:
 | `--query <text>` | — | Question text (alternative to positional argument). |
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
 | `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
-| `--graph` | `false` | Deprecated compatibility flag. Graph retrieval is not available in the current runtime. |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.

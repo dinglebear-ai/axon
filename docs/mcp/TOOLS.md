@@ -120,7 +120,6 @@ RAG: semantic search + LLM answer synthesis with citations.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | string | -- | Question to answer |
-| `graph` | bool | `false` | Unavailable compatibility field; `true` returns `invalid_params` |
 | `diagnostics` | bool | `false` | Include retrieval diagnostics |
 | `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
 | `since` | string | -- | Date filter (after) |

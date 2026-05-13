@@ -38,15 +38,25 @@ pub(in crate::core::config) struct GlobalArgs {
     pub(in crate::core::config) render_mode: RenderMode,
 
     /// Chrome DevTools Protocol management endpoint URL
-    #[arg(global = true, long, env = "AXON_CHROME_REMOTE_URL")]
+    #[arg(
+        global = true,
+        long,
+        env = "AXON_CHROME_REMOTE_URL",
+        hide_env_values = true
+    )]
     pub(in crate::core::config) chrome_remote_url: Option<String>,
 
     /// HTTP proxy URL for Chrome requests
-    #[arg(global = true, long, env = "AXON_CHROME_PROXY")]
+    #[arg(global = true, long, env = "AXON_CHROME_PROXY", hide_env_values = true)]
     pub(in crate::core::config) chrome_proxy: Option<String>,
 
     /// Custom User-Agent header for Chrome requests
-    #[arg(global = true, long, env = "AXON_CHROME_USER_AGENT")]
+    #[arg(
+        global = true,
+        long,
+        env = "AXON_CHROME_USER_AGENT",
+        hide_env_values = true
+    )]
     pub(in crate::core::config) chrome_user_agent: Option<String>,
 
     /// Run Chrome in headless mode (default: true)
@@ -136,7 +146,13 @@ pub(in crate::core::config) struct GlobalArgs {
     pub(in crate::core::config) embed: bool,
 
     /// Qdrant collection name (default: cortex)
-    #[arg(global = true, long, env = "AXON_COLLECTION", default_value = "cortex")]
+    #[arg(
+        global = true,
+        long,
+        env = "AXON_COLLECTION",
+        hide_env_values = true,
+        default_value = "cortex"
+    )]
     pub(in crate::core::config) collection: String,
 
     /// Concurrent connections for batch operations (1-512)
@@ -147,12 +163,12 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::core::config) wait: bool,
 
-    /// Run without Postgres/Redis/RabbitMQ. Uses SQLite + in-process workers.
-    #[arg(global = true, long, default_value_t = false)]
+    /// Compatibility flag. SQLite + in-process workers are always used.
+    #[arg(global = true, long, default_value_t = false, hide = true)]
     pub(in crate::core::config) lite: bool,
 
-    /// Path to the SQLite jobs database (lite mode only).
-    #[arg(global = true, long)]
+    /// Path to the SQLite jobs database.
+    #[arg(global = true, long, hide = true)]
     pub(in crate::core::config) sqlite_path: Option<PathBuf>,
 
     /// Skip confirmation prompts (non-interactive mode)
@@ -163,8 +179,8 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::core::config) json: bool,
 
-    /// Enable graph-enhanced retrieval for ask (requires Neo4j)
-    #[arg(global = true, long, action = ArgAction::SetTrue)]
+    /// Compatibility flag. Graph retrieval is not available in production.
+    #[arg(global = true, long, action = ArgAction::SetTrue, hide = true)]
     pub(in crate::core::config) graph: bool,
 
     /// Status mode: show only watchdog-reclaimed jobs.
@@ -245,6 +261,7 @@ pub(in crate::core::config) struct GlobalArgs {
         global = true,
         long,
         env = "AXON_JOB_STALE_TIMEOUT_SECS",
+        hide_env_values = true,
         default_value_t = 300
     )]
     pub(in crate::core::config) watchdog_stale_timeout_secs: i64,
@@ -254,6 +271,7 @@ pub(in crate::core::config) struct GlobalArgs {
         global = true,
         long,
         env = "AXON_JOB_STALE_CONFIRM_SECS",
+        hide_env_values = true,
         default_value_t = 60
     )]
     pub(in crate::core::config) watchdog_confirm_secs: i64,
@@ -264,6 +282,7 @@ pub(in crate::core::config) struct GlobalArgs {
         global = true,
         long,
         env = "AXON_WATCHDOG_SWEEP_SECS",
+        hide_env_values = true,
         default_value_t = 15
     )]
     pub(in crate::core::config) watchdog_sweep_secs: i64,
@@ -373,11 +392,18 @@ pub(in crate::core::config) struct GlobalArgs {
 
     /// Override log level. Accepts tracing filter syntax (e.g. debug, info, warn, error,
     /// or crate=level). Applied before tracing init; does not override an explicit RUST_LOG.
-    #[arg(global = true, long, env = "AXON_LOG_LEVEL")]
+    #[arg(global = true, long, env = "AXON_LOG_LEVEL", hide_env_values = true)]
     pub(in crate::core::config) log_level: Option<String>,
 
     /// Force in-process local execution even when a server URL is configured.
-    #[arg(global = true, long, env = "AXON_LOCAL_MODE", action = ArgAction::SetTrue, default_value_t = false)]
+    #[arg(
+        global = true,
+        long,
+        env = "AXON_LOCAL_MODE",
+        hide_env_values = true,
+        action = ArgAction::SetTrue,
+        default_value_t = false
+    )]
     pub(in crate::core::config) local: bool,
 
     /// Route supported commands through a running `axon serve` HTTP endpoint.
@@ -386,6 +412,6 @@ pub(in crate::core::config) struct GlobalArgs {
     /// clear error before any command runs. If the resolved scheme is `http` and the host
     /// is non-loopback, the CLI refuses to attach `AXON_MCP_HTTP_TOKEN` (cleartext-bearer
     /// guard); set `AXON_SERVER_INSECURE=1` to override.
-    #[arg(global = true, long, env = "AXON_SERVER_URL")]
+    #[arg(global = true, long, env = "AXON_SERVER_URL", hide_env_values = true)]
     pub(in crate::core::config) server_url: Option<String>,
 }

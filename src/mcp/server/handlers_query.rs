@@ -361,15 +361,13 @@ impl AxonMcpServer {
     }
 
     pub(super) async fn handle_ask(&self, req: AskRequest) -> Result<AxonToolResponse, ErrorData> {
+        if let Some(message) = req.unsupported_graph_error() {
+            return Err(invalid_params(message));
+        }
         let query = req
             .query
             .ok_or_else(|| invalid_params("query is required for ask"))?;
         let response_mode = req.response_mode;
-        if req.graph == Some(true) {
-            return Err(invalid_params(
-                "graph retrieval is unavailable in this build; omit graph or set graph=false",
-            ));
-        }
 
         let collection = req
             .collection
@@ -377,7 +375,6 @@ impl AxonMcpServer {
             .map(validate_mcp_collection)
             .transpose()?;
         let cfg = self.cfg.apply_overrides(&ConfigOverrides {
-            ask_graph: Some(false),
             ask_diagnostics: req.diagnostics,
             collection,
             since: req.since,

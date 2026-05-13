@@ -1,10 +1,10 @@
-/// MCP handler contract parity tests.
+/// MCP schema/helper contract tests.
 ///
 /// These are compile-time and pure-logic tests. No live services are required.
 /// They verify that:
 ///   1. Option mapper round-trips produce correct service types.
-///   2. The JSON response keys that MCP handlers emit match the schema contract.
-///   3. Handler input parameters are forwarded to service calls correctly.
+///   2. Service result structs expose fields consumed by MCP handlers.
+///   3. Serialization examples keep envelope field names explicit.
 use axon::mcp::schema::{
     AxonRequest, AxonToolResponse, IngestSubaction, SearchTimeRange, parse_axon_request,
 };
@@ -17,6 +17,7 @@ use axon::services::types::{
     QueryHit, QueryResult, RetrieveOptions, RetrieveResult, SearchOptions, SearchResult,
     ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
 };
+use serde_json::json;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Option mapper round-trips (verifies common.rs helpers)
@@ -27,6 +28,44 @@ fn pagination_default_values_when_both_none() {
     let p = to_pagination(None, None, 10);
     assert_eq!(p.limit, 10, "default limit should be 10");
     assert_eq!(p.offset, 0, "default offset should be 0");
+}
+
+#[test]
+fn ask_request_accepts_graph_false_and_flags_graph_true_as_unsupported() {
+    let raw = json!({
+        "action": "ask",
+        "query": "what is indexed?",
+        "graph": false
+    })
+    .as_object()
+    .expect("object")
+    .clone();
+    let parsed = parse_axon_request(raw);
+    assert!(parsed.is_ok(), "graph:false remains backward-compatible");
+    if let Ok(AxonRequest::Ask(req)) = parsed {
+        assert_eq!(req.graph, Some(false));
+        assert_eq!(req.unsupported_graph_error(), None);
+    } else {
+        panic!("expected Ask request");
+    }
+
+    let raw = json!({
+        "action": "ask",
+        "query": "what is indexed?",
+        "graph": true
+    })
+    .as_object()
+    .expect("object")
+    .clone();
+    let parsed = parse_axon_request(raw).expect("graph:true parses for compatibility");
+    if let AxonRequest::Ask(req) = parsed {
+        assert_eq!(
+            req.unsupported_graph_error(),
+            Some("graph retrieval is not supported; omit graph or set graph to false")
+        );
+    } else {
+        panic!("expected Ask request");
+    }
 }
 
 #[test]
@@ -326,14 +365,13 @@ fn retrieve_options_equality() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Group 4: MCP handler response contract (comments #15, #16, #17, #18)
+// Group 4: MCP serialization examples and validation contracts
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Comment #18 — mcp_embed_start_returns_job_id_payload_shape
 ///
-/// handle_embed_start emits `AxonToolResponse::ok("embed", "start", json!({"job_id": ...}))`.
-/// Construct the actual response type and verify the serialized envelope shape.
-/// If the field name changes in the handler, this test will catch it.
+/// This is a serialization example for the `AxonToolResponse` envelope shape
+/// used by embed.start handlers; it does not exercise the handler path.
 #[test]
 fn mcp_embed_start_returns_job_id_payload_shape() {
     let resp = AxonToolResponse::ok("embed", "start", serde_json::json!({ "job_id": "abc-123" }));
@@ -356,8 +394,7 @@ fn mcp_embed_start_returns_job_id_payload_shape() {
 ///
 /// IngestRequest.source_type is Option — omitting it passes schema-level parse
 /// but triggers INVALID_PARAMS inside handle_ingest_start → parse_ingest_source.
-/// Verify the schema parses correctly and the parsed struct has no source_type,
-/// confirming the handler validation path will fire.
+/// Verify the schema parses correctly and the parsed struct has no source_type.
 #[test]
 fn mcp_ingest_start_requires_source_type() {
     // Schema parse must succeed (source_type is Option in IngestRequest).
@@ -386,7 +423,7 @@ fn mcp_ingest_start_requires_source_type() {
     } else {
         panic!("expected AxonRequest::Ingest");
     }
-    // Confirm that the error the handler returns uses INVALID_PARAMS.
+    // Confirm that this validation error should be represented as INVALID_PARAMS.
     let err = rmcp::ErrorData::invalid_params("source_type is required for ingest.start", None);
     assert_eq!(
         err.code,
@@ -397,8 +434,8 @@ fn mcp_ingest_start_requires_source_type() {
 
 /// Comment #16 — mcp_screenshot_payload_contains_path_size_and_viewport
 ///
-/// handle_screenshot emits a payload with url, path, size_bytes, full_page, viewport.
-/// Assert all three contract fields (path, size_bytes, viewport) are present and correct.
+/// Serialization example for the screenshot payload fields documented for
+/// handler responses; it does not exercise the filesystem-backed handler path.
 #[test]
 fn mcp_screenshot_payload_contains_path_size_and_viewport() {
     // Mirrors the exact payload shape that handle_screenshot emits.

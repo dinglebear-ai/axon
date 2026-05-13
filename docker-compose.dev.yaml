@@ -1,0 +1,8 @@
+name: axon
+
+services:
+  axon:
+    image: axon:local
+    build:
+      context: .
+      dockerfile: config/Dockerfile

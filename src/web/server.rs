@@ -1,11 +1,13 @@
 use super::auth::{PanelPassword, init_panel_password};
+use crate::services::context::ServiceContext;
 use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::setup::{self, config_store};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
+    middleware,
     response::IntoResponse,
     routing::{get, post},
 };
@@ -26,8 +28,9 @@ pub(crate) struct PanelRuntimeState {
 }
 
 #[derive(Clone)]
-struct AppState {
-    panel: Arc<PanelRuntimeState>,
+pub(super) struct AppState {
+    pub(super) panel: Arc<PanelRuntimeState>,
+    pub(super) service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
 }
 
 #[derive(Serialize)]
@@ -51,6 +54,14 @@ struct LoginResponse {
 struct ConfigResponse {
     path: String,
     raw_toml: String,
+    restart_required: bool,
+}
+
+#[derive(Serialize)]
+struct SaveConfigResponse {
+    ok: bool,
+    restart_required: bool,
+    message: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -94,24 +105,61 @@ impl PanelRuntimeState {
 pub(crate) fn router(
     cfg: Arc<crate::core::config::Config>,
     panel: Arc<PanelRuntimeState>,
-    service_context: Arc<tokio::sync::OnceCell<Arc<crate::services::context::ServiceContext>>>,
+    service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
     auth_policy: crate::mcp::auth::AuthPolicy,
 ) -> Router {
-    let state = AppState { panel };
+    let state = AppState {
+        panel,
+        service_context: Arc::clone(&service_context),
+    };
+    let ask_router =
+        ask_router::<(AppState, Arc<crate::core::config::Config>)>(Arc::clone(&cfg), &auth_policy);
     let panel_router = Router::new()
+        .route("/healthz", get(super::health::healthz))
+        .route("/readyz", get(super::health::readyz))
         .route("/api/panel/state", get(panel_state))
         .route("/api/panel/login", post(login))
         .route("/api/panel/config", get(get_config).put(save_config))
         .route("/api/panel/ops", get(ops))
+        .route("/api/panel/stack", get(super::panel_stack::stack_status))
+        .route(
+            "/api/panel/first-run/crawl",
+            post(super::panel_first_run::first_run_crawl),
+        )
+        .route(
+            "/api/panel/first-run/ask",
+            post(super::panel_first_run::first_run_ask),
+        )
         .route("/api/panel/setup/targets", get(setup_targets))
         .route("/api/panel/setup/deploy", post(setup_deploy))
-        .route(
-            "/v1/ask",
-            post(v1_ask).layer(DefaultBodyLimit::max(ASK_BODY_LIMIT)),
-        )
+        .merge(ask_router)
         .fallback(super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));
     panel_router.merge(super::actions::router(cfg, service_context, auth_policy))
+}
+
+fn ask_router<S>(
+    cfg: Arc<crate::core::config::Config>,
+    auth_policy: &crate::mcp::auth::AuthPolicy,
+) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    let ask_router = Router::<S>::new()
+        .route("/v1/ask", post(v1_ask))
+        .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
+        .layer(Extension(cfg));
+    if let Some(layer) = crate::mcp::auth::build_auth_layer(
+        auth_policy,
+        crate::mcp::auth::configured_mcp_http_token().map(Arc::from),
+        crate::mcp::auth::oauth_resource_url(auth_policy),
+    ) {
+        ask_router.layer(layer).layer(middleware::from_fn(
+            crate::mcp::auth::normalize_api_key_header,
+        ))
+    } else {
+        ask_router
+    }
 }
 
 async fn panel_state(
@@ -151,6 +199,7 @@ async fn get_config(
         Ok(raw_toml) => Json(ConfigResponse {
             path: state.panel.config_path.clone(),
             raw_toml,
+            restart_required: false,
         })
         .into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
@@ -166,7 +215,15 @@ async fn save_config(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     match config_store::write_config(&req.raw_toml) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => (
+            StatusCode::ACCEPTED,
+            Json(SaveConfigResponse {
+                ok: true,
+                restart_required: true,
+                message: "Config saved. Restart Axon for changes to affect live panel requests.",
+            }),
+        )
+            .into_response(),
         Err(err) if err.kind() == std::io::ErrorKind::InvalidInput => {
             (StatusCode::BAD_REQUEST, err.to_string()).into_response()
         }
@@ -222,6 +279,7 @@ async fn setup_deploy(
 
 /// Per-invocation `Config` overrides accepted by `/v1/ask`.
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct AskRequestBody {
     query: String,
     #[serde(default)]
@@ -232,6 +290,8 @@ struct AskRequestBody {
     before: Option<String>,
     #[serde(default)]
     diagnostics: Option<bool>,
+    /// Deprecated compatibility field. `false`/unset is accepted as a no-op;
+    /// `true` is rejected before any ask execution.
     #[serde(default)]
     graph: Option<bool>,
     #[serde(default)]
@@ -283,9 +343,6 @@ fn apply_ask_overrides(req_cfg: &mut crate::core::config::Config, req: &AskReque
     }
     if let Some(d) = req.diagnostics {
         req_cfg.ask_diagnostics = d;
-    }
-    if let Some(g) = req.graph {
-        req_cfg.ask_graph = g;
     }
     if let Some(h) = req.hybrid_search {
         req_cfg.hybrid_search_enabled = h;
@@ -362,16 +419,16 @@ fn classify_ask_error(err: &(dyn std::error::Error + 'static)) -> (StatusCode, &
 }
 
 async fn v1_ask(
-    State((_, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
-    headers: HeaderMap,
+    Extension(cfg): Extension<Arc<crate::core::config::Config>>,
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
-    if !ask_authorized(&headers) {
+    if req.graph.unwrap_or(false) {
         return (
-            StatusCode::UNAUTHORIZED,
+            StatusCode::BAD_REQUEST,
             Json(AskErrorBody {
-                kind: "unauthorized",
-                message: "unauthorized".to_string(),
+                kind: "bad_request",
+                message: "graph retrieval is not supported; omit graph or set graph to false"
+                    .to_string(),
                 diagnostics: None,
             }),
         )
@@ -426,17 +483,9 @@ async fn v1_ask(
     }
 }
 
-/// Authorize `/v1/ask`. When `AXON_MCP_HTTP_TOKEN` is set, require it as a
-/// `Bearer` or `x-api-key` header. When unset, allow the request — matching the
-/// MCP HTTP server's loopback-only convention (binding to non-loopback hosts
-/// without a token is rejected at startup elsewhere).
-fn ask_authorized(headers: &HeaderMap) -> bool {
-    crate::mcp::auth::authorize_mcp_http_headers_from_env(headers).is_ok()
-}
-
 /// Log a startup warning when `AXON_MCP_HTTP_TOKEN` is set but resolves to
 /// empty/whitespace — the operator clearly meant to enable auth, and
-/// `ask_authorized` will fail closed in that case.
+/// the empty value is ignored and loopback-only tokenless mode may apply.
 pub(crate) fn warn_if_ask_token_set_but_empty() {
     if let Ok(raw) = std::env::var("AXON_MCP_HTTP_TOKEN")
         && !raw.is_empty()
@@ -444,12 +493,12 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
     {
         tracing::warn!(
             context = "v1_ask_startup",
-            "AXON_MCP_HTTP_TOKEN is set to whitespace \u{2014} /v1/ask will reject all requests"
+            "AXON_MCP_HTTP_TOKEN is set to whitespace \u{2014} the value is ignored; configure a non-empty token before exposing HTTP beyond loopback"
         );
     }
 }
 
-fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
+pub(super) fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
     headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())

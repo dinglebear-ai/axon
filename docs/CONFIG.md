@@ -6,8 +6,8 @@ Axon is configured through three layers: `~/.axon/config.toml`, environment vari
 
 ## Precedence (highest to lowest)
 
-1. CLI flags (`--pg-url`, `--collection`, etc.)
-2. Environment variables (`AXON_PG_URL`, `AXON_COLLECTION`, etc.)
+1. CLI flags (`--collection`, `--server-url`, etc.)
+2. Environment variables (`AXON_SERVER_URL`, `QDRANT_URL`, etc.)
 3. `~/.axon/config.toml` — tuning knobs (safe to commit, no secrets)
 4. Built-in defaults
 
@@ -152,7 +152,6 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_LITE` | -- | Accepted for compatibility only; SQLite/in-process jobs are always used. |
 | `AXON_SQLITE_PATH` | `$AXON_DATA_DIR/jobs.db` (default `~/.axon/jobs.db`) | SQLite jobs database path |
 
 **Worker spawn is conditional**, not unconditional. The SQLite backend has two construction modes:
@@ -184,10 +183,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENAI_BASE_URL` | -- | Compatibility setting retained for callers that also use OpenAI-compatible providers; Gemini headless does not require it. |
-| `OPENAI_API_KEY` | -- | Compatibility setting retained for callers that also use OpenAI-compatible providers; Gemini headless does not require it. |
 | `AXON_HEADLESS_GEMINI_MODEL` | -- | Gemini model override for synthesis. Headless Gemini defaults to `gemini-3.1-flash-lite-preview` when unset. |
-| `OPENAI_MODEL` | -- | Compatibility model setting. Only `gemini-*` values are reused as Gemini overrides; older OpenAI model names are ignored. |
 | `AXON_HEADLESS_GEMINI_CMD` | `gemini` | Gemini CLI command for headless synthesis. Path-like values are validated before launch. |
 | `AXON_HEADLESS_GEMINI_HOME` | `HOME` | Source HOME to copy Gemini CLI auth files from before running with isolated temporary HOME. |
 | `AXON_LLM_COMPLETION_CONCURRENCY` | `4` | Runtime-only max concurrent Gemini headless completion requests. |

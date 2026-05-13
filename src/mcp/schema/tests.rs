@@ -652,7 +652,22 @@ fn serde_ingest_source_type_variants() {
 }
 
 #[test]
-fn parse_ask_with_graph_and_diagnostics() {
+fn parse_ask_accepts_deprecated_graph_false_and_rejects_true_via_request_validation() {
+    let raw = obj(json!({
+        "action": "ask",
+        "query": "test question",
+        "graph": false,
+        "diagnostics": false
+    }));
+    let result = parse_axon_request(raw);
+    assert!(result.is_ok(), "ask with graph:false should parse");
+    if let Ok(AxonRequest::Ask(a)) = result {
+        assert_eq!(a.graph, Some(false));
+        assert_eq!(a.unsupported_graph_error(), None);
+    } else {
+        panic!("expected Ask variant");
+    }
+
     let raw = obj(json!({
         "action": "ask",
         "query": "test question",
@@ -660,11 +675,18 @@ fn parse_ask_with_graph_and_diagnostics() {
         "diagnostics": false
     }));
     let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "ask with graph/diagnostics should parse");
+    assert!(
+        result.is_ok(),
+        "ask with graph:true remains parse-compatible"
+    );
     if let Ok(AxonRequest::Ask(a)) = result {
         assert_eq!(a.query.as_deref(), Some("test question"));
         assert_eq!(a.graph, Some(true));
         assert_eq!(a.diagnostics, Some(false));
+        assert_eq!(
+            a.unsupported_graph_error(),
+            Some("graph retrieval is not supported; omit graph or set graph to false")
+        );
     } else {
         panic!("expected Ask variant");
     }

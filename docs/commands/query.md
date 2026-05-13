@@ -26,7 +26,7 @@ axon query --query "<text>" [FLAGS]
 | `TEI_URL` | TEI embeddings base URL. |
 | `QDRANT_URL` | Qdrant base URL. |
 
-`query` searches Qdrant and does not require Postgres, Redis, or AMQP.
+`query` searches Qdrant through TEI embeddings.
 
 ## Flags
 

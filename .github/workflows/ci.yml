@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       run_infra_tests:
-        description: "Run infra-backed ignored worker_e2e tests"
+        description: "Run ignored SQLite/in-process infra smoke tests"
         required: false
         default: false
         type: boolean
@@ -104,7 +104,6 @@ jobs:
     name: mcp-oauth-smoke
     runs-on: ubuntu-latest
     env:
-      # Lite mode: only TEI and Qdrant needed; PG/Redis/AMQP are skipped.
       # TEI_URL must be set to pass startup validation even though TEI is not
       # actually running — this test exercises only the auth layer (/mcp 401).
       TEI_URL: http://127.0.0.1:52000
@@ -128,7 +127,7 @@ jobs:
       - name: Ban session-scoped advisory lock APIs
         run: |
           set -euo pipefail
-          if rg -n "pg_advisory_lock\\s*\\(|pg_advisory_unlock\\s*\\(" crates; then
+          if rg -n "pg_advisory_lock\\s*\\(|pg_advisory_unlock\\s*\\(" src tests; then
             echo "Found banned session-scoped advisory lock usage. Use pg_advisory_xact_lock via begin_schema_migration_tx."
             exit 1
           fi
@@ -263,42 +262,6 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: axon
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: axon
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:8.2-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      rabbitmq:
-        image: rabbitmq:4.0-alpine
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      AXON_TEST_PG_URL: postgresql://axon:postgres@localhost:5432/axon
-      AXON_TEST_REDIS_URL: redis://localhost:6379
-      AXON_TEST_AMQP_URL: amqp://guest:guest@localhost:5672/%2f
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -318,50 +281,14 @@ jobs:
     name: test-infra
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_infra_tests) }}
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: axon
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: axon
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:8.2-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      rabbitmq:
-        image: rabbitmq:4.0-alpine
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      AXON_TEST_PG_URL: postgresql://axon:postgres@localhost:5432/axon
-      AXON_TEST_REDIS_URL: redis://localhost:6379
-      AXON_TEST_AMQP_URL: amqp://guest:guest@localhost:5672/%2f
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
-      - name: run ignored infra worker tests
-        run: just test-infra
+      - name: run ignored SQLite/in-process worker tests
+        run: cargo test --locked worker_e2e --features test-helpers -- --ignored
 
   live-qdrant:
     name: live-qdrant

@@ -1,10 +1,25 @@
 use crate::core::config::Config;
-use crate::services::setup::{self, DeployRequest};
+use crate::services::setup::{self, DeployRequest, LocalSetupMode};
 use serde_json::json;
 use std::error::Error;
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
+        None => {
+            let result = setup::run_local_setup(LocalSetupMode::FirstRun).await?;
+            print_local_setup_report(cfg, &result)?;
+            fail_if_setup_failed(&result)
+        }
+        Some("check") => {
+            let result = setup::run_local_setup(LocalSetupMode::Check).await?;
+            print_local_setup_report(cfg, &result)?;
+            fail_if_setup_failed(&result)
+        }
+        Some("repair") => {
+            let result = setup::run_local_setup(LocalSetupMode::Repair).await?;
+            print_local_setup_report(cfg, &result)?;
+            fail_if_setup_failed(&result)
+        }
         Some("targets") => {
             let targets = match setup::list_ssh_targets() {
                 Ok(targets) => targets,
@@ -71,26 +86,117 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
         _ => {
             let payload = json!({
                 "usage": [
-                    "axon setup targets",
-                    "axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
+                    "axon setup",
+                    "axon setup check",
+                    "axon setup repair"
                 ]
             });
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
             } else {
                 println!("Usage:");
-                println!("  axon setup targets");
-                println!(
-                    "  axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--accept-new-host-key] [--public-exposure]"
-                );
+                println!("  axon setup");
+                println!("  axon setup check");
+                println!("  axon setup repair");
             }
             Ok(())
         }
     }
 }
 
+fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
+    if report.has_errors {
+        Err("axon setup completed with failed phases".into())
+    } else if report.exceeded_hard_max {
+        Err("axon setup exceeded the hard maximum setup time".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn print_local_setup_report(
+    cfg: &Config,
+    report: &setup::LocalSetupReport,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Axon setup mode: {}", report.mode);
+    println!("Axon home: {}", report.axon_home.display());
+    println!("Config: {}", report.config_path.display());
+    println!("Env: {}", report.env_path.display());
+    println!("Compose: {}", report.compose_dir.display());
+    println!("Web panel: {}", report.web_panel_url);
+    println!("MCP: {}", report.mcp_url);
+    println!("Token: {} (AXON_MCP_HTTP_TOKEN)", report.env_path.display());
+    println!(
+        "Timing: {:.1}s (target {}s, hard max {}s)",
+        report.elapsed_ms as f64 / 1000.0,
+        report.target_seconds,
+        report.hard_max_seconds
+    );
+    if report.met_target {
+        println!("Timing status: met target");
+    } else if report.exceeded_hard_max {
+        println!("Timing status: exceeded hard maximum");
+    } else {
+        println!("Timing status: exceeded target");
+    }
+    for phase in &report.phases {
+        println!(
+            "{:?}\t{}\t{}ms\t{}",
+            phase.status, phase.name, phase.elapsed_ms, phase.detail
+        );
+    }
+    println!("Next diagnostic: axon doctor");
+    Ok(())
+}
+
 fn remote_dir_from_positional(positional: &[String]) -> Option<String> {
     positional
         .windows(2)
         .find_map(|window| (window[0] == "--remote-dir").then(|| window[1].clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::setup::{LocalSetupPhase, LocalSetupReport, LocalSetupStatus};
+    use std::path::PathBuf;
+
+    fn report_with(status: LocalSetupStatus) -> LocalSetupReport {
+        LocalSetupReport {
+            mode: "check",
+            elapsed_ms: 0,
+            target_seconds: 120,
+            hard_max_seconds: 300,
+            met_target: true,
+            exceeded_hard_max: false,
+            axon_home: PathBuf::from("/tmp/axon"),
+            env_path: PathBuf::from("/tmp/axon/.env"),
+            config_path: PathBuf::from("/tmp/axon/config.toml"),
+            compose_dir: PathBuf::from("/tmp/axon/compose"),
+            web_panel_url: "http://127.0.0.1:8001".to_string(),
+            mcp_url: "http://127.0.0.1:8001/mcp".to_string(),
+            has_errors: matches!(status, LocalSetupStatus::Error),
+            phases: vec![LocalSetupPhase {
+                name: "test",
+                status,
+                detail: "phase detail".to_string(),
+                elapsed_ms: 0,
+            }],
+        }
+    }
+
+    #[test]
+    fn setup_failure_gate_rejects_error_reports() {
+        assert!(fail_if_setup_failed(&report_with(LocalSetupStatus::Error)).is_err());
+    }
+
+    #[test]
+    fn setup_failure_gate_allows_warning_reports() {
+        assert!(fail_if_setup_failed(&report_with(LocalSetupStatus::Warn)).is_ok());
+    }
 }
