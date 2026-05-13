@@ -1,31 +1,28 @@
+mod home;
+
 use super::common::{
     HeadlessCommandRequest, HeadlessCommandSpec, PromptTransport, append_bounded_tail,
     env_or_default, redacted_stderr_tail,
 };
 use super::env::apply_env_allowlist;
 use crate::services::llm_backend::{CompletionRequest, CompletionResponse, LlmBackendConfig};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::error::Error as StdError;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use tempfile::TempDir;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 
 const DEFAULT_GEMINI_MODEL: &str = "gemini-3.1-flash-lite-preview";
-const GEMINI_AUTH_FILES: &[&str] = &[
-    "oauth_creds.json",
-    "gemini-credentials.json",
-    "google_accounts.json",
-];
 
 pub fn build_command(req: &HeadlessCommandRequest) -> Result<HeadlessCommandSpec, String> {
     let args = vec![
         "--prompt".to_string(),
         String::new(),
         "--approval-mode".to_string(),
-        "plan".to_string(),
+        "yolo".to_string(),
         "--extensions".to_string(),
         String::new(),
         "--output-format".to_string(),
@@ -102,7 +99,7 @@ where
 {
     validate_config(&req.backend)?;
     let spec = configured_command_spec(&req.backend, req.model.clone(), req.system_prompt.clone())?;
-    let gemini_home = prepare_gemini_home(&req.backend)?;
+    let gemini_home = home::prepare_gemini_home(&req.backend)?;
     let cwd = tempfile::tempdir()
         .map_err(|err| format!("failed to create isolated Gemini cwd: {err}"))?;
 
@@ -274,132 +271,8 @@ async fn read_bounded_stderr(
     }
 }
 
-fn prepare_gemini_home(
-    config: &LlmBackendConfig,
-) -> Result<TempDir, Box<dyn StdError + Send + Sync>> {
-    let temp = tempfile::Builder::new()
-        .prefix("axon-gemini-headless-")
-        .tempdir()
-        .map_err(|err| format!("failed to create isolated Gemini HOME: {err}"))?;
-    let gemini_dir = temp.path().join(".gemini");
-    fs::create_dir_all(&gemini_dir)?;
-    fs::create_dir_all(temp.path().join(".config"))?;
-    fs::create_dir_all(temp.path().join(".cache"))?;
-
-    let source_home = gemini_source_home(config)?;
-    let source_gemini = source_home.join(".gemini");
-    for filename in GEMINI_AUTH_FILES {
-        let src = source_gemini.join(filename);
-        if src.is_file() {
-            fs::copy(&src, gemini_dir.join(filename)).map_err(|err| {
-                format!("failed to copy Gemini auth file {}: {err}", src.display())
-            })?;
-        }
-    }
-
-    let source_settings = source_gemini.join("settings.json");
-    write_isolated_settings(&source_settings, &gemini_dir.join("settings.json"))?;
-    Ok(temp)
-}
-
-fn gemini_source_home(
-    config: &LlmBackendConfig,
-) -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
-    if let Some(path) = &config.gemini_home {
-        return validate_source_home(path.clone());
-    }
-    let home = non_empty_env("HOME").map(PathBuf::from).ok_or_else(
-        || -> Box<dyn StdError + Send + Sync> {
-            "HOME is required to locate Gemini CLI auth files".into()
-        },
-    )?;
-    validate_source_home(home)
-}
-
-fn validate_source_home(path: PathBuf) -> Result<PathBuf, Box<dyn StdError + Send + Sync>> {
-    let metadata = fs::symlink_metadata(&path).map_err(|err| {
-        format!(
-            "failed to inspect Gemini source home {}: {err}",
-            path.display()
-        )
-    })?;
-    if metadata.file_type().is_symlink() {
-        return Err(format!(
-            "Gemini source home must not be a symlink: {}",
-            path.display()
-        )
-        .into());
-    }
-    if !metadata.is_dir() {
-        return Err(format!("Gemini source home must be a directory: {}", path.display()).into());
-    }
-    Ok(path)
-}
-
-fn non_empty_env(var_name: &str) -> Option<String> {
-    std::env::var(var_name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
 fn completion_timeout(config: &LlmBackendConfig) -> std::time::Duration {
     std::time::Duration::from_secs(config.completion_timeout_secs.max(1))
-}
-
-/// Write an isolated settings.json to `dest`.
-///
-/// Starts from the user's actual `source` settings so that auth configuration
-/// (security.auth.selectedType and related fields) is preserved verbatim —
-/// gemini 0.41+ changed how it reads auth, and generating a from-scratch file
-/// causes "Please set an Auth method" errors on newer versions.
-///
-/// Only the fields that cause side effects in a headless subprocess are
-/// overridden: mcpServers, hooks, and context.fileName are cleared so the
-/// subprocess does not attempt network connections or load host extensions.
-/// The `admin` key (not a recognized gemini setting) is removed if present.
-fn write_isolated_settings(
-    source: &Path,
-    dest: &Path,
-) -> Result<(), Box<dyn StdError + Send + Sync>> {
-    // Read source settings, falling back to an empty object when the file is absent,
-    // unreadable, or not a JSON object (e.g. corrupted file containing a string/array).
-    let mut settings: Value = source
-        .is_file()
-        .then(|| fs::read(source).ok())
-        .flatten()
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .filter(|v| v.is_object())
-        .unwrap_or_else(|| json!({}));
-
-    // SAFETY: guaranteed to be an object by the filter + unwrap_or_else above.
-    let Some(obj) = settings.as_object_mut() else {
-        unreachable!("settings is always a JSON object after filter + unwrap_or_else")
-    };
-
-    // Ensure security.auth.selectedType is set — force both intermediate keys to
-    // be objects even if they exist as some other JSON type (null, string, etc.).
-    if !obj.get("security").is_some_and(Value::is_object) {
-        obj.insert("security".into(), json!({}));
-    }
-    if let Some(sec) = obj.get_mut("security").and_then(Value::as_object_mut) {
-        if !sec.get("auth").is_some_and(Value::is_object) {
-            sec.insert("auth".into(), json!({}));
-        }
-        if let Some(auth) = sec.get_mut("auth").and_then(Value::as_object_mut) {
-            auth.entry("selectedType")
-                .or_insert_with(|| json!("oauth-personal"));
-        }
-    }
-
-    // Clear fields that would cause side effects in a headless subprocess.
-    obj.insert("mcpServers".into(), json!({}));
-    obj.insert("hooks".into(), json!({}));
-    obj.insert("context".into(), json!({ "fileName": [] }));
-    obj.remove("admin"); // not a recognized gemini 0.41+ key
-
-    fs::write(dest, serde_json::to_vec_pretty(&settings)?)?;
-    Ok(())
 }
 
 #[derive(Default)]
@@ -425,8 +298,24 @@ impl GeminiStreamState {
         let value: Value = serde_json::from_str(trimmed)
             .map_err(|err| format!("malformed Gemini stream JSON: {err}: {trimmed}"))?;
         match value.get("type").and_then(Value::as_str) {
-            Some("tool_use" | "tool_result") => {
-                return Err("Gemini headless emitted a tool event in synthesis-only mode".into());
+            Some("tool_use") => {
+                // activate_skill is the only permitted tool call — it loads the
+                // axon-rag-synthesize skill into the model's context. All other
+                // tool_use events indicate unexpected tool execution and are rejected.
+                if value.get("name").and_then(Value::as_str) != Some("activate_skill") {
+                    return Err(format!(
+                        "Gemini headless emitted unexpected tool call '{}' in synthesis mode",
+                        value
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("unknown")
+                    )
+                    .into());
+                }
+            }
+            Some("tool_result") => {
+                // tool_result from activate_skill — skill content injected into context.
+                // No text to accumulate; continue to collect the model's final response.
             }
             Some("error") => {
                 return Err(format!("Gemini headless stream error: {value}").into());
@@ -451,12 +340,17 @@ impl GeminiStreamState {
         if value.get("status").and_then(Value::as_str) != Some("success") {
             return Err(format!("Gemini headless returned unsuccessful result: {value}").into());
         }
-        if value
+        // activate_skill counts as 1 tool call — allow it. Reject if any other
+        // tool was called (indicates unexpected tool execution beyond skill loading).
+        let tool_calls = value
             .pointer("/stats/tool_calls")
             .and_then(Value::as_u64)
-            .is_some_and(|count| count > 0)
-        {
-            return Err("Gemini headless reported tool calls in synthesis-only mode".into());
+            .unwrap_or(0);
+        if tool_calls > 1 {
+            return Err(format!(
+                "Gemini headless made {tool_calls} tool calls; only activate_skill is permitted"
+            )
+            .into());
         }
         if let Some(text) = value.get("response").and_then(Value::as_str)
             && !text.trim().is_empty()
@@ -547,7 +441,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gemini_headless_command_avoids_yolo() {
+    fn gemini_headless_command_uses_yolo_for_skill_activation() {
         let spec = build_command(&HeadlessCommandRequest::new(
             None,
             Some("system".to_string()),
@@ -555,11 +449,9 @@ mod tests {
         .unwrap();
         let joined = spec.args.join(" ");
         assert_eq!(spec.prompt_transport, PromptTransport::Stdin);
-        assert!(joined.contains("--approval-mode plan"));
+        assert!(joined.contains("--approval-mode yolo"));
         assert!(spec.args.windows(2).any(|w| w == ["--extensions", ""]));
         assert!(joined.contains("--model gemini-3.1-flash-lite-preview"));
-        assert!(!joined.contains("--yolo"));
-        assert!(!joined.contains("--approval-mode=yolo"));
     }
 
     #[test]
@@ -609,24 +501,50 @@ mod tests {
     }
 
     #[test]
-    fn gemini_headless_parser_rejects_tool_events() {
+    fn gemini_headless_parser_rejects_non_skill_tool_events() {
         let mut state = GeminiStreamState::default();
         let err = state
             .handle_line(r#"{"type":"tool_use","name":"shell"}"#, &mut |_| Ok(()))
-            .expect_err("tool events must fail closed");
-        assert!(err.to_string().contains("tool event"));
+            .expect_err("non-skill tool calls must fail closed");
+        assert!(err.to_string().contains("unexpected tool call"));
     }
 
     #[test]
-    fn gemini_headless_parser_rejects_reported_tool_calls() {
+    fn gemini_headless_parser_allows_activate_skill_tool_event() {
         let mut state = GeminiStreamState::default();
+        // activate_skill is the one permitted tool call for skill loading
+        state
+            .handle_line(
+                r#"{"type":"tool_use","name":"activate_skill","input":{"name":"axon-rag-synthesize"}}"#,
+                &mut |_| Ok(()),
+            )
+            .expect("activate_skill tool_use must be allowed");
+    }
+
+    #[test]
+    fn gemini_headless_parser_rejects_multiple_tool_calls_in_result() {
+        let mut state = GeminiStreamState::default();
+        // 1 tool call (activate_skill) is allowed; 2+ are rejected
         let err = state
+            .handle_line(
+                r#"{"type":"result","status":"success","stats":{"tool_calls":2}}"#,
+                &mut |_| Ok(()),
+            )
+            .expect_err("multiple tool calls must fail closed");
+        assert!(err.to_string().contains("tool call"));
+    }
+
+    #[test]
+    fn gemini_headless_parser_allows_single_tool_call_in_result() {
+        let mut state = GeminiStreamState::default();
+        // 1 tool call = activate_skill — allowed
+        state
             .handle_line(
                 r#"{"type":"result","status":"success","stats":{"tool_calls":1}}"#,
                 &mut |_| Ok(()),
             )
-            .expect_err("reported tool calls must fail closed");
-        assert!(err.to_string().contains("tool calls"));
+            .expect("single activate_skill tool call must be allowed in result stats");
+        assert!(state.saw_success);
     }
 
     #[test]
@@ -646,6 +564,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn gemini_headless_timeout_returns_error_for_hung_child() {
         use crate::services::llm_backend::{CompletionRequest, LlmBackendConfig};
+        use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();
