@@ -420,7 +420,6 @@ async fn write_backfill_entry(
     url: &str,
     trimmed: &str,
     markdown_chars: usize,
-    _idx: u32,
 ) -> Result<(), Box<dyn Error>> {
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
@@ -483,7 +482,6 @@ pub(crate) async fn append_candidate_backfill(
         )
     })?;
 
-    let mut idx = summary.markdown_files;
     let mut stats = BackfillStats {
         candidates: candidates.len(),
         ..BackfillStats::default()
@@ -535,16 +533,8 @@ pub(crate) async fn append_candidate_backfill(
                 continue;
             }
 
-            idx += 1;
-            write_backfill_entry(
-                &mut manifest,
-                &markdown_dir,
-                &url,
-                &trimmed,
-                markdown_chars,
-                idx,
-            )
-            .await?;
+            write_backfill_entry(&mut manifest, &markdown_dir, &url, &trimmed, markdown_chars)
+                .await?;
             summary.markdown_files += 1;
             stats.written += 1;
             added_urls.push(url);
