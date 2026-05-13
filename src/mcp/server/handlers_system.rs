@@ -361,13 +361,15 @@ impl AxonMcpServer {
         let result = system::full_status(&ctx)
             .await
             .map_err(|e| logged_internal_error("status", e.as_ref()))?;
+        // Status is the primary widget data source; always inline so the MCP
+        // App dashboard can render it without needing an HTTP-accessible artifact URL.
         respond_with_mode(
             "status",
             "status",
             response_mode,
             "status",
             result.payload,
-            InlineHint::Default,
+            InlineHint::Document,
         )
         .await
     }
