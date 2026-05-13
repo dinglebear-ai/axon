@@ -22,6 +22,7 @@ use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
+use crate::services::system;
 use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
 pub use http::{run_http_server, run_unified_server};
 use lab_auth::AuthContext;
@@ -476,11 +477,27 @@ impl ServerHandler for AxonMcpServer {
     ) -> Result<ReadResourceResult, ErrorData> {
         tracing::info!(uri = %request.uri, "mcp_app read_resource called");
         if request.uri == STATUS_DASHBOARD_URI {
+            // Inject current status data so the widget renders immediately, bypassing
+            // the MCP Apps postMessage bridge which may not be available in all hosts.
+            let status_json = match ServiceContext::new(self.cfg.clone()).await {
+                Ok(ctx) => match system::full_status(&ctx).await {
+                    Ok(r) => {
+                        serde_json::to_string(&r.payload).unwrap_or_else(|_| "null".to_string())
+                    }
+                    Err(_) => "null".to_string(),
+                },
+                Err(_) => "null".to_string(),
+            };
+            let html = STATUS_DASHBOARD_HTML.replacen(
+                "window.__AXON_INITIAL_STATUS__ = null;",
+                &format!("window.__AXON_INITIAL_STATUS__ = {};", status_json),
+                1,
+            );
             return Ok(ReadResourceResult::new(vec![
                 ResourceContents::TextResourceContents {
                     uri: STATUS_DASHBOARD_URI.to_string(),
                     mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
-                    text: STATUS_DASHBOARD_HTML.to_string(),
+                    text: html,
                     meta: None,
                 },
             ]));
