@@ -28,10 +28,10 @@
   "userConfig": {
     "api_token": {
       "type": "string",
-      "title": "API token",
-      "description": "Bearer token for Axon MCP authentication. If ~/.axon/.env already has AXON_MCP_HTTP_TOKEN, use the same value here.",
+      "title": "API token (optional)",
+      "description": "Static bearer token for programmatic access. Leave blank when using OAuth (the server handles auth via Google OAuth — set AXON_MCP_AUTH_MODE=oauth on the server). Only needed for non-browser clients that cannot do OAuth.",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "server_url": {
       "type": "string",
