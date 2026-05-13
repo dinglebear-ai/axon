@@ -224,7 +224,9 @@ fn spawn_gemini_child(
     command
         .env("HOME", gemini_home.path())
         .env("XDG_CONFIG_HOME", gemini_home.path().join(".config"))
-        .env("XDG_CACHE_HOME", gemini_home.path().join(".cache"));
+        .env("XDG_CACHE_HOME", gemini_home.path().join(".cache"))
+        // Gemini 0.41+ requires workspace trust for headless/non-interactive use.
+        .env("GEMINI_CLI_TRUST_WORKSPACE", "true");
 
     command
         .spawn()
@@ -295,7 +297,8 @@ fn prepare_gemini_home(
         }
     }
 
-    write_isolated_settings(&gemini_dir.join("settings.json"))?;
+    let source_settings = source_gemini.join("settings.json");
+    write_isolated_settings(&source_settings, &gemini_dir.join("settings.json"))?;
     Ok(temp)
 }
 
@@ -344,19 +347,49 @@ fn completion_timeout(config: &LlmBackendConfig) -> std::time::Duration {
     std::time::Duration::from_secs(config.completion_timeout_secs.max(1))
 }
 
-fn write_isolated_settings(path: &Path) -> Result<(), Box<dyn StdError + Send + Sync>> {
-    let settings = json!({
-        "admin": {
-            "mcp": { "enabled": false },
-            "extensions": { "enabled": false },
-            "skills": { "enabled": false }
-        },
-        "mcpServers": {},
-        "hooks": {},
-        "context": { "fileName": [] },
-        "security": { "auth": { "selectedType": "oauth-personal" } }
-    });
-    fs::write(path, serde_json::to_vec_pretty(&settings)?)?;
+/// Write an isolated settings.json to `dest`.
+///
+/// Starts from the user's actual `source` settings so that auth configuration
+/// (security.auth.selectedType and related fields) is preserved verbatim —
+/// gemini 0.41+ changed how it reads auth, and generating a from-scratch file
+/// causes "Please set an Auth method" errors on newer versions.
+///
+/// Only the fields that cause side effects in a headless subprocess are
+/// overridden: mcpServers, hooks, and context.fileName are cleared so the
+/// subprocess does not attempt network connections or load host extensions.
+/// The `admin` key (not a recognized gemini setting) is removed if present.
+fn write_isolated_settings(
+    source: &Path,
+    dest: &Path,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    let mut settings: Value = source
+        .is_file()
+        .then(|| fs::read(source).ok())
+        .flatten()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_else(|| json!({}));
+
+    let obj = settings
+        .as_object_mut()
+        .ok_or("settings.json root is not a JSON object")?;
+
+    // Ensure auth.selectedType is set — fall back to oauth-personal if absent.
+    let security = obj.entry("security").or_insert_with(|| json!({}));
+    if let Some(sec) = security.as_object_mut() {
+        let auth = sec.entry("auth").or_insert_with(|| json!({}));
+        if let Some(a) = auth.as_object_mut() {
+            a.entry("selectedType")
+                .or_insert_with(|| json!("oauth-personal"));
+        }
+    }
+
+    // Clear fields that would cause side effects in a headless subprocess.
+    obj.insert("mcpServers".into(), json!({}));
+    obj.insert("hooks".into(), json!({}));
+    obj.insert("context".into(), json!({ "fileName": [] }));
+    obj.remove("admin"); // not a recognized gemini 0.41+ key
+
+    fs::write(dest, serde_json::to_vec_pretty(&settings)?)?;
     Ok(())
 }
 

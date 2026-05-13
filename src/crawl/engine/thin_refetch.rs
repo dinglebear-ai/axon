@@ -1,6 +1,6 @@
 use super::{CrawlSummary, canonicalize_url_for_dedupe};
 use crate::core::config::Config;
-use crate::core::content::{build_selector_config, bytes_to_markdown, url_to_filename};
+use crate::core::content::{build_selector_config, bytes_to_markdown, url_to_stable_filename};
 use crate::core::logging::{log_info, log_warn};
 use crate::crawl::manifest::ManifestEntry;
 use futures_util::stream::{self, StreamExt};
@@ -183,11 +183,7 @@ pub(super) async fn write_refetch_results(
         summary.thin_urls.remove(&canonical);
         summary.thin_pages = summary.thin_pages.saturating_sub(1);
 
-        // Determine the filename using the would-be count (current + 1), then
-        // only increment the counter after a successful write so we never have
-        // an optimistic counter that needs rolling back on failure.
-        let next_count = summary.markdown_files + 1;
-        let filename = url_to_filename(&canonical, next_count);
+        let filename = url_to_stable_filename(&canonical);
         let path = markdown_dir.join(&filename);
 
         if let Err(e) = tokio::fs::write(&path, markdown.as_bytes()).await {
