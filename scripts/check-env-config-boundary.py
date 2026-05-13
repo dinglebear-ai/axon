@@ -35,6 +35,7 @@ PREFIXES = (
     "REDDIT_",
     "HF_",
     "GEMINI_",
+    "GOOGLE_",
     "CUDA_",
     "NVIDIA_",
 )
@@ -60,6 +61,12 @@ VALID_PLACEMENTS = {
     "compose-interpolation",
     "both",
     "not-runtime",
+}
+
+ENV_ONLY_CLASSIFICATIONS = {
+    "keep-env",
+    "compose-env",
+    "trusted-operator-bootstrap",
 }
 
 
@@ -93,30 +100,43 @@ def scan_env_tokens() -> dict[str, set[str]]:
     return found
 
 
+def missing_key_errors(missing: list[str], found: dict[str, set[str]]) -> list[str]:
+    errors: list[str] = []
+    if not missing:
+        return errors
+
+    errors.append("Env keys missing from migration matrix:")
+    for key in missing:
+        errors.append(f"  {key}: {', '.join(sorted(found[key])[:8])}")
+    return errors
+
+
+def entry_errors(key: str, entry: dict[str, object]) -> list[str]:
+    errors: list[str] = []
+    classification = entry.get("classification")
+    placement = entry.get("runtime_placement")
+    toml_destination = entry.get("toml_destination")
+
+    if classification not in VALID_CLASSIFICATIONS:
+        errors.append(f"{key}: invalid classification {classification!r}")
+    if placement not in VALID_PLACEMENTS:
+        errors.append(f"{key}: invalid runtime_placement {placement!r}")
+    if classification == "move-toml" and not toml_destination:
+        errors.append(f"{key}: move-toml requires toml_destination")
+    if classification in ENV_ONLY_CLASSIFICATIONS and toml_destination:
+        errors.append(f"{key}: env/bootstrap key must not have toml_destination")
+
+    return errors
+
+
 def main() -> int:
     matrix = load_matrix()
     found = scan_env_tokens()
     missing = sorted(set(found) - set(matrix))
 
-    errors: list[str] = []
-    if missing:
-        errors.append("Env keys missing from migration matrix:")
-        for key in missing:
-            errors.append(f"  {key}: {', '.join(sorted(found[key])[:8])}")
-
+    errors = missing_key_errors(missing, found)
     for key, entry in sorted(matrix.items()):
-        classification = entry.get("classification")
-        placement = entry.get("runtime_placement")
-        if classification not in VALID_CLASSIFICATIONS:
-            errors.append(f"{key}: invalid classification {classification!r}")
-        if placement not in VALID_PLACEMENTS:
-            errors.append(f"{key}: invalid runtime_placement {placement!r}")
-        if classification == "move-toml" and not entry.get("toml_destination"):
-            errors.append(f"{key}: move-toml requires toml_destination")
-        if classification in {"keep-env", "compose-env", "trusted-operator-bootstrap"} and entry.get(
-            "toml_destination"
-        ):
-            errors.append(f"{key}: env/bootstrap key must not have toml_destination")
+        errors.extend(entry_errors(key, entry))
 
     if errors:
         print("\n".join(errors), file=sys.stderr)

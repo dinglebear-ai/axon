@@ -126,7 +126,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
-| `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
+| `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
 URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are parsed only for migration messaging and are ignored by runtime config resolution. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
@@ -183,9 +183,10 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 | `TEI_HTTP_PORT` | `52000` | Host port for TEI container |
 | `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace embedding model |
-| `TEI_MAX_CONCURRENT_REQUESTS` | `80` | Max concurrent TEI requests |
-| `TEI_MAX_BATCH_TOKENS` | `163840` | Max batch tokens |
-| `TEI_MAX_BATCH_REQUESTS` | `80` | Max batch requests |
+| `TEI_MAX_CONCURRENT_REQUESTS` | `32` | Max concurrent TEI server requests |
+| `TEI_MAX_BATCH_TOKENS` | `65536` | Max TEI server batch tokens |
+| `TEI_MAX_BATCH_REQUESTS` | `64` | Max TEI server batch requests |
+| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | `96` | Max TEI server client batch size. Distinct from Axon's `TEI_MAX_CLIENT_BATCH_SIZE` client tuning knob. |
 | `TEI_POOLING` | `last-token` | Pooling strategy |
 | `TEI_TOKENIZATION_WORKERS` | `8` | Tokenization workers |
 | `HF_TOKEN` | -- | HuggingFace token for gated models |
@@ -206,6 +207,10 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 |----------|---------|-------------|
 | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
 | `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
+| `AXON_EMBED_LANES` | `2` | Parallel embed worker lanes (clamped 1-32) |
+| `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
+| `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (clamped 5-3600) |
+| `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
 
 ### Search and research
 

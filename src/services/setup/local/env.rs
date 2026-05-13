@@ -98,7 +98,7 @@ fn process_env_value(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty() && !value.contains(['\n', '\r']))
 }
 
-fn reconcile_mcp_http_token(
+pub(super) fn reconcile_mcp_http_token(
     env: &mut BTreeMap<String, String>,
     process_value: impl Fn(&str) -> Option<String>,
 ) -> io::Result<()> {
@@ -177,7 +177,7 @@ fn write_env_file(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()>
     Ok(())
 }
 
-fn generate_token() -> io::Result<String> {
+pub(super) fn generate_token() -> io::Result<String> {
     let mut bytes = [0u8; 32];
     OsRng
         .try_fill_bytes(&mut bytes)

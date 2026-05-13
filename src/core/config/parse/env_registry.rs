@@ -26,6 +26,14 @@ pub(crate) enum LegacyBehavior {
     Advanced,
 }
 
+use self::EnvClassification::{
+    CompatibilityShim, ComposeEnv, Delete, KeepEnv, MoveToml, TrustedOperatorBootstrap,
+};
+use self::LegacyBehavior::{
+    Advanced, Canonical, DeleteOnMigration, WarnAndIgnore, WarnEnvOverride,
+};
+use self::RuntimePlacement::{Both, ComposeInterpolation, ContainerRequired, HostOnly, NotRuntime};
+
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub(crate) struct EnvKeySpec {
@@ -37,445 +45,388 @@ pub(crate) struct EnvKeySpec {
     pub secret: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MatrixEnvSpec {
+    pub classification: EnvClassification,
+    pub toml_destination: Option<String>,
+}
+
 pub(crate) const ENV_KEY_SPECS: &[EnvKeySpec] = &[
-    spec(
-        "QDRANT_URL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
-    spec(
-        "TEI_URL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
+    spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
+    spec("TEI_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_CHROME_REMOTE_URL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
-    spec(
-        "AXON_SERVER_URL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::HostOnly,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
+    spec("AXON_SERVER_URL", KeepEnv, HostOnly, None, Canonical, false),
     spec(
         "AXON_MCP_HTTP_TOKEN",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::ContainerRequired,
+        KeepEnv,
+        ContainerRequired,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         true,
     ),
-    spec(
-        "AXON_MCP_AUTH_MODE",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
-    spec(
-        "AXON_MCP_PUBLIC_URL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
+    spec("AXON_MCP_AUTH_MODE", KeepEnv, Both, None, Canonical, false),
+    spec("AXON_MCP_PUBLIC_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_MCP_GOOGLE_CLIENT_ID",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_MCP_GOOGLE_CLIENT_SECRET",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         true,
     ),
     spec(
         "AXON_MCP_AUTH_ADMIN_EMAIL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_MCP_ALLOWED_ORIGINS",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_ENV_FILE",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::HostOnly,
+        TrustedOperatorBootstrap,
+        HostOnly,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_CONFIG_PATH",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::HostOnly,
+        TrustedOperatorBootstrap,
+        HostOnly,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_HOME",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::Both,
+        TrustedOperatorBootstrap,
+        Both,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_DATA_DIR",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::Both,
+        TrustedOperatorBootstrap,
+        Both,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_SQLITE_PATH",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::Both,
+        TrustedOperatorBootstrap,
+        Both,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_MCP_HTTP_PUBLISH",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_IMAGE",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "GEMINI_HOME",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "TEI_EMBEDDING_MODEL",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "TEI_HTTP_PORT",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "NVIDIA_VISIBLE_DEVICES",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "CUDA_VISIBLE_DEVICES",
-        EnvClassification::ComposeEnv,
-        RuntimePlacement::ComposeInterpolation,
+        ComposeEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
-    spec(
-        "TAVILY_API_KEY",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        true,
-    ),
-    spec(
-        "GITHUB_TOKEN",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        true,
-    ),
-    spec(
-        "REDDIT_CLIENT_ID",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        false,
-    ),
-    spec(
-        "REDDIT_CLIENT_SECRET",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
-        None,
-        LegacyBehavior::Canonical,
-        true,
-    ),
+    spec("TAVILY_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("GITHUB_TOKEN", KeepEnv, Both, None, Canonical, true),
+    spec("REDDIT_CLIENT_ID", KeepEnv, Both, None, Canonical, false),
+    spec("REDDIT_CLIENT_SECRET", KeepEnv, Both, None, Canonical, true),
     spec(
         "HF_TOKEN",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::ComposeInterpolation,
+        KeepEnv,
+        ComposeInterpolation,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         true,
     ),
     spec(
         "OPENAI_MODEL",
-        EnvClassification::CompatibilityShim,
-        RuntimePlacement::Both,
+        CompatibilityShim,
+        Both,
         None,
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "OPENAI_BASE_URL",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        CompatibilityShim,
+        Both,
         None,
-        LegacyBehavior::WarnAndIgnore,
+        WarnAndIgnore,
         false,
     ),
     spec(
         "OPENAI_API_KEY",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        CompatibilityShim,
+        Both,
         None,
-        LegacyBehavior::WarnAndIgnore,
+        WarnAndIgnore,
         true,
     ),
     spec(
         "AXON_HEADLESS_GEMINI_CMD",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_HEADLESS_GEMINI_HOME",
-        EnvClassification::TrustedOperatorBootstrap,
-        RuntimePlacement::Both,
+        TrustedOperatorBootstrap,
+        Both,
         None,
-        LegacyBehavior::Advanced,
+        Advanced,
         false,
     ),
     spec(
         "AXON_HEADLESS_GEMINI_MODEL",
-        EnvClassification::KeepEnv,
-        RuntimePlacement::Both,
+        KeepEnv,
+        Both,
         None,
-        LegacyBehavior::Canonical,
+        Canonical,
         false,
     ),
     spec(
         "AXON_LLM_COMPLETION_CONCURRENCY",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("llm.completion-concurrency"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_LLM_COMPLETION_TIMEOUT_SECS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("llm.completion-timeout-secs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "TEI_MAX_CLIENT_BATCH_SIZE",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("tei.max-client-batch-size"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "TEI_MAX_RETRIES",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("tei.max-retries"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "TEI_REQUEST_TIMEOUT_MS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("tei.request-timeout-ms"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_INGEST_LANES",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.ingest-lanes"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_EMBED_LANES",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.embed-lanes"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_EMBED_DOC_TIMEOUT_SECS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.embed-doc-timeout-secs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_QUEUE_SUMMARY_SECS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.queue-summary-secs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_QDRANT_POINT_BUFFER",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.qdrant-point-buffer"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_MAX_PENDING_CRAWL_JOBS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.max-pending-crawl-jobs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_MAX_PENDING_EMBED_JOBS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.max-pending-embed-jobs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_MAX_PENDING_EXTRACT_JOBS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.max-pending-extract-jobs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_MAX_PENDING_INGEST_JOBS",
-        EnvClassification::MoveToml,
-        RuntimePlacement::NotRuntime,
+        MoveToml,
+        NotRuntime,
         Some("workers.max-pending-ingest-jobs"),
-        LegacyBehavior::WarnEnvOverride,
+        WarnEnvOverride,
         false,
     ),
     spec(
         "AXON_BATCH_QUEUE",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        Delete,
+        NotRuntime,
         None,
-        LegacyBehavior::DeleteOnMigration,
+        DeleteOnMigration,
         false,
     ),
     spec(
         "AXON_CRAWL_QUEUE",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        Delete,
+        NotRuntime,
         None,
-        LegacyBehavior::DeleteOnMigration,
+        DeleteOnMigration,
         false,
     ),
     spec(
         "AXON_EMBED_QUEUE",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        Delete,
+        NotRuntime,
         None,
-        LegacyBehavior::DeleteOnMigration,
+        DeleteOnMigration,
         false,
     ),
     spec(
         "AXON_EXTRACT_QUEUE",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        Delete,
+        NotRuntime,
         None,
-        LegacyBehavior::DeleteOnMigration,
+        DeleteOnMigration,
         false,
     ),
     spec(
         "AXON_INGEST_QUEUE",
-        EnvClassification::Delete,
-        RuntimePlacement::NotRuntime,
+        Delete,
+        NotRuntime,
         None,
-        LegacyBehavior::DeleteOnMigration,
+        DeleteOnMigration,
         false,
     ),
 ];
@@ -502,6 +453,46 @@ pub(crate) fn spec_for(key: &str) -> Option<&'static EnvKeySpec> {
     ENV_KEY_SPECS.iter().find(|spec| spec.key == key)
 }
 
+pub(crate) fn matrix_spec_for(key: &str) -> Option<MatrixEnvSpec> {
+    let matrix = include_str!("../../../../docs/config/env-migration-matrix.toml");
+    matrix.split("[[env]]").find_map(|block| {
+        (matrix_string_field(block, "key")? == key).then(|| {
+            let classification =
+                matrix_classification(&matrix_string_field(block, "classification")?)?;
+            let toml_destination = matrix_string_field(block, "toml_destination")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            Some(MatrixEnvSpec {
+                classification,
+                toml_destination,
+            })
+        })?
+    })
+}
+
+fn matrix_string_field(block: &str, field: &str) -> Option<String> {
+    let prefix = format!("{field} = ");
+    block.lines().find_map(|line| {
+        let value = line.trim().strip_prefix(&prefix)?;
+        value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .map(ToString::to_string)
+    })
+}
+
+fn matrix_classification(value: &str) -> Option<EnvClassification> {
+    match value {
+        "keep-env" => Some(KeepEnv),
+        "compose-env" => Some(ComposeEnv),
+        "move-toml" => Some(MoveToml),
+        "delete" | "hard-default" | "external/test-only" => Some(Delete),
+        "trusted-operator-bootstrap" => Some(TrustedOperatorBootstrap),
+        "compatibility-shim" => Some(CompatibilityShim),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -510,7 +501,7 @@ mod tests {
     fn service_urls_are_env_not_toml() {
         for key in ["QDRANT_URL", "TEI_URL", "AXON_CHROME_REMOTE_URL"] {
             let spec = spec_for(key).expect("registered key");
-            assert_eq!(spec.classification, EnvClassification::KeepEnv);
+            assert_eq!(spec.classification, KeepEnv);
             assert_eq!(spec.toml_destination, None);
         }
     }
@@ -518,7 +509,7 @@ mod tests {
     #[test]
     fn moved_tuning_has_toml_destination() {
         for spec in ENV_KEY_SPECS {
-            if spec.classification == EnvClassification::MoveToml {
+            if spec.classification == MoveToml {
                 assert!(
                     spec.toml_destination.is_some(),
                     "{} is move-toml without destination",
@@ -526,5 +517,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn matrix_lookup_covers_scanned_runtime_keys_not_in_static_registry() {
+        let gemini = matrix_spec_for("GEMINI_API_KEY").expect("matrix key");
+        assert_eq!(gemini.classification, KeepEnv);
+
+        let mcp_host = matrix_spec_for("AXON_MCP_HTTP_HOST").expect("matrix key");
+        assert_eq!(mcp_host.classification, TrustedOperatorBootstrap);
+
+        let tei_server = matrix_spec_for("TEI_MAX_CONCURRENT_REQUESTS").expect("matrix key");
+        assert_eq!(tei_server.classification, ComposeEnv);
     }
 }
