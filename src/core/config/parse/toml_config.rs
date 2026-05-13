@@ -29,11 +29,14 @@ pub(super) struct TomlConfig {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub(super) struct TomlServicesSection {
-    /// Legacy migration-only field. Runtime resolution ignores this value.
+    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
+    /// and warns; move to `QDRANT_URL` in `.env`.
     pub qdrant_url: Option<String>,
-    /// Legacy migration-only field. Runtime resolution ignores this value.
+    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
+    /// and warns; move to `TEI_URL` in `.env`.
     pub tei_url: Option<String>,
-    /// Legacy migration-only field. Runtime resolution ignores this value.
+    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
+    /// and warns; move to `AXON_CHROME_REMOTE_URL` in `.env`.
     pub chrome_remote_url: Option<String>,
 }
 

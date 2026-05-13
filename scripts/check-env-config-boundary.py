@@ -69,6 +69,15 @@ ENV_ONLY_CLASSIFICATIONS = {
     "trusted-operator-bootstrap",
 }
 
+MIGRATION_ACTION_CLASSIFICATIONS = {
+    "move-toml",
+    "delete",
+    "hard-default",
+    "compose-env",
+    "trusted-operator-bootstrap",
+    "compatibility-shim",
+}
+
 VALID_TOML_DESTINATIONS = {
     "search.hybrid-enabled",
     "search.hybrid-candidates",
@@ -131,6 +140,11 @@ def scan_env_tokens() -> dict[str, set[str]]:
     return found
 
 
+def load_rust_registry_keys() -> set[str]:
+    registry = ROOT / "src/core/config/parse/env_registry.rs"
+    return set(re.findall(r'spec\(\s*"([A-Z0-9_]+)"', registry.read_text()))
+
+
 def missing_key_errors(missing: list[str], found: dict[str, set[str]]) -> list[str]:
     errors: list[str] = []
     if not missing:
@@ -168,6 +182,22 @@ def entry_errors(key: str, entry: dict[str, object]) -> list[str]:
     return errors
 
 
+def registry_parity_errors(matrix: dict[str, dict[str, object]]) -> list[str]:
+    registry_keys = load_rust_registry_keys()
+    missing = sorted(
+        key
+        for key, entry in matrix.items()
+        if entry.get("classification") in MIGRATION_ACTION_CLASSIFICATIONS
+        and key not in registry_keys
+    )
+    if not missing:
+        return []
+    return [
+        "Migration-actionable matrix keys missing from Rust ENV_KEY_SPECS:",
+        *[f"  {key}" for key in missing],
+    ]
+
+
 def main() -> int:
     matrix = load_matrix()
     found = scan_env_tokens()
@@ -176,6 +206,7 @@ def main() -> int:
     errors = missing_key_errors(missing, found)
     for key, entry in sorted(matrix.items()):
         errors.extend(entry_errors(key, entry))
+    errors.extend(registry_parity_errors(matrix))
 
     if errors:
         print("\n".join(errors), file=sys.stderr)
