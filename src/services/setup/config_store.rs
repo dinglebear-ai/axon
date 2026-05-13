@@ -1,7 +1,7 @@
 use crate::core::paths::axon_config_path;
+use std::collections::BTreeMap;
 use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
-use toml_edit::{DocumentMut, value};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../config.example.toml");
 
@@ -71,25 +71,66 @@ pub fn write_config(raw_toml: &str) -> io::Result<()> {
     write_private_file(&init.path, raw_toml)
 }
 
-pub fn write_remote_service_urls(
+pub fn write_remote_runtime_env(
+    env_path: &Path,
     qdrant_url: &str,
     tei_url: &str,
     chrome_remote_url: &str,
 ) -> io::Result<PathBuf> {
-    let raw = read_config()?;
-    let mut document = raw.parse::<DocumentMut>().map_err(|e| {
+    let parent = env_path.parent().ok_or_else(|| {
         io::Error::new(
             ErrorKind::InvalidInput,
-            format!("config TOML parse error: {e}"),
+            format!("env path '{}' has no parent", env_path.display()),
         )
     })?;
-    document["services"]["qdrant-url"] = value(qdrant_url);
-    document["services"]["tei-url"] = value(tei_url);
-    document["services"]["chrome-remote-url"] = value(chrome_remote_url);
+    std::fs::create_dir_all(parent)?;
+    let mut values = read_env_pairs(env_path)?;
+    values.insert("QDRANT_URL".to_string(), qdrant_url.to_string());
+    values.insert("TEI_URL".to_string(), tei_url.to_string());
+    values.insert(
+        "AXON_CHROME_REMOTE_URL".to_string(),
+        chrome_remote_url.to_string(),
+    );
+    let contents = render_env_pairs("# Axon remote runtime env.\n", &values)?;
+    write_private_file(env_path, &contents)?;
+    Ok(env_path.to_path_buf())
+}
 
-    let init = ensure_user_config()?;
-    write_private_file(&init.path, &document.to_string())?;
-    Ok(init.path)
+fn read_env_pairs(path: &Path) -> io::Result<BTreeMap<String, String>> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(err) => return Err(err),
+    };
+    let mut values = BTreeMap::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        values.insert(key.trim().to_string(), value.trim().to_string());
+    }
+    Ok(values)
+}
+
+fn render_env_pairs(header: &str, values: &BTreeMap<String, String>) -> io::Result<String> {
+    let mut out = String::from(header);
+    for (key, value) in values {
+        if key.contains(['\n', '\r', '=']) || value.contains(['\n', '\r']) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                format!("{key} cannot be safely written to env format"),
+            ));
+        }
+        out.push_str(key);
+        out.push('=');
+        out.push_str(value);
+        out.push('\n');
+    }
+    Ok(out)
 }
 
 fn resolve_setup_config_path() -> io::Result<ConfigPath> {
@@ -149,7 +190,7 @@ fn write_private_file(path: &Path, contents: &str) -> io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
 
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).truncate(true);
+    options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
 
@@ -250,27 +291,41 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
-    fn write_remote_service_urls_honors_axon_config_path() {
+    fn write_remote_runtime_env_does_not_write_service_urls_to_toml() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("custom.toml");
+        let env_path = dir.path().join(".env");
         let previous = std::env::var_os("AXON_CONFIG_PATH");
         unsafe {
             std::env::set_var("AXON_CONFIG_PATH", &config_path);
         }
+        std::fs::write(
+            &env_path,
+            "TAVILY_API_KEY=secret\nAXON_MCP_HTTP_TOKEN=token\n",
+        )
+        .unwrap();
 
-        let written = write_remote_service_urls(
+        let written = write_remote_runtime_env(
+            &env_path,
             "http://127.0.0.1:53333",
             "http://127.0.0.1:52000",
             "http://127.0.0.1:6000",
         )
         .unwrap();
 
-        assert_eq!(written, config_path);
-        let raw = std::fs::read_to_string(&written).unwrap();
-        assert!(raw.contains("qdrant-url = \"http://127.0.0.1:53333\""));
-        assert!(raw.contains("tei-url = \"http://127.0.0.1:52000\""));
-        assert!(raw.contains("chrome-remote-url = \"http://127.0.0.1:6000\""));
+        assert_eq!(written, env_path);
+        let env_raw = std::fs::read_to_string(&written).unwrap();
+        assert!(env_raw.contains("QDRANT_URL=http://127.0.0.1:53333"));
+        assert!(env_raw.contains("TEI_URL=http://127.0.0.1:52000"));
+        assert!(env_raw.contains("AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000"));
+        assert!(env_raw.contains("TAVILY_API_KEY=secret"));
+        assert!(env_raw.contains("AXON_MCP_HTTP_TOKEN=token"));
+
+        let config_raw = std::fs::read_to_string(&config_path).unwrap_or_default();
+        assert!(!config_raw.contains("[services]"));
+        assert!(!config_raw.contains("qdrant-url"));
+        assert!(!config_raw.contains("tei-url"));
 
         unsafe {
             if let Some(previous) = previous {

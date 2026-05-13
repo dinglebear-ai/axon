@@ -1,8 +1,9 @@
 use super::assets::{
     CHROME_DOCKERFILE, DOCKER_COMPOSE_SERVICES, ENV_EXAMPLE, QDRANT_PRODUCTION_YAML, SERVICES_ENV,
 };
-use super::config_store::{validate_remote_dir, write_remote_service_urls};
+use super::config_store::{validate_remote_dir, write_remote_runtime_env};
 use super::ssh_targets::list_ssh_targets;
+use crate::core::paths::axon_home_dir;
 use openssh::{KnownHosts, SessionBuilder};
 use openssh_sftp_client::{Sftp, SftpOptions};
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,7 @@ pub struct DeployResult {
     pub qdrant_url: String,
     pub tei_url: String,
     pub chrome_remote_url: String,
-    pub config_path: String,
+    pub runtime_env_path: String,
     pub tunnel_command: Option<String>,
     pub steps: Vec<DeployStep>,
 }
@@ -100,10 +101,17 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
 
     let (qdrant_url, tei_url, chrome_remote_url, tunnel_command) =
         service_urls(target, &remote_host, public_exposure);
-    let config_path = write_remote_service_urls(&qdrant_url, &tei_url, &chrome_remote_url)?;
+    let axon_home =
+        axon_home_dir().ok_or("HOME is unset or invalid; cannot update ~/.axon/.env")?;
+    let runtime_env_path = write_remote_runtime_env(
+        &axon_home.join(".env"),
+        &qdrant_url,
+        &tei_url,
+        &chrome_remote_url,
+    )?;
     steps.push(step(
-        "local config",
-        &format!("updated {}", config_path.display()),
+        "local env",
+        &format!("updated {}", runtime_env_path.display()),
     ));
 
     Ok(DeployResult {
@@ -114,7 +122,7 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
         qdrant_url,
         tei_url,
         chrome_remote_url,
-        config_path: config_path.display().to_string(),
+        runtime_env_path: runtime_env_path.display().to_string(),
         tunnel_command,
         steps,
     })
@@ -251,7 +259,13 @@ where
 fn render_compose(public_exposure: bool) -> String {
     let remote_compose = DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env");
     if public_exposure {
-        remote_compose.replace("127.0.0.1:", "")
+        remote_compose
+            .replace("127.0.0.1:53333:6333", "53333:6333")
+            .replace(
+                "127.0.0.1:${TEI_HTTP_PORT:-52000}:80",
+                "${TEI_HTTP_PORT:-52000}:80",
+            )
+            .replace("127.0.0.1:6000:6000", "6000:6000")
     } else {
         remote_compose
     }

@@ -1,15 +1,21 @@
-# Configuration Reference -- Axon
+# Axon Configuration
 
-> **Source of truth.** This file is the canonical reference for all Axon environment variables. When in doubt, this file wins over README.md, MCP.md, or any other doc. Keep `.env.example` in sync — every variable listed here that has a sensible example value should appear there, and every variable in `.env.example` should be documented here. User-level values live in `~/.axon/.env`.
+Axon uses two user-editable files under `~/.axon/`:
 
-Axon is configured through three layers: `~/.axon/config.toml`, environment variables, and CLI flags.
+| File | Owns | Does not own |
+|---|---|---|
+| `~/.axon/.env` | Secrets, endpoint URLs, auth/runtime bootstrap, trusted local override paths, Docker Compose interpolation | Non-secret tuning knobs |
+| `~/.axon/config.toml` | Non-secret tuning defaults for ask/search/TEI client/workers | Secrets, endpoint URLs, OAuth client secrets, bearer tokens |
 
 ## Precedence (highest to lowest)
 
 1. CLI flags (`--collection`, `--server-url`, etc.)
-2. Environment variables (`AXON_SERVER_URL`, `QDRANT_URL`, etc.)
-3. `~/.axon/config.toml` — tuning knobs (safe to commit, no secrets)
+2. Environment variables for secrets, URLs, auth/runtime, bootstrap, and temporary compatibility shims
+3. `~/.axon/config.toml` for non-secret tuning
 4. Built-in defaults
+
+Service endpoint URLs are intentionally not accepted from `config.toml`.
+Use `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`, or CLI flags.
 
 ## Canonical `~/.axon/` layout
 
@@ -66,6 +72,12 @@ cp .env.example ~/.axon/.env
 chmod 600 ~/.axon/.env
 ```
 
+`axon setup repair` is non-destructive: it adds missing required runtime keys and repairs blank generated auth tokens, but it does not prune unknown keys.
+
+Use `axon setup repair --migrate-env --json` to perform the env boundary migration. This creates a timestamped backup under `~/.axon/`, moves classified non-secret tuning into `config.toml`, prunes known stale keys, and reports counts without printing secret values.
+
+If `AXON_ENV_FILE` is set, Axon treats that file as the effective env file. The migration refuses to silently rewrite `~/.axon/.env` while runtime is pointed somewhere else.
+
 ## CLI server mode
 
 `AXON_SERVER_URL` is the generic client/server switch for the CLI. When it is
@@ -111,13 +123,12 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 
 | Section | Keys | Env override |
 |---------|------|---------------|
-| `[services]` | `qdrant-url`, `tei-url`, `chrome-remote-url` | `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL` |
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
 | `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-doc-timeout-secs`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
-URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are parsed only for migration messaging and are ignored by runtime config resolution. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 

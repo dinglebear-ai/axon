@@ -1,5 +1,6 @@
 mod build_config;
 pub(crate) mod docker;
+pub(crate) mod env_registry;
 pub(crate) mod excludes;
 pub(crate) mod helpers;
 mod performance;
