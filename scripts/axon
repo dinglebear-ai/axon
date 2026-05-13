@@ -33,7 +33,8 @@ while IFS= read -r -d '' _f; do
         break
     fi
 done < <(git -C "$REPO" ls-files -z -- \
-             Cargo.toml Cargo.lock rust-toolchain.toml src config/Dockerfile config/ migrations)
+             Cargo.toml Cargo.lock rust-toolchain.toml src config/Dockerfile config/ migrations \
+             docker-compose.yaml config.example.toml plugins/)
 
 if [ "$_stale" -eq 1 ]; then
     echo "axon: container is stale — rebuilding in background (log: $CONTAINER_BUILD_LOG)" >&2

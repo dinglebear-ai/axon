@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.11.0] - 2026-05-12
 
+Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis works without a host gemini binary. Dev binary auto-syncs to PATH and the container on every `axon` invocation. Fixes gemini 0.41+ compatibility and a recurring SQLite migration version-mismatch error.
+
 ### Added
 
-- docker: install Node.js 22 LTS (via NodeSource) and `@google/gemini-cli` in the container runtime stage so `ask`/`evaluate`/`research` synthesis works in the served container without a host gemini binary.
+- docker: install Node.js 22 LTS (via NodeSource) and `@google/gemini-cli@0.41.2` in the container runtime stage so `ask`/`evaluate`/`research` synthesis works in the served container without a host gemini binary.
 - docker-compose: bind-mount `~/.gemini` read-only into the container so the Gemini CLI can access OAuth credentials for headless synthesis.
 - scripts/axon: auto-rebuild the debug binary and sync PATH symlinks on every invocation; trigger an async `docker compose build + up` when source files are newer than `target/.container-built` so the container stays in sync automatically.
 - just: add `link-bin` target that syncs `~/.local/bin/axon` and all plugin cache slots to the compiled release binary; wired into `just build` so every release build stays current.

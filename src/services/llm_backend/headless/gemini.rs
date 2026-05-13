@@ -362,23 +362,32 @@ fn write_isolated_settings(
     source: &Path,
     dest: &Path,
 ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    // Read source settings, falling back to an empty object when the file is absent,
+    // unreadable, or not a JSON object (e.g. corrupted file containing a string/array).
     let mut settings: Value = source
         .is_file()
         .then(|| fs::read(source).ok())
         .flatten()
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .filter(|v| v.is_object())
         .unwrap_or_else(|| json!({}));
 
-    let obj = settings
-        .as_object_mut()
-        .ok_or("settings.json root is not a JSON object")?;
+    // SAFETY: guaranteed to be an object by the filter + unwrap_or_else above.
+    let Some(obj) = settings.as_object_mut() else {
+        unreachable!("settings is always a JSON object after filter + unwrap_or_else")
+    };
 
-    // Ensure auth.selectedType is set — fall back to oauth-personal if absent.
-    let security = obj.entry("security").or_insert_with(|| json!({}));
-    if let Some(sec) = security.as_object_mut() {
-        let auth = sec.entry("auth").or_insert_with(|| json!({}));
-        if let Some(a) = auth.as_object_mut() {
-            a.entry("selectedType")
+    // Ensure security.auth.selectedType is set — force both intermediate keys to
+    // be objects even if they exist as some other JSON type (null, string, etc.).
+    if !obj.get("security").is_some_and(Value::is_object) {
+        obj.insert("security".into(), json!({}));
+    }
+    if let Some(sec) = obj.get_mut("security").and_then(Value::as_object_mut) {
+        if !sec.get("auth").is_some_and(Value::is_object) {
+            sec.insert("auth".into(), json!({}));
+        }
+        if let Some(auth) = sec.get_mut("auth").and_then(Value::as_object_mut) {
+            auth.entry("selectedType")
                 .or_insert_with(|| json!("oauth-personal"));
         }
     }
