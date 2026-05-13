@@ -62,7 +62,7 @@ services:
       # absent, Docker will create it as root-owned — run `mkdir -p ~/.gemini` first.
       - ${GEMINI_HOME:-${HOME}/.gemini}:/home/axon/.gemini:ro
     ports:
-      - "${AXON_MCP_HTTP_PUBLISH:-127.0.0.1:8001}:8001"
+      - "${AXON_MCP_HTTP_PUBLISH:-0.0.0.0:8001}:8001"
     command: ["serve"]
     depends_on:
       axon-qdrant:
