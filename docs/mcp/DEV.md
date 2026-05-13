@@ -128,8 +128,8 @@ curl -X POST http://localhost:8001/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-The MCP HTTP server does not expose a dedicated `/health` endpoint; a `200`
-response on `tools/list` is the canonical liveness check.
+The unified HTTP server exposes `/healthz` for process health. A successful
+`tools/list` response on `/mcp` is the canonical MCP protocol liveness check.
 
 ### MCP Inspector
 

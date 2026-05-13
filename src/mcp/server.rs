@@ -24,7 +24,7 @@ use crate::core::config::Config;
 use crate::services::context::ServiceContext;
 use crate::services::system;
 use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
-pub use http::{run_http_server, run_unified_server};
+pub use http::run_unified_server;
 use lab_auth::AuthContext;
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,

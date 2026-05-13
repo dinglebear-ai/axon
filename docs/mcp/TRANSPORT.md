@@ -10,9 +10,11 @@ Axon MCP supports three transport configurations:
 | HTTP | static bearer or OAuth | Docker, remote servers, shared access | `axon serve mcp` or `axon mcp --transport http` |
 | Both | Mixed | Serve HTTP while also accepting stdio | `axon mcp --transport both` |
 
-`axon mcp` defaults to **stdio**. The HTTP transport is the default for the
-`axon serve mcp` subcommand. The unified `axon serve` command runs the HTTP
-MCP transport alongside first-party web/client routes on the same listener.
+`axon mcp` defaults to **stdio** and does not open an HTTP listener unless
+`--transport http` or `--transport both` is set. The HTTP transport is the
+default for `axon serve mcp`. Any HTTP MCP transport selector starts the
+unified HTTP server, so MCP, the web panel, and first-party client routes all
+share the same listener.
 See [`../auth/MCP-AUTH.md`](../auth/MCP-AUTH.md) for bearer and OAuth auth modes.
 
 ## stdio
@@ -91,9 +93,8 @@ startup is limited to loopback hosts.
 | `/v1/capabilities` | GET | First-party CLI server capability document, when served by `axon serve` |
 | `/v1/actions` | POST | First-party CLI action endpoint, when served by `axon serve` |
 
-When running under `axon serve` (unified web + MCP), additional web endpoints
-are mounted alongside `/mcp`. The MCP HTTP server itself does not expose a
-dedicated health endpoint.
+The same listener also mounts the web panel and first-party HTTP routes. Use
+`/healthz` for server health and `/mcp` for MCP protocol checks.
 
 ### Claude Code configuration
 
@@ -131,7 +132,8 @@ Run HTTP transport while also accepting stdio connections.
 axon mcp --transport both
 ```
 
-This is useful for development: serve HTTP for web clients while also allowing local stdio connections.
+This is useful for development: serve web and MCP HTTP on port 8001 while also
+allowing local stdio connections.
 
 ## Transport in `axon serve`
 
@@ -143,7 +145,7 @@ client/server routes.
 
 | Service | Default port | Env var |
 |---------|-------------|---------|
-| MCP HTTP | 8001 | `AXON_MCP_HTTP_PORT` |
+| Web + MCP HTTP | 8001 | `AXON_MCP_HTTP_PORT` |
 
 ## See also
 

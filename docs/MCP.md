@@ -65,14 +65,17 @@ curl -H "x-api-key: $AXON_MCP_HTTP_TOKEN" \
 - `axon mcp`
   Starts stdio transport only. Use this for local MCP clients such as Claude Desktop.
 - `axon serve mcp`
-  Starts HTTP transport only.
+  Starts the unified HTTP server with MCP mounted at `/mcp`.
 - `axon mcp --transport both`
-  Starts stdio and HTTP concurrently.
+  Starts stdio and the unified HTTP server concurrently.
 
 HTTP transport uses:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)
 - `AXON_MCP_HTTP_PORT` (default `8001`)
 - `AXON_MCP_HTTP_TOKEN` (required for non-loopback binds)
+
+HTTP MCP transport shares the same listener as the web panel and first-party
+HTTP APIs. By default, web and MCP both run on port `8001`.
 
 ## MCP Server Store
 

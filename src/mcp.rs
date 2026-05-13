@@ -8,4 +8,4 @@ pub mod schema;
 pub mod server;
 
 pub use auth::AuthPolicy;
-pub use server::{AxonMcpServer, run_http_server, run_stdio_server, run_unified_server};
+pub use server::{AxonMcpServer, run_stdio_server, run_unified_server};

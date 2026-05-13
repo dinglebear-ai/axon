@@ -14,32 +14,6 @@ use rmcp::transport::streamable_http_server::{
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
-pub async fn run_http_server(
-    cfg: Config,
-    host: &str,
-    port: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let auth_policy = build_auth_policy(host, false).await?;
-    let host_allowlist = HostAllowlist::new(host, port, &cfg.mcp_allowed_origins);
-
-    let service_context = Arc::new(OnceCell::<Arc<ServiceContext>>::new());
-    let app = mcp_http_router(cfg, host, port, auth_policy, service_context)
-        .await?
-        .layer(middleware::from_fn_with_state(
-            host_allowlist,
-            host_validation_middleware,
-        ));
-
-    tracing::info!(host = %host, port, "mcp_http: server starting");
-    let listener = tokio::net::TcpListener::bind((host, port)).await?;
-    if let Err(err) = axum::serve(listener, app).await {
-        tracing::error!(error = %err, "mcp_http: server exited with error");
-        return Err(err.into());
-    }
-    tracing::info!("mcp_http: server shut down cleanly");
-    Ok(())
-}
-
 pub async fn run_unified_server(
     cfg: Config,
     host: &str,

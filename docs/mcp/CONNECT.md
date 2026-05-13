@@ -165,14 +165,14 @@ claude "call axon with action=doctor"
 
 If connection fails:
 
-1. Verify the server is running (`just dev` or `axon mcp`)
+1. Verify the server is running (`just dev` or `axon serve`)
 2. Check port 8001 is not blocked
 3. For stdio: confirm the `axon` binary path is correct and all env vars are set
 4. For HTTP: confirm `AXON_MCP_HTTP_TOKEN` is set on both server and client
 5. Run `axon doctor` to check infrastructure connectivity
 
-The MCP HTTP server does not currently expose a dedicated `/health` endpoint —
-auth-pass on `/mcp` (anything other than `401`) is the closest probe.
+The unified HTTP server exposes `/healthz` for process health. Auth-pass on
+`/mcp` verifies the MCP/auth path specifically.
 
 ## Host CLI client/server mode
 

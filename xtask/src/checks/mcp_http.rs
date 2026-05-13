@@ -9,8 +9,8 @@ const FILE_SPECS: &[FileSpec] = &[
         "src/cli/commands/mcp.rs",
         &[
             (
-                "run_http_server(",
-                "ERROR: MCP CLI must support HTTP transport in src/cli/commands/mcp.rs",
+                "run_unified_server(",
+                "ERROR: MCP CLI must support unified HTTP transport in src/cli/commands/mcp.rs",
             ),
             (
                 "run_stdio_server(",
@@ -78,7 +78,7 @@ mod tests {
         fs::create_dir_all(mcp_rs.parent().unwrap()).unwrap();
         fs::write(
             &mcp_rs,
-            "fn run_http_server() {}\nfn run_stdio_server() {}\n\
+            "fn run_unified_server() {}\nfn run_stdio_server() {}\n\
              match t { McpTransport::Both => {} }\n",
         )
         .unwrap();
@@ -128,7 +128,7 @@ mod tests {
         // token (e.g., in a comment) must NOT satisfy the matcher.
         fs::write(
             tmp.path().join("src/cli/commands/mcp.rs"),
-            "fn run_http_server() {}\nfn run_stdio_server() {}\n// keyword: Both\n",
+            "fn run_unified_server() {}\nfn run_stdio_server() {}\n// keyword: Both\n",
         )
         .unwrap();
         let err = check(tmp.path()).expect_err("expected pattern error");
@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(
             mcp_patterns,
             vec![
-                "run_http_server(",
+                "run_unified_server(",
                 "run_stdio_server(",
                 "McpTransport::Both =>"
             ]

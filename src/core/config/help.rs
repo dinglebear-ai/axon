@@ -215,7 +215,7 @@ fn print_top_level_help() {
     println!(
         "  {:<28} {}",
         cmd("mcp"),
-        dim("Start MCP HTTP server runtime")
+        dim("Start MCP stdio or unified HTTP runtime")
     );
     println!();
     println!(

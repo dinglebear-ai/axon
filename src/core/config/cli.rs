@@ -108,7 +108,7 @@ pub(super) struct ServeArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum ServeSubcommand {
-    /// Start the MCP HTTP server runtime
+    /// Start unified web + MCP HTTP runtime
     Mcp(McpArgs),
 }
 

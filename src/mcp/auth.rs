@@ -131,7 +131,12 @@ pub fn build_auth_layer(
     }
 }
 
-/// OAuth protected-resource URL for WWW-Authenticate metadata.
+/// OAuth protected-resource metadata URL base for `WWW-Authenticate`.
+///
+/// `lab-auth` still uses `AXON_MCP_PUBLIC_URL + /mcp` as the canonical
+/// protected resource audience. This value intentionally stays at the public
+/// origin because the unified Axum server mounts RFC 9728 metadata at
+/// `/.well-known/oauth-protected-resource`, beside `/mcp`, not under it.
 ///
 /// Only OAuth mode advertises this URL. Bearer-only and loopback development
 /// modes intentionally omit it so static-token responses do not imply OAuth
@@ -155,7 +160,7 @@ fn oauth_resource_url_from_parts(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|url| Arc::from(format!("{}/mcp", url.trim_end_matches('/'))))
+        .map(|url| Arc::from(url.trim_end_matches('/')))
 }
 
 /// Decide which `AuthPolicy` to install for a given host + transport.
@@ -677,8 +682,62 @@ mod tests {
         assert_eq!(
             oauth_resource_url_from_parts(true, Some("https://axon.example.com/".to_string()))
                 .as_deref(),
-            Some("https://axon.example.com/mcp")
+            Some("https://axon.example.com")
         );
+    }
+
+    #[test]
+    fn oauth_metadata_base_keeps_mcp_as_canonical_resource_audience() {
+        let resource_metadata_base =
+            oauth_resource_url_from_parts(true, Some("https://axon.example.com/".to_string()))
+                .expect("metadata base");
+        let auth_config = lab_auth::config::AuthConfigBuilder::new()
+            .env_prefix("AXON_MCP")
+            .scopes_supported(vec!["axon:read".into(), "axon:write".into()])
+            .resource_path("/mcp")
+            .default_scope("axon:read")
+            .static_token_scopes(vec!["axon:read".into(), "axon:write".into()])
+            .build_from_sources([
+                ("AXON_MCP_AUTH_MODE".to_string(), "oauth".to_string()),
+                (
+                    "AXON_MCP_PUBLIC_URL".to_string(),
+                    "https://axon.example.com".to_string(),
+                ),
+                (
+                    "AXON_MCP_GOOGLE_CLIENT_ID".to_string(),
+                    "client-id".to_string(),
+                ),
+                (
+                    "AXON_MCP_GOOGLE_CLIENT_SECRET".to_string(),
+                    "client-secret".to_string(),
+                ),
+                (
+                    "AXON_MCP_AUTH_ADMIN_EMAIL".to_string(),
+                    "admin@example.com".to_string(),
+                ),
+            ])
+            .expect("auth config");
+
+        assert_eq!(
+            lab_auth::auth_context::www_authenticate_value(&resource_metadata_base),
+            "Bearer resource_metadata=\"https://axon.example.com/.well-known/oauth-protected-resource\""
+        );
+        assert_eq!(
+            auth_config.public_url.as_ref().map(url::Url::as_str),
+            Some("https://axon.example.com/")
+        );
+        assert_eq!(auth_config.resource_path, "/mcp");
+        let canonical_resource = format!(
+            "{}{}",
+            auth_config
+                .public_url
+                .as_ref()
+                .expect("public url")
+                .as_str()
+                .trim_end_matches('/'),
+            auth_config.resource_path
+        );
+        assert_eq!(canonical_resource, "https://axon.example.com/mcp");
     }
 
     #[test]
