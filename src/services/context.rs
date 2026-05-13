@@ -18,7 +18,7 @@ impl ServiceContext {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
         if spawn_workers {
-            spawn_queue_summary_logger(Arc::clone(&jobs));
+            spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
         Ok(Self { cfg, jobs })
     }
@@ -56,11 +56,7 @@ impl ServiceContext {
 /// Spawned only by `new_with_workers()` (so worker-bearing processes — serve,
 /// mcp — emit a baseline queue signal). Interval is `AXON_QUEUE_SUMMARY_SECS`
 /// (default 60s; set to 0 to disable).
-fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>) {
-    let secs: u64 = std::env::var("AXON_QUEUE_SUMMARY_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(60);
+fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
     if secs == 0 {
         return;
     }

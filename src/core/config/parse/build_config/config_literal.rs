@@ -86,7 +86,6 @@ fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
         .chrome_remote_url
         .clone()
         .or_else(|| env::var("AXON_CHROME_REMOTE_URL").ok())
-        .or_else(|| inputs.toml.services.chrome_remote_url.clone())
         .map(normalize_local_service_url);
     cfg.chrome_proxy = g
         .chrome_proxy
@@ -317,31 +316,29 @@ fn resolve_server_url(g: &GlobalArgs) -> Result<Option<reqwest::Url>, String> {
         .unwrap_or(Ok(None))
 }
 
-fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
+fn resolve_tei_url(global: &GlobalArgs, _toml: &TomlConfig) -> Result<String, String> {
     Ok(normalize_local_service_url(
         global
             .tei_url
             .clone()
             .or_else(|| env::var("TEI_URL").ok())
-            .or_else(|| toml.services.tei_url.clone())
             .ok_or_else(|| {
                 "TEI_URL environment variable is required (or pass --tei-url). \
-                 Copy .env.example to ~/.axon/.env and fill in credentials."
+                 Service URLs are not read from config.toml; move legacy [services].tei-url to .env."
                     .to_string()
             })?,
     ))
 }
 
-fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
+fn resolve_qdrant_url(global: &GlobalArgs, _toml: &TomlConfig) -> Result<String, String> {
     Ok(normalize_local_service_url(
         global
             .qdrant_url
             .clone()
             .or_else(|| env::var("QDRANT_URL").ok())
-            .or_else(|| toml.services.qdrant_url.clone())
             .ok_or_else(|| {
                 "QDRANT_URL environment variable is required (or pass --qdrant-url). \
-                 Copy .env.example to ~/.axon/.env and fill in credentials."
+                 Service URLs are not read from config.toml; move legacy [services].qdrant-url to .env."
                     .to_string()
             })?,
     ))

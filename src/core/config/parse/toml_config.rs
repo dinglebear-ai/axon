@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(super) struct TomlConfig {
     #[serde(default)]
+    #[allow(dead_code)]
     pub services: TomlServicesSection,
     #[serde(default)]
     pub search: TomlSearchSection,
@@ -26,12 +27,13 @@ pub(super) struct TomlConfig {
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[allow(dead_code)]
 pub(super) struct TomlServicesSection {
-    /// Base URL of the Qdrant vector store.
+    /// Legacy migration-only field. Runtime resolution ignores this value.
     pub qdrant_url: Option<String>,
-    /// Base URL of the TEI embedding service.
+    /// Legacy migration-only field. Runtime resolution ignores this value.
     pub tei_url: Option<String>,
-    /// Chrome DevTools Protocol management endpoint URL.
+    /// Legacy migration-only field. Runtime resolution ignores this value.
     pub chrome_remote_url: Option<String>,
 }
 
@@ -116,8 +118,14 @@ pub(super) struct TomlTeiSection {
 pub(super) struct TomlWorkersSection {
     /// Parallel ingest worker lanes.
     pub ingest_lanes: Option<usize>,
+    /// Parallel embed worker lanes.
+    pub embed_lanes: Option<usize>,
     /// Per-document embed timeout in seconds.
     pub embed_doc_timeout_secs: Option<u64>,
+    /// Queue summary interval in seconds.
+    pub queue_summary_secs: Option<u64>,
+    /// Buffered Qdrant points before flush.
+    pub qdrant_point_buffer: Option<usize>,
     /// Crawl queue cap (0 = unlimited).
     pub max_pending_crawl_jobs: Option<usize>,
     /// Embed queue cap (0 = unlimited).

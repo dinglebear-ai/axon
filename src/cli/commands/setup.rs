@@ -16,7 +16,12 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             fail_if_setup_failed(&result)
         }
         Some("repair") => {
-            let result = setup::run_local_setup(LocalSetupMode::Repair).await?;
+            let mode = if cfg.positional.iter().any(|value| value == "--migrate-env") {
+                LocalSetupMode::MigrateEnv
+            } else {
+                LocalSetupMode::Repair
+            };
+            let result = setup::run_local_setup(mode).await?;
             print_local_setup_report(cfg, &result)?;
             fail_if_setup_failed(&result)
         }
@@ -73,7 +78,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("Qdrant: {}", result.qdrant_url);
                 println!("TEI: {}", result.tei_url);
                 println!("Chrome: {}", result.chrome_remote_url);
-                println!("Config: {}", result.config_path);
+                println!("Runtime env: {}", result.runtime_env_path);
                 if let Some(command) = result.tunnel_command {
                     println!("Tunnel: {command}");
                 }
@@ -88,7 +93,8 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 "usage": [
                     "axon setup",
                     "axon setup check",
-                    "axon setup repair"
+                    "axon setup repair",
+                    "axon setup repair --migrate-env"
                 ]
             });
             if cfg.json_output {
@@ -98,6 +104,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("  axon setup");
                 println!("  axon setup check");
                 println!("  axon setup repair");
+                println!("  axon setup repair --migrate-env");
             }
             Ok(())
         }
@@ -130,7 +137,9 @@ fn print_local_setup_report(
     println!("Compose: {}", report.compose_dir.display());
     println!("Web panel: {}", report.web_panel_url);
     println!("MCP: {}", report.mcp_url);
-    println!("Token: {} (AXON_MCP_HTTP_TOKEN)", report.env_path.display());
+    println!(
+        "Token: AXON_MCP_HTTP_TOKEN presence is reported in setup phases; values are never printed"
+    );
     println!(
         "Timing: {:.1}s (target {}s, hard max {}s)",
         report.elapsed_ms as f64 / 1000.0,

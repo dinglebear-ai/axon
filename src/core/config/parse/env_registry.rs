@@ -1,0 +1,530 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnvClassification {
+    KeepEnv,
+    ComposeEnv,
+    MoveToml,
+    Delete,
+    TrustedOperatorBootstrap,
+    CompatibilityShim,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RuntimePlacement {
+    HostOnly,
+    ContainerRequired,
+    ComposeInterpolation,
+    Both,
+    NotRuntime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LegacyBehavior {
+    Canonical,
+    WarnEnvOverride,
+    WarnAndIgnore,
+    DeleteOnMigration,
+    Advanced,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub(crate) struct EnvKeySpec {
+    pub key: &'static str,
+    pub classification: EnvClassification,
+    pub placement: RuntimePlacement,
+    pub toml_destination: Option<&'static str>,
+    pub legacy_behavior: LegacyBehavior,
+    pub secret: bool,
+}
+
+pub(crate) const ENV_KEY_SPECS: &[EnvKeySpec] = &[
+    spec(
+        "QDRANT_URL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "TEI_URL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_CHROME_REMOTE_URL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_SERVER_URL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::HostOnly,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_HTTP_TOKEN",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::ContainerRequired,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "AXON_MCP_AUTH_MODE",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_PUBLIC_URL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_GOOGLE_CLIENT_ID",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_GOOGLE_CLIENT_SECRET",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "AXON_MCP_AUTH_ADMIN_EMAIL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_MCP_ALLOWED_ORIGINS",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_ENV_FILE",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::HostOnly,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_CONFIG_PATH",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::HostOnly,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_HOME",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_DATA_DIR",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_SQLITE_PATH",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_MCP_HTTP_PUBLISH",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_IMAGE",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "GEMINI_HOME",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "TEI_EMBEDDING_MODEL",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "TEI_HTTP_PORT",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "NVIDIA_VISIBLE_DEVICES",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "CUDA_VISIBLE_DEVICES",
+        EnvClassification::ComposeEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "TAVILY_API_KEY",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "GITHUB_TOKEN",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "REDDIT_CLIENT_ID",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "REDDIT_CLIENT_SECRET",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "HF_TOKEN",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::ComposeInterpolation,
+        None,
+        LegacyBehavior::Canonical,
+        true,
+    ),
+    spec(
+        "OPENAI_MODEL",
+        EnvClassification::CompatibilityShim,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "OPENAI_BASE_URL",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::WarnAndIgnore,
+        false,
+    ),
+    spec(
+        "OPENAI_API_KEY",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::WarnAndIgnore,
+        true,
+    ),
+    spec(
+        "AXON_HEADLESS_GEMINI_CMD",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_HEADLESS_GEMINI_HOME",
+        EnvClassification::TrustedOperatorBootstrap,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Advanced,
+        false,
+    ),
+    spec(
+        "AXON_HEADLESS_GEMINI_MODEL",
+        EnvClassification::KeepEnv,
+        RuntimePlacement::Both,
+        None,
+        LegacyBehavior::Canonical,
+        false,
+    ),
+    spec(
+        "AXON_LLM_COMPLETION_CONCURRENCY",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("llm.completion-concurrency"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_LLM_COMPLETION_TIMEOUT_SECS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("llm.completion-timeout-secs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "TEI_MAX_CLIENT_BATCH_SIZE",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("tei.max-client-batch-size"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "TEI_MAX_RETRIES",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("tei.max-retries"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "TEI_REQUEST_TIMEOUT_MS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("tei.request-timeout-ms"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_INGEST_LANES",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.ingest-lanes"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_EMBED_LANES",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.embed-lanes"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_EMBED_DOC_TIMEOUT_SECS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.embed-doc-timeout-secs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_QUEUE_SUMMARY_SECS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.queue-summary-secs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_QDRANT_POINT_BUFFER",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.qdrant-point-buffer"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_MAX_PENDING_CRAWL_JOBS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.max-pending-crawl-jobs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_MAX_PENDING_EMBED_JOBS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.max-pending-embed-jobs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_MAX_PENDING_EXTRACT_JOBS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.max-pending-extract-jobs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_MAX_PENDING_INGEST_JOBS",
+        EnvClassification::MoveToml,
+        RuntimePlacement::NotRuntime,
+        Some("workers.max-pending-ingest-jobs"),
+        LegacyBehavior::WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_BATCH_QUEUE",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "AXON_CRAWL_QUEUE",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "AXON_EMBED_QUEUE",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "AXON_EXTRACT_QUEUE",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "AXON_INGEST_QUEUE",
+        EnvClassification::Delete,
+        RuntimePlacement::NotRuntime,
+        None,
+        LegacyBehavior::DeleteOnMigration,
+        false,
+    ),
+];
+
+const fn spec(
+    key: &'static str,
+    classification: EnvClassification,
+    placement: RuntimePlacement,
+    toml_destination: Option<&'static str>,
+    legacy_behavior: LegacyBehavior,
+    secret: bool,
+) -> EnvKeySpec {
+    EnvKeySpec {
+        key,
+        classification,
+        placement,
+        toml_destination,
+        legacy_behavior,
+        secret,
+    }
+}
+
+pub(crate) fn spec_for(key: &str) -> Option<&'static EnvKeySpec> {
+    ENV_KEY_SPECS.iter().find(|spec| spec.key == key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_urls_are_env_not_toml() {
+        for key in ["QDRANT_URL", "TEI_URL", "AXON_CHROME_REMOTE_URL"] {
+            let spec = spec_for(key).expect("registered key");
+            assert_eq!(spec.classification, EnvClassification::KeepEnv);
+            assert_eq!(spec.toml_destination, None);
+        }
+    }
+
+    #[test]
+    fn moved_tuning_has_toml_destination() {
+        for spec in ENV_KEY_SPECS {
+            if spec.classification == EnvClassification::MoveToml {
+                assert!(
+                    spec.toml_destination.is_some(),
+                    "{} is move-toml without destination",
+                    spec.key
+                );
+            }
+        }
+    }
+}

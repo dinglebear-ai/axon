@@ -25,6 +25,14 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.yaml must keep MCP HTTP loopback-only by default"
     );
     assert!(
+        compose.contains("TEI_SERVER_MAX_CLIENT_BATCH_SIZE"),
+        "compose TEI server batch size must not use TEI_MAX_CLIENT_BATCH_SIZE"
+    );
+    assert!(
+        !compose.contains("${TEI_MAX_CLIENT_BATCH_SIZE:-"),
+        "TEI_MAX_CLIENT_BATCH_SIZE is client tuning and must not drive TEI server args"
+    );
+    assert!(
         compose.contains("http://127.0.0.1:8001/healthz"),
         "docker-compose.yaml healthcheck must work in bearer and OAuth-only auth modes"
     );
@@ -342,19 +350,10 @@ fn env_example_keys() -> BTreeSet<String> {
 #[test]
 fn env_example_only_contains_production_runtime_keys() {
     let allowed: BTreeSet<&str> = [
-        "AXON_HOME",
         "AXON_DATA_DIR",
-        "AXON_SQLITE_PATH",
-        "AXON_ENV_FILE",
-        "AXON_CONFIG_PATH",
         "AXON_SERVER_URL",
-        "AXON_LOCAL_MODE",
-        "AXON_SERVER_INSECURE",
         "AXON_IMAGE",
         "AXON_MCP_HTTP_PUBLISH",
-        "AXON_MCP_TRANSPORT",
-        "AXON_MCP_HTTP_HOST",
-        "AXON_MCP_HTTP_PORT",
         "AXON_MCP_HTTP_TOKEN",
         "AXON_MCP_AUTH_MODE",
         "AXON_MCP_PUBLIC_URL",
@@ -363,42 +362,20 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_MCP_AUTH_ADMIN_EMAIL",
         "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
         "AXON_MCP_ALLOWED_ORIGINS",
-        "AXON_MCP_ARTIFACT_DIR",
-        "AXON_MCP_EMBED_ALLOWED_ROOTS",
-        "AXON_MCP_EMBED_MAX_LOCAL_BYTES",
         "QDRANT_URL",
         "TEI_URL",
         "TEI_HTTP_PORT",
         "TEI_EMBEDDING_MODEL",
-        "TEI_MAX_CONCURRENT_REQUESTS",
-        "TEI_MAX_BATCH_TOKENS",
-        "TEI_MAX_BATCH_REQUESTS",
-        "TEI_MAX_CLIENT_BATCH_SIZE",
-        "TEI_POOLING",
-        "TEI_TOKENIZATION_WORKERS",
+        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
         "NVIDIA_VISIBLE_DEVICES",
         "CUDA_VISIBLE_DEVICES",
         "AXON_CHROME_REMOTE_URL",
-        "AXON_CHROME_PROXY",
-        "AXON_HEADLESS_GEMINI_CMD",
-        "AXON_HEADLESS_GEMINI_HOME",
-        "AXON_HEADLESS_GEMINI_MODEL",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "GOOGLE_CLOUD_PROJECT",
-        "GOOGLE_CLOUD_LOCATION",
-        "GOOGLE_GENAI_USE_VERTEXAI",
+        "GEMINI_HOME",
         "HF_TOKEN",
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",
         "REDDIT_CLIENT_ID",
         "REDDIT_CLIENT_SECRET",
-        "AXON_OUTPUT_DIR",
-        "SCREENSHOT_DIRECTORY",
-        "AXON_LOG_DIR",
-        "AXON_LOG_FILE",
-        "RUST_LOG",
     ]
     .into_iter()
     .collect();

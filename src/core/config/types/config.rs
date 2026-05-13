@@ -386,9 +386,21 @@ pub struct Config {
     /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–16. Default: 2.
     pub ingest_lanes: usize,
 
+    /// Parallel embed worker lanes.
+    /// Env: `AXON_EMBED_LANES`. TOML: `workers.embed-lanes`. Clamped 1–32. Default: 2.
+    pub embed_lanes: usize,
+
     /// Per-document embed timeout in seconds (used by the embed pipeline).
     /// Env: `AXON_EMBED_DOC_TIMEOUT_SECS`. TOML: `workers.embed-doc-timeout-secs`. Clamped 30–3600. Default: 300.
     pub embed_doc_timeout_secs: u64,
+
+    /// Queue summary interval in seconds.
+    /// Env: `AXON_QUEUE_SUMMARY_SECS`. TOML: `workers.queue-summary-secs`. Clamped 5–3600. Default: 30.
+    pub queue_summary_secs: u64,
+
+    /// Buffered Qdrant points before flush.
+    /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 256.
+    pub qdrant_point_buffer: usize,
 
     /// Crawl queue cap (0 = unlimited).
     /// Env: `AXON_MAX_PENDING_CRAWL_JOBS`. TOML: `workers.max-pending-crawl-jobs`. Clamped 0–10_000. Default: 100.

@@ -7,14 +7,11 @@ fn config_home_env_and_toml_are_loaded_before_command_parse() {
     std::fs::create_dir_all(&axon_home).expect("mkdir .axon");
     std::fs::write(
         axon_home.join(".env"),
-        "QDRANT_URL=http://127.0.0.1:53333\n",
+        "QDRANT_URL=http://127.0.0.1:53333\nTEI_URL=http://127.0.0.1:52000\n",
     )
     .expect("write .env");
-    std::fs::write(
-        axon_home.join("config.toml"),
-        "[services]\ntei-url = \"http://127.0.0.1:52000\"\n[tei]\nmax-retries = 4\n",
-    )
-    .expect("write config");
+    std::fs::write(axon_home.join("config.toml"), "[tei]\nmax-retries = 4\n")
+        .expect("write config");
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("HOME", home.path())
