@@ -279,24 +279,15 @@ const { App } = globalThis.ExtApps;
     if (jobData) render(jobData);
   };
 
-  let connectOk = false;
-  try {
-    await Promise.race([
-      app.connect().then(() => { connectOk = true; }),
-      new Promise(resolve => setTimeout(resolve, 5000)),
-    ]);
-  } catch (_) {}
-  applyTheme(connectOk ? (app.getHostContext()?.theme ?? 'dark') : 'dark');
+  // Fire-and-forget per the MCP Apps spec — do NOT await, it resolves async
+  // after the host postMessage handshake which may be delayed or unavailable.
+  app.connect().catch(() => {});
 
-  if (!connectOk) {
-    const initial = window.__AXON_INITIAL_STATUS__;
-    if (initial) {
-      render(initial.json || initial);
-    } else {
-      document.getElementById('loading').innerHTML =
-        '<div style="padding:20px;color:var(--text-muted);font-size:12px;text-align:center">' +
-        'Host bridge timed out. Invoke <code>axon status</code> to refresh.</div>';
-    }
+  // Render immediately from server-injected snapshot (available on load).
+  // ontoolresult will re-render if/when the host bridge delivers live data.
+  const initial = window.__AXON_INITIAL_STATUS__;
+  if (initial) {
+    render(initial.json || initial);
   }
 })();
 </script>
