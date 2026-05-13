@@ -185,10 +185,17 @@ pub(super) async fn write_refetch_results(
 
         let filename = url_to_stable_filename(&canonical);
         let path = markdown_dir.join(&filename);
-
-        if let Err(e) = tokio::fs::write(&path, markdown.as_bytes()).await {
+        // Write to a temp file then rename to avoid leaving a partial file if
+        // the process is interrupted mid-write when overwriting an existing thin page.
+        let tmp_path = path.with_extension("tmp");
+        let write_ok = tokio::fs::write(&tmp_path, markdown.as_bytes())
+            .await
+            .is_ok()
+            && tokio::fs::rename(&tmp_path, &path).await.is_ok();
+        if !write_ok {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
             log_warn(&format!(
-                "thin_refetch: failed to write {}: {e}",
+                "thin_refetch: failed to write {}: atomic rename failed",
                 path.display()
             ));
             // Undo the thin-page removals above since we didn't actually recover.
