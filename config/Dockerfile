@@ -60,7 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tini \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @google/gemini-cli \
+    && npm install -g @google/gemini-cli@0.41.2 \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
 # Non-root user with stable UID/GID 1000 — matches the host user that owns
