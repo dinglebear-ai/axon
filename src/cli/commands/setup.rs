@@ -5,20 +5,15 @@ use std::error::Error;
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
-        None => {
-            let result = setup::run_local_setup(LocalSetupMode::FirstRun).await?;
-            print_local_setup_report(cfg, &result)?;
-            fail_if_setup_failed(&result)
-        }
-        Some("check") => {
-            let result = setup::run_local_setup(LocalSetupMode::Check).await?;
-            print_local_setup_report(cfg, &result)?;
-            fail_if_setup_failed(&result)
-        }
+        None => run_local_setup_command(cfg, LocalSetupMode::FirstRun).await,
+        Some("check") => run_local_setup_command(cfg, LocalSetupMode::Check).await,
         Some("repair") => {
-            let result = setup::run_local_setup(LocalSetupMode::Repair).await?;
-            print_local_setup_report(cfg, &result)?;
-            fail_if_setup_failed(&result)
+            let mode = if cfg.positional.iter().any(|value| value == "--migrate-env") {
+                LocalSetupMode::MigrateEnv
+            } else {
+                LocalSetupMode::Repair
+            };
+            run_local_setup_command(cfg, mode).await
         }
         Some("targets") => {
             let targets = match setup::list_ssh_targets() {
@@ -73,7 +68,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("Qdrant: {}", result.qdrant_url);
                 println!("TEI: {}", result.tei_url);
                 println!("Chrome: {}", result.chrome_remote_url);
-                println!("Config: {}", result.config_path);
+                println!("Runtime env: {}", result.runtime_env_path);
                 if let Some(command) = result.tunnel_command {
                     println!("Tunnel: {command}");
                 }
@@ -88,7 +83,8 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 "usage": [
                     "axon setup",
                     "axon setup check",
-                    "axon setup repair"
+                    "axon setup repair",
+                    "axon setup repair --migrate-env"
                 ]
             });
             if cfg.json_output {
@@ -98,10 +94,17 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 println!("  axon setup");
                 println!("  axon setup check");
                 println!("  axon setup repair");
+                println!("  axon setup repair --migrate-env");
             }
             Ok(())
         }
     }
+}
+
+async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(), Box<dyn Error>> {
+    let result = setup::run_local_setup(mode).await?;
+    print_local_setup_report(cfg, &result)?;
+    fail_if_setup_failed(&result)
 }
 
 fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
@@ -130,7 +133,9 @@ fn print_local_setup_report(
     println!("Compose: {}", report.compose_dir.display());
     println!("Web panel: {}", report.web_panel_url);
     println!("MCP: {}", report.mcp_url);
-    println!("Token: {} (AXON_MCP_HTTP_TOKEN)", report.env_path.display());
+    println!(
+        "Token: AXON_MCP_HTTP_TOKEN presence is reported in setup phases; values are never printed"
+    );
     println!(
         "Timing: {:.1}s (target {}s, hard max {}s)",
         report.elapsed_ms as f64 / 1000.0,

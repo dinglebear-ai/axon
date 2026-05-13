@@ -1,0 +1,2315 @@
+[[env]]
+key = "QDRANT_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "compose-env-file"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Qdrant endpoint URL. URLs stay in env/CLI, not TOML."
+
+[[env]]
+key = "TEI_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "compose-env-file"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "TEI endpoint URL. URLs stay in env/CLI, not TOML."
+
+[[env]]
+key = "AXON_CHROME_REMOTE_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "compose-env-file"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Chrome/CDP endpoint URL. URLs stay in env/CLI, not TOML."
+
+[[env]]
+key = "AXON_SERVER_URL"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Client/server endpoint URL. URLs stay in env/CLI, not TOML."
+
+[[env]]
+key = "AXON_MCP_HTTP_TOKEN"
+classification = "keep-env"
+runtime_placement = "container-required"
+surfaces = ["src", "env-template", "docs", "setup"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Runtime auth secret for MCP/action HTTP surfaces."
+
+[[env]]
+key = "AXON_MCP_AUTH_MODE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "setup"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Auth runtime mode, not non-secret tuning."
+
+[[env]]
+key = "AXON_MCP_PUBLIC_URL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "setup"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth public origin URL. URLs stay in env."
+
+[[env]]
+key = "AXON_MCP_GOOGLE_CLIENT_ID"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth client identifier."
+
+[[env]]
+key = "AXON_MCP_GOOGLE_CLIENT_SECRET"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth client secret."
+
+[[env]]
+key = "AXON_MCP_AUTH_ADMIN_EMAIL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth admin identity."
+
+[[env]]
+key = "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth redirect allowlist."
+
+[[env]]
+key = "AXON_MCP_ALLOWED_ORIGINS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "CORS origin allowlist for deployed HTTP surfaces."
+
+[[env]]
+key = "AXON_ENV_FILE"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Explicit env-file override. It can shadow ~/.axon/.env and must be detected before migration."
+
+[[env]]
+key = "AXON_CONFIG_PATH"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "setup", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Explicit config override. Trusted local operator input only."
+
+[[env]]
+key = "AXON_HOME"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs", "compose"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Axon home root. Path bootstrap, not non-secret tuning."
+
+[[env]]
+key = "AXON_DATA_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Data root path. Path bootstrap, not non-secret tuning."
+
+[[env]]
+key = "AXON_SQLITE_PATH"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "SQLite queue path override."
+
+[[env]]
+key = "AXON_MCP_HTTP_PUBLISH"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "docs", "setup"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose host publish address. Compose cannot read TOML."
+
+[[env]]
+key = "AXON_IMAGE"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose image override."
+
+[[env]]
+key = "GEMINI_HOME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Host Gemini credential mount path for Compose."
+
+[[env]]
+key = "TEI_EMBEDDING_MODEL"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "setup"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "TEI container model argument."
+
+[[env]]
+key = "TEI_HTTP_PORT"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "setup"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "TEI container publish/interpolation port."
+
+[[env]]
+key = "TEI_SERVER_MAX_CLIENT_BATCH_SIZE"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "TEI server argv. Distinct from Axon TEI client batch tuning."
+
+[[env]]
+key = "NVIDIA_VISIBLE_DEVICES"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "setup"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "GPU runtime selector for Compose."
+
+[[env]]
+key = "CUDA_VISIBLE_DEVICES"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "setup"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "GPU runtime selector for Compose."
+
+[[env]]
+key = "TAVILY_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Search/research API secret."
+
+[[env]]
+key = "GITHUB_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "GitHub API token for ingest rate limits."
+
+[[env]]
+key = "REDDIT_CLIENT_ID"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Reddit API credential."
+
+[[env]]
+key = "REDDIT_CLIENT_SECRET"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Reddit API secret."
+
+[[env]]
+key = "HF_TOKEN"
+classification = "keep-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "env-template", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Hugging Face token for TEI model pulls."
+
+[[env]]
+key = "OPENAI_MODEL"
+classification = "compatibility-shim"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "gemini-model-fallback"
+reason = "Temporary compatibility: gemini-* values still seed Gemini model override."
+
+[[env]]
+key = "OPENAI_BASE_URL"
+classification = "compatibility-shim"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "warn-and-ignore"
+reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
+
+[[env]]
+key = "OPENAI_API_KEY"
+classification = "compatibility-shim"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "warn-and-ignore"
+reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
+
+[[env]]
+key = "AXON_HEADLESS_GEMINI_CMD"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Runtime executable/bootstrap for Gemini CLI."
+
+[[env]]
+key = "AXON_HEADLESS_GEMINI_HOME"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "advanced"
+reason = "Gemini credential home override."
+
+[[env]]
+key = "AXON_HEADLESS_GEMINI_MODEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Runtime Gemini model selection."
+
+[[env]]
+key = "AXON_LLM_COMPLETION_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret LLM completion tuning. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LLM_COMPLETION_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret LLM completion tuning. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "TEI_MAX_CLIENT_BATCH_SIZE"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.max-client-batch-size"
+compatibility = "warn-env-override"
+reason = "TEI client request batch size. Distinguish from TEI server argv in Compose."
+
+[[env]]
+key = "TEI_MAX_RETRIES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.max-retries"
+compatibility = "warn-env-override"
+reason = "TEI client retry tuning."
+
+[[env]]
+key = "TEI_REQUEST_TIMEOUT_MS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "tei.request-timeout-ms"
+compatibility = "warn-env-override"
+reason = "TEI client timeout tuning."
+
+[[env]]
+key = "AXON_INGEST_LANES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.ingest-lanes"
+compatibility = "warn-env-override"
+reason = "Worker lane tuning."
+
+[[env]]
+key = "AXON_EMBED_LANES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.embed-lanes"
+compatibility = "warn-env-override"
+reason = "Worker lane tuning."
+
+[[env]]
+key = "AXON_EMBED_DOC_TIMEOUT_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.embed-doc-timeout-secs"
+compatibility = "warn-env-override"
+reason = "Per-document embed timeout tuning."
+
+[[env]]
+key = "AXON_QUEUE_SUMMARY_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.queue-summary-secs"
+compatibility = "warn-env-override"
+reason = "Queue summary interval tuning."
+
+[[env]]
+key = "AXON_QDRANT_POINT_BUFFER"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.qdrant-point-buffer"
+compatibility = "warn-env-override"
+reason = "Qdrant batch flush tuning."
+
+[[env]]
+key = "AXON_MAX_PENDING_CRAWL_JOBS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.max-pending-crawl-jobs"
+compatibility = "warn-env-override"
+reason = "Queue cap tuning."
+
+[[env]]
+key = "AXON_MAX_PENDING_EMBED_JOBS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.max-pending-embed-jobs"
+compatibility = "warn-env-override"
+reason = "Queue cap tuning."
+
+[[env]]
+key = "AXON_MAX_PENDING_EXTRACT_JOBS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.max-pending-extract-jobs"
+compatibility = "warn-env-override"
+reason = "Queue cap tuning."
+
+[[env]]
+key = "AXON_MAX_PENDING_INGEST_JOBS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "workers.max-pending-ingest-jobs"
+compatibility = "warn-env-override"
+reason = "Queue cap tuning."
+
+[[env]]
+key = "AXON_BATCH_QUEUE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Legacy removed queue runtime."
+
+[[env]]
+key = "AXON_CRAWL_QUEUE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Legacy removed queue runtime."
+
+[[env]]
+key = "AXON_EMBED_QUEUE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Legacy removed queue runtime."
+
+[[env]]
+key = "AXON_EXTRACT_QUEUE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Legacy removed queue runtime."
+
+[[env]]
+key = "AXON_INGEST_QUEUE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Legacy removed queue runtime."
+
+[[env]]
+key = "AXON_AMQP_URL"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["src", "tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Removed legacy runtime path; migration prunes it from env."
+
+[[env]]
+key = "AXON_ASK_AUTHORITATIVE_BOOST"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_AUTHORITATIVE_DOMAINS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_BACKFILL_CHUNKS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_CANDIDATE_LIMIT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "ask.candidate-limit"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_ASK_CHUNK_LIMIT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "ask.chunk-limit"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_ASK_DOC_CHUNK_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_DOC_FETCH_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_FULL_DOCS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_HYBRID_CANDIDATES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "scripts", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "search.ask-hybrid-candidates"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_ASK_MAX_CONTEXT_CHARS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_MIN_CITATIONS_NONTRIVIAL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_ASK_MIN_RELEVANCE_SCORE"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "ask.min-relevance-score"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_BIN"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_CHROME_DIAGNOSTICS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_CHROME_DIAGNOSTICS_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_CHROME_DIAGNOSTICS_EVENTS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_CHROME_DIAGNOSTICS_SCREENSHOT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_CHROME_PROXY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_CHROME_USER_AGENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_COLLECTION"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "tests", "scripts", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_DOMAINS_DETAILED"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_DOMAINS_DETAILED_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_DOMAINS_FACET_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_EMBED_DOC_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_EXCLUDE_PATH_PREFIX"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_HNSW_EF_SEARCH"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "search.hnsw-ef"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_HNSW_EF_SEARCH_LEGACY"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "search.hnsw-ef-legacy"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_HYBRID_CANDIDATES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "search.hybrid-candidates"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_HYBRID_SEARCH"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "search.hybrid-enabled"
+compatibility = "warn-env-override"
+reason = "Non-secret tuning knob; migrate to config.toml."
+
+[[env]]
+key = "AXON_INLINE_BYTES_THRESHOLD"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_INSTALL_DRY_RUN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_INSTALL_PREFIX"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_INSTALL_SKIP_SETUP"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_INSTALL_TMPDIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_INSTALL_URL"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_IN_CONTAINER"
+classification = "compose-env"
+runtime_placement = "container-required"
+surfaces = ["src", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Container bootstrap marker supplied by Compose."
+
+[[env]]
+key = "AXON_JOB_STALE_CONFIRM_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_JOB_STALE_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_JOB_WAIT_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LITE"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["src", "tests", "scripts", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Removed legacy runtime path; migration prunes it from env."
+
+[[env]]
+key = "AXON_LIVE_TEST_OUTDIR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_LOCAL_MODE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LOG_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_LOG_FILE"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_LOG_FULL_QUERIES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LOG_LEVEL"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LOG_MAX_BYTES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_LOG_MAX_FILES"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_MCP"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_MCP_ARTIFACT_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_MCP_EMBED_ALLOWED_ROOTS"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_MCP_EMBED_MAX_LOCAL_BYTES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_MCP_HTTP_HOST"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "scripts", "docs", "compose"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_MCP_HTTP_PORT"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "scripts", "docs", "compose"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_MCP_TRANSPORT"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_NEO4J_URL"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_NO_COLOR"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_NO_WIPE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_OUTPUT_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_PG_MCP_URL"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Removed legacy runtime path; migration prunes it from env."
+
+[[env]]
+key = "AXON_PG_URL"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["src", "tests", "scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Removed legacy runtime path; migration prunes it from env."
+
+[[env]]
+key = "AXON_QDRANT_UPSERT_BATCH_SIZE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_REDIS_URL"
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["src", "tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "delete-on-migration"
+reason = "Removed legacy runtime path; migration prunes it from env."
+
+[[env]]
+key = "AXON_REPO_ROOT"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_SERVER_INSECURE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_SESSION_INGEST_MAX_BYTES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_SETUP_SKIP_SMOKE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_SOURCES_FACET_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_SUGGEST_BASE_URL_LIMIT"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_SUGGEST_EXISTING_URL_LIMIT"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_SUGGEST_INDEX_LIMIT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_TARGET_DIR"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_TEI_MAX_CONCURRENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_TEST_AMQP_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_ASK_TEXT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BASE_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BATCH_URL_1"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BATCH_URL_2"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BATCH_URL_3"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BOOL_OPT_ABSENT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BOOL_OPT_FALSE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_BOOL_OPT_TRUE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_DOCKER_FAIL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_EXTRACT_PROMPT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_FALLTHROUGH_PROBE_VAR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_GITHUB_REPO"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_HOME_ENV_VAR_LOADED"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_HOME_UNSET_PROBE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_LOG"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_PG_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_PRECEDENCE_VAR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_QDRANT_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "scripts", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_QUERY_TEXT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_REDDIT_TARGET"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_REDIS_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_SEARCH_TEXT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_SYMLINK_REJECT_PROBE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_TAVILY_KEY_ABSENT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_TAVILY_KEY_PRESENT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_TEST_YOUTUBE_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "AXON_WATCHDOG_SWEEP_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "AXON_WEB_ALLOWED_ORIGINS"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "AXON_WEB_API_TOKEN"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["scripts"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Secret or credential required at runtime; stays in env."
+
+[[env]]
+key = "CUDA_CACHE_DISABLE"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "GEMINI_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Secret or credential required at runtime; stays in env."
+
+[[env]]
+key = "GEMINI_AUTH_FILES"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "GEMINI_CLI_TRUST_WORKSPACE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "GITHUB_INGEST_TOTAL_TIMEOUT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "GITHUB_MAX_ISSUES"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "GITHUB_MAX_PRS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "GITHUB_REPO"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "GITHUB_SUBTASK_COUNT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "HF_HUB_CACHE"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "HF_HUB_ENABLE_HF_TRANSFER"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "NVIDIA_REQUIRE_CUDA"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "QDRANT_COLLECTION"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
+key = "QDRANT_PRODUCTION_YAML"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "REDDIT_BATCH_FLUSH_SIZE"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "REDDIT_CLIENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "REDDIT_TARGET"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test/dev harness variable, not a production env template key."
+
+[[env]]
+key = "REDDIT_USER_AGENT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "TEI_CONCURRENCY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "TEI_MAX_BACKOFF_MS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+
+[[env]]
+key = "TEI_MAX_BATCH_REQUESTS"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["src", "docs", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "TEI_MAX_BATCH_TOKENS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Secret or credential required at runtime; stays in env."
+
+[[env]]
+key = "TEI_MAX_CONCURRENT_REQUESTS"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["src", "docs", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "TEI_POOLING"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["src", "docs", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose interpolation or container-only server argument."
+
+[[env]]
+key = "TEI_TOKENIZATION_WORKERS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "compose"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Secret or credential required at runtime; stays in env."
+
+[[env]]
+key = "GOOGLE_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google/Gemini API key secret used by headless LLM auth."
+
+[[env]]
+key = "GOOGLE_APPLICATION_CREDENTIALS"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Path to Google ADC credentials used by headless LLM auth."
+
+[[env]]
+key = "GOOGLE_CLOUD_LOCATION"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google Vertex AI runtime location setting."
+
+[[env]]
+key = "GOOGLE_CLOUD_PROJECT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google Vertex AI runtime project setting."
+
+[[env]]
+key = "GOOGLE_GENAI_USE_VERTEXAI"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google GenAI Vertex AI runtime mode switch."
+
+[[env]]
+key = "GOOGLE_OAUTH_ALLOWED_EMAILS"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_CLIENT_ID"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_CLIENT_SECRET"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = true
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness secret variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_REDIRECT_HOST"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."

@@ -1,8 +1,9 @@
 use super::assets::{
     CHROME_DOCKERFILE, DOCKER_COMPOSE_SERVICES, ENV_EXAMPLE, QDRANT_PRODUCTION_YAML, SERVICES_ENV,
 };
-use super::config_store::{validate_remote_dir, write_remote_service_urls};
+use super::config_store::{validate_remote_dir, write_remote_runtime_env};
 use super::ssh_targets::list_ssh_targets;
+use crate::core::paths::axon_home_dir;
 use openssh::{KnownHosts, SessionBuilder};
 use openssh_sftp_client::{Sftp, SftpOptions};
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,7 @@ pub struct DeployResult {
     pub qdrant_url: String,
     pub tei_url: String,
     pub chrome_remote_url: String,
-    pub config_path: String,
+    pub runtime_env_path: String,
     pub tunnel_command: Option<String>,
     pub steps: Vec<DeployStep>,
 }
@@ -57,6 +58,12 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     let remote_dir =
         validate_remote_dir(request.remote_dir.as_deref().unwrap_or(DEFAULT_REMOTE_DIR))?;
     let public_exposure = request.public_exposure.unwrap_or(false);
+    if public_exposure {
+        return Err(
+            "--public-exposure is disabled for Axon infra services; use the SSH tunnel output or put Qdrant/TEI/Chrome behind an authenticated proxy"
+                .into(),
+        );
+    }
     let accept_new_host_key = request.accept_new_host_key.unwrap_or(false);
     let remote_host = remote_host_for_target(target).unwrap_or_else(|| target.to_string());
     let mut steps = Vec::new();
@@ -73,7 +80,9 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     run_checked(
         &session,
         "remote directory",
-        &format!("mkdir -p \"$HOME/{remote_dir}/qdrant\" \"$HOME/{remote_dir}/chrome\""),
+        &format!(
+            "mkdir -p \"$HOME/{remote_dir}/config/qdrant\" \"$HOME/{remote_dir}/config/chrome\" \"$HOME/.axon\""
+        ),
     )
     .await?;
     steps.push(step("remote directory", &format!("created ~/{remote_dir}")));
@@ -83,6 +92,16 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     steps.push(step("upload assets", "complete compose project uploaded"));
 
     let session = connect(target, accept_new_host_key).await?;
+    run_checked(
+        &session,
+        "remote runtime env",
+        &remote_runtime_env_command(),
+    )
+    .await?;
+    steps.push(step(
+        "remote runtime env",
+        "ensured remote ~/.axon/.env with service URLs and MCP token",
+    ));
     run_checked_with_timeout(
         &session,
         "compose up",
@@ -94,16 +113,20 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     wait_for_remote_services(&session).await?;
     steps.push(step(
         "service readiness",
-        "qdrant, tei, and chrome are ready",
+        "qdrant, tei, chrome, and axon are ready",
     ));
     session.close().await?;
 
     let (qdrant_url, tei_url, chrome_remote_url, tunnel_command) =
         service_urls(target, &remote_host, public_exposure);
-    let config_path = write_remote_service_urls(&qdrant_url, &tei_url, &chrome_remote_url)?;
+    let axon_home =
+        axon_home_dir().ok_or("HOME is unset or invalid; cannot update ~/.axon/.env")?;
+    let env_path = effective_env_path(&axon_home.join(".env"))?;
+    let runtime_env_path =
+        write_remote_runtime_env(&env_path, &qdrant_url, &tei_url, &chrome_remote_url)?;
     steps.push(step(
-        "local config",
-        &format!("updated {}", config_path.display()),
+        "local env",
+        &format!("updated {}", runtime_env_path.display()),
     ));
 
     Ok(DeployResult {
@@ -114,7 +137,7 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
         qdrant_url,
         tei_url,
         chrome_remote_url,
-        config_path: config_path.display().to_string(),
+        runtime_env_path: runtime_env_path.display().to_string(),
         tunnel_command,
         steps,
     })
@@ -153,18 +176,18 @@ async fn upload_assets(
     let compose_path = format!("{remote_dir}/docker-compose.services.yaml");
     let env_path = format!("{remote_dir}/.env.example");
     let services_env_path = format!("{remote_dir}/services.env");
-    let qdrant_path = format!("{remote_dir}/qdrant/production.yaml");
-    let chrome_path = format!("{remote_dir}/chrome/Dockerfile");
-    write_sftp_file(
-        &sftp,
-        &compose_path,
-        render_compose(public_exposure).as_bytes(),
-    )
-    .await?;
-    write_sftp_file(&sftp, &env_path, ENV_EXAMPLE.as_bytes()).await?;
-    write_sftp_file(&sftp, &services_env_path, SERVICES_ENV.as_bytes()).await?;
-    write_sftp_file(&sftp, &qdrant_path, QDRANT_PRODUCTION_YAML.as_bytes()).await?;
-    write_sftp_file(&sftp, &chrome_path, CHROME_DOCKERFILE.as_bytes()).await?;
+    let qdrant_path = format!("{remote_dir}/config/qdrant/production.yaml");
+    let chrome_path = format!("{remote_dir}/config/chrome/Dockerfile");
+    let compose = render_compose(public_exposure);
+    for (path, contents) in [
+        (compose_path.as_str(), compose.as_bytes()),
+        (env_path.as_str(), ENV_EXAMPLE.as_bytes()),
+        (services_env_path.as_str(), SERVICES_ENV.as_bytes()),
+        (qdrant_path.as_str(), QDRANT_PRODUCTION_YAML.as_bytes()),
+        (chrome_path.as_str(), CHROME_DOCKERFILE.as_bytes()),
+    ] {
+        write_sftp_file(&sftp, path, contents).await?;
+    }
     with_timeout("sftp close", SFTP_TIMEOUT, sftp.close()).await?;
     Ok(())
 }
@@ -215,6 +238,7 @@ async fn wait_for_remote_services(session: &openssh::Session) -> Result<(), Box<
         ("qdrant readiness", "http://127.0.0.1:53333/readyz"),
         ("tei readiness", "http://127.0.0.1:52000/health"),
         ("chrome readiness", "http://127.0.0.1:6000/json/version"),
+        ("axon readiness", "http://127.0.0.1:8001/readyz"),
     ] {
         run_checked_with_timeout(
             session,
@@ -248,28 +272,32 @@ where
         .map_err(|err| Box::new(err) as Box<dyn Error>)
 }
 
-fn render_compose(public_exposure: bool) -> String {
-    let remote_compose = DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env");
-    if public_exposure {
-        remote_compose.replace("127.0.0.1:", "")
-    } else {
-        remote_compose
-    }
+fn render_compose(_public_exposure: bool) -> String {
+    DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env")
+}
+
+fn remote_runtime_env_command() -> String {
+    [
+        "set -eu",
+        "mkdir -p \"$HOME/.axon\"",
+        "touch \"$HOME/.axon/.env\"",
+        "chmod 600 \"$HOME/.axon/.env\"",
+        "token=$(sed -n 's/^\\(export[[:space:]]*\\)\\{0,1\\}AXON_MCP_HTTP_TOKEN=//p' \"$HOME/.axon/.env\" | sed '/^$/d' | head -n 1)",
+        "if [ -z \"$token\" ]; then token=$(LC_ALL=C tr -dc 'A-Fa-f0-9' < /dev/urandom | head -c 64); fi",
+        "tmp=$(mktemp \"$HOME/.axon/.env.tmp.XXXXXX\")",
+        "sed '/^\\(export[[:space:]]*\\)\\{0,1\\}\\(QDRANT_URL\\|TEI_URL\\|AXON_CHROME_REMOTE_URL\\|AXON_MCP_HTTP_TOKEN\\)=/d' \"$HOME/.axon/.env\" > \"$tmp\"",
+        "printf '%s\\n' 'QDRANT_URL=http://axon-qdrant:6333' 'TEI_URL=http://axon-tei:80' 'AXON_CHROME_REMOTE_URL=http://axon-chrome:6000' \"AXON_MCP_HTTP_TOKEN=$token\" >> \"$tmp\"",
+        "chmod 600 \"$tmp\"",
+        "mv \"$tmp\" \"$HOME/.axon/.env\"",
+    ]
+    .join(" && ")
 }
 
 fn service_urls(
     target: &str,
-    remote_host: &str,
-    public_exposure: bool,
+    _remote_host: &str,
+    _public_exposure: bool,
 ) -> (String, String, String, Option<String>) {
-    if public_exposure {
-        return (
-            format!("http://{remote_host}:53333"),
-            format!("http://{remote_host}:52000"),
-            format!("http://{remote_host}:6000"),
-            None,
-        );
-    }
     (
         "http://127.0.0.1:53333".to_string(),
         "http://127.0.0.1:52000".to_string(),
@@ -278,6 +306,19 @@ fn service_urls(
             "ssh -N -L 53333:127.0.0.1:53333 -L 52000:127.0.0.1:52000 -L 6000:127.0.0.1:6000 {target}"
         )),
     )
+}
+
+fn effective_env_path(
+    default_path: &std::path::Path,
+) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let Ok(explicit) = std::env::var("AXON_ENV_FILE") else {
+        return Ok(default_path.to_path_buf());
+    };
+    let trimmed = explicit.trim();
+    if trimmed.is_empty() {
+        return Ok(default_path.to_path_buf());
+    }
+    Ok(std::path::PathBuf::from(trimmed))
 }
 
 fn remote_host_for_target(target: &str) -> Option<String> {
@@ -300,17 +341,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compose_rendering_is_private_by_default_and_public_on_opt_in() {
+    fn compose_rendering_is_private_even_when_public_requested() {
         let private = render_compose(false);
         assert!(private.contains("127.0.0.1:53333:6333"));
         assert!(private.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
         assert!(private.contains("127.0.0.1:6000:6000"));
 
         let public = render_compose(true);
-        assert!(public.contains("\"53333:6333\""));
-        assert!(public.contains("\"${TEI_HTTP_PORT:-52000}:80\""));
-        assert!(public.contains("\"6000:6000\""));
-        assert!(!public.contains("127.0.0.1:53333:6333"));
+        assert!(public.contains("127.0.0.1:53333:6333"));
+        assert!(public.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
+        assert!(public.contains("127.0.0.1:6000:6000"));
     }
 
     #[test]
@@ -326,12 +366,12 @@ mod tests {
     }
 
     #[test]
-    fn public_service_urls_use_remote_host() {
+    fn public_service_urls_stay_tunneled() {
         let (qdrant, tei, chrome, tunnel) = service_urls("prod", "prod.example.test", true);
-        assert_eq!(qdrant, "http://prod.example.test:53333");
-        assert_eq!(tei, "http://prod.example.test:52000");
-        assert_eq!(chrome, "http://prod.example.test:6000");
-        assert!(tunnel.is_none());
+        assert_eq!(qdrant, "http://127.0.0.1:53333");
+        assert_eq!(tei, "http://127.0.0.1:52000");
+        assert_eq!(chrome, "http://127.0.0.1:6000");
+        assert!(tunnel.is_some());
     }
 
     #[test]
@@ -347,5 +387,30 @@ mod tests {
         assert!(QDRANT_PRODUCTION_YAML.contains("http_port: 6333"));
         assert!(DOCKER_COMPOSE_SERVICES.contains("chrome/Dockerfile"));
         assert!(CHROME_DOCKERFILE.contains("FROM "));
+    }
+
+    #[test]
+    fn remote_runtime_env_command_seeds_auth_and_container_service_urls() {
+        let command = remote_runtime_env_command();
+        assert!(command.contains("AXON_MCP_HTTP_TOKEN"));
+        assert!(!command.contains("awk -F="));
+        assert!(command.contains("AXON_MCP_HTTP_TOKEN=//p"));
+        assert!(command.contains("export[[:space:]]"));
+        assert!(command.contains("QDRANT_URL=http://axon-qdrant:6333"));
+        assert!(command.contains("TEI_URL=http://axon-tei:80"));
+        assert!(command.contains("AXON_CHROME_REMOTE_URL=http://axon-chrome:6000"));
+        assert!(command.contains("chmod 600"));
+    }
+
+    #[test]
+    fn uploaded_asset_paths_match_compose_project_paths() {
+        let remote_dir = "axon-deploy";
+        let qdrant_path = format!("{remote_dir}/config/qdrant/production.yaml");
+        let chrome_path = format!("{remote_dir}/config/chrome/Dockerfile");
+        assert!(DOCKER_COMPOSE_SERVICES.contains("./config/qdrant/production.yaml"));
+        assert!(DOCKER_COMPOSE_SERVICES.contains("context: ./config"));
+        assert!(DOCKER_COMPOSE_SERVICES.contains("dockerfile: chrome/Dockerfile"));
+        assert_eq!(qdrant_path, "axon-deploy/config/qdrant/production.yaml");
+        assert_eq!(chrome_path, "axon-deploy/config/chrome/Dockerfile");
     }
 }

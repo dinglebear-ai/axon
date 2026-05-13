@@ -52,7 +52,10 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.tei_request_timeout_ms = tei_request_timeout_ms(toml);
     cfg.tei_max_client_batch_size = tei_max_client_batch_size(toml);
     cfg.ingest_lanes = ingest_lanes(toml);
+    cfg.embed_lanes = embed_lanes(toml);
     cfg.embed_doc_timeout_secs = embed_doc_timeout_secs(toml);
+    cfg.queue_summary_secs = queue_summary_secs(toml);
+    cfg.qdrant_point_buffer = qdrant_point_buffer(toml);
     cfg.max_pending_crawl_jobs = max_pending(toml, "crawl");
     cfg.max_pending_embed_jobs = max_pending(toml, "embed");
     cfg.max_pending_extract_jobs = max_pending(toml, "extract");
@@ -198,6 +201,10 @@ fn ingest_lanes(toml: &TomlConfig) -> usize {
     resolve_clamped_usize("AXON_INGEST_LANES", toml.workers.ingest_lanes, 2, 1, 16)
 }
 
+fn embed_lanes(toml: &TomlConfig) -> usize {
+    resolve_clamped_usize("AXON_EMBED_LANES", toml.workers.embed_lanes, 2, 1, 32)
+}
+
 fn embed_doc_timeout_secs(toml: &TomlConfig) -> u64 {
     resolve_clamped_u64(
         "AXON_EMBED_DOC_TIMEOUT_SECS",
@@ -205,6 +212,26 @@ fn embed_doc_timeout_secs(toml: &TomlConfig) -> u64 {
         300,
         30,
         3600,
+    )
+}
+
+fn queue_summary_secs(toml: &TomlConfig) -> u64 {
+    resolve_clamped_u64(
+        "AXON_QUEUE_SUMMARY_SECS",
+        toml.workers.queue_summary_secs,
+        30,
+        0,
+        3600,
+    )
+}
+
+fn qdrant_point_buffer(toml: &TomlConfig) -> usize {
+    resolve_clamped_usize(
+        "AXON_QDRANT_POINT_BUFFER",
+        toml.workers.qdrant_point_buffer,
+        256,
+        128,
+        16_384,
     )
 }
 

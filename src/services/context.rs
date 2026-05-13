@@ -18,7 +18,7 @@ impl ServiceContext {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
         if spawn_workers {
-            spawn_queue_summary_logger(Arc::clone(&jobs));
+            spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
         Ok(Self { cfg, jobs })
     }
@@ -55,12 +55,8 @@ impl ServiceContext {
 ///
 /// Spawned only by `new_with_workers()` (so worker-bearing processes — serve,
 /// mcp — emit a baseline queue signal). Interval is `AXON_QUEUE_SUMMARY_SECS`
-/// (default 60s; set to 0 to disable).
-fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>) {
-    let secs: u64 = std::env::var("AXON_QUEUE_SUMMARY_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(60);
+/// (default 30s).
+fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
     if secs == 0 {
         return;
     }
@@ -70,10 +66,18 @@ fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>) {
         interval.tick().await;
         loop {
             interval.tick().await;
-            let crawl = jobs.count_jobs(JobKind::Crawl).await.unwrap_or(0);
-            let extract = jobs.count_jobs(JobKind::Extract).await.unwrap_or(0);
-            let embed = jobs.count_jobs(JobKind::Embed).await.unwrap_or(0);
-            let ingest = jobs.count_jobs(JobKind::Ingest).await.unwrap_or(0);
+            let Some(crawl) = queue_depth(&jobs, JobKind::Crawl).await else {
+                continue;
+            };
+            let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
+                continue;
+            };
+            let Some(embed) = queue_depth(&jobs, JobKind::Embed).await else {
+                continue;
+            };
+            let Some(ingest) = queue_depth(&jobs, JobKind::Ingest).await else {
+                continue;
+            };
             tracing::info!(
                 crawl,
                 extract,
@@ -84,4 +88,18 @@ fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>) {
             );
         }
     });
+}
+
+async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {
+    match jobs.count_jobs(kind).await {
+        Ok(count) => Some(count),
+        Err(err) => {
+            tracing::warn!(
+                ?kind,
+                error = %err,
+                "failed to read job queue depth"
+            );
+            None
+        }
+    }
 }

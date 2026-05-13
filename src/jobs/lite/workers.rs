@@ -20,21 +20,6 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-/// Resolve the number of worker lanes for a job type from an env var.
-///
-/// Falls back to a CPU-scaled default clamped to `[cpu_min, cpu_max]`.
-pub(crate) fn resolve_lane_count(env_var: &str, cpu_min: usize, cpu_max: usize) -> usize {
-    let cpu_default = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        .clamp(cpu_min, cpu_max);
-    std::env::var(env_var)
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&n| n >= 1)
-        .unwrap_or(cpu_default)
-}
-
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const WORKER_BATCH_LIMIT: usize = 32;
 
@@ -73,12 +58,12 @@ impl Drop for WorkerHandles {
     }
 }
 
-/// Spawn in-process worker tasks for all 6 job types.
+/// Spawn in-process worker tasks for all job types.
 ///
-/// Embed and ingest spawn multiple lanes (controlled by `AXON_EMBED_LANES` /
-/// `AXON_INGEST_LANES`). All lanes share the same `Notify` handle so a single
-/// `notify_one()` wakes one waiting lane. SQLite `BEGIN IMMEDIATE` in
-/// `claim_next_pending()` serializes lane claims atomically — no semaphore needed.
+/// Embed and ingest spawn multiple lanes from `Config`. All lanes share the
+/// same `Notify` handle so a single `notify_one()` wakes one waiting lane.
+/// SQLite `BEGIN IMMEDIATE` in `claim_next_pending()` serializes lane claims
+/// atomically — no semaphore needed.
 pub fn spawn_workers(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
@@ -90,7 +75,7 @@ pub fn spawn_workers(
     let ingest_notify = Arc::new(Notify::new());
     let shutdown = CancellationToken::new();
 
-    let embed_lanes = resolve_lane_count("AXON_EMBED_LANES", 2, 32);
+    let embed_lanes = cfg.embed_lanes.clamp(1, 32);
     // ingest_lanes is sourced from Config (env > TOML > default), already clamped at parse
     // time to the same effective range used here.
     let ingest_lanes = cfg.ingest_lanes.clamp(1, 16);

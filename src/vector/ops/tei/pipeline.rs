@@ -329,7 +329,7 @@ pub(super) async fn run_embed_pipeline(
         1,
         64,
     );
-    let flush_threshold = env_usize_clamped("AXON_QDRANT_POINT_BUFFER", 256, 128, 16384);
+    let flush_threshold = cfg.qdrant_point_buffer.clamp(128, 16_384);
 
     let mut work = prepared.into_iter();
     if let Some(tx) = &progress_tx {

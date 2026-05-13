@@ -9,6 +9,7 @@ use tokio::process::Command;
 
 mod compose;
 mod env;
+mod env_migration;
 mod runtime;
 
 const SETUP_TARGET_SECS: u64 = 120;
@@ -33,6 +34,7 @@ pub enum LocalSetupMode {
     FirstRun,
     Check,
     Repair,
+    MigrateEnv,
 }
 
 impl LocalSetupMode {
@@ -45,6 +47,7 @@ impl LocalSetupMode {
             Self::FirstRun => "first-run",
             Self::Check => "check",
             Self::Repair => "repair",
+            Self::MigrateEnv => "migrate-env",
         }
     }
 }
@@ -243,7 +246,18 @@ fn run_env_and_compose_phases(
     phases: &mut Vec<LocalSetupPhase>,
 ) -> io::Result<EnvPhaseState> {
     if mode.mutates() {
-        let env_result = env::ensure_env_file(env_path)?;
+        let env_result = if matches!(mode, LocalSetupMode::MigrateEnv) {
+            if !env_path.exists() {
+                phases.push(env::ensure_env_file(env_path)?.phase);
+            }
+            env_migration::migrate_env_file(env_path)?
+        } else {
+            let result = env::ensure_env_file(env_path)?;
+            env_migration::EnvMigrationResult {
+                phase: result.phase,
+                values: result.values,
+            }
+        };
         let finalized = Some(env_result.values);
         phases.push(env_result.phase);
         phases.push(compose::write_compose_assets(compose_dir)?);
