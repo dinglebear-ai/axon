@@ -2,7 +2,7 @@ use super::{CrawlSummary, canonicalize_url_for_dedupe, is_excluded_url_path};
 use crate::core::config::Config;
 use crate::core::content::{
     build_selector_config, extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps,
-    to_markdown, url_to_filename,
+    to_markdown, url_to_stable_filename,
 };
 use crate::core::http::{build_client, validate_url};
 use crate::core::logging::log_info;
@@ -420,13 +420,13 @@ async fn write_backfill_entry(
     url: &str,
     trimmed: &str,
     markdown_chars: usize,
-    idx: u32,
+    _idx: u32,
 ) -> Result<(), Box<dyn Error>> {
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let content_hash = hex::encode(hasher.finalize());
 
-    let filename = url_to_filename(url, idx);
+    let filename = url_to_stable_filename(url);
     let file = markdown_dir.join(&filename);
     tokio::fs::write(&file, trimmed.as_bytes()).await?;
 

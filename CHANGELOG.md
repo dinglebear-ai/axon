@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-05-12
+
+### Added
+
+- docker: install Node.js 22 LTS (via NodeSource) and `@google/gemini-cli` in the container runtime stage so `ask`/`evaluate`/`research` synthesis works in the served container without a host gemini binary.
+- docker-compose: bind-mount `~/.gemini` read-only into the container so the Gemini CLI can access OAuth credentials for headless synthesis.
+- scripts/axon: auto-rebuild the debug binary and sync PATH symlinks on every invocation; trigger an async `docker compose build + up` when source files are newer than `target/.container-built` so the container stays in sync automatically.
+- just: add `link-bin` target that syncs `~/.local/bin/axon` and all plugin cache slots to the compiled release binary; wired into `just build` so every release build stays current.
+- just: add `sync-container` target for synchronous release build + container rebuild + restart.
+
+### Fixed
+
+- gemini: set `GEMINI_CLI_TRUST_WORKSPACE=true` when spawning the Gemini headless process so gemini 0.41+ does not exit with code 55 in non-interactive mode.
+- gemini: preserve the user's real `settings.json` in the isolated HOME instead of generating one from scratch; clear only MCP server, hook, and context fields to prevent side effects while keeping auth configuration intact across gemini versions.
+- jobs/lite: wrap sqlx migration version-mismatch error with a human-readable hint pointing to `just install`.
+
 ## [1.10.1] - 2026-05-11
 
 ### Fixed

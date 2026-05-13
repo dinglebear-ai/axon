@@ -10,7 +10,7 @@ use super::super::is_excluded_url_path;
 use super::super::{
     CrawlSummary, MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url,
 };
-use crate::core::content::{bytes_to_markdown, url_to_filename};
+use crate::core::content::{bytes_to_markdown, url_to_stable_filename};
 use crate::crawl::manifest::ManifestEntry;
 
 pub struct CollectorConfig {
@@ -46,12 +46,7 @@ pub enum PageOutcome {
     },
 }
 
-pub fn process_page(
-    html_bytes: &[u8],
-    url: &str,
-    col: &CollectorConfig,
-    next_file_count: u32,
-) -> PageOutcome {
+pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> PageOutcome {
     let trimmed = bytes_to_markdown(html_bytes, col.selector_config.as_ref());
     let chars = trimmed.len();
 
@@ -77,7 +72,7 @@ pub fn process_page(
     if let Some(prev) = col.previous_manifest.get(url)
         && prev.content_hash.as_deref() == Some(&content_hash)
     {
-        let filename = url_to_filename(url, next_file_count);
+        let filename = url_to_stable_filename(url);
         let entry = ManifestEntry {
             url: url.to_string(),
             relative_path: format!("markdown/{filename}"),
@@ -92,7 +87,7 @@ pub fn process_page(
         };
     }
 
-    let filename = url_to_filename(url, next_file_count);
+    let filename = url_to_stable_filename(url);
     let entry = ManifestEntry {
         url: url.to_string(),
         relative_path: format!("markdown/{filename}"),
