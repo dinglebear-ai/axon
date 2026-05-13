@@ -22,7 +22,7 @@ None.
 |----------|-------------|
 | `QDRANT_URL` | Qdrant base URL. |
 
-`sources` reads Qdrant metadata and does not require Postgres, Redis, or AMQP.
+`sources` reads Qdrant metadata.
 
 ## Flags
 

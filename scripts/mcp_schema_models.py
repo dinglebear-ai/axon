@@ -137,7 +137,7 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
     # field_name: (default, description)
     "urls": ("--", "Seed URLs (required, non-empty array)"),
     "max_pages": ("0 (uncapped)", "Page limit"),
-    "max_depth": ("5", "Max crawl depth"),
+    "max_depth": ("10", "Max crawl depth"),
     "include_subdomains": ("false", "Include subdomains"),
     "respect_robots": ("false", "Honour robots.txt"),
     "discover_sitemaps": ("true", "Run sitemap backfill after crawl"),
@@ -164,18 +164,12 @@ MCP_TRANSPORT_ENV_VARS: list[str] = [
     "AXON_MCP_HTTP_PORT",
 ]
 
-OAUTH_BROKER_ENV_VARS: list[str] = [
-    "GOOGLE_OAUTH_CLIENT_ID",
-    "GOOGLE_OAUTH_CLIENT_SECRET",
-    "GOOGLE_OAUTH_AUTH_URL",
-    "GOOGLE_OAUTH_TOKEN_URL",
-    "GOOGLE_OAUTH_REDIRECT_PATH",
-    "GOOGLE_OAUTH_REDIRECT_HOST",
-    "GOOGLE_OAUTH_REDIRECT_URI",
-    "GOOGLE_OAUTH_BROKER_ISSUER",
-    "GOOGLE_OAUTH_SCOPES",
-    "GOOGLE_OAUTH_DCR_TOKEN",
-    "GOOGLE_OAUTH_REDIRECT_POLICY",
-    "GOOGLE_OAUTH_REDIS_URL",
-    "GOOGLE_OAUTH_REDIS_PREFIX",
+MCP_AUTH_ENV_VARS: list[str] = [
+    "AXON_MCP_HTTP_TOKEN",
+    "AXON_MCP_AUTH_MODE",
+    "AXON_MCP_PUBLIC_URL",
+    "AXON_MCP_GOOGLE_CLIENT_ID",
+    "AXON_MCP_GOOGLE_CLIENT_SECRET",
+    "AXON_MCP_AUTH_ADMIN_EMAIL",
+    "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
 ]

@@ -43,7 +43,6 @@ axon mcp
 ```
 
 MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
-Postgres, Redis, and AMQP env vars are not read by the MCP server.
 
 ### Codex CLI configuration
 

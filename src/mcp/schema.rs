@@ -409,8 +409,8 @@ pub struct ResearchRequest {
 #[serde(deny_unknown_fields)]
 pub struct AskRequest {
     pub query: Option<String>,
-    /// Deprecated/unavailable: graph retrieval is not wired in this build.
-    /// `graph: true` is rejected by the MCP ask handler.
+    /// Deprecated compatibility field. `false`/unset is accepted as a no-op;
+    /// `true` is rejected by the handler because graph retrieval is not wired.
     pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,
@@ -426,6 +426,14 @@ pub struct AskRequest {
     /// (skips BM42 sparse + RRF). When unset, falls back to server config.
     pub hybrid_search: Option<bool>,
     pub response_mode: Option<ResponseMode>,
+}
+
+impl AskRequest {
+    pub fn unsupported_graph_error(&self) -> Option<&'static str> {
+        self.graph
+            .unwrap_or(false)
+            .then_some("graph retrieval is not supported; omit graph or set graph to false")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]

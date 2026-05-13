@@ -43,7 +43,7 @@
 | Package | Purpose |
 |---------|---------|
 | Biome | Linter and formatter |
-| pnpm | Package manager/build runner |
+| npm + package-lock.json | Package manager/build runner |
 
 ## Embedding pipeline
 

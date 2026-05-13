@@ -249,15 +249,22 @@ fn apply_serve(out: &mut DispatchOutput, args: super::super::super::cli::ServeAr
 fn apply_setup(out: &mut DispatchOutput, args: super::super::super::cli::SetupArgs) {
     out.command = CommandKind::Setup;
     match args.action {
-        super::super::super::cli::SetupSubcommand::Targets => {
+        None => {}
+        Some(super::super::super::cli::SetupSubcommand::Check) => {
+            out.positional = vec!["check".to_string()];
+        }
+        Some(super::super::super::cli::SetupSubcommand::Repair) => {
+            out.positional = vec!["repair".to_string()];
+        }
+        Some(super::super::super::cli::SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
-        super::super::super::cli::SetupSubcommand::Deploy {
+        Some(super::super::super::cli::SetupSubcommand::Deploy {
             target,
             remote_dir,
             public_exposure,
             accept_new_host_key,
-        } => {
+        }) => {
             let mut positional = vec![
                 "deploy".to_string(),
                 target,

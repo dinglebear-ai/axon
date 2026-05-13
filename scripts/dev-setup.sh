@@ -219,7 +219,7 @@ else
   warn "mold not found (optional fast linker) — install via: sudo apt-get install mold  OR  brew install mold"
 fi
 
-# ── Node.js + pnpm ─────────────────────────────────────────────────────────────
+# ── Node.js + npm ──────────────────────────────────────────────────────────────
 sep
 info "Checking Node.js..."
 REQUIRED_NODE_MAJOR=24
@@ -236,7 +236,7 @@ if command -v node >/dev/null 2>&1; then
       info "Install via nvm: nvm install ${REQUIRED_NODE_MAJOR} && nvm use ${REQUIRED_NODE_MAJOR}"
       info "Or via NodeSource: curl -fsSL https://deb.nodesource.com/setup_${REQUIRED_NODE_MAJOR}.x | sudo -E bash - && sudo apt-get install -y nodejs"
     fi
-    warn "Continuing — pnpm install may fail if Node version is incompatible."
+    warn "Continuing — npm ci may fail if Node version is incompatible."
   fi
 else
   if [[ "$OS" == "macos" ]]; then
@@ -249,24 +249,14 @@ else
   fi
 fi
 
-info "Checking pnpm..."
-if command -v pnpm >/dev/null 2>&1; then
-  PNPM_MAJOR="$(pnpm --version | cut -d. -f1)"
-  if (( PNPM_MAJOR >= 10 )); then
-    ok "pnpm $(pnpm --version)"
-  else
-    info "Upgrading pnpm to v10+..."
-    npm install -g pnpm@10 && ok "pnpm upgraded to $(pnpm --version)"
-  fi
-else
-  info "Installing pnpm v10..."
-  npm install -g pnpm@10 && ok "pnpm $(pnpm --version) installed"
-fi
+info "Checking npm..."
+command -v npm >/dev/null 2>&1 || die "npm not found; install Node.js ${REQUIRED_NODE_MAJOR}+"
+ok "npm $(npm --version)"
 
 # ── Web App Dependencies ───────────────────────────────────────────────────────
 sep
 info "Installing web app dependencies..."
-(cd "$REPO/apps/web" && pnpm install --frozen-lockfile)
+(cd "$REPO/apps/web" && npm ci)
 ok "apps/web dependencies installed"
 
 # ── Environment File ───────────────────────────────────────────────────────────
@@ -437,7 +427,7 @@ echo "       cargo run --bin axon -- extract worker"
 echo "     Or all at once:  just workers"
 echo ""
 echo "  3. Run the web UI:"
-echo "       cd apps/web && pnpm dev    # http://localhost:49010"
+echo "       cd apps/web && npm run dev    # http://localhost:49010"
 echo "     Or full dev stack:  just dev"
 echo ""
 echo "  4. Verify services:  ./scripts/axon doctor"

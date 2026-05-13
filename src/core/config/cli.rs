@@ -116,11 +116,15 @@ pub(super) enum ServeSubcommand {
 #[command(args_conflicts_with_subcommands = true)]
 pub(super) struct SetupArgs {
     #[command(subcommand)]
-    pub(super) action: SetupSubcommand,
+    pub(super) action: Option<SetupSubcommand>,
 }
 
 #[derive(Debug, Subcommand)]
 pub(super) enum SetupSubcommand {
+    /// Check local Docker setup prerequisites without mutating files or services
+    Check,
+    /// Repair local Axon config, compose assets, and Docker stack
+    Repair,
     /// List deployment targets from ~/.ssh/config
     Targets,
     /// Deploy Qdrant, TEI, and Chrome services to an SSH target

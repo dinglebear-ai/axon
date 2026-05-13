@@ -10,9 +10,15 @@ Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optiona
 claude plugin install <path>
 ```
 
-The plugin manifest declares a `userConfig` block — Claude Code prompts for Qdrant URL, TEI URL, collection name, LLM endpoint/model/API key, Tavily API key, Chrome remote URL, MCP URL, and API token on install.
+The plugin manifest declares a minimal `userConfig` block. Claude Code prompts for the shared Axon server URL, bearer token, optional Tavily/GitHub/Reddit credentials, and optional OAuth settings. Qdrant, TEI, Chrome, Qwen3 embedding, and Gemini CLI are configured by the shared Docker setup path, not by plugin prompts.
 
-The SessionStart hook (`scripts/plugin-setup.sh`) is the deployment path: it links the plugin binary into `~/.local/bin/axon`, writes the canonical runtime env to `~/.axon/.env`, and installs/restarts the `axon-mcp.service` systemd user service. The `.mcp.json` then connects Claude Code to that HTTP server at `${user_config.server_url}/mcp` with the configured bearer token.
+The SessionStart hook (`scripts/plugin-setup.sh`) delegates to the same setup flow as the one-line installer:
+
+1. If `axon` is already on `PATH`, run `axon setup repair`.
+2. If `axon` is absent, run the release installer, then run `axon setup repair`.
+3. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
+
+No systemd unit is created, and the plugin-cache binary is not symlinked into `~/.local/bin`. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
 
 `~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
 

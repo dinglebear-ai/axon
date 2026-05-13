@@ -5,11 +5,17 @@ Last Modified: 2026-03-10
 
 The `axon ingest` command ingests external sources — GitHub repositories, Reddit subreddits/threads, and YouTube videos/playlists/channels — into Qdrant. Source type is auto-detected from the target argument.
 
-Per-source implementation and operations docs:
+## Ingest Docs Index
 
-- [`docs/ingest/github.md`](github.md) — GitHub repository ingestion
-- [`docs/ingest/reddit.md`](reddit.md) — Reddit subreddit and thread ingestion
-- [`docs/ingest/youtube.md`](youtube.md) — YouTube video, playlist, and channel ingestion
+| Doc | Scope |
+|-----|-------|
+| [`docs/ingest/ingest.md`](ingest.md) | Shared ingest job schema, dependencies, and environment variables. |
+| [`docs/ingest/github.md`](github.md) | GitHub repository ingestion. |
+| [`docs/ingest/reddit.md`](reddit.md) | Reddit subreddit and thread ingestion. |
+| [`docs/ingest/youtube.md`](youtube.md) | YouTube video, playlist, and channel ingestion. |
+| [`docs/ingest/sessions.md`](sessions.md) | AI session export ingestion. |
+
+Command-only operational notes live in `docs/commands/*.md`; do not add one-sentence `docs/ingest/` stubs for non-ingest commands.
 
 ## Storage Schema
 

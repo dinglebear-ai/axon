@@ -89,6 +89,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn config_example_toml_parses() {
+        let contents = include_str!("../../../config.example.toml");
+        let cfg = super::toml_config::load_toml_config_from_str(contents)
+            .expect("config.example.toml should parse");
+        assert!(
+            cfg.search.ask_hybrid_candidates.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+        assert!(
+            cfg.tei.max_retries.is_none(),
+            "example documents defaults without forcing local overrides"
+        );
+    }
+
     #[allow(unsafe_code)]
     #[test]
     fn parse_watch_run_now() {
@@ -567,6 +582,41 @@ mod tests {
         assert!(matches!(cfg.command, CommandKind::Setup));
         assert_eq!(cfg.positional, vec!["targets".to_string()]);
         assert!(cfg.json_output);
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_setup_without_subcommand_is_local_first_run() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let cli = super::Cli::parse_from(["axon", "setup"]);
+        let cfg = super::build_config::into_config(cli).expect("setup should parse");
+
+        assert!(matches!(cfg.command, CommandKind::Setup));
+        assert!(cfg.positional.is_empty());
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn parse_setup_check_and_repair_modes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            env::remove_var("TEI_URL");
+            env::remove_var("QDRANT_URL");
+        }
+
+        let check = super::Cli::parse_from(["axon", "setup", "check"]);
+        let check_cfg = super::build_config::into_config(check).expect("setup check should parse");
+        assert_eq!(check_cfg.positional, vec!["check".to_string()]);
+
+        let repair = super::Cli::parse_from(["axon", "setup", "repair"]);
+        let repair_cfg =
+            super::build_config::into_config(repair).expect("setup repair should parse");
+        assert_eq!(repair_cfg.positional, vec!["repair".to_string()]);
     }
 
     #[allow(unsafe_code)]

@@ -23,7 +23,7 @@ All global flags apply. Key flags for this command:
 
 - Job pipeline readiness for `crawl`, `extract`, `embed`, `ingest`
 - Service health for Qdrant, TEI, and optional Chrome endpoint
-- Gemini headless command/config readiness for LLM-backed commands
+- Gemini headless command/config checks for LLM-backed commands; `axon ask` is the completion proof
 - Browser runtime diagnostics settings
 - Stale and pending job counts
 - Probe timing metrics
@@ -35,7 +35,7 @@ doctor report includes:
 
 - SQLite file presence (`exists`) and path
 - TEI and Qdrant service probes
-- Gemini headless readiness
+- Gemini headless CLI/config status
 - Chrome endpoint probe
 - Browser runtime diagnostics
 - compatibility fields such as `"lite_mode": true` in the report
@@ -52,6 +52,6 @@ axon doctor --json
 
 ## Notes
 
-- `OPENAI_BASE_URL` and `OPENAI_MODEL` affect OpenAI probe and extract LLM-readiness fields.
+- Gemini CLI auth and `AXON_HEADLESS_GEMINI_*` settings control LLM completion, but `doctor` does not prove completion readiness; run `axon ask` for that smoke.
 - Chrome is optional; report includes `configured` and probe status separately.
 - `all_ok` focuses on core pipeline + TEI + Qdrant readiness.

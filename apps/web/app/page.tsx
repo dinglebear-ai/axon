@@ -10,6 +10,13 @@ type PanelState = {
 type ConfigResponse = {
   path: string;
   raw_toml: string;
+  restart_required: boolean;
+};
+
+type SaveConfigResponse = {
+  ok: boolean;
+  restart_required: boolean;
+  message: string;
 };
 
 type OpsResponse = {
@@ -17,6 +24,21 @@ type OpsResponse = {
   tei_url: string;
   collection: string;
   mcp_http_url: string;
+};
+
+type StackCheck = {
+  label: string;
+  status: 'ok' | 'warn' | 'error' | string;
+  detail: string;
+};
+
+type StackResponse = {
+  runtime_mode: 'host' | 'container' | string;
+  server_url: string;
+  mcp_url: string;
+  log_dir: string;
+  compose_file: string;
+  checks: StackCheck[];
 };
 
 type SshTarget = {
@@ -47,12 +69,19 @@ export default function Page() {
   const [panelState, setPanelState] = useState<PanelState | null>(null);
   const [config, setConfig] = useState('');
   const [ops, setOps] = useState<OpsResponse | null>(null);
+  const [stack, setStack] = useState<StackResponse | null>(null);
+  const [stackLoading, setStackLoading] = useState(false);
+  const [stackStatus, setStackStatus] = useState('');
   const [targets, setTargets] = useState<SshTarget[]>([]);
   const [selectedTarget, setSelectedTarget] = useState('');
   const [publicExposure, setPublicExposure] = useState(false);
   const [acceptNewHostKey, setAcceptNewHostKey] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+  const [firstUrl, setFirstUrl] = useState('https://example.com');
+  const [firstQuestion, setFirstQuestion] = useState('What did we crawl?');
+  const [firstRunResult, setFirstRunResult] = useState('');
+  const [firstRunBusy, setFirstRunBusy] = useState(false);
   const [targetError, setTargetError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -94,6 +123,8 @@ export default function Page() {
       })
       .catch((error) => setMessage(String(error)));
 
+    void refreshStack();
+
     void fetch('/api/panel/setup/targets', { headers: authedHeaders })
       .then(async (res) => {
         if (!res.ok) throw new Error(await res.text());
@@ -106,6 +137,32 @@ export default function Page() {
       })
       .catch((error) => setTargetError(String(error)));
   }, [token, authedHeaders]);
+
+  async function refreshStack() {
+    if (!token) return;
+    setStackLoading(true);
+    setStackStatus('');
+    try {
+      const res = await fetch('/api/panel/stack', { headers: authedHeaders });
+      const body = await res.text();
+      if (!res.ok) {
+        setStack(null);
+        setStackStatus(body || `Stack check failed with HTTP ${res.status}`);
+        return;
+      }
+      try {
+        setStack(JSON.parse(body) as StackResponse);
+      } catch (error) {
+        setStack(null);
+        setStackStatus(`Stack check returned invalid JSON: ${String(error)}`);
+      }
+    } catch (error) {
+      setStack(null);
+      setStackStatus(`Stack check failed: ${String(error)}`);
+    } finally {
+      setStackLoading(false);
+    }
+  }
 
   async function login() {
     const res = await fetch('/api/panel/login', {
@@ -130,7 +187,12 @@ export default function Page() {
       headers: authedHeaders,
       body: JSON.stringify({ raw_toml: config })
     });
-    setMessage(res.ok ? 'Config saved' : await res.text());
+    if (!res.ok) {
+      setMessage(await res.text());
+      return;
+    }
+    const body = (await res.json()) as SaveConfigResponse;
+    setMessage(body.message);
   }
 
   async function deployRemote() {
@@ -159,6 +221,42 @@ export default function Page() {
     setDeployResult(body);
     setConfig(await fetch('/api/panel/config', { headers: authedHeaders }).then((cfg) => cfg.json()).then((cfg) => cfg.raw_toml));
     setMessage('Deployment complete');
+  }
+
+  async function runFirstCrawl() {
+    setFirstRunBusy(true);
+    setFirstRunResult('');
+    try {
+      const res = await fetch('/api/panel/first-run/crawl', {
+        method: 'POST',
+        headers: authedHeaders,
+        body: JSON.stringify({ url: firstUrl })
+      });
+      const body = await res.text();
+      setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    } catch (error) {
+      setFirstRunResult(`Error: ${String(error)}`);
+    } finally {
+      setFirstRunBusy(false);
+    }
+  }
+
+  async function runFirstAsk() {
+    setFirstRunBusy(true);
+    setFirstRunResult('');
+    try {
+      const res = await fetch('/api/panel/first-run/ask', {
+        method: 'POST',
+        headers: authedHeaders,
+        body: JSON.stringify({ query: firstQuestion })
+      });
+      const body = await res.text();
+      setFirstRunResult(res.ok ? body : `Error: ${body}`);
+    } catch (error) {
+      setFirstRunResult(`Error: ${String(error)}`);
+    } finally {
+      setFirstRunBusy(false);
+    }
   }
 
   if (!token) {
@@ -214,10 +312,64 @@ export default function Page() {
         <Metric label="MCP HTTP" value={ops?.mcp_http_url ?? '...'} />
       </section>
 
+      <section className="stack-panel">
+        <div className="section-heading">
+          <div>
+            <h2>Docker Stack</h2>
+            <p>
+              {stack
+                ? `${stack.runtime_mode} · ${stack.server_url} · ${stack.log_dir}`
+                : stackLoading
+                  ? 'Checking runtime'
+                  : stackStatus || 'Runtime status unavailable'}
+            </p>
+          </div>
+          <button className="ghost" onClick={() => void refreshStack()} disabled={stackLoading}>
+            {stackLoading ? 'Refreshing' : 'Refresh'}
+          </button>
+        </div>
+        {stackStatus && <p className="error">{stackStatus}</p>}
+        <div className="check-grid">
+          {(stack?.checks ?? []).map((check) => (
+            <div className={`check-card ${check.status}`} key={check.label}>
+              <span>{check.label}</span>
+              <strong>{check.status}</strong>
+              <p>{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="first-run-panel">
+        <div className="section-heading">
+          <div>
+            <h2>First Run</h2>
+            <p>{stack?.mcp_url ?? ops?.mcp_http_url ?? 'Server-backed crawl and ask'}</p>
+          </div>
+        </div>
+        <div className="first-run-controls">
+          <label>
+            URL
+            <input value={firstUrl} onChange={(event) => setFirstUrl(event.target.value)} />
+          </label>
+          <button onClick={() => void runFirstCrawl()} disabled={firstRunBusy}>
+            Crawl
+          </button>
+          <label>
+            Question
+            <input value={firstQuestion} onChange={(event) => setFirstQuestion(event.target.value)} />
+          </label>
+          <button onClick={() => void runFirstAsk()} disabled={firstRunBusy}>
+            Ask
+          </button>
+        </div>
+        {firstRunResult && <pre className="result-box">{firstRunResult}</pre>}
+      </section>
+
       <section className="deploy-panel">
         <div className="section-heading">
           <div>
-            <h2>Remote Deploy</h2>
+            <h2>Remote Docker Deploy</h2>
             <p>
               {targetError ||
                 (targets.length ? `${targets.length} SSH target${targets.length === 1 ? '' : 's'}` : '~/.ssh/config')}
@@ -276,7 +428,7 @@ export default function Page() {
           <button onClick={() => void saveConfig()}>Save</button>
         </div>
         <textarea value={config} onChange={(event) => setConfig(event.target.value)} spellCheck={false} />
-        {message && <p className={message === 'Config saved' ? 'ok' : 'error'}>{message}</p>}
+        {message && <p className={message.startsWith('Config saved') ? 'ok' : 'error'}>{message}</p>}
       </section>
     </main>
   );

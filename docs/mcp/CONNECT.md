@@ -65,7 +65,6 @@ claude mcp add --transport http axon http://localhost:8001/mcp \
 ```
 
 MCP uses the same SQLite/in-process job runtime as the CLI and HTTP server.
-Postgres, Redis, and AMQP env vars are not required by the MCP server.
 
 ### HTTP
 

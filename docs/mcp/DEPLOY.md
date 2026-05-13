@@ -34,8 +34,7 @@ axon mcp
 ```
 
 Jobs use SQLite and in-process workers. Qdrant and TEI are still required for
-embedding/search paths. `AXON_LITE=1` is accepted for backwards compatibility
-but does not select a different runtime.
+embedding/search paths.
 
 ## Docker
 

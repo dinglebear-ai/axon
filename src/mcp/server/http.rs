@@ -2,7 +2,7 @@ use super::AxonMcpServer;
 use crate::core::config::Config;
 use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, build_auth_policy, configured_mcp_http_token,
-    normalize_api_key_header,
+    normalize_api_key_header, oauth_resource_url,
 };
 use crate::mcp::cors::cors_middleware;
 use crate::services::context::ServiceContext;
@@ -179,18 +179,7 @@ async fn mcp_http_router(
             },
         );
 
-    // Compute resource_url from AXON_MCP_PUBLIC_URL only when OAuth is active
-    // (required for WWW-Authenticate metadata). Bearer-only and LoopbackDev
-    // modes don't issue WWW-Authenticate with resource metadata.
-    let resource_url: Option<Arc<str>> = match &auth_policy {
-        AuthPolicy::Mounted {
-            auth_state: Some(_),
-        } => std::env::var("AXON_MCP_PUBLIC_URL")
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .map(|u| Arc::from(format!("{}/mcp", u.trim_end_matches('/')))),
-        _ => None,
-    };
+    let resource_url = oauth_resource_url(&auth_policy);
 
     let static_token: Option<Arc<str>> = configured_mcp_http_token().map(Arc::from);
 

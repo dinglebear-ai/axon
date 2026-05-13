@@ -222,7 +222,6 @@ async fn ask_via_server_forwards_ask_overrides() {
             "query": "what is rust?",
             "collection": "test_col",
             "diagnostics": false,
-            "graph": false,
             "hybrid_search": true,
             "ask_chunk_limit": 7,
             "ask_full_docs": 2,

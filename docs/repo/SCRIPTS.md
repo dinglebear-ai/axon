@@ -18,7 +18,8 @@ Usage:
 
 | Script | Purpose |
 |--------|---------|
-| `dev-setup.sh` | Bootstrap development environment: installs Rust, just, pnpm, cargo tools |
+| `dev-setup.sh` | Bootstrap development environment: installs Rust, just, cargo tools, and web dependencies with npm |
+| `test-install-behavior.sh` | Behavioral tests for `install.sh` using fake download/setup commands |
 
 ## Quality checks
 
