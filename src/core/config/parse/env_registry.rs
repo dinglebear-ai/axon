@@ -45,12 +45,6 @@ pub(crate) struct EnvKeySpec {
     pub secret: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MatrixEnvSpec {
-    pub classification: EnvClassification,
-    pub toml_destination: Option<String>,
-}
-
 pub(crate) const ENV_KEY_SPECS: &[EnvKeySpec] = &[
     spec("QDRANT_URL", KeepEnv, Both, None, Canonical, false),
     spec("TEI_URL", KeepEnv, Both, None, Canonical, false),
@@ -279,18 +273,18 @@ pub(crate) const ENV_KEY_SPECS: &[EnvKeySpec] = &[
     ),
     spec(
         "AXON_LLM_COMPLETION_CONCURRENCY",
-        MoveToml,
-        NotRuntime,
-        Some("llm.completion-concurrency"),
-        WarnEnvOverride,
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
         false,
     ),
     spec(
         "AXON_LLM_COMPLETION_TIMEOUT_SECS",
-        MoveToml,
-        NotRuntime,
-        Some("llm.completion-timeout-secs"),
-        WarnEnvOverride,
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
         false,
     ),
     spec(
@@ -390,6 +384,70 @@ pub(crate) const ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_ASK_CANDIDATE_LIMIT",
+        MoveToml,
+        NotRuntime,
+        Some("ask.candidate-limit"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_ASK_CHUNK_LIMIT",
+        MoveToml,
+        NotRuntime,
+        Some("ask.chunk-limit"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_ASK_MIN_RELEVANCE_SCORE",
+        MoveToml,
+        NotRuntime,
+        Some("ask.min-relevance-score"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_ASK_HYBRID_CANDIDATES",
+        MoveToml,
+        NotRuntime,
+        Some("search.ask-hybrid-candidates"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_HYBRID_SEARCH",
+        MoveToml,
+        NotRuntime,
+        Some("search.hybrid-enabled"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_HYBRID_CANDIDATES",
+        MoveToml,
+        NotRuntime,
+        Some("search.hybrid-candidates"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_HNSW_EF_SEARCH",
+        MoveToml,
+        NotRuntime,
+        Some("search.hnsw-ef"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_HNSW_EF_SEARCH_LEGACY",
+        MoveToml,
+        NotRuntime,
+        Some("search.hnsw-ef-legacy"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_BATCH_QUEUE",
         Delete,
         NotRuntime,
@@ -453,46 +511,6 @@ pub(crate) fn spec_for(key: &str) -> Option<&'static EnvKeySpec> {
     ENV_KEY_SPECS.iter().find(|spec| spec.key == key)
 }
 
-pub(crate) fn matrix_spec_for(key: &str) -> Option<MatrixEnvSpec> {
-    let matrix = include_str!("../../../../docs/config/env-migration-matrix.toml");
-    matrix.split("[[env]]").find_map(|block| {
-        (matrix_string_field(block, "key")? == key).then(|| {
-            let classification =
-                matrix_classification(&matrix_string_field(block, "classification")?)?;
-            let toml_destination = matrix_string_field(block, "toml_destination")
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty());
-            Some(MatrixEnvSpec {
-                classification,
-                toml_destination,
-            })
-        })?
-    })
-}
-
-fn matrix_string_field(block: &str, field: &str) -> Option<String> {
-    let prefix = format!("{field} = ");
-    block.lines().find_map(|line| {
-        let value = line.trim().strip_prefix(&prefix)?;
-        value
-            .strip_prefix('"')
-            .and_then(|value| value.strip_suffix('"'))
-            .map(ToString::to_string)
-    })
-}
-
-fn matrix_classification(value: &str) -> Option<EnvClassification> {
-    match value {
-        "keep-env" => Some(KeepEnv),
-        "compose-env" => Some(ComposeEnv),
-        "move-toml" => Some(MoveToml),
-        "delete" | "hard-default" | "external/test-only" => Some(Delete),
-        "trusted-operator-bootstrap" => Some(TrustedOperatorBootstrap),
-        "compatibility-shim" => Some(CompatibilityShim),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,17 +535,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn matrix_lookup_covers_scanned_runtime_keys_not_in_static_registry() {
-        let gemini = matrix_spec_for("GEMINI_API_KEY").expect("matrix key");
-        assert_eq!(gemini.classification, KeepEnv);
-
-        let mcp_host = matrix_spec_for("AXON_MCP_HTTP_HOST").expect("matrix key");
-        assert_eq!(mcp_host.classification, TrustedOperatorBootstrap);
-
-        let tei_server = matrix_spec_for("TEI_MAX_CONCURRENT_REQUESTS").expect("matrix key");
-        assert_eq!(tei_server.classification, ComposeEnv);
     }
 }

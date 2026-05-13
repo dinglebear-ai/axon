@@ -36,23 +36,18 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
 
     let raw = std::fs::read_to_string(path)?;
     let backup_path = backup_env(path)?;
-    let parsed = parse_env_file_lossy(&raw);
+    let parsed = config_store::parse_env_pairs_from_str(&raw)?;
     let mut retained = BTreeMap::new();
     let mut moved_toml = Vec::new();
     let mut report = EnvMigrationReport::new(backup_path);
 
     for (key, value) in parsed {
-        let classification = env_registry::spec_for(&key)
-            .map(|spec| {
-                (
-                    spec.classification,
-                    spec.toml_destination.map(str::to_string),
-                )
-            })
-            .or_else(|| {
-                env_registry::matrix_spec_for(&key)
-                    .map(|spec| (spec.classification, spec.toml_destination))
-            });
+        let classification = env_registry::spec_for(&key).map(|spec| {
+            (
+                spec.classification,
+                spec.toml_destination.map(str::to_string),
+            )
+        });
         let Some((classification, toml_destination)) = classification else {
             retained.insert(key, value);
             report.preserved_unclassified += 1;
@@ -189,21 +184,6 @@ fn backup_env(path: &Path) -> io::Result<PathBuf> {
     Ok(backup)
 }
 
-fn parse_env_file_lossy(raw: &str) -> BTreeMap<String, String> {
-    raw.lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                return None;
-            }
-            let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
-            let (key, value) = trimmed.split_once('=')?;
-            let key = key.trim();
-            is_valid_env_key(key).then(|| (key.to_string(), value.trim().to_string()))
-        })
-        .collect()
-}
-
 fn write_minimal_env(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
     let mut out = String::from(
         "# Axon runtime env: secrets, URLs, auth, bootstrap, compose interpolation only.\n",
@@ -246,14 +226,6 @@ fn reject_symlink(path: &Path) -> io::Result<()> {
         ));
     }
     Ok(())
-}
-
-fn is_valid_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    chars
-        .next()
-        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn render_env_value(value: &str) -> String {
@@ -379,7 +351,7 @@ mod tests {
         let previous_config_path = std::env::var_os("AXON_CONFIG_PATH");
         std::fs::write(
             &env_path,
-            "GEMINI_API_KEY=gemini-secret\nAXON_MCP_HTTP_HOST=0.0.0.0\nTEI_MAX_CONCURRENT_REQUESTS=512\nUNKNOWN_KEEP=value with spaces\n",
+            "GEMINI_API_KEY=gemini-secret\nAXON_MCP_HTTP_HOST=0.0.0.0\nTEI_MAX_CONCURRENT_REQUESTS=512\nUNKNOWN_KEEP='value with spaces'\n",
         )
         .unwrap();
         unsafe {
@@ -393,7 +365,7 @@ mod tests {
             result
                 .phase
                 .detail
-                .contains("preserved_unclassified_retained=1")
+                .contains("preserved_unclassified_retained=4")
         );
 
         let raw = std::fs::read_to_string(&env_path).unwrap();
@@ -401,6 +373,56 @@ mod tests {
         assert!(raw.contains("AXON_MCP_HTTP_HOST=0.0.0.0"));
         assert!(raw.contains("TEI_MAX_CONCURRENT_REQUESTS=512"));
         assert!(raw.contains("UNKNOWN_KEEP='value with spaces'"));
+
+        unsafe {
+            if let Some(previous_home) = previous_home {
+                std::env::set_var("HOME", previous_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(previous_config_path) = previous_config_path {
+                std::env::set_var("AXON_CONFIG_PATH", previous_config_path);
+            } else {
+                std::env::remove_var("AXON_CONFIG_PATH");
+            }
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn migration_decodes_dotenv_values_and_writes_loadable_toml_only() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let previous_home = std::env::var_os("HOME");
+        let previous_config_path = std::env::var_os("AXON_CONFIG_PATH");
+        std::fs::write(
+            &env_path,
+            "export TEI_MAX_CLIENT_BATCH_SIZE='32'\nAXON_ASK_CHUNK_LIMIT=\"8\"\nAXON_ASK_HYBRID_CANDIDATES=88\nAXON_LLM_COMPLETION_CONCURRENCY=3\nTAVILY_API_KEY='secret with space'\n",
+        )
+        .unwrap();
+        unsafe {
+            std::env::remove_var("AXON_ENV_FILE");
+            std::env::remove_var("AXON_CONFIG_PATH");
+            std::env::set_var("HOME", dir.path());
+        }
+
+        migrate_env_file(&env_path).unwrap();
+
+        let raw_env = std::fs::read_to_string(&env_path).unwrap();
+        assert!(raw_env.contains("AXON_LLM_COMPLETION_CONCURRENCY=3"));
+        assert!(raw_env.contains("TAVILY_API_KEY='secret with space'"));
+        assert!(!raw_env.contains("TEI_MAX_CLIENT_BATCH_SIZE"));
+        assert!(!raw_env.contains("AXON_ASK_CHUNK_LIMIT"));
+        assert!(!raw_env.contains("AXON_ASK_HYBRID_CANDIDATES"));
+
+        let config_raw = config_store::read_config().unwrap();
+        assert!(config_raw.contains("max-client-batch-size = 32"));
+        assert!(config_raw.contains("chunk-limit = 8"));
+        assert!(config_raw.contains("ask-hybrid-candidates = 88"));
+        assert!(!config_raw.contains("[llm]"));
+        assert!(!config_raw.contains("ask-chunk-limit"));
+        crate::core::config::parse::validate_toml_config_text(&config_raw).unwrap();
 
         unsafe {
             if let Some(previous_home) = previous_home {

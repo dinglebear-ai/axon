@@ -150,7 +150,7 @@ fulldoc-skip-enabled = true
 # Env: AXON_EMBED_DOC_TIMEOUT_SECS
 # embed-doc-timeout-secs = 300
 
-# Queue summary interval in seconds (clamped 5-3600).
+# Queue summary interval in seconds (0 = disabled, clamped 0-3600).
 # Env: AXON_QUEUE_SUMMARY_SECS
 # queue-summary-secs = 30
 

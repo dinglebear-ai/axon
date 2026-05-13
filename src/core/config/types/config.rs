@@ -395,7 +395,7 @@ pub struct Config {
     pub embed_doc_timeout_secs: u64,
 
     /// Queue summary interval in seconds.
-    /// Env: `AXON_QUEUE_SUMMARY_SECS`. TOML: `workers.queue-summary-secs`. Clamped 5–3600. Default: 30.
+    /// Env: `AXON_QUEUE_SUMMARY_SECS`. TOML: `workers.queue-summary-secs`. 0 disables logging. Clamped 0–3600. Default: 30.
     pub queue_summary_secs: u64,
 
     /// Buffered Qdrant points before flush.

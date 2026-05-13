@@ -61,12 +61,8 @@ pub fn read_config() -> io::Result<String> {
 
 pub fn write_config(raw_toml: &str) -> io::Result<()> {
     let init = ensure_user_config()?;
-    toml::from_str::<toml::Value>(raw_toml).map_err(|e| {
-        io::Error::new(
-            ErrorKind::InvalidInput,
-            format!("config TOML parse error: {e}"),
-        )
-    })?;
+    crate::core::config::parse::validate_toml_config_text(raw_toml)
+        .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
     reject_symlink(&init.path)?;
     write_private_file(&init.path, raw_toml)
 }
@@ -105,19 +101,17 @@ fn read_env_pairs(path: &Path) -> io::Result<BTreeMap<String, String>> {
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(BTreeMap::new()),
         Err(err) => return Err(err),
     };
+    parse_env_pairs_from_str(&raw)
+}
+
+pub(super) fn parse_env_pairs_from_str(raw: &str) -> io::Result<BTreeMap<String, String>> {
     let mut values = BTreeMap::new();
-    for line in raw.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
-        let Some((key, value)) = trimmed.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        if is_valid_env_key(key) {
-            values.insert(key.to_string(), value.trim().to_string());
+    for item in dotenvy::from_read_iter(raw.as_bytes()) {
+        let (key, value) = item.map_err(|err| {
+            io::Error::new(ErrorKind::InvalidData, format!("env parse error: {err}"))
+        })?;
+        if is_valid_env_key(&key) {
+            values.insert(key, value);
         }
     }
     Ok(values)
@@ -347,7 +341,7 @@ mod tests {
         }
         std::fs::write(
             &env_path,
-            "TAVILY_API_KEY=secret\nAXON_MCP_HTTP_TOKEN=token\nCUSTOM_VALUE=value with spaces\n",
+            "TAVILY_API_KEY='secret value'\nAXON_MCP_HTTP_TOKEN=token\nCUSTOM_VALUE=\"value with spaces\"\n",
         )
         .unwrap();
 
@@ -364,7 +358,7 @@ mod tests {
         assert!(env_raw.contains("QDRANT_URL=http://127.0.0.1:53333"));
         assert!(env_raw.contains("TEI_URL=http://127.0.0.1:52000"));
         assert!(env_raw.contains("AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000"));
-        assert!(env_raw.contains("TAVILY_API_KEY=secret"));
+        assert!(env_raw.contains("TAVILY_API_KEY='secret value'"));
         assert!(env_raw.contains("AXON_MCP_HTTP_TOKEN=token"));
         assert!(env_raw.contains("CUSTOM_VALUE='value with spaces'"));
 
