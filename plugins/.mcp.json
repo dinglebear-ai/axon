@@ -2,7 +2,7 @@
   "mcpServers": {
     "axon": {
       "type": "http",
-      "url": "${user_config.server_url:-http://127.0.0.1:8001}/mcp",
+      "url": "${user_config.server_url}/mcp",
       "headers": {
         "Authorization": "Bearer ${user_config.api_token}"
       }
