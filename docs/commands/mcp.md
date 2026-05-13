@@ -14,28 +14,33 @@ axon mcp [--transport stdio|http|both]
 `axon mcp` supports three transport modes:
 
 - `stdio` (default): starts stdio transport only
-- `http`: starts the HTTP MCP server on `/mcp`
-- `both`: starts stdio and HTTP concurrently
+- `http`: starts the unified HTTP server with MCP mounted at `/mcp`
+- `both`: starts stdio and the unified HTTP server concurrently
 
 Transport selection:
 
 | Selector | Default | Description |
 |----------|---------|-------------|
 | `axon mcp` | `stdio` | Local MCP client entrypoint |
-| `axon serve mcp` | `http` | HTTP MCP server entrypoint |
+| `axon serve mcp` | `http` | Unified web + MCP HTTP entrypoint |
 | `--transport` | command default | Explicit CLI transport selector |
 
 ## HTTP Runtime Binding
 
-When HTTP transport is enabled (`http` or `both`), these environment variables control bind address:
+When HTTP transport is enabled (`http` or `both`), Axon starts the same unified
+HTTP server as `axon serve`. The web panel, first-party HTTP APIs, OAuth routes,
+and MCP streamable HTTP endpoint all share one listener.
+
+These environment variables control bind address:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | MCP server bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
-| `AXON_MCP_HTTP_PORT` | `8001` | MCP server bind port |
+| `AXON_MCP_HTTP_HOST` | `127.0.0.1` | Unified HTTP bind host; non-loopback requires `AXON_MCP_HTTP_TOKEN` |
+| `AXON_MCP_HTTP_PORT` | `8001` | Unified HTTP bind port |
 | `AXON_MCP_HTTP_TOKEN` | unset | Bearer or `x-api-key` token for MCP HTTP requests; required for non-loopback binds |
 
-The primary HTTP MCP endpoint is mounted at `/mcp`.
+The primary HTTP MCP endpoint is mounted at `/mcp` on the same port as the web
+server. By default that is `http://127.0.0.1:8001/mcp`.
 
 ## Tool Contract
 
@@ -51,13 +56,13 @@ Supported top-level action families include: `status`, `help`, `crawl`, `extract
 # Stdio only
 axon mcp
 
-# HTTP bind 0.0.0.0:8001
+# Unified web + MCP HTTP bind on 127.0.0.1:8001
 axon serve mcp
 
-# HTTP + stdio together
+# Unified web + MCP HTTP plus stdio together
 axon mcp --transport both
 
-# Custom HTTP bind
+# Custom unified HTTP bind
 AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8900 axon serve mcp
 ```
 
@@ -65,5 +70,7 @@ AXON_MCP_HTTP_HOST=127.0.0.1 AXON_MCP_HTTP_PORT=8900 axon serve mcp
 
 - If `AXON_MCP_HTTP_PORT` is not a valid `u16`, startup fails immediately.
 - OAuth-related endpoints apply to HTTP mode only.
+- HTTP MCP transport is no longer a separate MCP-only listener; use `axon serve`
+  or any HTTP MCP transport selector to run web and MCP on one port.
 - `stdio` mode is intended for local MCP clients such as Claude Desktop.
 - See `docs/MCP.md` and `docs/MCP-TOOL-SCHEMA.md` for full request/response contract details.

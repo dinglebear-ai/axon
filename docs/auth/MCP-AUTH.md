@@ -304,3 +304,8 @@ variables.
 OAuth routes are only mounted when `AXON_MCP_AUTH_MODE=oauth`. Confirm
 `AXON_MCP_PUBLIC_URL`, Google client credentials, and admin email are present in
 the server environment, then restart `axon serve`.
+
+In OAuth mode, Axon advertises protected-resource metadata at
+`$AXON_MCP_PUBLIC_URL/.well-known/oauth-protected-resource`. The metadata
+document's `resource` value remains `$AXON_MCP_PUBLIC_URL/mcp`, matching the
+canonical MCP endpoint and token audience.

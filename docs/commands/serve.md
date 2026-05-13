@@ -12,7 +12,10 @@ axon serve mcp [--transport http|both]
 
 ## What It Runs
 
-`axon serve` starts one Axum HTTP server on `AXON_MCP_HTTP_HOST:AXON_MCP_HTTP_PORT` (default `127.0.0.1:8001`).
+`axon serve` starts one Axum HTTP server on
+`AXON_MCP_HTTP_HOST:AXON_MCP_HTTP_PORT` (default `127.0.0.1:8001`). HTTP MCP
+transport uses this same server and port; there is no separate MCP-only HTTP
+listener in the normal command path.
 
 Mounted surfaces:
 
@@ -45,7 +48,7 @@ server-side commands need them.
 # Local loopback server
 axon serve
 
-# HTTP MCP-only entrypoint
+# Equivalent unified web + MCP HTTP entrypoint
 axon serve mcp
 
 # Bind for LAN/reverse-proxy use with static bearer auth
@@ -61,6 +64,6 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon scrape https://example.com --json
 ## Notes
 
 - Docker Compose publishes the server with `AXON_MCP_HTTP_PUBLISH` while the container binds `AXON_MCP_HTTP_HOST=0.0.0.0` internally.
-- `/mcp` and `/v1/actions` share the same auth boundary.
+- `/mcp`, `/v1/actions`, and the web panel are mounted on the same listener.
 - Server-owned jobs, output, screenshots, and artifacts live under the server process `AXON_DATA_DIR`.
 - The old port `49000` websocket bridge, `49010` Next.js dev server, `49011` shell server, `/download/*`, and `/ws*` routes are not part of the current `axon serve` runtime.

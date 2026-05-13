@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-05-13
+
+### Fixed
+
+- mcp: route HTTP MCP transports through the unified web server so the web panel, first-party APIs, and `/mcp` all share port 8001.
+- auth: advertise the root-mounted OAuth protected-resource metadata URL while keeping `/mcp` as the canonical resource audience.
+
+### Changed
+
+- docs: align MCP transport guidance with the unified web/MCP listener model.
+
 ## [1.11.0] - 2026-05-12
 
 Container now ships the Gemini CLI so `ask`/`evaluate`/`research` synthesis works without a host gemini binary. Dev binary auto-syncs to PATH and the container on every `axon` invocation. Fixes gemini 0.41+ compatibility and a recurring SQLite migration version-mismatch error.
