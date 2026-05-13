@@ -380,27 +380,27 @@ reason = "Temporary compatibility: gemini-* values still seed Gemini model overr
 
 [[env]]
 key = "OPENAI_BASE_URL"
-classification = "delete"
-runtime_placement = "not-runtime"
+classification = "compatibility-shim"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = true
-container_allowed = false
+container_allowed = true
 toml_destination = ""
 compatibility = "warn-and-ignore"
-reason = "Legacy OpenAI-compatible endpoint is not the active LLM path."
+reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
 
 [[env]]
 key = "OPENAI_API_KEY"
-classification = "delete"
-runtime_placement = "not-runtime"
+classification = "compatibility-shim"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = true
 url_or_path = false
-container_allowed = false
+container_allowed = true
 toml_destination = ""
 compatibility = "warn-and-ignore"
-reason = "Legacy OpenAI-compatible secret is not the active LLM path."
+reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
 
 [[env]]
 key = "AXON_HEADLESS_GEMINI_CMD"
@@ -2171,7 +2171,7 @@ key = "TEI_MAX_BATCH_TOKENS"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "docs", "compose"]
-secret = true
+secret = false
 url_or_path = false
 container_allowed = true
 toml_destination = ""
@@ -2207,9 +2207,117 @@ key = "TEI_TOKENIZATION_WORKERS"
 classification = "keep-env"
 runtime_placement = "both"
 surfaces = ["src", "docs", "compose"]
-secret = true
+secret = false
 url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
 reason = "Secret or credential required at runtime; stays in env."
+
+[[env]]
+key = "GOOGLE_API_KEY"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = true
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google/Gemini API key secret used by headless LLM auth."
+
+[[env]]
+key = "GOOGLE_APPLICATION_CREDENTIALS"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Path to Google ADC credentials used by headless LLM auth."
+
+[[env]]
+key = "GOOGLE_CLOUD_LOCATION"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google Vertex AI runtime location setting."
+
+[[env]]
+key = "GOOGLE_CLOUD_PROJECT"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google Vertex AI runtime project setting."
+
+[[env]]
+key = "GOOGLE_GENAI_USE_VERTEXAI"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Google GenAI Vertex AI runtime mode switch."
+
+[[env]]
+key = "GOOGLE_OAUTH_ALLOWED_EMAILS"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_CLIENT_ID"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_CLIENT_SECRET"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = true
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness secret variable."
+
+[[env]]
+key = "GOOGLE_OAUTH_REDIRECT_HOST"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "OAuth protection test harness variable."

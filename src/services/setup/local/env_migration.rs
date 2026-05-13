@@ -2,7 +2,7 @@ use super::{LocalSetupPhase, LocalSetupStatus, PhaseTimer};
 use crate::core::config::parse::env_registry::{self, EnvClassification};
 use crate::services::setup::config_store;
 use std::collections::BTreeMap;
-use std::io;
+use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,12 +25,13 @@ struct EnvMigrationReport {
 }
 
 struct MovedTomlValue {
-    destination: &'static str,
+    destination: String,
     value: String,
 }
 
 pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
     let timer = PhaseTimer::start("env-migration");
+    reject_symlink(path)?;
     reject_shadowed_env_file(path)?;
 
     let raw = std::fs::read_to_string(path)?;
@@ -38,24 +39,37 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
     let parsed = parse_env_file_lossy(&raw);
     let mut retained = BTreeMap::new();
     let mut moved_toml = Vec::new();
-    let mut report = EnvMigrationReport {
-        backup_path,
-        ..EnvMigrationReport::default()
-    };
+    let mut report = EnvMigrationReport::new(backup_path);
 
     for (key, value) in parsed {
-        let spec = env_registry::spec_for(&key);
-        match spec.map(|spec| spec.classification) {
-            Some(EnvClassification::KeepEnv | EnvClassification::TrustedOperatorBootstrap) => {
+        let classification = env_registry::spec_for(&key)
+            .map(|spec| {
+                (
+                    spec.classification,
+                    spec.toml_destination.map(str::to_string),
+                )
+            })
+            .or_else(|| {
+                env_registry::matrix_spec_for(&key)
+                    .map(|spec| (spec.classification, spec.toml_destination))
+            });
+        let Some((classification, toml_destination)) = classification else {
+            retained.insert(key, value);
+            report.preserved_unclassified += 1;
+            continue;
+        };
+
+        match classification {
+            EnvClassification::KeepEnv | EnvClassification::TrustedOperatorBootstrap => {
                 retained.insert(key, value);
                 report.retained_env += 1;
             }
-            Some(EnvClassification::ComposeEnv) => {
+            EnvClassification::ComposeEnv => {
                 retained.insert(key, value);
                 report.compose_env += 1;
             }
-            Some(EnvClassification::MoveToml) => {
-                let destination = spec.and_then(|spec| spec.toml_destination).ok_or_else(|| {
+            EnvClassification::MoveToml => {
+                let destination = toml_destination.ok_or_else(|| {
                     io::Error::new(
                         io::ErrorKind::InvalidData,
                         format!("{key} is move-toml without a TOML destination"),
@@ -64,27 +78,24 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
                 moved_toml.push(MovedTomlValue { destination, value });
                 report.moved_toml += 1;
             }
-            Some(EnvClassification::Delete) => {
+            EnvClassification::Delete => {
                 report.deleted += 1;
             }
-            Some(EnvClassification::CompatibilityShim) => {
+            EnvClassification::CompatibilityShim => {
                 retained.insert(key, value);
                 report.compatibility_shims += 1;
             }
-            None => {
-                report.preserved_unclassified += 1;
-            }
         }
     }
+    super::env::reconcile_mcp_http_token(&mut retained, process_env_value)?;
 
     if !moved_toml.is_empty() {
         write_moved_toml_values(&moved_toml)?;
     }
     write_minimal_env(path, &retained)?;
-    let values = retained;
     Ok(EnvMigrationResult {
         phase: timer.finish(LocalSetupStatus::Ok, report.detail()),
-        values,
+        values: retained,
     })
 }
 
@@ -97,7 +108,7 @@ fn write_moved_toml_values(values: &[MovedTomlValue]) -> io::Result<()> {
         )
     })?;
     for moved in values {
-        set_dotted_toml_value(&mut document, moved.destination, &moved.value)?;
+        set_dotted_toml_value(&mut document, &moved.destination, &moved.value)?;
     }
     config_store::write_config(&document.to_string())
 }
@@ -141,7 +152,7 @@ fn reject_shadowed_env_file(path: &Path) -> io::Result<()> {
         return Ok(());
     }
     let explicit_path = Path::new(explicit);
-    if explicit_path != path {
+    if canonical_existing_path(explicit_path).ok() != Some(canonical_existing_path(path)?) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
@@ -158,9 +169,18 @@ fn backup_env(path: &Path) -> io::Result<PathBuf> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs();
+        .as_nanos();
     let backup = path.with_file_name(format!(".env.backup.{stamp}"));
-    std::fs::copy(path, &backup)?;
+    let raw = std::fs::read(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(&backup)?;
+    file.write_all(&raw)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -176,16 +196,15 @@ fn parse_env_file_lossy(raw: &str) -> BTreeMap<String, String> {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 return None;
             }
+            let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
             let (key, value) = trimmed.split_once('=')?;
-            Some((key.trim().to_string(), value.trim().to_string()))
+            let key = key.trim();
+            is_valid_env_key(key).then(|| (key.to_string(), value.trim().to_string()))
         })
         .collect()
 }
 
 fn write_minimal_env(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
-    #[cfg(unix)]
-    use std::os::unix::fs::OpenOptionsExt;
-
     let mut out = String::from(
         "# Axon runtime env: secrets, URLs, auth, bootstrap, compose interpolation only.\n",
     );
@@ -198,22 +217,92 @@ fn write_minimal_env(path: &Path, env: &BTreeMap<String, String>) -> io::Result<
         }
         out.push_str(key);
         out.push('=');
-        out.push_str(value);
+        out.push_str(&render_env_value(value));
         out.push('\n');
     }
 
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-    io::Write::write_all(&mut options.open(path)?, out.as_bytes())?;
+    write_private_file_atomic(path, &out)
+}
+
+fn process_env_value(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && !value.contains(['\n', '\r']))
+}
+
+fn canonical_existing_path(path: &Path) -> io::Result<PathBuf> {
+    path.canonicalize()
+}
+
+fn reject_symlink(path: &Path) -> io::Result<()> {
+    if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to migrate symlinked env file '{}'",
+                path.display()
+            ),
+        ));
+    }
     Ok(())
 }
 
+fn is_valid_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    chars
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn render_env_value(value: &str) -> String {
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '\'' | '"' | '\\' | '$' | '`' | '#'))
+    {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    } else {
+        value.to_string()
+    }
+}
+
+fn write_private_file_atomic(path: &Path, contents: &str) -> io::Result<()> {
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "env path has no parent"))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let tmp = parent.join(format!(".env.tmp.{stamp}"));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    {
+        let mut file = options.open(&tmp)?;
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
+}
+
 impl EnvMigrationReport {
+    fn new(backup_path: PathBuf) -> Self {
+        Self {
+            backup_path,
+            ..Self::default()
+        }
+    }
+
     fn detail(&self) -> String {
         format!(
-            "backup={}; retained_env={}; compose_env={}; moved_toml={}; deleted={}; hard_defaulted={}; compatibility_shims={}; preserved_unclassified_backup_only={}",
+            "backup={}; retained_env={}; compose_env={}; moved_toml={}; deleted={}; hard_defaulted={}; compatibility_shims={}; preserved_unclassified_retained={}",
             self.backup_path.display(),
             self.retained_env,
             self.compose_env,
@@ -260,6 +349,7 @@ mod tests {
 
         let raw = std::fs::read_to_string(&env_path).unwrap();
         assert!(raw.contains("TAVILY_API_KEY=secret-value"));
+        assert!(raw.contains("AXON_MCP_HTTP_TOKEN="));
         assert!(!raw.contains("AXON_BATCH_QUEUE"));
         assert!(!raw.contains("TEI_MAX_CLIENT_BATCH_SIZE"));
         let config_raw = config_store::read_config().unwrap();
@@ -277,6 +367,78 @@ mod tests {
                 std::env::remove_var("AXON_CONFIG_PATH");
             }
         }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
+    fn migration_retains_matrix_only_runtime_keys_and_quotes_shell_sensitive_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let previous_home = std::env::var_os("HOME");
+        let previous_config_path = std::env::var_os("AXON_CONFIG_PATH");
+        std::fs::write(
+            &env_path,
+            "GEMINI_API_KEY=gemini-secret\nAXON_MCP_HTTP_HOST=0.0.0.0\nTEI_MAX_CONCURRENT_REQUESTS=512\nUNKNOWN_KEEP=value with spaces\n",
+        )
+        .unwrap();
+        unsafe {
+            std::env::remove_var("AXON_ENV_FILE");
+            std::env::remove_var("AXON_CONFIG_PATH");
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = migrate_env_file(&env_path).unwrap();
+        assert!(
+            result
+                .phase
+                .detail
+                .contains("preserved_unclassified_retained=1")
+        );
+
+        let raw = std::fs::read_to_string(&env_path).unwrap();
+        assert!(raw.contains("GEMINI_API_KEY=gemini-secret"));
+        assert!(raw.contains("AXON_MCP_HTTP_HOST=0.0.0.0"));
+        assert!(raw.contains("TEI_MAX_CONCURRENT_REQUESTS=512"));
+        assert!(raw.contains("UNKNOWN_KEEP='value with spaces'"));
+
+        unsafe {
+            if let Some(previous_home) = previous_home {
+                std::env::set_var("HOME", previous_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(previous_config_path) = previous_config_path {
+                std::env::set_var("AXON_CONFIG_PATH", previous_config_path);
+            } else {
+                std::env::remove_var("AXON_CONFIG_PATH");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migration_rejects_symlinked_env_before_backup() {
+        use std::os::unix::fs::symlink;
+
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.env");
+        let env_path = dir.path().join(".env");
+        std::fs::write(&target, "TAVILY_API_KEY=secret-value\n").unwrap();
+        symlink(&target, &env_path).unwrap();
+
+        let err = migrate_env_file(&env_path).unwrap_err();
+        assert!(err.to_string().contains("symlinked env file"));
+        assert!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".env.backup."))
+        );
     }
 
     #[allow(unsafe_code)]

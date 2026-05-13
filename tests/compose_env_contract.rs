@@ -40,6 +40,10 @@ fn services_compose_reads_canonical_axon_home_env() {
         compose.contains("AXON_HOME: /home/axon/.axon"),
         "docker-compose.yaml must override host AXON_HOME inside the container"
     );
+    assert!(
+        compose.contains("AXON_ENV_FILE: \"\"") && compose.contains("AXON_CONFIG_PATH: \"\""),
+        "docker-compose.yaml must clear host-only bootstrap overrides in the container"
+    );
 }
 
 #[test]
@@ -371,6 +375,9 @@ fn env_example_only_contains_production_runtime_keys() {
         "CUDA_VISIBLE_DEVICES",
         "AXON_CHROME_REMOTE_URL",
         "GEMINI_HOME",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
         "HF_TOKEN",
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",

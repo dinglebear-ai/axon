@@ -58,6 +58,12 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     let remote_dir =
         validate_remote_dir(request.remote_dir.as_deref().unwrap_or(DEFAULT_REMOTE_DIR))?;
     let public_exposure = request.public_exposure.unwrap_or(false);
+    if public_exposure {
+        return Err(
+            "--public-exposure is disabled for Axon infra services; use the SSH tunnel output or put Qdrant/TEI/Chrome behind an authenticated proxy"
+                .into(),
+        );
+    }
     let accept_new_host_key = request.accept_new_host_key.unwrap_or(false);
     let remote_host = remote_host_for_target(target).unwrap_or_else(|| target.to_string());
     let mut steps = Vec::new();
@@ -103,12 +109,9 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
         service_urls(target, &remote_host, public_exposure);
     let axon_home =
         axon_home_dir().ok_or("HOME is unset or invalid; cannot update ~/.axon/.env")?;
-    let runtime_env_path = write_remote_runtime_env(
-        &axon_home.join(".env"),
-        &qdrant_url,
-        &tei_url,
-        &chrome_remote_url,
-    )?;
+    let env_path = effective_env_path(&axon_home.join(".env"))?;
+    let runtime_env_path =
+        write_remote_runtime_env(&env_path, &qdrant_url, &tei_url, &chrome_remote_url)?;
     steps.push(step(
         "local env",
         &format!("updated {}", runtime_env_path.display()),
@@ -163,16 +166,16 @@ async fn upload_assets(
     let services_env_path = format!("{remote_dir}/services.env");
     let qdrant_path = format!("{remote_dir}/qdrant/production.yaml");
     let chrome_path = format!("{remote_dir}/chrome/Dockerfile");
-    write_sftp_file(
-        &sftp,
-        &compose_path,
-        render_compose(public_exposure).as_bytes(),
-    )
-    .await?;
-    write_sftp_file(&sftp, &env_path, ENV_EXAMPLE.as_bytes()).await?;
-    write_sftp_file(&sftp, &services_env_path, SERVICES_ENV.as_bytes()).await?;
-    write_sftp_file(&sftp, &qdrant_path, QDRANT_PRODUCTION_YAML.as_bytes()).await?;
-    write_sftp_file(&sftp, &chrome_path, CHROME_DOCKERFILE.as_bytes()).await?;
+    let compose = render_compose(public_exposure);
+    for (path, contents) in [
+        (compose_path.as_str(), compose.as_bytes()),
+        (env_path.as_str(), ENV_EXAMPLE.as_bytes()),
+        (services_env_path.as_str(), SERVICES_ENV.as_bytes()),
+        (qdrant_path.as_str(), QDRANT_PRODUCTION_YAML.as_bytes()),
+        (chrome_path.as_str(), CHROME_DOCKERFILE.as_bytes()),
+    ] {
+        write_sftp_file(&sftp, path, contents).await?;
+    }
     with_timeout("sftp close", SFTP_TIMEOUT, sftp.close()).await?;
     Ok(())
 }
@@ -256,34 +259,15 @@ where
         .map_err(|err| Box::new(err) as Box<dyn Error>)
 }
 
-fn render_compose(public_exposure: bool) -> String {
-    let remote_compose = DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env");
-    if public_exposure {
-        remote_compose
-            .replace("127.0.0.1:53333:6333", "53333:6333")
-            .replace(
-                "127.0.0.1:${TEI_HTTP_PORT:-52000}:80",
-                "${TEI_HTTP_PORT:-52000}:80",
-            )
-            .replace("127.0.0.1:6000:6000", "6000:6000")
-    } else {
-        remote_compose
-    }
+fn render_compose(_public_exposure: bool) -> String {
+    DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env")
 }
 
 fn service_urls(
     target: &str,
-    remote_host: &str,
-    public_exposure: bool,
+    _remote_host: &str,
+    _public_exposure: bool,
 ) -> (String, String, String, Option<String>) {
-    if public_exposure {
-        return (
-            format!("http://{remote_host}:53333"),
-            format!("http://{remote_host}:52000"),
-            format!("http://{remote_host}:6000"),
-            None,
-        );
-    }
     (
         "http://127.0.0.1:53333".to_string(),
         "http://127.0.0.1:52000".to_string(),
@@ -292,6 +276,19 @@ fn service_urls(
             "ssh -N -L 53333:127.0.0.1:53333 -L 52000:127.0.0.1:52000 -L 6000:127.0.0.1:6000 {target}"
         )),
     )
+}
+
+fn effective_env_path(
+    default_path: &std::path::Path,
+) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let Ok(explicit) = std::env::var("AXON_ENV_FILE") else {
+        return Ok(default_path.to_path_buf());
+    };
+    let trimmed = explicit.trim();
+    if trimmed.is_empty() {
+        return Ok(default_path.to_path_buf());
+    }
+    Ok(std::path::PathBuf::from(trimmed))
 }
 
 fn remote_host_for_target(target: &str) -> Option<String> {
@@ -314,17 +311,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compose_rendering_is_private_by_default_and_public_on_opt_in() {
+    fn compose_rendering_is_private_even_when_public_requested() {
         let private = render_compose(false);
         assert!(private.contains("127.0.0.1:53333:6333"));
         assert!(private.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
         assert!(private.contains("127.0.0.1:6000:6000"));
 
         let public = render_compose(true);
-        assert!(public.contains("\"53333:6333\""));
-        assert!(public.contains("\"${TEI_HTTP_PORT:-52000}:80\""));
-        assert!(public.contains("\"6000:6000\""));
-        assert!(!public.contains("127.0.0.1:53333:6333"));
+        assert!(public.contains("127.0.0.1:53333:6333"));
+        assert!(public.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
+        assert!(public.contains("127.0.0.1:6000:6000"));
     }
 
     #[test]
@@ -340,12 +336,12 @@ mod tests {
     }
 
     #[test]
-    fn public_service_urls_use_remote_host() {
+    fn public_service_urls_stay_tunneled() {
         let (qdrant, tei, chrome, tunnel) = service_urls("prod", "prod.example.test", true);
-        assert_eq!(qdrant, "http://prod.example.test:53333");
-        assert_eq!(tei, "http://prod.example.test:52000");
-        assert_eq!(chrome, "http://prod.example.test:6000");
-        assert!(tunnel.is_none());
+        assert_eq!(qdrant, "http://127.0.0.1:53333");
+        assert_eq!(tei, "http://127.0.0.1:52000");
+        assert_eq!(chrome, "http://127.0.0.1:6000");
+        assert!(tunnel.is_some());
     }
 
     #[test]

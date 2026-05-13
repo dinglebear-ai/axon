@@ -58,12 +58,12 @@ impl Drop for WorkerHandles {
     }
 }
 
-/// Spawn in-process worker tasks for all 6 job types.
+/// Spawn in-process worker tasks for all job types.
 ///
-/// Embed and ingest spawn multiple lanes (controlled by `Config`). All lanes
-/// share the same `Notify` handle so a single
-/// `notify_one()` wakes one waiting lane. SQLite `BEGIN IMMEDIATE` in
-/// `claim_next_pending()` serializes lane claims atomically — no semaphore needed.
+/// Embed and ingest spawn multiple lanes from `Config`. All lanes share the
+/// same `Notify` handle so a single `notify_one()` wakes one waiting lane.
+/// SQLite `BEGIN IMMEDIATE` in `claim_next_pending()` serializes lane claims
+/// atomically — no semaphore needed.
 pub fn spawn_workers(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,

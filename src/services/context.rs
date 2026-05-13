@@ -55,7 +55,7 @@ impl ServiceContext {
 ///
 /// Spawned only by `new_with_workers()` (so worker-bearing processes — serve,
 /// mcp — emit a baseline queue signal). Interval is `AXON_QUEUE_SUMMARY_SECS`
-/// (default 60s; set to 0 to disable).
+/// (default 30s).
 fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
     if secs == 0 {
         return;

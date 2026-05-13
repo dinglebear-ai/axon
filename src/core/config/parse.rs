@@ -618,6 +618,14 @@ mod tests {
         let repair_cfg =
             super::build_config::into_config(repair).expect("setup repair should parse");
         assert_eq!(repair_cfg.positional, vec!["repair".to_string()]);
+
+        let migrate = super::Cli::parse_from(["axon", "setup", "repair", "--migrate-env"]);
+        let migrate_cfg = super::build_config::into_config(migrate)
+            .expect("setup repair --migrate-env should parse");
+        assert_eq!(
+            migrate_cfg.positional,
+            vec!["repair".to_string(), "--migrate-env".to_string()]
+        );
     }
 
     #[allow(unsafe_code)]

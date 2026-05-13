@@ -1,6 +1,6 @@
 use crate::core::paths::axon_config_path;
 use std::collections::BTreeMap;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write as _};
 use std::path::{Component, Path, PathBuf};
 
 const DEFAULT_CONFIG: &str = include_str!("../../../config.example.toml");
@@ -97,6 +97,9 @@ pub fn write_remote_runtime_env(
 }
 
 fn read_env_pairs(path: &Path) -> io::Result<BTreeMap<String, String>> {
+    if path.exists() {
+        reject_symlink(path)?;
+    }
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(BTreeMap::new()),
@@ -108,10 +111,14 @@ fn read_env_pairs(path: &Path) -> io::Result<BTreeMap<String, String>> {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
+        let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
         let Some((key, value)) = trimmed.split_once('=') else {
             continue;
         };
-        values.insert(key.trim().to_string(), value.trim().to_string());
+        let key = key.trim();
+        if is_valid_env_key(key) {
+            values.insert(key.to_string(), value.trim().to_string());
+        }
     }
     Ok(values)
 }
@@ -127,10 +134,30 @@ fn render_env_pairs(header: &str, values: &BTreeMap<String, String>) -> io::Resu
         }
         out.push_str(key);
         out.push('=');
-        out.push_str(value);
+        out.push_str(&render_env_value(value));
         out.push('\n');
     }
     Ok(out)
+}
+
+fn is_valid_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    chars
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn render_env_value(value: &str) -> String {
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '\'' | '"' | '\\' | '$' | '`' | '#'))
+    {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    } else {
+        value.to_string()
+    }
 }
 
 fn resolve_setup_config_path() -> io::Result<ConfigPath> {
@@ -185,17 +212,35 @@ fn create_private_file(path: &Path, contents: &str) -> io::Result<()> {
 }
 
 fn write_private_file(path: &Path, contents: &str) -> io::Result<()> {
-    use std::io::Write as _;
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
 
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            ErrorKind::InvalidInput,
+            format!("path '{}' has no parent", path.display()),
+        )
+    })?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let tmp = parent.join(format!(
+        ".{}.tmp.{stamp}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("axon")
+    ));
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
 
-    let mut file = options.open(path)?;
+    let mut file = options.open(&tmp)?;
     file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path)?;
     tighten_file_permissions(path)?;
     Ok(())
 }
@@ -302,7 +347,7 @@ mod tests {
         }
         std::fs::write(
             &env_path,
-            "TAVILY_API_KEY=secret\nAXON_MCP_HTTP_TOKEN=token\n",
+            "TAVILY_API_KEY=secret\nAXON_MCP_HTTP_TOKEN=token\nCUSTOM_VALUE=value with spaces\n",
         )
         .unwrap();
 
@@ -321,6 +366,7 @@ mod tests {
         assert!(env_raw.contains("AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000"));
         assert!(env_raw.contains("TAVILY_API_KEY=secret"));
         assert!(env_raw.contains("AXON_MCP_HTTP_TOKEN=token"));
+        assert!(env_raw.contains("CUSTOM_VALUE='value with spaces'"));
 
         let config_raw = std::fs::read_to_string(&config_path).unwrap_or_default();
         assert!(!config_raw.contains("[services]"));

@@ -84,11 +84,12 @@ Setup modes:
 axon setup          # first-run or normal repair
 axon setup check    # inspect only; does not mutate files or start services
 axon setup repair   # repair config/assets and restart the Docker stack
+axon setup repair --migrate-env  # backup/prune env and move tuning to config.toml
 axon setup targets  # list SSH targets for remote Docker deployment
-axon setup deploy <ssh-alias> [--remote-dir axon-deploy] [--public-exposure]
+axon setup deploy <ssh-alias> [--remote-dir axon-deploy]
 ```
 
-Remote deploy is Docker Compose orchestration over SSH. It does not install or supervise a systemd Axon binary.
+Remote deploy is Docker Compose orchestration over SSH. It keeps Qdrant, TEI, and Chrome loopback-only and returns an SSH tunnel command for access; it does not install or supervise a systemd Axon binary.
 
 The warm-path setup goal is under 2 minutes once images and model weights are cached. Cold starts that pull images and model weights can take longer; target-hardware timing still needs to be measured against published release artifacts.
 
