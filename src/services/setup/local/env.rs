@@ -2,6 +2,7 @@ use super::{
     DEFAULT_CHROME_URL, DEFAULT_QDRANT_URL, DEFAULT_SERVER_URL, DEFAULT_TEI_URL, LocalSetupPhase,
     LocalSetupStatus, PhaseTimer,
 };
+use crate::services::setup::config_store;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand_core::{OsRng, TryRngCore as _};
 use std::collections::BTreeMap;
@@ -24,7 +25,7 @@ fn ensure_env_file_with_process(
 ) -> io::Result<EnvEnsureResult> {
     let timer = PhaseTimer::start("env");
     let mut env = if path.exists() {
-        parse_env_file(&std::fs::read_to_string(path)?)
+        parse_env_file(&std::fs::read_to_string(path)?)?
     } else {
         BTreeMap::new()
     };
@@ -131,23 +132,14 @@ pub(super) fn check_env_file(path: &Path) -> LocalSetupPhase {
 
 pub(super) fn read_env_file_values(path: &Path) -> io::Result<BTreeMap<String, String>> {
     if path.exists() {
-        Ok(parse_env_file(&std::fs::read_to_string(path)?))
+        parse_env_file(&std::fs::read_to_string(path)?)
     } else {
         Ok(BTreeMap::new())
     }
 }
 
-fn parse_env_file(raw: &str) -> BTreeMap<String, String> {
-    raw.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                return None;
-            }
-            let (key, value) = line.split_once('=')?;
-            Some((key.trim().to_string(), value.trim().to_string()))
-        })
-        .collect()
+fn parse_env_file(raw: &str) -> io::Result<BTreeMap<String, String>> {
+    config_store::parse_env_pairs_from_str(raw)
 }
 
 fn write_env_file(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
@@ -221,9 +213,18 @@ mod tests {
 
     #[test]
     fn parse_env_file_ignores_comments_and_empty_lines() {
-        let parsed = parse_env_file("\n# comment\nA=1\nB = two\n");
+        let parsed = parse_env_file("\n# comment\nA=1\nB = 'two words'\n").unwrap();
         assert_eq!(parsed.get("A").map(String::as_str), Some("1"));
-        assert_eq!(parsed.get("B").map(String::as_str), Some("two"));
+        assert_eq!(parsed.get("B").map(String::as_str), Some("two words"));
+    }
+
+    #[test]
+    fn parse_env_file_decodes_quoted_oauth_mode_like_runtime() {
+        let parsed = parse_env_file("AXON_MCP_AUTH_MODE=\"oauth\"\n").unwrap();
+        assert_eq!(
+            parsed.get("AXON_MCP_AUTH_MODE").map(String::as_str),
+            Some("oauth")
+        );
     }
 
     #[test]
@@ -253,7 +254,7 @@ mod tests {
 
     #[test]
     fn env_example_host_urls_are_loopback_not_container_dns() {
-        let parsed = parse_env_file(include_str!("../../../../.env.example"));
+        let parsed = parse_env_file(include_str!("../../../../.env.example")).unwrap();
         for key in ["QDRANT_URL", "TEI_URL", "AXON_CHROME_REMOTE_URL"] {
             let value = parsed.get(key).expect("template key exists");
             assert!(

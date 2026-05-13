@@ -66,10 +66,18 @@ fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
         interval.tick().await;
         loop {
             interval.tick().await;
-            let crawl = jobs.count_jobs(JobKind::Crawl).await.unwrap_or(0);
-            let extract = jobs.count_jobs(JobKind::Extract).await.unwrap_or(0);
-            let embed = jobs.count_jobs(JobKind::Embed).await.unwrap_or(0);
-            let ingest = jobs.count_jobs(JobKind::Ingest).await.unwrap_or(0);
+            let Some(crawl) = queue_depth(&jobs, JobKind::Crawl).await else {
+                continue;
+            };
+            let Some(extract) = queue_depth(&jobs, JobKind::Extract).await else {
+                continue;
+            };
+            let Some(embed) = queue_depth(&jobs, JobKind::Embed).await else {
+                continue;
+            };
+            let Some(ingest) = queue_depth(&jobs, JobKind::Ingest).await else {
+                continue;
+            };
             tracing::info!(
                 crawl,
                 extract,
@@ -80,4 +88,18 @@ fn spawn_queue_summary_logger(jobs: Arc<dyn ServiceJobRuntime>, secs: u64) {
             );
         }
     });
+}
+
+async fn queue_depth(jobs: &Arc<dyn ServiceJobRuntime>, kind: JobKind) -> Option<i64> {
+    match jobs.count_jobs(kind).await {
+        Ok(count) => Some(count),
+        Err(err) => {
+            tracing::warn!(
+                ?kind,
+                error = %err,
+                "failed to read job queue depth"
+            );
+            None
+        }
+    }
 }

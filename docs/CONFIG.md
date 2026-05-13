@@ -128,7 +128,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
-URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are parsed only for migration messaging and are ignored by runtime config resolution. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
+URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon/.env` — not in `config.toml`. Legacy `[services]` URL keys are still accepted as a temporary deprecation fallback, but emit warnings and should be moved to `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` in `~/.axon/.env`. Gemini headless is the only LLM synthesis path; `config.toml` only carries RAG tuning knobs. See `config.example.toml` for the full annotated example with defaults.
 
 > **Replaced by:** `axon.json` was removed in v0.36. Migrate tuning params to `~/.axon/config.toml`.
 

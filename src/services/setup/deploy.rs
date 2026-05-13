@@ -282,10 +282,10 @@ fn remote_runtime_env_command() -> String {
         "mkdir -p \"$HOME/.axon\"",
         "touch \"$HOME/.axon/.env\"",
         "chmod 600 \"$HOME/.axon/.env\"",
-        "token=$(awk -F= '$1 == \"AXON_MCP_HTTP_TOKEN\" && $2 != \"\" { print $2; exit }' \"$HOME/.axon/.env\")",
+        "token=$(sed -n 's/^\\(export[[:space:]]*\\)\\{0,1\\}AXON_MCP_HTTP_TOKEN=//p' \"$HOME/.axon/.env\" | sed '/^$/d' | head -n 1)",
         "if [ -z \"$token\" ]; then token=$(LC_ALL=C tr -dc 'A-Fa-f0-9' < /dev/urandom | head -c 64); fi",
         "tmp=$(mktemp \"$HOME/.axon/.env.tmp.XXXXXX\")",
-        "awk -F= '$1 != \"QDRANT_URL\" && $1 != \"TEI_URL\" && $1 != \"AXON_CHROME_REMOTE_URL\" && $1 != \"AXON_MCP_HTTP_TOKEN\" { print }' \"$HOME/.axon/.env\" > \"$tmp\"",
+        "sed '/^\\(export[[:space:]]*\\)\\{0,1\\}\\(QDRANT_URL\\|TEI_URL\\|AXON_CHROME_REMOTE_URL\\|AXON_MCP_HTTP_TOKEN\\)=/d' \"$HOME/.axon/.env\" > \"$tmp\"",
         "printf '%s\\n' 'QDRANT_URL=http://axon-qdrant:6333' 'TEI_URL=http://axon-tei:80' 'AXON_CHROME_REMOTE_URL=http://axon-chrome:6000' \"AXON_MCP_HTTP_TOKEN=$token\" >> \"$tmp\"",
         "chmod 600 \"$tmp\"",
         "mv \"$tmp\" \"$HOME/.axon/.env\"",
@@ -393,6 +393,9 @@ mod tests {
     fn remote_runtime_env_command_seeds_auth_and_container_service_urls() {
         let command = remote_runtime_env_command();
         assert!(command.contains("AXON_MCP_HTTP_TOKEN"));
+        assert!(!command.contains("awk -F="));
+        assert!(command.contains("AXON_MCP_HTTP_TOKEN=//p"));
+        assert!(command.contains("export[[:space:]]"));
         assert!(command.contains("QDRANT_URL=http://axon-qdrant:6333"));
         assert!(command.contains("TEI_URL=http://axon-tei:80"));
         assert!(command.contains("AXON_CHROME_REMOTE_URL=http://axon-chrome:6000"));

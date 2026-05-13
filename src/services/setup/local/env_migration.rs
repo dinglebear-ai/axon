@@ -19,7 +19,6 @@ struct EnvMigrationReport {
     moved_toml: usize,
     compose_env: usize,
     deleted: usize,
-    hard_defaulted: usize,
     compatibility_shims: usize,
     preserved_unclassified: usize,
 }
@@ -85,6 +84,7 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
     super::env::reconcile_mcp_http_token(&mut retained, process_env_value)?;
 
     if !moved_toml.is_empty() {
+        render_minimal_env(&retained)?;
         write_moved_toml_values(&moved_toml)?;
     }
     write_minimal_env(path, &retained)?;
@@ -185,6 +185,11 @@ fn backup_env(path: &Path) -> io::Result<PathBuf> {
 }
 
 fn write_minimal_env(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
+    let out = render_minimal_env(env)?;
+    write_private_file_atomic(path, &out)
+}
+
+fn render_minimal_env(env: &BTreeMap<String, String>) -> io::Result<String> {
     let mut out = String::from(
         "# Axon runtime env: secrets, URLs, auth, bootstrap, compose interpolation only.\n",
     );
@@ -200,8 +205,7 @@ fn write_minimal_env(path: &Path, env: &BTreeMap<String, String>) -> io::Result<
         out.push_str(&render_env_value(value));
         out.push('\n');
     }
-
-    write_private_file_atomic(path, &out)
+    Ok(out)
 }
 
 fn process_env_value(key: &str) -> Option<String> {
@@ -274,13 +278,12 @@ impl EnvMigrationReport {
 
     fn detail(&self) -> String {
         format!(
-            "backup={}; retained_env={}; compose_env={}; moved_toml={}; deleted={}; hard_defaulted={}; compatibility_shims={}; preserved_unclassified_retained={}",
+            "backup={}; retained_env={}; compose_env={}; moved_toml={}; deleted={}; compatibility_shims={}; preserved_unclassified_retained={}",
             self.backup_path.display(),
             self.retained_env,
             self.compose_env,
             self.moved_toml,
             self.deleted,
-            self.hard_defaulted,
             self.compatibility_shims,
             self.preserved_unclassified
         )
@@ -343,6 +346,67 @@ mod tests {
 
     #[allow(unsafe_code)]
     #[test]
+    fn migration_prunes_legacy_runtime_delete_keys() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let previous_home = std::env::var_os("HOME");
+        let previous_config_path = std::env::var_os("AXON_CONFIG_PATH");
+        std::fs::write(
+            &env_path,
+            [
+                "AXON_AMQP_URL=amqp://legacy",
+                "AXON_LITE=1",
+                "AXON_PG_MCP_URL=postgres://legacy-mcp",
+                "AXON_PG_URL=postgres://legacy",
+                "AXON_REDIS_URL=redis://legacy",
+                "TAVILY_API_KEY=secret",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        unsafe {
+            std::env::remove_var("AXON_ENV_FILE");
+            std::env::remove_var("AXON_CONFIG_PATH");
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = migrate_env_file(&env_path).unwrap();
+        assert!(result.phase.detail.contains("deleted=5"));
+        assert!(
+            result
+                .phase
+                .detail
+                .contains("preserved_unclassified_retained=0")
+        );
+        let raw = std::fs::read_to_string(&env_path).unwrap();
+        for key in [
+            "AXON_AMQP_URL",
+            "AXON_LITE",
+            "AXON_PG_MCP_URL",
+            "AXON_PG_URL",
+            "AXON_REDIS_URL",
+        ] {
+            assert!(!raw.contains(key), "{key} should be pruned");
+        }
+        assert!(raw.contains("TAVILY_API_KEY=secret"));
+
+        unsafe {
+            if let Some(previous_home) = previous_home {
+                std::env::set_var("HOME", previous_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(previous_config_path) = previous_config_path {
+                std::env::set_var("AXON_CONFIG_PATH", previous_config_path);
+            } else {
+                std::env::remove_var("AXON_CONFIG_PATH");
+            }
+        }
+    }
+
+    #[allow(unsafe_code)]
+    #[test]
     fn migration_retains_matrix_only_runtime_keys_and_quotes_shell_sensitive_values() {
         let _guard = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -365,8 +429,10 @@ mod tests {
             result
                 .phase
                 .detail
-                .contains("preserved_unclassified_retained=4")
+                .contains("preserved_unclassified_retained=2")
         );
+        assert!(result.phase.detail.contains("retained_env=1"));
+        assert!(result.phase.detail.contains("compose_env=1"));
 
         let raw = std::fs::read_to_string(&env_path).unwrap();
         assert!(raw.contains("GEMINI_API_KEY=gemini-secret"));

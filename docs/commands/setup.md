@@ -47,5 +47,6 @@ axon setup deploy gpu-box --remote-dir axon-deploy --accept-new-host-key
 Local setup prints phase status for config, Docker, Qdrant, TEI, Chrome, Axon
 server health, TEI prewarm, and smoke checks. `targets` prints SSH aliases with
 resolved host/user/port values. `deploy` prints the remote host, remote
-directory, generated service URLs, config path, optional tunnel command, and
+directory, generated service URLs, runtime env path (`runtime_env_path` in JSON),
+optional tunnel command, and
 per-step status.
