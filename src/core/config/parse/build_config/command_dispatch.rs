@@ -253,8 +253,11 @@ fn apply_setup(out: &mut DispatchOutput, args: super::super::super::cli::SetupAr
         Some(super::super::super::cli::SetupSubcommand::Check) => {
             out.positional = vec!["check".to_string()];
         }
-        Some(super::super::super::cli::SetupSubcommand::Repair) => {
+        Some(super::super::super::cli::SetupSubcommand::Repair { migrate_env }) => {
             out.positional = vec!["repair".to_string()];
+            if migrate_env {
+                out.positional.push("--migrate-env".to_string());
+            }
         }
         Some(super::super::super::cli::SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];

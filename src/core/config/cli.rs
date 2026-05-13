@@ -124,7 +124,11 @@ pub(super) enum SetupSubcommand {
     /// Check local Docker setup prerequisites without mutating files or services
     Check,
     /// Repair local Axon config, compose assets, and Docker stack
-    Repair,
+    Repair {
+        /// Backup and migrate ~/.axon/.env to the minimal env/config boundary.
+        #[arg(long)]
+        migrate_env: bool,
+    },
     /// List deployment targets from ~/.ssh/config
     Targets,
     /// Deploy Qdrant, TEI, and Chrome services to an SSH target

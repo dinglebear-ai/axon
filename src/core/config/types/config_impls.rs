@@ -117,7 +117,10 @@ impl Default for Config {
             tei_request_timeout_ms: 30_000,
             tei_max_client_batch_size: 64,
             ingest_lanes: 2,
+            embed_lanes: 2,
             embed_doc_timeout_secs: 300,
+            queue_summary_secs: 30,
+            qdrant_point_buffer: 256,
             max_pending_crawl_jobs: 100,
             max_pending_embed_jobs: 50,
             max_pending_extract_jobs: 50,
@@ -335,7 +338,10 @@ impl fmt::Debug for Config {
             .field("tei_request_timeout_ms", &self.tei_request_timeout_ms)
             .field("tei_max_client_batch_size", &self.tei_max_client_batch_size)
             .field("ingest_lanes", &self.ingest_lanes)
+            .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
+            .field("queue_summary_secs", &self.queue_summary_secs)
+            .field("qdrant_point_buffer", &self.qdrant_point_buffer)
             .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
             .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)
             .field("max_pending_extract_jobs", &self.max_pending_extract_jobs)

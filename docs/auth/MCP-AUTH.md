@@ -277,7 +277,8 @@ curl -s -X POST http://localhost:8001/mcp \
 `AXON_MCP_HTTP_TOKEN` is set on the server but the client either omitted the
 header or sent the wrong value.
 
-1. Confirm the server token: `grep AXON_MCP_HTTP_TOKEN .env`
+1. Confirm the server token is present without printing it:
+   `awk -F= '$1=="AXON_MCP_HTTP_TOKEN" && length($2)>0 { print "AXON_MCP_HTTP_TOKEN is set" }' ~/.axon/.env`
 2. Verify the request header matches exactly. Both schemes are accepted:
    - `Authorization: Bearer <token>`
    - `x-api-key: <token>`

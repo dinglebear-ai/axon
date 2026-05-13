@@ -8,8 +8,8 @@
 #
 # All values shown are defaults. Uncomment only what you need to change.
 #
-# Secrets and security settings belong in .env — not here. Service URLs are
-# safe TOML values and can be written by `axon setup deploy`.
+# Secrets, endpoint URLs, auth/runtime bootstrap, and Docker Compose
+# interpolation belong in ~/.axon/.env — not here.
 # This file is safe to commit to source control.
 #
 # Override path: AXON_CONFIG_PATH=/path/to/config.toml
@@ -21,18 +21,9 @@
 # The env var shown next to each key still overrides the TOML value at the same
 # priority described above.
 
-[services]
-# Base URL of the Qdrant vector store.
-# Env: QDRANT_URL
-# qdrant-url = "http://127.0.0.1:53333"
-
-# Base URL of the TEI embedding service.
-# Env: TEI_URL
-# tei-url = "http://127.0.0.1:52000"
-
-# Chrome management API endpoint used for rendered crawls.
-# Env: AXON_CHROME_REMOTE_URL
-# chrome-remote-url = "http://127.0.0.1:6000"
+# Service endpoint URLs are intentionally not configured here.
+# Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL in ~/.axon/.env
+# or pass --qdrant-url / --tei-url / --chrome-remote-url on the CLI.
 
 [search]
 # Enable RRF hybrid search (requires a named-mode Qdrant collection).
@@ -151,9 +142,21 @@ fulldoc-skip-enabled = true
 # Env: AXON_INGEST_LANES
 # ingest-lanes = 2
 
+# Parallel embed worker lanes (clamped 1-32).
+# Env: AXON_EMBED_LANES
+# embed-lanes = 2
+
 # Per-document embed timeout in seconds.
 # Env: AXON_EMBED_DOC_TIMEOUT_SECS
 # embed-doc-timeout-secs = 300
+
+# Queue summary interval in seconds (0 = disabled, clamped 0-3600).
+# Env: AXON_QUEUE_SUMMARY_SECS
+# queue-summary-secs = 30
+
+# Buffered Qdrant points before flush (clamped 128-16384).
+# Env: AXON_QDRANT_POINT_BUFFER
+# qdrant-point-buffer = 256
 
 # Crawl queue cap — reject new jobs above this count (0 = unlimited).
 # Env: AXON_MAX_PENDING_CRAWL_JOBS

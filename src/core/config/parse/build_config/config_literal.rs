@@ -14,6 +14,7 @@ use super::super::helpers::{
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
 use super::command_dispatch::DispatchOutput;
+use crate::core::logging::log_warn;
 use std::env;
 
 /// Inputs required by the assemblers below. Shared so each helper takes a
@@ -86,7 +87,11 @@ fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
         .chrome_remote_url
         .clone()
         .or_else(|| env::var("AXON_CHROME_REMOTE_URL").ok())
-        .or_else(|| inputs.toml.services.chrome_remote_url.clone())
+        .or_else(|| {
+            inputs.toml.services.chrome_remote_url.clone().inspect(|_| {
+                warn_legacy_service_url("chrome-remote-url", "AXON_CHROME_REMOTE_URL");
+            })
+        })
         .map(normalize_local_service_url);
     cfg.chrome_proxy = g
         .chrome_proxy
@@ -323,10 +328,14 @@ fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, Str
             .tei_url
             .clone()
             .or_else(|| env::var("TEI_URL").ok())
-            .or_else(|| toml.services.tei_url.clone())
+            .or_else(|| {
+                toml.services.tei_url.clone().inspect(|_| {
+                    warn_legacy_service_url("tei-url", "TEI_URL");
+                })
+            })
             .ok_or_else(|| {
                 "TEI_URL environment variable is required (or pass --tei-url). \
-                 Copy .env.example to ~/.axon/.env and fill in credentials."
+                 Move legacy [services].tei-url to TEI_URL in .env."
                     .to_string()
             })?,
     ))
@@ -338,13 +347,23 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
             .qdrant_url
             .clone()
             .or_else(|| env::var("QDRANT_URL").ok())
-            .or_else(|| toml.services.qdrant_url.clone())
+            .or_else(|| {
+                toml.services.qdrant_url.clone().inspect(|_| {
+                    warn_legacy_service_url("qdrant-url", "QDRANT_URL");
+                })
+            })
             .ok_or_else(|| {
                 "QDRANT_URL environment variable is required (or pass --qdrant-url). \
-                 Copy .env.example to ~/.axon/.env and fill in credentials."
+                 Move legacy [services].qdrant-url to QDRANT_URL in .env."
                     .to_string()
             })?,
     ))
+}
+
+fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
+    log_warn(&format!(
+        "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
+    ));
 }
 
 #[cfg(test)]
