@@ -142,13 +142,14 @@ fn is_valid_env_key(key: &str) -> bool {
         && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
-fn render_env_value(value: &str) -> String {
+pub(crate) fn render_env_value(value: &str) -> String {
     if value.is_empty()
         || value
             .chars()
             .any(|ch| ch.is_whitespace() || matches!(ch, '\'' | '"' | '\\' | '$' | '`' | '#'))
     {
-        format!("'{}'", value.replace('\'', "'\"'\"'"))
+        let escaped = value.replace('\'', "'\\''");
+        format!("'{escaped}'")
     } else {
         value.to_string()
     }
@@ -326,6 +327,20 @@ mod tests {
             validate_remote_dir("axon-deploy/nested_1.2").unwrap(),
             "axon-deploy/nested_1.2"
         );
+    }
+
+    #[test]
+    fn render_env_value_round_trips_through_dotenvy() {
+        for value in [
+            "two words",
+            "Let's go",
+            r"path\\with\\slashes",
+            "hash#value",
+        ] {
+            let raw = format!("TEST={}\n", render_env_value(value));
+            let parsed = parse_env_pairs_from_str(&raw).unwrap();
+            assert_eq!(parsed.get("TEST").map(String::as_str), Some(value));
+        }
     }
 
     #[allow(unsafe_code)]

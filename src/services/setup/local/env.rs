@@ -152,7 +152,7 @@ fn write_env_file(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()>
     for (key, value) in env {
         out.push_str(key);
         out.push('=');
-        out.push_str(value);
+        out.push_str(&config_store::render_env_value(value));
         out.push('\n');
     }
 
@@ -224,6 +224,29 @@ mod tests {
         assert_eq!(
             parsed.get("AXON_MCP_AUTH_MODE").map(String::as_str),
             Some("oauth")
+        );
+    }
+
+    #[test]
+    fn write_env_file_quotes_dotenvy_sensitive_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_path = dir.path().join(".env");
+        let env = BTreeMap::from([
+            ("PLAIN".to_string(), "value".to_string()),
+            ("SPACED".to_string(), "two words".to_string()),
+            ("APOSTROPHE".to_string(), "Let's go".to_string()),
+        ]);
+
+        write_env_file(&env_path, &env).unwrap();
+
+        let raw = std::fs::read_to_string(&env_path).unwrap();
+        assert!(raw.contains("PLAIN=value"));
+        assert!(raw.contains("SPACED='two words'"));
+        assert!(raw.contains("APOSTROPHE='Let'\\''s go'"));
+        let parsed = parse_env_file(&raw).unwrap();
+        assert_eq!(
+            parsed.get("APOSTROPHE").map(String::as_str),
+            Some("Let's go")
         );
     }
 
