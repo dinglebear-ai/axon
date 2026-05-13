@@ -220,7 +220,7 @@ fn queue_summary_secs(toml: &TomlConfig) -> u64 {
         "AXON_QUEUE_SUMMARY_SECS",
         toml.workers.queue_summary_secs,
         30,
-        5,
+        0,
         3600,
     )
 }

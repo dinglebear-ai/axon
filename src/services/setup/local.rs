@@ -247,6 +247,9 @@ fn run_env_and_compose_phases(
 ) -> io::Result<EnvPhaseState> {
     if mode.mutates() {
         let env_result = if matches!(mode, LocalSetupMode::MigrateEnv) {
+            if !env_path.exists() {
+                phases.push(env::ensure_env_file(env_path)?.phase);
+            }
             env_migration::migrate_env_file(env_path)?
         } else {
             let result = env::ensure_env_file(env_path)?;

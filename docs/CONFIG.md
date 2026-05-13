@@ -209,7 +209,7 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 | `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
 | `AXON_EMBED_LANES` | `2` | Parallel embed worker lanes (clamped 1-32) |
 | `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
-| `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (clamped 5-3600) |
+| `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
 | `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
 
 ### Search and research

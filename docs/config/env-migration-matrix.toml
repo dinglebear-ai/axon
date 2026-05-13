@@ -1,11 +1,3 @@
-# Axon env/config migration matrix.
-# Source of truth for the env boundary migration tracked by axon_rust-ztqd.
-# No secret values belong in this file.
-
-[metadata]
-version = 1
-source = "axon_rust-ztqd"
-
 [[env]]
 key = "QDRANT_URL"
 classification = "keep-env"
@@ -440,27 +432,27 @@ reason = "Runtime Gemini model selection."
 
 [[env]]
 key = "AXON_LLM_COMPLETION_CONCURRENCY"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "llm.completion-concurrency"
-compatibility = "warn-env-override"
-reason = "Non-secret LLM completion tuning."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret LLM completion tuning. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LLM_COMPLETION_TIMEOUT_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "llm.completion-timeout-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret LLM completion tuning."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret LLM completion tuning. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "TEI_MAX_CLIENT_BATCH_SIZE"
@@ -680,39 +672,39 @@ reason = "Removed legacy runtime path; migration prunes it from env."
 
 [[env]]
 key = "AXON_ASK_AUTHORITATIVE_BOOST"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-authoritative-boost"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_AUTHORITATIVE_DOMAINS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-authoritative-domains"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_BACKFILL_CHUNKS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-backfill-chunks"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_CANDIDATE_LIMIT"
@@ -722,7 +714,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "ask.ask-candidate-limit"
+toml_destination = "ask.candidate-limit"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
@@ -734,45 +726,45 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "ask.ask-chunk-limit"
+toml_destination = "ask.chunk-limit"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
 [[env]]
 key = "AXON_ASK_DOC_CHUNK_LIMIT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-doc-chunk-limit"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_DOC_FETCH_CONCURRENCY"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.ask-doc-fetch-concurrency"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_FULL_DOCS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-full-docs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_HYBRID_CANDIDATES"
@@ -782,33 +774,33 @@ surfaces = ["src", "scripts", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "ask.ask-hybrid-candidates"
+toml_destination = "search.ask-hybrid-candidates"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
 [[env]]
 key = "AXON_ASK_MAX_CONTEXT_CHARS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-max-context-chars"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_MIN_CITATIONS_NONTRIVIAL"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.ask-min-citations-nontrivial"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_ASK_MIN_RELEVANCE_SCORE"
@@ -818,7 +810,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "ask.ask-min-relevance-score"
+toml_destination = "ask.min-relevance-score"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
@@ -836,15 +828,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_CHROME_DIAGNOSTICS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.chrome-diagnostics"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_CHROME_DIAGNOSTICS_DIR"
@@ -860,51 +852,51 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_CHROME_DIAGNOSTICS_EVENTS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.chrome-diagnostics-events"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_CHROME_DIAGNOSTICS_SCREENSHOT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.chrome-diagnostics-screenshot"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_CHROME_PROXY"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.chrome-proxy"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_CHROME_USER_AGENT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "scripts", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.chrome-user-agent"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_COLLECTION"
@@ -920,51 +912,51 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_DOMAINS_DETAILED"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "search.domains-detailed"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_DOMAINS_DETAILED_LIMIT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "search.domains-detailed-limit"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_DOMAINS_FACET_LIMIT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "search.domains-facet-limit"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_EMBED_DOC_CONCURRENCY"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.embed-doc-concurrency"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_EXCLUDE_PATH_PREFIX"
@@ -986,7 +978,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "search.hnsw-ef-search"
+toml_destination = "search.hnsw-ef"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
@@ -998,7 +990,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "search.hnsw-ef-search-legacy"
+toml_destination = "search.hnsw-ef-legacy"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
@@ -1022,33 +1014,33 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "search.hybrid-search"
+toml_destination = "search.hybrid-enabled"
 compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
 [[env]]
 key = "AXON_INLINE_BYTES_THRESHOLD"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.inline-bytes-threshold"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_INSTALL_DRY_RUN"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["scripts"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.install-dry-run"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_INSTALL_PREFIX"
@@ -1064,15 +1056,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_INSTALL_SKIP_SETUP"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["scripts"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.install-skip-setup"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_INSTALL_TMPDIR"
@@ -1112,39 +1104,39 @@ reason = "Container bootstrap marker supplied by Compose."
 
 [[env]]
 key = "AXON_JOB_STALE_CONFIRM_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.job-stale-confirm-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_JOB_STALE_TIMEOUT_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.job-stale-timeout-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_JOB_WAIT_TIMEOUT_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.job-wait-timeout-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LITE"
@@ -1172,15 +1164,15 @@ reason = "Test/dev harness variable, not a production env template key."
 
 [[env]]
 key = "AXON_LOCAL_MODE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.local-mode"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LOG_DIR"
@@ -1208,39 +1200,39 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_LOG_FULL_QUERIES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.log-full-queries"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LOG_LEVEL"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.log-level"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LOG_MAX_BYTES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.log-max-bytes"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_LOG_MAX_FILES"
@@ -1256,15 +1248,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_MCP"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.mcp"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_MCP_ARTIFACT_DIR"
@@ -1292,15 +1284,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_MCP_EMBED_MAX_LOCAL_BYTES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "tei.mcp-embed-max-local-bytes"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_MCP_HTTP_HOST"
@@ -1352,27 +1344,27 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_NO_COLOR"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "scripts", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.no-color"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_NO_WIPE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.no-wipe"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_OUTPUT_DIR"
@@ -1412,15 +1404,15 @@ reason = "Removed legacy runtime path; migration prunes it from env."
 
 [[env]]
 key = "AXON_QDRANT_UPSERT_BATCH_SIZE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.qdrant-upsert-batch-size"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_REDIS_URL"
@@ -1448,51 +1440,51 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_SERVER_INSECURE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.server-insecure"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_SESSION_INGEST_MAX_BYTES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.session-ingest-max-bytes"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_SETUP_SKIP_SMOKE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.setup-skip-smoke"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_SOURCES_FACET_LIMIT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "search.sources-facet-limit"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_SUGGEST_BASE_URL_LIMIT"
@@ -1520,15 +1512,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_SUGGEST_INDEX_LIMIT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.suggest-index-limit"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_TARGET_DIR"
@@ -1544,15 +1536,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_TEI_MAX_CONCURRENT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "tei.tei-max-concurrent"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_TEST_AMQP_URL"
@@ -1880,15 +1872,15 @@ reason = "Test/dev harness variable, not a production env template key."
 
 [[env]]
 key = "AXON_WATCHDOG_SWEEP_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.watchdog-sweep-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_WEB_ALLOWED_ORIGINS"
@@ -1952,51 +1944,51 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "GEMINI_CLI_TRUST_WORKSPACE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.gemini-cli-trust-workspace"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "GITHUB_INGEST_TOTAL_TIMEOUT_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.github-ingest-total-timeout-secs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "GITHUB_MAX_ISSUES"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.github-max-issues"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "GITHUB_MAX_PRS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.github-max-prs"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "GITHUB_REPO"
@@ -2012,15 +2004,15 @@ reason = "Test/dev harness variable, not a production env template key."
 
 [[env]]
 key = "GITHUB_SUBTASK_COUNT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "ask.github-subtask-count"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "HF_HUB_CACHE"
@@ -2072,39 +2064,39 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "QDRANT_PRODUCTION_YAML"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.qdrant-production-yaml"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "REDDIT_BATCH_FLUSH_SIZE"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.reddit-batch-flush-size"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "REDDIT_CLIENT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.reddit-client"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "REDDIT_TARGET"
@@ -2120,39 +2112,39 @@ reason = "Test/dev harness variable, not a production env template key."
 
 [[env]]
 key = "REDDIT_USER_AGENT"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "runtime.reddit-user-agent"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "TEI_CONCURRENCY"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "workers.tei-concurrency"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "TEI_MAX_BACKOFF_MS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
+classification = "keep-env"
+runtime_placement = "both"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = false
-toml_destination = "tei.tei-max-backoff-ms"
-compatibility = "warn-env-override"
-reason = "Non-secret tuning knob; migrate to config.toml."
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "TEI_MAX_BATCH_REQUESTS"

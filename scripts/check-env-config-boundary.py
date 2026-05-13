@@ -69,6 +69,37 @@ ENV_ONLY_CLASSIFICATIONS = {
     "trusted-operator-bootstrap",
 }
 
+VALID_TOML_DESTINATIONS = {
+    "search.hybrid-enabled",
+    "search.hybrid-candidates",
+    "search.ask-hybrid-candidates",
+    "search.hnsw-ef",
+    "search.hnsw-ef-legacy",
+    "search.collection",
+    "ask.chunk-limit",
+    "ask.candidate-limit",
+    "ask.min-relevance-score",
+    "ask.cache.enabled",
+    "ask.cache.max-capacity-bytes",
+    "ask.cache.ttl-secs",
+    "ask.adaptive.fulldoc-skip-enabled",
+    "ask.adaptive.fulldoc-skip-min-urls",
+    "ask.adaptive.fulldoc-skip-min-chars",
+    "ask.adaptive.fulldoc-skip-score-delta",
+    "tei.max-retries",
+    "tei.request-timeout-ms",
+    "tei.max-client-batch-size",
+    "workers.ingest-lanes",
+    "workers.embed-lanes",
+    "workers.embed-doc-timeout-secs",
+    "workers.queue-summary-secs",
+    "workers.qdrant-point-buffer",
+    "workers.max-pending-crawl-jobs",
+    "workers.max-pending-embed-jobs",
+    "workers.max-pending-extract-jobs",
+    "workers.max-pending-ingest-jobs",
+}
+
 
 def load_matrix() -> dict[str, dict[str, object]]:
     data = tomllib.loads(MATRIX.read_text())
@@ -123,6 +154,14 @@ def entry_errors(key: str, entry: dict[str, object]) -> list[str]:
         errors.append(f"{key}: invalid runtime_placement {placement!r}")
     if classification == "move-toml" and not toml_destination:
         errors.append(f"{key}: move-toml requires toml_destination")
+    if (
+        classification == "move-toml"
+        and toml_destination
+        and toml_destination not in VALID_TOML_DESTINATIONS
+    ):
+        errors.append(
+            f"{key}: unsupported toml_destination {toml_destination!r}; add a typed config.toml field first"
+        )
     if classification in ENV_ONLY_CLASSIFICATIONS and toml_destination:
         errors.append(f"{key}: env/bootstrap key must not have toml_destination")
 

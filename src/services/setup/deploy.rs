@@ -80,7 +80,9 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     run_checked(
         &session,
         "remote directory",
-        &format!("mkdir -p \"$HOME/{remote_dir}/qdrant\" \"$HOME/{remote_dir}/chrome\""),
+        &format!(
+            "mkdir -p \"$HOME/{remote_dir}/config/qdrant\" \"$HOME/{remote_dir}/config/chrome\" \"$HOME/.axon\""
+        ),
     )
     .await?;
     steps.push(step("remote directory", &format!("created ~/{remote_dir}")));
@@ -90,6 +92,16 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     steps.push(step("upload assets", "complete compose project uploaded"));
 
     let session = connect(target, accept_new_host_key).await?;
+    run_checked(
+        &session,
+        "remote runtime env",
+        &remote_runtime_env_command(),
+    )
+    .await?;
+    steps.push(step(
+        "remote runtime env",
+        "ensured remote ~/.axon/.env with service URLs and MCP token",
+    ));
     run_checked_with_timeout(
         &session,
         "compose up",
@@ -101,7 +113,7 @@ pub async fn deploy_remote(request: DeployRequest) -> Result<DeployResult, Box<d
     wait_for_remote_services(&session).await?;
     steps.push(step(
         "service readiness",
-        "qdrant, tei, and chrome are ready",
+        "qdrant, tei, chrome, and axon are ready",
     ));
     session.close().await?;
 
@@ -164,8 +176,8 @@ async fn upload_assets(
     let compose_path = format!("{remote_dir}/docker-compose.services.yaml");
     let env_path = format!("{remote_dir}/.env.example");
     let services_env_path = format!("{remote_dir}/services.env");
-    let qdrant_path = format!("{remote_dir}/qdrant/production.yaml");
-    let chrome_path = format!("{remote_dir}/chrome/Dockerfile");
+    let qdrant_path = format!("{remote_dir}/config/qdrant/production.yaml");
+    let chrome_path = format!("{remote_dir}/config/chrome/Dockerfile");
     let compose = render_compose(public_exposure);
     for (path, contents) in [
         (compose_path.as_str(), compose.as_bytes()),
@@ -226,6 +238,7 @@ async fn wait_for_remote_services(session: &openssh::Session) -> Result<(), Box<
         ("qdrant readiness", "http://127.0.0.1:53333/readyz"),
         ("tei readiness", "http://127.0.0.1:52000/health"),
         ("chrome readiness", "http://127.0.0.1:6000/json/version"),
+        ("axon readiness", "http://127.0.0.1:8001/readyz"),
     ] {
         run_checked_with_timeout(
             session,
@@ -261,6 +274,23 @@ where
 
 fn render_compose(_public_exposure: bool) -> String {
     DOCKER_COMPOSE_SERVICES.replace("../services.env", "services.env")
+}
+
+fn remote_runtime_env_command() -> String {
+    [
+        "set -eu",
+        "mkdir -p \"$HOME/.axon\"",
+        "touch \"$HOME/.axon/.env\"",
+        "chmod 600 \"$HOME/.axon/.env\"",
+        "token=$(awk -F= '$1 == \"AXON_MCP_HTTP_TOKEN\" && $2 != \"\" { print $2; exit }' \"$HOME/.axon/.env\")",
+        "if [ -z \"$token\" ]; then token=$(LC_ALL=C tr -dc 'A-Fa-f0-9' < /dev/urandom | head -c 64); fi",
+        "tmp=$(mktemp \"$HOME/.axon/.env.tmp.XXXXXX\")",
+        "awk -F= '$1 != \"QDRANT_URL\" && $1 != \"TEI_URL\" && $1 != \"AXON_CHROME_REMOTE_URL\" && $1 != \"AXON_MCP_HTTP_TOKEN\" { print }' \"$HOME/.axon/.env\" > \"$tmp\"",
+        "printf '%s\\n' 'QDRANT_URL=http://axon-qdrant:6333' 'TEI_URL=http://axon-tei:80' 'AXON_CHROME_REMOTE_URL=http://axon-chrome:6000' \"AXON_MCP_HTTP_TOKEN=$token\" >> \"$tmp\"",
+        "chmod 600 \"$tmp\"",
+        "mv \"$tmp\" \"$HOME/.axon/.env\"",
+    ]
+    .join(" && ")
 }
 
 fn service_urls(
@@ -357,5 +387,27 @@ mod tests {
         assert!(QDRANT_PRODUCTION_YAML.contains("http_port: 6333"));
         assert!(DOCKER_COMPOSE_SERVICES.contains("chrome/Dockerfile"));
         assert!(CHROME_DOCKERFILE.contains("FROM "));
+    }
+
+    #[test]
+    fn remote_runtime_env_command_seeds_auth_and_container_service_urls() {
+        let command = remote_runtime_env_command();
+        assert!(command.contains("AXON_MCP_HTTP_TOKEN"));
+        assert!(command.contains("QDRANT_URL=http://axon-qdrant:6333"));
+        assert!(command.contains("TEI_URL=http://axon-tei:80"));
+        assert!(command.contains("AXON_CHROME_REMOTE_URL=http://axon-chrome:6000"));
+        assert!(command.contains("chmod 600"));
+    }
+
+    #[test]
+    fn uploaded_asset_paths_match_compose_project_paths() {
+        let remote_dir = "axon-deploy";
+        let qdrant_path = format!("{remote_dir}/config/qdrant/production.yaml");
+        let chrome_path = format!("{remote_dir}/config/chrome/Dockerfile");
+        assert!(DOCKER_COMPOSE_SERVICES.contains("./config/qdrant/production.yaml"));
+        assert!(DOCKER_COMPOSE_SERVICES.contains("context: ./config"));
+        assert!(DOCKER_COMPOSE_SERVICES.contains("dockerfile: chrome/Dockerfile"));
+        assert_eq!(qdrant_path, "axon-deploy/config/qdrant/production.yaml");
+        assert_eq!(chrome_path, "axon-deploy/config/chrome/Dockerfile");
     }
 }

@@ -15,6 +15,12 @@ use clap::{Command, CommandFactory, FromArgMatches, parser::ValueSource};
 
 pub(crate) use docker::is_docker_service_host;
 
+pub(crate) fn validate_toml_config_text(raw_toml: &str) -> Result<(), String> {
+    toml::from_str::<toml_config::TomlConfig>(raw_toml)
+        .map(|_| ())
+        .map_err(|e| format!("config TOML parse error: {e}"))
+}
+
 pub fn build_cli_command() -> Command {
     Cli::command()
 }
