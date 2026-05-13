@@ -14,6 +14,7 @@ use super::super::helpers::{
 use super::super::toml_config::TomlConfig;
 use super::super::tuning;
 use super::command_dispatch::DispatchOutput;
+use crate::core::logging::log_warn;
 use std::env;
 
 /// Inputs required by the assemblers below. Shared so each helper takes a
@@ -360,9 +361,9 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
 }
 
 fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
-    eprintln!(
-        "axon: warning: [services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
-    );
+    log_warn(&format!(
+        "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
+    ));
 }
 
 #[cfg(test)]

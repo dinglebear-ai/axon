@@ -141,8 +141,10 @@ def scan_env_tokens() -> dict[str, set[str]]:
 
 
 def load_rust_registry_keys() -> set[str]:
-    registry = ROOT / "src/core/config/parse/env_registry.rs"
-    return set(re.findall(r'spec\(\s*"([A-Z0-9_]+)"', registry.read_text()))
+    registry_root = ROOT / "src/core/config/parse"
+    texts = [registry_root.joinpath("env_registry.rs").read_text()]
+    texts.extend(path.read_text() for path in registry_root.glob("env_registry/*.rs"))
+    return set(re.findall(r'spec\(\s*"([A-Z0-9_]+)"', "\n".join(texts)))
 
 
 def missing_key_errors(missing: list[str], found: dict[str, set[str]]) -> list[str]:
