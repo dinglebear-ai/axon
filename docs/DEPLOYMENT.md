@@ -81,7 +81,10 @@ Populate `~/.axon/.env` before first deploy. `dev-setup.sh` handles secrets and 
 - `AXON_DATA_DIR` — root for all persistent volume data
 - `QDRANT_URL` — Qdrant vector store URL
 - `TEI_URL` — text embedding service URL (runs as `axon-tei` in `docker-compose.yaml`)
-- `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` — LLM endpoint
+- Gemini CLI auth plus `AXON_HEADLESS_GEMINI_CMD` — canonical LLM synthesis path
+
+`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` are compatibility
+settings only for deployments that explicitly use an OpenAI-compatible endpoint.
 
 ### Web Panel and HTTP Auth
 
@@ -116,8 +119,8 @@ AXON_BIN=/workspace/axon_rust/target/release/axon
 
 ### Optional tuning
 
-- Worker tuning (`AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, etc.)
-- Watchdog and performance settings
+- Worker tuning in `~/.axon/config.toml` (`workers.ingest-lanes`, `workers.embed-doc-timeout-secs`, etc.)
+- Watchdog and performance settings in `~/.axon/.env` until typed TOML fields exist
 
 Ensure `.env` is never committed. `.env.example` remains tracked.
 

@@ -155,10 +155,12 @@ Implemented resource(s):
 Server reads existing Axon stack vars:
 - `QDRANT_URL`
 - `TEI_URL`
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
 - `TAVILY_API_KEY`
+
+LLM synthesis uses Gemini headless by default (`AXON_HEADLESS_GEMINI_CMD`
+plus Gemini CLI auth). `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and
+`OPENAI_MODEL` remain compatibility settings for deployments that explicitly
+use an OpenAI-compatible endpoint.
 
 MCP transport env vars:
 - `AXON_MCP_HTTP_HOST`

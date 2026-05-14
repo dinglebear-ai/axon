@@ -71,10 +71,10 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
 ## RAG Pipeline
 
 1. Embed the question via TEI
-2. Query Qdrant for top `AXON_ASK_CANDIDATE_LIMIT` (default: 150) candidate chunks
-3. Apply the score threshold only on cosine/dense paths. `AXON_ASK_MIN_RELEVANCE_SCORE` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
+2. Query Qdrant for top `ask.candidate-limit` (default: 150) candidate chunks
+3. Apply the score threshold only on cosine/dense paths. `ask.min-relevance-score` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
 4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
-5. Rerank by the mode-appropriate score/order; take top `AXON_ASK_CHUNK_LIMIT` (default: 10)
+5. Rerank by the mode-appropriate score/order; take top `ask.chunk-limit` (default: 10)
 6. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
 7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
 8. Call Gemini headless with context + question
@@ -83,13 +83,20 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
 
 ## RAG Tuning
 
-The retrieval pipeline is tunable via environment variables. See the [Environment section](../../README.md#ask-rag-tuning) in the README for the full table. Short reference:
+The core retrieval-selection knobs live in `~/.axon/config.toml` under `[ask]`.
+Env vars with the same names are compatibility overrides, not the normal place
+to store these values.
+
+| TOML key | Env override | Default | Effect |
+|----------|--------------|---------|--------|
+| `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6-0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `150` | More candidates = better recall, slower reranking |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks in final LLM context |
+
+Remaining runtime ask controls are still env-only until typed TOML fields exist:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6–0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
-| `AXON_ASK_CANDIDATE_LIMIT` | `150` | More candidates = better recall, slower reranking |
-| `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks in final LLM context |
 | `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Total context characters; raise for large-context models |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
@@ -98,7 +105,7 @@ The retrieval pipeline is tunable via environment variables. See the [Environmen
 ## Notes
 
 - LLM answer generation goes through Gemini headless. `AXON_HEADLESS_GEMINI_MODEL` is used as the Gemini model override.
-- If you get "No candidates met relevance threshold", lower `AXON_ASK_MIN_RELEVANCE_SCORE` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
+- If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon crawl`/`axon embed` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
 - `ask` queries the local knowledge base only. To search the live web, use `axon research`.
 - For benchmarking RAG quality vs a baseline, use `axon evaluate`.
 - `ask` enforces citation-quality gates:

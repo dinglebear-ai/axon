@@ -176,11 +176,20 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 ### TEI embedding
 
+Axon client-side TEI retry and batching knobs live in `~/.axon/config.toml`
+under `[tei]`. The corresponding env vars remain accepted as compatibility
+overrides, but should not live in `~/.axon/.env` for normal operation.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `tei.max-retries` | `TEI_MAX_RETRIES` | `5` | Max retry attempts after the initial request |
+| `tei.request-timeout-ms` | `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
+| `tei.max-client-batch-size` | `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
+
+TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TEI_MAX_RETRIES` | `5` | Max retry attempts after the initial request |
-| `TEI_REQUEST_TIMEOUT_MS` | `30000` | Per-attempt timeout (clamped 1000-300000) |
-| `TEI_MAX_CLIENT_BATCH_SIZE` | `64` | Default batch size sent to TEI (auto-splits on 413; max: 128) |
 | `TEI_HTTP_PORT` | `52000` | Host port for TEI container |
 | `TEI_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | HuggingFace embedding model |
 | `TEI_MAX_CONCURRENT_REQUESTS` | `32` | Max concurrent TEI server requests |
@@ -203,14 +212,17 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 ### Collections and worker lanes
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AXON_COLLECTION` | `cortex` | Qdrant collection name |
-| `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
-| `AXON_EMBED_LANES` | `2` | Parallel embed worker lanes (clamped 1-32) |
-| `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
-| `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
-| `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
+These are normal `~/.axon/config.toml` settings. Env vars remain accepted for
+temporary overrides and legacy scripts.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `search.collection` | `AXON_COLLECTION` | `cortex` | Qdrant collection name |
+| `workers.ingest-lanes` | `AXON_INGEST_LANES` | `2` | Parallel ingest worker lanes (clamped 1-16) |
+| `workers.embed-lanes` | `AXON_EMBED_LANES` | `2` | Parallel embed worker lanes (clamped 1-32) |
+| `workers.embed-doc-timeout-secs` | `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
+| `workers.queue-summary-secs` | `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
+| `workers.qdrant-point-buffer` | `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
 
 ### Search and research
 
@@ -241,40 +253,52 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 ### Hybrid search
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AXON_HYBRID_SEARCH` | `true` | Enable BM42 sparse + dense RRF fusion |
-| `AXON_HYBRID_CANDIDATES` | `100` | Candidates per prefetch arm (10-500) |
-| `AXON_ASK_HYBRID_CANDIDATES` | `100` | Ask pipeline hybrid window |
-| `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
-| `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
+Hybrid search tuning lives under `[search]` in `~/.axon/config.toml`.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `search.hybrid-enabled` | `AXON_HYBRID_SEARCH` | `true` | Enable BM42 sparse + dense RRF fusion |
+| `search.hybrid-candidates` | `AXON_HYBRID_CANDIDATES` | `100` | Candidates per prefetch arm (10-500) |
+| `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | `100` | Ask pipeline hybrid window |
+| `search.hnsw-ef` | `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
+| `search.hnsw-ef-legacy` | `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
 
 ### Ask / RAG tuning
+
+Core retrieval selection knobs live in `~/.axon/config.toml` under `[ask]`.
+The remaining rows are runtime env controls until typed TOML fields exist.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `150` | Max retrieval candidates per prefetch (clamped 8-300) |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `10` | Max total chunks selected for LLM context |
+| `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate inclusion |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Max context characters passed to the LLM (clamped 20000–400000) |
-| `AXON_ASK_CANDIDATE_LIMIT` | `150` | Max retrieval candidates per prefetch (clamped 8–300) |
 | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1–16) |
 | `AXON_ASK_DOC_CHUNK_LIMIT` | `192` | Max chunks per document in context (clamped 8–2000) |
-| `AXON_ASK_CHUNK_LIMIT` | `10` | Max total chunks selected for LLM context |
 | `AXON_ASK_FULL_DOCS` | `4` | Max full documents included in context |
 | `AXON_ASK_BACKFILL_CHUNKS` | `3` | Backfill chunks from top documents to pad context (clamped 0–20) |
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate inclusion |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Boost weight for authoritative domains in reranking (clamped 0.0–0.5) |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | -- | Comma-separated authoritative domains to boost in reranking |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers (clamped 1–5) |
 
 ### Worker tuning
 
+Queue caps now live in `~/.axon/config.toml` under `[workers]`.
+
+| TOML key | Env override | Default | Description |
+|----------|--------------|---------|-------------|
+| `workers.max-pending-crawl-jobs` | `AXON_MAX_PENDING_CRAWL_JOBS` | `100` | Crawl queue cap — new submissions rejected when exceeded (0 = unlimited) |
+| `workers.max-pending-embed-jobs` | `AXON_MAX_PENDING_EMBED_JOBS` | `50` | Embed queue cap (0 = unlimited) |
+| `workers.max-pending-extract-jobs` | `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
+| `workers.max-pending-ingest-jobs` | `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_EMBED_DOC_CONCURRENCY` | CPU count | Max concurrent embed docs |
-| `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout |
-| `AXON_MAX_PENDING_CRAWL_JOBS` | `100` | Crawl queue cap — new submissions rejected when exceeded (0 = unlimited) |
-| `AXON_MAX_PENDING_EMBED_JOBS` | `50` | Embed queue cap (0 = unlimited) |
-| `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
-| `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
 | `AXON_JOB_STALE_TIMEOUT_SECS` | `300` | Seconds before a running job is considered stale |
 | `AXON_JOB_STALE_CONFIRM_SECS` | `60` | Grace period before stale job reclaim |
 

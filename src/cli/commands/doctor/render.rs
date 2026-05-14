@@ -7,6 +7,10 @@ fn report_value<'a>(report: &'a serde_json::Value, path: &[&str]) -> &'a serde_j
     })
 }
 
+fn report_has(report: &serde_json::Value, path: &[&str]) -> bool {
+    !report_value(report, path).is_null()
+}
+
 pub(crate) fn report_bool(report: &serde_json::Value, path: &[&str]) -> bool {
     report_value(report, path).as_bool().unwrap_or(false)
 }
@@ -118,7 +122,6 @@ fn render_services_section(report: &serde_json::Value) {
     let tei_ok = report_bool(report, &["services", "tei", "ok"]);
     let qdrant_ok = report_bool(report, &["services", "qdrant", "ok"]);
     let chrome_ok = report_bool(report, &["services", "chrome", "ok"]);
-    let openai_ok = report_bool(report, &["services", "openai", "ok"]);
 
     render_status_line(
         "tei",
@@ -138,13 +141,26 @@ fn render_services_section(report: &serde_json::Value) {
         chrome_ok,
         &chrome_status_label(report),
     );
-    let openai_configured = report_bool(report, &["services", "openai", "configured"]);
-    render_optional_status_line(
-        "openai",
-        openai_configured,
-        openai_ok,
-        &report_text(report, &["services", "openai", "detail"], "not configured"),
-    );
+    if report_has(report, &["services", "gemini_headless"]) {
+        render_status_line(
+            "gemini_headless",
+            report_bool(report, &["services", "gemini_headless", "ok"]),
+            &report_text(
+                report,
+                &["services", "gemini_headless", "detail"],
+                "not configured",
+            ),
+        );
+    }
+    if report_has(report, &["services", "openai"]) {
+        let openai_configured = report_bool(report, &["services", "openai", "configured"]);
+        render_optional_status_line(
+            "openai",
+            openai_configured,
+            report_bool(report, &["services", "openai", "ok"]),
+            &report_text(report, &["services", "openai", "detail"], "not configured"),
+        );
+    }
 }
 
 fn render_pipeline_row(report: &serde_json::Value, name: &str) {
@@ -175,7 +191,7 @@ fn render_pipelines_section(report: &serde_json::Value) {
         && !report_bool(report, &["pipelines", "extract_llm_ready"])
     {
         println!(
-            "    {} openai not configured — extract jobs will fail at LLM step",
+            "    {} LLM backend not ready — extract jobs will fail at LLM step",
             muted("⚠"),
         );
     }
