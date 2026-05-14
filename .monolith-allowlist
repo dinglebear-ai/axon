@@ -40,8 +40,3 @@ vendor/lab-auth/src/authorize.rs  # expires: 2026-06-15 | owner: jmagar | split:
 vendor/lab-auth/src/sqlite.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
 vendor/lab-auth/src/google.rs     # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
 vendor/lab-auth/src/middleware.rs  # expires: 2026-06-15 | owner: jmagar | split: N/A (upstream vendored)
-
-# search_crawl.rs: bulk is EnqueueCapture mock in tests; split to search_crawl/tests.rs
-# search.rs: pre-existing overage; extract research synthesis helpers to search/synthesis.rs
-src/services/search_crawl.rs  # expires: 2026-06-09 | owner: jmagar | split: search_crawl/tests.rs
-src/services/search.rs        # expires: 2026-06-09 | owner: jmagar | split: search/synthesis.rs
