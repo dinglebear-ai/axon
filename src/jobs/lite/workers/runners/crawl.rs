@@ -10,6 +10,7 @@ use crate::core::config::Config;
 use crate::core::ui::{accent, symbol_for_status};
 use crate::jobs::backend::{JobPayload, lift_err};
 use crate::jobs::error::JobError;
+use crate::jobs::lite::config_snapshot::apply_lite_config_snapshot_for_container;
 use crate::jobs::lite::config_snapshot::{apply_lite_config_snapshot, lite_config_snapshot_json};
 use crate::jobs::lite::ops::enqueue_job;
 use crate::jobs::lite::query::job_status_row;
@@ -33,6 +34,8 @@ pub async fn run_crawl_job_lite(
         tracing::warn!(id = %id, table = "axon_crawl_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
+    let caller_cfg =
+        apply_lite_config_snapshot_for_container(cfg, &config_json, false).map_err(lift_err)?;
     let effective_cfg = apply_lite_config_snapshot(cfg, &config_json).map_err(lift_err)?;
 
     crate::core::http::validate_url_with_dns(&url)
@@ -41,6 +44,11 @@ pub async fn run_crawl_job_lite(
 
     let job_output_dir = crate::services::crawl::predict_crawl_output_dir(
         &effective_cfg.output_dir,
+        &url,
+        &id.to_string(),
+    );
+    let caller_output_dir = crate::services::crawl::predict_crawl_output_dir(
+        &caller_cfg.output_dir,
         &url,
         &id.to_string(),
     );
@@ -78,7 +86,7 @@ pub async fn run_crawl_job_lite(
 
     ensure_crawl_not_cancelled(pool, id, cancel_token.as_ref(), &id_str, &url).await?;
 
-    maybe_append_sitemap_backfill(
+    let sitemap_backfill_error = maybe_append_sitemap_backfill(
         pool,
         &effective_cfg,
         id,
@@ -113,9 +121,11 @@ pub async fn run_crawl_job_lite(
     Ok(Some(build_crawl_result_json(
         &url,
         &job_output_dir,
+        &caller_output_dir,
         &summary,
         embed_job_id.as_deref(),
         embed_deferred.as_deref(),
+        sitemap_backfill_error.as_deref(),
     )))
 }
 
@@ -133,9 +143,9 @@ async fn maybe_append_sitemap_backfill(
     seen_urls: &std::collections::HashSet<String>,
     summary: &mut crate::crawl::engine::CrawlSummary,
     cancel_token: Option<&CancellationToken>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
     if !effective_cfg.discover_sitemaps {
-        return Ok(());
+        return Ok(None);
     }
 
     let backfill_fut = async {
@@ -159,15 +169,19 @@ async fn maybe_append_sitemap_backfill(
         },
         None => backfill_fut.await,
     };
-    if let Err(e) = backfill_result {
+    let sitemap_backfill_error = if let Err(e) = backfill_result {
         tracing::warn!(
             job_id = %id,
             url,
             error = %e,
             "crawl sitemap backfill failed after primary crawl; continuing to embed primary output"
         );
-    }
-    ensure_crawl_not_cancelled(pool, id, cancel_token, crawl_id, url).await
+        Some(e)
+    } else {
+        None
+    };
+    ensure_crawl_not_cancelled(pool, id, cancel_token, crawl_id, url).await?;
+    Ok(sitemap_backfill_error)
 }
 
 async fn ensure_crawl_not_cancelled(
@@ -298,15 +312,17 @@ async fn try_enqueue_embed_handoff(
 /// is on disk but not yet indexed.
 fn build_crawl_result_json(
     url: &str,
-    job_output_dir: &std::path::Path,
+    worker_output_dir: &std::path::Path,
+    caller_output_dir: &std::path::Path,
     summary: &crate::crawl::engine::CrawlSummary,
     embed_job_id: Option<&str>,
     embed_deferred: Option<&str>,
+    sitemap_backfill_error: Option<&str>,
 ) -> serde_json::Value {
     let mut value = serde_json::json!({
         "url": url,
-        "output_dir": job_output_dir,
-        "output_path": job_output_dir.join("markdown"),
+        "output_dir": caller_output_dir,
+        "output_path": caller_output_dir.join("markdown"),
         "pages_crawled": summary.pages_seen,
         "md_created": summary.markdown_files,
         "pages_discovered": summary.pages_discovered,
@@ -316,10 +332,33 @@ fn build_crawl_result_json(
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
     });
+    if worker_output_dir != caller_output_dir
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert(
+            "worker_output_dir".to_string(),
+            serde_json::Value::String(worker_output_dir.to_string_lossy().into_owned()),
+        );
+        obj.insert(
+            "worker_output_path".to_string(),
+            serde_json::Value::String(
+                worker_output_dir
+                    .join("markdown")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        );
+    }
     if let (Some(reason), Some(obj)) = (embed_deferred, value.as_object_mut()) {
         obj.insert(
             "embed_deferred".to_string(),
             serde_json::Value::String(reason.to_string()),
+        );
+    }
+    if let (Some(error), Some(obj)) = (sitemap_backfill_error, value.as_object_mut()) {
+        obj.insert(
+            "sitemap_backfill_error".to_string(),
+            serde_json::Value::String(error.to_string()),
         );
     }
     value
@@ -335,8 +374,12 @@ fn format_elapsed_ms(elapsed_ms: u128) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::build_crawl_result_json;
+    use super::{build_crawl_result_json, run_crawl_job_lite};
+    use crate::core::config::Config;
     use crate::crawl::engine::CrawlSummary;
+    use crate::jobs::backend::JobPayload;
+    use crate::jobs::lite::ops::enqueue_job;
+    use crate::jobs::lite::store::open_sqlite_pool;
     use std::path::Path;
 
     fn make_summary() -> CrawlSummary {
@@ -352,13 +395,40 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn run_crawl_job_lite_rejects_blocked_url_before_crawl() {
+        let pool = open_sqlite_pool(":memory:").await.expect("pool");
+        let cfg = Config::default_lite();
+        let id = enqueue_job(
+            &pool,
+            &JobPayload::Crawl {
+                url: "http://127.0.0.1/".to_string(),
+                config_json: "{}".to_string(),
+            },
+            &cfg,
+        )
+        .await
+        .expect("enqueue");
+
+        let err = run_crawl_job_lite(&pool, &cfg, id, None, None)
+            .await
+            .expect_err("blocked URL should fail before crawl");
+
+        assert!(
+            err.to_string().contains("private/reserved range"),
+            "expected SSRF validation error, got: {err}"
+        );
+    }
+
     #[test]
     fn crawl_result_json_uses_canonical_keys() {
         let json = build_crawl_result_json(
             "https://example.com",
             Path::new("/tmp/axon-crawl"),
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
             Some("embed-job-id"),
+            None,
             None,
         );
         let obj = json.as_object().expect("json is an object");
@@ -400,7 +470,9 @@ mod tests {
         let json = build_crawl_result_json(
             "https://example.com",
             Path::new("/tmp/axon-crawl"),
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
+            None,
             None,
             None,
         );
@@ -422,7 +494,9 @@ mod tests {
         let json = build_crawl_result_json(
             "https://example.com",
             Path::new("/tmp/axon-crawl"),
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
+            None,
             None,
             None,
         );
@@ -453,9 +527,11 @@ mod tests {
         let json = build_crawl_result_json(
             "https://example.com",
             Path::new("/tmp/axon-crawl"),
+            Path::new("/tmp/axon-crawl"),
             &make_summary(),
             None,
             Some("embed queue at capacity: 50/50 pending embed jobs"),
+            None,
         );
         let obj = json.as_object().expect("json is an object");
         assert_eq!(obj.get("embed_job_id").and_then(|v| v.as_str()), None);
@@ -463,6 +539,32 @@ mod tests {
             obj.get("embed_deferred").and_then(|v| v.as_str()),
             Some("embed queue at capacity: 50/50 pending embed jobs"),
             "capacity-deferred embed must surface a reason in result_json"
+        );
+    }
+
+    #[test]
+    fn crawl_result_json_preserves_caller_path_and_worker_path() {
+        let json = build_crawl_result_json(
+            "https://example.com",
+            Path::new("/home/axon/.axon/output/domains/example.com/job"),
+            Path::new("/home/jmagar/.axon/output/domains/example.com/job"),
+            &make_summary(),
+            None,
+            None,
+            Some("sitemap fetch failed"),
+        );
+        let obj = json.as_object().expect("json is an object");
+        assert_eq!(
+            obj.get("output_dir").and_then(|v| v.as_str()),
+            Some("/home/jmagar/.axon/output/domains/example.com/job")
+        );
+        assert_eq!(
+            obj.get("worker_output_dir").and_then(|v| v.as_str()),
+            Some("/home/axon/.axon/output/domains/example.com/job")
+        );
+        assert_eq!(
+            obj.get("sitemap_backfill_error").and_then(|v| v.as_str()),
+            Some("sitemap fetch failed")
         );
     }
 }

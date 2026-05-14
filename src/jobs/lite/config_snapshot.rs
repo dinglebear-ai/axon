@@ -137,9 +137,9 @@ struct LiteConfigSnapshot {
 }
 
 impl LiteConfigSnapshot {
-    fn from_config(cfg: &Config) -> Self {
+    fn from_config(cfg: &Config) -> Result<Self, String> {
         let mut process_fallback_fields = Vec::new();
-        Self {
+        Ok(Self {
             collection: Some(cfg.collection.clone()),
             output_dir: Some(cfg.output_dir.clone()),
             output_path: cfg.output_path.clone(),
@@ -192,17 +192,17 @@ impl LiteConfigSnapshot {
             reddit_min_score: Some(cfg.reddit_min_score),
             reddit_depth: Some(cfg.reddit_depth),
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
-            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields),
+            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields)?,
             qdrant_url: endpoint_snapshot(
                 "qdrant_url",
                 &cfg.qdrant_url,
                 &mut process_fallback_fields,
-            ),
+            )?,
             openai_base_url: endpoint_snapshot(
                 "openai_base_url",
                 &cfg.openai_base_url,
                 &mut process_fallback_fields,
-            ),
+            )?,
             openai_model: Some(cfg.openai_model.clone()),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
@@ -252,7 +252,7 @@ impl LiteConfigSnapshot {
             custom_headers: Some(cfg.custom_headers.clone()),
             quiet: Some(cfg.quiet),
             process_fallback_fields,
-        }
+        })
     }
 
     fn apply_to(self, cfg: &mut Config, exact_options: bool) {
@@ -398,7 +398,7 @@ impl LiteConfigSnapshot {
 pub(crate) fn lite_config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {
     serde_json::to_string(&LiteConfigEnvelope {
         version: 2,
-        config: LiteConfigSnapshot::from_config(cfg),
+        config: LiteConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
         prompt: None,
     })
 }
@@ -413,7 +413,7 @@ pub(crate) fn extract_config_json(
     }
     serde_json::to_string(&LiteConfigEnvelope {
         version: 2,
-        config: LiteConfigSnapshot::from_config(&effective),
+        config: LiteConfigSnapshot::from_config(&effective).map_err(serde_json_error)?,
         prompt,
     })
 }
@@ -455,8 +455,15 @@ pub(crate) fn ingest_config_json(
     serde_json::to_string(&LiteIngestConfigEnvelope {
         version: 2,
         source: Some(source.clone()),
-        config: LiteConfigSnapshot::from_config(cfg),
+        config: LiteConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
     })
+}
+
+fn serde_json_error(message: String) -> serde_json::Error {
+    serde_json::Error::io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message,
+    ))
 }
 
 pub(crate) fn decode_ingest_job_config(

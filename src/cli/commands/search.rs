@@ -46,12 +46,17 @@ pub async fn run_search(
 
     let crawl_output = enqueue_search_crawls(cfg, service_context, &results).await;
     let no_crawl_jobs_queued = !results.is_empty() && crawl_output.jobs.is_empty();
-    let first_rejection = crawl_output.rejected.first().cloned();
+    let first_rejection = crawl_output.rejected.first();
+    let auto_crawl_status = search_crawl_status(&results, &crawl_output);
 
     if cfg.json_output {
+        if no_crawl_jobs_queued {
+            return Err(search_crawl_total_failure(first_rejection).into());
+        }
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
+                "auto_crawl_status": auto_crawl_status,
                 "query": query,
                 "limit": cfg.search_limit,
                 "offset": 0,
@@ -61,9 +66,6 @@ pub async fn run_search(
                 "crawl_jobs_rejected": crawl_output.rejected,
             }))?
         );
-        if no_crawl_jobs_queued {
-            return Err(search_crawl_total_failure(first_rejection).into());
-        }
         return Ok(());
     }
 
@@ -89,13 +91,13 @@ struct SearchCrawlOutput {
     rejected: Vec<SearchCrawlRejection>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 struct SearchCrawlJob {
     url: String,
     job_id: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 struct SearchCrawlRejection {
     url: Option<String>,
     position: Option<i64>,
@@ -104,7 +106,7 @@ struct SearchCrawlRejection {
     reason: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum SearchCrawlRejectionKind {
     DuplicateUrl,
@@ -119,7 +121,6 @@ fn search_crawl_config(cfg: &Config) -> Config {
     let mut search_cfg = cfg.clone();
     search_cfg.max_pages = 1;
     search_cfg.max_depth = 1;
-    search_cfg.wait = false;
     search_cfg.discover_sitemaps = false;
     search_cfg.max_sitemaps = 0;
     search_cfg.custom_headers = Vec::new();
@@ -156,8 +157,7 @@ async fn enqueue_search_crawls(
             continue;
         };
         match enqueue_search_crawl_url(&search_cfg, service_context, url).await {
-            Ok(Some(job)) => output.jobs.push(job),
-            Ok(None) => {}
+            Ok(job) => output.jobs.push(job),
             Err(rejection) => output.rejected.push(rejection),
         }
     }
@@ -169,7 +169,7 @@ async fn enqueue_search_crawl_url(
     search_cfg: &Config,
     service_context: &ServiceContext,
     url: &str,
-) -> Result<Option<SearchCrawlJob>, SearchCrawlRejection> {
+) -> Result<SearchCrawlJob, SearchCrawlRejection> {
     if let Err(error) = validate_url_with_dns(url).await {
         let rejection = search_crawl_rejection(
             Some(url),
@@ -190,10 +190,19 @@ async fn enqueue_search_crawl_url(
     .await;
 
     match outcome {
-        Ok(outcome) => Ok(outcome.result.jobs.first().map(|job| SearchCrawlJob {
-            url,
-            job_id: job.job_id.clone(),
-        })),
+        Ok(outcome) => {
+            let Some(job) = outcome.result.jobs.first() else {
+                return Err(search_crawl_rejection(
+                    Some(&url),
+                    SearchCrawlRejectionKind::QueueRejected,
+                    "crawl service returned no job id",
+                ));
+            };
+            Ok(SearchCrawlJob {
+                url,
+                job_id: job.job_id.clone(),
+            })
+        }
         Err(error) => {
             let reason = error.to_string();
             tracing::warn!(url = %url, error = %reason, "search auto-index: enqueue failed");
@@ -233,17 +242,17 @@ fn search_crawl_result_rejection(
     }
 }
 
-fn search_crawl_total_failure(first: Option<SearchCrawlRejection>) -> anyhow::Error {
+fn search_crawl_total_failure(first: Option<&SearchCrawlRejection>) -> anyhow::Error {
     let reason = first
-        .map(|rejection| rejection.reason)
-        .unwrap_or_else(|| "unknown rejection".to_string());
+        .map(|rejection| rejection.reason.as_str())
+        .unwrap_or("unknown rejection");
     anyhow::anyhow!(
         "search completed, but no result URLs were queued for crawl; first failure: {reason}"
     )
 }
 
 fn log_search_crawl_rejection(cfg: &Config, rejection: &SearchCrawlRejection) {
-    if cfg.quiet {
+    if cfg.json_output {
         return;
     }
     let url = rejection.url.as_deref().unwrap_or("<missing>");
@@ -277,15 +286,27 @@ fn log_search_crawl_summary(cfg: &Config, output: &SearchCrawlOutput) {
             output.jobs.len()
         ));
     }
-    if !output.rejected.is_empty() && !cfg.quiet {
+    if !output.rejected.is_empty() && !cfg.json_output {
         log_warn(&format!(
-            "search auto-index: {} URL(s) could not be queued",
+            "search auto-index: {} URL(s) could not be queued; indexing is partial",
             output.rejected.len()
         ));
         for rejection in &output.rejected {
             let url = rejection.url.as_deref().unwrap_or("<missing>");
             log_warn(&format!("  - {url}: {}", rejection.reason));
         }
+    }
+}
+
+fn search_crawl_status(results: &[Value], output: &SearchCrawlOutput) -> &'static str {
+    if results.is_empty() {
+        "no_results"
+    } else if output.jobs.is_empty() {
+        "failed"
+    } else if output.rejected.is_empty() {
+        "queued"
+    } else {
+        "partial"
     }
 }
 
@@ -518,6 +539,18 @@ mod tests {
             cfg.search_time_range.is_none(),
             "search_time_range should default to None"
         );
+    }
+
+    #[test]
+    fn search_crawl_config_preserves_wait_mode() {
+        let mut cfg = make_search_cfg("tvly-key", "rust async");
+        cfg.wait = true;
+
+        let search_cfg = search_crawl_config(&cfg);
+
+        assert!(search_cfg.wait);
+        assert_eq!(search_cfg.max_pages, 1);
+        assert_eq!(search_cfg.max_depth, 1);
     }
 
     #[test]
