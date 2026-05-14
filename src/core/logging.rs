@@ -72,24 +72,23 @@ impl Visit for EventVisitor {
 
 /// Write the log level to `writer`, with Aurora ANSI 256 colour when `ansi` is true.
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fmt::Result {
-    let s = if ansi {
+    if ansi {
         match level {
-            tracing::Level::ERROR => ansi256_bold(aurora::ERROR, "ERROR"),
-            tracing::Level::WARN => ansi256_bold(aurora::WARN, " WARN"),
-            tracing::Level::INFO => " INFO".to_string(),
-            tracing::Level::DEBUG => ansi_dim("DEBUG"),
-            tracing::Level::TRACE => ansi_dim("TRACE"),
+            tracing::Level::ERROR => write!(writer, "{}  ", ansi256_bold(aurora::ERROR, "ERROR")),
+            tracing::Level::WARN => write!(writer, "{}  ", ansi256_bold(aurora::WARN, " WARN")),
+            tracing::Level::INFO => write!(writer, " INFO  "),
+            tracing::Level::DEBUG => write!(writer, "{}  ", ansi_dim("DEBUG")),
+            tracing::Level::TRACE => write!(writer, "{}  ", ansi_dim("TRACE")),
         }
     } else {
         match level {
-            tracing::Level::ERROR => "ERROR".to_string(),
-            tracing::Level::WARN => " WARN".to_string(),
-            tracing::Level::INFO => " INFO".to_string(),
-            tracing::Level::DEBUG => "DEBUG".to_string(),
-            tracing::Level::TRACE => "TRACE".to_string(),
+            tracing::Level::ERROR => write!(writer, "ERROR  "),
+            tracing::Level::WARN => write!(writer, " WARN  "),
+            tracing::Level::INFO => write!(writer, " INFO  "),
+            tracing::Level::DEBUG => write!(writer, "DEBUG  "),
+            tracing::Level::TRACE => write!(writer, "TRACE  "),
         }
-    };
-    write!(writer, "{s}  ")
+    }
 }
 
 /// Collect formatted span fields from leaf → root, then reverse to root → leaf order.
@@ -123,7 +122,11 @@ fn should_use_ansi(writer: &Writer<'_>) -> bool {
     if std::env::var_os("NO_COLOR").is_some() {
         return false;
     }
-    let force = |var: &str| std::env::var(var).is_ok_and(|v| v != "0" && !v.is_empty());
+    let force = |var: &str| {
+        std::env::var_os(var)
+            .map(|v| !v.is_empty() && v != "0")
+            .unwrap_or(false)
+    };
     if force("FORCE_COLOR") || force("CLICOLOR_FORCE") {
         return true;
     }
@@ -167,7 +170,6 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    // First token: aurora pink + bold (action verb)
                     write!(writer, "{}", ansi256_bold(aurora::SERVICE_NAME, token))?;
                 } else if let Some(eq) = token.find('=') {
                     // key=value — dim key, normal value
