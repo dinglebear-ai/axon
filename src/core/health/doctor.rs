@@ -1,6 +1,6 @@
 pub(crate) mod lite;
 
-use crate::cli::commands::probe::{probe_http, with_path};
+use crate::cli::commands::probe::with_path;
 use crate::core::config::Config;
 use serde_json::Value;
 use std::error::Error;
@@ -114,17 +114,6 @@ pub(super) async fn probe_openai(
         Ok(resp) => (false, format!("http {} /models", resp.status().as_u16())),
         Err(e) => (false, e.to_string()),
     }
-}
-
-/// Probe the Chrome CDP management endpoint. Returns (ok, detail).
-pub(super) async fn probe_chrome(chrome_url: Option<&str>) -> (bool, Option<String>) {
-    let url = match chrome_url {
-        Some(u) if !u.trim().is_empty() => u,
-        _ => return (false, None),
-    };
-
-    // CDP /json/version is the canonical health endpoint.
-    probe_http(url, &["/json/version", "/json"]).await
 }
 
 pub(super) async fn timed_probe<T, F>(future: F) -> (T, u64)
