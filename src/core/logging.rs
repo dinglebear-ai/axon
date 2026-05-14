@@ -104,6 +104,21 @@ where
     fields
 }
 
+/// Determine whether to emit ANSI escape codes, respecting the standard env vars:
+/// - `NO_COLOR` (https://no-color.org) — disables colors; wins over everything
+/// - `FORCE_COLOR` / `CLICOLOR_FORCE` — enables colors even without a TTY (Docker, CI)
+/// - Falls back to the writer's own TTY detection
+fn should_use_ansi(writer: &Writer<'_>) -> bool {
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    let force = |var: &str| std::env::var(var).is_ok_and(|v| v != "0" && !v.is_empty());
+    if force("FORCE_COLOR") || force("CLICOLOR_FORCE") {
+        return true;
+    }
+    writer.has_ansi_escapes()
+}
+
 struct CliFormat;
 
 impl<S, N> FormatEvent<S, N> for CliFormat
@@ -117,7 +132,7 @@ where
         mut writer: Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> fmt::Result {
-        let ansi = writer.has_ansi_escapes();
+        let ansi = should_use_ansi(&writer);
 
         // HH:MM:SS (local time)
         let ts = Local::now().format("%H:%M:%S").to_string();

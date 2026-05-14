@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-05-14
+
+### Fixed
+
+- logging: respect `FORCE_COLOR`/`CLICOLOR_FORCE`/`NO_COLOR` env vars so ANSI colors work in Docker where stderr is a pipe (not a TTY).
+- docker: set `CLICOLOR_FORCE=1` in the axon container environment so colored log output is on by default; disable with `AXON_LOG_COLOR=0` in `~/.axon/.env`.
+- docker: set container `TZ` from the host `TZ` env var, defaulting to `America/New_York`, so log timestamps show local time instead of UTC.
+
 ## [1.11.1] - 2026-05-13
 
 ### Fixed

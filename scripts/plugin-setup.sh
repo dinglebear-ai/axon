@@ -42,6 +42,19 @@ warn_stale_systemd_unit() {
   fi
 }
 
+run_setup() {
+  if axon setup check; then
+    return 0
+  fi
+
+  if axon setup repair; then
+    return 0
+  fi
+
+  printf 'axon plugin setup: setup repair reported failed phases; continuing so SessionStart is non-blocking\n' >&2
+  axon setup check || true
+}
+
 main() {
   reject_unsafe_value "CLAUDE_PLUGIN_OPTION_API_TOKEN" "${CLAUDE_PLUGIN_OPTION_API_TOKEN:-}"
   export_if_set AXON_MCP_HTTP_TOKEN CLAUDE_PLUGIN_OPTION_API_TOKEN
@@ -60,7 +73,7 @@ main() {
   chmod 700 "${AXON_HOME}" 2>/dev/null || true
   warn_stale_systemd_unit
   ensure_axon_binary
-  axon setup repair
+  run_setup
 }
 
 main "$@"
