@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::sync::LazyLock;
 
     use crate::core::http::{
-        cdp_discovery_url, normalize_url, ssrf_blacklist_patterns, validate_url,
+        cdp_discovery_url, normalize_url, ssrf_blacklist_patterns, validate_resolved_ips,
+        validate_url,
     };
 
     // --- normalize_url tests ---
@@ -313,6 +315,37 @@ mod tests {
         assert!(
             validate_url("http://[::1]/").is_err(),
             "direct loopback IPv6 must be blocked at parse time"
+        );
+    }
+
+    #[test]
+    fn resolved_hostname_ips_reject_private_addresses() {
+        let err = validate_resolved_ips(
+            "attacker.example",
+            [
+                IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)),
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            ],
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("127.0.0.1"),
+            "expected loopback address in error: {err}"
+        );
+    }
+
+    #[test]
+    fn resolved_hostname_ips_reject_ipv6_unique_local_addresses() {
+        let err = validate_resolved_ips(
+            "attacker.example",
+            [IpAddr::V6(Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 1))],
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("fd00"),
+            "expected unique-local address in error: {err}"
         );
     }
 

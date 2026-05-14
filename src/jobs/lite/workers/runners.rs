@@ -133,6 +133,58 @@ mod tests {
     }
 
     #[test]
+    fn lite_config_snapshot_keeps_non_default_axon_output_dir_for_container_workers() {
+        let mut submitted = Config::test_default();
+        submitted.output_dir = PathBuf::from("/mnt/shared/.axon/output");
+
+        let mut worker = Config::test_default();
+        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("snapshot should encode");
+        let mut effective =
+            apply_lite_config_snapshot(&worker, &config_json).expect("snapshot should apply");
+
+        crate::jobs::lite::config_snapshot::normalize_container_output_dir(
+            &worker,
+            &mut effective,
+            true,
+        );
+
+        assert_eq!(
+            effective.output_dir,
+            PathBuf::from("/mnt/shared/.axon/output")
+        );
+    }
+
+    #[test]
+    fn lite_config_snapshot_omits_secrets() {
+        let mut cfg = Config::test_default();
+        cfg.tavily_api_key = "tvly-SECRET_TAVILY".to_string();
+        cfg.openai_api_key = "sk-SECRET_OPENAI".to_string();
+        cfg.github_token = Some("ghp_SECRET_GITHUB".to_string());
+        cfg.reddit_client_secret = Some("REDDIT_SECRET".to_string());
+
+        let snapshot = lite_config_snapshot_json(&cfg).expect("snapshot should encode");
+
+        assert!(
+            !snapshot.contains("tvly-SECRET_TAVILY"),
+            "snapshot must not contain tavily_api_key"
+        );
+        assert!(
+            !snapshot.contains("sk-SECRET_OPENAI"),
+            "snapshot must not contain openai_api_key"
+        );
+        assert!(
+            !snapshot.contains("ghp_SECRET_GITHUB"),
+            "snapshot must not contain github_token"
+        );
+        assert!(
+            !snapshot.contains("REDDIT_SECRET"),
+            "snapshot must not contain reddit_client_secret"
+        );
+    }
+
+    #[test]
     fn lite_config_snapshot_exactly_replays_submitted_none_options() {
         let mut submitted = Config::test_default();
         submitted.output_path = None;

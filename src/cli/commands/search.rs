@@ -1,7 +1,7 @@
 use crate::cli::commands::common::parse_service_time_range;
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
-use crate::core::http::validate_url;
+use crate::core::http::validate_url_with_dns;
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
 use crate::services::context::ServiceContext;
@@ -119,8 +119,10 @@ async fn enqueue_search_crawl_url(
     url: &str,
     output: &mut SearchCrawlOutput,
 ) {
-    if let Err(error) = validate_url(url) {
-        log_warn(&format!("search auto-index: skipped invalid URL: {error}"));
+    if let Err(error) = validate_url_with_dns(url).await {
+        if !search_cfg.quiet {
+            log_warn(&format!("search auto-index: skipped invalid URL: {error}"));
+        }
         output
             .rejected
             .push(serde_json::json!({"url": url, "reason": error.to_string()}));
@@ -329,46 +331,25 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
-    async fn run_search_enqueue_nonfatal_on_queue_error() {
-        let key = std::env::var("TAVILY_API_KEY").expect("TAVILY_API_KEY required for this test");
-        let cfg = make_search_cfg(&key, "rust programming language");
+    async fn search_enqueue_failure_is_rejected_not_fatal() {
+        let cfg = make_search_cfg("tvly-key", "rust programming language");
         let ctx = make_ctx(EnqueueCapture::failing());
-        let result = run_search(&cfg, &ctx).await;
-        assert!(
-            result.is_ok(),
-            "run_search must return Ok even when enqueue fails: {result:?}"
-        );
-    }
+        let results = vec![serde_json::json!({
+            "url": "http://93.184.216.34/",
+            "title": "Example",
+            "position": 1,
+        })];
 
-    #[test]
-    fn test_lite_config_snapshot_omits_secrets() {
-        use crate::jobs::lite::config_snapshot::lite_config_snapshot_json;
+        let output = enqueue_search_crawls(&cfg, &ctx, &results).await;
 
-        let mut cfg = Config::test_default();
-        cfg.tavily_api_key = "tvly-SECRET_TAVILY".to_string();
-        cfg.openai_api_key = "sk-SECRET_OPENAI".to_string();
-        cfg.github_token = Some("ghp_SECRET_GITHUB".to_string());
-        cfg.reddit_client_secret = Some("REDDIT_SECRET".to_string());
-
-        let snapshot =
-            lite_config_snapshot_json(&cfg).expect("lite_config_snapshot_json must not fail");
-
+        assert!(output.jobs.is_empty());
+        assert_eq!(output.rejected.len(), 1);
         assert!(
-            !snapshot.contains("tvly-SECRET_TAVILY"),
-            "snapshot must not contain tavily_api_key"
-        );
-        assert!(
-            !snapshot.contains("sk-SECRET_OPENAI"),
-            "snapshot must not contain openai_api_key"
-        );
-        assert!(
-            !snapshot.contains("ghp_SECRET_GITHUB"),
-            "snapshot must not contain github_token"
-        );
-        assert!(
-            !snapshot.contains("REDDIT_SECRET"),
-            "snapshot must not contain reddit_client_secret"
+            output.rejected[0]["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("queue cap exceeded")),
+            "expected queue error in rejected output: {:?}",
+            output.rejected
         );
     }
 
