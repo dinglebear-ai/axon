@@ -445,7 +445,6 @@ jobs:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
-          AXON_DATA_DIR: .cache/axon-ci
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
@@ -456,7 +455,6 @@ jobs:
           AXON_DATA_DIR: .cache/axon-ci
           TEI_URL: http://127.0.0.1:52000
           QDRANT_URL: http://127.0.0.1:53333
-          AXON_DATA_DIR: .cache/axon-ci
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
