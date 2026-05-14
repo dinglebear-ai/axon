@@ -1,14 +1,16 @@
 use crate::cli::commands::common::parse_service_time_range;
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
-use crate::core::http::validate_url_with_dns;
+use crate::core::http::{normalize_url, validate_url_with_dns};
 use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_service;
 use crate::services::search::search_batch;
 use crate::services::types::SearchOptions as ServiceSearchOptions;
+use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::error::Error;
 
 pub async fn run_search(
@@ -43,6 +45,8 @@ pub async fn run_search(
     let duration_ms = search_start.elapsed().as_millis();
 
     let crawl_output = enqueue_search_crawls(cfg, service_context, &results).await;
+    let no_crawl_jobs_queued = !results.is_empty() && crawl_output.jobs.is_empty();
+    let first_rejection = crawl_output.rejected.first().cloned();
 
     if cfg.json_output {
         println!(
@@ -57,11 +61,17 @@ pub async fn run_search(
                 "crawl_jobs_rejected": crawl_output.rejected,
             }))?
         );
+        if no_crawl_jobs_queued {
+            return Err(search_crawl_total_failure(first_rejection).into());
+        }
         return Ok(());
     }
 
     print_search_results(&query, &results);
     log_search_crawl_summary(cfg, &crawl_output);
+    if no_crawl_jobs_queued {
+        return Err(search_crawl_total_failure(first_rejection).into());
+    }
 
     if !cfg.quiet {
         log_done(&format!(
@@ -75,8 +85,32 @@ pub async fn run_search(
 
 #[derive(Default)]
 struct SearchCrawlOutput {
-    jobs: Vec<Value>,
-    rejected: Vec<Value>,
+    jobs: Vec<SearchCrawlJob>,
+    rejected: Vec<SearchCrawlRejection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SearchCrawlJob {
+    url: String,
+    job_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SearchCrawlRejection {
+    url: Option<String>,
+    position: Option<i64>,
+    title: Option<String>,
+    kind: SearchCrawlRejectionKind,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SearchCrawlRejectionKind {
+    DuplicateUrl,
+    InvalidUrl,
+    MissingUrl,
+    QueueRejected,
 }
 
 fn search_crawl_config(cfg: &Config) -> Config {
@@ -100,9 +134,25 @@ async fn enqueue_search_crawls(
 ) -> SearchCrawlOutput {
     let search_cfg = search_crawl_config(cfg);
     let mut output = SearchCrawlOutput::default();
+    let mut seen = HashSet::new();
 
     for result in results {
         let Some(url) = result["url"].as_str().filter(|url| !url.is_empty()) else {
+            output.rejected.push(search_crawl_result_rejection(
+                result,
+                SearchCrawlRejectionKind::MissingUrl,
+            ));
+            log_search_crawl_rejection(&search_cfg, output.rejected.last().expect("just pushed"));
+            continue;
+        };
+        let normalized = normalize_url(url).into_owned();
+        if !seen.insert(normalized) {
+            output.rejected.push(search_crawl_rejection(
+                Some(url),
+                SearchCrawlRejectionKind::DuplicateUrl,
+                "duplicate search result URL",
+            ));
+            log_search_crawl_rejection(&search_cfg, output.rejected.last().expect("just pushed"));
             continue;
         };
         match enqueue_search_crawl_url(&search_cfg, service_context, url).await {
@@ -119,12 +169,15 @@ async fn enqueue_search_crawl_url(
     search_cfg: &Config,
     service_context: &ServiceContext,
     url: &str,
-) -> Result<Option<Value>, Value> {
+) -> Result<Option<SearchCrawlJob>, SearchCrawlRejection> {
     if let Err(error) = validate_url_with_dns(url).await {
-        if !search_cfg.quiet {
-            log_warn(&format!("search auto-index: skipped invalid URL: {error}"));
-        }
-        return Err(search_crawl_rejection(url, error.to_string()));
+        let rejection = search_crawl_rejection(
+            Some(url),
+            SearchCrawlRejectionKind::InvalidUrl,
+            error.to_string(),
+        );
+        log_search_crawl_rejection(search_cfg, &rejection);
+        return Err(rejection);
     }
 
     let url = url.to_string();
@@ -137,21 +190,67 @@ async fn enqueue_search_crawl_url(
     .await;
 
     match outcome {
-        Ok(outcome) => Ok(outcome
-            .result
-            .jobs
-            .first()
-            .map(|job| serde_json::json!({"url": url, "job_id": job.job_id}))),
+        Ok(outcome) => Ok(outcome.result.jobs.first().map(|job| SearchCrawlJob {
+            url,
+            job_id: job.job_id.clone(),
+        })),
         Err(error) => {
             let reason = error.to_string();
             tracing::warn!(url = %url, error = %reason, "search auto-index: enqueue failed");
-            Err(search_crawl_rejection(&url, reason))
+            Err(search_crawl_rejection(
+                Some(&url),
+                SearchCrawlRejectionKind::QueueRejected,
+                reason,
+            ))
         }
     }
 }
 
-fn search_crawl_rejection(url: &str, reason: impl Into<String>) -> Value {
-    serde_json::json!({"url": url, "reason": reason.into()})
+fn search_crawl_rejection(
+    url: Option<&str>,
+    kind: SearchCrawlRejectionKind,
+    reason: impl Into<String>,
+) -> SearchCrawlRejection {
+    SearchCrawlRejection {
+        url: url.map(str::to_string),
+        position: None,
+        title: None,
+        kind,
+        reason: reason.into(),
+    }
+}
+
+fn search_crawl_result_rejection(
+    result: &Value,
+    kind: SearchCrawlRejectionKind,
+) -> SearchCrawlRejection {
+    SearchCrawlRejection {
+        url: result["url"].as_str().map(str::to_string),
+        position: result["position"].as_i64(),
+        title: result["title"].as_str().map(str::to_string),
+        reason: "search result missing url".to_string(),
+        kind,
+    }
+}
+
+fn search_crawl_total_failure(first: Option<SearchCrawlRejection>) -> anyhow::Error {
+    let reason = first
+        .map(|rejection| rejection.reason)
+        .unwrap_or_else(|| "unknown rejection".to_string());
+    anyhow::anyhow!(
+        "search completed, but no result URLs were queued for crawl; first failure: {reason}"
+    )
+}
+
+fn log_search_crawl_rejection(cfg: &Config, rejection: &SearchCrawlRejection) {
+    if cfg.quiet {
+        return;
+    }
+    let url = rejection.url.as_deref().unwrap_or("<missing>");
+    log_warn(&format!(
+        "search auto-index: skipped {url}: {}",
+        rejection.reason
+    ));
 }
 
 fn print_search_results(query: &str, results: &[Value]) {
@@ -183,6 +282,10 @@ fn log_search_crawl_summary(cfg: &Config, output: &SearchCrawlOutput) {
             "search auto-index: {} URL(s) could not be queued",
             output.rejected.len()
         ));
+        for rejection in &output.rejected {
+            let url = rejection.url.as_deref().unwrap_or("<missing>");
+            log_warn(&format!("  - {url}: {}", rejection.reason));
+        }
     }
 }
 
@@ -191,30 +294,34 @@ mod tests {
     use super::*;
     use crate::core::config::CommandKind;
     use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
+    use crate::jobs::lite::config_snapshot::apply_lite_config_snapshot;
     use crate::services::runtime::ServiceJobRuntime;
-    use crate::services::types::ServiceJob;
-    use spider_agent::TimeRange;
+    use crate::services::types::{ServiceJob, ServiceTimeRange};
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
     struct EnqueueCapture {
-        calls: Mutex<Vec<String>>,
+        payloads: Mutex<Vec<JobPayload>>,
         fail: bool,
     }
 
     impl EnqueueCapture {
         fn new() -> Self {
             Self {
-                calls: Mutex::new(Vec::new()),
+                payloads: Mutex::new(Vec::new()),
                 fail: false,
             }
         }
 
         fn failing() -> Self {
             Self {
-                calls: Mutex::new(Vec::new()),
+                payloads: Mutex::new(Vec::new()),
                 fail: true,
             }
+        }
+
+        fn payloads(&self) -> Vec<JobPayload> {
+            self.payloads.lock().unwrap().clone()
         }
     }
 
@@ -228,9 +335,7 @@ mod tests {
             if self.fail {
                 return Err("queue cap exceeded".into());
             }
-            if let JobPayload::Crawl { url, .. } = &payload {
-                self.calls.lock().unwrap().push(url.clone());
-            }
+            self.payloads.lock().unwrap().push(payload);
             Ok(Uuid::new_v4())
         }
 
@@ -300,28 +405,14 @@ mod tests {
         cfg
     }
 
-    fn make_ctx(runtime: impl ServiceJobRuntime + 'static) -> ServiceContext {
-        ServiceContext::from_runtime(Arc::new(Config::test_default()), Arc::new(runtime))
-    }
-
-    fn parse_search_time_range(value: Option<&str>) -> Option<TimeRange> {
-        match value.map(str::trim).filter(|v| !v.is_empty()) {
-            Some("day") => Some(TimeRange::Day),
-            Some("week") => Some(TimeRange::Week),
-            Some("month") => Some(TimeRange::Month),
-            Some("year") => Some(TimeRange::Year),
-            Some(other) => {
-                log_warn(&format!("Unknown search_time_range '{other}'; ignoring"));
-                None
-            }
-            None => None,
-        }
+    fn make_ctx(runtime: Arc<dyn ServiceJobRuntime>) -> ServiceContext {
+        ServiceContext::from_runtime(Arc::new(Config::test_default()), runtime)
     }
 
     #[tokio::test]
     async fn test_run_search_rejects_empty_tavily_key() {
         let cfg = make_search_cfg("", "rust async");
-        let ctx = make_ctx(EnqueueCapture::new());
+        let ctx = make_ctx(Arc::new(EnqueueCapture::new()));
         let err = run_search(&cfg, &ctx).await.unwrap_err();
         assert!(
             err.to_string().contains("TAVILY_API_KEY"),
@@ -332,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn search_enqueue_failure_is_rejected_not_fatal() {
         let cfg = make_search_cfg("tvly-key", "rust programming language");
-        let ctx = make_ctx(EnqueueCapture::failing());
+        let ctx = make_ctx(Arc::new(EnqueueCapture::failing()));
         let results = vec![serde_json::json!({
             "url": "http://93.184.216.34/",
             "title": "Example",
@@ -344,12 +435,80 @@ mod tests {
         assert!(output.jobs.is_empty());
         assert_eq!(output.rejected.len(), 1);
         assert!(
-            output.rejected[0]["reason"]
-                .as_str()
-                .is_some_and(|reason| reason.contains("queue cap exceeded")),
+            output.rejected[0].reason.contains("queue cap exceeded"),
             "expected queue error in rejected output: {:?}",
             output.rejected
         );
+    }
+
+    #[tokio::test]
+    async fn search_auto_crawl_uses_hardened_single_page_config() {
+        let mut cfg = make_search_cfg("tvly-key", "rust programming language");
+        cfg.max_pages = 500;
+        cfg.max_depth = 12;
+        cfg.discover_sitemaps = true;
+        cfg.max_sitemaps = 512;
+        cfg.custom_headers = vec!["Authorization: Bearer secret".to_string()];
+        cfg.url_whitelist = vec![".*".to_string()];
+        let runtime = Arc::new(EnqueueCapture::new());
+        let ctx = make_ctx(runtime.clone());
+        let results = vec![serde_json::json!({
+            "url": "http://93.184.216.34/",
+            "title": "Example",
+            "position": 1,
+        })];
+
+        let output = enqueue_search_crawls(&cfg, &ctx, &results).await;
+
+        assert_eq!(output.jobs.len(), 1);
+        assert!(output.rejected.is_empty());
+        let payloads = runtime.payloads();
+        assert_eq!(payloads.len(), 1);
+        let JobPayload::Crawl { config_json, .. } = &payloads[0] else {
+            panic!("expected crawl payload: {:?}", payloads[0]);
+        };
+        let effective =
+            apply_lite_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
+        assert_eq!(effective.max_pages, 1);
+        assert_eq!(effective.max_depth, 1);
+        assert!(!effective.discover_sitemaps);
+        assert_eq!(effective.max_sitemaps, 0);
+        assert!(effective.custom_headers.is_empty());
+        assert!(effective.url_whitelist.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_auto_crawl_rejects_invalid_missing_and_duplicate_urls() {
+        let cfg = make_search_cfg("tvly-key", "rust programming language");
+        let runtime = Arc::new(EnqueueCapture::new());
+        let ctx = make_ctx(runtime.clone());
+        let results = vec![
+            serde_json::json!({"url": "", "title": "Missing", "position": 1}),
+            serde_json::json!({"url": "http://127.0.0.1/", "title": "Loopback", "position": 2}),
+            serde_json::json!({"url": "http://169.254.169.254/", "title": "Metadata", "position": 3}),
+            serde_json::json!({"url": "ftp://example.com/", "title": "FTP", "position": 4}),
+            serde_json::json!({"url": "http://93.184.216.34/", "title": "Example", "position": 5}),
+            serde_json::json!({"url": "http://93.184.216.34/", "title": "Duplicate", "position": 6}),
+        ];
+
+        let output = enqueue_search_crawls(&cfg, &ctx, &results).await;
+
+        assert_eq!(output.jobs.len(), 1);
+        assert_eq!(output.rejected.len(), 5);
+        assert!(matches!(
+            output.rejected[0].kind,
+            SearchCrawlRejectionKind::MissingUrl
+        ));
+        assert!(
+            output.rejected[1..4]
+                .iter()
+                .all(|rejection| matches!(rejection.kind, SearchCrawlRejectionKind::InvalidUrl))
+        );
+        assert!(matches!(
+            output.rejected[4].kind,
+            SearchCrawlRejectionKind::DuplicateUrl
+        ));
+        assert_eq!(runtime.payloads().len(), 1);
     }
 
     #[test]
@@ -364,27 +523,27 @@ mod tests {
     #[test]
     fn parse_search_time_range_supports_known_values() {
         assert!(matches!(
-            parse_search_time_range(Some("day")),
-            Some(TimeRange::Day)
+            parse_service_time_range(Some("day")),
+            Some(ServiceTimeRange::Day)
         ));
         assert!(matches!(
-            parse_search_time_range(Some("week")),
-            Some(TimeRange::Week)
+            parse_service_time_range(Some("week")),
+            Some(ServiceTimeRange::Week)
         ));
         assert!(matches!(
-            parse_search_time_range(Some("month")),
-            Some(TimeRange::Month)
+            parse_service_time_range(Some("month")),
+            Some(ServiceTimeRange::Month)
         ));
         assert!(matches!(
-            parse_search_time_range(Some("year")),
-            Some(TimeRange::Year)
+            parse_service_time_range(Some("year")),
+            Some(ServiceTimeRange::Year)
         ));
     }
 
     #[test]
     fn parse_search_time_range_rejects_unknown_values() {
-        assert!(parse_search_time_range(Some("decade")).is_none());
-        assert!(parse_search_time_range(Some("")).is_none());
-        assert!(parse_search_time_range(None).is_none());
+        assert!(parse_service_time_range(Some("decade")).is_none());
+        assert!(parse_service_time_range(Some("")).is_none());
+        assert!(parse_service_time_range(None).is_none());
     }
 }

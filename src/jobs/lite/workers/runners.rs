@@ -17,8 +17,8 @@ mod tests {
     use crate::core::config::RenderMode;
     use crate::jobs::ingest::IngestSource;
     use crate::jobs::lite::config_snapshot::{
-        apply_lite_config_snapshot, decode_ingest_job_config, ingest_config_json,
-        lite_config_snapshot_json,
+        apply_lite_config_snapshot, apply_lite_config_snapshot_for_container,
+        decode_ingest_job_config, ingest_config_json, lite_config_snapshot_json,
     };
     use std::path::PathBuf;
 
@@ -133,6 +133,40 @@ mod tests {
         assert!(
             !snapshot.contains("REDDIT_SECRET"),
             "snapshot must not contain reddit_client_secret"
+        );
+    }
+
+    #[test]
+    fn lite_config_snapshot_maps_default_output_dir_when_container_env_is_set() {
+        let mut submitted = Config::test_default();
+        submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");
+        let mut worker = Config::test_default();
+        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot_for_container(&worker, &config_json, true)
+            .expect("apply snapshot");
+
+        assert_eq!(
+            effective.output_dir,
+            PathBuf::from("/home/axon/.axon/output")
+        );
+    }
+
+    #[test]
+    fn lite_config_snapshot_keeps_default_output_dir_when_container_env_is_unset() {
+        let mut submitted = Config::test_default();
+        submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");
+        let mut worker = Config::test_default();
+        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot_for_container(&worker, &config_json, false)
+            .expect("apply snapshot");
+
+        assert_eq!(
+            effective.output_dir,
+            PathBuf::from("/home/jmagar/.axon/output")
         );
     }
 

@@ -285,8 +285,8 @@ async fn try_enqueue_embed_handoff(
             Ok((None, Some(msg)))
         }
         Err(e) => {
-            tracing::warn!("lite crawl worker: failed to enqueue embed job: {e}");
-            Ok((None, Some(format!("enqueue error: {e}"))))
+            tracing::error!("lite crawl worker: failed to enqueue embed job: {e}");
+            Err(Box::new(e))
         }
     }
 }

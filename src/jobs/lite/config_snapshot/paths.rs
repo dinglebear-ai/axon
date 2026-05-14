@@ -9,9 +9,7 @@ pub(super) fn normalize_container_output_dir(
     if !in_container {
         return;
     }
-    if cfg.output_dir == process_cfg.output_dir
-        || cfg.output_dir.starts_with(&process_cfg.output_dir)
-    {
+    if cfg.output_dir.starts_with(&process_cfg.output_dir) {
         return;
     }
     if !is_default_home_axon_output(&cfg.output_dir) {

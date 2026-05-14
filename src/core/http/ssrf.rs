@@ -43,8 +43,8 @@ pub(crate) fn get_allow_loopback() -> bool {
 ///
 /// # Errors
 ///
-/// Returns `Err` if the URL is malformed, uses a non-HTTP(S) scheme, or resolves
-/// to a blocked address range.
+/// Returns `Err` if the URL is malformed, uses a non-HTTP(S) scheme, uses a
+/// blocked host, or contains a literal blocked IP address.
 ///
 /// # DNS Rebinding (TOCTOU — MITIGATED)
 ///
@@ -102,7 +102,8 @@ fn validate_host(url: &str, host: Option<&str>) -> Result<(), HttpError> {
     Ok(())
 }
 
-/// Validate a URL and reject hostnames that resolve to private/reserved IPs.
+/// Validate a URL and reject hostnames that resolve to Axon's blocked SSRF IP
+/// ranges.
 ///
 /// This is used before handing URLs to Spider, whose HTTP stack does not use
 /// Axon's reqwest `SsrfBlockingResolver`.
@@ -119,14 +120,13 @@ pub async fn validate_url_with_dns(url: &str) -> Result<(), HttpError> {
     }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
-    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
+    let addrs = tokio::net::lookup_host((host, port))
         .await
         .map_err(|error| HttpError::DnsResolution {
             host: host.to_string(),
             error: error.to_string(),
-        })?
-        .collect();
-    validate_resolved_ips(host, addrs.iter().map(std::net::SocketAddr::ip))
+        })?;
+    validate_resolved_ips(host, addrs.map(|addr| addr.ip()))
 }
 
 pub(crate) fn validate_resolved_ips(

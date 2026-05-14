@@ -422,6 +422,14 @@ pub(crate) fn apply_lite_config_snapshot(
     process_cfg: &Config,
     config_json: &str,
 ) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
+    apply_lite_config_snapshot_for_container(process_cfg, config_json, running_in_container())
+}
+
+pub(crate) fn apply_lite_config_snapshot_for_container(
+    process_cfg: &Config,
+    config_json: &str,
+    in_container: bool,
+) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = process_cfg.clone();
     if config_json.trim().is_empty() {
         return Ok(cfg);
@@ -432,14 +440,12 @@ pub(crate) fn apply_lite_config_snapshot(
     if let Some(prompt) = envelope.prompt {
         cfg.query = Some(prompt);
     }
-    normalize_container_output_dir(process_cfg, &mut cfg, running_in_container());
+    normalize_container_output_dir(process_cfg, &mut cfg, in_container);
     Ok(cfg)
 }
 
 fn running_in_container() -> bool {
-    std::env::var("AXON_IN_CONTAINER")
-        .ok()
-        .is_some_and(|value| value.trim() == "1")
+    std::env::var("AXON_IN_CONTAINER").is_ok_and(|value| value.trim() == "1")
 }
 
 pub(crate) fn ingest_config_json(
