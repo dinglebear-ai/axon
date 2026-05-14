@@ -227,3 +227,38 @@ fn setup_check_returns_nonzero_after_printing_json_error_report() {
             .any(|phase| phase["name"] == "docker" && phase["status"] == "error")
     );
 }
+
+#[test]
+fn setup_plugin_hook_json_reports_policy_without_repair() {
+    let home = tempfile::tempdir().unwrap();
+    let fake_bin = tempfile::tempdir().unwrap();
+    write_fake_setup_commands(fake_bin.path());
+
+    let output = Command::new(axon_bin())
+        .arg("--json")
+        .arg("setup")
+        .arg("plugin-hook")
+        .arg("--no-repair")
+        .env("HOME", home.path())
+        .env("PATH", fake_path(fake_bin.path()))
+        .env_remove("AXON_ENV_FILE")
+        .env_remove("AXON_MCP_AUTH_MODE")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["exit_policy"], "success");
+    assert_eq!(payload["ran_repair"], false);
+    assert_eq!(payload["no_repair"], true);
+    assert!(payload["blocking_failures"].as_array().unwrap().is_empty());
+    assert!(payload["advisory_failures"].as_array().unwrap().is_empty());
+    assert_eq!(payload["check"]["mode"], "check");
+    assert!(payload["repair"].is_null());
+    assert!(!home.path().join(".axon").exists());
+}

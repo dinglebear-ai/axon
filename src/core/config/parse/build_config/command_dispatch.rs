@@ -250,8 +250,11 @@ fn apply_setup(out: &mut DispatchOutput, args: super::super::super::cli::SetupAr
     out.command = CommandKind::Setup;
     match args.action {
         None => {}
-        Some(super::super::super::cli::SetupSubcommand::Hook) => {
-            out.positional = vec!["hook".to_string()];
+        Some(super::super::super::cli::SetupSubcommand::PluginHook { no_repair }) => {
+            out.positional = vec!["plugin-hook".to_string()];
+            if no_repair {
+                out.positional.push("--no-repair".to_string());
+            }
         }
         Some(super::super::super::cli::SetupSubcommand::Check) => {
             out.positional = vec!["check".to_string()];

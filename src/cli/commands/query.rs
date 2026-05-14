@@ -58,7 +58,7 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
             println!("{}", serde_json::to_string(result)?);
         } else {
             println!(
-                "  \u{2022} {}. {} [{:.3}] {}",
+                "  \u{2022} {}. {} rerank={:.3} {}",
                 result.rank,
                 status_text("completed"),
                 result.rerank_score,

@@ -259,8 +259,8 @@ fn print_setup_help() {
     println!();
     println!("{}", section("Commands:"));
     println!(
-        "  {:<8} Hook-safe check/repair path for Claude Code SessionStart",
-        cmd("hook")
+        "  {:<12} Hook-safe check/repair path for Claude Code SessionStart",
+        cmd("plugin-hook")
     );
     println!(
         "  {:<8} Check local Docker prerequisites without mutating files or services",
