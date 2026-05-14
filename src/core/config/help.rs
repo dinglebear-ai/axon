@@ -15,7 +15,7 @@ pub(super) fn maybe_print_top_level_help_and_exit() {
 }
 
 fn print_top_level_help() {
-    let colors_enabled = env::var("AXON_NO_COLOR").is_err();
+    let colors_enabled = env::var_os("NO_COLOR").is_none();
     let colorize = |code: &str, text: &str| {
         if colors_enabled {
             format!("{code}{text}\x1b[0m")
@@ -227,7 +227,7 @@ fn print_top_level_help() {
 }
 
 fn print_setup_help() {
-    let colors_enabled = env::var("AXON_NO_COLOR").is_err();
+    let colors_enabled = env::var_os("NO_COLOR").is_none();
     let colorize = |code: &str, text: &str| {
         if colors_enabled {
             format!("{code}{text}\x1b[0m")
@@ -258,6 +258,10 @@ fn print_setup_help() {
     println!("{} {}", section("Usage:"), cmd("axon setup [COMMAND]"));
     println!();
     println!("{}", section("Commands:"));
+    println!(
+        "  {:<8} Hook-safe check/repair path for Claude Code SessionStart",
+        cmd("hook")
+    );
     println!(
         "  {:<8} Check local Docker prerequisites without mutating files or services",
         cmd("check")
