@@ -1,5 +1,6 @@
-use super::build::collect_supplemental_candidate_indices;
-use super::build::select_context_indices;
+use super::build::{
+    collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
+};
 use super::heuristics::{
     candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
     url_matches_domain_list,
@@ -179,6 +180,24 @@ fn context_full_doc_selection_is_independent_of_chunk_urls() {
         chunk_urls, full_doc_urls,
         "both sets should pick the two highest-scoring URLs"
     );
+}
+
+#[test]
+fn planned_full_doc_urls_are_empty_when_fetch_is_skipped() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.90),
+        test_candidate("https://b.dev/docs/two", 0.80),
+    ];
+    let (_, full_doc_indices) = select_context_indices(&candidates, 2, 2);
+
+    let skipped = planned_full_doc_urls(&candidates, &full_doc_indices, true);
+    let fetched = planned_full_doc_urls(&candidates, &full_doc_indices, false);
+
+    assert!(
+        skipped.is_empty(),
+        "top chunks must not be suppressed for planned full-doc URLs when full-doc fetch is skipped"
+    );
+    assert_eq!(fetched.len(), 2);
 }
 
 #[test]

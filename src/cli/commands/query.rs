@@ -22,53 +22,50 @@ pub async fn run_query(cfg: &Config) -> Result<(), Box<dyn Error>> {
         limit: cfg.search_limit.max(1),
         offset: 0,
     };
-    let results = match query_svc::query(cfg, &query, opts).await {
-        Ok(result) => result.results,
-        Err(err) => {
+    let results = query_svc::query(cfg, &query, opts)
+        .await
+        .inspect_err(|err| {
             if cfg.ask_diagnostics
                 && let Some(diag) = diagnostics_from_error(err.as_ref())
             {
                 eprintln!("{} {}", muted("Diagnostics:"), diag);
             }
-            return Err(err);
-        }
-    };
+        })?
+        .results;
 
-    if results.is_empty() {
-        if !cfg.json_output {
-            println!("{}", primary(&format!("Query Results for \"{query}\"")));
-            println!("  {}", muted("No results found. Try:"));
-            println!("    {}", muted("axon sources       # list indexed URLs"));
-            println!(
-                "    {}",
-                muted("axon stats         # check collection size")
-            );
-            println!("    {}", muted("axon embed <url>   # add content first"));
+    if cfg.json_output {
+        for result in &results {
+            println!("{}", serde_json::to_string(result)?);
         }
         return Ok(());
     }
 
-    if !cfg.json_output {
-        println!("{}", primary(&format!("Query Results for \"{query}\"")));
-        println!("{} {}\n", muted("Showing"), results.len());
+    println!("{}", primary(&format!("Query Results for \"{query}\"")));
+
+    if results.is_empty() {
+        println!("  {}", muted("No results found. Try:"));
+        println!("    {}", muted("axon sources       # list indexed URLs"));
+        println!(
+            "    {}",
+            muted("axon stats         # check collection size")
+        );
+        println!("    {}", muted("axon embed <url>   # add content first"));
+        return Ok(());
     }
 
+    println!("{} {}\n", muted("Showing"), results.len());
     for result in &results {
-        if cfg.json_output {
-            println!("{}", serde_json::to_string(result)?);
-        } else {
-            println!(
-                "  \u{2022} {}. {} rerank={:.3} {}",
-                result.rank,
-                status_text("completed"),
-                result.rerank_score,
-                accent(&result.source)
-            );
-            println!("    {}", result.snippet);
-            if cfg.ask_diagnostics {
-                println!("    {} vector_score={:.3}", muted("diag"), result.score);
-                println!("    {} {}", muted("url"), result.url);
-            }
+        println!(
+            "  \u{2022} {}. {} rerank={:.3} {}",
+            result.rank,
+            status_text("completed"),
+            result.rerank_score,
+            accent(&result.source)
+        );
+        println!("    {}", result.snippet);
+        if cfg.ask_diagnostics {
+            println!("    {} vector_score={:.3}", muted("diag"), result.score);
+            println!("    {} {}", muted("url"), result.url);
         }
     }
 

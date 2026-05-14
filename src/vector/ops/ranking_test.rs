@@ -365,19 +365,6 @@ fn select_diverse_candidates_respects_target_count() {
 }
 
 #[test]
-fn select_diverse_candidates_returns_all_when_fewer_than_target() {
-    let candidates: Vec<AskCandidate> = (0..3)
-        .map(|i| make_candidate(0.9, &format!("https://site{i}.com/"), "/", "some content"))
-        .collect();
-    let indices = select_diverse_candidates(&candidates, 10, 2);
-    assert_eq!(
-        indices.len(),
-        3,
-        "when fewer candidates than target, all should be returned"
-    );
-}
-
-#[test]
 fn select_diverse_candidates_diverse_urls_first() {
     // All 4 candidates across 3 URLs; use target_count=3 (< 4) to force the
     // diversity algorithm rather than the early-return path.
@@ -403,6 +390,23 @@ fn select_diverse_candidates_diverse_urls_first() {
         selected_urls.len(),
         3,
         "first pass should ensure each selected candidate has a unique URL"
+    );
+}
+
+#[test]
+fn select_diverse_candidates_enforces_url_cap_when_fewer_than_target() {
+    let candidates = vec![
+        make_candidate(0.9, "https://a.com/page", "/page", "first chunk"),
+        make_candidate(0.8, "https://a.com/page", "/page", "second chunk"),
+        make_candidate(0.7, "https://b.com/page", "/page", "third chunk"),
+    ];
+
+    let indices = select_diverse_candidates(&candidates, 10, 1);
+
+    assert_eq!(
+        indices,
+        vec![0, 2],
+        "max_per_url=1 should still apply when the candidate pool is smaller than target_count"
     );
 }
 

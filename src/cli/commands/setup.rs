@@ -7,6 +7,15 @@ use std::time::Duration;
 
 const PLUGIN_HOOK_TIMEOUT_SECS: u64 = 360;
 
+const USAGE_LINES: &[&str] = &[
+    "axon setup",
+    "axon setup plugin-hook",
+    "axon setup plugin-hook --no-repair",
+    "axon setup check",
+    "axon setup repair",
+    "axon setup repair --migrate-env",
+];
+
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
         None => run_local_setup_command(cfg, LocalSetupMode::FirstRun).await,
@@ -20,94 +29,90 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             };
             run_local_setup_command(cfg, mode).await
         }
-        Some("targets") => {
-            let targets = match setup::list_ssh_targets() {
-                Ok(targets) => targets,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-                Err(err) => return Err(Box::new(err)),
-            };
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&targets)?);
-            } else if targets.is_empty() {
-                println!("No concrete SSH targets found in ~/.ssh/config");
-            } else {
-                for target in targets {
-                    let host = target.host_name.as_deref().unwrap_or(&target.alias);
-                    let user = target.user.as_deref().unwrap_or("-");
-                    let port = target
-                        .port
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|| "-".to_string());
-                    println!("{}\thost={host}\tuser={user}\tport={port}", target.alias);
-                }
-            }
-            Ok(())
-        }
-        Some("deploy") => {
-            let target = cfg
-                .positional
-                .get(1)
-                .ok_or("setup deploy requires an SSH target")?;
-            let remote_dir = remote_dir_from_positional(&cfg.positional);
-            let public_exposure = cfg
-                .positional
-                .iter()
-                .any(|value| value == "--public-exposure");
-            let accept_new_host_key = cfg
-                .positional
-                .iter()
-                .any(|value| value == "--accept-new-host-key");
-            let result = setup::deploy_remote(DeployRequest {
-                target: target.clone(),
-                remote_dir,
-                public_exposure: Some(public_exposure),
-                accept_new_host_key: Some(accept_new_host_key),
-            })
-            .await?;
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&result)?);
-            } else {
-                println!("Deployment target: {}", result.target);
-                println!("Remote host: {}", result.remote_host);
-                println!("Remote dir: ~/{}", result.remote_dir);
-                println!("Qdrant: {}", result.qdrant_url);
-                println!("TEI: {}", result.tei_url);
-                println!("Chrome: {}", result.chrome_remote_url);
-                println!("Runtime env: {}", result.runtime_env_path);
-                if let Some(command) = result.tunnel_command {
-                    println!("Tunnel: {command}");
-                }
-                for step in result.steps {
-                    println!("ok\t{}\t{}", step.name, step.detail);
-                }
-            }
-            Ok(())
-        }
-        _ => {
-            let payload = json!({
-                "usage": [
-                    "axon setup",
-                    "axon setup plugin-hook",
-                    "axon setup plugin-hook --no-repair",
-                    "axon setup check",
-                    "axon setup repair",
-                    "axon setup repair --migrate-env"
-                ]
-            });
-            if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&payload)?);
-            } else {
-                println!("Usage:");
-                println!("  axon setup");
-                println!("  axon setup plugin-hook");
-                println!("  axon setup plugin-hook --no-repair");
-                println!("  axon setup check");
-                println!("  axon setup repair");
-                println!("  axon setup repair --migrate-env");
-            }
-            Ok(())
+        Some("targets") => run_targets_command(cfg),
+        Some("deploy") => run_deploy_command(cfg).await,
+        _ => print_usage(cfg),
+    }
+}
+
+fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let targets = match setup::list_ssh_targets() {
+        Ok(targets) => targets,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(err) => return Err(Box::new(err)),
+    };
+
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&targets)?);
+        return Ok(());
+    }
+
+    if targets.is_empty() {
+        println!("No concrete SSH targets found in ~/.ssh/config");
+        return Ok(());
+    }
+
+    for target in targets {
+        let host = target.host_name.as_deref().unwrap_or(&target.alias);
+        let user = target.user.as_deref().unwrap_or("-");
+        let port = target
+            .port
+            .map_or_else(|| "-".to_string(), |value| value.to_string());
+        println!("{}\thost={host}\tuser={user}\tport={port}", target.alias);
+    }
+    Ok(())
+}
+
+async fn run_deploy_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let target = cfg
+        .positional
+        .get(1)
+        .ok_or("setup deploy requires an SSH target")?;
+    let public_exposure = cfg.positional.iter().any(|v| v == "--public-exposure");
+    let accept_new_host_key = cfg.positional.iter().any(|v| v == "--accept-new-host-key");
+
+    let result = setup::deploy_remote(DeployRequest {
+        target: target.clone(),
+        remote_dir: remote_dir_from_positional(&cfg.positional),
+        public_exposure: Some(public_exposure),
+        accept_new_host_key: Some(accept_new_host_key),
+    })
+    .await?;
+
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+        return Ok(());
+    }
+
+    println!("Deployment target: {}", result.target);
+    println!("Remote host: {}", result.remote_host);
+    println!("Remote dir: ~/{}", result.remote_dir);
+    println!("Qdrant: {}", result.qdrant_url);
+    println!("TEI: {}", result.tei_url);
+    println!("Chrome: {}", result.chrome_remote_url);
+    println!("Runtime env: {}", result.runtime_env_path);
+    if let Some(command) = result.tunnel_command {
+        println!("Tunnel: {command}");
+    }
+    for step in result.steps {
+        println!("ok\t{}\t{}", step.name, step.detail);
+    }
+    Ok(())
+}
+
+fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({ "usage": USAGE_LINES }))?
+        );
+    } else {
+        println!("Usage:");
+        for line in USAGE_LINES {
+            println!("  {line}");
         }
     }
+    Ok(())
 }
 
 async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -146,16 +151,13 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
 
 async fn build_plugin_hook_report(no_repair: bool) -> Result<PluginHookReport, Box<dyn Error>> {
     let check = setup::run_local_setup(LocalSetupMode::Check).await?;
-    if !check.has_errors && !check.exceeded_hard_max {
-        return Ok(PluginHookReport::new(check, None, no_repair));
-    }
-
-    if no_repair {
-        return Ok(PluginHookReport::new(check, None, no_repair));
-    }
-
-    let repair = setup::run_local_setup(LocalSetupMode::Repair).await?;
-    Ok(PluginHookReport::new(check, Some(repair), no_repair))
+    let needs_repair = check.has_errors || check.exceeded_hard_max;
+    let repair = if needs_repair && !no_repair {
+        Some(setup::run_local_setup(LocalSetupMode::Repair).await?)
+    } else {
+        None
+    };
+    Ok(PluginHookReport::new(check, repair, no_repair))
 }
 
 async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(), Box<dyn Error>> {
@@ -176,12 +178,11 @@ fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn 
 
 fn fail_if_plugin_hook_failed(report: &PluginHookReport) -> Result<(), Box<dyn Error>> {
     match report.exit_policy {
-        PluginHookExitPolicy::Success | PluginHookExitPolicy::AdvisoryFailure => {
-            if matches!(report.exit_policy, PluginHookExitPolicy::AdvisoryFailure) {
-                eprintln!(
-                    "axon setup plugin-hook: continuing after advisory setup failures; inspect setup report"
-                );
-            }
+        PluginHookExitPolicy::Success => Ok(()),
+        PluginHookExitPolicy::AdvisoryFailure => {
+            eprintln!(
+                "axon setup plugin-hook: continuing after advisory setup failures; inspect setup report"
+            );
             Ok(())
         }
         PluginHookExitPolicy::BlockingFailure => Err(format!(

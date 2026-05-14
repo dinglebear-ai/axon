@@ -261,8 +261,8 @@ pub fn select_diverse_candidates_from_indices(
     target_count: usize,
     max_per_url: usize,
 ) -> Vec<usize> {
-    if candidate_indices.len() <= target_count {
-        return candidate_indices.to_vec();
+    if target_count == 0 || candidate_indices.is_empty() {
+        return Vec::new();
     }
 
     let mut selected: Vec<usize> = Vec::new();

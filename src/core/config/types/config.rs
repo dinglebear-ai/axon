@@ -263,7 +263,7 @@ pub struct Config {
     pub ask_max_context_chars: usize,
 
     /// Number of candidate chunks retrieved from Qdrant before reranking.
-    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–200). Default: 150.
+    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Default: 150.
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
@@ -347,8 +347,7 @@ pub struct Config {
 
     /// Enable the adaptive full-doc fetch skip gate for `ask`. When the top-K
     /// reranked candidates already cover enough URLs, bytes, and quality, the
-    /// full-doc backfill stage is elided entirely. Opt-in: defaults to `false`
-    /// until validated against `axon evaluate` golden set. Config-only via
+    /// full-doc backfill stage is elided entirely. Default: true. Config-only via
     /// `[ask.adaptive] fulldoc-skip-enabled`. (bd axon_rust-30y)
     pub ask_fulldoc_skip_enabled: bool,
 

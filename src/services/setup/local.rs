@@ -149,28 +149,19 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
     if let Some(env_values) = env_state.finalized.as_ref().filter(|_| !prereq_failed) {
         phases.extend(run_mutating_runtime_phases(&compose_dir, &env_path, env_values).await);
     } else {
-        let skipped_detail = if prereq_failed {
-            "setup skipped because earlier prerequisite checks failed"
+        let (compose_detail, smoke_detail) = if prereq_failed {
+            (
+                "setup skipped because earlier prerequisite checks failed",
+                "smoke skipped because earlier prerequisite checks failed",
+            )
         } else {
-            "check mode does not start Docker services"
+            (
+                "check mode does not start Docker services",
+                "check mode does not run crawl/ask smoke",
+            )
         };
-        phases.push(LocalSetupPhase {
-            name: "compose-up",
-            status: LocalSetupStatus::Skipped,
-            detail: skipped_detail.to_string(),
-            elapsed_ms: 0,
-        });
-        phases.push(LocalSetupPhase {
-            name: "smoke",
-            status: LocalSetupStatus::Skipped,
-            detail: if prereq_failed {
-                "smoke skipped because earlier prerequisite checks failed"
-            } else {
-                "check mode does not run crawl/ask smoke"
-            }
-            .to_string(),
-            elapsed_ms: 0,
-        });
+        phases.push(skipped_phase("compose-up", compose_detail));
+        phases.push(skipped_phase("smoke", smoke_detail));
     }
 
     let elapsed_ms = started.elapsed().as_millis();
@@ -224,21 +215,18 @@ fn run_config_phase(
             "HOME is unset or invalid; cannot resolve ~/.axon/config.toml",
         )
     })?;
-    phases.push(timer.finish(
-        if path.exists() {
-            LocalSetupStatus::Ok
-        } else {
-            LocalSetupStatus::Warn
-        },
-        if path.exists() {
-            format!("found {}", path.display())
-        } else {
+    let (status, detail) = if path.exists() {
+        (LocalSetupStatus::Ok, format!("found {}", path.display()))
+    } else {
+        (
+            LocalSetupStatus::Warn,
             format!(
                 "missing {}; run axon setup or axon setup repair",
                 path.display()
-            )
-        },
-    ));
+            ),
+        )
+    };
+    phases.push(timer.finish(status, detail));
     Ok(config_store::ConfigInit {
         path,
         created: false,
@@ -364,13 +352,24 @@ fn run_filesystem_phase(axon_home: &Path, mode: LocalSetupMode) -> io::Result<Lo
     }
 }
 
+fn skipped_phase(name: &'static str, detail: &str) -> LocalSetupPhase {
+    LocalSetupPhase {
+        name,
+        status: LocalSetupStatus::Skipped,
+        detail: detail.to_string(),
+        elapsed_ms: 0,
+    }
+}
+
 async fn check_command<const N: usize>(name: &'static str, args: [&str; N]) -> LocalSetupPhase {
     let timer = PhaseTimer::start(name);
-    let result = if name == "docker compose" {
-        super::diagnostics::check_command("docker", args, Duration::from_secs(10)).await
+    // "docker compose" is a phase label; the actual binary to invoke is `docker`.
+    let binary = if name == "docker compose" {
+        "docker"
     } else {
-        super::diagnostics::check_command(name, args, Duration::from_secs(10)).await
+        name
     };
+    let result = super::diagnostics::check_command(binary, args, Duration::from_secs(10)).await;
 
     let status = match result.status {
         super::diagnostics::CommandStatus::Ok => LocalSetupStatus::Ok,

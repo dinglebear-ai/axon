@@ -4,13 +4,22 @@
 //! Split out of `build_config.rs` (bead axon_rust-2j9.6) to keep the orchestration
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
-use super::super::super::cli::CliCommand;
+use super::super::super::cli::{
+    CliCommand, IngestArgs, ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs, SetupSubcommand,
+};
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
 };
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
+
+fn env_usize_or(var: &str, default: usize) -> usize {
+    env::var(var)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
 
 /// Per-command arg accumulators populated by the dispatch match.
 /// Defaults match the previous in-line `let mut` initializers in `into_config()`.
@@ -48,14 +57,8 @@ impl DispatchOutput {
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
-            github_max_issues: env::var("GITHUB_MAX_ISSUES")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100),
-            github_max_prs: env::var("GITHUB_MAX_PRS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100),
+            github_max_issues: env_usize_or("GITHUB_MAX_ISSUES", 100),
+            github_max_prs: env_usize_or("GITHUB_MAX_PRS", 100),
             reddit_sort: RedditSort::Hot,
             reddit_time: RedditTime::Day,
             reddit_max_posts: 25,
@@ -105,7 +108,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 out.map_fallback = fb;
             }
             out.command = CommandKind::Map;
-            out.positional = args.value.into_iter().collect::<Vec<String>>();
+            out.positional = args.value.into_iter().collect();
         }
         CliCommand::Extract(args) => {
             out.command = CommandKind::Extract;
@@ -115,14 +118,8 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
                 args.positional_urls
             };
         }
-        CliCommand::Search(args) => {
-            out.command = CommandKind::Search;
-            out.positional = args.value;
-        }
-        CliCommand::Research(args) => {
-            out.command = CommandKind::Research;
-            out.positional = args.value;
-        }
+        CliCommand::Search(args) => set_simple(&mut out, CommandKind::Search, args.value),
+        CliCommand::Research(args) => set_simple(&mut out, CommandKind::Research, args.value),
         CliCommand::Embed(args) => {
             out.command = CommandKind::Embed;
             out.positional = if let Some(job) = args.job {
@@ -197,7 +194,7 @@ fn set_simple(out: &mut DispatchOutput, kind: CommandKind, positional: Vec<Strin
     out.positional = positional;
 }
 
-fn apply_ingest(out: &mut DispatchOutput, args: super::super::super::cli::IngestArgs) {
+fn apply_ingest(out: &mut DispatchOutput, args: IngestArgs) {
     // --no-source overrides the default (true). --include-source is now a no-op.
     if args.no_source {
         out.github_include_source = false;
@@ -218,7 +215,7 @@ fn apply_ingest(out: &mut DispatchOutput, args: super::super::super::cli::Ingest
     };
 }
 
-fn apply_sessions(out: &mut DispatchOutput, args: super::super::super::cli::SessionsArgs) {
+fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {
     out.sessions_claude = args.claude;
     out.sessions_codex = args.codex;
     out.sessions_gemini = args.gemini;
@@ -231,9 +228,9 @@ fn apply_sessions(out: &mut DispatchOutput, args: super::super::super::cli::Sess
     };
 }
 
-fn apply_serve(out: &mut DispatchOutput, args: super::super::super::cli::ServeArgs) {
+fn apply_serve(out: &mut DispatchOutput, args: ServeArgs) {
     match args.target {
-        Some(super::super::super::cli::ServeSubcommand::Mcp(mcp_args)) => {
+        Some(ServeSubcommand::Mcp(mcp_args)) => {
             out.mcp_transport = mcp_args.transport;
             out.mcp_transport_default = McpTransport::Http;
             out.command = CommandKind::Mcp;
@@ -246,29 +243,29 @@ fn apply_serve(out: &mut DispatchOutput, args: super::super::super::cli::ServeAr
     }
 }
 
-fn apply_setup(out: &mut DispatchOutput, args: super::super::super::cli::SetupArgs) {
+fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
     out.command = CommandKind::Setup;
     match args.action {
         None => {}
-        Some(super::super::super::cli::SetupSubcommand::PluginHook { no_repair }) => {
+        Some(SetupSubcommand::PluginHook { no_repair }) => {
             out.positional = vec!["plugin-hook".to_string()];
             if no_repair {
                 out.positional.push("--no-repair".to_string());
             }
         }
-        Some(super::super::super::cli::SetupSubcommand::Check) => {
+        Some(SetupSubcommand::Check) => {
             out.positional = vec!["check".to_string()];
         }
-        Some(super::super::super::cli::SetupSubcommand::Repair { migrate_env }) => {
+        Some(SetupSubcommand::Repair { migrate_env }) => {
             out.positional = vec!["repair".to_string()];
             if migrate_env {
                 out.positional.push("--migrate-env".to_string());
             }
         }
-        Some(super::super::super::cli::SetupSubcommand::Targets) => {
+        Some(SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
-        Some(super::super::super::cli::SetupSubcommand::Deploy {
+        Some(SetupSubcommand::Deploy {
             target,
             remote_dir,
             public_exposure,
