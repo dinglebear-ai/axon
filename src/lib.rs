@@ -44,7 +44,7 @@ async fn run_once(
         CommandKind::Crawl => run_crawl(cfg, service_context).await?,
         CommandKind::Watch => run_watch(cfg, service_context).await?,
         CommandKind::Extract => run_extract(cfg, service_context).await?,
-        CommandKind::Search => run_search(cfg).await?,
+        CommandKind::Search => run_search(cfg, service_context).await?,
         CommandKind::Embed => run_embed(cfg, service_context).await?,
         CommandKind::Debug => run_debug(cfg).await?,
         CommandKind::Doctor => run_doctor(cfg).await?,
