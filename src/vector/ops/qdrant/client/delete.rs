@@ -2,14 +2,64 @@
 
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
-use anyhow::Result;
+use crate::core::logging::log_warn;
+use anyhow::{Result, anyhow};
+use reqwest::StatusCode;
 use std::collections::HashSet;
 
-use super::super::utils::qdrant_collection_endpoint;
-use super::super::utils::qdrant_retry_delay;
-use crate::core::logging::log_warn;
-use anyhow::anyhow;
-use reqwest::StatusCode;
+use super::super::utils::{qdrant_collection_endpoint, qdrant_retry_delay};
+use super::scroll::scroll_url_set;
+
+/// Delete with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
+async fn qdrant_delete_with_retry(
+    client: &reqwest::Client,
+    endpoint: &str,
+    body: serde_json::Value,
+    context: &str,
+) -> Result<()> {
+    const MAX_ATTEMPTS: usize = 4;
+    let mut last_error: Option<String> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client.post(endpoint).json(&body).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    return Ok(());
+                }
+                let status = resp.status();
+                let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if retryable && attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "{context}: retrying qdrant delete after status={status} attempt={attempt}/{MAX_ATTEMPTS}"
+                    ));
+                    last_error = Some(format!(
+                        "{context}: qdrant status={status} attempt={attempt}"
+                    ));
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                    continue;
+                }
+                return Err(anyhow!(
+                    "{context}: qdrant request failed with status {status} on attempt {attempt}"
+                ));
+            }
+            Err(err) => {
+                if attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "{context}: retrying qdrant delete after transport error attempt={attempt}/{MAX_ATTEMPTS}: {err}"
+                    ));
+                }
+                last_error = Some(format!("{context}: send error attempt={attempt}: {err}"));
+                if attempt < MAX_ATTEMPTS {
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                    continue;
+                }
+            }
+        }
+    }
+    Err(anyhow!(
+        "{}",
+        last_error.unwrap_or_else(|| format!("{context}: unknown qdrant delete failure"))
+    ))
+}
 
 /// Delete all Qdrant points matching `url` via payload filter.
 #[cfg(test)]
@@ -40,7 +90,7 @@ pub(crate) async fn qdrant_delete_by_url_filter(cfg: &Config, url: &str) -> Resu
 ///
 /// Never call before the upsert succeeds — doing so risks permanent data loss if the
 /// upsert subsequently fails.
-pub(crate) async fn qdrant_delete_stale_tail(
+pub async fn qdrant_delete_stale_tail(
     cfg: &Config,
     url: &str,
     new_chunk_count: usize,
@@ -115,7 +165,7 @@ pub async fn qdrant_delete_stale_domain_urls(
     Ok(stale.len())
 }
 
-pub(crate) async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result<usize> {
+pub async fn qdrant_delete_points(cfg: &Config, ids: &[String]) -> Result<usize> {
     if ids.is_empty() {
         return Ok(0);
     }

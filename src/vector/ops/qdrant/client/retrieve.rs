@@ -9,13 +9,11 @@ use super::super::types::{QdrantPoint, QdrantRetrieveByUrlResult};
 use super::super::utils::qdrant_collection_endpoint;
 use super::scroll::scroll_pages_raw;
 
-pub(crate) fn retrieve_scroll_limit(max_points: Option<usize>) -> usize {
+pub fn retrieve_scroll_limit(max_points: Option<usize>) -> usize {
     super::super::utils::retrieve_max_points(max_points).clamp(1, 256)
 }
 
-pub(crate) fn parse_retrieve_scroll_points(
-    points: &[serde_json::Value],
-) -> (Vec<QdrantPoint>, usize) {
+pub fn parse_retrieve_scroll_points(points: &[serde_json::Value]) -> (Vec<QdrantPoint>, usize) {
     let mut out = Vec::new();
     let mut malformed = 0usize;
     for p in points {

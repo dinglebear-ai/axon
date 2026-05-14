@@ -22,6 +22,6 @@ pub use retrieve::{
 pub use scroll::{qdrant_indexed_urls, qdrant_scroll_pages_selective, qdrant_urls_for_domain};
 
 #[cfg(test)]
-pub use delete::qdrant_delete_by_url_filter;
+pub(crate) use delete::qdrant_delete_by_url_filter;
 #[cfg(test)]
-pub use scroll::{qdrant_scroll_pages, qdrant_scroll_pages_while};
+pub(crate) use scroll::{qdrant_scroll_pages, qdrant_scroll_pages_while};

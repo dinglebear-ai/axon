@@ -16,7 +16,7 @@ pub(crate) fn warn_if_ask_token_set_but_empty() {
     }
 }
 
-pub(super) fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
+pub fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
     headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())

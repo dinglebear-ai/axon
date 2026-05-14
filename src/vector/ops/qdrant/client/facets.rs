@@ -6,26 +6,19 @@ use anyhow::Result;
 
 use super::super::utils::qdrant_collection_endpoint;
 
-pub(crate) async fn qdrant_domain_facets(
-    cfg: &Config,
-    limit: usize,
-) -> Result<Vec<(String, usize)>> {
+pub async fn qdrant_domain_facets(cfg: &Config, limit: usize) -> Result<Vec<(String, usize)>> {
     qdrant_facet(cfg, "domain", limit).await
 }
 
-pub(crate) async fn qdrant_url_facets(cfg: &Config, limit: usize) -> Result<Vec<(String, usize)>> {
+pub async fn qdrant_url_facets(cfg: &Config, limit: usize) -> Result<Vec<(String, usize)>> {
     qdrant_facet(cfg, "url", limit).await
 }
 
-pub(crate) async fn qdrant_facet(
-    cfg: &Config,
-    key: &str,
-    limit: usize,
-) -> Result<Vec<(String, usize)>> {
+pub async fn qdrant_facet(cfg: &Config, key: &str, limit: usize) -> Result<Vec<(String, usize)>> {
     qdrant_facet_filtered(cfg, key, limit, serde_json::json!({})).await
 }
 
-pub(crate) async fn qdrant_facet_filtered(
+pub async fn qdrant_facet_filtered(
     cfg: &Config,
     key: &str,
     limit: usize,

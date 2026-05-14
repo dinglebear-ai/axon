@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 pub const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
 pub const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 
-pub static STATUS_DASHBOARD_HTML: &str = include_str!("assets/status_dashboard.html");
+pub static STATUS_DASHBOARD_HTML: &str = include_str!("../assets/status_dashboard.html");
 
 pub static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
     use super::common::MCP_TOOL_SCHEMA_URI;
