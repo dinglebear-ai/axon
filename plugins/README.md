@@ -15,7 +15,7 @@ The plugin manifest declares a minimal `userConfig` block. Claude Code prompts f
 The SessionStart hook (`scripts/plugin-setup.sh`) delegates to the binary-owned hook setup flow:
 
 1. If `axon` is absent, run the release installer.
-2. Run `axon setup hook`.
+2. Run `axon setup plugin-hook`.
 3. Let the binary perform check-first repair and classify blocking setup failures separately from advisory smoke/prewarm failures.
 4. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
 

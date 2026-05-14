@@ -1,12 +1,16 @@
 use crate::core::config::Config;
 use crate::services::setup::{self, DeployRequest, LocalSetupMode};
+use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
+use std::time::Duration;
+
+const PLUGIN_HOOK_TIMEOUT_SECS: u64 = 360;
 
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
         None => run_local_setup_command(cfg, LocalSetupMode::FirstRun).await,
-        Some("hook") => run_hook_setup_command(cfg).await,
+        Some("plugin-hook" | "hook") => run_plugin_hook_setup_command(cfg).await,
         Some("check") => run_local_setup_command(cfg, LocalSetupMode::Check).await,
         Some("repair") => {
             let mode = if cfg.positional.iter().any(|value| value == "--migrate-env") {
@@ -83,7 +87,8 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let payload = json!({
                 "usage": [
                     "axon setup",
-                    "axon setup hook",
+                    "axon setup plugin-hook",
+                    "axon setup plugin-hook --no-repair",
                     "axon setup check",
                     "axon setup repair",
                     "axon setup repair --migrate-env"
@@ -94,7 +99,8 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             } else {
                 println!("Usage:");
                 println!("  axon setup");
-                println!("  axon setup hook");
+                println!("  axon setup plugin-hook");
+                println!("  axon setup plugin-hook --no-repair");
                 println!("  axon setup check");
                 println!("  axon setup repair");
                 println!("  axon setup repair --migrate-env");
@@ -104,17 +110,52 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn run_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let no_repair = cfg.positional.iter().any(|value| value == "--no-repair");
+    let result = tokio::time::timeout(
+        Duration::from_secs(PLUGIN_HOOK_TIMEOUT_SECS),
+        build_plugin_hook_report(no_repair),
+    )
+    .await;
+
+    let report = match result {
+        Ok(report) => report?,
+        Err(_) => {
+            let timeout = PluginHookTimeoutReport {
+                exit_policy: PluginHookExitPolicy::BlockingFailure,
+                timed_out: true,
+                timeout_seconds: PLUGIN_HOOK_TIMEOUT_SECS,
+                blocking_failures: vec!["plugin-hook-timeout".to_string()],
+                advisory_failures: Vec::new(),
+            };
+            if cfg.json_output {
+                println!("{}", serde_json::to_string_pretty(&timeout)?);
+            } else {
+                eprintln!(
+                    "axon setup plugin-hook exceeded {}s",
+                    PLUGIN_HOOK_TIMEOUT_SECS
+                );
+            }
+            return Err("axon setup plugin-hook exceeded timeout".into());
+        }
+    };
+
+    print_plugin_hook_report(cfg, &report)?;
+    fail_if_plugin_hook_failed(&report)
+}
+
+async fn build_plugin_hook_report(no_repair: bool) -> Result<PluginHookReport, Box<dyn Error>> {
     let check = setup::run_local_setup(LocalSetupMode::Check).await?;
     if !check.has_errors && !check.exceeded_hard_max {
-        print_local_setup_report(cfg, &check)?;
-        return Ok(());
+        return Ok(PluginHookReport::new(check, None, no_repair));
     }
 
-    print_local_setup_report(cfg, &check)?;
+    if no_repair {
+        return Ok(PluginHookReport::new(check, None, no_repair));
+    }
+
     let repair = setup::run_local_setup(LocalSetupMode::Repair).await?;
-    print_local_setup_report(cfg, &repair)?;
-    fail_if_hook_setup_failed(&repair)
+    Ok(PluginHookReport::new(check, Some(repair), no_repair))
 }
 
 async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(), Box<dyn Error>> {
@@ -133,31 +174,131 @@ fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn 
     }
 }
 
-fn fail_if_hook_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
-    let blocking: Vec<&str> = report
-        .phases
-        .iter()
-        .filter(|phase| {
-            matches!(phase.status, setup::LocalSetupStatus::Error)
-                && !matches!(phase.name, "tei-prewarm" | "crawl-smoke" | "ask-smoke")
-        })
-        .map(|phase| phase.name)
-        .collect();
+fn fail_if_plugin_hook_failed(report: &PluginHookReport) -> Result<(), Box<dyn Error>> {
+    match report.exit_policy {
+        PluginHookExitPolicy::Success | PluginHookExitPolicy::AdvisoryFailure => {
+            if matches!(report.exit_policy, PluginHookExitPolicy::AdvisoryFailure) {
+                eprintln!(
+                    "axon setup plugin-hook: continuing after advisory setup failures; inspect setup report"
+                );
+            }
+            Ok(())
+        }
+        PluginHookExitPolicy::BlockingFailure => Err(format!(
+            "axon setup plugin-hook completed with blocking failed phases: {}",
+            report.blocking_failures.join(", ")
+        )
+        .into()),
+    }
+}
 
-    if blocking.is_empty() {
-        if report.has_errors || report.exceeded_hard_max {
-            eprintln!(
-                "axon setup hook: continuing after advisory setup failures; inspect setup report"
+fn print_plugin_hook_report(cfg: &Config, report: &PluginHookReport) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        Ok(())
+    } else {
+        print_local_setup_report(cfg, &report.check)?;
+        if let Some(repair) = &report.repair {
+            print_local_setup_report(cfg, repair)?;
+        }
+        println!("Plugin hook policy: {:?}", report.exit_policy);
+        println!("Plugin hook ran repair: {}", report.ran_repair);
+        if !report.blocking_failures.is_empty() {
+            println!(
+                "Plugin hook blocking failures: {}",
+                report.blocking_failures.join(", ")
+            );
+        }
+        if !report.advisory_failures.is_empty() {
+            println!(
+                "Plugin hook advisory failures: {}",
+                report.advisory_failures.join(", ")
             );
         }
         Ok(())
-    } else {
-        Err(format!(
-            "axon setup hook completed with blocking failed phases: {}",
-            blocking.join(", ")
-        )
-        .into())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PluginHookExitPolicy {
+    Success,
+    AdvisoryFailure,
+    BlockingFailure,
+}
+
+#[derive(Debug, Serialize)]
+struct PluginHookReport {
+    exit_policy: PluginHookExitPolicy,
+    ran_repair: bool,
+    no_repair: bool,
+    blocking_failures: Vec<String>,
+    advisory_failures: Vec<String>,
+    check: setup::LocalSetupReport,
+    repair: Option<setup::LocalSetupReport>,
+}
+
+impl PluginHookReport {
+    fn new(
+        check: setup::LocalSetupReport,
+        repair: Option<setup::LocalSetupReport>,
+        no_repair: bool,
+    ) -> Self {
+        let active = repair.as_ref().unwrap_or(&check);
+        let blocking_failures = blocking_failures(active);
+        let advisory_failures = advisory_failures(active);
+        let exit_policy = if !blocking_failures.is_empty() {
+            PluginHookExitPolicy::BlockingFailure
+        } else if !advisory_failures.is_empty() || active.exceeded_hard_max {
+            PluginHookExitPolicy::AdvisoryFailure
+        } else {
+            PluginHookExitPolicy::Success
+        };
+        Self {
+            exit_policy,
+            ran_repair: repair.is_some(),
+            no_repair,
+            blocking_failures,
+            advisory_failures,
+            check,
+            repair,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct PluginHookTimeoutReport {
+    exit_policy: PluginHookExitPolicy,
+    timed_out: bool,
+    timeout_seconds: u64,
+    blocking_failures: Vec<String>,
+    advisory_failures: Vec<String>,
+}
+
+fn blocking_failures(report: &setup::LocalSetupReport) -> Vec<String> {
+    let mut failures: Vec<String> = report
+        .phases
+        .iter()
+        .filter(|phase| {
+            matches!(phase.status, setup::LocalSetupStatus::Error) && !phase.is_hook_advisory()
+        })
+        .map(|phase| phase.name.to_string())
+        .collect();
+    if report.exceeded_hard_max {
+        failures.push("setup-hard-max".to_string());
+    }
+    failures
+}
+
+fn advisory_failures(report: &setup::LocalSetupReport) -> Vec<String> {
+    report
+        .phases
+        .iter()
+        .filter(|phase| {
+            matches!(phase.status, setup::LocalSetupStatus::Error) && phase.is_hook_advisory()
+        })
+        .map(|phase| phase.name.to_string())
+        .collect()
 }
 
 fn print_local_setup_report(
@@ -254,17 +395,21 @@ mod tests {
 
     #[test]
     fn hook_failure_gate_rejects_blocking_setup_errors() {
-        assert!(
-            fail_if_hook_setup_failed(&report_with_phase("docker", LocalSetupStatus::Error))
-                .is_err()
+        let report = PluginHookReport::new(
+            report_with_phase("docker", LocalSetupStatus::Error),
+            None,
+            false,
         );
+        assert!(fail_if_plugin_hook_failed(&report).is_err());
     }
 
     #[test]
     fn hook_failure_gate_allows_advisory_smoke_errors() {
-        assert!(
-            fail_if_hook_setup_failed(&report_with_phase("ask-smoke", LocalSetupStatus::Error))
-                .is_ok()
+        let report = PluginHookReport::new(
+            report_with_phase("ask-smoke", LocalSetupStatus::Error),
+            None,
+            false,
         );
+        assert!(fail_if_plugin_hook_failed(&report).is_ok());
     }
 }

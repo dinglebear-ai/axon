@@ -88,6 +88,7 @@ fn query_score_policy(cfg: &Config) -> CandidateScorePolicy<'_> {
     CandidateScorePolicy {
         authoritative_domains: &cfg.ask_authoritative_domains,
         authoritative_boost: cfg.ask_authoritative_boost,
+        product_authority_boost: 0.35,
         min_relevance_score: None,
         require_topical_overlap: true,
     }
@@ -176,5 +177,6 @@ mod tests {
         assert_eq!(policy.min_relevance_score, None);
         assert!(policy.require_topical_overlap);
         assert_eq!(policy.authoritative_boost, 0.25);
+        assert_eq!(policy.product_authority_boost, 0.35);
     }
 }

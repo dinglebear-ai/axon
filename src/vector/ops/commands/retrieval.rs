@@ -21,6 +21,7 @@ pub(crate) struct CandidateBuildPolicy {
 pub(crate) struct CandidateScorePolicy<'a> {
     pub(crate) authoritative_domains: &'a [String],
     pub(crate) authoritative_boost: f64,
+    pub(crate) product_authority_boost: f64,
     pub(crate) min_relevance_score: Option<f64>,
     pub(crate) require_topical_overlap: bool,
 }
@@ -202,7 +203,7 @@ pub(crate) fn score_and_filter_candidates(
         policy.authoritative_boost,
     );
 
-    scored
+    let mut scored = scored
         .into_iter()
         .filter(|(idx, score)| {
             policy
@@ -213,10 +214,18 @@ pub(crate) fn score_and_filter_candidates(
         })
         .map(|(idx, score)| {
             let mut candidate = candidates[idx].clone();
-            candidate.candidate.rerank_score = score;
+            candidate.candidate.rerank_score = score
+                + query_product_authority_boost(&candidate.candidate.url, query_tokens, policy);
             candidate
         })
-        .collect()
+        .collect::<Vec<_>>();
+    scored.sort_by(|a, b| {
+        b.candidate
+            .rerank_score
+            .partial_cmp(&a.candidate.rerank_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    scored
 }
 
 pub(crate) fn query_allows_low_signal(query_tokens: &[String], raw_query: &str) -> bool {
@@ -280,6 +289,52 @@ fn host_from_url(url: &str) -> Option<String> {
         .ok()
         .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
 }
+
+fn query_product_authority_boost(
+    url: &str,
+    query_tokens: &[String],
+    policy: &CandidateScorePolicy<'_>,
+) -> f64 {
+    if policy.product_authority_boost <= 0.0 || query_tokens.is_empty() {
+        return 0.0;
+    }
+    let Some(host) = host_from_url(url) else {
+        return 0.0;
+    };
+    let token_set = query_tokens
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let official_match = PRODUCT_OFFICIAL_DOMAINS.iter().any(|rule| {
+        rule.tokens.iter().any(|token| token_set.contains(token))
+            && (host == rule.domain || host.ends_with(&format!(".{}", rule.domain)))
+    });
+    if official_match {
+        policy.product_authority_boost
+    } else {
+        0.0
+    }
+}
+
+struct ProductOfficialDomain {
+    tokens: &'static [&'static str],
+    domain: &'static str,
+}
+
+const PRODUCT_OFFICIAL_DOMAINS: &[ProductOfficialDomain] = &[
+    ProductOfficialDomain {
+        tokens: &["claude", "anthropic"],
+        domain: "code.claude.com",
+    },
+    ProductOfficialDomain {
+        tokens: &["openclaw"],
+        domain: "docs.openclaw.ai",
+    },
+    ProductOfficialDomain {
+        tokens: &["codex", "openai"],
+        domain: "developers.openai.com",
+    },
+];
 
 fn candidate_topical_overlap_count(
     candidate: &ranking::AskCandidate,
@@ -369,6 +424,7 @@ mod tests {
         let policy = CandidateScorePolicy {
             authoritative_domains: &[],
             authoritative_boost: 0.0,
+            product_authority_boost: 0.0,
             min_relevance_score: Some(0.0),
             require_topical_overlap: true,
         };
@@ -388,6 +444,7 @@ mod tests {
         let policy = CandidateScorePolicy {
             authoritative_domains: &[],
             authoritative_boost: 0.0,
+            product_authority_boost: 0.0,
             min_relevance_score: None,
             require_topical_overlap: true,
         };
@@ -412,5 +469,79 @@ mod tests {
             &candidate,
             &["rust".to_string()]
         ));
+    }
+
+    #[test]
+    fn score_policy_boosts_official_product_docs_for_named_product_queries() {
+        let candidates = vec![
+            make_candidate(
+                "https://docs.openclaw.ai/cli/plugins",
+                "plugins marketplace commands install list inspect openclaw docs",
+                0.28,
+            ),
+            make_candidate(
+                "https://code.claude.com/docs/en/plugins",
+                "Claude Code plugins marketplace standalone configuration official docs",
+                0.17,
+            ),
+        ];
+        let query_tokens = vec![
+            "claude".to_string(),
+            "marketplace".to_string(),
+            "plugins".to_string(),
+        ];
+        let policy = CandidateScorePolicy {
+            authoritative_domains: &[],
+            authoritative_boost: 0.0,
+            product_authority_boost: 0.35,
+            min_relevance_score: None,
+            require_topical_overlap: true,
+        };
+
+        let selected = score_and_filter_candidates(&candidates, &query_tokens, &policy);
+
+        assert_eq!(
+            selected[0].candidate.url,
+            "https://code.claude.com/docs/en/plugins"
+        );
+        assert!(
+            selected[0].candidate.rerank_score > selected[1].candidate.rerank_score,
+            "official Claude docs should outrank cross-product plugin docs for Claude queries"
+        );
+    }
+
+    #[test]
+    fn score_policy_boosts_openclaw_docs_for_openclaw_queries() {
+        let candidates = vec![
+            make_candidate(
+                "https://code.claude.com/docs/en/plugins",
+                "Claude Code plugins marketplace official docs",
+                0.30,
+            ),
+            make_candidate(
+                "https://docs.openclaw.ai/cli/plugins",
+                "OpenClaw plugins marketplace commands install list inspect",
+                0.20,
+            ),
+        ];
+        let query_tokens = vec![
+            "openclaw".to_string(),
+            "marketplace".to_string(),
+            "plugins".to_string(),
+        ];
+        let policy = CandidateScorePolicy {
+            authoritative_domains: &[],
+            authoritative_boost: 0.0,
+            product_authority_boost: 0.35,
+            min_relevance_score: None,
+            require_topical_overlap: true,
+        };
+
+        let selected = score_and_filter_candidates(&candidates, &query_tokens, &policy);
+
+        assert_eq!(
+            selected[0].candidate.url,
+            "https://docs.openclaw.ai/cli/plugins"
+        );
     }
 }

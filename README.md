@@ -62,7 +62,7 @@ Claude Code plugin install:
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup hook`, which runs the lightweight check path first, falls back to repair when needed, and keeps advisory smoke/prewarm failures non-blocking for Claude Code startup. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
+The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook is a thin adapter around `axon setup plugin-hook`, which runs the lightweight check path first, falls back to repair when needed, and keeps advisory smoke/prewarm failures non-blocking for Claude Code startup. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
 
 ## Setup Flow
 
@@ -82,7 +82,8 @@ Setup modes:
 
 ```bash
 axon setup          # first-run or normal repair
-axon setup hook     # hook-safe check/repair path for Claude Code SessionStart
+axon setup plugin-hook  # hook-safe check/repair path for Claude Code SessionStart
+axon setup plugin-hook --no-repair  # hook-safe check only; does not mutate files or services
 axon setup check    # inspect only; does not mutate files or start services
 axon setup repair   # repair config/assets and restart the Docker stack
 axon setup repair --migrate-env  # backup/prune env and move tuning to config.toml

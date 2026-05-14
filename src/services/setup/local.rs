@@ -69,6 +69,12 @@ pub struct LocalSetupPhase {
     pub elapsed_ms: u128,
 }
 
+impl LocalSetupPhase {
+    pub fn is_hook_advisory(&self) -> bool {
+        matches!(self.name, "tei-prewarm" | "crawl-smoke" | "ask-smoke")
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LocalSetupReport {
     pub mode: &'static str,

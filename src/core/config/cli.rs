@@ -122,7 +122,12 @@ pub(super) struct SetupArgs {
 #[derive(Debug, Subcommand)]
 pub(super) enum SetupSubcommand {
     /// Hook-safe check/repair entrypoint for Claude Code plugin SessionStart
-    Hook,
+    #[command(name = "plugin-hook", alias = "hook")]
+    PluginHook {
+        /// Inspect only; do not repair config/assets or restart services.
+        #[arg(long)]
+        no_repair: bool,
+    },
     /// Check local Docker setup prerequisites without mutating files or services
     Check,
     /// Repair local Axon config, compose assets, and Docker stack
