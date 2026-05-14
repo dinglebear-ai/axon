@@ -3,6 +3,7 @@ use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking};
 use std::collections::HashSet;
 
+#[cfg(test)]
 fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
     let Some(start) = entry.find("[S") else {
         return entry.to_string();

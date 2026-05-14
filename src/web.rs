@@ -10,7 +10,7 @@ pub(crate) mod panel_first_run;
 pub(crate) mod panel_stack;
 #[path = "web/security.rs"]
 pub(crate) mod security;
-#[path = "web/server/mod.rs"]
+#[path = "web/server.rs"]
 pub(crate) mod server;
 #[path = "web/static_assets.rs"]
 pub(crate) mod static_assets;

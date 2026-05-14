@@ -4,9 +4,7 @@ mod fetchers;
 mod selection;
 
 use super::super::timing::{AskTiming, AskTimingSlot};
-use super::heuristics::{
-    push_context_entry, should_inject_supplemental, should_skip_full_doc_fetch,
-};
+use super::heuristics::{should_inject_supplemental, should_skip_full_doc_fetch};
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::vector::ops::ranking;
@@ -17,7 +15,9 @@ pub(super) use appenders::{
     append_full_docs_to_context, append_supplemental_chunks, append_top_chunks_to_context,
 };
 pub(super) use diagnostics::build_diagnostic_sources;
-pub(super) use fetchers::{ask_doc_cache, fetch_full_docs};
+#[cfg(test)]
+pub(super) use fetchers::ask_doc_cache;
+pub(super) use fetchers::fetch_full_docs;
 pub(super) use selection::{
     collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
 };

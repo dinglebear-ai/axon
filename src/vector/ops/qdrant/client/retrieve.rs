@@ -52,7 +52,7 @@ fn safe_url_hash(url: &str) -> u64 {
         truncated = tracing::field::Empty,
     )
 )]
-pub(crate) async fn qdrant_retrieve_by_url_details(
+pub async fn qdrant_retrieve_by_url_details(
     cfg: &Config,
     url_match: &str,
     max_points: Option<usize>,
@@ -109,7 +109,7 @@ pub(crate) async fn qdrant_retrieve_by_url_details(
     })
 }
 
-pub(crate) async fn qdrant_retrieve_by_url(
+pub async fn qdrant_retrieve_by_url(
     cfg: &Config,
     url_match: &str,
     max_points: Option<usize>,
