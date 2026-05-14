@@ -43,8 +43,8 @@ pub(crate) fn get_allow_loopback() -> bool {
 ///
 /// # Errors
 ///
-/// Returns `Err` if the URL is malformed, uses a non-HTTP(S) scheme, or resolves
-/// to a blocked address range.
+/// Returns `Err` if the URL is malformed, uses a non-HTTP(S) scheme, uses a
+/// blocked host, or contains a literal blocked IP address.
 ///
 /// # DNS Rebinding (TOCTOU — MITIGATED)
 ///
@@ -62,6 +62,11 @@ pub(crate) fn get_allow_loopback() -> bool {
 /// As defence-in-depth, `ssrf_blacklist_patterns()` is also applied to
 /// discovered URLs during crawl via spider's `with_blacklist_url()`.
 pub fn validate_url(url: &str) -> Result<(), HttpError> {
+    parse_validated_http_url(url)?;
+    Ok(())
+}
+
+fn parse_http_url(url: &str) -> Result<Url, HttpError> {
     let normalized = normalize_url(url);
     let parsed = Url::parse(&normalized).map_err(|_| HttpError::InvalidUrl(url.to_string()))?;
 
@@ -70,9 +75,11 @@ pub fn validate_url(url: &str) -> Result<(), HttpError> {
         s => return Err(HttpError::BlockedScheme(s.to_string())),
     }
 
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
+    Ok(parsed)
+}
+
+fn validate_host(url: &str, host: Option<&str>) -> Result<(), HttpError> {
+    let host = host.ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
 
     // Block localhost and .internal/.local TLDs
     let lower = host.to_ascii_lowercase();
@@ -91,6 +98,53 @@ pub fn validate_url(url: &str) -> Result<(), HttpError> {
         check_ip(ip)?;
     }
 
+    Ok(())
+}
+
+fn parse_validated_http_url(url: &str) -> Result<Url, HttpError> {
+    let parsed = parse_http_url(url)?;
+    validate_host(url, parsed.host_str())?;
+    Ok(parsed)
+}
+
+/// Validate a URL and reject hostnames that resolve to Axon's blocked SSRF IP
+/// ranges.
+///
+/// This is used before handing URLs to Spider, whose HTTP stack does not use
+/// Axon's reqwest `SsrfBlockingResolver`.
+pub async fn validate_url_with_dns(url: &str) -> Result<(), HttpError> {
+    let parsed = parse_validated_http_url(url)?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
+
+    let bare_host = host.trim_start_matches('[').trim_end_matches(']');
+    if bare_host.parse::<IpAddr>().is_ok() {
+        return Ok(());
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| HttpError::DnsResolution {
+            host: host.to_string(),
+            error: error.to_string(),
+        })?;
+    validate_resolved_ips(host, addrs.map(|addr| addr.ip()))
+}
+
+pub(crate) fn validate_resolved_ips(
+    host: &str,
+    ips: impl IntoIterator<Item = IpAddr>,
+) -> Result<(), HttpError> {
+    for ip in ips {
+        if check_ip(ip).is_err() {
+            return Err(HttpError::BlockedResolvedIp {
+                host: host.to_string(),
+                ip,
+            });
+        }
+    }
     Ok(())
 }
 

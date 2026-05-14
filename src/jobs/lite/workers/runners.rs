@@ -17,8 +17,8 @@ mod tests {
     use crate::core::config::RenderMode;
     use crate::jobs::ingest::IngestSource;
     use crate::jobs::lite::config_snapshot::{
-        apply_lite_config_snapshot, decode_ingest_job_config, ingest_config_json,
-        lite_config_snapshot_json,
+        apply_lite_config_snapshot, apply_lite_config_snapshot_for_container,
+        decode_ingest_job_config, ingest_config_json, lite_config_snapshot_json,
     };
     use std::path::PathBuf;
 
@@ -109,6 +109,68 @@ mod tests {
     }
 
     #[test]
+    fn lite_config_snapshot_omits_secrets() {
+        let mut cfg = Config::test_default();
+        cfg.tavily_api_key = "tvly-SECRET_TAVILY".to_string();
+        cfg.openai_api_key = "sk-SECRET_OPENAI".to_string();
+        cfg.github_token = Some("ghp_SECRET_GITHUB".to_string());
+        cfg.reddit_client_secret = Some("REDDIT_SECRET".to_string());
+
+        let snapshot = lite_config_snapshot_json(&cfg).expect("snapshot should encode");
+
+        assert!(
+            !snapshot.contains("tvly-SECRET_TAVILY"),
+            "snapshot must not contain tavily_api_key"
+        );
+        assert!(
+            !snapshot.contains("sk-SECRET_OPENAI"),
+            "snapshot must not contain openai_api_key"
+        );
+        assert!(
+            !snapshot.contains("ghp_SECRET_GITHUB"),
+            "snapshot must not contain github_token"
+        );
+        assert!(
+            !snapshot.contains("REDDIT_SECRET"),
+            "snapshot must not contain reddit_client_secret"
+        );
+    }
+
+    #[test]
+    fn lite_config_snapshot_maps_default_output_dir_when_container_env_is_set() {
+        let mut submitted = Config::test_default();
+        submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");
+        let mut worker = Config::test_default();
+        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot_for_container(&worker, &config_json, true)
+            .expect("apply snapshot");
+
+        assert_eq!(
+            effective.output_dir,
+            PathBuf::from("/home/axon/.axon/output")
+        );
+    }
+
+    #[test]
+    fn lite_config_snapshot_keeps_default_output_dir_when_container_env_is_unset() {
+        let mut submitted = Config::test_default();
+        submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");
+        let mut worker = Config::test_default();
+        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
+
+        let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
+        let effective = apply_lite_config_snapshot_for_container(&worker, &config_json, false)
+            .expect("apply snapshot");
+
+        assert_eq!(
+            effective.output_dir,
+            PathBuf::from("/home/jmagar/.axon/output")
+        );
+    }
+
+    #[test]
     fn lite_config_snapshot_exactly_replays_submitted_none_options() {
         let mut submitted = Config::test_default();
         submitted.output_path = None;
@@ -146,6 +208,19 @@ mod tests {
         assert_eq!(effective.tei_url, "http://worker-tei:80");
         assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
         assert_eq!(effective.openai_base_url, "http://worker-llm/v1");
+    }
+
+    #[test]
+    fn lite_config_snapshot_rejects_malformed_endpoint_urls() {
+        let mut submitted = Config::test_default();
+        submitted.tei_url = "not a url".to_string();
+
+        let err = lite_config_snapshot_json(&submitted).expect_err("malformed endpoint fails");
+
+        assert!(
+            err.to_string().contains("invalid tei_url"),
+            "expected invalid endpoint error, got: {err}"
+        );
     }
 
     #[test]
