@@ -57,7 +57,7 @@ async fn spawn_ask_test_server(
     let addr = listener.local_addr().expect("local addr");
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let handle = tokio::spawn(async move {
-        axum::serve(listener, app)
+        axum::serve(listener, app.into_make_service())
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
             })

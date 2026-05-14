@@ -3,10 +3,15 @@ use axum::Router;
 use std::sync::Arc;
 
 // Module declarations
+#[path = "server/handlers.rs"]
 mod handlers;
+#[path = "server/routing.rs"]
 mod routing;
+#[path = "server/state.rs"]
 mod state;
+#[path = "server/types.rs"]
 mod types;
+#[path = "server/utils.rs"]
 mod utils;
 
 // Re-export public types and state
@@ -23,8 +28,11 @@ pub(crate) fn router(
     routing::router(cfg, panel, service_context, auth_policy)
 }
 
-pub(crate) use utils::warn_if_ask_token_set_but_empty;
+#[cfg(test)]
+#[path = "server/tests.rs"]
+mod tests;
 
 #[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
+use handlers::ask::classify_ask_error;
+#[cfg(test)]
+use routing::ask_router;

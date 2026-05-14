@@ -14,14 +14,11 @@ pub mod scroll;
 
 // Re-exports for convenience (public API)
 pub use delete::{qdrant_delete_points, qdrant_delete_stale_domain_urls, qdrant_delete_stale_tail};
-pub use facets::{qdrant_domain_facets, qdrant_facet, qdrant_facet_filtered, qdrant_url_facets};
-pub use retrieve::{
-    parse_retrieve_scroll_points, qdrant_retrieve_by_url, qdrant_retrieve_by_url_details,
-    retrieve_scroll_limit,
-};
+pub use facets::{qdrant_domain_facets, qdrant_url_facets};
+pub use retrieve::{qdrant_retrieve_by_url, qdrant_retrieve_by_url_details};
 pub use scroll::{qdrant_indexed_urls, qdrant_scroll_pages_selective, qdrant_urls_for_domain};
 
 #[cfg(test)]
 pub(crate) use delete::qdrant_delete_by_url_filter;
 #[cfg(test)]
-pub(crate) use scroll::{qdrant_scroll_pages, qdrant_scroll_pages_while};
+pub(crate) use scroll::qdrant_scroll_pages;

@@ -2,7 +2,6 @@ use crate::jobs::backend::JobKind;
 use crate::services::context::ServiceContext;
 use crate::services::jobs as job_svc;
 use crate::services::types::ClientActionError;
-use uuid::Uuid;
 
 use super::parse_job_id;
 

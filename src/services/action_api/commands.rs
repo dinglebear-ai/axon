@@ -28,5 +28,3 @@ pub(super) fn parse_job_id(raw: Option<&str>) -> Result<Uuid, ClientActionError>
         )
     })
 }
-
-use super::internal_error;

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub async fn fetch_full_docs(
     cfg: &Config,
-    reranked: &[super::super::super::ranking::AskCandidate],
+    reranked: &[crate::vector::ops::ranking::AskCandidate],
     top_full_doc_indices: &[usize],
     context_char_count: usize,
     max_context_chars: usize,

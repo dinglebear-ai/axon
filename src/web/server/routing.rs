@@ -56,7 +56,10 @@ pub(super) fn router(
     ))
 }
 
-fn ask_router<S>(cfg: Arc<Config>, auth_policy: &crate::mcp::auth::AuthPolicy) -> Router<S>
+pub(crate) fn ask_router<S>(
+    cfg: Arc<Config>,
+    auth_policy: &crate::mcp::auth::AuthPolicy,
+) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {

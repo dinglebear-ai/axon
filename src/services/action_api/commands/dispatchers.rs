@@ -1,9 +1,8 @@
-use crate::core::config::{Config, ConfigOverrides, RenderMode, ScrapeFormat};
+use crate::core::config::{Config, ConfigOverrides};
 use crate::core::content::url_to_filename;
 use crate::mcp::schema::{
     CrawlRequest, CrawlSubaction, EmbedRequest, EmbedSubaction, ExtractRequest, ExtractSubaction,
-    IngestRequest, IngestSourceType, IngestSubaction, McpRenderMode, McpScrapeFormat,
-    ScrapeRequest, ScreenshotRequest,
+    IngestRequest, IngestSubaction, ScrapeRequest, ScreenshotRequest,
 };
 use crate::services::context::ServiceContext;
 use crate::services::crawl as crawl_svc;
@@ -317,13 +316,13 @@ pub async fn dispatch_scrape(
         .map_err(internal_error)?;
     if let Some(path) = cfg.output_path.as_ref() {
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|err| {
-                internal_error(Box::new(format!("create scrape output dir: {err}")))
-            })?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|err| internal_error(Box::new(err)))?;
         }
         tokio::fs::write(path, &result.output)
             .await
-            .map_err(|err| internal_error(Box::new(format!("write scrape output: {err}"))))?;
+            .map_err(|err| internal_error(Box::new(err)))?;
     }
     Ok(serde_json::json!({
         "url": result.url,

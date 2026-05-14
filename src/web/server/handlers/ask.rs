@@ -63,9 +63,9 @@ fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
 
 /// Map a service error chain to (status, kind) using simple message-based
 /// heuristics over the chain. Falls back to 500/internal.
-fn classify_ask_error(err: &(dyn std::error::Error + 'static)) -> (StatusCode, &'static str) {
+pub(crate) fn classify_ask_error(err: &(dyn Error + 'static)) -> (StatusCode, &'static str) {
     let mut buf = String::new();
-    let mut cur: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    let mut cur: Option<&(dyn Error + 'static)> = Some(err);
     while let Some(e) = cur {
         buf.push_str(&e.to_string());
         buf.push('\n');
