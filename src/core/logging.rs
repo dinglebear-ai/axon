@@ -1,7 +1,7 @@
+mod aurora;
 mod size_rotating;
 
 use chrono::Local;
-use console::Style;
 use size_rotating::SizeRotatingFile;
 use std::fmt;
 use std::io;
@@ -12,6 +12,16 @@ use tracing_subscriber::fmt::{
     FmtContext, FormatEvent, FormatFields, FormattedFields, format::Writer,
 };
 use tracing_subscriber::registry::LookupSpan;
+
+// ── Raw ANSI helpers ─────────────────────────────────────────────────────────
+
+fn ansi256_bold(n: u8, text: &str) -> String {
+    format!("\x1b[1;38;5;{n}m{text}\x1b[0m")
+}
+
+fn ansi_dim(text: &str) -> String {
+    format!("\x1b[2m{text}\x1b[0m")
+}
 
 fn read_trimmed_env(var: &str) -> Option<String> {
     std::env::var(var)
@@ -25,12 +35,12 @@ fn read_trimmed_env(var: &str) -> Option<String> {
 // Renders log lines on stderr as:
 //   HH:MM:SS   LEVEL  event_name  key=value  key=value
 //
-// Colors (when ANSI is supported):
+// Colors (when ANSI is supported) — Aurora palette:
 //   timestamp — dim
-//   LEVEL     — green (INFO), yellow (WARN), red (ERROR), dim (DEBUG/TRACE)
-//   event     — bold white (first whitespace-delimited token of the message)
+//   LEVEL     — aurora::ERROR bold (ERROR), aurora::WARN bold (WARN), plain (INFO), dim (DEBUG/TRACE)
+//   first token of message — aurora::SERVICE_NAME bold (pink)
 //   key=      — dim
-//   value     — normal (inherits terminal default)
+//   value     — plain (inherits terminal default)
 //
 // The JSON file layer uses tracing-subscriber's built-in JSON formatter with
 // `with_ansi(false)`, so it never receives ANSI escape codes.
@@ -60,25 +70,26 @@ impl Visit for EventVisitor {
     }
 }
 
-/// Write the log level to `writer`, with ANSI colour when `ansi` is true.
+/// Write the log level to `writer`, with Aurora ANSI 256 colour when `ansi` is true.
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> fmt::Result {
-    if ansi {
+    let s = if ansi {
         match level {
-            tracing::Level::ERROR => {
-                write!(writer, "{}  ", Style::new().red().bold().apply_to("ERROR"))
-            }
-            tracing::Level::WARN => write!(
-                writer,
-                "{}  ",
-                Style::new().yellow().bold().apply_to(" WARN")
-            ),
-            tracing::Level::INFO => write!(writer, "{}  ", Style::new().green().apply_to(" INFO")),
-            tracing::Level::DEBUG => write!(writer, "{}  ", Style::new().dim().apply_to("DEBUG")),
-            tracing::Level::TRACE => write!(writer, "{}  ", Style::new().dim().apply_to("TRACE")),
+            tracing::Level::ERROR => ansi256_bold(aurora::ERROR, "ERROR"),
+            tracing::Level::WARN => ansi256_bold(aurora::WARN, " WARN"),
+            tracing::Level::INFO => " INFO".to_string(),
+            tracing::Level::DEBUG => ansi_dim("DEBUG"),
+            tracing::Level::TRACE => ansi_dim("TRACE"),
         }
     } else {
-        write!(writer, "{level:5}  ")
-    }
+        match level {
+            tracing::Level::ERROR => "ERROR".to_string(),
+            tracing::Level::WARN => " WARN".to_string(),
+            tracing::Level::INFO => " INFO".to_string(),
+            tracing::Level::DEBUG => "DEBUG".to_string(),
+            tracing::Level::TRACE => "TRACE".to_string(),
+        }
+    };
+    write!(writer, "{s}  ")
 }
 
 /// Collect formatted span fields from leaf → root, then reverse to root → leaf order.
@@ -137,7 +148,7 @@ where
         // HH:MM:SS (local time)
         let ts = Local::now().format("%H:%M:%S").to_string();
         if ansi {
-            write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
+            write!(writer, "{}  ", ansi_dim(&ts))?;
         } else {
             write!(writer, "{ts}  ")?;
         }
@@ -156,14 +167,15 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    write!(writer, "{}", Style::new().bold().apply_to(token))?;
+                    // First token: aurora pink + bold (action verb)
+                    write!(writer, "{}", ansi256_bold(aurora::SERVICE_NAME, token))?;
                 } else if let Some(eq) = token.find('=') {
                     // key=value — dim key, normal value
                     write!(
                         writer,
                         "{}{}{}",
-                        Style::new().dim().apply_to(&token[..eq]),
-                        Style::new().dim().apply_to("="),
+                        ansi_dim(&token[..eq]),
+                        ansi_dim("="),
                         &token[eq + 1..]
                     )?;
                 } else {
@@ -180,8 +192,8 @@ where
                 write!(
                     writer,
                     "  {}{}{}",
-                    Style::new().dim().apply_to(key.as_str()),
-                    Style::new().dim().apply_to("="),
+                    ansi_dim(key.as_str()),
+                    ansi_dim("="),
                     val
                 )?;
             } else {
@@ -194,11 +206,7 @@ where
         // WARN filter this is negligible; consider gating on Level if ever lowered to INFO.
         for fields_str in &collect_span_fields(ctx) {
             if ansi {
-                write!(
-                    writer,
-                    "  {}",
-                    Style::new().dim().apply_to(fields_str.as_str())
-                )?;
+                write!(writer, "  {}", ansi_dim(fields_str.as_str()))?;
             } else {
                 write!(writer, "  {fields_str}")?;
             }
