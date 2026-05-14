@@ -2,26 +2,12 @@
 //! services layer (`crates/services/migrate.rs`).
 
 use crate::core::config::Config;
-use crate::core::logging::log_info;
 use crate::core::ui::{accent, muted};
 use crate::services::migrate as migrate_service;
-use crate::vector::ops::tei::qdrant_store::clear_collection_mode_cache;
 use std::error::Error;
 
 pub async fn run_migrate(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = migrate_service::migrate(cfg).await?;
-
-    // Invalidate the process-wide VectorMode cache for both collections so that
-    // long-running workers re-detect the new schema on their next embed/query.
-    // Without this, workers that cached VectorMode::Unnamed for `from` (or an
-    // earlier run targeting `to`) continue using dense-only search paths even
-    // after migration completes.
-    clear_collection_mode_cache(&result.from);
-    clear_collection_mode_cache(&result.to);
-    log_info(&format!(
-        "migrate cache_cleared from={} to={} — separate worker processes revalidate cached legacy Unnamed mode on their next hybrid embed/query",
-        result.from, result.to
-    ));
 
     if cfg.json_output {
         println!(

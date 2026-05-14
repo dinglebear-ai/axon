@@ -12,6 +12,7 @@ use crate::mcp::schema::{
 use crate::services::{document as document_svc, types::DocumentBackend};
 use crate::services::{
     map as map_svc, query as query_svc, scrape as scrape_svc, search as search_svc,
+    search_crawl as search_crawl_svc,
 };
 use rmcp::ErrorData;
 
@@ -149,9 +150,14 @@ impl AxonMcpServer {
             return Err(internal_error("TAVILY_API_KEY is required for search"));
         }
         let (limit, offset) = (opts.limit, opts.offset);
-        let result = search_svc::search(self.cfg.as_ref(), &query, opts, None)
+        let service_context = self
+            .base_service_context()
             .await
-            .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
+            .map_err(|e| logged_internal_error("search.context", e.as_ref()))?;
+        let result =
+            search_crawl_svc::search_and_crawl(self.cfg.as_ref(), &service_context, &query, opts)
+                .await
+                .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "search",
@@ -163,6 +169,9 @@ impl AxonMcpServer {
                 "limit": limit,
                 "offset": offset,
                 "results": result.results,
+                "auto_crawl_status": result.auto_crawl_status,
+                "crawl_jobs": result.crawl_jobs,
+                "crawl_jobs_rejected": result.crawl_rejected,
             }),
             InlineHint::Default,
         )
