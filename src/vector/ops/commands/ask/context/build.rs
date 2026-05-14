@@ -1,18 +1,26 @@
+mod appenders;
+mod diagnostics;
+mod fetchers;
+mod selection;
+
 use super::super::timing::{AskTiming, AskTimingSlot};
 use super::heuristics::{
     push_context_entry, should_inject_supplemental, should_skip_full_doc_fetch,
 };
 use crate::core::config::Config;
-use crate::core::logging::{log_info, log_warn};
-use crate::vector::cache::{
-    DocCache, DocCacheConfig, DocCacheKey, current_generation, doc_cache_for_config,
-};
-use crate::vector::ops::source_display::display_source;
-use crate::vector::ops::{qdrant, ranking};
+use crate::core::logging::log_info;
+use crate::vector::ops::ranking;
 use anyhow::{Result, anyhow};
-use futures_util::stream::{self, StreamExt};
 use std::collections::HashSet;
-use std::sync::Arc;
+
+pub(super) use appenders::{
+    append_full_docs_to_context, append_supplemental_chunks, append_top_chunks_to_context,
+};
+pub(super) use diagnostics::build_diagnostic_sources;
+pub(super) use fetchers::{ask_doc_cache, fetch_full_docs};
+pub(super) use selection::{
+    collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
+};
 
 pub(super) struct BuiltAskContext {
     pub(super) context: String,
@@ -27,24 +35,6 @@ pub(super) struct BuiltAskContext {
     /// Static reason string from the skip gate; useful for diagnostics even
     /// when the gate did not fire ("disabled", "insufficient_urls", etc.).
     pub(super) full_doc_fetch_skip_reason: &'static str,
-}
-
-pub(super) fn select_context_indices(
-    reranked: &[ranking::AskCandidate],
-    chunk_limit: usize,
-    full_doc_limit: usize,
-) -> (Vec<usize>, Vec<usize>) {
-    let top_chunk_indices = ranking::select_diverse_candidates(reranked, chunk_limit, 1);
-    // Full-doc indices are selected independently from the full reranked pool.
-    // The old URL-exclusion caused top_full_doc_indices=[] for narrow-domain
-    // queries (all top URLs already in chunk slots), silently skipping the
-    // full-doc Qdrant fetch (context_build_ms ≈ 5ms).
-    // append_top_chunks_to_context at line 219 already skips snippet entries
-    // for URLs in planned_full_doc_urls — no duplication occurs.
-    // Enable ask_fulldoc_skip_enabled to restore fast-path when top chunks
-    // already provide sufficient coverage.
-    let top_full_doc_indices = ranking::select_diverse_candidates(reranked, full_doc_limit, 1);
-    (top_chunk_indices, top_full_doc_indices)
 }
 
 pub(super) async fn build_context_from_candidates(
@@ -73,12 +63,12 @@ pub(super) async fn build_context_from_candidates(
     // (bd axon_rust-30y)
     let is_rrf = min_supplemental_score.is_none();
     let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
-    let planned_full_doc_urls =
+    let planned_full_doc_urls_set =
         planned_full_doc_urls(reranked, top_full_doc_indices, skip_decision.skip);
     let top_chunks_selected = append_top_chunks_to_context(
         reranked,
         top_chunk_indices,
-        &planned_full_doc_urls,
+        &planned_full_doc_urls_set,
         &mut context_entries,
         &mut context_char_count,
         &mut source_idx,
@@ -154,7 +144,7 @@ pub(super) async fn build_context_from_candidates(
     let joined = context_entries
         .into_iter()
         .enumerate()
-        .map(|(idx, (_, entry))| renumber_context_source_header(&entry, idx + 1))
+        .map(|(idx, (_, entry))| renumber_source_header(&entry, idx + 1))
         .collect::<Vec<_>>();
     let context = format!("Sources:\n{}", joined.join(separator));
     let context_elapsed_ms = context_started.elapsed().as_millis();
@@ -163,7 +153,7 @@ pub(super) async fn build_context_from_candidates(
         reranked,
         top_chunk_indices,
         top_chunks_selected,
-        &planned_full_doc_urls,
+        &planned_full_doc_urls_set,
         top_full_doc_indices,
         &supplemental,
         supplemental_count,
@@ -181,7 +171,7 @@ pub(super) async fn build_context_from_candidates(
     })
 }
 
-fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
+fn renumber_source_header(entry: &str, display_id: usize) -> String {
     let Some(start) = entry.find("[S") else {
         return entry.to_string();
     };
@@ -194,208 +184,6 @@ fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
     }
     let end = start + 2 + end_rel;
     format!("{}S{}{}", &entry[..start + 1], display_id, &entry[end..])
-}
-
-pub(super) fn planned_full_doc_urls(
-    reranked: &[ranking::AskCandidate],
-    top_full_doc_indices: &[usize],
-    skip_full_doc_fetch: bool,
-) -> HashSet<String> {
-    if skip_full_doc_fetch {
-        return HashSet::new();
-    }
-
-    top_full_doc_indices
-        .iter()
-        .filter_map(|&idx| reranked.get(idx).map(|candidate| candidate.url.clone()))
-        .collect()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn append_top_chunks_to_context(
-    reranked: &[ranking::AskCandidate],
-    top_chunk_indices: &[usize],
-    planned_full_doc_urls: &HashSet<String>,
-    context_entries: &mut Vec<(f64, String)>,
-    context_char_count: &mut usize,
-    source_idx: &mut usize,
-    separator: &str,
-    max_context_chars: usize,
-) -> usize {
-    let mut top_chunks_selected = 0usize;
-    for &chunk_idx in top_chunk_indices {
-        let chunk = &reranked[chunk_idx];
-        if planned_full_doc_urls.contains(&chunk.url) {
-            continue;
-        }
-        let source = display_source(&chunk.url);
-        let entry = format!(
-            "## Top Chunk [S{}]: {}\n\n{}",
-            *source_idx, source, chunk.chunk_text
-        );
-        if !push_context_entry(
-            context_entries,
-            context_char_count,
-            chunk.rerank_score,
-            entry,
-            separator,
-            max_context_chars,
-        ) {
-            break;
-        }
-        top_chunks_selected += 1;
-        *source_idx += 1;
-    }
-    top_chunks_selected
-}
-
-pub(super) fn collect_supplemental_candidate_indices(
-    reranked: &[ranking::AskCandidate],
-    inserted_full_doc_urls: &HashSet<String>,
-    min_supplemental_score: Option<f64>,
-) -> Vec<usize> {
-    reranked
-        .iter()
-        .enumerate()
-        .filter(|(_, candidate)| {
-            !inserted_full_doc_urls.contains(&candidate.url)
-                && min_supplemental_score.is_none_or(|floor| candidate.rerank_score >= floor)
-        })
-        .map(|(idx, _)| idx)
-        .collect::<Vec<_>>()
-}
-
-async fn fetch_full_docs(
-    cfg: &Config,
-    reranked: &[ranking::AskCandidate],
-    top_full_doc_indices: &[usize],
-    context_char_count: usize,
-    max_context_chars: usize,
-    doc_chunk_limit: usize,
-    doc_fetch_concurrency: usize,
-) -> Result<Vec<(usize, String, Vec<qdrant::QdrantPoint>)>> {
-    let mut fetched_docs = Vec::new();
-    if context_char_count >= max_context_chars {
-        return Ok(fetched_docs);
-    }
-    let cfg_arc = Arc::new(cfg.clone());
-    // Cache enable gate. The cache itself is process-global; we only consult
-    // it when `cfg.ask_cache_enabled`. Snapshot the per-collection generation
-    // once for this fetch batch so all concurrent lookups in this stream see
-    // a consistent key. (axon_rust-pmc)
-    let cache_enabled = cfg.ask_cache_enabled;
-    let doc_cache = cache_enabled.then(|| ask_doc_cache(cfg));
-    let collection = cfg.collection.clone();
-    let generation = if cache_enabled {
-        current_generation(&collection)
-    } else {
-        0
-    };
-    // Collect owned `(order, doc_idx)` pairs before mapping to async tasks so
-    // the map closure receives `(usize, usize)` (no lifetime-parameterised
-    // `&usize`).  The reference pattern `|(order, &doc_idx)|` or even receiving
-    // `(usize, &usize)` causes an HRTB `FnOnce` diagnostic when the resulting
-    // future is verified for `Send + 'static` by `tokio::spawn`.
-    let tasks: Vec<(usize, usize)> = top_full_doc_indices.iter().copied().enumerate().collect();
-    let mut fetch_stream = stream::iter(tasks.into_iter().map(|(order, doc_idx)| {
-        let cfg_for_task = Arc::clone(&cfg_arc);
-        let url = reranked[doc_idx].url.clone();
-        let collection = collection.clone();
-        let doc_cache = doc_cache.clone();
-        async move {
-            let points = if cache_enabled {
-                let key = DocCacheKey {
-                    collection,
-                    url: url.clone(),
-                    generation,
-                };
-                let cfg_for_fetch = Arc::clone(&cfg_for_task);
-                let url_for_fetch = url.clone();
-                doc_cache
-                    .expect("doc cache must exist when cache is enabled")
-                    .get_or_fetch(key, move || async move {
-                        qdrant::qdrant_retrieve_by_url(
-                            &cfg_for_fetch,
-                            &url_for_fetch,
-                            Some(doc_chunk_limit),
-                        )
-                        .await
-                    })
-                    .await
-                    .map(|arc| (*arc).clone())
-            } else {
-                qdrant::qdrant_retrieve_by_url(&cfg_for_task, &url, Some(doc_chunk_limit)).await
-            };
-            (order, url, points)
-        }
-    }))
-    .buffer_unordered(doc_fetch_concurrency);
-    while let Some((order, url, points)) = fetch_stream.next().await {
-        match points {
-            Ok(points) => fetched_docs.push((order, url, points)),
-            Err(err) => {
-                log_warn(&format!(
-                    "ask: failed to retrieve full document for {url}; continuing with remaining context: {err}"
-                ));
-            }
-        }
-    }
-    fetched_docs.sort_by_key(|(order, _, _)| *order);
-    Ok(fetched_docs)
-}
-
-fn ask_doc_cache(cfg: &Config) -> Arc<DocCache> {
-    doc_cache_for_config(DocCacheConfig::from_ask_config(cfg))
-}
-
-/// Number of chunks per fetched full-doc that survive the query-relevance
-/// filter before being concatenated. Tradeoff: small enough to drop irrelevant
-/// chunks, large enough to preserve narrative context. (bd axon_rust-0fz)
-const FULL_DOC_RENDER_TOP_K: usize = 24;
-
-#[allow(clippy::too_many_arguments)]
-fn append_full_docs_to_context(
-    context_entries: &mut Vec<(f64, String)>,
-    context_char_count: &mut usize,
-    inserted_full_doc_urls: &mut HashSet<String>,
-    mut source_idx: usize,
-    separator: &str,
-    max_context_chars: usize,
-    fetched_docs: Vec<(usize, String, Vec<qdrant::QdrantPoint>)>,
-    query_tokens: &[String],
-    url_to_score: &std::collections::HashMap<String, f64>,
-) -> (usize, usize) {
-    let mut full_docs_selected = 0usize;
-    for (_idx, url, points) in fetched_docs {
-        let text = qdrant::render_full_doc_filtered(
-            points,
-            Some(query_tokens),
-            Some(FULL_DOC_RENDER_TOP_K),
-        );
-        if text.is_empty() {
-            continue;
-        }
-        let source = display_source(&url);
-        let entry = format!(
-            "## Source Document [S{}]: {}\n\n{}",
-            source_idx, source, text
-        );
-        let score = url_to_score.get(&url).copied().unwrap_or(0.0);
-        if !push_context_entry(
-            context_entries,
-            context_char_count,
-            score,
-            entry,
-            separator,
-            max_context_chars,
-        ) {
-            break;
-        }
-        inserted_full_doc_urls.insert(url);
-        full_docs_selected += 1;
-        source_idx += 1;
-    }
-    (full_docs_selected, source_idx)
 }
 
 /// Run the supplemental backfill pass when coverage is thin and budget allows.
@@ -446,110 +234,10 @@ fn maybe_inject_supplemental(
     (supplemental, supplemental_count)
 }
 
-fn append_supplemental_chunks(
-    reranked: &[ranking::AskCandidate],
-    supplemental: &[usize],
-    context_entries: &mut Vec<(f64, String)>,
-    context_char_count: &mut usize,
-    source_idx: &mut usize,
-    separator: &str,
-    max_context_chars: usize,
-) -> usize {
-    let mut supplemental_count = 0usize;
-    for &chunk_idx in supplemental {
-        let chunk = &reranked[chunk_idx];
-        let source = display_source(&chunk.url);
-        let entry = format!(
-            "## Supplemental Chunk [S{}]: {}\n\n{}",
-            *source_idx, source, chunk.chunk_text
-        );
-        if !push_context_entry(
-            context_entries,
-            context_char_count,
-            chunk.rerank_score,
-            entry,
-            separator,
-            max_context_chars,
-        ) {
-            break;
-        }
-        supplemental_count += 1;
-        *source_idx += 1;
-    }
-    supplemental_count
-}
-
-fn build_diagnostic_sources(
-    reranked: &[ranking::AskCandidate],
-    top_chunk_indices: &[usize],
-    top_chunks_selected: usize,
-    planned_full_doc_urls: &HashSet<String>,
-    top_full_doc_indices: &[usize],
-    supplemental: &[usize],
-    supplemental_count: usize,
-) -> Vec<String> {
-    let mut diagnostic_sources: Vec<String> = Vec::new();
-    diagnostic_sources.extend(
-        top_chunk_indices
-            .iter()
-            .map(|&idx| &reranked[idx])
-            .filter(|candidate| !planned_full_doc_urls.contains(&candidate.url))
-            .take(top_chunks_selected)
-            .map(diagnostic_chunk_source),
-    );
-    diagnostic_sources.extend(
-        top_full_doc_indices
-            .iter()
-            .map(|&idx| &reranked[idx])
-            .map(diagnostic_full_doc_source),
-    );
-    diagnostic_sources.extend(
-        supplemental
-            .iter()
-            .map(|&idx| &reranked[idx])
-            .take(supplemental_count)
-            .map(diagnostic_chunk_source),
-    );
-    diagnostic_sources
-}
-
-fn diagnostic_chunk_source(candidate: &ranking::AskCandidate) -> String {
-    format!(
-        "chunk rerank_score={:.3} retrieval_score={:.3} url={}",
-        candidate.rerank_score,
-        candidate.score,
-        display_source(&candidate.url)
-    )
-}
-
-fn diagnostic_full_doc_source(candidate: &ranking::AskCandidate) -> String {
-    format!(
-        "full-doc rerank_score={:.3} retrieval_score={:.3} url={}",
-        candidate.rerank_score,
-        candidate.score,
-        display_source(&candidate.url)
-    )
-}
-
 #[cfg(test)]
-mod renumber_tests {
-    use super::{ask_doc_cache, renumber_context_source_header};
+mod ask_doc_cache_tests {
+    use super::ask_doc_cache;
     use crate::core::config::Config;
-
-    #[test]
-    fn renumber_context_source_header_updates_existing_source_id() {
-        let entry = "## Top Chunk [S11]: https://docs.example.com\n\nbody";
-        assert_eq!(
-            renumber_context_source_header(entry, 1),
-            "## Top Chunk [S1]: https://docs.example.com\n\nbody"
-        );
-    }
-
-    #[test]
-    fn renumber_context_source_header_leaves_malformed_header_unchanged() {
-        let entry = "## Top Chunk [SX]: https://docs.example.com\n\nbody";
-        assert_eq!(renumber_context_source_header(entry, 1), entry);
-    }
 
     #[test]
     fn ask_doc_cache_uses_runtime_cache_config() {

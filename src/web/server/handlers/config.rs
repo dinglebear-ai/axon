@@ -11,7 +11,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-async fn get_config(
+pub async fn get_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
@@ -29,7 +29,7 @@ async fn get_config(
     }
 }
 
-async fn save_config(
+pub async fn save_config(
     State((state, _)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
     Json(req): Json<SaveConfigRequest>,
@@ -54,7 +54,7 @@ async fn save_config(
     }
 }
 
-async fn ops(
+pub async fn ops(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
@@ -69,7 +69,3 @@ async fn ops(
     })
     .into_response()
 }
-
-pub use get_config;
-pub use ops;
-pub use save_config;

@@ -10,7 +10,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-async fn setup_targets(
+pub async fn setup_targets(
     State((state, _)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
@@ -26,7 +26,7 @@ async fn setup_targets(
     }
 }
 
-async fn setup_deploy(
+pub async fn setup_deploy(
     State((state, _)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
     Json(req): Json<setup::DeployRequest>,
@@ -39,6 +39,3 @@ async fn setup_deploy(
         Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
     }
 }
-
-pub use setup_deploy;
-pub use setup_targets;

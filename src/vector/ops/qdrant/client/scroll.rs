@@ -2,11 +2,50 @@
 
 use crate::core::config::Config;
 use crate::core::http::internal_service_http_client;
-use anyhow::Result;
+use crate::core::logging::log_warn;
+use anyhow::{Result, anyhow};
+use reqwest::StatusCode;
 use std::collections::HashSet;
 
-use super::super::utils::qdrant_collection_endpoint;
-use super::retry::scroll_page_with_retry;
+use super::super::utils::{qdrant_collection_endpoint, qdrant_retry_delay};
+
+/// Fetch one scroll page with retry on 429/5xx (up to 4 attempts, 250 ms exponential backoff).
+async fn scroll_page_with_retry(
+    client: &reqwest::Client,
+    endpoint: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    const MAX_ATTEMPTS: usize = 4;
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match client.post(endpoint).json(body).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                let retryable = status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+                if retryable && attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "scroll_pages_raw: retrying after status={status} attempt={attempt}/{MAX_ATTEMPTS}"
+                    ));
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                    last_err = Some(anyhow!("qdrant scroll status={status} attempt={attempt}"));
+                    continue;
+                }
+                let val = resp.error_for_status()?.json::<serde_json::Value>().await?;
+                return Ok(val);
+            }
+            Err(err) => {
+                if attempt < MAX_ATTEMPTS {
+                    log_warn(&format!(
+                        "scroll_pages_raw: retrying after transport error attempt={attempt}/{MAX_ATTEMPTS}: {err}"
+                    ));
+                    tokio::time::sleep(qdrant_retry_delay(attempt)).await;
+                }
+                last_err = Some(err.into());
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("scroll_pages_raw: unknown failure")))
+}
 
 /// Shared scroll pagination loop. POSTs to the given `endpoint` with `initial_body`,
 /// reads `result.points` as raw JSON, and invokes `on_page` for each non-empty page.
@@ -69,7 +108,7 @@ pub(crate) async fn qdrant_scroll_pages_while(
 /// are fetched — use `json!(true)` for full payload or
 /// `json!({"include": ["url", "chunk_index"]})` for selective fields.
 /// This avoids transferring multi-KB `chunk_text` fields when only metadata is needed.
-pub(crate) async fn qdrant_scroll_pages_selective(
+pub async fn qdrant_scroll_pages_selective(
     cfg: &Config,
     with_payload: serde_json::Value,
     process_page: impl FnMut(&[serde_json::Value]) -> bool,
