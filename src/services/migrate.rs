@@ -9,6 +9,7 @@ use crate::core::http::http_client;
 use crate::core::logging::{log_info, log_warn};
 use crate::services::types::MigrateResult;
 use crate::vector::ops::sparse::compute_sparse_vector;
+use crate::vector::ops::tei::qdrant_store::clear_collection_mode_cache;
 use reqwest::StatusCode;
 use std::error::Error;
 
@@ -46,6 +47,12 @@ pub async fn migrate(cfg: &Config) -> Result<MigrateResult, Box<dyn Error>> {
     log_info(&format!(
         "migrate complete from={from} to={to} points={total_points} pages={pages}"
     ));
+
+    // Invalidate the process-wide VectorMode cache so long-running workers
+    // re-detect the new schema on their next embed/query instead of continuing
+    // on the stale Unnamed (dense-only) path.
+    clear_collection_mode_cache(&from);
+    clear_collection_mode_cache(&to);
 
     Ok(MigrateResult {
         from,
