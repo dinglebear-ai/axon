@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-05-14
+
+### Fixed
+- Gemini CLI 0.41.2 compatibility: `tool_use` events renamed `"name"` field to `"tool_name"`; new built-in `update_topic` tool now whitelisted alongside `activate_skill`; removed unreliable `stats.tool_calls` count gate
+
 ## [1.11.2] - 2026-05-14
 
 ### Fixed
