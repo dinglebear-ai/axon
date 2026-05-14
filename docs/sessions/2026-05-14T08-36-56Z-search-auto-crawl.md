@@ -83,7 +83,7 @@ Results:
 Fetched PR comments for #86 with the vibin gh-address-comments fetch script:
 
 ```text
-python3 /home/jmagar/workspace/lab/plugins/vibin/skills/gh-address-comments/scripts/fetch_comments.py --pr 86 --repo jmagar/axon --no-beads
+python3 <vibin>/skills/gh-address-comments/scripts/fetch_comments.py --pr 86 --repo jmagar/axon --no-beads
 ```
 
 Result: one CodeRabbit processing comment, no reviews, no review threads, and no

@@ -50,9 +50,6 @@ pub async fn run_search(
     let auto_crawl_status = search_crawl_status(&results, &crawl_output);
 
     if cfg.json_output {
-        if no_crawl_jobs_queued {
-            return Err(search_crawl_total_failure(first_rejection).into());
-        }
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -147,16 +144,16 @@ async fn enqueue_search_crawls(
             continue;
         };
         let normalized = normalize_url(url).into_owned();
-        if !seen.insert(normalized) {
+        if !seen.insert(normalized.clone()) {
             output.rejected.push(search_crawl_rejection(
-                Some(url),
+                Some(&normalized),
                 SearchCrawlRejectionKind::DuplicateUrl,
                 "duplicate search result URL",
             ));
             log_search_crawl_rejection(&search_cfg, output.rejected.last().expect("just pushed"));
             continue;
         };
-        match enqueue_search_crawl_url(&search_cfg, service_context, url).await {
+        match enqueue_search_crawl_url(&search_cfg, service_context, &normalized).await {
             Ok(job) => output.jobs.push(job),
             Err(rejection) => output.rejected.push(rejection),
         }
