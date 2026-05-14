@@ -7,7 +7,7 @@ use crate::core::health::doctor::{
     build_browser_runtime, probe_chrome, probe_openai, probe_tei_info, resolve_openai_model,
     tei_info_summary, tei_model_from_info, timed_probe,
 };
-use crate::core::http::build_client;
+use crate::core::http::internal_service_http_client;
 use serde_json::{Map, Value};
 use std::error::Error;
 use std::time::Duration;
@@ -17,7 +17,7 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
     let openai_model = resolve_openai_model(cfg);
     let openai_enabled = openai_diagnostics_enabled(cfg, &openai_model);
-    let probe_client_result = build_client(5, None);
+    let probe_client_result = internal_service_http_client();
     let client_err_detail = probe_client_result
         .as_ref()
         .err()
@@ -34,7 +34,7 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     );
 
     let (tei_info_probe, openai_service) = match probe_client_result {
-        Ok(ref client) => {
+        Ok(client) => {
             if openai_enabled {
                 let ((tei_info, _), (openai, openai_ms)) = spider::tokio::join!(
                     timed_probe(probe_tei_info(&cfg.tei_url, client)),
