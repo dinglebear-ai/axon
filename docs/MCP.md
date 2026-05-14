@@ -28,10 +28,16 @@ Implementation:
 Core stack env vars are reused:
 - `QDRANT_URL`
 - `TEI_URL`
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
 - `TAVILY_API_KEY`
+
+LLM synthesis uses Gemini headless by default:
+- `AXON_HEADLESS_GEMINI_CMD`
+- `AXON_HEADLESS_GEMINI_MODEL` (optional override)
+- `AXON_LLM_COMPLETION_CONCURRENCY`
+- `AXON_LLM_COMPLETION_TIMEOUT_SECS`
+
+`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` are compatibility
+settings for OpenAI-compatible endpoints, not required MCP runtime config.
 
 MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)

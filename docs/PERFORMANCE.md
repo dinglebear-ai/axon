@@ -83,7 +83,7 @@ Guidance:
 
 Worker controls:
 
-- `AXON_INGEST_LANES`
+- `workers.ingest-lanes` in `~/.axon/config.toml`
 
 Watchdog controls:
 
@@ -101,25 +101,27 @@ TEI behavior:
 
 - batch embedding with automatic split on payload-too-large patterns
 - retry on transient overload (`429` or any `5xx`) with exponential backoff
-- client batch sizing via `TEI_MAX_CLIENT_BATCH_SIZE`
+- client batch sizing via `tei.max-client-batch-size` in `~/.axon/config.toml`
 
 Embed pipeline controls:
 
-- `AXON_EMBED_DOC_TIMEOUT_SECS`
+- `workers.embed-doc-timeout-secs` in `~/.axon/config.toml`
 
 Qdrant controls:
 
-- `AXON_COLLECTION`
+- `search.collection` in `~/.axon/config.toml`
 - `QDRANT_URL`
 - upsert batching via `AXON_QDRANT_UPSERT_BATCH_SIZE` (default: `256` when unset)
 
 ## Ask/RAG Tuning
 
-`ask` tuning env vars:
+Core `ask` tuning lives in `~/.axon/config.toml`:
 
-- `AXON_ASK_MIN_RELEVANCE_SCORE`
-- `AXON_ASK_CANDIDATE_LIMIT`
-- `AXON_ASK_CHUNK_LIMIT`
+- `ask.min-relevance-score`
+- `ask.candidate-limit`
+- `ask.chunk-limit`
+
+Remaining runtime controls are env-only until typed TOML fields exist:
 - `AXON_ASK_FULL_DOCS`
 - `AXON_ASK_BACKFILL_CHUNKS`
 - `AXON_ASK_DOC_FETCH_CONCURRENCY`
@@ -128,7 +130,7 @@ Qdrant controls:
 
 Tuning strategy:
 
-1. For poor recall, raise `CANDIDATE_LIMIT` and/or lower `MIN_RELEVANCE_SCORE`.
+1. For poor recall, raise `ask.candidate-limit` and/or lower `ask.min-relevance-score`.
 2. To reduce latency, lower candidate/chunk limits and context chars.
 3. For low answer quality on long docs, increase `FULL_DOCS` and backfill chunks gradually.
 

@@ -104,10 +104,10 @@ Semantic vector search against the Qdrant collection.
 | `query` | string | -- | Search text |
 | `limit` | usize | 10 | Max results |
 | `offset` | usize | 0 | Skip N results |
-| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+| `collection` | string | server-configured (`[search].collection`, default `cortex`; `AXON_COLLECTION` only as override) | Qdrant collection |
 | `since` | string | -- | Filter: only docs after this date |
 | `before` | string | -- | Filter: only docs before this date |
-| `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config (`AXON_HYBRID_SEARCH`, default true) |
+| `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config (`[search].hybrid-enabled`, default true; `AXON_HYBRID_SEARCH` only as override) |
 
 ### ask
 
@@ -121,7 +121,7 @@ RAG: semantic search + LLM answer synthesis with citations.
 |-----------|------|---------|-------------|
 | `query` | string | -- | Question to answer |
 | `diagnostics` | bool | `false` | Include retrieval diagnostics |
-| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+| `collection` | string | server-configured (`[search].collection`, default `cortex`; `AXON_COLLECTION` only as override) | Qdrant collection |
 | `since` | string | -- | Date filter (after) |
 | `before` | string | -- | Date filter (before) |
 | `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
@@ -139,7 +139,7 @@ Evaluate RAG quality against a baseline answer.
 | `query` | string | -- | Question to evaluate. `question` is accepted as an alias. |
 | `diagnostics` | bool | `false` | Include retrieval diagnostics |
 | `retrieval_ab` | bool | `false` | Compare hybrid RAG against dense-only RAG instead of RAG against baseline |
-| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+| `collection` | string | server-configured (`[search].collection`, default `cortex`; `AXON_COLLECTION` only as override) | Qdrant collection |
 | `since` | string | -- | Date filter (after) |
 | `before` | string | -- | Date filter (before) |
 | `hybrid_search` | bool | -- | `false` forces dense-only; unset = server config |
@@ -156,7 +156,7 @@ Suggest new crawl targets from the current indexed source coverage.
 |-----------|------|---------|-------------|
 | `focus` | string | -- | Optional suggestion focus. `query` is accepted as an alias. |
 | `limit` | usize | server search limit | Max suggestions to return |
-| `collection` | string | server-configured (`AXON_COLLECTION`, default `cortex`) | Qdrant collection |
+| `collection` | string | server-configured (`[search].collection`, default `cortex`; `AXON_COLLECTION` only as override) | Qdrant collection |
 
 ### search
 
