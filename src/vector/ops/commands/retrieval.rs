@@ -367,4 +367,5 @@ pub(crate) fn candidate_has_topical_overlap(
 }
 
 #[cfg(test)]
+#[path = "retrieval/tests.rs"]
 mod tests;

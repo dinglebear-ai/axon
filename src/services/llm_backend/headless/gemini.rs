@@ -432,4 +432,5 @@ fn assemble_utf8_chunks(chunks: &[&[u8]]) -> Result<String, std::str::Utf8Error>
 }
 
 #[cfg(test)]
+#[path = "gemini/tests.rs"]
 mod tests;
