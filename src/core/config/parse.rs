@@ -616,6 +616,10 @@ mod tests {
             env::remove_var("QDRANT_URL");
         }
 
+        let hook = super::Cli::parse_from(["axon", "setup", "hook"]);
+        let hook_cfg = super::build_config::into_config(hook).expect("setup hook should parse");
+        assert_eq!(hook_cfg.positional, vec!["hook".to_string()]);
+
         let check = super::Cli::parse_from(["axon", "setup", "check"]);
         let check_cfg = super::build_config::into_config(check).expect("setup check should parse");
         assert_eq!(check_cfg.positional, vec!["check".to_string()]);
