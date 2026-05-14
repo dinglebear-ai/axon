@@ -132,7 +132,3 @@ pub(super) fn parse_viewport(
     }
     Ok((width, height))
 }
-
-pub(super) fn internal_message(message: String) -> ClientActionError {
-    ClientActionError::new("internal", message, true, None)
-}

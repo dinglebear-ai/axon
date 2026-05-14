@@ -15,9 +15,9 @@ use crate::services::screenshot as screenshot_svc;
 use crate::services::types::ClientActionError;
 use uuid::Uuid;
 
+use super::super::internal_error;
 use super::helpers::{
-    apply_crawl_overrides, internal_message, map_render_mode, map_scrape_format,
-    parse_ingest_source, parse_viewport,
+    apply_crawl_overrides, map_render_mode, map_scrape_format, parse_ingest_source, parse_viewport,
 };
 use super::job_ops::{job_cancel, job_cleanup, job_clear, job_list, job_recover, job_status};
 
@@ -50,7 +50,7 @@ pub async fn dispatch_crawl(
             let cfg = apply_crawl_overrides(service_context.cfg.as_ref(), &req);
             let outcome = crawl_svc::crawl_start_with_context(&cfg, &urls, service_context, None)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             let result = outcome.result;
             Ok(serde_json::json!({
                 "job_ids": result.job_ids,
@@ -70,7 +70,7 @@ pub async fn dispatch_crawl(
             let id = super::parse_job_id(req.job_id.as_deref())?;
             let result = crawl_svc::crawl_status(service_context, id)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({
                 "job": result.payload,
                 "output_files": result.output_files,
@@ -87,7 +87,7 @@ pub async fn dispatch_crawl(
             };
             let result = crawl_svc::crawl_list(service_context, limit, offset)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({
                 "jobs": result.payload,
                 "limit": limit,
@@ -98,7 +98,7 @@ pub async fn dispatch_crawl(
             let id = super::parse_job_id(req.job_id.as_deref())?;
             let canceled = crawl_svc::crawl_cancel(service_context, id)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({
                 "job_id": id.to_string(),
                 "canceled": canceled,
@@ -107,19 +107,19 @@ pub async fn dispatch_crawl(
         CrawlSubaction::Cleanup => {
             let deleted = crawl_svc::crawl_cleanup(service_context)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({ "deleted": deleted }))
         }
         CrawlSubaction::Clear => {
             let deleted = crawl_svc::crawl_clear(service_context)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({ "deleted": deleted }))
         }
         CrawlSubaction::Recover => {
             let recovered = crawl_svc::crawl_recover(service_context)
                 .await
-                .map_err(internal_message)?;
+                .map_err(internal_error)?;
             Ok(serde_json::json!({ "recovered": recovered }))
         }
     }
@@ -143,7 +143,7 @@ pub async fn dispatch_extract(
             let outcome =
                 extract_svc::extract_start_with_context(&cfg, &urls, prompt, service_context, None)
                     .await
-                    .map_err(internal_message)?;
+                    .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         ExtractSubaction::Status => {
@@ -200,7 +200,7 @@ pub async fn dispatch_embed(
                 None,
             )
             .await
-            .map_err(internal_message)?;
+            .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         EmbedSubaction::Status => {
@@ -253,7 +253,7 @@ pub async fn dispatch_ingest(
                 service_context,
             )
             .await
-            .map_err(internal_message)?;
+            .map_err(internal_error)?;
             Ok(serde_json::json!({ "job_id": outcome.result.job_id, "status": "pending" }))
         }
         IngestSubaction::Status => {
@@ -314,16 +314,16 @@ pub async fn dispatch_scrape(
     });
     let result = scrape_svc::scrape(&cfg, &url, None)
         .await
-        .map_err(internal_message)?;
+        .map_err(internal_error)?;
     if let Some(path) = cfg.output_path.as_ref() {
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|err| internal_message(format!("create scrape output dir: {err}")))?;
+            tokio::fs::create_dir_all(parent).await.map_err(|err| {
+                internal_error(Box::new(format!("create scrape output dir: {err}")))
+            })?;
         }
         tokio::fs::write(path, &result.output)
             .await
-            .map_err(|err| internal_message(format!("write scrape output: {err}")))?;
+            .map_err(|err| internal_error(Box::new(format!("write scrape output: {err}"))))?;
     }
     Ok(serde_json::json!({
         "url": result.url,
@@ -362,7 +362,7 @@ pub async fn dispatch_screenshot(
     });
     let result = screenshot_svc::screenshot_capture(&cfg, &url)
         .await
-        .map_err(internal_message)?;
+        .map_err(internal_error)?;
     serde_json::to_value(result).map_err(|err| {
         ClientActionError::new(
             "internal",
