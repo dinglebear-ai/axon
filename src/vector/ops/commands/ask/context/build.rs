@@ -66,10 +66,15 @@ pub(super) async fn build_context_from_candidates(
     let mut context_char_count = 0usize;
     let separator = "\n\n---\n\n";
     let mut source_idx = 1usize;
-    let planned_full_doc_urls = top_full_doc_indices
-        .iter()
-        .filter_map(|&idx| reranked.get(idx).map(|candidate| candidate.url.clone()))
-        .collect::<HashSet<_>>();
+    // Adaptive skip gate. `min_supplemental_score == None` is the canonical
+    // signal that retrieval ran in RRF mode (see retrieval::is_rrf_mode +
+    // AskRetrieval::min_supplemental_score). Use that to dispatch the gate's
+    // mode-aware threshold without re-threading is_rrf through the call site.
+    // (bd axon_rust-30y)
+    let is_rrf = min_supplemental_score.is_none();
+    let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
+    let planned_full_doc_urls =
+        planned_full_doc_urls(reranked, top_full_doc_indices, skip_decision.skip);
     let top_chunks_selected = append_top_chunks_to_context(
         reranked,
         top_chunk_indices,
@@ -83,13 +88,6 @@ pub(super) async fn build_context_from_candidates(
 
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
 
-    // Adaptive skip gate. `min_supplemental_score == None` is the canonical
-    // signal that retrieval ran in RRF mode (see retrieval::is_rrf_mode +
-    // AskRetrieval::min_supplemental_score). Use that to dispatch the gate's
-    // mode-aware threshold without re-threading is_rrf through the call site.
-    // (bd axon_rust-30y)
-    let is_rrf = min_supplemental_score.is_none();
-    let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
     let full_doc_fetch_started = std::time::Instant::now();
     let fetched_docs = if skip_decision.skip {
         log_info(&format!(
@@ -196,6 +194,21 @@ fn renumber_context_source_header(entry: &str, display_id: usize) -> String {
     }
     let end = start + 2 + end_rel;
     format!("{}S{}{}", &entry[..start + 1], display_id, &entry[end..])
+}
+
+pub(super) fn planned_full_doc_urls(
+    reranked: &[ranking::AskCandidate],
+    top_full_doc_indices: &[usize],
+    skip_full_doc_fetch: bool,
+) -> HashSet<String> {
+    if skip_full_doc_fetch {
+        return HashSet::new();
+    }
+
+    top_full_doc_indices
+        .iter()
+        .filter_map(|&idx| reranked.get(idx).map(|candidate| candidate.url.clone()))
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -482,28 +495,40 @@ fn build_diagnostic_sources(
             .map(|&idx| &reranked[idx])
             .filter(|candidate| !planned_full_doc_urls.contains(&candidate.url))
             .take(top_chunks_selected)
-            .map(|c| format!("chunk score={:.3} url={}", c.score, display_source(&c.url))),
+            .map(diagnostic_chunk_source),
     );
     diagnostic_sources.extend(
         top_full_doc_indices
             .iter()
             .map(|&idx| &reranked[idx])
-            .map(|c| {
-                format!(
-                    "full-doc score={:.3} url={}",
-                    c.score,
-                    display_source(&c.url)
-                )
-            }),
+            .map(diagnostic_full_doc_source),
     );
     diagnostic_sources.extend(
         supplemental
             .iter()
             .map(|&idx| &reranked[idx])
             .take(supplemental_count)
-            .map(|c| format!("chunk score={:.3} url={}", c.score, display_source(&c.url))),
+            .map(diagnostic_chunk_source),
     );
     diagnostic_sources
+}
+
+fn diagnostic_chunk_source(candidate: &ranking::AskCandidate) -> String {
+    format!(
+        "chunk rerank_score={:.3} retrieval_score={:.3} url={}",
+        candidate.rerank_score,
+        candidate.score,
+        display_source(&candidate.url)
+    )
+}
+
+fn diagnostic_full_doc_source(candidate: &ranking::AskCandidate) -> String {
+    format!(
+        "full-doc rerank_score={:.3} retrieval_score={:.3} url={}",
+        candidate.rerank_score,
+        candidate.score,
+        display_source(&candidate.url)
+    )
 }
 
 #[cfg(test)]

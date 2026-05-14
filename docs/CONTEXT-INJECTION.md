@@ -42,7 +42,7 @@ Query: {query}
 
 This prefix is applied only to query-side embeddings. Document chunks are embedded as raw text.
 
-`retrieve_ask_candidates` embeds the full user query and, when keyword extraction produces a distinct keyword query, embeds that keyword query too. Both inputs use `tei::prepend_query_instruction(...)`. The additional keyword vector improves recall for exact terms, identifiers, API names, and short domain phrases.
+`retrieve_ask_candidates` embeds the full user query and, when keyword extraction produces a distinct keyword query, embeds that keyword query too. The full user query uses `tei::EmbedInput::query(...)`, which prepends the query instruction. The keyword form uses `tei::EmbedInput::document(...)` because it is already document-shaped text. The additional keyword vector improves recall for exact terms, identifiers, API names, and short domain phrases.
 
 ```
 "how does axon crawl work?"
@@ -59,10 +59,10 @@ This prefix is applied only to query-side embeddings. Document chunks are embedd
 
 `qdrant::dispatch_vector_search` searches Qdrant using the dense query vector. Named hybrid collections use the dense vector plus BM42 sparse search with RRF fusion; legacy unnamed collections fall back to dense-only search. When a keyword query vector exists, Axon runs a second search and merges/deduplicates the candidate pool.
 
-The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `150` in `Config::default` and `64` when built from CLI/env in `parse/build_config.rs`).
+The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `150`).
 
 Each result comes back with:
-- `score` — cosine similarity (0–1) from the vector search
+- `score` — retrieval score from Qdrant. Dense-only paths return cosine-style scores; hybrid RRF paths return unitless rank-fusion scores.
 - `url` — source page URL stored in the Qdrant payload
 - `chunk_text` — the raw text of that chunk
 
@@ -99,12 +99,12 @@ When the domain list is empty (the default), no authority boost is applied.
 
 ## Stage 4 — Rerank
 
-`ranking.rs → rerank_ask_candidates`
+`retrieval.rs → apply_mode_aware_rerank`
 
-The filtered candidates are re-scored using a combined formula:
+Cosine/dense-only retrieval paths are re-scored using a combined formula:
 
 ```
-rerank_score = base_vector_score
+rerank_score = retrieval_score
              + lexical_boost    (capped at 0.30)
              + docs_boost       (0.04 if path has /docs/, /guides/, /api/, /reference/)
              + authority_boost  (cfg.ask_authoritative_boost if domain is in authoritative list)
@@ -117,17 +117,19 @@ rerank_score = base_vector_score
 
 Tokens are lowercased, split on non-alphanumeric characters, and stop-words are stripped (`the`, `and`, `for`, `how`, `what`, etc.).
 
-After scoring, two post-rerank gates remove candidates that don't meet the bar:
+After scoring on cosine/dense-only paths, two post-rerank gates remove candidates that don't meet the bar:
 
-1. `rerank_score < cfg.ask_min_relevance_score` (env: `AXON_ASK_MIN_RELEVANCE_SCORE`, default 0.1) → dropped
+1. `rerank_score < cfg.ask_min_relevance_score` (env: `AXON_ASK_MIN_RELEVANCE_SCORE`, default 0.45) → dropped
 2. `candidate_has_topical_overlap` → dropped if the candidate shares too few tokens with the query
+
+On hybrid RRF paths, Qdrant's fusion order is already the ranking signal. Axon sets `rerank_score = score`, skips the cosine-calibrated minimum relevance threshold, and keeps the topical-overlap guard.
 
 **Topical overlap thresholds:**
 
 | Query token count | Minimum overlap required |
 |-------------------|--------------------------|
 | 1–2 tokens | ≥ 1 token match |
-| 3–4 tokens | ≥ 2 matches, OR coverage ≥ 50% |
+| 3–4 tokens | ≥ 1 token match, OR coverage ≥ 50% |
 | 5+ tokens | ≥ 2 matches AND coverage ≥ 34% |
 
 ---
@@ -171,7 +173,7 @@ This tier fires only when **both** conditions hold:
 1. Context is under 85% of `max_context_chars`
 2. Either no full docs were selected, **or** fewer than 6 top chunks were selected
 
-Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs, and whose `rerank_score ≥ ask_min_relevance_score + 0.05` (the extra 0.05 bonus raises the bar to avoid low-quality backfill). Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
+Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs. On cosine/dense-only paths, they must satisfy `rerank_score >= ask_min_relevance_score + SUPPLEMENTAL_RELEVANCE_BONUS`; the current bonus is `0.0`, so this matches the normal relevance floor. On hybrid RRF paths, there is no score floor because RRF scores are unitless. Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
 
 ```
 ## Supplemental Chunk [S3]: example.com/changelog
@@ -230,8 +232,8 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 
 | Env var | What it controls | Typical default |
 |---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 64 from CLI/env, 150 in `Config::default` |
-| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 150 |
+| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 150 |
+| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 100 |
 | `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
 | `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 10 |
 | `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 4 |
