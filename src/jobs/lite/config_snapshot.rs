@@ -1,10 +1,15 @@
+mod endpoint;
+mod paths;
+
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use spider::url::Url;
 
 use crate::core::config::{Config, RenderMode, ScrapeFormat};
 use crate::jobs::ingest::IngestSource;
+
+use endpoint::endpoint_snapshot;
+use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -132,9 +137,9 @@ struct LiteConfigSnapshot {
 }
 
 impl LiteConfigSnapshot {
-    fn from_config(cfg: &Config) -> Self {
+    fn from_config(cfg: &Config) -> Result<Self, String> {
         let mut process_fallback_fields = Vec::new();
-        Self {
+        Ok(Self {
             collection: Some(cfg.collection.clone()),
             output_dir: Some(cfg.output_dir.clone()),
             output_path: cfg.output_path.clone(),
@@ -187,17 +192,17 @@ impl LiteConfigSnapshot {
             reddit_min_score: Some(cfg.reddit_min_score),
             reddit_depth: Some(cfg.reddit_depth),
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
-            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields),
+            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields)?,
             qdrant_url: endpoint_snapshot(
                 "qdrant_url",
                 &cfg.qdrant_url,
                 &mut process_fallback_fields,
-            ),
+            )?,
             openai_base_url: endpoint_snapshot(
                 "openai_base_url",
                 &cfg.openai_base_url,
                 &mut process_fallback_fields,
-            ),
+            )?,
             openai_model: Some(cfg.openai_model.clone()),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
@@ -247,7 +252,7 @@ impl LiteConfigSnapshot {
             custom_headers: Some(cfg.custom_headers.clone()),
             quiet: Some(cfg.quiet),
             process_fallback_fields,
-        }
+        })
     }
 
     fn apply_to(self, cfg: &mut Config, exact_options: bool) {
@@ -393,7 +398,7 @@ impl LiteConfigSnapshot {
 pub(crate) fn lite_config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {
     serde_json::to_string(&LiteConfigEnvelope {
         version: 2,
-        config: LiteConfigSnapshot::from_config(cfg),
+        config: LiteConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
         prompt: None,
     })
 }
@@ -408,7 +413,7 @@ pub(crate) fn extract_config_json(
     }
     serde_json::to_string(&LiteConfigEnvelope {
         version: 2,
-        config: LiteConfigSnapshot::from_config(&effective),
+        config: LiteConfigSnapshot::from_config(&effective).map_err(serde_json_error)?,
         prompt,
     })
 }
@@ -416,6 +421,14 @@ pub(crate) fn extract_config_json(
 pub(crate) fn apply_lite_config_snapshot(
     process_cfg: &Config,
     config_json: &str,
+) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
+    apply_lite_config_snapshot_for_container(process_cfg, config_json, running_in_container())
+}
+
+pub(crate) fn apply_lite_config_snapshot_for_container(
+    process_cfg: &Config,
+    config_json: &str,
+    in_container: bool,
 ) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = process_cfg.clone();
     if config_json.trim().is_empty() {
@@ -427,7 +440,12 @@ pub(crate) fn apply_lite_config_snapshot(
     if let Some(prompt) = envelope.prompt {
         cfg.query = Some(prompt);
     }
+    normalize_container_output_dir(process_cfg, &mut cfg, in_container);
     Ok(cfg)
+}
+
+fn running_in_container() -> bool {
+    std::env::var("AXON_IN_CONTAINER").is_ok_and(|value| value.trim() == "1")
 }
 
 pub(crate) fn ingest_config_json(
@@ -437,8 +455,15 @@ pub(crate) fn ingest_config_json(
     serde_json::to_string(&LiteIngestConfigEnvelope {
         version: 2,
         source: Some(source.clone()),
-        config: LiteConfigSnapshot::from_config(cfg),
+        config: LiteConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
     })
+}
+
+fn serde_json_error(message: String) -> serde_json::Error {
+    serde_json::Error::io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        message,
+    ))
 }
 
 pub(crate) fn decode_ingest_job_config(
@@ -472,49 +497,4 @@ fn decode_config_envelope(
         config: snapshot,
         prompt: None,
     })
-}
-
-fn endpoint_snapshot(
-    name: &str,
-    url: &str,
-    process_fallback_fields: &mut Vec<String>,
-) -> Option<String> {
-    if endpoint_url_is_public(url) {
-        Some(url.to_string())
-    } else {
-        process_fallback_fields.push(name.to_string());
-        None
-    }
-}
-
-fn endpoint_url_is_public(url: &str) -> bool {
-    if url.trim().is_empty() {
-        return true;
-    }
-    let Ok(parsed) = Url::parse(url) else {
-        return false;
-    };
-    parsed.username().is_empty()
-        && parsed.password().is_none()
-        && parsed.query().is_none()
-        && parsed.fragment().is_none()
-        && !endpoint_host_is_process_local(&parsed)
-}
-
-fn endpoint_host_is_process_local(url: &Url) -> bool {
-    let Some(host) = url.host_str() else {
-        return false;
-    };
-    let host = host
-        .trim_end_matches('.')
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_ascii_lowercase();
-    if host == "localhost" {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return ip.is_loopback() || ip.is_unspecified();
-    }
-    false
 }

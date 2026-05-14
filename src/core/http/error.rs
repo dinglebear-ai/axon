@@ -19,6 +19,12 @@ pub enum HttpError {
     /// IP address falls in a blocked range (loopback, link-local, RFC-1918).
     #[error("blocked IP '{0}': private/reserved range")]
     BlockedIpRange(IpAddr),
+    /// Hostname resolves to a blocked address.
+    #[error("blocked host '{host}': resolved to blocked IP '{ip}'")]
+    BlockedResolvedIp { host: String, ip: IpAddr },
+    /// Hostname could not be resolved.
+    #[error("DNS resolution failed for '{host}': {error}")]
+    DnsResolution { host: String, error: String },
     /// Network-level error from reqwest.
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
