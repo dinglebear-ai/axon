@@ -6,6 +6,7 @@ use std::error::Error;
 pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.first().map(String::as_str) {
         None => run_local_setup_command(cfg, LocalSetupMode::FirstRun).await,
+        Some("hook") => run_hook_setup_command(cfg).await,
         Some("check") => run_local_setup_command(cfg, LocalSetupMode::Check).await,
         Some("repair") => {
             let mode = if cfg.positional.iter().any(|value| value == "--migrate-env") {
@@ -82,6 +83,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             let payload = json!({
                 "usage": [
                     "axon setup",
+                    "axon setup hook",
                     "axon setup check",
                     "axon setup repair",
                     "axon setup repair --migrate-env"
@@ -92,6 +94,7 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             } else {
                 println!("Usage:");
                 println!("  axon setup");
+                println!("  axon setup hook");
                 println!("  axon setup check");
                 println!("  axon setup repair");
                 println!("  axon setup repair --migrate-env");
@@ -99,6 +102,19 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             Ok(())
         }
     }
+}
+
+async fn run_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let check = setup::run_local_setup(LocalSetupMode::Check).await?;
+    if !check.has_errors && !check.exceeded_hard_max {
+        print_local_setup_report(cfg, &check)?;
+        return Ok(());
+    }
+
+    print_local_setup_report(cfg, &check)?;
+    let repair = setup::run_local_setup(LocalSetupMode::Repair).await?;
+    print_local_setup_report(cfg, &repair)?;
+    fail_if_hook_setup_failed(&repair)
 }
 
 async fn run_local_setup_command(cfg: &Config, mode: LocalSetupMode) -> Result<(), Box<dyn Error>> {
@@ -114,6 +130,33 @@ fn fail_if_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn 
         Err("axon setup exceeded the hard maximum setup time".into())
     } else {
         Ok(())
+    }
+}
+
+fn fail_if_hook_setup_failed(report: &setup::LocalSetupReport) -> Result<(), Box<dyn Error>> {
+    let blocking: Vec<&str> = report
+        .phases
+        .iter()
+        .filter(|phase| {
+            matches!(phase.status, setup::LocalSetupStatus::Error)
+                && !matches!(phase.name, "tei-prewarm" | "crawl-smoke" | "ask-smoke")
+        })
+        .map(|phase| phase.name)
+        .collect();
+
+    if blocking.is_empty() {
+        if report.has_errors || report.exceeded_hard_max {
+            eprintln!(
+                "axon setup hook: continuing after advisory setup failures; inspect setup report"
+            );
+        }
+        Ok(())
+    } else {
+        Err(format!(
+            "axon setup hook completed with blocking failed phases: {}",
+            blocking.join(", ")
+        )
+        .into())
     }
 }
 
@@ -171,7 +214,7 @@ mod tests {
     use crate::services::setup::{LocalSetupPhase, LocalSetupReport, LocalSetupStatus};
     use std::path::PathBuf;
 
-    fn report_with(status: LocalSetupStatus) -> LocalSetupReport {
+    fn report_with_phase(name: &'static str, status: LocalSetupStatus) -> LocalSetupReport {
         LocalSetupReport {
             mode: "check",
             elapsed_ms: 0,
@@ -187,12 +230,16 @@ mod tests {
             mcp_url: "http://127.0.0.1:8001/mcp".to_string(),
             has_errors: matches!(status, LocalSetupStatus::Error),
             phases: vec![LocalSetupPhase {
-                name: "test",
+                name,
                 status,
                 detail: "phase detail".to_string(),
                 elapsed_ms: 0,
             }],
         }
+    }
+
+    fn report_with(status: LocalSetupStatus) -> LocalSetupReport {
+        report_with_phase("test", status)
     }
 
     #[test]
@@ -203,5 +250,21 @@ mod tests {
     #[test]
     fn setup_failure_gate_allows_warning_reports() {
         assert!(fail_if_setup_failed(&report_with(LocalSetupStatus::Warn)).is_ok());
+    }
+
+    #[test]
+    fn hook_failure_gate_rejects_blocking_setup_errors() {
+        assert!(
+            fail_if_hook_setup_failed(&report_with_phase("docker", LocalSetupStatus::Error))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn hook_failure_gate_allows_advisory_smoke_errors() {
+        assert!(
+            fail_if_hook_setup_failed(&report_with_phase("ask-smoke", LocalSetupStatus::Error))
+                .is_ok()
+        );
     }
 }
