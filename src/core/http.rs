@@ -22,9 +22,11 @@ pub use client::{build_client, fetch_html, http_client};
 pub use error::HttpError;
 pub use headers::parse_custom_headers;
 pub use normalize::normalize_url;
-pub use ssrf::validate_url;
+#[cfg(test)]
+pub(crate) use ssrf::validate_resolved_ips;
 #[cfg(test)]
 pub(crate) use ssrf::{get_allow_loopback, set_allow_loopback};
 pub(crate) use ssrf::{ssrf_blacklist_compact_strings, ssrf_blacklist_patterns};
+pub use ssrf::{validate_url, validate_url_with_dns};
 
 pub(crate) use cdp::cdp_discovery_url;

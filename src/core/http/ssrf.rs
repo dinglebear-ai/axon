@@ -94,10 +94,53 @@ pub fn validate_url(url: &str) -> Result<(), HttpError> {
     Ok(())
 }
 
+/// Validate a URL and reject hostnames that resolve to private/reserved IPs.
+///
+/// This is used before handing URLs to Spider, whose HTTP stack does not use
+/// Axon's reqwest `SsrfBlockingResolver`.
+pub async fn validate_url_with_dns(url: &str) -> Result<(), HttpError> {
+    validate_url(url)?;
+
+    let normalized = normalize_url(url);
+    let parsed = Url::parse(&normalized).map_err(|_| HttpError::InvalidUrl(url.to_string()))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
+    let bare_host = host.trim_start_matches('[').trim_end_matches(']');
+    if bare_host.parse::<IpAddr>().is_ok() {
+        return Ok(());
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| HttpError::DnsResolution {
+            host: host.to_string(),
+            error: error.to_string(),
+        })?
+        .collect();
+    validate_resolved_ips(host, addrs.iter().map(std::net::SocketAddr::ip))
+}
+
+pub(crate) fn validate_resolved_ips(
+    host: &str,
+    ips: impl IntoIterator<Item = IpAddr>,
+) -> Result<(), HttpError> {
+    for ip in ips {
+        if check_ip(ip).is_err() {
+            return Err(HttpError::BlockedResolvedIp {
+                host: host.to_string(),
+                ip,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// SSRF IP validation — checks loopback, link-local, RFC-1918 private, and
 /// IPv4-mapped IPv6 addresses. Extracted as a named function (not a closure)
 /// so the IPv4-mapped branch can recurse into the IPv4 checks.
-fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
+pub(crate) fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
     #[cfg(test)]
     {
         if ip.is_loopback() && ALLOW_LOOPBACK.with(|c| c.get()) {

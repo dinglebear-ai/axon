@@ -35,7 +35,9 @@ pub async fn run_crawl_job_lite(
     };
     let effective_cfg = apply_lite_config_snapshot(cfg, &config_json).map_err(lift_err)?;
 
-    crate::core::http::validate_url(&url).map_err(lift_err)?;
+    crate::core::http::validate_url_with_dns(&url)
+        .await
+        .map_err(lift_err)?;
 
     let job_output_dir = crate::services::crawl::predict_crawl_output_dir(
         &effective_cfg.output_dir,
