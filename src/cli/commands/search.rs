@@ -73,6 +73,7 @@ pub async fn run_search(
     Ok(())
 }
 
+#[derive(Default)]
 struct SearchCrawlOutput {
     jobs: Vec<Value>,
     rejected: Vec<Value>,
@@ -98,16 +99,17 @@ async fn enqueue_search_crawls(
     results: &[Value],
 ) -> SearchCrawlOutput {
     let search_cfg = search_crawl_config(cfg);
-    let mut output = SearchCrawlOutput {
-        jobs: Vec::new(),
-        rejected: Vec::new(),
-    };
+    let mut output = SearchCrawlOutput::default();
 
     for result in results {
         let Some(url) = result["url"].as_str().filter(|url| !url.is_empty()) else {
             continue;
         };
-        enqueue_search_crawl_url(&search_cfg, service_context, url, &mut output).await;
+        match enqueue_search_crawl_url(&search_cfg, service_context, url).await {
+            Ok(Some(job)) => output.jobs.push(job),
+            Ok(None) => {}
+            Err(rejection) => output.rejected.push(rejection),
+        }
     }
 
     output
@@ -117,42 +119,39 @@ async fn enqueue_search_crawl_url(
     search_cfg: &Config,
     service_context: &ServiceContext,
     url: &str,
-    output: &mut SearchCrawlOutput,
-) {
+) -> Result<Option<Value>, Value> {
     if let Err(error) = validate_url_with_dns(url).await {
         if !search_cfg.quiet {
             log_warn(&format!("search auto-index: skipped invalid URL: {error}"));
         }
-        output
-            .rejected
-            .push(serde_json::json!({"url": url, "reason": error.to_string()}));
-        return;
+        return Err(search_crawl_rejection(url, error.to_string()));
     }
 
     let url = url.to_string();
-    match crawl_service::crawl_start_with_context(
+    let outcome = crawl_service::crawl_start_with_context(
         search_cfg,
         std::slice::from_ref(&url),
         service_context,
         None,
     )
-    .await
-    {
-        Ok(outcome) => {
-            if let Some(job) = outcome.result.jobs.first() {
-                output
-                    .jobs
-                    .push(serde_json::json!({"url": url, "job_id": job.job_id}));
-            }
-        }
+    .await;
+
+    match outcome {
+        Ok(outcome) => Ok(outcome
+            .result
+            .jobs
+            .first()
+            .map(|job| serde_json::json!({"url": url, "job_id": job.job_id}))),
         Err(error) => {
             let reason = error.to_string();
             tracing::warn!(url = %url, error = %reason, "search auto-index: enqueue failed");
-            output
-                .rejected
-                .push(serde_json::json!({"url": url, "reason": reason}));
+            Err(search_crawl_rejection(&url, reason))
         }
     }
+}
+
+fn search_crawl_rejection(url: &str, reason: impl Into<String>) -> Value {
+    serde_json::json!({"url": url, "reason": reason.into()})
 }
 
 fn print_search_results(query: &str, results: &[Value]) {

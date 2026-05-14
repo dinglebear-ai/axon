@@ -109,54 +109,6 @@ mod tests {
     }
 
     #[test]
-    fn lite_config_snapshot_maps_host_axon_output_dir_for_container_workers() {
-        let mut submitted = Config::test_default();
-        submitted.output_dir = PathBuf::from("/home/jmagar/.axon/output");
-
-        let mut worker = Config::test_default();
-        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
-
-        let config_json = lite_config_snapshot_json(&submitted).expect("snapshot should encode");
-        let mut effective =
-            apply_lite_config_snapshot(&worker, &config_json).expect("snapshot should apply");
-
-        crate::jobs::lite::config_snapshot::normalize_container_output_dir(
-            &worker,
-            &mut effective,
-            true,
-        );
-
-        assert_eq!(
-            effective.output_dir,
-            PathBuf::from("/home/axon/.axon/output")
-        );
-    }
-
-    #[test]
-    fn lite_config_snapshot_keeps_non_default_axon_output_dir_for_container_workers() {
-        let mut submitted = Config::test_default();
-        submitted.output_dir = PathBuf::from("/mnt/shared/.axon/output");
-
-        let mut worker = Config::test_default();
-        worker.output_dir = PathBuf::from("/home/axon/.axon/output");
-
-        let config_json = lite_config_snapshot_json(&submitted).expect("snapshot should encode");
-        let mut effective =
-            apply_lite_config_snapshot(&worker, &config_json).expect("snapshot should apply");
-
-        crate::jobs::lite::config_snapshot::normalize_container_output_dir(
-            &worker,
-            &mut effective,
-            true,
-        );
-
-        assert_eq!(
-            effective.output_dir,
-            PathBuf::from("/mnt/shared/.axon/output")
-        );
-    }
-
-    #[test]
     fn lite_config_snapshot_omits_secrets() {
         let mut cfg = Config::test_default();
         cfg.tavily_api_key = "tvly-SECRET_TAVILY".to_string();

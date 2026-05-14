@@ -62,6 +62,12 @@ pub(crate) fn get_allow_loopback() -> bool {
 /// As defence-in-depth, `ssrf_blacklist_patterns()` is also applied to
 /// discovered URLs during crawl via spider's `with_blacklist_url()`.
 pub fn validate_url(url: &str) -> Result<(), HttpError> {
+    let parsed = parse_http_url(url)?;
+    validate_host(url, parsed.host_str())?;
+    Ok(())
+}
+
+fn parse_http_url(url: &str) -> Result<Url, HttpError> {
     let normalized = normalize_url(url);
     let parsed = Url::parse(&normalized).map_err(|_| HttpError::InvalidUrl(url.to_string()))?;
 
@@ -70,9 +76,11 @@ pub fn validate_url(url: &str) -> Result<(), HttpError> {
         s => return Err(HttpError::BlockedScheme(s.to_string())),
     }
 
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
+    Ok(parsed)
+}
+
+fn validate_host(url: &str, host: Option<&str>) -> Result<(), HttpError> {
+    let host = host.ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
 
     // Block localhost and .internal/.local TLDs
     let lower = host.to_ascii_lowercase();
@@ -99,13 +107,12 @@ pub fn validate_url(url: &str) -> Result<(), HttpError> {
 /// This is used before handing URLs to Spider, whose HTTP stack does not use
 /// Axon's reqwest `SsrfBlockingResolver`.
 pub async fn validate_url_with_dns(url: &str) -> Result<(), HttpError> {
-    validate_url(url)?;
-
-    let normalized = normalize_url(url);
-    let parsed = Url::parse(&normalized).map_err(|_| HttpError::InvalidUrl(url.to_string()))?;
+    let parsed = parse_http_url(url)?;
     let host = parsed
         .host_str()
         .ok_or_else(|| HttpError::InvalidUrl(url.to_string()))?;
+    validate_host(url, Some(host))?;
+
     let bare_host = host.trim_start_matches('[').trim_end_matches(']');
     if bare_host.parse::<IpAddr>().is_ok() {
         return Ok(());
@@ -140,7 +147,7 @@ pub(crate) fn validate_resolved_ips(
 /// SSRF IP validation — checks loopback, link-local, RFC-1918 private, and
 /// IPv4-mapped IPv6 addresses. Extracted as a named function (not a closure)
 /// so the IPv4-mapped branch can recurse into the IPv4 checks.
-pub(crate) fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
+fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
     #[cfg(test)]
     {
         if ip.is_loopback() && ALLOW_LOOPBACK.with(|c| c.get()) {

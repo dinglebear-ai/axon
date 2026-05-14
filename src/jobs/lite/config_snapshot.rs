@@ -9,7 +9,7 @@ use crate::core::config::{Config, RenderMode, ScrapeFormat};
 use crate::jobs::ingest::IngestSource;
 
 use endpoint::endpoint_snapshot;
-pub(crate) use paths::normalize_container_output_dir;
+use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
