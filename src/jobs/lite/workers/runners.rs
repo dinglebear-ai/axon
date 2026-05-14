@@ -211,6 +211,19 @@ mod tests {
     }
 
     #[test]
+    fn lite_config_snapshot_rejects_malformed_endpoint_urls() {
+        let mut submitted = Config::test_default();
+        submitted.tei_url = "not a url".to_string();
+
+        let err = lite_config_snapshot_json(&submitted).expect_err("malformed endpoint fails");
+
+        assert!(
+            err.to_string().contains("invalid tei_url"),
+            "expected invalid endpoint error, got: {err}"
+        );
+    }
+
+    #[test]
     fn lite_config_snapshot_does_not_serialize_process_local_endpoint_urls() {
         let mut submitted = Config::test_default();
         submitted.tei_url = "http://127.0.0.1:52000".to_string();
