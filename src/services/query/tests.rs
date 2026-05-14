@@ -1,0 +1,318 @@
+use super::*;
+use serde_json::json;
+
+// ── map_retrieve_result ───────────────────────────────────────────────────
+
+#[test]
+fn map_retrieve_zero_chunks_returns_empty() {
+    let result = map_retrieve_result(0, "some content".to_string());
+    assert_eq!(result.chunk_count, 0);
+    assert_eq!(result.content, "");
+    assert_eq!(result.requested_url, None);
+    assert_eq!(result.backend, None);
+}
+
+#[test]
+fn map_retrieve_nonzero_chunks() {
+    let result = map_retrieve_result(5, "hello".to_string());
+    assert_eq!(result.chunk_count, 5);
+    assert_eq!(result.content, "hello");
+    assert_eq!(result.next_cursor, None);
+}
+
+#[test]
+fn map_retrieve_result_serializes_legacy_shape_when_metadata_absent() {
+    let result = map_retrieve_result(5, "hello".to_string());
+    let value = serde_json::to_value(result).expect("retrieve result serializes");
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "chunk_count": 5,
+            "content": "hello"
+        })
+    );
+}
+
+#[test]
+fn map_direct_retrieve_preserves_metadata() {
+    let result = map_direct_retrieve_result(DirectRetrieveResult {
+        requested_url: "example.com/docs".to_string(),
+        matched_url: Some("https://example.com/docs".to_string()),
+        chunk_count: 2,
+        content: "hello".to_string(),
+        truncated: true,
+        warnings: vec!["partial result".to_string()],
+        variant_errors: vec![crate::vector::ops::qdrant::RetrieveVariantError {
+            url: "https://example.com/docs/".to_string(),
+            error: "timeout".to_string(),
+        }],
+    });
+    assert_eq!(result.requested_url.as_deref(), Some("example.com/docs"));
+    assert_eq!(
+        result.matched_url.as_deref(),
+        Some("https://example.com/docs")
+    );
+    assert!(result.truncated);
+    assert_eq!(result.warnings, vec!["partial result"]);
+    assert_eq!(result.variant_errors[0].url, "https://example.com/docs/");
+    assert_eq!(result.backend, Some(DocumentBackend::Qdrant));
+}
+
+// ── map_suggest_payload ───────────────────────────────────────────────────
+
+#[test]
+fn map_suggest_valid() {
+    let payload = json!({
+        "suggestions": [
+            { "url": "https://example.com/a", "reason": "A docs gap" },
+            { "url": "https://example.com/b" }
+        ]
+    });
+    let result = map_suggest_payload(&payload).unwrap();
+    assert_eq!(result.suggestions.len(), 2);
+    assert_eq!(result.suggestions[0].url, "https://example.com/a");
+    assert_eq!(result.suggestions[0].reason, "A docs gap");
+    assert_eq!(result.suggestions[1].url, "https://example.com/b");
+    assert_eq!(result.suggestions[1].reason, "Suggested by model");
+}
+
+#[test]
+fn map_suggest_missing_suggestions() {
+    let payload = json!({});
+    let err = map_suggest_payload(&payload).unwrap_err();
+    assert!(
+        err.to_string().contains("suggestions"),
+        "error must mention 'suggestions', got: {err}"
+    );
+}
+
+#[test]
+fn map_suggest_entry_missing_url() {
+    let payload = json!({
+        "suggestions": [{ "reason": "no url key here" }]
+    });
+    let err = map_suggest_payload(&payload).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("suggestions[0]"),
+        "error must reference suggestions[0], got: {msg}"
+    );
+}
+
+#[test]
+fn map_suggest_empty_suggestions() {
+    let payload = json!({ "suggestions": [] });
+    let result = map_suggest_payload(&payload).unwrap();
+    assert!(result.suggestions.is_empty());
+}
+
+// ── map_ask_payload ──────────────────────────────────────────────────────
+
+#[test]
+fn map_ask_payload_typed() {
+    let payload = json!({
+        "query": "what is axon?",
+        "answer": "A crawler.",
+        "diagnostics": null,
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "graph": 0,
+            "llm": 3,
+            "total": 6
+        }
+    });
+    let result = map_ask_payload(payload).unwrap();
+    assert_eq!(result.query, "what is axon?");
+    assert_eq!(result.answer, "A crawler.");
+    assert!(result.diagnostics.is_none());
+    assert_eq!(result.timing_ms.total, 6);
+}
+
+#[test]
+fn map_ask_payload_preserves_adaptive_diagnostics() {
+    let payload = json!({
+        "query": "what is axon?",
+        "answer": "A crawler.",
+        "diagnostics": {
+            "candidate_pool": 12,
+            "reranked_pool": 8,
+            "chunks_selected": 4,
+            "full_docs_selected": 2,
+            "supplemental_selected": 1,
+            "context_chars": 3000,
+            "graph_entities": 0,
+            "graph_context_chars": 0,
+            "full_doc_fetch_skipped": true,
+            "full_doc_fetch_skip_reason": "low_complexity",
+            "detected_complexity": "simple",
+            "resolved_full_docs": 2,
+            "full_docs_source": "adaptive",
+            "min_relevance_score": 0.4,
+            "doc_fetch_concurrency": 8,
+            "top_domains": ["docs.example.com"],
+            "authority_ratio": 0.75
+        },
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "graph": 0,
+            "llm": 3,
+            "total": 6
+        }
+    });
+    let result = map_ask_payload(payload).unwrap();
+    let diagnostics = result.diagnostics.expect("diagnostics should deserialize");
+    assert!(diagnostics.full_doc_fetch_skipped);
+    assert_eq!(diagnostics.full_doc_fetch_skip_reason, "low_complexity");
+    assert_eq!(diagnostics.detected_complexity, "simple");
+    assert_eq!(diagnostics.resolved_full_docs, 2);
+    assert_eq!(diagnostics.full_docs_source, "adaptive");
+}
+
+#[test]
+fn map_ask_payload_rejects_invalid_shape() {
+    let err = map_ask_payload(json!({ "answer": "missing query and timing" })).unwrap_err();
+    assert!(err.to_string().contains("invalid ask payload"));
+}
+
+// ── map_evaluate_payload ─────────────────────────────────────────────────
+
+#[test]
+fn map_evaluate_payload_typed() {
+    let payload = json!({
+        "query": "what is axon?",
+        "rag_answer": "RAG",
+        "baseline_answer": "Baseline",
+        "analysis_answer": "Analysis",
+        "source_urls": ["https://example.com/a"],
+        "crawl_suggestions": [{ "url": "https://example.com/b", "reason": "gap" }],
+        "crawl_enqueue_outcomes": [],
+        "ref_chunk_count": 3,
+        "diagnostics": null,
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "rag_llm": 3,
+            "baseline_llm": 4,
+            "research_elapsed_ms": 5,
+            "analysis_llm_ms": 6,
+            "total": 21
+        }
+    });
+    let result = map_evaluate_payload(payload).unwrap();
+    assert_eq!(result.query, "what is axon?");
+    assert_eq!(result.source_urls, vec!["https://example.com/a"]);
+    assert_eq!(result.crawl_suggestions[0].reason, "gap");
+    assert_eq!(result.timing_ms.total, 21);
+}
+
+#[test]
+fn map_evaluate_payload_rejects_invalid_shape() {
+    let err = map_evaluate_payload(json!({ "query": "missing fields" })).unwrap_err();
+    assert!(err.to_string().contains("invalid evaluate payload"));
+}
+
+// ── map_query_results ─────────────────────────────────────────────────────
+
+#[test]
+fn map_query_results_passthrough_empty() {
+    let result = map_query_results(vec![]).unwrap();
+    assert!(result.results.is_empty());
+}
+
+#[test]
+fn map_query_results_typed_nonempty() {
+    let items = vec![
+        json!({
+            "rank": 1,
+            "score": 0.9,
+            "rerank_score": 1.1,
+            "url": "https://a.com",
+            "source": "a.com",
+            "snippet": "alpha",
+            "chunk_index": 2
+        }),
+        json!({
+            "rank": 2,
+            "score": 0.8,
+            "rerank_score": 0.95,
+            "url": "https://b.com",
+            "source": "b.com",
+            "snippet": "bravo",
+            "chunk_index": null
+        }),
+    ];
+    let result = map_query_results(items).unwrap();
+    assert_eq!(result.results.len(), 2);
+    assert_eq!(result.results[0].url, "https://a.com");
+    assert_eq!(result.results[0].chunk_index, Some(2));
+    assert_eq!(result.results[1].source, "b.com");
+    assert_eq!(result.results[1].chunk_index, None);
+}
+
+#[test]
+fn map_query_results_rejects_missing_required_fields() {
+    let err = map_query_results(vec![json!({ "url": "https://a.com" })]).unwrap_err();
+    assert!(
+        err.to_string().contains("query result[0]"),
+        "error should identify the bad result index, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn query_reports_typed_diagnostics_payload_without_ask_diagnostics() {
+    use httpmock::Method::POST;
+    use httpmock::MockServer;
+
+    // TEI succeeds so query proceeds to vector mode probe.
+    let tei = MockServer::start_async().await;
+    tei.mock_async(|when, then| {
+        when.method(POST).path("/embed");
+        then.status(200)
+            .json_body(json!([[0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32]]));
+    })
+    .await;
+
+    // Qdrant probe fails with 404, which should surface as structured diagnostics.
+    let qdrant = MockServer::start_async().await;
+    qdrant
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path_matches(regex::Regex::new("/collections/").unwrap());
+            then.status(404);
+        })
+        .await;
+
+    let mut cfg = Config::test_default();
+    cfg.tei_url = tei.base_url();
+    cfg.qdrant_url = qdrant.base_url();
+    cfg.collection = "diag_test_collection".to_string();
+    cfg.ask_diagnostics = false;
+
+    let err = query(
+        &cfg,
+        "diagnostics regression test query",
+        Pagination {
+            limit: 5,
+            offset: 0,
+        },
+    )
+    .await
+    .expect_err("query should fail when collection is missing");
+
+    let diag = diagnostics_from_error(err.as_ref())
+        .expect("diagnostics payload should be attached without ask_diagnostics");
+    assert_eq!(diag["stage"], "query_vector_search_dispatch");
+    assert_eq!(diag["collection"], "diag_test_collection");
+    assert_eq!(
+        diag["qdrant_url"],
+        reqwest::Url::parse(&qdrant.base_url()).unwrap().to_string()
+    );
+    assert_eq!(diag["query_len"], "diagnostics regression test query".len());
+    assert_eq!(diag["mode"]["hybrid_search_enabled"], true);
+    assert_eq!(diag["search_context"]["command"], "query");
+    assert_eq!(diag["search_context"]["request_limit"], 80);
+    assert_eq!(diag["search_context"]["sparse_query_empty"], false);
+    assert!(diag["error"].as_str().unwrap_or("").contains("404"));
+}
