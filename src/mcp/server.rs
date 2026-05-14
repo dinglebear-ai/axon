@@ -2,6 +2,8 @@
 pub(super) mod artifacts;
 #[path = "server/common.rs"]
 pub mod common;
+#[path = "server/handler.rs"]
+mod handler;
 #[path = "server/handlers_crawl_extract.rs"]
 mod handlers_crawl_extract;
 #[path = "server/handlers_elicit.rs"]
@@ -14,6 +16,10 @@ mod handlers_query;
 mod handlers_system;
 #[path = "server/http.rs"]
 mod http;
+#[path = "server/metadata.rs"]
+mod metadata;
+#[path = "server/scope.rs"]
+mod scope;
 #[cfg(test)]
 #[path = "server/services_migration_tests.rs"]
 mod services_migration_tests;
@@ -22,38 +28,15 @@ use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
 use crate::core::config::Config;
 use crate::services::context::ServiceContext;
-use crate::services::system;
-use common::{MCP_TOOL_SCHEMA_URI, internal_error, invalid_params};
+use common::{internal_error, invalid_params};
 pub use http::run_unified_server;
-use lab_auth::AuthContext;
+use metadata::axon_tool_meta;
 use rmcp::{
-    ErrorData, RoleServer, ServerHandler, ServiceExt,
-    handler::server::wrapper::Parameters,
-    model::{
-        AnnotateAble, CallToolRequestParams, CallToolResult, ExtensionCapabilities,
-        InitializeRequestParams, InitializeResult, ListResourcesResult, Meta,
-        PaginatedRequestParams, RawResource, ReadResourceRequestParams, ReadResourceResult,
-        Resource, ResourceContents, ServerCapabilities, ServerInfo,
-    },
-    service::RequestContext,
-    tool, tool_handler, tool_router,
-    transport::stdio,
+    ErrorData, RoleServer, ServiceExt, handler::server::wrapper::Parameters, model::CallToolResult,
+    tool, tool_handler, tool_router, transport::stdio,
 };
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tokio::sync::OnceCell;
-
-const STATUS_DASHBOARD_URI: &str = "ui://axon/status-dashboard";
-const MCP_APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
-static STATUS_DASHBOARD_HTML: &str = include_str!("assets/status_dashboard.html");
-
-static MCP_TOOL_SCHEMA_MD: LazyLock<String> = LazyLock::new(|| {
-    let schema = rmcp::schemars::schema_for!(AxonRequest);
-    let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
-    format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` is required for subaction families\n- `response_mode` supports `path|inline|both|auto_inline`; most actions default to `path`, while `scrape` and `retrieve` default to inline paged document reads\n\n## JSON Schema\n\n```json\n{}\n```\n",
-        MCP_TOOL_SCHEMA_URI, schema_json
-    )
-});
 
 #[derive(Clone)]
 pub struct AxonMcpServer {
