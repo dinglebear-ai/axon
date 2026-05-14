@@ -4,7 +4,7 @@
 set -euo pipefail
 
 AXON_HOME="${AXON_HOME:-${HOME}/.axon}"
-INSTALL_URL="${AXON_INSTALL_URL:-https://raw.githubusercontent.com/jmagar/axon/v1.10.1/install.sh}"
+INSTALL_URL="${AXON_INSTALL_URL:-https://raw.githubusercontent.com/jmagar/axon/v1.11.2/install.sh}"
 
 reject_unsafe_value() {
   local name="$1" value="${2:-}"
@@ -60,7 +60,7 @@ main() {
   chmod 700 "${AXON_HOME}" 2>/dev/null || true
   warn_stale_systemd_unit
   ensure_axon_binary
-  axon setup hook
+  axon setup plugin-hook
 }
 
 main "$@"
