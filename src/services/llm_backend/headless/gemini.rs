@@ -299,16 +299,20 @@ impl GeminiStreamState {
             .map_err(|err| format!("malformed Gemini stream JSON: {err}: {trimmed}"))?;
         match value.get("type").and_then(Value::as_str) {
             Some("tool_use") => {
-                // activate_skill is the only permitted tool call — it loads the
-                // axon-rag-synthesize skill into the model's context. All other
-                // tool_use events indicate unexpected tool execution and are rejected.
-                if value.get("name").and_then(Value::as_str) != Some("activate_skill") {
+                // Permitted tool calls for synthesis mode:
+                // - "activate_skill": loads the axon-rag-synthesize skill (intentional)
+                // - "update_topic": Gemini 0.41.2+ internal session management (harmless)
+                // All other tool_use events indicate unexpected tool execution and are rejected.
+                // Field name changed from "name" to "tool_name" in Gemini CLI 0.41.2.
+                let tool_name = value
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .or_else(|| value.get("tool_name").and_then(Value::as_str));
+                let permitted = matches!(tool_name, Some("activate_skill") | Some("update_topic"));
+                if !permitted {
                     return Err(format!(
-                        "Gemini headless emitted unexpected tool call '{}' in synthesis mode",
-                        value
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or("unknown")
+                        "Gemini headless emitted unexpected tool call '{}' in synthesis mode; raw event: {value}",
+                        tool_name.unwrap_or("unknown")
                     )
                     .into());
                 }
@@ -340,18 +344,9 @@ impl GeminiStreamState {
         if value.get("status").and_then(Value::as_str) != Some("success") {
             return Err(format!("Gemini headless returned unsuccessful result: {value}").into());
         }
-        // activate_skill counts as 1 tool call — allow it. Reject if any other
-        // tool was called (indicates unexpected tool execution beyond skill loading).
-        let tool_calls = value
-            .pointer("/stats/tool_calls")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
-        if tool_calls > 1 {
-            return Err(format!(
-                "Gemini headless made {tool_calls} tool calls; only activate_skill is permitted"
-            )
-            .into());
-        }
+        // Per-event whitelist (activate_skill, update_topic) is the primary defence.
+        // The stats tool_calls count is no longer used as a secondary gate — Gemini
+        // 0.41.2+ calls update_topic automatically, making the count unreliable.
         if let Some(text) = value.get("response").and_then(Value::as_str)
             && !text.trim().is_empty()
         {
@@ -512,7 +507,7 @@ mod tests {
     #[test]
     fn gemini_headless_parser_allows_activate_skill_tool_event() {
         let mut state = GeminiStreamState::default();
-        // activate_skill is the one permitted tool call for skill loading
+        // activate_skill via old "name" field
         state
             .handle_line(
                 r#"{"type":"tool_use","name":"activate_skill","input":{"name":"axon-rag-synthesize"}}"#,
@@ -522,28 +517,40 @@ mod tests {
     }
 
     #[test]
-    fn gemini_headless_parser_rejects_multiple_tool_calls_in_result() {
+    fn gemini_headless_parser_allows_activate_skill_tool_name_field() {
         let mut state = GeminiStreamState::default();
-        // 1 tool call (activate_skill) is allowed; 2+ are rejected
-        let err = state
+        // activate_skill via new "tool_name" field (Gemini CLI 0.41.2+)
+        state
             .handle_line(
-                r#"{"type":"result","status":"success","stats":{"tool_calls":2}}"#,
+                r#"{"type":"tool_use","tool_name":"activate_skill","tool_id":"x","parameters":{}}"#,
                 &mut |_| Ok(()),
             )
-            .expect_err("multiple tool calls must fail closed");
-        assert!(err.to_string().contains("tool call"));
+            .expect("activate_skill via tool_name field must be allowed");
     }
 
     #[test]
-    fn gemini_headless_parser_allows_single_tool_call_in_result() {
+    fn gemini_headless_parser_allows_update_topic_tool_event() {
         let mut state = GeminiStreamState::default();
-        // 1 tool call = activate_skill — allowed
+        // update_topic is a Gemini 0.41.2+ internal session management tool — always harmless
         state
             .handle_line(
-                r#"{"type":"result","status":"success","stats":{"tool_calls":1}}"#,
+                r#"{"type":"tool_use","tool_name":"update_topic","tool_id":"update_topic_1_0","parameters":{"title":"Test"}}"#,
                 &mut |_| Ok(()),
             )
-            .expect("single activate_skill tool call must be allowed in result stats");
+            .expect("update_topic tool_use must be allowed");
+    }
+
+    #[test]
+    fn gemini_headless_parser_allows_any_tool_count_in_result() {
+        let mut state = GeminiStreamState::default();
+        // Stats tool_calls count is no longer gated — update_topic adds calls automatically.
+        // Multiple tool calls are fine as long as per-event whitelist passes.
+        state
+            .handle_line(
+                r#"{"type":"result","status":"success","stats":{"tool_calls":5}}"#,
+                &mut |_| Ok(()),
+            )
+            .expect("high tool_calls count in result stats must be allowed");
         assert!(state.saw_success);
     }
 
