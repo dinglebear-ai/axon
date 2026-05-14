@@ -14,9 +14,10 @@ The plugin manifest declares a minimal `userConfig` block. Claude Code prompts f
 
 The SessionStart hook (`scripts/plugin-setup.sh`) delegates to the same setup flow as the one-line installer:
 
-1. If `axon` is already on `PATH`, run `axon setup repair`.
-2. If `axon` is absent, run the release installer, then run `axon setup repair`.
-3. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
+1. If `axon` is already on `PATH`, run `axon setup check`.
+2. If the check fails, run `axon setup repair`.
+3. If `axon` is absent, run the release installer, then run the same check/repair path.
+4. Preserve existing `~/.axon/.env` and `~/.axon/config.toml`; setup only fills missing runtime values.
 
 No systemd unit is created, and the plugin-cache binary is not symlinked into `~/.local/bin`. Docker Compose is the only production deployment target. The `.mcp.json` connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
 

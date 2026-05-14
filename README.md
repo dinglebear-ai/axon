@@ -1,6 +1,6 @@
 # Axon
 
-Version: 1.11.0
+Version: 1.11.2
 
 Axon is a self-hosted RAG stack for crawling, scraping, ingesting, embedding, searching, and asking questions over indexed content. The production release is Docker Compose first: one Axon server container, Qdrant, Hugging Face TEI with `Qwen/Qwen3-Embedding-0.6B`, and Chrome for JS-heavy pages.
 
@@ -62,7 +62,7 @@ Claude Code plugin install:
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook runs `axon setup repair` when `axon` is already installed, or the same installer when it is not. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
+The plugin uses the same Docker setup and `~/.axon` files. Its SessionStart hook runs the lightweight `axon setup check` when `axon` is already installed, falls back to `axon setup repair` only when setup needs repair, or runs the same installer when `axon` is not present. It does not create a systemd unit and does not symlink a plugin-cache binary into `~/.local/bin`.
 
 ## Setup Flow
 

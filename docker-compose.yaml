@@ -53,6 +53,10 @@ services:
       AXON_HOME: /home/axon/.axon
       AXON_DATA_DIR: /home/axon/.axon
       AXON_IN_CONTAINER: "1"
+      TZ: ${TZ:-America/New_York}
+      # Force ANSI colors in Docker (stderr is a pipe, not a TTY).
+      # Override with NO_COLOR=1 in ~/.axon/.env to disable.
+      CLICOLOR_FORCE: "${AXON_LOG_COLOR:-1}"
     volumes:
       # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
       - ${AXON_HOME:-${HOME}/.axon}:/home/axon/.axon

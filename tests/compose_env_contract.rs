@@ -130,8 +130,12 @@ fn plugin_setup_uses_canonical_axon_home() {
         "plugin setup should ensure the canonical ~/.axon home exists"
     );
     assert!(
+        setup.contains("axon setup check"),
+        "plugin setup should prefer the lightweight shared Docker setup check path"
+    );
+    assert!(
         setup.contains("axon setup repair"),
-        "plugin setup should delegate to the shared Docker setup repair path"
+        "plugin setup should still be able to delegate to the shared Docker setup repair path"
     );
     assert!(
         setup.contains("warn_stale_systemd_unit"),
@@ -200,8 +204,8 @@ fn plugin_setup_smoke_delegates_to_shared_setup() {
 
     let log = fs::read_to_string(&axon_log).expect("fake axon log should exist");
     assert!(
-        log.lines().all(|line| line.starts_with("setup repair|")),
-        "plugin setup should call axon setup repair on each run"
+        log.lines().all(|line| line.starts_with("setup check|")),
+        "plugin setup should call axon setup check on healthy runs"
     );
     assert!(
         log.contains("first-token") && log.contains("second-token"),
