@@ -229,14 +229,6 @@ pub(crate) fn sorted_urls(urls: &HashSet<String>) -> Vec<String> {
     urls
 }
 
-pub(crate) fn final_source_order_from_context(context: &str) -> Vec<AskExplainContextSource> {
-    context
-        .lines()
-        .enumerate()
-        .filter_map(|(idx, line)| parse_source_header(line, idx + 1, 0.0))
-        .collect()
-}
-
 pub(crate) fn final_source_order_from_entries(
     sorted_entries: &[(f64, String)],
 ) -> Vec<AskExplainContextSource> {
