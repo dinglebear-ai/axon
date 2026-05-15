@@ -1,5 +1,6 @@
 use crate::core::config::Config;
 use crate::services::error::ServiceError;
+use crate::services::types::{AskExplainFilterDecisionKind, AskExplainScoreKind};
 use crate::vector::ops::tei;
 use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
 use crate::vector::ops::{qdrant, ranking};
@@ -11,8 +12,8 @@ use std::error::Error;
 mod trace;
 
 pub(crate) use trace::{
-    CandidateRankingTrace, score_and_filter_candidates, score_and_filter_candidates_with_trace,
-    score_rrf_candidates_with_trace,
+    CandidateRankingTrace, dropped_candidate_trace, score_and_filter_candidates,
+    score_and_filter_candidates_with_trace, score_rrf_candidates_with_trace,
 };
 
 #[derive(Clone, Debug)]
@@ -51,6 +52,11 @@ pub(crate) struct VectorModeMetadata {
 pub(crate) struct TypedRetrievalResult {
     pub(crate) retrieved_candidates: Vec<RetrievedCandidate>,
     pub(crate) reranked_candidates: Vec<RetrievedCandidate>,
+}
+
+pub(crate) struct CandidateBuildTrace {
+    pub(crate) candidates: Vec<RetrievedCandidate>,
+    pub(crate) filter_traces: Vec<CandidateRankingTrace>,
 }
 
 pub(crate) async fn embed_retrieval_inputs(
@@ -133,7 +139,16 @@ pub(crate) fn build_candidates_from_hits(
     hits: Vec<qdrant::QdrantSearchHit>,
     policy: &CandidateBuildPolicy,
 ) -> Vec<RetrievedCandidate> {
+    build_candidates_from_hits_with_trace(hits, policy, AskExplainScoreKind::Cosine).candidates
+}
+
+pub(crate) fn build_candidates_from_hits_with_trace(
+    hits: Vec<qdrant::QdrantSearchHit>,
+    policy: &CandidateBuildPolicy,
+    score_kind: AskExplainScoreKind,
+) -> CandidateBuildTrace {
     let mut candidates = Vec::new();
+    let mut filter_traces = Vec::new();
     for hit in hits {
         let url = qdrant::payload_url_typed(&hit.payload).to_string();
         let chunk_text = qdrant::payload_text_typed(&hit.payload).to_string();
@@ -141,25 +156,44 @@ pub(crate) fn build_candidates_from_hits(
             continue;
         }
         if !policy.allow_low_signal && ranking::is_low_signal_url(&url) {
+            let candidate = retrieved_candidate_from_hit(hit, url, chunk_text);
+            filter_traces.push(dropped_candidate_trace(
+                candidate,
+                score_kind,
+                AskExplainFilterDecisionKind::DroppedLowSignal,
+                "candidate URL matched low-signal source filtering",
+            ));
             continue;
         }
-        let path = ranking::extract_path_from_url(&url);
-        let url_tokens = ranking::tokenize_path_set(&path);
-        let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
-        candidates.push(RetrievedCandidate {
-            candidate: ranking::AskCandidate {
-                score: hit.score,
-                url,
-                path,
-                chunk_text,
-                url_tokens,
-                chunk_tokens,
-                rerank_score: hit.score,
-            },
-            chunk_index: hit.payload.chunk_index,
-        });
+        let candidate = retrieved_candidate_from_hit(hit, url, chunk_text);
+        candidates.push(candidate);
     }
-    candidates
+    CandidateBuildTrace {
+        candidates,
+        filter_traces,
+    }
+}
+
+fn retrieved_candidate_from_hit(
+    hit: qdrant::QdrantSearchHit,
+    url: String,
+    chunk_text: String,
+) -> RetrievedCandidate {
+    let path = ranking::extract_path_from_url(&url);
+    let url_tokens = ranking::tokenize_path_set(&path);
+    let chunk_tokens = ranking::tokenize_text_set(&chunk_text);
+    RetrievedCandidate {
+        candidate: ranking::AskCandidate {
+            score: hit.score,
+            url,
+            path,
+            chunk_text,
+            url_tokens,
+            chunk_tokens,
+            rerank_score: hit.score,
+        },
+        chunk_index: hit.payload.chunk_index,
+    }
 }
 
 /// Merge secondary candidates into primary, deduplicating by (url, chunk prefix).
@@ -168,6 +202,14 @@ pub(crate) fn merge_candidates(
     primary: Vec<RetrievedCandidate>,
     secondary: Vec<RetrievedCandidate>,
 ) -> Vec<RetrievedCandidate> {
+    merge_candidates_with_trace(primary, secondary, AskExplainScoreKind::Cosine).candidates
+}
+
+pub(crate) fn merge_candidates_with_trace(
+    primary: Vec<RetrievedCandidate>,
+    secondary: Vec<RetrievedCandidate>,
+    score_kind: AskExplainScoreKind,
+) -> CandidateBuildTrace {
     fn prefix_key(url: &str, chunk_text: &str) -> String {
         // Truncate at a UTF-8 char boundary so multibyte text cannot panic.
         let mut end = chunk_text.len().min(80);
@@ -179,19 +221,37 @@ pub(crate) fn merge_candidates(
 
     let mut seen: HashSet<String> = HashSet::new();
     let mut deduped: Vec<RetrievedCandidate> = Vec::with_capacity(primary.len());
+    let mut filter_traces = Vec::new();
     for c in primary {
         let key = prefix_key(&c.candidate.url, &c.candidate.chunk_text);
         if seen.insert(key) {
             deduped.push(c);
+        } else {
+            filter_traces.push(dropped_candidate_trace(
+                c,
+                score_kind,
+                AskExplainFilterDecisionKind::DroppedDuplicate,
+                "candidate duplicated an earlier URL and chunk-text prefix",
+            ));
         }
     }
     for c in secondary {
         let key = prefix_key(&c.candidate.url, &c.candidate.chunk_text);
         if seen.insert(key) {
             deduped.push(c);
+        } else {
+            filter_traces.push(dropped_candidate_trace(
+                c,
+                score_kind,
+                AskExplainFilterDecisionKind::DroppedDuplicate,
+                "candidate duplicated an earlier URL and chunk-text prefix",
+            ));
         }
     }
-    deduped
+    CandidateBuildTrace {
+        candidates: deduped,
+        filter_traces,
+    }
 }
 
 pub(crate) fn query_allows_low_signal(query_tokens: &[String], raw_query: &str) -> bool {

@@ -19,7 +19,14 @@ pub(crate) fn score_and_filter_candidates(
     query_tokens: &[String],
     policy: &CandidateScorePolicy<'_>,
 ) -> Vec<RetrievedCandidate> {
-    score_and_filter_candidates_inner(candidates, query_tokens, policy, false).0
+    score_and_filter_candidates_inner(
+        candidates,
+        query_tokens,
+        policy,
+        false,
+        AskExplainScoreKind::Cosine,
+    )
+    .0
 }
 
 #[allow(dead_code)]
@@ -27,10 +34,31 @@ pub(crate) fn score_and_filter_candidates_with_trace(
     candidates: &[RetrievedCandidate],
     query_tokens: &[String],
     policy: &CandidateScorePolicy<'_>,
+    score_kind: AskExplainScoreKind,
 ) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
     let (selected, trace) =
-        score_and_filter_candidates_inner(candidates, query_tokens, policy, true);
+        score_and_filter_candidates_inner(candidates, query_tokens, policy, true, score_kind);
     (selected, trace.unwrap_or_default())
+}
+
+pub(crate) fn dropped_candidate_trace(
+    candidate: RetrievedCandidate,
+    score_kind: AskExplainScoreKind,
+    decision_kind: AskExplainFilterDecisionKind,
+    reason: &'static str,
+) -> CandidateRankingTrace {
+    let retrieval_score = candidate.candidate.score;
+    CandidateRankingTrace {
+        candidate,
+        score_kind,
+        score_components: vec![score_component(
+            "retrieval_score",
+            retrieval_score,
+            AskExplainScoreComponentStatus::Applied,
+            None,
+        )],
+        filter_decisions: vec![filter_decision(decision_kind, Some(reason))],
+    }
 }
 
 #[allow(dead_code)]
@@ -69,6 +97,7 @@ fn score_and_filter_candidates_inner(
     query_tokens: &[String],
     policy: &CandidateScorePolicy<'_>,
     trace_enabled: bool,
+    score_kind: AskExplainScoreKind,
 ) -> (Vec<RetrievedCandidate>, Option<Vec<CandidateRankingTrace>>) {
     let raw_candidates = candidates
         .iter()
@@ -116,7 +145,7 @@ fn score_and_filter_candidates_inner(
         if let Some(traces) = traces.as_mut() {
             traces.push(CandidateRankingTrace {
                 candidate,
-                score_kind: AskExplainScoreKind::Cosine,
+                score_kind,
                 score_components: dense_score_components(&breakdown, product_boost, policy),
                 filter_decisions,
             });

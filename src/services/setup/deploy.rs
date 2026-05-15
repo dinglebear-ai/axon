@@ -341,16 +341,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compose_rendering_is_private_even_when_public_requested() {
+    fn compose_rendering_uses_bare_port_mappings_even_when_public_requested() {
         let private = render_compose(false);
-        assert!(private.contains("127.0.0.1:53333:6333"));
-        assert!(private.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
-        assert!(private.contains("127.0.0.1:6000:6000"));
+        assert!(private.contains("\"53333:6333\""));
+        assert!(private.contains("\"${TEI_HTTP_PORT:-52000}:80\""));
+        assert!(private.contains("\"6000:6000\""));
 
         let public = render_compose(true);
-        assert!(public.contains("127.0.0.1:53333:6333"));
-        assert!(public.contains("127.0.0.1:${TEI_HTTP_PORT:-52000}:80"));
-        assert!(public.contains("127.0.0.1:6000:6000"));
+        assert!(public.contains("\"53333:6333\""));
+        assert!(public.contains("\"${TEI_HTTP_PORT:-52000}:80\""));
+        assert!(public.contains("\"6000:6000\""));
     }
 
     #[test]

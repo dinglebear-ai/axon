@@ -2,6 +2,8 @@ use super::*;
 use crate::services::types::{
     AskExplainFilterDecisionKind, AskExplainScoreComponentStatus, AskExplainScoreKind,
 };
+use crate::vector::ops::qdrant::{QdrantPayload, QdrantSearchHit};
+use serde_json::Value;
 use std::collections::HashSet;
 
 fn make_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
@@ -16,6 +18,19 @@ fn make_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
             rerank_score: score,
         },
         chunk_index: Some(42),
+    }
+}
+
+fn make_hit(url: &str, chunk: &str, score: f64) -> QdrantSearchHit {
+    QdrantSearchHit {
+        id: Value::Null,
+        score,
+        payload: QdrantPayload {
+            url: url.to_string(),
+            chunk_text: chunk.to_string(),
+            text: String::new(),
+            chunk_index: Some(7),
+        },
     }
 }
 
@@ -37,6 +52,53 @@ fn merge_candidates_handles_multibyte_chunk_prefix() {
     let secondary = vec![make_candidate("https://a.test/p", &prefix, 0.8)];
     let merged = merge_candidates(primary, secondary);
     assert_eq!(merged.len(), 1);
+}
+
+#[test]
+fn build_candidates_trace_records_low_signal_drops() {
+    let policy = CandidateBuildPolicy {
+        allow_low_signal: false,
+    };
+    let built = build_candidates_from_hits_with_trace(
+        vec![make_hit(
+            "docs/sessions/2026-05-15-rag-debug.md",
+            "low signal session content long enough to pass chunk length filtering",
+            0.7,
+        )],
+        &policy,
+        AskExplainScoreKind::Cosine,
+    );
+
+    assert!(built.candidates.is_empty());
+    assert_eq!(built.filter_traces.len(), 1);
+    assert_eq!(
+        built.filter_traces[0].filter_decisions[0].kind,
+        AskExplainFilterDecisionKind::DroppedLowSignal
+    );
+}
+
+#[test]
+fn merge_candidates_trace_records_duplicate_drops() {
+    let merged = merge_candidates_with_trace(
+        vec![make_candidate(
+            "https://a.test/p",
+            "duplicate chunk text long enough to compare by prefix",
+            0.9,
+        )],
+        vec![make_candidate(
+            "https://a.test/p",
+            "duplicate chunk text long enough to compare by prefix",
+            0.8,
+        )],
+        AskExplainScoreKind::Cosine,
+    );
+
+    assert_eq!(merged.candidates.len(), 1);
+    assert_eq!(merged.filter_traces.len(), 1);
+    assert_eq!(
+        merged.filter_traces[0].filter_decisions[0].kind,
+        AskExplainFilterDecisionKind::DroppedDuplicate
+    );
 }
 
 #[test]
@@ -163,8 +225,12 @@ fn score_trace_components_sum_to_final_rerank_score() {
         require_topical_overlap: true,
     };
 
-    let (selected, trace) =
-        score_and_filter_candidates_with_trace(&candidates, &query_tokens, &policy);
+    let (selected, trace) = score_and_filter_candidates_with_trace(
+        &candidates,
+        &query_tokens,
+        &policy,
+        AskExplainScoreKind::Cosine,
+    );
 
     assert_eq!(selected.len(), 1);
     assert_eq!(trace.len(), 1);
@@ -189,6 +255,32 @@ fn score_trace_components_sum_to_final_rerank_score() {
                 && component.status == AskExplainScoreComponentStatus::Applied),
         "trace should make the Claude official-domain product boost visible"
     );
+}
+
+#[test]
+fn score_trace_uses_supplied_dense_score_kind() {
+    let candidates = vec![make_candidate(
+        "https://docs.example.com/rust",
+        "rust async runtime details long enough to keep",
+        0.41,
+    )];
+    let query_tokens = vec!["rust".to_string()];
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.0,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    let (_, trace) = score_and_filter_candidates_with_trace(
+        &candidates,
+        &query_tokens,
+        &policy,
+        AskExplainScoreKind::NamedDense,
+    );
+
+    assert_eq!(trace[0].score_kind, AskExplainScoreKind::NamedDense);
 }
 
 #[test]
@@ -219,8 +311,12 @@ fn score_trace_preserves_normal_rerank_output() {
     };
 
     let normal = score_and_filter_candidates(&candidates, &query_tokens, &policy);
-    let (with_trace, trace) =
-        score_and_filter_candidates_with_trace(&candidates, &query_tokens, &policy);
+    let (with_trace, trace) = score_and_filter_candidates_with_trace(
+        &candidates,
+        &query_tokens,
+        &policy,
+        AskExplainScoreKind::Cosine,
+    );
 
     assert_eq!(normal.len(), with_trace.len());
     assert_eq!(trace.len(), candidates.len());
