@@ -49,6 +49,8 @@ pub(super) enum CliCommand {
     Ask(AskArgs),
     /// RAG vs baseline with independent LLM judge scoring
     Evaluate(EvaluateArgs),
+    /// Collect human preference votes for retrieved RAG candidates
+    Train(TrainArgs),
     /// Suggest new documentation URLs to crawl
     Suggest(TextArg),
     /// List all indexed source URLs with chunk counts
@@ -268,6 +270,18 @@ pub(super) struct EvaluateArgs {
     /// disabled. The judge then compares hybrid-RAG vs dense-only-RAG.
     #[arg(long = "retrieval-ab", action = ArgAction::SetTrue)]
     pub(super) retrieval_ab: bool,
+    #[arg(value_name = "TEXT")]
+    pub(super) value: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct TrainArgs {
+    /// Record this 1-based candidate rank without prompting.
+    #[arg(long = "best", value_name = "RANK")]
+    pub(super) best_rank: Option<usize>,
+    /// Optional note stored with the preference event.
+    #[arg(long)]
+    pub(super) notes: Option<String>,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }

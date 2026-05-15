@@ -47,6 +47,8 @@ pub(super) struct DispatchOutput {
     pub mcp_transport_default: McpTransport,
     pub map_fallback: MapFallback,
     pub retrieve_max_points: Option<usize>,
+    pub train_best_rank: Option<usize>,
+    pub train_notes: Option<String>,
 }
 
 impl DispatchOutput {
@@ -75,6 +77,8 @@ impl DispatchOutput {
             mcp_transport_default: McpTransport::Http,
             map_fallback: MapFallback::Structure,
             retrieve_max_points: None,
+            train_best_rank: None,
+            train_notes: None,
         }
     }
 }
@@ -154,6 +158,13 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.evaluate_responses_mode = args.responses_mode;
             out.evaluate_retrieval_ab = args.retrieval_ab;
             set_simple(&mut out, CommandKind::Evaluate, args.value);
+        }
+        CliCommand::Train(args) => {
+            out.train_best_rank = args.best_rank;
+            out.train_notes = args.notes;
+            out.ask_diagnostics = true;
+            out.ask_explain = true;
+            set_simple(&mut out, CommandKind::Train, args.value);
         }
         CliCommand::Suggest(args) => set_simple(&mut out, CommandKind::Suggest, args.value),
         CliCommand::Sources => out.command = CommandKind::Sources,
