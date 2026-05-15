@@ -337,26 +337,45 @@ fn rrf_score_trace_skips_additive_boosts_and_min_relevance() {
         make_candidate(
             "https://docs.openclaw.ai/cli/plugins",
             "unrelated command reference",
-            0.99,
+            0.30,
         ),
     ];
     let query_tokens = vec!["claude".to_string(), "plugins".to_string()];
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.35,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
 
-    let (selected, trace) = score_rrf_candidates_with_trace(&candidates, &query_tokens);
+    let (selected, trace) = score_rrf_candidates_with_trace(&candidates, &query_tokens, &policy);
 
     assert_eq!(
         selected[0].candidate.url, "https://code.claude.com/docs/en/plugins",
         "RRF trace path should not apply the cosine min relevance threshold"
     );
-    assert_eq!(selected[0].candidate.rerank_score, 0.02);
+    assert!((selected[0].candidate.rerank_score - 0.37).abs() < f64::EPSILON);
     assert_eq!(trace[0].score_kind, AskExplainScoreKind::Rrf);
     assert!(
         trace[0]
             .score_components
             .iter()
-            .filter(|component| component.name != "retrieval_score")
+            .filter(|component| {
+                component.name != "retrieval_score"
+                    && component.name != "authority_boost"
+                    && component.name != "product_authority_boost"
+            })
             .all(|component| component.status == AskExplainScoreComponentStatus::Skipped),
-        "all additive rerank components must be marked skipped in RRF mode"
+        "lexical/doc/phrase rerank components must be marked skipped in RRF mode"
+    );
+    assert!(
+        trace[0].score_components.iter().any(|component| {
+            component.name == "product_authority_boost"
+                && component.status == AskExplainScoreComponentStatus::Applied
+                && component.value == 0.35
+        }),
+        "product authority must be visible in RRF explain traces"
     );
 }
 

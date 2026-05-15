@@ -16,6 +16,8 @@ use anyhow::{Result, anyhow};
 mod build;
 use build::build_ask_candidates;
 
+const ASK_PRODUCT_AUTHORITY_BOOST: f64 = 0.35;
+
 pub(super) struct AskRetrieval {
     pub(super) candidates: Vec<ranking::AskCandidate>,
     pub(super) reranked: Vec<ranking::AskCandidate>,
@@ -32,6 +34,7 @@ pub(super) struct AskRetrieval {
 pub(super) struct RerankParams<'a> {
     pub(super) authoritative_domains: &'a [String],
     pub(super) authoritative_boost: f64,
+    pub(super) product_authority_boost: f64,
     pub(super) min_relevance_score: f64,
 }
 
@@ -51,21 +54,40 @@ pub(super) fn apply_mode_aware_rerank(
     params: &RerankParams<'_>,
 ) -> Vec<RetrievedCandidate> {
     if is_rrf {
-        return candidates
+        let mut selected = candidates
             .iter()
             .filter(|candidate| candidate_has_topical_overlap(&candidate.candidate, query_tokens))
             .cloned()
             .map(|mut candidate| {
-                candidate.candidate.rerank_score = candidate.candidate.score;
+                let authority_boost = ranking::authority_boost_for_url(
+                    &candidate.candidate.url,
+                    params.authoritative_domains,
+                    params.authoritative_boost,
+                );
+                let product_boost =
+                    crate::vector::ops::commands::retrieval::product_authority_boost_for_url(
+                        &candidate.candidate.url,
+                        query_tokens,
+                        params.product_authority_boost,
+                    );
+                candidate.candidate.rerank_score =
+                    candidate.candidate.score + authority_boost + product_boost;
                 candidate
             })
-            .collect();
+            .collect::<Vec<_>>();
+        selected.sort_by(|a, b| {
+            b.candidate
+                .rerank_score
+                .partial_cmp(&a.candidate.rerank_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        return selected;
     }
 
     let score_policy = CandidateScorePolicy {
         authoritative_domains: params.authoritative_domains,
         authoritative_boost: params.authoritative_boost,
-        product_authority_boost: 0.0,
+        product_authority_boost: params.product_authority_boost,
         min_relevance_score: Some(params.min_relevance_score),
         require_topical_overlap: true,
     };
@@ -80,13 +102,20 @@ pub(super) fn apply_mode_aware_rerank_with_trace(
     params: &RerankParams<'_>,
 ) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
     if is_rrf {
-        return score_rrf_candidates_with_trace(candidates, query_tokens);
+        let score_policy = CandidateScorePolicy {
+            authoritative_domains: params.authoritative_domains,
+            authoritative_boost: params.authoritative_boost,
+            product_authority_boost: params.product_authority_boost,
+            min_relevance_score: None,
+            require_topical_overlap: true,
+        };
+        return score_rrf_candidates_with_trace(candidates, query_tokens, &score_policy);
     }
 
     let score_policy = CandidateScorePolicy {
         authoritative_domains: params.authoritative_domains,
         authoritative_boost: params.authoritative_boost,
-        product_authority_boost: 0.0,
+        product_authority_boost: params.product_authority_boost,
         min_relevance_score: Some(params.min_relevance_score),
         require_topical_overlap: true,
     };
@@ -154,6 +183,7 @@ pub(super) async fn retrieve_ask_candidates(
     let rerank_params = RerankParams {
         authoritative_domains: &ask_tuning.ask_authoritative_domains,
         authoritative_boost: ask_tuning.ask_authoritative_boost,
+        product_authority_boost: ASK_PRODUCT_AUTHORITY_BOOST,
         min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
     let rerank_started = std::time::Instant::now();
