@@ -22,13 +22,14 @@ pub(super) use diagnostics::build_diagnostic_sources;
 pub(super) use fetchers::ask_doc_cache;
 pub(super) use fetchers::fetch_full_docs;
 pub(super) use selection::{
-    collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
+    SelectionPolicy, collect_supplemental_candidate_indices, planned_full_doc_urls,
+    select_context_indices,
 };
 use selection::{dominant_retrieval_hosts, full_doc_selection_score};
 pub(super) use trace::{
-    ContextCandidateSelection, ContextSelectionInputs, build_context_selection_decisions,
-    context_source_candidate_count, final_source_order_from_context, selected_top_chunk_indices,
-    sorted_urls,
+    CandidateSelectionMetadata, ContextCandidateSelection, ContextSelectionInputs,
+    build_context_selection_decisions, candidate_selection_key, context_source_candidate_count,
+    final_source_order_from_context, selected_top_chunk_indices, sorted_urls,
 };
 
 pub(super) struct BuiltAskContext {
@@ -328,6 +329,7 @@ fn finalize_built_context(mut inputs: FinalizeContextInputs<'_>) -> Result<Final
         supplemental_indices: inputs.supplemental,
         supplemental_count: inputs.supplemental_count,
         full_doc_fetch_skipped: inputs.skip_decision.skip,
+        final_source_order: &explain_context.final_source_order,
     });
 
     Ok(FinalizedAskContext {

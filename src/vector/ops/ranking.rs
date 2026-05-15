@@ -53,11 +53,7 @@ impl AskScoreBreakdown {
 }
 
 pub fn tokenize_query(text: &str) -> Vec<String> {
-    text.to_ascii_lowercase()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|t| t.len() >= 2 && !STOP_WORDS.contains(*t))
-        .map(str::to_string)
-        .collect()
+    super::token_policy::query_tokens(text)
 }
 
 pub fn tokenize_text_set(text: &str) -> HashSet<String> {

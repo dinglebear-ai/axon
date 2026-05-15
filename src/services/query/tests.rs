@@ -1,7 +1,8 @@
 use super::*;
 use crate::services::types::{
-    AskExplainFilterDecisionKind, AskExplainMode, AskExplainScoreComponentStatus,
-    AskExplainScoreKind, AskExplainSelectionDecisionKind, AskTiming,
+    AskExplainCandidate, AskExplainFilterDecisionKind, AskExplainMode,
+    AskExplainScoreComponentStatus, AskExplainScoreKind, AskExplainSelectionDecisionKind,
+    AskTiming, CorpusHealthKind,
 };
 use serde_json::json;
 
@@ -190,6 +191,10 @@ fn map_ask_payload_preserves_explain_contract() {
                 "id": "c0",
                 "url": "https://docs.widget.dev/docs/en/discover-plugins",
                 "chunk_index": 2,
+                "raw_rerank_rank": 1,
+                "planned_full_doc_rank": 1,
+                "selected_context_rank": 1,
+                "insertion_mode": "top_chunk",
                 "retrieval_score": 0.7,
                 "rerank_score": 1.18,
                 "score_kind": "cosine",
@@ -256,7 +261,28 @@ fn map_ask_payload_preserves_explain_contract() {
         candidate.selection_decisions[0].kind,
         AskExplainSelectionDecisionKind::SelectedTopChunk
     );
+    assert_eq!(candidate.raw_rerank_rank, Some(1));
+    assert_eq!(candidate.selected_context_rank, Some(1));
     assert!(explain.llm_skipped);
+}
+
+#[test]
+fn ask_explain_candidate_deserializes_without_rank_fields() {
+    let value = serde_json::json!({
+        "id": "candidate-1",
+        "url": "https://docs.example.com/page",
+        "chunk_index": null,
+        "retrieval_score": 0.5,
+        "rerank_score": 0.5,
+        "score_kind": "cosine",
+        "score_components": [],
+        "filter_decisions": [],
+        "selection_decisions": [],
+        "snippet": "example"
+    });
+    let parsed: AskExplainCandidate = serde_json::from_value(value).unwrap();
+    assert_eq!(parsed.raw_rerank_rank, None);
+    assert_eq!(parsed.selected_context_rank, None);
 }
 
 #[test]
@@ -283,7 +309,13 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "top_domains": ["docs.example.com"],
             "authority_ratio": 0.75,
             "configured_authority_ratio": 0.25,
-            "product_authority_ratio": 0.75
+            "product_authority_ratio": 0.75,
+            "corpus_health": {
+                "kind": "healthy",
+                "reason": "retrieval produced selected context",
+                "selected_domain_count": 2,
+                "top_domain_count": 5
+            }
         },
         "timing_ms": {
             "retrieval": 1,
@@ -302,6 +334,9 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
     assert_eq!(diagnostics.full_docs_source, "adaptive");
     assert_eq!(diagnostics.configured_authority_ratio, 0.25);
     assert_eq!(diagnostics.product_authority_ratio, 0.75);
+    let health = diagnostics.corpus_health.expect("corpus health");
+    assert_eq!(health.kind, CorpusHealthKind::Healthy);
+    assert_eq!(health.selected_domain_count, 2);
 }
 
 #[test]

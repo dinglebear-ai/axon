@@ -36,31 +36,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         return Ok(serde_json::json!({
             "query": query,
             "answer": "",
-            "diagnostics": if diagnostics_enabled {
-                serde_json::json!({
-                    "candidate_pool": ctx.candidate_count,
-                    "reranked_pool": ctx.reranked_count,
-                    "chunks_selected": ctx.chunks_selected,
-                    "full_docs_selected": ctx.full_docs_selected,
-                    "supplemental_selected": ctx.supplemental_count,
-                    "context_chars": ctx.context.len(),
-                    "graph_entities": ctx.graph_entities_found,
-                    "graph_context_chars": ctx.graph_context_text.len(),
-                    "min_relevance_score": cfg.ask_min_relevance_score,
-                    "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
-                    "top_domains": ctx.top_domains,
-                    "authority_ratio": ctx.authoritative_ratio,
-                    "configured_authority_ratio": ctx.configured_authority_ratio,
-                    "product_authority_ratio": ctx.product_authority_ratio,
-                    "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
-                    "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
-                    "detected_complexity": ctx.detected_complexity,
-                    "resolved_full_docs": ctx.resolved_full_docs,
-                    "full_docs_source": ctx.full_docs_source,
-                })
-            } else {
-                serde_json::Value::Null
-            },
+            "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
             "explain": ctx.explain,
             "timing_ms": build_timing_json(
                 ctx.retrieval_elapsed_ms,
@@ -111,31 +87,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     Ok(serde_json::json!({
         "query": query,
         "answer": answer,
-        "diagnostics": if diagnostics_enabled {
-            serde_json::json!({
-                "candidate_pool": ctx.candidate_count,
-                "reranked_pool": ctx.reranked_count,
-                "chunks_selected": ctx.chunks_selected,
-                "full_docs_selected": ctx.full_docs_selected,
-                "supplemental_selected": ctx.supplemental_count,
-                "context_chars": ctx.context.len(),
-                "graph_entities": ctx.graph_entities_found,
-                "graph_context_chars": ctx.graph_context_text.len(),
-                "min_relevance_score": cfg.ask_min_relevance_score,
-                "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
-                "top_domains": ctx.top_domains,
-                "authority_ratio": ctx.authoritative_ratio,
-                "configured_authority_ratio": ctx.configured_authority_ratio,
-                "product_authority_ratio": ctx.product_authority_ratio,
-                "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
-                "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
-                "detected_complexity": ctx.detected_complexity,
-                "resolved_full_docs": ctx.resolved_full_docs,
-                "full_docs_source": ctx.full_docs_source,
-            })
-        } else {
-            serde_json::Value::Null
-        },
+        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
         "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
             ctx.retrieval_elapsed_ms,
@@ -146,6 +98,34 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             &timing,
         ),
     }))
+}
+
+fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serde_json::Value {
+    if !enabled {
+        return serde_json::Value::Null;
+    }
+    serde_json::json!({
+        "candidate_pool": ctx.candidate_count,
+        "reranked_pool": ctx.reranked_count,
+        "chunks_selected": ctx.chunks_selected,
+        "full_docs_selected": ctx.full_docs_selected,
+        "supplemental_selected": ctx.supplemental_count,
+        "context_chars": ctx.context.len(),
+        "graph_entities": ctx.graph_entities_found,
+        "graph_context_chars": ctx.graph_context_text.len(),
+        "min_relevance_score": cfg.ask_min_relevance_score,
+        "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
+        "top_domains": ctx.top_domains,
+        "authority_ratio": ctx.authoritative_ratio,
+        "configured_authority_ratio": ctx.configured_authority_ratio,
+        "product_authority_ratio": ctx.product_authority_ratio,
+        "corpus_health": ctx.corpus_health,
+        "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
+        "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
+        "detected_complexity": ctx.detected_complexity,
+        "resolved_full_docs": ctx.resolved_full_docs,
+        "full_docs_source": ctx.full_docs_source,
+    })
 }
 
 /// Back-compat: legacy 5-bucket shape always present; sub-stage fields populate

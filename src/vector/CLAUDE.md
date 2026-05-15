@@ -127,6 +127,20 @@ The ask reranker has two score-scale contracts:
 
 On RRF mode, Qdrant's fusion order remains the base ranking signal, then `score_and_filter_candidates` applies small lexical URL/chunk, docs-path, phrase, configured-authority, and docs-like URL product-token boosts before context selection. `AXON_ASK_MIN_RELEVANCE_SCORE` is still skipped on RRF because that threshold is calibrated to cosine `[0, 1]`, not rank-fusion output; the topical-overlap gate still applies and rejects generic-only matches when a query includes a salient product/library token. Diagnostics expose `authority_ratio` as the effective max of configured-authority and product-authority matches, plus `configured_authority_ratio` and `product_authority_ratio` separately. Run `axon evaluate --no-hybrid-search` to compare RRF against dense-only behavior on Named collections.
 
+### Retrieval Tuning Rule
+
+Do not tune retrieval from a single query. Before changing scoring, token policy,
+authority handling, or context selection, run the tracked retrieval fixture sweep.
+Classify every miss first:
+
+- ranking bug: relevant candidates exist but score/filter order is wrong
+- selection bug: relevant candidates rank well but do not enter context
+- corpus-health gap: expected source is not indexed or indexed too thinly
+- fixture mismatch: the fixture expectation does not match indexed content
+
+Hard-coded product/domain allowlists are not allowed in code. User-configured
+authoritative domains are allowed through config.
+
 The **adaptive full-doc fetch skip gate** (bd axon_rust-30y) elides `fetch_full_docs(...)` when the reranked top-K already covers >= `ask_fulldoc_skip_min_urls` unique URLs, >= `ask_fulldoc_skip_min_chars` chunk-text bytes, and every score satisfies the mode-specific floor above. The gate defaults to **disabled** because `ask` is normally a Gemini-backed one-shot synthesis path with a large context window, so recall is more valuable than minimizing context assembly. It can be enabled with `[ask.adaptive] fulldoc-skip-enabled = true` in `~/.axon/config.toml` after `axon evaluate` proves no quality regression on the target corpus. The decision is exposed in ask diagnostics as `full_doc_fetch_skipped: bool` and `full_doc_fetch_skip_reason: "ok_skip" | "disabled" | "insufficient_urls" | "insufficient_chars" | "low_top_scores" | "empty_top_k"`. The cosine `score_delta` knob is intentionally ignored on the RRF row because rank-fusion output is unitless — the rank-based gate uses P75 across the full reranked set instead.
 
 ### Collection Naming
