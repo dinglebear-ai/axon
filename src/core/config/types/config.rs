@@ -32,6 +32,12 @@ pub struct Config {
     /// (use the retrieve service ceiling).
     pub retrieve_max_points: Option<usize>,
 
+    /// Non-interactive 1-based candidate rank for `train --best`.
+    pub train_best_rank: Option<usize>,
+
+    /// Optional free-form note stored with `train` preference events.
+    pub train_notes: Option<String>,
+
     /// Maximum pages to crawl (0 = uncapped). Flag: `--max-pages`.
     pub max_pages: u32,
 
