@@ -71,6 +71,25 @@ EXCLUDED_GLOBS = [
     "benches/**",
 ]
 
+# Stem-based test file patterns (applied to the filename without extension).
+# Catches names that glob patterns miss due to fnmatch path separator semantics.
+_TEST_STEM_PATTERNS = [
+    "tests",          # tests.rs, tests.ts, …
+    "test",           # test.rs
+]
+
+def _stem_is_test(path: str) -> bool:
+    """Return True if the file's stem is or contains a test marker."""
+    stem = Path(path).stem.lower()
+    # Exact match (e.g. "tests", "test")
+    if stem in _TEST_STEM_PATTERNS:
+        return True
+    # Suffix match: foo_tests, foo_test, bar_migration_tests …
+    for pat in _TEST_STEM_PATTERNS:
+        if stem.endswith(f"_{pat}") or stem.startswith(f"{pat}_"):
+            return True
+    return False
+
 HUNK_RE = re.compile(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 FN_NAME_RE = re.compile(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)")
 
@@ -188,7 +207,9 @@ def check_allowlist_expiry(
 def is_excluded(path: str, allowlist: set[str]) -> bool:
     if path in allowlist:
         return True
-    return any(fnmatch.fnmatch(path, pattern) for pattern in EXCLUDED_GLOBS)
+    if any(fnmatch.fnmatch(path, pattern) for pattern in EXCLUDED_GLOBS):
+        return True
+    return _stem_is_test(path)
 
 
 def changed_files(base: str | None, head: str | None, staged: bool) -> list[str]:
