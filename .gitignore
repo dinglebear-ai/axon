@@ -26,6 +26,7 @@ config/data/
 *.db-wal
 .beads-credential-key
 .serena/
+.worktree/
 .worktrees/
 .full-review/
 .full-review-archive-*
