@@ -55,6 +55,30 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    if cfg.ask_explain {
+        println!("{}", primary("Ask Explain"));
+        println!("  {} {}", primary("Query:"), query);
+        println!(
+            "  {} reranked={} context_sources={} llm_skipped=true",
+            muted("Trace:"),
+            result
+                .explain
+                .as_ref()
+                .map(|e| e.candidates.len())
+                .unwrap_or(0),
+            result
+                .explain
+                .as_ref()
+                .map(|e| e.context.final_source_order.len())
+                .unwrap_or(0),
+        );
+        println!(
+            "  {} rerun with --json for the full explain trace",
+            muted("Hint:")
+        );
+        return Ok(());
+    }
+
     println!("{}", primary("Conversation"));
     println!("  {} {}", primary("You:"), query);
     println!("  {} {}", primary("Assistant:"), result.answer);
@@ -125,8 +149,9 @@ pub(crate) async fn ask_via_server(
     }
     payload.insert(
         "diagnostics".into(),
-        serde_json::Value::Bool(cfg.ask_diagnostics),
+        serde_json::Value::Bool(cfg.ask_diagnostics || cfg.ask_explain),
     );
+    payload.insert("explain".into(), serde_json::Value::Bool(cfg.ask_explain));
     payload.insert(
         "hybrid_search".into(),
         serde_json::Value::Bool(cfg.hybrid_search_enabled),

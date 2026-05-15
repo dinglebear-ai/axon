@@ -2,6 +2,19 @@
 
 use super::super::*;
 
+#[test]
+fn ask_explain_cli_sets_explain_and_diagnostics() {
+    let cfg = into_config(cli_with_services(&[
+        "ask",
+        "--explain",
+        "claude marketplace plugins",
+    ]))
+    .unwrap();
+
+    assert!(cfg.ask_explain);
+    assert!(cfg.ask_diagnostics);
+}
+
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]

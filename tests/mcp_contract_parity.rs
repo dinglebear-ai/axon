@@ -69,6 +69,25 @@ fn ask_request_accepts_graph_false_and_flags_graph_true_as_unsupported() {
 }
 
 #[test]
+fn ask_request_accepts_explain_flag() {
+    let raw = json!({
+        "action": "ask",
+        "query": "claude marketplace plugins",
+        "explain": true
+    })
+    .as_object()
+    .expect("object")
+    .clone();
+
+    let parsed = parse_axon_request(raw).expect("explain flag should parse");
+    if let AxonRequest::Ask(req) = parsed {
+        assert_eq!(req.explain, Some(true));
+    } else {
+        panic!("expected Ask request");
+    }
+}
+
+#[test]
 fn pagination_custom_values_pass_through() {
     let p = to_pagination(Some(42), Some(100), 10);
     assert_eq!(p.limit, 42);
@@ -273,6 +292,7 @@ fn ask_result_exposes_typed_answer() {
         query: "question".to_string(),
         answer: "42".to_string(),
         diagnostics: None,
+        explain: None,
         timing_ms: AskTiming {
             retrieval: 0,
             context_build: 0,

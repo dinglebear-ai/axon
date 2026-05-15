@@ -27,6 +27,7 @@ pub(super) struct DispatchOutput {
     pub command: CommandKind,
     pub positional: Vec<String>,
     pub ask_diagnostics: bool,
+    pub ask_explain: bool,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -54,6 +55,7 @@ impl DispatchOutput {
             command: CommandKind::Doctor, // overwritten by every match arm
             positional: Vec::new(),
             ask_diagnostics: false,
+            ask_explain: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -143,7 +145,8 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             );
         }
         CliCommand::Ask(args) => {
-            out.ask_diagnostics = args.diagnostics;
+            out.ask_explain = args.explain;
+            out.ask_diagnostics = args.diagnostics || args.explain;
             set_simple(&mut out, CommandKind::Ask, args.value);
         }
         CliCommand::Evaluate(args) => {

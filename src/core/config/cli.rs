@@ -258,6 +258,8 @@ pub(super) struct TextArg {
 pub(super) struct AskArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) diagnostics: bool,
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) explain: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }

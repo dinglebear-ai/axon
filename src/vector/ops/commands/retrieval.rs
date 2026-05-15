@@ -8,7 +8,14 @@ use spider::url::Url;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
-#[derive(Clone)]
+mod trace;
+
+pub(crate) use trace::{
+    CandidateRankingTrace, score_and_filter_candidates, score_and_filter_candidates_with_trace,
+    score_rrf_candidates_with_trace,
+};
+
+#[derive(Clone, Debug)]
 pub(crate) struct RetrievedCandidate {
     pub(crate) candidate: ranking::AskCandidate,
     pub(crate) chunk_index: Option<i64>,
@@ -185,47 +192,6 @@ pub(crate) fn merge_candidates(
         }
     }
     deduped
-}
-
-pub(crate) fn score_and_filter_candidates(
-    candidates: &[RetrievedCandidate],
-    query_tokens: &[String],
-    policy: &CandidateScorePolicy<'_>,
-) -> Vec<RetrievedCandidate> {
-    let raw_candidates = candidates
-        .iter()
-        .map(|candidate| &candidate.candidate)
-        .collect::<Vec<_>>();
-    let scored = ranking::score_ask_candidate_refs(
-        &raw_candidates,
-        query_tokens,
-        policy.authoritative_domains,
-        policy.authoritative_boost,
-    );
-
-    let mut scored = scored
-        .into_iter()
-        .filter(|(idx, score)| {
-            policy
-                .min_relevance_score
-                .is_none_or(|min_score| *score >= min_score)
-                && (!policy.require_topical_overlap
-                    || candidate_has_topical_overlap(raw_candidates[*idx], query_tokens))
-        })
-        .map(|(idx, score)| {
-            let mut candidate = candidates[idx].clone();
-            candidate.candidate.rerank_score = score
-                + query_product_authority_boost(&candidate.candidate.url, query_tokens, policy);
-            candidate
-        })
-        .collect::<Vec<_>>();
-    scored.sort_by(|a, b| {
-        b.candidate
-            .rerank_score
-            .partial_cmp(&a.candidate.rerank_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    scored
 }
 
 pub(crate) fn query_allows_low_signal(query_tokens: &[String], raw_query: &str) -> bool {

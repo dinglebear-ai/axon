@@ -1,14 +1,15 @@
 use super::super::timing::{AskTiming, AskTimingSlot};
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_warn};
+use crate::services::types::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::vector::ops::commands::retrieval::{
-    CandidateBuildPolicy, CandidateScorePolicy, RetrievedCandidate, VectorDispatchContext,
-    authoritative_ratio, build_candidates_from_hits, candidate_has_topical_overlap,
-    candidates_only, dispatch_vector_search_with_diagnostics, embed_retrieval_inputs,
-    merge_candidates, query_allows_low_signal, score_and_filter_candidates, top_domains,
+    CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
+    VectorDispatchContext, authoritative_ratio, build_candidates_from_hits,
+    candidate_has_topical_overlap, candidates_only, dispatch_vector_search_with_diagnostics,
+    embed_retrieval_inputs, merge_candidates, query_allows_low_signal, score_and_filter_candidates,
+    score_and_filter_candidates_with_trace, score_rrf_candidates_with_trace, top_domains,
     vector_mode_metadata,
 };
-#[cfg(test)]
 use crate::vector::ops::tei::qdrant_store::VectorMode;
 use crate::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
@@ -22,6 +23,8 @@ pub(super) struct AskRetrieval {
     pub(super) top_domains: Vec<String>,
     pub(super) authoritative_ratio: f64,
     pub(super) min_supplemental_score: Option<f64>,
+    pub(super) explain_retrieval: Option<AskExplainRetrieval>,
+    pub(super) candidate_traces: Vec<CandidateRankingTrace>,
 }
 
 pub(super) struct RerankParams<'a> {
@@ -65,6 +68,26 @@ pub(super) fn apply_mode_aware_rerank(
         require_topical_overlap: true,
     };
     score_and_filter_candidates(candidates, query_tokens, &score_policy)
+}
+
+pub(super) fn apply_mode_aware_rerank_with_trace(
+    is_rrf: bool,
+    candidates: &[RetrievedCandidate],
+    query_tokens: &[String],
+    params: &RerankParams<'_>,
+) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
+    if is_rrf {
+        return score_rrf_candidates_with_trace(candidates, query_tokens);
+    }
+
+    let score_policy = CandidateScorePolicy {
+        authoritative_domains: params.authoritative_domains,
+        authoritative_boost: params.authoritative_boost,
+        product_authority_boost: 0.0,
+        min_relevance_score: Some(params.min_relevance_score),
+        require_topical_overlap: true,
+    };
+    score_and_filter_candidates_with_trace(candidates, query_tokens, &score_policy)
 }
 
 #[tracing::instrument(
@@ -119,7 +142,8 @@ pub(super) async fn retrieve_ask_candidates(
         min_relevance_score: ask_tuning.ask_min_relevance_score,
     };
     let rerank_started = std::time::Instant::now();
-    let reranked_candidates = apply_mode_aware_rerank(
+    let (reranked_candidates, candidate_traces) = rerank_with_optional_trace(
+        cfg.ask_explain,
         rrf_mode,
         &retrieved_candidates,
         query_tokens,
@@ -167,7 +191,50 @@ pub(super) async fn retrieve_ask_candidates(
                     + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS,
             )
         },
+        explain_retrieval: cfg.ask_explain.then(|| AskExplainRetrieval {
+            query: query.to_string(),
+            keyword_query: query_forms.keyword_query.clone(),
+            dual_search: query_forms.use_dual,
+            collection: cfg.collection.clone(),
+            candidate_limit: ask_tuning.ask_candidate_limit,
+            hybrid_search_enabled: cfg.hybrid_search_enabled,
+            hybrid_candidate_limit: ask_tuning.ask_hybrid_candidates,
+            score_kind: if rrf_mode {
+                AskExplainScoreKind::Rrf
+            } else if matches!(mode.vector_mode, VectorMode::Named) {
+                AskExplainScoreKind::NamedDense
+            } else {
+                AskExplainScoreKind::Cosine
+            },
+            vector_mode: format!("{:?}", mode.vector_mode).to_ascii_lowercase(),
+            sparse_query_status: mode
+                .sparse_was_empty
+                .then(|| "empty_sparse_fallback".to_string()),
+        }),
+        candidate_traces,
     })
+}
+
+fn rerank_with_optional_trace(
+    ask_explain: bool,
+    rrf_mode: bool,
+    retrieved_candidates: &[RetrievedCandidate],
+    query_tokens: &[String],
+    rerank_params: &RerankParams<'_>,
+) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
+    if ask_explain {
+        apply_mode_aware_rerank_with_trace(
+            rrf_mode,
+            retrieved_candidates,
+            query_tokens,
+            rerank_params,
+        )
+    } else {
+        (
+            apply_mode_aware_rerank(rrf_mode, retrieved_candidates, query_tokens, rerank_params),
+            Vec::new(),
+        )
+    }
 }
 
 async fn embed_ask_query_forms(

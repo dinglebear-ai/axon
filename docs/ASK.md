@@ -15,3 +15,10 @@ Benchmarking:
 - Perf notes: `docs/perf/README.md`
 - Quality set: `docs/eval/README.md`
 - Parity report: `docs/perf/quality-parity-2026-05-07.md`
+
+Explain mode:
+
+- `axon ask --explain --json "<question>"` runs retrieval, reranking, and context assembly, then skips Gemini synthesis.
+- The response includes `explain.retrieval`, per-candidate `score_components`, `filter_decisions`, `selection_decisions`, and `explain.context.final_source_order`.
+- Use `--diagnostics` for aggregate counters; use `--explain` when debugging why a specific source ranked, survived filtering, or entered/left the prompt context.
+- Score scale is mode-specific: cosine/dense scores can be compared to `ask.min-relevance-score`; RRF scores are rank-fusion values and mark additive rerank boosts as skipped.

@@ -22,16 +22,56 @@ pub(super) fn validate_ask_llm_config(cfg: &Config) -> anyhow::Result<()> {
 
 pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json::Value> {
     let ask_started = std::time::Instant::now();
-    let mut timing = AskTiming::new(cfg.ask_diagnostics, ask_started);
+    let diagnostics_enabled = cfg.ask_diagnostics || cfg.ask_explain;
+    let mut timing = AskTiming::new(diagnostics_enabled, ask_started);
 
     log_info(&format!(
         "ask query_len={} collection={}",
         query.len(),
         cfg.collection
     ));
-    validate_ask_llm_config(cfg)?;
-
     let ctx = build_ask_context(cfg, query, &mut timing).await?;
+    if cfg.ask_explain {
+        let total_elapsed_ms = ask_started.elapsed().as_millis();
+        return Ok(serde_json::json!({
+            "query": query,
+            "answer": "",
+            "diagnostics": if diagnostics_enabled {
+                serde_json::json!({
+                    "candidate_pool": ctx.candidate_count,
+                    "reranked_pool": ctx.reranked_count,
+                    "chunks_selected": ctx.chunks_selected,
+                    "full_docs_selected": ctx.full_docs_selected,
+                    "supplemental_selected": ctx.supplemental_count,
+                    "context_chars": ctx.context.len(),
+                    "graph_entities": ctx.graph_entities_found,
+                    "graph_context_chars": ctx.graph_context_text.len(),
+                    "min_relevance_score": cfg.ask_min_relevance_score,
+                    "doc_fetch_concurrency": cfg.ask_doc_fetch_concurrency,
+                    "top_domains": ctx.top_domains,
+                    "authority_ratio": ctx.authoritative_ratio,
+                    "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
+                    "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
+                    "detected_complexity": ctx.detected_complexity,
+                    "resolved_full_docs": ctx.resolved_full_docs,
+                    "full_docs_source": ctx.full_docs_source,
+                })
+            } else {
+                serde_json::Value::Null
+            },
+            "explain": ctx.explain,
+            "timing_ms": build_timing_json(
+                ctx.retrieval_elapsed_ms,
+                ctx.context_elapsed_ms,
+                ctx.graph_elapsed_ms,
+                0,
+                total_elapsed_ms,
+                &timing,
+            ),
+        }));
+    }
+
+    validate_ask_llm_config(cfg)?;
     let llm = output::ask_llm_answer(cfg, query, &ctx.context)
         .await
         .map_err(|e| anyhow::anyhow!("LLM answer generation failed: {e}"))?;
@@ -69,7 +109,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     Ok(serde_json::json!({
         "query": query,
         "answer": answer,
-        "diagnostics": if cfg.ask_diagnostics {
+        "diagnostics": if diagnostics_enabled {
             serde_json::json!({
                 "candidate_pool": ctx.candidate_count,
                 "reranked_pool": ctx.reranked_count,
@@ -92,6 +132,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         } else {
             serde_json::Value::Null
         },
+        "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
             ctx.retrieval_elapsed_ms,
             ctx.context_elapsed_ms,

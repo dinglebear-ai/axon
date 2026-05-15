@@ -188,6 +188,7 @@ fn populate_services_and_ask_basics(
         .map(|raw| parse_origin_allowlist(&raw))
         .unwrap_or_default();
     cfg.ask_diagnostics = inputs.dispatched.ask_diagnostics;
+    cfg.ask_explain = inputs.dispatched.ask_explain;
     cfg.ask_graph = false;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;

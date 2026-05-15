@@ -443,6 +443,135 @@ pub struct AskDiagnostics {
     pub authority_ratio: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainMode {
+    ExplainOnly,
+    ExplainWithAnswer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainScoreKind {
+    Cosine,
+    Rrf,
+    NamedDense,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainScoreComponentStatus {
+    Applied,
+    Skipped,
+    NotApplicable,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainScoreComponent {
+    pub name: String,
+    pub value: f64,
+    pub status: AskExplainScoreComponentStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainRetrieval {
+    pub query: String,
+    pub keyword_query: String,
+    pub dual_search: bool,
+    pub collection: String,
+    pub candidate_limit: usize,
+    pub hybrid_search_enabled: bool,
+    pub hybrid_candidate_limit: usize,
+    pub score_kind: AskExplainScoreKind,
+    pub vector_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse_query_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainFilterDecisionKind {
+    Kept,
+    DroppedLowSignal,
+    DroppedMinRelevance,
+    DroppedTopicalOverlap,
+    DroppedDuplicate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainFilterDecision {
+    pub kind: AskExplainFilterDecisionKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainSelectionDecisionKind {
+    SelectedTopChunk,
+    PlannedFullDoc,
+    InsertedFullDoc,
+    SkippedPlannedFullDoc,
+    SkippedFullDocFetchSkipped,
+    SelectedSupplemental,
+    SkippedBudget,
+    NotSelected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainSelectionDecision {
+    pub kind: AskExplainSelectionDecisionKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainCandidate {
+    pub id: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_index: Option<i64>,
+    pub retrieval_score: f64,
+    pub rerank_score: f64,
+    pub score_kind: AskExplainScoreKind,
+    pub score_components: Vec<AskExplainScoreComponent>,
+    pub filter_decisions: Vec<AskExplainFilterDecision>,
+    pub selection_decisions: Vec<AskExplainSelectionDecision>,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainContextSource {
+    pub source_id: String,
+    pub url: String,
+    pub tier: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainContext {
+    pub planned_full_doc_urls: Vec<String>,
+    pub full_doc_fetch_skipped: bool,
+    pub full_doc_fetch_skip_reason: String,
+    pub full_doc_fetch_mode: String,
+    pub final_source_order: Vec<AskExplainContextSource>,
+    pub context_char_budget: usize,
+    pub context_chars_used: usize,
+    pub truncated_by_budget: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AskExplainTrace {
+    pub mode: AskExplainMode,
+    pub retrieval: AskExplainRetrieval,
+    pub candidates: Vec<AskExplainCandidate>,
+    pub context: AskExplainContext,
+    pub candidate_trace_limit: usize,
+    pub candidate_trace_truncated: bool,
+    pub llm_skipped: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AskTiming {
     pub retrieval: u128,
@@ -480,6 +609,8 @@ pub struct AskResult {
     pub query: String,
     pub answer: String,
     pub diagnostics: Option<AskDiagnostics>,
+    #[serde(default)]
+    pub explain: Option<AskExplainTrace>,
     pub timing_ms: AskTiming,
 }
 

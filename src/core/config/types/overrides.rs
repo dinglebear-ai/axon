@@ -68,6 +68,9 @@ pub struct ConfigOverrides {
     /// Override `Config::ask_diagnostics`.
     pub ask_diagnostics: Option<bool>,
 
+    /// Override `Config::ask_explain`.
+    pub ask_explain: Option<bool>,
+
     /// Override `Config::viewport_width`.
     pub viewport_width: Option<u32>,
 
@@ -172,6 +175,12 @@ impl Config {
         }
         if let Some(v) = overrides.ask_diagnostics {
             cfg.ask_diagnostics = v;
+        }
+        if let Some(v) = overrides.ask_explain {
+            cfg.ask_explain = v;
+            if v {
+                cfg.ask_diagnostics = true;
+            }
         }
         if let Some(v) = overrides.viewport_width {
             cfg.viewport_width = v;

@@ -20,6 +20,12 @@ fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
     if let Some(d) = req.diagnostics {
         req_cfg.ask_diagnostics = d;
     }
+    if let Some(explain) = req.explain {
+        req_cfg.ask_explain = explain;
+        if explain {
+            req_cfg.ask_diagnostics = true;
+        }
+    }
     if let Some(h) = req.hybrid_search {
         req_cfg.hybrid_search_enabled = h;
     }

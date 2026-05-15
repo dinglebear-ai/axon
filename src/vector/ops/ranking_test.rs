@@ -89,7 +89,7 @@ fn rerank_ask_candidates_returns_empty_for_empty_input() {
 
 #[test]
 fn rerank_ask_candidates_passes_through_when_no_query_tokens() {
-    let candidates = vec![
+    let candidates = [
         make_candidate(0.9, "https://example.com/a", "/a", "some text"),
         make_candidate(0.5, "https://example.com/b", "/b", "other text"),
     ];
@@ -102,7 +102,7 @@ fn rerank_ask_candidates_passes_through_when_no_query_tokens() {
 #[test]
 fn rerank_ask_candidates_boosts_url_token_matches() {
     // Both start at the same base score; only candidate A has "async" in URL.
-    let candidates = vec![
+    let candidates = [
         make_candidate(
             0.7,
             "https://docs.rs/async-std/",
@@ -130,7 +130,7 @@ fn rerank_ask_candidates_boosts_url_token_matches() {
 
 #[test]
 fn rerank_ask_candidates_applies_docs_path_boost() {
-    let candidates = vec![
+    let candidates = [
         make_candidate(
             0.5,
             "https://example.com/blog/post",
@@ -236,6 +236,45 @@ fn rerank_ask_candidates_applies_authoritative_domain_boost() {
         result[0].rerank_score > result[1].rerank_score,
         "authoritative-domain candidate should rank above non-authoritative candidate"
     );
+}
+
+#[test]
+fn score_breakdown_matches_normal_rerank_score() {
+    let candidates = [
+        make_candidate(
+            0.62,
+            "https://code.claude.com/docs/en/plugins",
+            "/docs/en/plugins",
+            "Claude Code plugins marketplace official docs",
+        ),
+        make_candidate(
+            0.59,
+            "https://docs.openclaw.ai/cli/plugins",
+            "/cli/plugins",
+            "OpenClaw plugin marketplace reference",
+        ),
+    ];
+    let query_tokens = tokenize_query("claude marketplace plugins");
+    let refs = candidates.iter().collect::<Vec<_>>();
+
+    let normal = score_ask_candidate_refs(&refs, &query_tokens, &["code.claude.com".into()], 0.12);
+    let explained =
+        score_ask_candidate_ref_breakdowns(&refs, &query_tokens, &["code.claude.com".into()], 0.12);
+
+    assert_eq!(normal.len(), explained.len());
+    for ((normal_idx, normal_score), (explained_idx, breakdown)) in
+        normal.iter().zip(explained.iter())
+    {
+        assert_eq!(normal_idx, explained_idx);
+        assert!((normal_score - breakdown.rerank_score).abs() < 1e-12);
+        let component_sum = breakdown.retrieval_score
+            + breakdown.lexical_url_token_boost
+            + breakdown.lexical_chunk_token_boost
+            + breakdown.docs_path_boost
+            + breakdown.authority_boost
+            + breakdown.phrase_match_boost;
+        assert!((component_sum - breakdown.rerank_score).abs() < 1e-12);
+    }
 }
 
 // ── get_meaningful_snippet ────────────────────────────────────────────────────

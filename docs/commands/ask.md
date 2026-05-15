@@ -40,6 +40,7 @@ All global flags apply. Key flags:
 | `--query <text>` | — | Question text (alternative to positional argument). |
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
 | `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
+| `--explain` | `false` | Emit a per-candidate ranking/context trace. Implies diagnostics and skips LLM synthesis; use with `--json` for the full payload. |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.
@@ -61,6 +62,9 @@ axon ask "list all indexed rust crates" --collection rust-libs
 # Debug: show retrieved chunks and scores
 axon ask "qdrant HNSW parameters" --diagnostics
 
+# Explain ranking/context decisions without calling the LLM
+axon ask "claude marketplace plugins" --explain --json
+
 # JSON output
 axon ask "what is the max crawl depth?" --json
 
@@ -80,6 +84,55 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
 8. Call Gemini headless with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
+
+## Explain Trace
+
+Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
+
+Compact example:
+
+```json
+{
+  "query": "claude marketplace plugins",
+  "answer": "",
+  "diagnostics": { "candidate_pool": 15, "reranked_pool": 12 },
+  "explain": {
+    "mode": "explain_only",
+    "retrieval": {
+      "score_kind": "cosine",
+      "vector_mode": "unnamed",
+      "hybrid_search_enabled": true
+    },
+    "candidates": [
+      {
+        "id": "candidate-1",
+        "url": "https://code.claude.com/docs/en/plugins",
+        "retrieval_score": 0.17,
+        "rerank_score": 0.62,
+        "score_components": [
+          { "name": "retrieval_score", "value": 0.17, "status": "applied" },
+          { "name": "authority_boost", "value": 0.35, "status": "applied" }
+        ],
+        "filter_decisions": [{ "kind": "kept" }],
+        "selection_decisions": [{ "kind": "selected_top_chunk" }]
+      }
+    ],
+    "context": {
+      "planned_full_doc_urls": [],
+      "full_doc_fetch_skipped": true,
+      "full_doc_fetch_mode": "cosine",
+      "final_source_order": [
+        { "source_id": "S1", "url": "https://code.claude.com/docs/en/plugins", "tier": "top_chunk" }
+      ],
+      "truncated_by_budget": false
+    },
+    "llm_skipped": true
+  },
+  "timing_ms": { "retrieval": 21, "context_build": 3, "graph": 0, "llm": 0, "total": 24 }
+}
+```
+
+`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores and may apply `ask.min-relevance-score`; RRF paths use rank-fusion scores, mark additive rerank components as `skipped`, and do not apply the cosine threshold.
 
 ## RAG Tuning
 

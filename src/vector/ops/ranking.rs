@@ -27,6 +27,31 @@ pub struct AskCandidate {
     pub rerank_score: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AskScoreBreakdown {
+    pub retrieval_score: f64,
+    pub lexical_url_token_boost: f64,
+    pub lexical_chunk_token_boost: f64,
+    pub docs_path_boost: f64,
+    pub authority_boost: f64,
+    pub phrase_match_boost: f64,
+    pub rerank_score: f64,
+}
+
+impl AskScoreBreakdown {
+    fn retrieval_only(score: f64) -> Self {
+        Self {
+            retrieval_score: score,
+            lexical_url_token_boost: 0.0,
+            lexical_chunk_token_boost: 0.0,
+            docs_path_boost: 0.0,
+            authority_boost: 0.0,
+            phrase_match_boost: 0.0,
+            rerank_score: score,
+        }
+    }
+}
+
 pub fn tokenize_query(text: &str) -> Vec<String> {
     text.to_ascii_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -107,6 +132,29 @@ pub fn score_ask_candidate_refs(
     )
 }
 
+/// Score borrowed candidates with a component breakdown from the same scoring
+/// path as `score_ask_candidate_refs`.
+pub fn score_ask_candidate_ref_breakdowns(
+    candidates: &[&AskCandidate],
+    query_tokens: &[String],
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> Vec<(usize, AskScoreBreakdown)> {
+    if query_tokens.is_empty() {
+        return candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, AskScoreBreakdown::retrieval_only(c.score)))
+            .collect();
+    }
+    compute_scored_breakdowns(
+        candidates.iter().enumerate().map(|(i, c)| (i, *c)),
+        query_tokens,
+        authoritative_domains,
+        authoritative_boost,
+    )
+}
+
 /// Rerank candidates in place and return sorted. Takes ownership to avoid cloning
 /// all candidate structs (each contains ~2KB chunk_text + HashSets).
 ///
@@ -150,6 +198,23 @@ fn compute_scored_indices<'a>(
     authoritative_domains: &[String],
     authoritative_boost: f64,
 ) -> Vec<(usize, f64)> {
+    compute_scored_breakdowns(
+        candidates,
+        query_tokens,
+        authoritative_domains,
+        authoritative_boost,
+    )
+    .into_iter()
+    .map(|(idx, breakdown)| (idx, breakdown.rerank_score))
+    .collect()
+}
+
+fn compute_scored_breakdowns<'a>(
+    candidates: impl IntoIterator<Item = (usize, &'a AskCandidate)>,
+    query_tokens: &[String],
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> Vec<(usize, AskScoreBreakdown)> {
     // Reconstruct joined phrase for verbatim phrase-match boost.
     // Tokens are already lowercased so this matches case-insensitively.
     let phrase = query_tokens.join(" ");
@@ -162,19 +227,25 @@ fn compute_scored_indices<'a>(
         .filter(|d| !d.is_empty())
         .collect();
 
-    let mut scored: Vec<(usize, f64)> = candidates
+    let mut scored: Vec<(usize, AskScoreBreakdown)> = candidates
         .into_iter()
         .map(|(i, candidate)| {
-            let mut lexical_boost = 0.0f64;
+            let mut lexical_url_token_boost = 0.0f64;
+            let mut lexical_chunk_token_boost = 0.0f64;
             for token in query_tokens {
                 if candidate.url_tokens.contains(token) {
-                    lexical_boost += LEXICAL_URL_TOKEN_BOOST;
+                    lexical_url_token_boost += LEXICAL_URL_TOKEN_BOOST;
                 }
                 if candidate.chunk_tokens.contains(token) {
-                    lexical_boost += LEXICAL_CHUNK_TOKEN_BOOST;
+                    lexical_chunk_token_boost += LEXICAL_CHUNK_TOKEN_BOOST;
                 }
             }
-            lexical_boost = lexical_boost.min(LEXICAL_BOOST_CAP);
+            let lexical_boost = lexical_url_token_boost + lexical_chunk_token_boost;
+            if lexical_boost > LEXICAL_BOOST_CAP {
+                let scale = LEXICAL_BOOST_CAP / lexical_boost;
+                lexical_url_token_boost *= scale;
+                lexical_chunk_token_boost *= scale;
+            }
 
             let docs_boost = if candidate.path.contains("/docs/")
                 || candidate.path.contains("/guides/")
@@ -202,13 +273,32 @@ fn compute_scored_indices<'a>(
                     0.0
                 };
 
-            let rerank_score =
-                candidate.score + lexical_boost + docs_boost + phrase_boost + authority_boost;
-            (i, rerank_score)
+            let rerank_score = candidate.score
+                + lexical_url_token_boost
+                + lexical_chunk_token_boost
+                + docs_boost
+                + phrase_boost
+                + authority_boost;
+            (
+                i,
+                AskScoreBreakdown {
+                    retrieval_score: candidate.score,
+                    lexical_url_token_boost,
+                    lexical_chunk_token_boost,
+                    docs_path_boost: docs_boost,
+                    authority_boost,
+                    phrase_match_boost: phrase_boost,
+                    rerank_score,
+                },
+            )
         })
         .collect();
 
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.1.rerank_score
+            .partial_cmp(&a.1.rerank_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored
 }
 

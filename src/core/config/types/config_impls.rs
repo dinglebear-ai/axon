@@ -89,6 +89,7 @@ impl Default for Config {
             tavily_api_key: String::new(),
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
+            ask_explain: false,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 120_000,
@@ -314,6 +315,7 @@ impl fmt::Debug for Config {
             .field("tavily_api_key", &"[REDACTED]")
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)
+            .field("ask_explain", &self.ask_explain)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)

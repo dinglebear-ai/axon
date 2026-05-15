@@ -222,6 +222,7 @@ async fn ask_via_server_forwards_ask_overrides() {
             "query": "what is rust?",
             "collection": "test_col",
             "diagnostics": false,
+            "explain": false,
             "hybrid_search": true,
             "ask_chunk_limit": 7,
             "ask_full_docs": 2,
@@ -254,6 +255,32 @@ async fn ask_via_server_forwards_ask_overrides() {
     cfg.ask_min_citations_nontrivial = 3;
     cfg.ask_authoritative_domains = vec!["docs.rs".to_string()];
     cfg.ask_authoritative_boost = 0.2;
+
+    let url = reqwest::Url::parse(&server.base_url()).unwrap();
+    let result = ask_via_server(&cfg, &url, "what is rust?").await.unwrap();
+
+    mock.assert();
+    assert_eq!(result.answer, "hello");
+}
+
+#[tokio::test]
+#[serial]
+async fn ask_via_server_forwards_explain_and_implies_diagnostics() {
+    let _lo = LoopbackGuard::new();
+    let _t = EnvGuard::set(TOKEN_ENV, None);
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/ask").is_true(|req| {
+            let body: serde_json::Value = serde_json::from_slice(req.body().as_ref()).unwrap();
+            body["explain"] == true && body["diagnostics"] == true
+        });
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(valid_ask_result_json());
+    });
+
+    let mut cfg = test_config();
+    cfg.ask_explain = true;
 
     let url = reqwest::Url::parse(&server.base_url()).unwrap();
     let result = ask_via_server(&cfg, &url, "what is rust?").await.unwrap();
