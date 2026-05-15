@@ -55,6 +55,7 @@ fn create_required_axon_dirs(home: &Path) {
     let axon = home.join(".axon");
     for child in [
         "output",
+        "logs",
         "artifacts",
         "screenshots",
         "chrome-diagnostics",
@@ -70,7 +71,6 @@ fn assert_setup_check_did_not_create_runtime_dirs(home: &Path) {
     let axon = home.join(".axon");
     for child in [
         "output",
-        "logs",
         "artifacts",
         "screenshots",
         "chrome-diagnostics",
