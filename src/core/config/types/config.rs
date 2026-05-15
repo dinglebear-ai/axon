@@ -270,6 +270,9 @@ pub struct Config {
     /// Local ask session name for saved turns and follow-up context. Flag: `ask --session`.
     pub ask_session: Option<String>,
 
+    /// Rendered local ask session history injected as a citable source for follow-up synthesis.
+    pub ask_follow_up_context: Option<String>,
+
     /// Clear the selected local ask session before running. Flag: `ask --reset-session`.
     pub ask_reset_session: bool,
 

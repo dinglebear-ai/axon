@@ -95,6 +95,7 @@ impl Default for Config {
             ask_stream: false,
             ask_follow_up: false,
             ask_session: None,
+            ask_follow_up_context: None,
             ask_reset_session: false,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
@@ -327,6 +328,10 @@ impl fmt::Debug for Config {
             .field("ask_stream", &self.ask_stream)
             .field("ask_follow_up", &self.ask_follow_up)
             .field("ask_session", &self.ask_session)
+            .field(
+                "ask_follow_up_context",
+                &self.ask_follow_up_context.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("ask_reset_session", &self.ask_reset_session)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)

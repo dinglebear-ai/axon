@@ -194,6 +194,7 @@ fn populate_services_and_ask_basics(
     cfg.ask_stream = inputs.dispatched.ask_stream;
     cfg.ask_follow_up = inputs.dispatched.ask_follow_up;
     cfg.ask_session = inputs.dispatched.ask_session.clone();
+    cfg.ask_follow_up_context = None;
     cfg.ask_reset_session = inputs.dispatched.ask_reset_session;
     cfg.ask_graph = false;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;

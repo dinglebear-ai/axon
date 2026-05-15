@@ -79,8 +79,17 @@ fn context_trace_marks_planned_suppression_and_budget_skips() {
 
 #[test]
 fn context_trace_final_source_order_matches_prompt_order() {
-    let context = "Sources:\n## Top Chunk [S1]: https://b.test/docs\n\nbody\n\n---\n\n## Source Document [S2]: https://a.test/docs\n\nbody";
-    let order = final_source_order_from_context(context);
+    let entries = vec![
+        (
+            0.8,
+            "## Top Chunk [S9]: https://b.test/docs\n\nbody".to_string(),
+        ),
+        (
+            0.7,
+            "## Source Document [S2]: https://a.test/docs\n\nbody".to_string(),
+        ),
+    ];
+    let order = final_source_order_from_entries(&entries);
 
     assert_eq!(order.len(), 2);
     assert_eq!(order[0].source_id, "S1");

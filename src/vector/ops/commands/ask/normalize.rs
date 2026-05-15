@@ -214,6 +214,57 @@ fn format_insufficient_evidence(
     )
 }
 
+fn format_validation_failure(
+    body: &str,
+    source_map: &BTreeMap<usize, String>,
+    cited: Option<&BTreeSet<usize>>,
+    reasons: &[String],
+) -> String {
+    let why_lines = reasons
+        .iter()
+        .map(|reason| format!("- {reason}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cited_filter = cited.filter(|ids| !ids.is_empty());
+    let mut seen_sources: HashSet<String> = HashSet::new();
+    let source_lines = match cited_filter {
+        Some(ids) => ids
+            .iter()
+            .filter_map(|id| {
+                source_map.get(id).and_then(|source| {
+                    if seen_sources.insert(source.clone()) {
+                        Some(format!("- [S{id}] {source}"))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect::<Vec<_>>(),
+        None => source_map
+            .iter()
+            .take(8)
+            .filter_map(|(id, source)| {
+                if seen_sources.insert(source.clone()) {
+                    Some(format!("- [S{id}] {source}"))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>(),
+    };
+    let sources_block = if source_lines.is_empty() {
+        "- No cited source IDs mapped to retrieved context.".to_string()
+    } else {
+        source_lines.join("\n")
+    };
+    format!(
+        "{}\n\n## Citation Validation Failed\n{}\n\n## Retrieved Sources\n{}",
+        body.trim_end(),
+        why_lines,
+        sources_block
+    )
+}
+
 pub(crate) fn normalize_ask_answer(
     cfg: &Config,
     query: &str,
@@ -228,7 +279,10 @@ pub(crate) fn normalize_ask_answer(
     // Gate 1: no citations at all
     if cited.is_empty() {
         insufficiency_reasons.push("Answer contained no source citations.".to_string());
-        return format_insufficient_evidence(&source_map, None, &insufficiency_reasons);
+        if source_map.is_empty() {
+            return format_insufficient_evidence(&source_map, None, &insufficiency_reasons);
+        }
+        return format_validation_failure(&body, &source_map, None, &insufficiency_reasons);
     }
 
     // Gate 2: LLM self-flagged insufficient evidence
@@ -260,11 +314,22 @@ pub(crate) fn normalize_ask_answer(
     }
     if source_lines.is_empty() {
         insufficiency_reasons.push("Citations did not map to retrieved sources.".to_string());
-        return format_insufficient_evidence(&source_map, Some(&cited), &insufficiency_reasons);
+        if source_map.is_empty() {
+            return format_insufficient_evidence(&source_map, Some(&cited), &insufficiency_reasons);
+        }
+        return format_validation_failure(&body, &source_map, Some(&cited), &insufficiency_reasons);
     }
 
     // Gate 4: non-trivial answers need minimum unique citations
-    let min_citations = if is_non_trivial(query, &body) {
+    let cites_follow_up_history = cfg.ask_follow_up
+        && cited.iter().any(|id| {
+            source_map
+                .get(id)
+                .is_some_and(|source| source.starts_with("axon ask session:"))
+        });
+    let min_citations = if cites_follow_up_history {
+        1
+    } else if is_non_trivial(query, &body) {
         cfg.ask_min_citations_nontrivial
     } else {
         1
@@ -277,7 +342,7 @@ pub(crate) fn normalize_ask_answer(
     }
 
     if !insufficiency_reasons.is_empty() {
-        return format_insufficient_evidence(&source_map, Some(&cited), &insufficiency_reasons);
+        return format_validation_failure(&body, &source_map, Some(&cited), &insufficiency_reasons);
     }
 
     let body = remap_source_citations(&body, &display_id_by_original_id);
