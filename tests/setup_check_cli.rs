@@ -55,7 +55,6 @@ fn create_required_axon_dirs(home: &Path) {
     let axon = home.join(".axon");
     for child in [
         "output",
-        "logs",
         "artifacts",
         "screenshots",
         "chrome-diagnostics",
