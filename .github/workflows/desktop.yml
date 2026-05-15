@@ -20,8 +20,8 @@ env:
 
 jobs:
   build-linux:
-    name: build (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: build (self-hosted linux)
+    runs-on: [self-hosted, Linux, axon]
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
