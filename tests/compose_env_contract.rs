@@ -21,8 +21,8 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.yaml must keep TEI data under the canonical ~/.axon appdata root"
     );
     assert!(
-        compose.contains("${AXON_MCP_HTTP_PUBLISH:-127.0.0.1:8001}:8001"),
-        "docker-compose.yaml must keep MCP HTTP loopback-only by default"
+        compose.contains("${AXON_MCP_HTTP_PUBLISH:-8001}:8001"),
+        "docker-compose.yaml must use short port syntax without a host/interface prefix"
     );
     assert!(
         compose.contains("TEI_SERVER_MAX_CLIENT_BATCH_SIZE"),
