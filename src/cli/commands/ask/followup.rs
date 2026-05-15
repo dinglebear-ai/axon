@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 const DEFAULT_SESSION: &str = "default";
+const LATEST_SESSION_FILE: &str = "latest";
 const MAX_SESSION_NAME_LEN: usize = 64;
 const MAX_FOLLOW_UP_TURNS: usize = 6;
 const MAX_TURN_CHARS: usize = 8_000;
@@ -21,12 +22,32 @@ pub(crate) struct AskTurn {
 }
 
 pub(crate) fn selected_session_name(cfg: &Config) -> String {
-    cfg.ask_session
+    let selected = cfg
+        .ask_session
         .as_deref()
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .unwrap_or(DEFAULT_SESSION)
-        .to_string()
+        .map(ToString::to_string)
+        .or_else(read_latest_session_name)
+        .unwrap_or_else(|| DEFAULT_SESSION.to_string());
+    sanitize_session_name(&selected).unwrap_or_else(|_| DEFAULT_SESSION.to_string())
+}
+
+pub(crate) fn update_latest_session(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let session = sanitize_session_name(&selected_session_name(cfg))?;
+    let dir = sessions_dir();
+    ensure_private_dir(&dir)?;
+    let path = latest_session_path();
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).write(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&path)?;
+    writeln!(file, "{session}")?;
+    Ok(())
 }
 
 pub(crate) fn reset_session(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -63,6 +84,28 @@ pub(crate) fn follow_up_query(
     }
     out.push_str("Current follow-up question: ");
     out.push_str(question);
+    Ok(Some(out))
+}
+
+pub(crate) fn follow_up_context_source(cfg: &Config) -> Result<Option<String>, Box<dyn Error>> {
+    let turns = load_recent_turns(cfg, MAX_FOLLOW_UP_TURNS)?;
+    if turns.is_empty() {
+        return Ok(None);
+    }
+
+    let mut out = format!(
+        "## Conversation History [S9999]: axon ask session: {}\n\n\
+Use this source only for conversation continuity and user/assistant turn history. \
+Cite [S9999] when the answer depends on prior turns in this ask session.\n\n",
+        selected_session_name(cfg)
+    );
+    for turn in turns {
+        out.push_str("User: ");
+        out.push_str(&bounded(&turn.user, MAX_TURN_CHARS));
+        out.push_str("\nAssistant: ");
+        out.push_str(&bounded(&turn.assistant, MAX_TURN_CHARS));
+        out.push_str("\n\n");
+    }
     Ok(Some(out))
 }
 
@@ -111,9 +154,24 @@ fn load_recent_turns(cfg: &Config, limit: usize) -> Result<Vec<AskTurn>, Box<dyn
 
 fn session_path(cfg: &Config) -> Result<PathBuf, Box<dyn Error>> {
     let session = sanitize_session_name(&selected_session_name(cfg))?;
-    Ok(axon_data_base_dir()
-        .join("ask-sessions")
-        .join(format!("{session}.jsonl")))
+    Ok(sessions_dir().join(format!("{session}.jsonl")))
+}
+
+fn sessions_dir() -> PathBuf {
+    axon_data_base_dir().join("ask-sessions")
+}
+
+fn latest_session_path() -> PathBuf {
+    sessions_dir().join(LATEST_SESSION_FILE)
+}
+
+fn read_latest_session_name() -> Option<String> {
+    let raw = std::fs::read_to_string(latest_session_path()).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    sanitize_session_name(trimmed).ok()
 }
 
 fn sanitize_session_name(name: &str) -> Result<String, Box<dyn Error>> {
@@ -145,7 +203,9 @@ fn bounded(text: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{bounded, sanitize_session_name};
+    use super::{bounded, selected_session_name, update_latest_session};
+    use super::{sanitize_session_name, sessions_dir};
+    use crate::core::config::Config;
 
     #[test]
     fn sanitize_session_name_accepts_safe_names() {
@@ -166,5 +226,29 @@ mod tests {
     fn bounded_truncates_by_chars() {
         assert_eq!(bounded("abcdef", 3), "abc\n[truncated]");
         assert_eq!(bounded("abc", 3), "abc");
+    }
+
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn selected_session_uses_latest_when_cli_session_absent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let saved = std::env::var("AXON_DATA_DIR").ok();
+        unsafe { std::env::set_var("AXON_DATA_DIR", tmp.path()) };
+
+        let mut cfg = Config {
+            ask_session: Some("named".to_string()),
+            ..Default::default()
+        };
+        update_latest_session(&cfg).expect("write latest");
+        cfg.ask_session = None;
+
+        assert_eq!(selected_session_name(&cfg), "named");
+        assert!(sessions_dir().join("latest").exists());
+
+        match saved {
+            Some(value) => unsafe { std::env::set_var("AXON_DATA_DIR", value) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
     }
 }

@@ -1,11 +1,6 @@
 [alias]
 xtask = "run -p xtask --"
 
-[build]
-# Keep peak memory sane on large Rust builds while allowing this repo to use
-# the host-level parallelism cap.
-jobs = 20
-
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
 

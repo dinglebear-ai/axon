@@ -44,7 +44,7 @@ All global flags apply. Key flags:
 | `--stream` | `true` | Stream answer tokens as they arrive for interactive use. Uses the in-process ask path; JSON and explain output remain buffered. |
 | `--no-stream` | `false` | Disable answer streaming and render only the final response. |
 | `--follow-up` | `false` | Include recent turns from the selected local ask session as conversation context. |
-| `--session <name>` | `default` | Local ask session name used for saved turns and follow-up context. |
+| `--session <name>` | latest | Local ask session name used for saved turns and follow-up context. If omitted, Axon uses the most recently successful ask session, falling back to `default`. |
 | `--reset-session` | `false` | Clear the selected ask session before running this question. |
 | `--json` | `false` | Machine-readable JSON output. |
 
@@ -103,8 +103,16 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
 ## Follow-Up Sessions
 
 `axon ask` records successful non-explain turns to local JSONL files under
-`$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`). The default
-session is `default`; pass `--session <name>` to keep separate threads.
+`$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`). After each
+successful saved turn, Axon updates `$AXON_DATA_DIR/ask-sessions/latest` with
+the active session name.
+
+If `--session <name>` is omitted, Axon uses the most recently successful ask
+session from that `latest` pointer, falling back to `default` when no prior
+session exists. The human CLI output prints the active `Session:` after timing,
+and JSON output includes `"session": "<name>"`.
+
+Pass `--session <name>` to keep separate threads or to switch explicitly.
 
 `--follow-up` loads the recent turns for the selected session and folds them
 into the retrieval/synthesis question so references like "that" or "the second

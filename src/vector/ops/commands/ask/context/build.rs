@@ -27,7 +27,7 @@ pub(super) use selection::{
 use selection::{dominant_retrieval_hosts, full_doc_selection_score};
 pub(super) use trace::{
     ContextCandidateSelection, ContextSelectionInputs, build_context_selection_decisions,
-    context_source_candidate_count, final_source_order_from_context, selected_top_chunk_indices,
+    context_source_candidate_count, final_source_order_from_entries, selected_top_chunk_indices,
     sorted_urls,
 };
 
@@ -295,6 +295,7 @@ fn finalize_built_context(mut inputs: FinalizeContextInputs<'_>) -> Result<Final
     inputs
         .context_entries
         .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let final_source_order = final_source_order_from_entries(&inputs.context_entries);
     let joined = inputs
         .context_entries
         .iter()
@@ -316,6 +317,7 @@ fn finalize_built_context(mut inputs: FinalizeContextInputs<'_>) -> Result<Final
             max_context_chars: inputs.max_context_chars,
             skip_decision: inputs.skip_decision,
             is_rrf: inputs.is_rrf,
+            final_source_order,
         },
     );
     let selection_decisions = build_context_selection_decisions(ContextSelectionInputs {
@@ -359,6 +361,7 @@ struct ExplainContextInputs<'a> {
     max_context_chars: usize,
     skip_decision: SkipDecision,
     is_rrf: bool,
+    final_source_order: Vec<crate::services::types::AskExplainContextSource>,
 }
 
 fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> AskExplainContext {
@@ -378,7 +381,7 @@ fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> Ask
         full_doc_fetch_skipped: inputs.skip_decision.skip,
         full_doc_fetch_skip_reason: inputs.skip_decision.reason.to_string(),
         full_doc_fetch_mode: if inputs.is_rrf { "rrf" } else { "cosine" }.to_string(),
-        final_source_order: final_source_order_from_context(context),
+        final_source_order: inputs.final_source_order,
         context_char_budget: inputs.max_context_chars,
         context_chars_used: context.len(),
         truncated_by_budget,

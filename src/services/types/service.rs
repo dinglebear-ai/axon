@@ -438,6 +438,24 @@ pub struct AskDiagnostics {
     #[serde(default)]
     pub full_docs_source: String,
     pub min_relevance_score: f64,
+    #[serde(default)]
+    pub ask_candidate_limit: usize,
+    #[serde(default)]
+    pub ask_chunk_limit: usize,
+    #[serde(default)]
+    pub ask_backfill_chunks: usize,
+    #[serde(default)]
+    pub ask_doc_chunk_limit: usize,
+    #[serde(default)]
+    pub ask_hybrid_candidates: usize,
+    #[serde(default)]
+    pub ask_full_docs_configured: usize,
+    #[serde(default)]
+    pub ask_full_docs_explicit: bool,
+    #[serde(default)]
+    pub ask_fulldoc_skip_enabled: bool,
+    #[serde(default)]
+    pub ask_max_context_chars: usize,
     pub doc_fetch_concurrency: usize,
     pub top_domains: Vec<String>,
     pub authority_ratio: f64,
@@ -546,14 +564,18 @@ pub struct AskExplainCandidate {
     pub snippet: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AskExplainContextSource {
     pub source_id: String,
     pub url: String,
     pub tier: String,
+    #[serde(default)]
+    pub sort_rank: usize,
+    #[serde(default)]
+    pub sort_score: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AskExplainContext {
     pub planned_full_doc_urls: Vec<String>,
     pub full_doc_fetch_skipped: bool,
@@ -612,6 +634,8 @@ pub struct AskTiming {
 pub struct AskResult {
     pub query: String,
     pub answer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     pub diagnostics: Option<AskDiagnostics>,
     #[serde(default)]
     pub explain: Option<AskExplainTrace>,

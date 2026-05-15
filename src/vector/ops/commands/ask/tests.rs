@@ -60,9 +60,17 @@ fn normalize_ask_answer_formats_insufficient_evidence_when_uncited() {
     let context = "Sources:\n## Top Chunk [S1]: https://docs.example.com/guide";
     let raw = "I think this probably works, but not sure.";
     let normalized = normalize_ask_answer(&cfg(), "what is this?", raw, context);
+    assert!(normalized.starts_with(raw));
+    assert!(normalized.contains("## Citation Validation Failed"));
+    assert!(normalized.contains("Answer contained no source citations."));
+    assert!(normalized.contains("## Retrieved Sources\n- [S1] https://docs.example.com/guide"));
+}
+
+#[test]
+fn normalize_ask_answer_keeps_insufficient_evidence_when_uncited_without_context() {
+    let raw = "I think this probably works, but not sure.";
+    let normalized = normalize_ask_answer(&cfg(), "what is this?", raw, "");
     assert!(normalized.starts_with("Insufficient evidence in indexed sources"));
-    assert!(normalized.contains("## Why"));
-    assert!(normalized.contains("## Next Index Targets"));
     assert!(normalized.contains("## Sources\n- None cited from retrieved context."));
 }
 
@@ -96,7 +104,8 @@ fn non_trivial_answer_requires_minimum_citation_count() {
         raw,
         context,
     );
-    assert!(normalized.starts_with("Insufficient evidence in indexed sources"));
+    assert!(normalized.starts_with(raw));
+    assert!(normalized.contains("## Citation Validation Failed"));
     assert!(normalized.contains("requires at least 2 unique citations"));
 }
 

@@ -348,6 +348,62 @@ fn full_doc_selection_prefers_url_entity_matches() {
 }
 
 #[test]
+fn full_doc_selection_prefers_dominant_authoritative_host_over_external_summary() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://example.com/qdrant-hybrid-search-overview",
+            "qdrant hybrid queries overview and vector search summary",
+            1.20,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://qdrant.tech/documentation/search/hybrid-queries/",
+            "hybrid queries sparse dense vectors fusion",
+            0.90,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://qdrant.tech/documentation/search/filtering/",
+            "filtering hybrid search payload conditions",
+            0.88,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://qdrant.tech/documentation/concepts/vectors/",
+            "dense sparse vector concepts hybrid",
+            0.86,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://qdrant.tech/documentation/search/",
+            "search query api hybrid qdrant",
+            0.84,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://qdrant.tech/documentation/concepts/indexing/",
+            "indexing qdrant vector search",
+            0.82,
+        )
+        .candidate,
+    ];
+    let query_tokens = crate::vector::ops::ranking::tokenize_query("qdrant hybrid queries");
+
+    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 3, 3);
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        full_doc_urls
+            .iter()
+            .all(|url| url.starts_with("https://qdrant.tech/")),
+        "dominant official host should fill scarce full-doc slots before external summaries: {full_doc_urls:?}"
+    );
+}
+
+#[test]
 fn planned_full_doc_urls_are_empty_when_fetch_is_skipped() {
     let candidates = vec![
         test_candidate("https://a.dev/docs/one", 0.90),

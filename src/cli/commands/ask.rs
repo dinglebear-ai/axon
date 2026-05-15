@@ -12,65 +12,77 @@ mod followup;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
-    if cfg.ask_reset_session {
-        followup::reset_session(cfg)?;
+    let active_session = followup::selected_session_name(cfg);
+    let mut session_cfg = cfg.clone();
+    session_cfg.ask_session = Some(active_session.clone());
+
+    if session_cfg.ask_reset_session {
+        followup::reset_session(&session_cfg)?;
     }
-    let effective_query = if cfg.ask_follow_up {
-        followup::follow_up_query(cfg, &query)?.unwrap_or_else(|| query.clone())
+    let effective_query = if session_cfg.ask_follow_up {
+        followup::follow_up_query(&session_cfg, &query)?.unwrap_or_else(|| query.clone())
     } else {
         query.clone()
     };
+    let mut ask_cfg = session_cfg.clone();
+    if session_cfg.ask_follow_up {
+        ask_cfg.ask_follow_up_context = followup::follow_up_context_source(&session_cfg)?;
+    }
     log_info(&format!(
         "command=ask query_len={} effective_query_len={} collection={} follow_up={} session={} server_url={}",
         query.len(),
         effective_query.len(),
-        cfg.collection,
-        cfg.ask_follow_up,
-        followup::selected_session_name(cfg),
-        cfg.server_url
+        session_cfg.collection,
+        session_cfg.ask_follow_up,
+        active_session,
+        session_cfg
+            .server_url
             .as_ref()
             .map(|u| u.as_str())
             .unwrap_or("(in-process)")
     ));
 
-    if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain {
+    if ask_cfg.ask_stream && !ask_cfg.json_output && !ask_cfg.ask_explain {
         println!("{}", primary("Conversation"));
         println!("  {} {}", primary("You:"), query);
         println!("  {}", primary("Assistant:"));
     }
 
-    let mut result = if cfg.ask_stream && cfg.server_url.is_some() {
-        run_in_process_ask(cfg, &effective_query).await?
-    } else if let Some(server_url) = cfg.server_url.as_ref() {
-        match ask_via_server(cfg, server_url, &effective_query).await {
-            Ok(result) => result,
-            Err(err) => {
-                let msg = err.to_string();
-                let hint = hint_for_ask_error(&msg);
-                eprintln!(
-                    "{} ask failed via server-url '{server_url}': {err}",
-                    muted("Error:")
-                );
-                if let Some(h) = hint {
-                    eprintln!("  hint: {h}");
+    let mut result =
+        if (ask_cfg.ask_stream || ask_cfg.ask_follow_up) && ask_cfg.server_url.is_some() {
+            run_in_process_ask(&ask_cfg, &effective_query).await?
+        } else if let Some(server_url) = ask_cfg.server_url.as_ref() {
+            match ask_via_server(&ask_cfg, server_url, &effective_query).await {
+                Ok(result) => result,
+                Err(err) => {
+                    let msg = err.to_string();
+                    let hint = hint_for_ask_error(&msg);
+                    eprintln!(
+                        "{} ask failed via server-url '{server_url}': {err}",
+                        muted("Error:")
+                    );
+                    if let Some(h) = hint {
+                        eprintln!("  hint: {h}");
+                    }
+                    return Err(err);
                 }
-                return Err(err);
             }
-        }
-    } else {
-        run_in_process_ask(cfg, &effective_query).await?
-    };
+        } else {
+            run_in_process_ask(&ask_cfg, &effective_query).await?
+        };
     result.query = query.clone();
+    result.session = Some(active_session.clone());
 
-    if cfg.json_output {
+    if session_cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
-        record_successful_turn(cfg, &query, &result);
+        record_successful_turn(&session_cfg, &query, &result);
         return Ok(());
     }
 
-    if cfg.ask_explain {
+    if session_cfg.ask_explain {
         println!("{}", primary("Ask Explain"));
         println!("  {} {}", primary("Query:"), query);
+        println!("  {} {}", muted("Session:"), active_session);
         println!(
             "  {} reranked={} context_sources={} llm_skipped=true",
             muted("Trace:"),
@@ -92,7 +104,7 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    if cfg.ask_stream {
+    if session_cfg.ask_stream {
         println!();
     } else {
         println!("{}", primary("Conversation"));
@@ -109,12 +121,13 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         result.timing_ms.llm,
         result.timing_ms.total,
     );
+    println!("  {} {}", muted("Session:"), active_session);
 
-    if cfg.ask_diagnostics {
+    if session_cfg.ask_diagnostics {
         print_diagnostics(&result.diagnostics);
     }
 
-    record_successful_turn(cfg, &query, &result);
+    record_successful_turn(&session_cfg, &query, &result);
 
     Ok(())
 }
@@ -127,6 +140,9 @@ fn record_successful_turn(cfg: &Config, query: &str, result: &AskResult) {
         log_warn(&format!(
             "ask: failed to record follow-up session turn: {err}"
         ));
+    }
+    if let Err(err) = followup::update_latest_session(cfg) {
+        log_warn(&format!("ask: failed to update latest ask session: {err}"));
     }
 }
 

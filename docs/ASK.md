@@ -33,6 +33,8 @@ Streaming mode:
 Follow-up mode:
 
 - Successful non-explain `ask` turns are saved locally under `$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`).
-- Use `axon ask --follow-up "<question>"` to include recent turns from the default local session.
+- The human CLI output prints the active `Session:` after timing. JSON output includes `"session": "<name>"`.
+- When `--session` is omitted, Axon uses the most recently successful ask session from `$AXON_DATA_DIR/ask-sessions/latest`, falling back to `default`.
+- Use `axon ask --follow-up "<question>"` to include recent turns from the active local session.
 - Use `--session <name>` to keep separate local threads and `--reset-session` to clear one before changing topics.
 - Follow-up context is prepended by Axon before retrieval/synthesis; Gemini headless still runs as a stateless one-shot process, and answers must still be grounded in retrieved context with `[S#]` citations.

@@ -230,10 +230,35 @@ pub(crate) fn sorted_urls(urls: &HashSet<String>) -> Vec<String> {
 }
 
 pub(crate) fn final_source_order_from_context(context: &str) -> Vec<AskExplainContextSource> {
-    context.lines().filter_map(parse_source_header).collect()
+    context
+        .lines()
+        .enumerate()
+        .filter_map(|(idx, line)| parse_source_header(line, idx + 1, 0.0))
+        .collect()
 }
 
-fn parse_source_header(line: &str) -> Option<AskExplainContextSource> {
+pub(crate) fn final_source_order_from_entries(
+    sorted_entries: &[(f64, String)],
+) -> Vec<AskExplainContextSource> {
+    sorted_entries
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (sort_score, entry))| {
+            entry.lines().next().and_then(|header| {
+                parse_source_header(header, idx + 1, *sort_score).map(|mut source| {
+                    source.source_id = format!("S{}", idx + 1);
+                    source
+                })
+            })
+        })
+        .collect()
+}
+
+fn parse_source_header(
+    line: &str,
+    sort_rank: usize,
+    sort_score: f64,
+) -> Option<AskExplainContextSource> {
     let line = line.strip_prefix("## ")?;
     let (tier_text, rest) = line.split_once(" [")?;
     let tier = match tier_text {
@@ -247,6 +272,8 @@ fn parse_source_header(line: &str) -> Option<AskExplainContextSource> {
         source_id: source_id.to_string(),
         url: rest.to_string(),
         tier: tier.to_string(),
+        sort_rank,
+        sort_score,
     })
 }
 
