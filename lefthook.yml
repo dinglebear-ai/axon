@@ -1,6 +1,8 @@
 pre-commit:
   parallel: true
   commands:
+    compose-ports:
+      run: python3 scripts/check_compose_port_bindings.py --staged
     env-guard:
       run: cargo xtask check-env-staged
     claude-symlinks:

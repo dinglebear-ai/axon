@@ -70,7 +70,7 @@ services:
       # absent, Docker will create it as root-owned — run `mkdir -p ~/.gemini` first.
       - ${GEMINI_HOME:-${HOME}/.gemini}:/home/axon/.gemini:ro
     ports:
-      - "${AXON_MCP_HTTP_PUBLISH:-127.0.0.1:8001}:8001"
+      - "${AXON_MCP_HTTP_PUBLISH:-8001}:8001"
     command: ["serve"]
     depends_on:
       axon-qdrant:
@@ -91,8 +91,8 @@ services:
     image: qdrant/qdrant:v1.13.1
     container_name: axon-qdrant
     ports:
-      - "127.0.0.1:53333:6333"
-      - "127.0.0.1:53334:6334"  # gRPC
+      - "53333:6333"
+      - "53334:6334"  # gRPC
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/qdrant:/qdrant/storage
       - ./config/qdrant/production.yaml:/qdrant/config/production.yaml:ro
@@ -122,7 +122,7 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
     container_name: axon-tei
     ports:
-      - "127.0.0.1:${TEI_HTTP_PORT:-52000}:80"
+      - "${TEI_HTTP_PORT:-52000}:80"
     volumes:
       - ${AXON_HOME:-${HOME}/.axon}/tei:/data
     command:
@@ -180,16 +180,13 @@ services:
       dockerfile: chrome/Dockerfile
     shm_size: "2gb"
     ports:
-      - "127.0.0.1:9222:9222"  # CDP proxy
-      - "127.0.0.1:9223:9223"  # raw Chrome DevTools
-      - "127.0.0.1:6000:6000"  # management API
-    # Security: all three Chrome ports (6000 management API, 9222 CDP proxy,
-    # 9223 raw DevTools) are intentionally bound to 127.0.0.1 ONLY. The
-    # upstream `headless_browser` crate and Chrome DevTools Protocol have no
-    # built-in authentication — anyone who can reach these ports can drive
-    # the browser arbitrarily. Do NOT change these to 0.0.0.0; cross-host
-    # deployments must front Chrome with an authenticated reverse proxy or
-    # tunnel. See docs/SECURITY.md §8.
+      - "9222:9222"  # CDP proxy
+      - "9223:9223"  # raw Chrome DevTools
+      - "6000:6000"  # management API
+    # Security: the upstream `headless_browser` crate and Chrome DevTools
+    # Protocol have no built-in authentication. Keep external exposure
+    # controlled at the firewall, reverse proxy, or tunnel layer. Do not add
+    # host-qualified port bindings here; pre-commit rejects them.
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
     networks:
