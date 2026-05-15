@@ -94,7 +94,7 @@ the same access.
 | Format | 32 random bytes, URL-safe base64 (no padding) |
 | Generated | Automatically on first start of `axon serve` if the file does not exist |
 | Persistence | Reused on subsequent starts; never rotated automatically |
-| Surface gated | `/api/panel/config`, `/api/panel/ops`, `/api/panel/setup/targets`, `/api/panel/setup/deploy` |
+| Surface gated | `/api/panel/config`, `/api/panel/ops`, `/api/panel/setup/targets` |
 | Headers accepted | `Authorization: Bearer <password>` or `x-axon-panel-token: <password>` |
 | Comparison | Constant-time (`subtle::ConstantTimeEq`) |
 | Login flow | `POST /api/panel/login` returns the same string back when the supplied password matches; the UI then sends it on subsequent requests |

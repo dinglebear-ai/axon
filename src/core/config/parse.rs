@@ -647,39 +647,4 @@ mod tests {
             vec!["repair".to_string(), "--migrate-env".to_string()]
         );
     }
-
-    #[allow(unsafe_code)]
-    #[test]
-    fn parse_setup_deploy_preserves_target_and_remote_dir() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe {
-            env::remove_var("TEI_URL");
-            env::remove_var("QDRANT_URL");
-        }
-
-        let cli = super::Cli::parse_from([
-            "axon",
-            "setup",
-            "deploy",
-            "prod-box",
-            "--remote-dir",
-            "custom-axon",
-            "--public-exposure",
-            "--accept-new-host-key",
-        ]);
-        let cfg = super::build_config::into_config(cli).expect("setup deploy should parse");
-
-        assert!(matches!(cfg.command, CommandKind::Setup));
-        assert_eq!(
-            cfg.positional,
-            vec![
-                "deploy".to_string(),
-                "prod-box".to_string(),
-                "--remote-dir".to_string(),
-                "custom-axon".to_string(),
-                "--public-exposure".to_string(),
-                "--accept-new-host-key".to_string(),
-            ]
-        );
-    }
 }

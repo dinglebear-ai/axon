@@ -63,6 +63,8 @@ specs/
 
 # ── Rust ─────────────────────────────────────────────────────────────────────
 /target/
+# Nested cargo target dirs from per-workspace builds (e.g. apps/desktop).
+apps/*/target/
 **/*.rs.bk
 *.profraw
 *.profdata

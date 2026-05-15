@@ -193,7 +193,7 @@ Source: `src/web/auth.rs`, `src/web/server.rs`.
 - On first start, `init_panel_password()` (`auth.rs:33`) generates a 32-byte URL-safe password, writes it to `~/.axon/panel-password` with mode `0600` and `O_NOFOLLOW`, and prints it once to stderr. Existing files are reused.
 - `/api/panel/login` accepts the password and returns it back to the caller as a session token. `/api/panel/state` is unauthenticated (returns only `setup_required` + the config path).
 - All other `/api/panel/*` routes require `Authorization: Bearer <token>` or `x-axon-panel-token: <token>`, verified in constant time via `PanelPassword::verify` (`auth.rs:21-26`).
-- Routes exposed: `state` (GET), `login` (POST), `config` (GET/PUT), `ops` (GET), `setup/targets` (GET), `setup/deploy` (POST). There is no shell endpoint, no WebSocket, no download route, no `/output/*` route in the current code.
+- Routes exposed: `state` (GET), `login` (POST), `config` (GET/PUT), `ops` (GET), `setup/targets` (GET). There is no shell endpoint, no WebSocket, no download route, no `/output/*` route in the current code.
 
 Recommendations:
 
@@ -258,9 +258,9 @@ Hardening guidance:
 - For the MCP server on a non-loopback host, set a long random `AXON_MCP_HTTP_TOKEN` (`openssl rand -hex 32`) or configure `AXON_MCP_AUTH_MODE=oauth`.
 - Never expose Qdrant or Chrome's CDP / management ports to a network. The upstream `headless_browser` and Chrome DevTools Protocol have **no built-in authentication** — anyone who can reach 6000/9222/9223 can run arbitrary JS, navigate to internal URLs, exfiltrate cookies from any origin Chrome has visited, and (via `Page.navigate` on `file://` URLs) read local files inside the container.
 
-Cross-host deployments (`src/services/setup/deploy.rs` / `axon serve` setup wizard):
+Cross-host deployments (operator-managed):
 
-- The setup wizard can write a non-loopback `chrome_remote_url` into `~/.axon/config.toml` for clients running on a different machine than `axon-chrome`. **If you do this, you own the auth boundary** — front the Chrome ports with an authenticated reverse proxy, an SSH tunnel, a WireGuard mesh, or equivalent. Axon does not add a token to the CDP/management endpoints because those endpoints are owned by upstream crates we do not control.
+- If you point `chrome_remote_url` in `~/.axon/config.toml` at a non-loopback host (for clients running on a different machine than `axon-chrome`), **you own the auth boundary** — front the Chrome ports with an authenticated reverse proxy, an SSH tunnel, a WireGuard mesh, or equivalent. Axon does not add a token to the CDP/management endpoints because those endpoints are owned by upstream crates we do not control.
 - The defense-in-depth `validate_url()` SSRF guard still runs on every URL handed to Chrome via spider (`screenshot`, `extract`, `crawl`, `map`, `scrape`), so an attacker who tricks axon into asking Chrome to fetch `http://127.0.0.1:54321/admin` is blocked at the axon layer regardless of where Chrome is hosted.
 
 ---

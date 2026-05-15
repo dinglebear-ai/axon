@@ -1,5 +1,5 @@
 use crate::core::config::Config;
-use crate::services::setup::{self, DeployRequest, LocalSetupMode};
+use crate::services::setup::{self, LocalSetupMode};
 use serde::Serialize;
 use serde_json::json;
 use std::error::Error;
@@ -30,7 +30,6 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
             run_local_setup_command(cfg, mode).await
         }
         Some("targets") => run_targets_command(cfg),
-        Some("deploy") => run_deploy_command(cfg).await,
         _ => print_usage(cfg),
     }
 }
@@ -59,43 +58,6 @@ fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
             .port
             .map_or_else(|| "-".to_string(), |value| value.to_string());
         println!("{}\thost={host}\tuser={user}\tport={port}", target.alias);
-    }
-    Ok(())
-}
-
-async fn run_deploy_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let target = cfg
-        .positional
-        .get(1)
-        .ok_or("setup deploy requires an SSH target")?;
-    let public_exposure = cfg.positional.iter().any(|v| v == "--public-exposure");
-    let accept_new_host_key = cfg.positional.iter().any(|v| v == "--accept-new-host-key");
-
-    let result = setup::deploy_remote(DeployRequest {
-        target: target.clone(),
-        remote_dir: remote_dir_from_positional(&cfg.positional),
-        public_exposure: Some(public_exposure),
-        accept_new_host_key: Some(accept_new_host_key),
-    })
-    .await?;
-
-    if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-        return Ok(());
-    }
-
-    println!("Deployment target: {}", result.target);
-    println!("Remote host: {}", result.remote_host);
-    println!("Remote dir: ~/{}", result.remote_dir);
-    println!("Qdrant: {}", result.qdrant_url);
-    println!("TEI: {}", result.tei_url);
-    println!("Chrome: {}", result.chrome_remote_url);
-    println!("Runtime env: {}", result.runtime_env_path);
-    if let Some(command) = result.tunnel_command {
-        println!("Tunnel: {command}");
-    }
-    for step in result.steps {
-        println!("ok\t{}\t{}", step.name, step.detail);
     }
     Ok(())
 }
@@ -342,12 +304,6 @@ fn print_local_setup_report(
     }
     println!("Next diagnostic: axon doctor");
     Ok(())
-}
-
-fn remote_dir_from_positional(positional: &[String]) -> Option<String> {
-    positional
-        .windows(2)
-        .find_map(|window| (window[0] == "--remote-dir").then(|| window[1].clone()))
 }
 
 #[cfg(test)]

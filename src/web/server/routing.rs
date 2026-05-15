@@ -45,7 +45,6 @@ pub(super) fn router(
             post(super::super::panel_first_run::first_run_ask),
         )
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
-        .route("/api/panel/setup/deploy", post(handlers::setup_deploy))
         .merge(ask_router)
         .fallback(super::super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));

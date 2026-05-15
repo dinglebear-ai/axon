@@ -1,0 +1,80 @@
+name: desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # apps/desktop is its own workspace (see apps/desktop/Cargo.toml).
+  CARGO_MANIFEST_PATH: apps/desktop/Cargo.toml
+
+jobs:
+  build-linux:
+    name: build (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+          shared-key: axon-palette-ubuntu-latest
+
+      # GPUI on Linux links against X11 + Wayland + xcb headers.
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libssl-dev libfontconfig1-dev \
+            libxcb-randr0-dev libxcb-xkb-dev libxcb-cursor-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-keysyms1-dev libxcb-image0-dev
+
+      - name: cargo build --release
+        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-linux-x86_64
+          path: apps/desktop/target/release/axon-palette
+          if-no-files-found: error
+
+  build-windows:
+    name: build (windows-latest)
+    # GitHub-hosted Windows runner. axon-palette uses GPUI which depends on
+    # Direct3D + windows-rs; cross-compiling that from Linux is fragile, so
+    # the palette stays on native Windows. The main axon.exe is cross-compiled
+    # in ci.yml instead.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+          shared-key: axon-palette-windows
+
+      - name: cargo build --release
+        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-windows-x86_64
+          path: apps/desktop/target/release/axon-palette.exe
+          if-no-files-found: error
