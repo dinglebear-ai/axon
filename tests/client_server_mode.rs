@@ -29,6 +29,7 @@ fn axon_with_home(home: &TempDir, server_url: &str, args: &[&str]) -> Command {
         .env("HOME", home.path())
         .env("AXON_DATA_DIR", home.path().join(".axon"))
         .env("AXON_SERVER_URL", server_url)
+        .env("TEI_URL", "http://127.0.0.1:9")
         .args(args);
     cmd
 }
