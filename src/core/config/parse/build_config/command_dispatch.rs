@@ -268,25 +268,5 @@ fn apply_setup(out: &mut DispatchOutput, args: SetupArgs) {
         Some(SetupSubcommand::Targets) => {
             out.positional = vec!["targets".to_string()];
         }
-        Some(SetupSubcommand::Deploy {
-            target,
-            remote_dir,
-            public_exposure,
-            accept_new_host_key,
-        }) => {
-            let mut positional = vec![
-                "deploy".to_string(),
-                target,
-                "--remote-dir".to_string(),
-                remote_dir,
-            ];
-            if public_exposure {
-                positional.push("--public-exposure".to_string());
-            }
-            if accept_new_host_key {
-                positional.push("--accept-new-host-key".to_string());
-            }
-            out.positional = positional;
-        }
     }
 }

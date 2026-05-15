@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-15
+
+### Added
+
+- desktop: new `axon-palette` workspace member at `apps/desktop` — a GPUI command palette with a global hotkey (Ctrl+Shift+Space). Type to filter actions (Scrape/Crawl/Map/Ask/Search/Research/Ingest/Status/Doctor), space + arg, Enter spawns `axon` as a subprocess. Linux/X11 and Windows; Wayland depends on compositor.
+- ci: new `windows-build` job cross-compiles `axon.exe` from `ubuntu-latest` via `cargo-zigbuild` targeting `x86_64-pc-windows-gnu` (no Windows runner required). Uploads `axon-windows-x86_64` artifact with `if-no-files-found: error`.
+- ci: new `desktop.yml` workflow builds `axon-palette` for Linux + Windows on every PR touching `apps/desktop/**`.
+
+### Removed (breaking)
+
+- setup: removed `axon setup deploy` subcommand and the SSH-based remote Docker Compose orchestration. The `POST /api/panel/setup/deploy` web route, the "Remote Docker Deploy" panel in `apps/web`, and `src/services/setup/deploy.rs` are all gone. Use local Docker plus SSH tunnels or a proxy for cross-host setups. `axon setup targets` (informational listing of `~/.ssh/config` aliases) remains.
+- deps: dropped `openssh` and `openssh-sftp-client` from `Cargo.toml`. These were the only Unix-only deps in the main crate; removing them is what makes the Windows cross-compile possible.
+- spider: dropped the `firewall` spider feature — `spider_firewall`'s build script fetches GitHub blocklists unauthenticated and panics on rate-limit, which was breaking CI. `validate_url()` in `src/core/http/ssrf.rs` remains the primary SSRF guard; this was defense-in-depth on top.
+
 ## [1.11.3] - 2026-05-14
 
 ### Fixed

@@ -1,0 +1,174 @@
+name: release
+
+# Triggered when you push a version tag (e.g. `git tag v2.0.0 && git push origin v2.0.0`).
+# Builds axon + axon-palette for Linux + Windows, packages them with SHA256
+# checksums, and publishes a GitHub Release with all four artifacts attached.
+#
+# Manual dry-run via workflow_dispatch builds everything but skips the Release
+# creation (artifacts are still uploaded to the workflow run for inspection).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to create releases
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  axon-linux:
+    name: build axon (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-axon-linux
+      - name: cargo build --release --bin axon
+        run: cargo build --release --locked --bin axon
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd target/release
+          tar -czf axon-linux-x86_64.tar.gz axon
+          sha256sum axon-linux-x86_64.tar.gz > axon-linux-x86_64.tar.gz.sha256
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-linux-x86_64
+          path: |
+            target/release/axon-linux-x86_64.tar.gz
+            target/release/axon-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+
+  axon-windows:
+    name: build axon (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-axon-windows
+      - name: cargo build --release --bin axon
+        run: cargo build --release --locked --bin axon
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location target/release
+          Compress-Archive -Path axon.exe -DestinationPath axon-windows-x86_64.zip -Force
+          $hash = (Get-FileHash axon-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  axon-windows-x86_64.zip" | Out-File -Encoding ascii axon-windows-x86_64.zip.sha256
+          Pop-Location
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-windows-x86_64
+          path: |
+            target/release/axon-windows-x86_64.zip
+            target/release/axon-windows-x86_64.zip.sha256
+          if-no-files-found: error
+
+  palette-linux:
+    name: build axon-palette (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+          shared-key: release-palette-linux
+      # GPUI on Linux links against X11 + Wayland + xcb headers.
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libssl-dev libfontconfig1-dev \
+            libxcb-randr0-dev libxcb-xkb-dev libxcb-cursor-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-keysyms1-dev libxcb-image0-dev
+      - name: cargo build --release
+        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd apps/desktop/target/release
+          tar -czf axon-palette-linux-x86_64.tar.gz axon-palette
+          sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-linux-x86_64
+          path: |
+            apps/desktop/target/release/axon-palette-linux-x86_64.tar.gz
+            apps/desktop/target/release/axon-palette-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+
+  palette-windows:
+    name: build axon-palette (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop
+          shared-key: release-palette-windows
+      - name: cargo build --release
+        run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location apps/desktop/target/release
+          Compress-Archive -Path axon-palette.exe -DestinationPath axon-palette-windows-x86_64.zip -Force
+          $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
+          Pop-Location
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-windows-x86_64
+          path: |
+            apps/desktop/target/release/axon-palette-windows-x86_64.zip
+            apps/desktop/target/release/axon-palette-windows-x86_64.zip.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish github release
+    needs: [axon-linux, axon-windows, palette-linux, palette-windows]
+    runs-on: ubuntu-latest
+    # Only create a release on real tag pushes; workflow_dispatch is dry-run.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la dist/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/axon-linux-x86_64.tar.gz
+            dist/axon-linux-x86_64.tar.gz.sha256
+            dist/axon-windows-x86_64.zip
+            dist/axon-windows-x86_64.zip.sha256
+            dist/axon-palette-linux-x86_64.tar.gz
+            dist/axon-palette-linux-x86_64.tar.gz.sha256
+            dist/axon-palette-windows-x86_64.zip
+            dist/axon-palette-windows-x86_64.zip.sha256
+          generate_release_notes: true
+          fail_on_unmatched_files: true

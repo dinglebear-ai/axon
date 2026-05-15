@@ -1,5 +1,9 @@
 [workspace]
 members = ["xtask"]
+# apps/desktop is intentionally a separate workspace: it pulls in GPUI from
+# zed-industries/zed, whose transitive deps (gpui_wgpu → wasm-bindgen 0.2.120+)
+# conflict with axon's reqwest/web-sys-locked wasm-bindgen 0.2.118.
+exclude = ["apps/desktop"]
 resolver = "2"
 
 # Override lab-auth from the git source with a local vendored copy that uses
@@ -14,7 +18,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "1.12.0"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.94.0"
 description = "Web crawl, scrape, embed, and query CLI backed by a self-hosted RAG stack"
@@ -40,8 +44,6 @@ indicatif = "0.18"
 log = "0.4"
 moka = { version = "0.12", features = ["future"] }
 octocrab = "0.49"
-openssh = "0.11.6"
-openssh-sftp-client = { version = "0.15.7", features = ["openssh"] }
 portable-pty = "0"
 futures-util = "0.3"
 futures = "0.3"
@@ -55,6 +57,11 @@ tempfile = "3"
 thiserror = "2"
 # NOTE: In spider v2.45.x these are valid optional features and are required
 # for our crawl/render pipeline.
+#
+# `firewall` is intentionally OFF: spider_firewall's build.rs fetches
+# blocklists from api.github.com unauthenticated and panics when GitHub
+# rate-limits the CI runner. validate_url() in src/core/http/ssrf.rs
+# remains the primary SSRF guard; spider_firewall was defense-in-depth.
 spider = { version = "2", default-features = false, features = [
   "basic",
   "chrome",
@@ -73,7 +80,6 @@ spider = { version = "2", default-features = false, features = [
   "headers",
   "time",
   "control",
-  "firewall",
   "hedge",
 ] }
 spider_agent = { version = "2.47.89", default-features = false, features = [

@@ -29,7 +29,7 @@ jobs:
     name: mcp-transport-modes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -41,7 +41,7 @@ jobs:
     name: no-mod-rs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -53,7 +53,7 @@ jobs:
     name: toml-fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: taiki-e/install-action@v2
         with:
           tool: taplo-cli
@@ -64,7 +64,7 @@ jobs:
     name: windows-check (xtask only)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -78,11 +78,37 @@ jobs:
       - name: cargo xtask check-mcp-http
         run: cargo xtask check-mcp-http
 
+  windows-build:
+    name: windows-build (axon.exe)
+    # Native build on a GitHub-hosted Windows runner. Cross-compile from Linux
+    # via cargo-zigbuild was attempted but aws-lc-sys's jitterentropy code
+    # needs platform headers (sched.h for windows-gnu, windows.h for
+    # windows-msvc) that zig doesn't bundle, and aws-lc-rs is pulled in
+    # transitively through hyper-rustls so we can't easily switch to ring.
+    # Slow (~10-15 min cold) but reliable.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: axon-windows
+      - name: cargo build --release -p axon
+        run: cargo build --release --locked -p axon
+      - name: Upload axon.exe artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-windows-x86_64
+          path: target/release/axon.exe
+          if-no-files-found: error
+
   shell-completions-smoke:
     name: shell-completions-smoke
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -96,7 +122,7 @@ jobs:
     name: mcp-schema-doc-sync
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Enforce generated MCP schema docs are in sync
         run: python3 scripts/generate_mcp_schema_doc.py --check
 
@@ -109,7 +135,7 @@ jobs:
       TEI_URL: http://127.0.0.1:52000
       QDRANT_URL: http://127.0.0.1:53333
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -123,7 +149,7 @@ jobs:
     name: advisory-lock-policy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Ban session-scoped advisory lock APIs
         run: |
           set -euo pipefail
@@ -151,7 +177,7 @@ jobs:
     name: ban-skip-validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Ban spawn_adapter_skip_validation outside tests/
         run: |
           set -euo pipefail
@@ -168,7 +194,7 @@ jobs:
     name: monolith
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Enforce monolith policy (changed Rust files only)
@@ -211,7 +237,7 @@ jobs:
     name: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -224,7 +250,7 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -238,7 +264,7 @@ jobs:
     name: msrv
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -250,7 +276,7 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -263,7 +289,7 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -282,7 +308,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_infra_tests) }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -302,7 +328,7 @@ jobs:
     env:
       AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -314,7 +340,7 @@ jobs:
     name: security
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -341,7 +367,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -356,14 +382,14 @@ jobs:
         run: npm install -g mcporter@0.7.3
 
       - name: Restore Hugging Face model cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache/huggingface
           key: hf-tei-${{ runner.os }}-BAAI-bge-small-en-v1.5-v1
 
       - name: Cache Docker images (TEI + Qdrant)
         id: docker-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/docker-images
           key: docker-${{ runner.os }}-tei-cpu-v1-qdrant-1.13.1
@@ -479,7 +505,7 @@ jobs:
 
       - name: Upload mcporter logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: mcp-smoke-logs
           path: .cache/mcporter-test/

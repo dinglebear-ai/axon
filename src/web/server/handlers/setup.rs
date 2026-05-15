@@ -25,17 +25,3 @@ pub async fn setup_targets(
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
     }
 }
-
-pub async fn setup_deploy(
-    State((state, _)): State<(AppState, Arc<Config>)>,
-    headers: HeaderMap,
-    Json(req): Json<setup::DeployRequest>,
-) -> impl IntoResponse {
-    if !authorized(&state, &headers) {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
-    }
-    match setup::deploy_remote(req).await {
-        Ok(result) => Json(result).into_response(),
-        Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
-    }
-}
