@@ -97,6 +97,8 @@ jobs:
           shared-key: axon-windows
       - name: cargo build --release -p axon
         run: cargo build --release --locked -p axon
+      - name: Windows AXON_DATA_DIR path regression
+        run: cargo test --locked -p axon axon_data_dir_accepts_windows_absolute_path
       - name: Upload axon.exe artifact
         uses: actions/upload-artifact@v5
         with:
