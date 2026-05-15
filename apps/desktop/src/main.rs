@@ -5,7 +5,7 @@
 //! optionally followed by an argument (URL, query, etc.), then press Enter.
 //! The palette shells out to the `axon` binary on $PATH.
 
-use std::process::Command;
+use std::process::{Command, Output};
 use std::thread;
 
 use anyhow::Result;
@@ -30,8 +30,7 @@ fn build_application() -> Application {
 #[cfg(target_os = "windows")]
 fn build_application() -> Application {
     Application::with_platform(std::rc::Rc::new(
-        gpui_windows::WindowsPlatform::new(false)
-            .expect("failed to initialize Windows platform"),
+        gpui_windows::WindowsPlatform::new(false).expect("failed to initialize Windows platform"),
     ))
 }
 
@@ -45,16 +44,54 @@ struct CommandAction {
 }
 
 const ACTIONS: &[CommandAction] = &[
-    CommandAction { label: "Scrape URL",       subcommand: "scrape",   needs_arg: true  },
-    CommandAction { label: "Crawl URL",        subcommand: "crawl",    needs_arg: true  },
-    CommandAction { label: "Map URL",          subcommand: "map",      needs_arg: true  },
-    CommandAction { label: "Ask question",     subcommand: "ask",      needs_arg: true  },
-    CommandAction { label: "Search the web",   subcommand: "search",   needs_arg: true  },
-    CommandAction { label: "Research the web", subcommand: "research", needs_arg: true  },
-    CommandAction { label: "Ingest target",    subcommand: "ingest",   needs_arg: true  },
-    CommandAction { label: "Job status",       subcommand: "status",   needs_arg: false },
-    CommandAction { label: "Doctor",           subcommand: "doctor",   needs_arg: false },
+    CommandAction {
+        label: "Scrape URL",
+        subcommand: "scrape",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Crawl URL",
+        subcommand: "crawl",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Map URL",
+        subcommand: "map",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Ask question",
+        subcommand: "ask",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Search the web",
+        subcommand: "search",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Research the web",
+        subcommand: "research",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Ingest target",
+        subcommand: "ingest",
+        needs_arg: true,
+    },
+    CommandAction {
+        label: "Job status",
+        subcommand: "status",
+        needs_arg: false,
+    },
+    CommandAction {
+        label: "Doctor",
+        subcommand: "doctor",
+        needs_arg: false,
+    },
 ];
+
+const OUTPUT_LIMIT: usize = 12_000;
 
 actions!(palette, [Submit, MoveDown, MoveUp]);
 
@@ -118,16 +155,9 @@ impl Palette {
             cmd.arg(arg);
         }
 
-        match cmd.spawn() {
-            Ok(mut child) => {
-                self.last_status =
-                    Some(format!("spawned axon {sub} (pid {})", child.id()).into());
-                // Reap the child off-thread so it doesn't become a zombie on
-                // Unix. The palette is a long-lived UI process, so dropping
-                // Child without waiting would accumulate <defunct> entries.
-                thread::spawn(move || {
-                    let _ = child.wait();
-                });
+        match cmd.output() {
+            Ok(output) => {
+                self.last_status = Some(format_command_output(sub, output).into());
                 self.query.clear();
                 self.selected = 0;
             }
@@ -151,12 +181,7 @@ impl Palette {
         cx.notify();
     }
 
-    fn on_key(
-        &mut self,
-        ev: &gpui::KeyDownEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_key(&mut self, ev: &gpui::KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let key = ev.keystroke.key.as_str();
         match key {
             "backspace" => {
@@ -182,6 +207,40 @@ impl Palette {
         self.selected = 0;
         cx.notify();
     }
+}
+
+fn format_command_output(subcommand: &str, output: Output) -> String {
+    let mut text = format!("axon {subcommand} exited with {}\n", output.status);
+    append_output_section(&mut text, "stdout", &output.stdout);
+    append_output_section(&mut text, "stderr", &output.stderr);
+
+    if output.stdout.is_empty() && output.stderr.is_empty() {
+        text.push_str("(no output)");
+    }
+
+    truncate_output(text)
+}
+
+fn append_output_section(text: &mut String, label: &str, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+
+    text.push('\n');
+    text.push_str(label);
+    text.push_str(":\n");
+    text.push_str(String::from_utf8_lossy(bytes).trim_end());
+    text.push('\n');
+}
+
+fn truncate_output(mut text: String) -> String {
+    if text.len() <= OUTPUT_LIMIT {
+        return text;
+    }
+
+    text.truncate(OUTPUT_LIMIT);
+    text.push_str("\n... output truncated ...");
+    text
 }
 
 impl Focusable for Palette {
@@ -221,22 +280,21 @@ impl Render for Palette {
                     .bg(rgb(0x313244))
                     .child(prompt),
             )
-            .child(
-                div()
-                    .mt_3()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .children(actions.into_iter().enumerate().map(move |(i, action)| {
-                        let is_sel = i == selected;
-                        div()
-                            .px_3()
-                            .py_1()
-                            .rounded_sm()
-                            .bg(if is_sel { rgb(0x45475a) } else { rgb(0x00000000) })
-                            .child(SharedString::from(action.label))
-                    })),
-            )
+            .child(div().mt_3().flex().flex_col().gap_1().children(
+                actions.into_iter().enumerate().map(move |(i, action)| {
+                    let is_sel = i == selected;
+                    div()
+                        .px_3()
+                        .py_1()
+                        .rounded_sm()
+                        .bg(if is_sel {
+                            rgb(0x45475a)
+                        } else {
+                            rgb(0x00000000)
+                        })
+                        .child(SharedString::from(action.label))
+                }),
+            ))
             .when_some(self.last_status.clone(), |el, status| {
                 el.child(div().mt_4().text_color(rgb(0xa6e3a1)).child(status))
             })
