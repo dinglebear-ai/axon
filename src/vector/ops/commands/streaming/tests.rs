@@ -150,6 +150,15 @@ fn test_sources_repetition_case_insensitive() {
 }
 
 #[test]
+fn repeat_guard_stop_matches_wrapped_cleanup_errors() {
+    assert!(is_repeat_guard_stop_error("repeat_guard_stop"));
+    assert!(is_repeat_guard_stop_error(
+        "repeat_guard_stop; cleanup: killed and reaped with signal: 9 (SIGKILL)"
+    ));
+    assert!(!is_repeat_guard_stop_error("Gemini headless stream error"));
+}
+
+#[test]
 fn test_process_sse_line_emits_tagged_token() {
     let (tx, mut rx) = mpsc::unbounded_channel::<TaggedToken>();
     let mut answer = String::new();

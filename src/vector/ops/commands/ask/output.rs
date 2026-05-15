@@ -30,7 +30,7 @@ pub(crate) async fn ask_llm_answer(
     // Keep stdout rendering centralized in the CLI command. The streaming path
     // still gives TTFT/fallback behavior, but token deltas printed here would be
     // followed by the CLI's final formatted answer.
-    let stream_to_stdout = false;
+    let stream_to_stdout = cfg.ask_stream && !cfg.json_output && !cfg.ask_explain;
 
     // The error type from streaming is `Box<dyn StdError>` (!Send). Collapse it
     // into Option<(String, Option<Instant>)> + Option<String> here so the !Send

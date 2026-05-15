@@ -4,9 +4,9 @@ use crate::core::logging::{log_debug, log_warn};
 use crate::services::types::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
-    VectorDispatchContext, authoritative_ratio, candidate_has_topical_overlap, candidates_only,
-    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, query_allows_low_signal,
-    score_and_filter_candidates, score_and_filter_candidates_with_trace,
+    VectorDispatchContext, authoritative_ratio, candidates_only,
+    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, product_authority_ratio,
+    query_allows_low_signal, score_and_filter_candidates, score_and_filter_candidates_with_trace,
     score_rrf_candidates_with_trace, top_domains, vector_mode_metadata,
 };
 use crate::vector::ops::tei::qdrant_store::VectorMode;
@@ -26,6 +26,8 @@ pub(super) struct AskRetrieval {
     pub(super) retrieval_elapsed_ms: u128,
     pub(super) top_domains: Vec<String>,
     pub(super) authoritative_ratio: f64,
+    pub(super) configured_authority_ratio: f64,
+    pub(super) product_authority_ratio: f64,
     pub(super) min_supplemental_score: Option<f64>,
     pub(super) explain_retrieval: Option<AskExplainRetrieval>,
     pub(super) candidate_traces: Vec<CandidateRankingTrace>,
@@ -53,42 +55,15 @@ pub(super) fn apply_mode_aware_rerank(
     query_tokens: &[String],
     params: &RerankParams<'_>,
 ) -> Vec<RetrievedCandidate> {
-    if is_rrf {
-        let mut selected = candidates
-            .iter()
-            .filter(|candidate| candidate_has_topical_overlap(&candidate.candidate, query_tokens))
-            .cloned()
-            .map(|mut candidate| {
-                let authority_boost = ranking::authority_boost_for_url(
-                    &candidate.candidate.url,
-                    params.authoritative_domains,
-                    params.authoritative_boost,
-                );
-                let product_boost =
-                    crate::vector::ops::commands::retrieval::product_authority_boost_for_url(
-                        &candidate.candidate.url,
-                        query_tokens,
-                        params.product_authority_boost,
-                    );
-                candidate.candidate.rerank_score =
-                    candidate.candidate.score + authority_boost + product_boost;
-                candidate
-            })
-            .collect::<Vec<_>>();
-        selected.sort_by(|a, b| {
-            b.candidate
-                .rerank_score
-                .partial_cmp(&a.candidate.rerank_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        return selected;
-    }
-
     let score_policy = CandidateScorePolicy {
         authoritative_domains: params.authoritative_domains,
         authoritative_boost: params.authoritative_boost,
         product_authority_boost: params.product_authority_boost,
-        min_relevance_score: Some(params.min_relevance_score),
+        min_relevance_score: if is_rrf {
+            None
+        } else {
+            Some(params.min_relevance_score)
+        },
         require_topical_overlap: true,
     };
     score_and_filter_candidates(candidates, query_tokens, &score_policy)
@@ -218,42 +193,71 @@ pub(super) async fn retrieve_ask_candidates(
     let top_select_started = std::time::Instant::now();
     let (top_chunk_indices, top_full_doc_indices) = super::build::select_context_indices(
         &reranked,
+        query_tokens,
         ask_tuning.ask_chunk_limit,
         ask_tuning.ask_full_docs,
     );
     timing.record(AskTimingSlot::TopSelect, top_select_started);
 
+    let configured_authority_ratio =
+        authoritative_ratio(&reranked, &ask_tuning.ask_authoritative_domains);
+    let product_authority_ratio =
+        product_authority_ratio(&reranked, query_tokens, ASK_PRODUCT_AUTHORITY_BOOST);
+    let effective_authority_ratio = configured_authority_ratio.max(product_authority_ratio);
+
     Ok(AskRetrieval {
         top_chunk_indices,
         top_full_doc_indices,
         top_domains: top_domains(&reranked, 5),
-        authoritative_ratio: authoritative_ratio(&reranked, &ask_tuning.ask_authoritative_domains),
+        authoritative_ratio: effective_authority_ratio,
+        configured_authority_ratio,
+        product_authority_ratio,
         candidates: candidates_only(&retrieved_candidates),
         reranked,
         retrieval_elapsed_ms: retrieval_started.elapsed().as_millis(),
-        min_supplemental_score: if rrf_mode {
-            None
-        } else {
-            Some(
-                ask_tuning.ask_min_relevance_score
-                    + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS,
-            )
-        },
-        explain_retrieval: cfg.ask_explain.then(|| AskExplainRetrieval {
-            query: query.to_string(),
-            keyword_query: query_forms.keyword_query.clone(),
-            dual_search: query_forms.use_dual,
-            collection: cfg.collection.clone(),
-            candidate_limit: ask_tuning.ask_candidate_limit,
-            hybrid_search_enabled: cfg.hybrid_search_enabled,
-            hybrid_candidate_limit: ask_tuning.ask_hybrid_candidates,
-            score_kind: retrieval_score_kind,
-            vector_mode: format!("{:?}", mode.vector_mode).to_ascii_lowercase(),
-            sparse_query_status: mode
-                .sparse_was_empty
-                .then(|| "empty_sparse_fallback".to_string()),
-        }),
+        min_supplemental_score: min_supplemental_score(
+            rrf_mode,
+            ask_tuning.ask_min_relevance_score,
+        ),
+        explain_retrieval: explain_retrieval(
+            cfg,
+            query,
+            &query_forms,
+            &mode,
+            retrieval_score_kind,
+            ask_tuning.ask_candidate_limit,
+            ask_tuning.ask_hybrid_candidates,
+        ),
         candidate_traces,
+    })
+}
+
+fn min_supplemental_score(rrf_mode: bool, min_relevance_score: f64) -> Option<f64> {
+    (!rrf_mode).then_some(min_relevance_score + super::heuristics::SUPPLEMENTAL_RELEVANCE_BONUS)
+}
+
+fn explain_retrieval(
+    cfg: &Config,
+    query: &str,
+    query_forms: &super::query_rewrite::AskQueryForms,
+    mode: &crate::vector::ops::commands::retrieval::VectorModeMetadata,
+    score_kind: AskExplainScoreKind,
+    candidate_limit: usize,
+    hybrid_candidate_limit: usize,
+) -> Option<AskExplainRetrieval> {
+    cfg.ask_explain.then(|| AskExplainRetrieval {
+        query: query.to_string(),
+        keyword_query: query_forms.keyword_query.clone(),
+        dual_search: query_forms.use_dual,
+        collection: cfg.collection.clone(),
+        candidate_limit,
+        hybrid_search_enabled: cfg.hybrid_search_enabled,
+        hybrid_candidate_limit,
+        score_kind,
+        vector_mode: format!("{:?}", mode.vector_mode).to_ascii_lowercase(),
+        sparse_query_status: mode
+            .sparse_was_empty
+            .then(|| "empty_sparse_fallback".to_string()),
     })
 }
 

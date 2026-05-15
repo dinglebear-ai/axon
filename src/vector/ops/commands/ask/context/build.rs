@@ -24,6 +24,7 @@ pub(super) use fetchers::fetch_full_docs;
 pub(super) use selection::{
     collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
 };
+use selection::{dominant_retrieval_hosts, full_doc_selection_score};
 pub(super) use trace::{
     ContextCandidateSelection, ContextSelectionInputs, build_context_selection_decisions,
     context_source_candidate_count, final_source_order_from_context, selected_top_chunk_indices,
@@ -187,15 +188,20 @@ fn append_planned_full_docs(
     inserted_full_doc_urls: &mut HashSet<String>,
     source_idx: usize,
 ) -> (usize, usize) {
-    // Map URL → rerank_score for sort-by-score in the flattened context.
+    // Map URL → entity-aware full-doc score for sort-by-score in the flattened
+    // context. Raw top chunks can be broad matches; full docs should lead when
+    // their path/title-like URL tokens match discriminating query entities.
+    let dominant_hosts = dominant_retrieval_hosts(inputs.reranked);
     let url_to_score: std::collections::HashMap<String, f64> = inputs
         .top_full_doc_indices
         .iter()
         .filter_map(|&idx| {
-            inputs
-                .reranked
-                .get(idx)
-                .map(|c| (c.url.clone(), c.rerank_score))
+            inputs.reranked.get(idx).map(|c| {
+                (
+                    c.url.clone(),
+                    full_doc_selection_score(c, inputs.query_tokens, &dominant_hosts),
+                )
+            })
         })
         .collect();
     append_full_docs_to_context(

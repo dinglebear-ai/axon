@@ -4,20 +4,46 @@ use super::toml_config::{TomlConfig, load_toml_config};
 use crate::core::config::types::Config;
 
 pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
-    cfg.ask_max_context_chars = ask_max_context_chars();
+    cfg.ask_max_context_chars = ask_max_context_chars(toml);
     cfg.ask_candidate_limit = ask_candidate_limit(toml);
     cfg.ask_chunk_limit = ask_chunk_limit(toml);
-    cfg.ask_full_docs = performance::env_usize_clamped("AXON_ASK_FULL_DOCS", 4, 1, 20);
-    cfg.ask_backfill_chunks = performance::env_usize_clamped("AXON_ASK_BACKFILL_CHUNKS", 3, 0, 20);
-    cfg.ask_doc_fetch_concurrency =
-        performance::env_usize_clamped("AXON_ASK_DOC_FETCH_CONCURRENCY", 4, 1, 16);
-    cfg.ask_doc_chunk_limit =
-        performance::env_usize_clamped("AXON_ASK_DOC_CHUNK_LIMIT", 48, 8, 2000);
+    cfg.ask_full_docs = resolve_clamped_usize("AXON_ASK_FULL_DOCS", toml.ask.full_docs, 6, 1, 20);
+    cfg.ask_backfill_chunks = resolve_clamped_usize(
+        "AXON_ASK_BACKFILL_CHUNKS",
+        toml.ask.backfill_chunks,
+        5,
+        0,
+        20,
+    );
+    cfg.ask_doc_fetch_concurrency = resolve_clamped_usize(
+        "AXON_ASK_DOC_FETCH_CONCURRENCY",
+        toml.ask.doc_fetch_concurrency,
+        4,
+        1,
+        16,
+    );
+    cfg.ask_doc_chunk_limit = resolve_clamped_usize(
+        "AXON_ASK_DOC_CHUNK_LIMIT",
+        toml.ask.doc_chunk_limit,
+        96,
+        8,
+        2000,
+    );
     cfg.ask_min_relevance_score = ask_min_relevance_score(toml);
-    cfg.ask_authoritative_boost =
-        performance::env_f64_clamped("AXON_ASK_AUTHORITATIVE_BOOST", 0.0, 0.0, 0.5);
-    cfg.ask_min_citations_nontrivial =
-        performance::env_usize_clamped("AXON_ASK_MIN_CITATIONS_NONTRIVIAL", 2, 1, 5);
+    cfg.ask_authoritative_boost = resolve_clamped_f64(
+        "AXON_ASK_AUTHORITATIVE_BOOST",
+        toml.ask.authoritative_boost,
+        0.0,
+        0.0,
+        0.5,
+    );
+    cfg.ask_min_citations_nontrivial = resolve_clamped_usize(
+        "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
+        toml.ask.min_citations_nontrivial,
+        2,
+        1,
+        5,
+    );
 
     cfg.hybrid_search_enabled = hybrid_search_enabled(toml);
     cfg.hybrid_search_candidates = hybrid_search_candidates(toml);
@@ -29,7 +55,7 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         .max_capacity_bytes
         .unwrap_or(256 * 1024 * 1024);
     cfg.ask_cache_ttl_secs = toml.ask.cache.ttl_secs.unwrap_or(300).min(300);
-    cfg.ask_fulldoc_skip_enabled = toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(true);
+    cfg.ask_fulldoc_skip_enabled = toml.ask.adaptive.fulldoc_skip_enabled.unwrap_or(false);
     cfg.ask_fulldoc_skip_min_urls = toml
         .ask
         .adaptive
@@ -119,22 +145,28 @@ fn resolve_clamped_f64(
         .unwrap_or(default)
 }
 
-fn ask_max_context_chars() -> usize {
-    performance::env_usize_clamped("AXON_ASK_MAX_CONTEXT_CHARS", 120_000, 20_000, 400_000)
+fn ask_max_context_chars(toml: &TomlConfig) -> usize {
+    resolve_clamped_usize(
+        "AXON_ASK_MAX_CONTEXT_CHARS",
+        toml.ask.max_context_chars,
+        300_000,
+        20_000,
+        1_000_000,
+    )
 }
 
 fn ask_candidate_limit(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_ASK_CANDIDATE_LIMIT",
         toml.ask.candidate_limit,
-        150,
+        250,
         8,
         300,
     )
 }
 
 fn ask_chunk_limit(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 10, 3, 40)
+    resolve_clamped_usize("AXON_ASK_CHUNK_LIMIT", toml.ask.chunk_limit, 20, 3, 40)
 }
 
 fn ask_min_relevance_score(toml: &TomlConfig) -> f64 {
@@ -167,7 +199,7 @@ fn ask_hybrid_candidates(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_ASK_HYBRID_CANDIDATES",
         toml.search.ask_hybrid_candidates,
-        100,
+        150,
         10,
         500,
     )

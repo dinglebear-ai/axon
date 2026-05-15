@@ -261,6 +261,18 @@ pub struct Config {
     /// Emit per-candidate ask explain trace and skip LLM synthesis. Flag: `ask --explain`.
     pub ask_explain: bool,
 
+    /// Stream answer tokens to stdout as they arrive. Flag: `ask --stream`.
+    pub ask_stream: bool,
+
+    /// Include recent turns from the selected local ask session. Flag: `ask --follow-up`.
+    pub ask_follow_up: bool,
+
+    /// Local ask session name for saved turns and follow-up context. Flag: `ask --session`.
+    pub ask_session: Option<String>,
+
+    /// Clear the selected local ask session before running. Flag: `ask --reset-session`.
+    pub ask_reset_session: bool,
+
     /// Legacy internal graph toggle. Production request surfaces keep this disabled.
     pub ask_graph: bool,
 
@@ -268,19 +280,19 @@ pub struct Config {
     pub evaluate_responses_mode: EvaluateResponsesMode,
 
     /// Maximum total characters of context passed to the LLM in a single `ask` request.
-    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–400_000). Default: 120_000.
+    /// Env: `AXON_ASK_MAX_CONTEXT_CHARS` (clamped 20_000–1_000_000). Default: 300_000.
     pub ask_max_context_chars: usize,
 
     /// Number of candidate chunks retrieved from Qdrant before reranking.
-    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Default: 150.
+    /// Env: `AXON_ASK_CANDIDATE_LIMIT` (clamped 8–300). Default: 250.
     pub ask_candidate_limit: usize,
 
     /// Maximum chunks included in the LLM context after reranking.
-    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–40). Default: 10.
+    /// Env: `AXON_ASK_CHUNK_LIMIT` (clamped 3–40). Default: 20.
     pub ask_chunk_limit: usize,
 
     /// Number of top-scoring documents for which full-doc backfill is attempted.
-    /// Env: `AXON_ASK_FULL_DOCS` (clamped 1–20). Default: 4.
+    /// Env: `AXON_ASK_FULL_DOCS` (clamped 1–20). Default: 6.
     pub ask_full_docs: usize,
 
     /// True when `ask_full_docs` was set explicitly by the user (via
@@ -292,7 +304,7 @@ pub struct Config {
     pub ask_full_docs_explicit: bool,
 
     /// Extra chunks added from each full-doc backfill pass.
-    /// Env: `AXON_ASK_BACKFILL_CHUNKS` (clamped 0–20). Default: 3.
+    /// Env: `AXON_ASK_BACKFILL_CHUNKS` (clamped 0–20). Default: 5.
     pub ask_backfill_chunks: usize,
 
     /// Maximum concurrent Qdrant fetches during full-doc backfill.
@@ -300,7 +312,7 @@ pub struct Config {
     pub ask_doc_fetch_concurrency: usize,
 
     /// Maximum chunks fetched per document during backfill.
-    /// Env: `AXON_ASK_DOC_CHUNK_LIMIT` (clamped 8–2000). Default: 192.
+    /// Env: `AXON_ASK_DOC_CHUNK_LIMIT` (clamped 8–2000). Default: 96.
     pub ask_doc_chunk_limit: usize,
 
     /// Minimum Qdrant similarity score for a chunk to be included in RAG context.
@@ -336,7 +348,7 @@ pub struct Config {
     ///
     /// Ask reranks with `ask_min_relevance_score` (default 0.45) before selecting context,
     /// so it needs a wider prefetch window than `query` (which skips reranking).
-    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 100.
+    /// Env: `AXON_ASK_HYBRID_CANDIDATES` (clamped 10–500). Default: 150.
     pub ask_hybrid_candidates: usize,
 
     /// Enable the in-process document-chunk cache for `ask` (full-doc fetch path).
@@ -356,7 +368,7 @@ pub struct Config {
 
     /// Enable the adaptive full-doc fetch skip gate for `ask`. When the top-K
     /// reranked candidates already cover enough URLs, bytes, and quality, the
-    /// full-doc backfill stage is elided entirely. Default: true. Config-only via
+    /// full-doc backfill stage is elided entirely. Default: false. Config-only via
     /// `[ask.adaptive] fulldoc-skip-enabled`. (bd axon_rust-30y)
     pub ask_fulldoc_skip_enabled: bool,
 
@@ -600,11 +612,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ask_hybrid_candidates_default_is_100() {
+    fn ask_hybrid_candidates_default_is_150() {
         let cfg = Config::default();
         assert_eq!(
-            cfg.ask_hybrid_candidates, 100,
-            "ask_hybrid_candidates must default to 100 (Qdrant RRF rank-stable at 2x final K = 50)"
+            cfg.ask_hybrid_candidates, 150,
+            "ask_hybrid_candidates should preserve a wider recall window for ask"
         );
     }
 

@@ -58,12 +58,8 @@ pub(super) fn profile_settings(profile: PerformanceProfile) -> ProfileSettings {
     }
 }
 
-pub(super) fn env_usize_clamped(key: &str, default: usize, min: usize, max: usize) -> usize {
-    env_usize_opt(key, min, max).unwrap_or(default.clamp(min, max))
-}
-
-/// Like `env_usize_clamped` but returns `None` when the var is absent or unparseable,
-/// so TOML and hardcoded defaults can be consulted.
+/// Returns `None` when the var is absent or unparseable, allowing TOML and
+/// hardcoded defaults to be consulted.
 pub(super) fn env_usize_opt(key: &str, min: usize, max: usize) -> Option<usize> {
     env::var(key).ok().and_then(|v| match v.parse::<usize>() {
         Ok(parsed) => Some(parsed.clamp(min, max)),
@@ -95,11 +91,7 @@ pub(super) fn env_u64_opt(key: &str, min: u64, max: u64) -> Option<u64> {
     })
 }
 
-pub(super) fn env_f64_clamped(key: &str, default: f64, min: f64, max: f64) -> f64 {
-    env_f64_opt(key, min, max).unwrap_or(default.clamp(min, max))
-}
-
-/// Like `env_f64_clamped` but returns `None` when the var is absent or unparseable.
+/// Returns `None` when the var is absent or unparseable.
 pub(super) fn env_f64_opt(key: &str, min: f64, max: f64) -> Option<f64> {
     env::var(key).ok().and_then(|v| match v.parse::<f64>() {
         Ok(parsed) => Some(parsed.clamp(min, max)),

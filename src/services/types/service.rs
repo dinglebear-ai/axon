@@ -441,6 +441,10 @@ pub struct AskDiagnostics {
     pub doc_fetch_concurrency: usize,
     pub top_domains: Vec<String>,
     pub authority_ratio: f64,
+    #[serde(default)]
+    pub configured_authority_ratio: f64,
+    #[serde(default)]
+    pub product_authority_ratio: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

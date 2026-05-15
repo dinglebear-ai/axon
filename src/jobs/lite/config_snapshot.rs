@@ -1,4 +1,5 @@
 mod endpoint;
+mod errors;
 mod paths;
 
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use crate::core::config::{Config, RenderMode, ScrapeFormat};
 use crate::jobs::ingest::IngestSource;
 
 use endpoint::endpoint_snapshot;
+use errors::{running_in_container, serde_json_error};
 use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -139,6 +141,7 @@ struct LiteConfigSnapshot {
 impl LiteConfigSnapshot {
     fn from_config(cfg: &Config) -> Result<Self, String> {
         let mut process_fallback_fields = Vec::new();
+        let endpoints = snapshot_endpoints(cfg, &mut process_fallback_fields)?;
         Ok(Self {
             collection: Some(cfg.collection.clone()),
             output_dir: Some(cfg.output_dir.clone()),
@@ -150,7 +153,12 @@ impl LiteConfigSnapshot {
             include_subdomains: Some(cfg.include_subdomains),
             exclude_path_prefix: Some(cfg.exclude_path_prefix.clone()),
             render_mode: Some(cfg.render_mode),
-            chrome_remote_url: cfg.chrome_remote_url.clone(),
+            chrome_remote_url: match cfg.chrome_remote_url.as_deref() {
+                Some(url) => {
+                    endpoint_snapshot("chrome_remote_url", url, &mut process_fallback_fields)?
+                }
+                None => None,
+            },
             chrome_proxy: cfg.chrome_proxy.clone(),
             chrome_user_agent: cfg.chrome_user_agent.clone(),
             chrome_headless: Some(cfg.chrome_headless),
@@ -192,17 +200,9 @@ impl LiteConfigSnapshot {
             reddit_min_score: Some(cfg.reddit_min_score),
             reddit_depth: Some(cfg.reddit_depth),
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
-            tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, &mut process_fallback_fields)?,
-            qdrant_url: endpoint_snapshot(
-                "qdrant_url",
-                &cfg.qdrant_url,
-                &mut process_fallback_fields,
-            )?,
-            openai_base_url: endpoint_snapshot(
-                "openai_base_url",
-                &cfg.openai_base_url,
-                &mut process_fallback_fields,
-            )?,
+            tei_url: endpoints.tei_url,
+            qdrant_url: endpoints.qdrant_url,
+            openai_base_url: endpoints.openai_base_url,
             openai_model: Some(cfg.openai_model.clone()),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
@@ -395,6 +395,27 @@ impl LiteConfigSnapshot {
     }
 }
 
+struct EndpointSnapshots {
+    tei_url: Option<String>,
+    qdrant_url: Option<String>,
+    openai_base_url: Option<String>,
+}
+
+fn snapshot_endpoints(
+    cfg: &Config,
+    process_fallback_fields: &mut Vec<String>,
+) -> Result<EndpointSnapshots, String> {
+    Ok(EndpointSnapshots {
+        tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, process_fallback_fields)?,
+        qdrant_url: endpoint_snapshot("qdrant_url", &cfg.qdrant_url, process_fallback_fields)?,
+        openai_base_url: endpoint_snapshot(
+            "openai_base_url",
+            &cfg.openai_base_url,
+            process_fallback_fields,
+        )?,
+    })
+}
+
 pub(crate) fn lite_config_snapshot_json(cfg: &Config) -> Result<String, serde_json::Error> {
     serde_json::to_string(&LiteConfigEnvelope {
         version: 2,
@@ -444,10 +465,6 @@ pub(crate) fn apply_lite_config_snapshot_for_container(
     Ok(cfg)
 }
 
-fn running_in_container() -> bool {
-    std::env::var("AXON_IN_CONTAINER").is_ok_and(|value| value.trim() == "1")
-}
-
 pub(crate) fn ingest_config_json(
     cfg: &Config,
     source: &IngestSource,
@@ -457,13 +474,6 @@ pub(crate) fn ingest_config_json(
         source: Some(source.clone()),
         config: LiteConfigSnapshot::from_config(cfg).map_err(serde_json_error)?,
     })
-}
-
-fn serde_json_error(message: String) -> serde_json::Error {
-    serde_json::Error::io(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        message,
-    ))
 }
 
 pub(crate) fn decode_ingest_job_config(

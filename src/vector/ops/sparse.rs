@@ -45,10 +45,11 @@ pub const SPARSE_DIM: u32 = 65_536;
 /// distinguishing what a page is actually about.
 pub(crate) static STOP_WORDS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
-        "the", "and", "for", "with", "that", "this", "from", "into", "how", "what", "where",
-        "when", "you", "your", "are", "can", "does", "via", "not", "all", "any", "but", "too",
-        "out", "our", "their", "them", "they", "its", "then", "than", "also", "have", "has", "had",
-        "was", "were", "who", "why",
+        "a", "am", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "do", "does",
+        "for", "from", "had", "has", "have", "he", "her", "him", "his", "how", "if", "in", "into",
+        "is", "it", "its", "me", "my", "no", "not", "of", "on", "or", "our", "out", "she", "so",
+        "than", "that", "the", "their", "them", "then", "they", "this", "to", "too", "up", "us",
+        "via", "was", "we", "were", "what", "when", "where", "who", "why", "you", "your",
     ]
     .into_iter()
     .collect()

@@ -124,7 +124,7 @@ All TOML keys below are wired through `Config` — setting them in `~/.axon/conf
 | Section | Keys | Env override |
 |---------|------|---------------|
 | `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
-| `[ask]` | `chunk-limit`, `candidate-limit`, `min-relevance-score` | `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE` |
+| `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS` |
 
@@ -259,7 +259,7 @@ Hybrid search tuning lives under `[search]` in `~/.axon/config.toml`.
 |----------|--------------|---------|-------------|
 | `search.hybrid-enabled` | `AXON_HYBRID_SEARCH` | `true` | Enable BM42 sparse + dense RRF fusion |
 | `search.hybrid-candidates` | `AXON_HYBRID_CANDIDATES` | `100` | Candidates per prefetch arm (10-500) |
-| `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | `100` | Ask pipeline hybrid window |
+| `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | `150` | Ask pipeline hybrid window |
 | `search.hnsw-ef` | `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
 | `search.hnsw-ef-legacy` | `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
 
@@ -270,20 +270,21 @@ The remaining rows are runtime env controls until typed TOML fields exist.
 
 | TOML key | Env override | Default | Description |
 |----------|--------------|---------|-------------|
-| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `150` | Max retrieval candidates per prefetch (clamped 8-300) |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `10` | Max total chunks selected for LLM context |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | `300000` | Max context characters passed to the LLM (clamped 20000-1000000) |
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `250` | Max retrieval candidates per prefetch (clamped 8-300) |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `20` | Max total chunks selected for LLM context |
+| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | `6` | Max full documents included in context |
+| `ask.backfill-chunks` | `AXON_ASK_BACKFILL_CHUNKS` | `5` | Backfill chunks from top documents to pad context (clamped 0-20) |
+| `ask.doc-fetch-concurrency` | `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1-16) |
+| `ask.doc-chunk-limit` | `AXON_ASK_DOC_CHUNK_LIMIT` | `96` | Max chunks per document in context (clamped 8-2000) |
 | `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Minimum relevance score for candidate inclusion |
+| `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `[]` | Authoritative domains to boost in reranking |
+| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Boost weight for authoritative domains in reranking (clamped 0.0-0.5) |
+| `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers (clamped 1-5) |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Max context characters passed to the LLM (clamped 20000–400000) |
-| `AXON_ASK_DOC_FETCH_CONCURRENCY` | `4` | Concurrent document fetches during context build (clamped 1–16) |
-| `AXON_ASK_DOC_CHUNK_LIMIT` | `192` | Max chunks per document in context (clamped 8–2000) |
-| `AXON_ASK_FULL_DOCS` | `4` | Max full documents included in context |
-| `AXON_ASK_BACKFILL_CHUNKS` | `3` | Backfill chunks from top documents to pad context (clamped 0–20) |
-| `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Boost weight for authoritative domains in reranking (clamped 0.0–0.5) |
-| `AXON_ASK_AUTHORITATIVE_DOMAINS` | -- | Comma-separated authoritative domains to boost in reranking |
-| `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Min unique citations for non-trivial answers (clamped 1–5) |
+| `AXON_ASK_*` | see table above | Env overrides remain supported for one-off runs and deployments |
 
 ### Worker tuning
 

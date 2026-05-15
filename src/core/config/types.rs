@@ -84,8 +84,8 @@ mod tests {
     #[test]
     fn config_default_ask_settings() {
         let cfg = Config::default();
-        assert_eq!(cfg.ask_max_context_chars, 120_000);
-        assert_eq!(cfg.ask_candidate_limit, 150);
+        assert_eq!(cfg.ask_max_context_chars, 300_000);
+        assert_eq!(cfg.ask_candidate_limit, 250);
         assert!((cfg.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert!(cfg.ask_authoritative_domains.is_empty());
         assert!((cfg.ask_authoritative_boost - 0.0).abs() < f64::EPSILON);

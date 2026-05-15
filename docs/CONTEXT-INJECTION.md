@@ -59,7 +59,7 @@ This prefix is applied only to query-side embeddings. Document chunks are embedd
 
 `qdrant::dispatch_vector_search` searches Qdrant using the dense query vector. Named hybrid collections use the dense vector plus BM42 sparse search with RRF fusion; legacy unnamed collections fall back to dense-only search. When a keyword query vector exists, Axon runs a second search and merges/deduplicates the candidate pool.
 
-The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `150`).
+The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `250`).
 
 Each result comes back with:
 - `score` — retrieval score from Qdrant. Dense-only paths return cosine-style scores; hybrid RRF paths return unitless rank-fusion scores.
@@ -232,15 +232,15 @@ Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs d
 
 | Env var | What it controls | Typical default |
 |---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 150 |
-| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 100 |
+| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | 250 |
+| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | 150 |
 | `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
-| `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 10 |
-| `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 4 |
-| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 192 |
+| `AXON_ASK_CHUNK_LIMIT` | Max top chunks (Tier 1) | 20 |
+| `AXON_ASK_FULL_DOCS` | Max full-document fetches (Tier 2) | 6 |
+| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 96 |
 | `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
-| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 3 |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 120000 |
+| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 5 |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | 300000 |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |

@@ -1,27 +1,48 @@
 use crate::cli::client::ServerClient;
 use crate::cli::commands::resolve_input_text;
 use crate::core::config::Config;
-use crate::core::logging::log_info;
+use crate::core::logging::{log_info, log_warn};
 use crate::core::ui::{muted, primary};
 use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
 use crate::services::types::AskResult;
 use std::error::Error;
 
+mod followup;
+
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
+    if cfg.ask_reset_session {
+        followup::reset_session(cfg)?;
+    }
+    let effective_query = if cfg.ask_follow_up {
+        followup::follow_up_query(cfg, &query)?.unwrap_or_else(|| query.clone())
+    } else {
+        query.clone()
+    };
     log_info(&format!(
-        "command=ask query_len={} collection={} server_url={}",
+        "command=ask query_len={} effective_query_len={} collection={} follow_up={} session={} server_url={}",
         query.len(),
+        effective_query.len(),
         cfg.collection,
+        cfg.ask_follow_up,
+        followup::selected_session_name(cfg),
         cfg.server_url
             .as_ref()
             .map(|u| u.as_str())
             .unwrap_or("(in-process)")
     ));
 
-    let result = if let Some(server_url) = cfg.server_url.as_ref() {
-        match ask_via_server(cfg, server_url, &query).await {
+    if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain {
+        println!("{}", primary("Conversation"));
+        println!("  {} {}", primary("You:"), query);
+        println!("  {}", primary("Assistant:"));
+    }
+
+    let mut result = if cfg.ask_stream && cfg.server_url.is_some() {
+        run_in_process_ask(cfg, &effective_query).await?
+    } else if let Some(server_url) = cfg.server_url.as_ref() {
+        match ask_via_server(cfg, server_url, &effective_query).await {
             Ok(result) => result,
             Err(err) => {
                 let msg = err.to_string();
@@ -37,21 +58,13 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
             }
         }
     } else {
-        match query_svc::ask(cfg, &query, None).await {
-            Ok(result) => result,
-            Err(err) => {
-                if cfg.ask_diagnostics
-                    && let Some(diag) = diagnostics_from_error(err.as_ref())
-                {
-                    eprintln!("{} {}", muted("Diagnostics:"), diag);
-                }
-                return Err(err);
-            }
-        }
+        run_in_process_ask(cfg, &effective_query).await?
     };
+    result.query = query.clone();
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
+        record_successful_turn(cfg, &query, &result);
         return Ok(());
     }
 
@@ -79,9 +92,14 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    println!("{}", primary("Conversation"));
-    println!("  {} {}", primary("You:"), query);
-    println!("  {} {}", primary("Assistant:"), result.answer);
+    if cfg.ask_stream {
+        println!();
+    } else {
+        println!("{}", primary("Conversation"));
+        println!("  {} {}", primary("You:"), query);
+        println!("  {}", primary("Assistant:"));
+        println!("{}", result.answer);
+    }
 
     println!(
         "  {} retrieval={}ms | context={}ms | llm={}ms | total={}ms",
@@ -96,7 +114,34 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
         print_diagnostics(&result.diagnostics);
     }
 
+    record_successful_turn(cfg, &query, &result);
+
     Ok(())
+}
+
+fn record_successful_turn(cfg: &Config, query: &str, result: &AskResult) {
+    if cfg.ask_explain || result.answer.trim().is_empty() {
+        return;
+    }
+    if let Err(err) = followup::append_turn(cfg, query, &result.answer) {
+        log_warn(&format!(
+            "ask: failed to record follow-up session turn: {err}"
+        ));
+    }
+}
+
+async fn run_in_process_ask(cfg: &Config, query: &str) -> Result<AskResult, Box<dyn Error>> {
+    match query_svc::ask(cfg, query, None).await {
+        Ok(result) => Ok(result),
+        Err(err) => {
+            if cfg.ask_diagnostics
+                && let Some(diag) = diagnostics_from_error(err.as_ref())
+            {
+                eprintln!("{} {}", muted("Diagnostics:"), diag);
+            }
+            Err(err)
+        }
+    }
 }
 
 /// Map an `ask_via_server` error message prefix to a short user hint.
@@ -227,7 +272,7 @@ fn print_diagnostics(diag: &Option<crate::services::types::AskDiagnostics>) {
     };
 
     println!(
-        "  {} candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} authority_ratio={:.2}",
+        "  {} candidates={} reranked={} chunks={} full_docs={} supplemental={} context_chars={} authority_ratio={:.2} configured_authority={:.2} product_authority={:.2}",
         muted("Diagnostics:"),
         diag.candidate_pool,
         diag.reranked_pool,
@@ -236,6 +281,8 @@ fn print_diagnostics(diag: &Option<crate::services::types::AskDiagnostics>) {
         diag.supplemental_selected,
         diag.context_chars,
         diag.authority_ratio,
+        diag.configured_authority_ratio,
+        diag.product_authority_ratio,
     );
 
     if !diag.top_domains.is_empty() {

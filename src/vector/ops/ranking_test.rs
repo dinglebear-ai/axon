@@ -53,15 +53,15 @@ fn tokenize_query_lowercases() {
 }
 
 #[test]
-fn tokenize_query_filters_short_tokens() {
+fn tokenize_query_preserves_two_character_product_tokens() {
     let tokens = tokenize_query("a bb ccc dddd");
     assert!(
         !tokens.contains(&"a".to_string()),
         "'a' (len 1) should be dropped"
     );
     assert!(
-        !tokens.contains(&"bb".to_string()),
-        "'bb' (len 2) should be dropped"
+        tokens.contains(&"bb".to_string()),
+        "'bb' (len 2) should survive for short product names"
     );
     assert!(
         tokens.contains(&"ccc".to_string()),
@@ -71,6 +71,17 @@ fn tokenize_query_filters_short_tokens() {
         tokens.contains(&"dddd".to_string()),
         "'dddd' (len 4) should survive"
     );
+}
+
+#[test]
+fn tokenize_query_strips_two_character_stop_words() {
+    let tokens = tokenize_query("how do i use uv to manage dependencies in python");
+
+    assert!(tokens.contains(&"uv".to_string()));
+    assert!(tokens.contains(&"python".to_string()));
+    assert!(!tokens.contains(&"do".to_string()));
+    assert!(!tokens.contains(&"to".to_string()));
+    assert!(!tokens.contains(&"in".to_string()));
 }
 
 #[test]

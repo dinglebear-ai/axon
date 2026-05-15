@@ -229,10 +229,12 @@ mod tests {
         submitted.tei_url = "http://127.0.0.1:52000".to_string();
         submitted.qdrant_url = "http://localhost:53333".to_string();
         submitted.openai_base_url = "http://[::1]:8317/v1".to_string();
+        submitted.chrome_remote_url = Some("http://127.0.0.1:6000".to_string());
         let mut worker = Config::test_default();
         worker.tei_url = "http://worker-tei:80".to_string();
         worker.qdrant_url = "http://worker-qdrant:6333".to_string();
         worker.openai_base_url = "http://worker-llm/v1".to_string();
+        worker.chrome_remote_url = Some("http://axon-chrome:6000".to_string());
 
         let config_json = lite_config_snapshot_json(&submitted).expect("encode snapshot");
         assert!(!config_json.contains("127.0.0.1"));
@@ -243,6 +245,10 @@ mod tests {
         assert_eq!(effective.tei_url, "http://worker-tei:80");
         assert_eq!(effective.qdrant_url, "http://worker-qdrant:6333");
         assert_eq!(effective.openai_base_url, "http://worker-llm/v1");
+        assert_eq!(
+            effective.chrome_remote_url.as_deref(),
+            Some("http://axon-chrome:6000")
+        );
     }
 
     #[test]

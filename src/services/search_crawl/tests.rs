@@ -146,7 +146,7 @@ async fn enqueue_failure_is_rejected_not_fatal() {
 }
 
 #[tokio::test]
-async fn uses_hardened_single_page_config() {
+async fn uses_hardened_bounded_crawl_config() {
     let mut cfg = make_cfg("rust");
     cfg.max_pages = 500;
     cfg.max_depth = 12;
@@ -172,8 +172,8 @@ async fn uses_hardened_single_page_config() {
     };
     let effective =
         apply_lite_config_snapshot(&Config::test_default(), config_json).expect("snapshot");
-    assert_eq!(effective.max_pages, 1);
-    assert_eq!(effective.max_depth, 1);
+    assert_eq!(effective.max_pages, 200);
+    assert_eq!(effective.max_depth, 10);
     assert!(!effective.discover_sitemaps);
     assert_eq!(effective.max_sitemaps, 0);
     assert!(effective.custom_headers.is_empty());
@@ -220,8 +220,8 @@ async fn crawl_config_preserves_wait_mode() {
     cfg.wait = true;
     let c = crawl_config(&cfg);
     assert!(c.wait);
-    assert_eq!(c.max_pages, 1);
-    assert_eq!(c.max_depth, 1);
+    assert_eq!(c.max_pages, 200);
+    assert_eq!(c.max_depth, 10);
 }
 
 #[test]

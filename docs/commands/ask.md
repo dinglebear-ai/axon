@@ -41,6 +41,11 @@ All global flags apply. Key flags:
 | `--collection <name>` | `cortex` | Qdrant collection to search. |
 | `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
 | `--explain` | `false` | Emit a per-candidate ranking/context trace. Implies diagnostics and skips LLM synthesis; use with `--json` for the full payload. |
+| `--stream` | `true` | Stream answer tokens as they arrive for interactive use. Uses the in-process ask path; JSON and explain output remain buffered. |
+| `--no-stream` | `false` | Disable answer streaming and render only the final response. |
+| `--follow-up` | `false` | Include recent turns from the selected local ask session as conversation context. |
+| `--session <name>` | `default` | Local ask session name used for saved turns and follow-up context. |
+| `--reset-session` | `false` | Clear the selected ask session before running this question. |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.
@@ -62,6 +67,16 @@ axon ask "list all indexed rust crates" --collection rust-libs
 # Debug: show retrieved chunks and scores
 axon ask "qdrant HNSW parameters" --diagnostics
 
+# Disable streaming when you need buffered output
+axon ask "how does the ask pipeline choose sources?" --no-stream
+
+# Continue from recent ask turns in the default local session
+axon ask --follow-up "can you show a concrete example?"
+
+# Use a named local session and clear it when changing topics
+axon ask --session rust-tests --reset-session "what is the test sidecar pattern?"
+axon ask --session rust-tests --follow-up "how would that look in this repo?"
+
 # Explain ranking/context decisions without calling the LLM
 axon ask "claude marketplace plugins" --explain --json
 
@@ -75,15 +90,28 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
 ## RAG Pipeline
 
 1. Embed the question via TEI
-2. Query Qdrant for top `ask.candidate-limit` (default: 150) candidate chunks
+2. Query Qdrant for top `ask.candidate-limit` (default: 250) candidate chunks
 3. Apply the score threshold only on cosine/dense paths. `ask.min-relevance-score` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
 4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
-5. Rerank by the mode-appropriate score/order; take top `ask.chunk-limit` (default: 10)
-6. For top `AXON_ASK_FULL_DOCS` (default: 4) documents, backfill additional chunks from the same document
-7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 120,000) characters
+5. Rerank by the mode-appropriate score/order; take top `ask.chunk-limit` (default: 20)
+6. For top `AXON_ASK_FULL_DOCS` (default: 6) documents, backfill additional chunks from the same document
+7. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (default: 300,000) characters
 8. Call Gemini headless with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
+
+## Follow-Up Sessions
+
+`axon ask` records successful non-explain turns to local JSONL files under
+`$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`). The default
+session is `default`; pass `--session <name>` to keep separate threads.
+
+`--follow-up` loads the recent turns for the selected session and folds them
+into the retrieval/synthesis question so references like "that" or "the second
+option" can resolve without depending on Gemini CLI's interactive session state.
+Facts still need to come from retrieved Axon context and still need `[S#]`
+citations. Use `--reset-session` to clear a local session before changing
+topics.
 
 ## Explain Trace
 
@@ -143,14 +171,14 @@ to store these values.
 | TOML key | Env override | Default | Effect |
 |----------|--------------|---------|--------|
 | `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6-0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
-| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `150` | More candidates = better recall, slower reranking |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `10` | Chunks in final LLM context |
+| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | `250` | More candidates = better recall, slower reranking |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | `20` | Chunks in final LLM context |
 
 Remaining runtime ask controls are still env-only until typed TOML fields exist:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `AXON_ASK_MAX_CONTEXT_CHARS` | `120000` | Total context characters; raise for large-context models |
+| `AXON_ASK_MAX_CONTEXT_CHARS` | `300000` | Total context characters; tuned for large-context one-shot synthesis |
 | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
 | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
 | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |

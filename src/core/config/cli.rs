@@ -248,6 +248,21 @@ pub(super) struct AskArgs {
     pub(super) diagnostics: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) explain: bool,
+    /// Stream answer tokens as they arrive for interactive use. This is the default.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub(super) stream: bool,
+    /// Disable answer token streaming and render only the final response.
+    #[arg(long = "no-stream", action = ArgAction::SetTrue)]
+    pub(super) no_stream: bool,
+    /// Treat this question as a follow-up to recent turns in the ask session.
+    #[arg(long = "follow-up", action = ArgAction::SetTrue)]
+    pub(super) follow_up: bool,
+    /// Name of the local ask session used for follow-up context.
+    #[arg(long = "session", value_name = "NAME")]
+    pub(super) session: Option<String>,
+    /// Clear the selected ask session before running this question.
+    #[arg(long = "reset-session", action = ArgAction::SetTrue)]
+    pub(super) reset_session: bool,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }
