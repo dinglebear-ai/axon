@@ -83,22 +83,74 @@ install:
     {{rust_dev_env}}; cargo build --release --locked
     just link-bin
 
-# Build release binary, sync PATH symlinks, rebuild container image, restart container.
+# Build the local axon image from this checkout using the dev compose overlay.
+container-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    repo="$(pwd)"
+    env_file="$(resolve_axon_env_file "$repo")"
+    compose=(docker compose)
+    if [ -f "$env_file" ]; then
+      compose+=(--env-file "$env_file")
+    fi
+    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    "${compose[@]}" build axon
+
+# Recreate the axon service with the locally built axon:local image.
+container-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/lib/axon-env.sh
+    repo="$(pwd)"
+    env_file="$(resolve_axon_env_file "$repo")"
+    compose=(docker compose)
+    if [ -f "$env_file" ]; then
+      compose+=(--env-file "$env_file")
+    fi
+    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    "${compose[@]}" up -d axon --no-deps
+    "${compose[@]}" ps axon
+
+# Build release binary, sync PATH symlinks, rebuild local container image, restart container.
 # Synchronous version of what `scripts/axon` does automatically in the background.
 sync-container:
     #!/usr/bin/env bash
     set -euo pipefail
-    source scripts/lib/axon-env.sh; load_axon_env_file "$(pwd)"
+    source scripts/lib/axon-env.sh
+    repo="$(pwd)"
+    load_axon_env_file "$repo"
+    env_file="$(resolve_axon_env_file "$repo")"
     if command -v mold >/dev/null 2>&1; then
-        export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
+      export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold"
     fi
-    cargo build --release --locked
-    just link-bin
-    docker compose build axon
-    docker compose up -d axon --no-deps
+    cargo build --release --locked --bin axon
+
     AXON_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    case "$AXON_TARGET_DIR" in
+      /*) AXON_BIN="$AXON_TARGET_DIR/release/axon" ;;
+      *) AXON_BIN="$repo/$AXON_TARGET_DIR/release/axon" ;;
+    esac
+    mkdir -p ~/.local/bin
+    ln -sf "$AXON_BIN" ~/.local/bin/axon
+    while IFS= read -r -d '' plugin_bin; do
+      ln -sf "$AXON_BIN" "$plugin_bin"
+    done < <(find "${HOME}/.claude/plugins/cache/jmagar-lab/axon" -maxdepth 3 -name "axon" \( -type f -o -type l \) -print0 2>/dev/null)
+    systemctl --user restart axon-mcp 2>/dev/null || true
+    echo "axon -> $AXON_BIN"
+
+    compose=(docker compose)
+    if [ -f "$env_file" ]; then
+      compose+=(--env-file "$env_file")
+    fi
+    compose+=(-f docker-compose.yaml -f docker-compose.dev.yaml)
+    "${compose[@]}" build axon
+    "${compose[@]}" up -d axon --no-deps
     touch "${AXON_TARGET_DIR}/.container-built"
+    "${compose[@]}" ps axon
     echo "container synced"
+
+container-sync: sync-container
 
 install-debug:
     #!/usr/bin/env bash
