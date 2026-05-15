@@ -414,6 +414,8 @@ pub struct AskRequest {
     pub graph: Option<bool>,
     /// Include RAG diagnostics in response. Overrides cfg.ask_diagnostics.
     pub diagnostics: Option<bool>,
+    /// Include per-candidate explain trace and skip LLM synthesis.
+    pub explain: Option<bool>,
     /// Qdrant collection to search. Defaults to the server's configured collection.
     pub collection: Option<String>,
     /// Lower bound for temporal filter. Formats: 7d, 30d, YYYY-MM-DD, RFC3339.

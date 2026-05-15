@@ -10,6 +10,7 @@ mod retrieval;
 mod tests;
 
 use super::AskTiming;
+use crate::services::types::AskExplainTrace;
 use build::build_context_from_candidates;
 use query_rewrite::{QueryComplexity, build_query_forms};
 use retrieval::retrieve_ask_candidates;
@@ -84,6 +85,7 @@ pub(crate) struct AskContext {
     /// "user_override" | "adaptive_simple" | "adaptive_complex".
     /// (bd axon_rust-721)
     pub full_docs_source: &'static str,
+    pub explain: Option<AskExplainTrace>,
 }
 
 pub(crate) async fn build_ask_context(
@@ -156,5 +158,71 @@ pub(crate) async fn build_ask_context(
         detected_complexity,
         resolved_full_docs,
         full_docs_source: full_docs_source.as_str(),
+        explain: if cfg.ask_explain {
+            build_explain_trace(
+                query,
+                retrieval.explain_retrieval,
+                retrieval.candidate_traces,
+                built.explain_context,
+                built.selection_decisions,
+            )
+        } else {
+            None
+        },
+    })
+}
+
+fn build_explain_trace(
+    query: &str,
+    retrieval: Option<crate::services::types::AskExplainRetrieval>,
+    candidate_traces: Vec<crate::vector::ops::commands::retrieval::CandidateRankingTrace>,
+    context: crate::services::types::AskExplainContext,
+    selections: Vec<build::ContextCandidateSelection>,
+) -> Option<AskExplainTrace> {
+    use crate::services::types::{AskExplainCandidate, AskExplainMode};
+    use crate::vector::ops::ranking;
+    use std::collections::HashMap;
+
+    let retrieval = retrieval?;
+    let mut selections_by_url = selections
+        .into_iter()
+        .map(|selection| (selection.url, selection.decisions))
+        .collect::<HashMap<_, _>>();
+    let query_tokens = ranking::tokenize_query(query);
+    let candidates = candidate_traces
+        .into_iter()
+        .enumerate()
+        .map(|(idx, trace)| {
+            let candidate = trace.candidate.candidate;
+            let snippet = ranking::get_meaningful_snippet(&candidate.chunk_text, &query_tokens);
+            let selection_decisions =
+                selections_by_url.remove(&candidate.url).unwrap_or_else(|| {
+                    vec![crate::services::types::AskExplainSelectionDecision {
+                        kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
+                        reason: None,
+                    }]
+                });
+            AskExplainCandidate {
+                id: format!("candidate-{}", idx + 1),
+                url: candidate.url,
+                chunk_index: trace.candidate.chunk_index,
+                retrieval_score: candidate.score,
+                rerank_score: candidate.rerank_score,
+                score_kind: trace.score_kind,
+                score_components: trace.score_components,
+                filter_decisions: trace.filter_decisions,
+                selection_decisions,
+                snippet,
+            }
+        })
+        .collect::<Vec<_>>();
+    Some(AskExplainTrace {
+        mode: AskExplainMode::ExplainOnly,
+        retrieval,
+        candidate_trace_limit: candidates.len(),
+        candidate_trace_truncated: false,
+        context,
+        candidates,
+        llm_skipped: true,
     })
 }

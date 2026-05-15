@@ -1,4 +1,7 @@
 use super::*;
+use crate::services::types::{
+    AskExplainFilterDecisionKind, AskExplainScoreComponentStatus, AskExplainScoreKind,
+};
 use std::collections::HashSet;
 
 fn make_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {
@@ -137,6 +140,127 @@ fn score_policy_boosts_official_product_docs_for_named_product_queries() {
     assert!(
         selected[0].candidate.rerank_score > selected[1].candidate.rerank_score,
         "official Claude docs should outrank cross-product plugin docs for Claude queries"
+    );
+}
+
+#[test]
+fn score_trace_components_sum_to_final_rerank_score() {
+    let candidates = vec![make_candidate(
+        "https://code.claude.com/docs/en/plugins",
+        "Claude Code plugins marketplace official docs",
+        0.41,
+    )];
+    let query_tokens = vec![
+        "claude".to_string(),
+        "marketplace".to_string(),
+        "plugins".to_string(),
+    ];
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &["code.claude.com".to_string()],
+        authoritative_boost: 0.12,
+        product_authority_boost: 0.35,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    let (selected, trace) =
+        score_and_filter_candidates_with_trace(&candidates, &query_tokens, &policy);
+
+    assert_eq!(selected.len(), 1);
+    assert_eq!(trace.len(), 1);
+    assert_eq!(trace[0].score_kind, AskExplainScoreKind::Cosine);
+    assert_eq!(
+        trace[0].filter_decisions[0].kind,
+        AskExplainFilterDecisionKind::Kept
+    );
+    let component_sum = trace[0]
+        .score_components
+        .iter()
+        .filter(|component| component.status == AskExplainScoreComponentStatus::Applied)
+        .map(|component| component.value)
+        .sum::<f64>();
+    assert!((component_sum - selected[0].candidate.rerank_score).abs() < 1e-12);
+    assert!(
+        trace[0]
+            .score_components
+            .iter()
+            .any(|component| component.name == "product_authority_boost"
+                && component.value > 0.0
+                && component.status == AskExplainScoreComponentStatus::Applied),
+        "trace should make the Claude official-domain product boost visible"
+    );
+}
+
+#[test]
+fn score_trace_preserves_normal_rerank_output() {
+    let candidates = vec![
+        make_candidate(
+            "https://docs.openclaw.ai/cli/plugins",
+            "plugins marketplace commands install list inspect openclaw docs",
+            0.28,
+        ),
+        make_candidate(
+            "https://code.claude.com/docs/en/plugins",
+            "Claude Code plugins marketplace standalone configuration official docs",
+            0.17,
+        ),
+    ];
+    let query_tokens = vec![
+        "claude".to_string(),
+        "marketplace".to_string(),
+        "plugins".to_string(),
+    ];
+    let policy = CandidateScorePolicy {
+        authoritative_domains: &[],
+        authoritative_boost: 0.0,
+        product_authority_boost: 0.35,
+        min_relevance_score: None,
+        require_topical_overlap: true,
+    };
+
+    let normal = score_and_filter_candidates(&candidates, &query_tokens, &policy);
+    let (with_trace, trace) =
+        score_and_filter_candidates_with_trace(&candidates, &query_tokens, &policy);
+
+    assert_eq!(normal.len(), with_trace.len());
+    assert_eq!(trace.len(), candidates.len());
+    for (normal, with_trace) in normal.iter().zip(with_trace.iter()) {
+        assert_eq!(normal.candidate.url, with_trace.candidate.url);
+        assert!((normal.candidate.rerank_score - with_trace.candidate.rerank_score).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn rrf_score_trace_skips_additive_boosts_and_min_relevance() {
+    let candidates = vec![
+        make_candidate(
+            "https://code.claude.com/docs/en/plugins",
+            "Claude Code plugins marketplace official docs",
+            0.02,
+        ),
+        make_candidate(
+            "https://docs.openclaw.ai/cli/plugins",
+            "unrelated command reference",
+            0.99,
+        ),
+    ];
+    let query_tokens = vec!["claude".to_string(), "plugins".to_string()];
+
+    let (selected, trace) = score_rrf_candidates_with_trace(&candidates, &query_tokens);
+
+    assert_eq!(
+        selected[0].candidate.url, "https://code.claude.com/docs/en/plugins",
+        "RRF trace path should not apply the cosine min relevance threshold"
+    );
+    assert_eq!(selected[0].candidate.rerank_score, 0.02);
+    assert_eq!(trace[0].score_kind, AskExplainScoreKind::Rrf);
+    assert!(
+        trace[0]
+            .score_components
+            .iter()
+            .filter(|component| component.name != "retrieval_score")
+            .all(|component| component.status == AskExplainScoreComponentStatus::Skipped),
+        "all additive rerank components must be marked skipped in RRF mode"
     );
 }
 

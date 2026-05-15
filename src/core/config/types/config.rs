@@ -252,6 +252,9 @@ pub struct Config {
     /// Print verbose RAG diagnostics (retrieved chunks, scores) during `ask`/`evaluate`. Flag: `--diagnostics`.
     pub ask_diagnostics: bool,
 
+    /// Emit per-candidate ask explain trace and skip LLM synthesis. Flag: `ask --explain`.
+    pub ask_explain: bool,
+
     /// Legacy internal graph toggle. Production request surfaces keep this disabled.
     pub ask_graph: bool,
 

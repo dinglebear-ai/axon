@@ -385,6 +385,7 @@ impl AxonMcpServer {
             .transpose()?;
         let cfg = self.cfg.apply_overrides(&ConfigOverrides {
             ask_diagnostics: req.diagnostics,
+            ask_explain: req.explain,
             collection,
             since: req.since,
             before: req.before,

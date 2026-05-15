@@ -2,11 +2,14 @@ mod appenders;
 mod diagnostics;
 mod fetchers;
 mod selection;
+mod trace;
 
 use super::super::timing::{AskTiming, AskTimingSlot};
-use super::heuristics::{should_inject_supplemental, should_skip_full_doc_fetch};
+use super::heuristics::{SkipDecision, should_inject_supplemental, should_skip_full_doc_fetch};
 use crate::core::config::Config;
 use crate::core::logging::log_info;
+use crate::services::types::AskExplainContext;
+use crate::vector::ops::qdrant;
 use crate::vector::ops::ranking;
 use anyhow::{Result, anyhow};
 use std::collections::HashSet;
@@ -20,6 +23,11 @@ pub(super) use fetchers::ask_doc_cache;
 pub(super) use fetchers::fetch_full_docs;
 pub(super) use selection::{
     collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
+};
+pub(super) use trace::{
+    ContextCandidateSelection, ContextSelectionInputs, build_context_selection_decisions,
+    context_source_candidate_count, final_source_order_from_context, selected_top_chunk_indices,
+    sorted_urls,
 };
 
 pub(super) struct BuiltAskContext {
@@ -35,6 +43,10 @@ pub(super) struct BuiltAskContext {
     /// Static reason string from the skip gate; useful for diagnostics even
     /// when the gate did not fire ("disabled", "insufficient_urls", etc.).
     pub(super) full_doc_fetch_skip_reason: &'static str,
+    #[allow(dead_code)]
+    pub(super) explain_context: AskExplainContext,
+    #[allow(dead_code)]
+    pub(super) selection_decisions: Vec<ContextCandidateSelection>,
 }
 
 pub(super) async fn build_context_from_candidates(
@@ -56,11 +68,6 @@ pub(super) async fn build_context_from_candidates(
     let mut context_char_count = 0usize;
     let separator = "\n\n---\n\n";
     let mut source_idx = 1usize;
-    // Adaptive skip gate. `min_supplemental_score == None` is the canonical
-    // signal that retrieval ran in RRF mode (see retrieval::is_rrf_mode +
-    // AskRetrieval::min_supplemental_score). Use that to dispatch the gate's
-    // mode-aware threshold without re-threading is_rrf through the call site.
-    // (bd axon_rust-30y)
     let is_rrf = min_supplemental_score.is_none();
     let skip_decision = should_skip_full_doc_fetch(cfg, reranked, is_rrf);
     let planned_full_doc_urls_set =
@@ -75,30 +82,28 @@ pub(super) async fn build_context_from_candidates(
         separator,
         max_context_chars,
     );
+    let selected_top_chunk_indices = selected_top_chunk_indices(
+        reranked,
+        top_chunk_indices,
+        &planned_full_doc_urls_set,
+        top_chunks_selected,
+    );
 
     let mut inserted_full_doc_urls: HashSet<String> = HashSet::new();
 
-    let full_doc_fetch_started = std::time::Instant::now();
-    let fetched_docs = if skip_decision.skip {
-        log_info(&format!(
-            "ask: skipping full-doc fetch (reason: {}; mode: {})",
-            skip_decision.reason,
-            if is_rrf { "rrf" } else { "cosine" }
-        ));
-        Vec::new()
-    } else {
-        fetch_full_docs(
-            cfg,
-            reranked,
-            top_full_doc_indices,
-            context_char_count,
-            max_context_chars,
-            doc_chunk_limit,
-            doc_fetch_concurrency,
-        )
-        .await?
-    };
-    timing.record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
+    let fetched_docs = fetch_full_docs_for_context(FetchFullDocsInputs {
+        cfg,
+        reranked,
+        top_full_doc_indices,
+        context_char_count,
+        max_context_chars,
+        doc_chunk_limit,
+        doc_fetch_concurrency,
+        skip_decision,
+        is_rrf,
+        timing,
+    })
+    .await?;
     // Map URL → rerank_score for sort-by-score in the flattened context.
     let url_to_score: std::collections::HashMap<String, f64> = top_full_doc_indices
         .iter()
@@ -133,42 +138,207 @@ pub(super) async fn build_context_from_candidates(
     );
     timing.record(AskTimingSlot::Supplemental, supplemental_started);
 
-    if context_entries.is_empty() {
+    let finalized = finalize_built_context(FinalizeContextInputs {
+        reranked,
+        top_chunk_indices,
+        top_full_doc_indices,
+        selected_top_chunk_indices: &selected_top_chunk_indices,
+        planned_full_doc_urls_set: &planned_full_doc_urls_set,
+        inserted_full_doc_urls: &inserted_full_doc_urls,
+        supplemental: &supplemental,
+        supplemental_count,
+        top_chunks_selected,
+        full_docs_selected,
+        max_context_chars,
+        skip_decision,
+        is_rrf,
+        separator,
+        context_started,
+        context_entries,
+    })?;
+
+    Ok(BuiltAskContext {
+        context: finalized.context,
+        chunks_selected: top_chunks_selected,
+        full_docs_selected,
+        supplemental_count,
+        context_elapsed_ms: finalized.context_elapsed_ms,
+        diagnostic_sources: finalized.diagnostic_sources,
+        full_doc_fetch_skipped: skip_decision.skip,
+        full_doc_fetch_skip_reason: skip_decision.reason,
+        explain_context: finalized.explain_context,
+        selection_decisions: finalized.selection_decisions,
+    })
+}
+
+type FetchedFullDocs = Vec<(usize, String, Vec<qdrant::QdrantPoint>)>;
+
+struct FetchFullDocsInputs<'a> {
+    cfg: &'a Config,
+    reranked: &'a [ranking::AskCandidate],
+    top_full_doc_indices: &'a [usize],
+    context_char_count: usize,
+    max_context_chars: usize,
+    doc_chunk_limit: usize,
+    doc_fetch_concurrency: usize,
+    skip_decision: SkipDecision,
+    is_rrf: bool,
+    timing: &'a mut AskTiming,
+}
+
+async fn fetch_full_docs_for_context(inputs: FetchFullDocsInputs<'_>) -> Result<FetchedFullDocs> {
+    let full_doc_fetch_started = std::time::Instant::now();
+    let fetched_docs = if inputs.skip_decision.skip {
+        log_info(&format!(
+            "ask: skipping full-doc fetch (reason: {}; mode: {})",
+            inputs.skip_decision.reason,
+            if inputs.is_rrf { "rrf" } else { "cosine" }
+        ));
+        Vec::new()
+    } else {
+        fetch_full_docs(
+            inputs.cfg,
+            inputs.reranked,
+            inputs.top_full_doc_indices,
+            inputs.context_char_count,
+            inputs.max_context_chars,
+            inputs.doc_chunk_limit,
+            inputs.doc_fetch_concurrency,
+        )
+        .await?
+    };
+    inputs
+        .timing
+        .record(AskTimingSlot::FullDocFetch, full_doc_fetch_started);
+    Ok(fetched_docs)
+}
+
+struct FinalizeContextInputs<'a> {
+    reranked: &'a [ranking::AskCandidate],
+    top_chunk_indices: &'a [usize],
+    top_full_doc_indices: &'a [usize],
+    selected_top_chunk_indices: &'a [usize],
+    planned_full_doc_urls_set: &'a HashSet<String>,
+    inserted_full_doc_urls: &'a HashSet<String>,
+    supplemental: &'a [usize],
+    supplemental_count: usize,
+    top_chunks_selected: usize,
+    full_docs_selected: usize,
+    max_context_chars: usize,
+    skip_decision: SkipDecision,
+    is_rrf: bool,
+    separator: &'a str,
+    context_started: std::time::Instant,
+    context_entries: Vec<(f64, String)>,
+}
+
+struct FinalizedAskContext {
+    context: String,
+    context_elapsed_ms: u128,
+    diagnostic_sources: Vec<String>,
+    explain_context: AskExplainContext,
+    selection_decisions: Vec<ContextCandidateSelection>,
+}
+
+fn finalize_built_context(mut inputs: FinalizeContextInputs<'_>) -> Result<FinalizedAskContext> {
+    if inputs.context_entries.is_empty() {
         return Err(anyhow!("Failed to retrieve any context sources for ask"));
     }
 
     // Flatten by rerank_score across all buckets (top-chunks/full-docs/supplemental):
     // LLMs have proximity bias — highest-scoring chunks should appear first
     // regardless of which bucket they came from. (bd axon_rust-az9)
-    context_entries.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let joined = context_entries
-        .into_iter()
+    inputs
+        .context_entries
+        .sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let joined = inputs
+        .context_entries
+        .iter()
         .enumerate()
-        .map(|(idx, (_, entry))| renumber_source_header(&entry, idx + 1))
+        .map(|(idx, (_, entry))| renumber_source_header(entry, idx + 1))
         .collect::<Vec<_>>();
-    let context = format!("Sources:\n{}", joined.join(separator));
-    let context_elapsed_ms = context_started.elapsed().as_millis();
-
-    let diagnostic_sources = build_diagnostic_sources(
-        reranked,
-        top_chunk_indices,
-        top_chunks_selected,
-        &planned_full_doc_urls_set,
-        top_full_doc_indices,
-        &supplemental,
-        supplemental_count,
+    let context = format!("Sources:\n{}", joined.join(inputs.separator));
+    let explain_context = build_explain_context(
+        &context,
+        ExplainContextInputs {
+            reranked: inputs.reranked,
+            top_chunk_indices: inputs.top_chunk_indices,
+            top_full_doc_indices: inputs.top_full_doc_indices,
+            selected_top_chunk_indices: inputs.selected_top_chunk_indices,
+            planned_full_doc_urls_set: inputs.planned_full_doc_urls_set,
+            supplemental: inputs.supplemental,
+            supplemental_count: inputs.supplemental_count,
+            full_docs_selected: inputs.full_docs_selected,
+            max_context_chars: inputs.max_context_chars,
+            skip_decision: inputs.skip_decision,
+            is_rrf: inputs.is_rrf,
+        },
     );
+    let selection_decisions = build_context_selection_decisions(ContextSelectionInputs {
+        reranked: inputs.reranked,
+        top_chunk_indices: inputs.top_chunk_indices,
+        selected_top_chunk_indices: inputs.selected_top_chunk_indices,
+        planned_full_doc_urls: inputs.planned_full_doc_urls_set,
+        top_full_doc_indices: inputs.top_full_doc_indices,
+        inserted_full_doc_urls: inputs.inserted_full_doc_urls,
+        supplemental_indices: inputs.supplemental,
+        supplemental_count: inputs.supplemental_count,
+        full_doc_fetch_skipped: inputs.skip_decision.skip,
+    });
 
-    Ok(BuiltAskContext {
+    Ok(FinalizedAskContext {
         context,
-        chunks_selected: top_chunks_selected,
-        full_docs_selected,
-        supplemental_count,
-        context_elapsed_ms,
-        diagnostic_sources,
-        full_doc_fetch_skipped: skip_decision.skip,
-        full_doc_fetch_skip_reason: skip_decision.reason,
+        context_elapsed_ms: inputs.context_started.elapsed().as_millis(),
+        diagnostic_sources: build_diagnostic_sources(
+            inputs.reranked,
+            inputs.top_chunk_indices,
+            inputs.top_chunks_selected,
+            inputs.planned_full_doc_urls_set,
+            inputs.top_full_doc_indices,
+            inputs.supplemental,
+            inputs.supplemental_count,
+        ),
+        explain_context,
+        selection_decisions,
     })
+}
+
+struct ExplainContextInputs<'a> {
+    reranked: &'a [ranking::AskCandidate],
+    top_chunk_indices: &'a [usize],
+    top_full_doc_indices: &'a [usize],
+    selected_top_chunk_indices: &'a [usize],
+    planned_full_doc_urls_set: &'a HashSet<String>,
+    supplemental: &'a [usize],
+    supplemental_count: usize,
+    full_docs_selected: usize,
+    max_context_chars: usize,
+    skip_decision: SkipDecision,
+    is_rrf: bool,
+}
+
+fn build_explain_context(context: &str, inputs: ExplainContextInputs<'_>) -> AskExplainContext {
+    let truncated_by_budget = inputs.selected_top_chunk_indices.len()
+        + inputs.full_docs_selected
+        + inputs.supplemental_count
+        < context_source_candidate_count(
+            inputs.reranked,
+            inputs.top_chunk_indices,
+            inputs.planned_full_doc_urls_set,
+            inputs.top_full_doc_indices,
+            inputs.supplemental,
+            inputs.skip_decision.skip,
+        );
+    AskExplainContext {
+        planned_full_doc_urls: sorted_urls(inputs.planned_full_doc_urls_set),
+        full_doc_fetch_skipped: inputs.skip_decision.skip,
+        full_doc_fetch_skip_reason: inputs.skip_decision.reason.to_string(),
+        full_doc_fetch_mode: if inputs.is_rrf { "rrf" } else { "cosine" }.to_string(),
+        final_source_order: final_source_order_from_context(context),
+        context_char_budget: inputs.max_context_chars,
+        context_chars_used: context.len(),
+        truncated_by_budget,
+    }
 }
 
 fn renumber_source_header(entry: &str, display_id: usize) -> String {

@@ -1,4 +1,8 @@
 use super::*;
+use crate::services::types::{
+    AskExplainFilterDecisionKind, AskExplainMode, AskExplainScoreComponentStatus,
+    AskExplainScoreKind, AskExplainSelectionDecisionKind, AskTiming,
+};
 use serde_json::json;
 
 // ── map_retrieve_result ───────────────────────────────────────────────────
@@ -126,7 +130,133 @@ fn map_ask_payload_typed() {
     assert_eq!(result.query, "what is axon?");
     assert_eq!(result.answer, "A crawler.");
     assert!(result.diagnostics.is_none());
+    assert!(result.explain.is_none());
     assert_eq!(result.timing_ms.total, 6);
+}
+
+#[test]
+fn ask_result_serializes_absent_explain_as_null() {
+    let result = AskResult {
+        query: "what is axon?".to_string(),
+        answer: "A crawler.".to_string(),
+        diagnostics: None,
+        explain: None,
+        timing_ms: AskTiming {
+            retrieval: 1,
+            context_build: 2,
+            graph: 0,
+            llm: 3,
+            total: 6,
+            tei_embed_ms: None,
+            qdrant_primary_ms: None,
+            qdrant_secondary_ms: None,
+            rerank_ms: None,
+            top_select_ms: None,
+            full_doc_fetch_ms: None,
+            supplemental_ms: None,
+            llm_ttft_ms: None,
+            llm_total_ms: None,
+            streamed: None,
+            normalize_ms: None,
+        },
+    };
+
+    let value = serde_json::to_value(result).expect("ask result serializes");
+
+    assert_eq!(value["explain"], serde_json::Value::Null);
+}
+
+#[test]
+fn map_ask_payload_preserves_explain_contract() {
+    let payload = json!({
+        "query": "claude marketplace plugins",
+        "answer": "",
+        "diagnostics": null,
+        "explain": {
+            "mode": "explain_only",
+            "retrieval": {
+                "query": "claude marketplace plugins",
+                "keyword_query": "claude marketplace plugins",
+                "dual_search": false,
+                "collection": "cortex",
+                "candidate_limit": 150,
+                "hybrid_search_enabled": true,
+                "hybrid_candidate_limit": 100,
+                "score_kind": "cosine",
+                "vector_mode": "unnamed",
+                "sparse_query_status": null
+            },
+            "candidates": [{
+                "id": "c0",
+                "url": "https://code.claude.com/docs/en/discover-plugins",
+                "chunk_index": 2,
+                "retrieval_score": 0.7,
+                "rerank_score": 1.18,
+                "score_kind": "cosine",
+                "score_components": [{
+                    "name": "product_authority",
+                    "value": 0.35,
+                    "status": "applied",
+                    "reason": "query names claude"
+                }],
+                "filter_decisions": [{
+                    "kind": "kept",
+                    "reason": "passed topical overlap"
+                }],
+                "selection_decisions": [{
+                    "kind": "selected_top_chunk",
+                    "reason": "ranked in top chunk set"
+                }],
+                "snippet": "official marketplace"
+            }],
+            "context": {
+                "planned_full_doc_urls": [
+                    "https://code.claude.com/docs/en/discover-plugins"
+                ],
+                "full_doc_fetch_skipped": false,
+                "full_doc_fetch_skip_reason": "disabled",
+                "full_doc_fetch_mode": "cosine",
+                "final_source_order": [{
+                    "source_id": "S1",
+                    "url": "https://code.claude.com/docs/en/discover-plugins",
+                    "tier": "top_chunk"
+                }],
+                "context_char_budget": 120000,
+                "context_chars_used": 512,
+                "truncated_by_budget": false
+            },
+            "candidate_trace_limit": 50,
+            "candidate_trace_truncated": false,
+            "llm_skipped": true
+        },
+        "timing_ms": {
+            "retrieval": 1,
+            "context_build": 2,
+            "graph": 0,
+            "llm": 0,
+            "total": 3
+        }
+    });
+
+    let result = map_ask_payload(payload).unwrap();
+    let explain = result.explain.expect("explain trace should deserialize");
+    let candidate = &explain.candidates[0];
+
+    assert_eq!(explain.mode, AskExplainMode::ExplainOnly);
+    assert_eq!(explain.retrieval.score_kind, AskExplainScoreKind::Cosine);
+    assert_eq!(
+        candidate.score_components[0].status,
+        AskExplainScoreComponentStatus::Applied
+    );
+    assert_eq!(
+        candidate.filter_decisions[0].kind,
+        AskExplainFilterDecisionKind::Kept
+    );
+    assert_eq!(
+        candidate.selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::SelectedTopChunk
+    );
+    assert!(explain.llm_skipped);
 }
 
 #[test]

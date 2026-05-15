@@ -79,6 +79,7 @@ pub(super) async fn first_run_ask(
         query: Some(query.to_string()),
         graph: None,
         diagnostics: Some(false),
+        explain: None,
         collection: None,
         since: None,
         before: None,
