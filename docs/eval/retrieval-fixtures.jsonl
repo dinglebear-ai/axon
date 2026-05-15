@@ -1,0 +1,9 @@
+{"id":"top20-docsrs-rust-crate-docs","domain":"docs.rs","query":"How do I use docs.rs to find Rust crate API documentation?","expected":"selected","notes":"top20 baseline"}
+{"id":"top20-openai-chatgpt-tools","domain":"developers.openai.com","query":"How do ChatGPT Apps expose tools to the model?","expected":"selected","notes":"top20 baseline"}
+{"id":"top20-postgresql-create-view","domain":"www.postgresql.org","query":"How do I create a PostgreSQL view with CHECK OPTION?","expected":"selected","notes":"top20 baseline"}
+{"id":"top20-qdrant-collection","domain":"qdrant.tech","query":"How do I create a Qdrant collection with vectors?","expected":"selected","notes":"top20 baseline"}
+{"id":"popular-uv-dependencies","domain":"docs.astral.sh","query":"How do I use uv to manage Python dependencies?","expected":"selected","notes":"short product token regression"}
+{"id":"popular-claude-hooks","domain":"code.claude.com","query":"How do Claude Code hooks work?","expected":"selected","notes":"configured authority regression"}
+{"id":"popular-pypi-publish","domain":"pypi.org","query":"How do I publish a Python package to PyPI?","expected":"top_domain","notes":"known corpus mismatch: pypi appears but publish docs may not be selected"}
+{"id":"popular-effective-rust-errors","domain":"effective-rust.com","query":"How should I structure error handling in Rust?","expected":"known_miss","notes":"known thin corpus/broad query miss"}
+{"id":"popular-shuttle-deploy","domain":"www.shuttle.dev","query":"How do I deploy a Rust app with Shuttle?","expected":"known_miss","notes":"known not indexed in active collection at planning time"}

@@ -293,6 +293,15 @@ fn product_authority_ratio_counts_docs_like_urls_with_query_product_token() {
 }
 
 #[test]
+fn product_authority_boost_ignores_malformed_urls() {
+    let query_tokens = vec!["uv".to_string()];
+    assert_eq!(
+        product_authority_boost_for_url("not a url", &query_tokens, 0.35),
+        0.0
+    );
+}
+
+#[test]
 fn product_authority_ratio_is_zero_without_matching_product_token() {
     let candidates = vec![
         make_candidate(

@@ -27,7 +27,7 @@ axon ask --query "<question>" [FLAGS]
 | `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
 | `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation. |
-| `AXON_SERVER_URL` | Optional generic server endpoint. If set, server-mode capable commands use `axon serve`; `ask` uses the same server URL. |
+| `AXON_SERVER_URL` | Optional generic server endpoint. If set, buffered `ask` requests use `axon serve`; streaming requests stay in-process. |
 
 `ask` uses Qdrant + TEI retrieval and Gemini headless synthesis.
 
@@ -83,8 +83,8 @@ axon ask "claude marketplace plugins" --explain --json
 # JSON output
 axon ask "what is the max crawl depth?" --json
 
-# Ask through a running server
-AXON_SERVER_URL=http://127.0.0.1:8001 axon ask "what changed in server mode?"
+# Ask through a running server with buffered output
+AXON_SERVER_URL=http://127.0.0.1:8001 axon ask --no-stream "what changed in server mode?"
 ```
 
 ## RAG Pipeline
@@ -116,6 +116,30 @@ topics.
 ## Explain Trace
 
 Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
+
+```text
+query
+  |
+  v
+TEI embedding + Qdrant dense/BM42/RRF retrieval
+  |
+  v
+rerank/filter + token/authority policy
+  |
+  v
+corpus-health classification
+  |
+  v
+context selection + bounded full-doc fetch
+  |
+  v
+ask --explain retrieval harness
+  |
+  +--> ranking bug? tune scoring/filtering
+  +--> selection bug? tune context selection
+  +--> corpus gap? crawl/index better docs
+  +--> fixture mismatch? update tracked fixture notes
+```
 
 Compact example:
 

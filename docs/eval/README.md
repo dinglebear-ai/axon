@@ -24,3 +24,19 @@ Update rules:
 `axon evaluate --json` emits a `scores` object with `status`, per-axis `axes`,
 `rag_total`, `baseline_total`, and `winner`. Report consumers must treat
 `parse_failed` and `partial` as explicit statuses, not as zero scores.
+
+## Retrieval Fixture Sweep
+
+`scripts/evaluate-retrieval.sh` runs `axon ask --explain --diagnostics --json`
+over `docs/eval/retrieval-fixtures.jsonl`. It checks whether the expected
+domain appears in top domains and selected context without invoking Gemini
+answer synthesis or judge analysis.
+
+Use it before and after retrieval ranking, token-policy, or context-selection
+changes:
+
+```bash
+cargo build --bin axon
+scripts/evaluate-retrieval.sh
+ALLOW_MISS=1 scripts/evaluate-retrieval.sh
+```
