@@ -67,6 +67,25 @@ fn create_required_axon_dirs(home: &Path) {
     }
 }
 
+fn assert_setup_check_did_not_create_runtime_dirs(home: &Path) {
+    let axon = home.join(".axon");
+    for child in [
+        "output",
+        "logs",
+        "artifacts",
+        "screenshots",
+        "chrome-diagnostics",
+        "lab-auth",
+        "tei",
+        "qdrant",
+    ] {
+        assert!(
+            !axon.join(child).exists(),
+            "check mode must not create runtime dir {child}"
+        );
+    }
+}
+
 #[test]
 fn setup_check_skips_mutation_and_warnings_are_nonfatal() {
     let home = tempfile::tempdir().unwrap();
@@ -92,7 +111,7 @@ fn setup_check_skips_mutation_and_warnings_are_nonfatal() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Skipped\tcompose-up"));
     assert!(stdout.contains("check mode does not start Docker services"));
-    assert!(!home.path().join(".axon").exists());
+    assert_setup_check_did_not_create_runtime_dirs(home.path());
 }
 
 #[test]
@@ -260,5 +279,5 @@ fn setup_plugin_hook_json_reports_policy_without_repair() {
     assert!(payload["advisory_failures"].as_array().unwrap().is_empty());
     assert_eq!(payload["check"]["mode"], "check");
     assert!(payload["repair"].is_null());
-    assert!(!home.path().join(".axon").exists());
+    assert_setup_check_did_not_create_runtime_dirs(home.path());
 }
