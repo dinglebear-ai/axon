@@ -15,6 +15,8 @@ use build::build_context_from_candidates;
 use query_rewrite::{QueryComplexity, build_query_forms};
 use retrieval::retrieve_ask_candidates;
 
+const ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT: usize = 50;
+
 /// Source of the resolved `ask_full_docs` value, surfaced in `ask` diagnostics
 /// so operators can see whether the adaptive resolver fired or the user's
 /// explicit override carried through. (bd axon_rust-721)
@@ -184,24 +186,31 @@ fn build_explain_trace(
     use std::collections::HashMap;
 
     let retrieval = retrieval?;
-    let mut selections_by_url = selections
+    let mut selections_by_kept_index = selections
         .into_iter()
-        .map(|selection| (selection.url, selection.decisions))
+        .map(|selection| (selection.candidate_index, selection.decisions))
         .collect::<HashMap<_, _>>();
     let query_tokens = ranking::tokenize_query(query);
+    let total_candidate_traces = candidate_traces.len();
+    let mut kept_candidate_index = 0usize;
     let candidates = candidate_traces
         .into_iter()
+        .take(ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT)
         .enumerate()
         .map(|(idx, trace)| {
+            let selection_decisions = if trace.filter_decisions.iter().any(|decision| {
+                decision.kind == crate::services::types::AskExplainFilterDecisionKind::Kept
+            }) {
+                let decisions = selections_by_kept_index
+                    .remove(&kept_candidate_index)
+                    .unwrap_or_else(default_not_selected_decision);
+                kept_candidate_index += 1;
+                decisions
+            } else {
+                default_not_selected_decision()
+            };
             let candidate = trace.candidate.candidate;
             let snippet = ranking::get_meaningful_snippet(&candidate.chunk_text, &query_tokens);
-            let selection_decisions =
-                selections_by_url.remove(&candidate.url).unwrap_or_else(|| {
-                    vec![crate::services::types::AskExplainSelectionDecision {
-                        kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
-                        reason: None,
-                    }]
-                });
             AskExplainCandidate {
                 id: format!("candidate-{}", idx + 1),
                 url: candidate.url,
@@ -219,10 +228,17 @@ fn build_explain_trace(
     Some(AskExplainTrace {
         mode: AskExplainMode::ExplainOnly,
         retrieval,
-        candidate_trace_limit: candidates.len(),
-        candidate_trace_truncated: false,
+        candidate_trace_limit: ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT,
+        candidate_trace_truncated: total_candidate_traces > ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT,
         context,
         candidates,
         llm_skipped: true,
     })
+}
+
+fn default_not_selected_decision() -> Vec<crate::services::types::AskExplainSelectionDecision> {
+    vec![crate::services::types::AskExplainSelectionDecision {
+        kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
+        reason: None,
+    }]
 }

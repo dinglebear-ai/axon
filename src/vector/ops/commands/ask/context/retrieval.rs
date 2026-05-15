@@ -4,15 +4,17 @@ use crate::core::logging::{log_debug, log_warn};
 use crate::services::types::{AskExplainRetrieval, AskExplainScoreKind};
 use crate::vector::ops::commands::retrieval::{
     CandidateBuildPolicy, CandidateRankingTrace, CandidateScorePolicy, RetrievedCandidate,
-    VectorDispatchContext, authoritative_ratio, build_candidates_from_hits,
-    candidate_has_topical_overlap, candidates_only, dispatch_vector_search_with_diagnostics,
-    embed_retrieval_inputs, merge_candidates, query_allows_low_signal, score_and_filter_candidates,
-    score_and_filter_candidates_with_trace, score_rrf_candidates_with_trace, top_domains,
-    vector_mode_metadata,
+    VectorDispatchContext, authoritative_ratio, candidate_has_topical_overlap, candidates_only,
+    dispatch_vector_search_with_diagnostics, embed_retrieval_inputs, query_allows_low_signal,
+    score_and_filter_candidates, score_and_filter_candidates_with_trace,
+    score_rrf_candidates_with_trace, top_domains, vector_mode_metadata,
 };
 use crate::vector::ops::tei::qdrant_store::VectorMode;
 use crate::vector::ops::{qdrant, ranking, tei};
 use anyhow::{Result, anyhow};
+
+mod build;
+use build::build_ask_candidates;
 
 pub(super) struct AskRetrieval {
     pub(super) candidates: Vec<ranking::AskCandidate>,
@@ -72,6 +74,7 @@ pub(super) fn apply_mode_aware_rerank(
 
 pub(super) fn apply_mode_aware_rerank_with_trace(
     is_rrf: bool,
+    dense_score_kind: AskExplainScoreKind,
     candidates: &[RetrievedCandidate],
     query_tokens: &[String],
     params: &RerankParams<'_>,
@@ -87,7 +90,12 @@ pub(super) fn apply_mode_aware_rerank_with_trace(
         min_relevance_score: Some(params.min_relevance_score),
         require_topical_overlap: true,
     };
-    score_and_filter_candidates_with_trace(candidates, query_tokens, &score_policy)
+    score_and_filter_candidates_with_trace(
+        candidates,
+        query_tokens,
+        &score_policy,
+        dense_score_kind,
+    )
 }
 
 #[tracing::instrument(
@@ -128,9 +136,16 @@ pub(super) async fn retrieve_ask_candidates(
     let hits = primary_res.map_err(|e| anyhow!("{e}"))?;
     let mode = vector_mode_metadata(cfg, &primary_request).await?;
     let rrf_mode = mode.rrf_mode;
+    let retrieval_score_kind = retrieval_score_kind(mode.vector_mode, rrf_mode);
 
     let build_policy = CandidateBuildPolicy { allow_low_signal };
-    let retrieved_candidates = build_ask_candidates(hits, secondary_res, &build_policy);
+    let built_candidates = build_ask_candidates(
+        hits,
+        secondary_res,
+        &build_policy,
+        cfg.ask_explain.then_some(retrieval_score_kind),
+    );
+    let retrieved_candidates = built_candidates.retrieved_candidates;
 
     if retrieved_candidates.is_empty() {
         return Err(anyhow!("No relevant documents found for ask query"));
@@ -145,10 +160,13 @@ pub(super) async fn retrieve_ask_candidates(
     let (reranked_candidates, candidate_traces) = rerank_with_optional_trace(
         cfg.ask_explain,
         rrf_mode,
+        retrieval_score_kind,
         &retrieved_candidates,
         query_tokens,
         &rerank_params,
     );
+    let mut candidate_traces = candidate_traces;
+    candidate_traces.extend(built_candidates.pre_rerank_traces);
     let reranked = candidates_only(&reranked_candidates);
     timing.record(AskTimingSlot::Rerank, rerank_started);
     if reranked.is_empty() {
@@ -199,13 +217,7 @@ pub(super) async fn retrieve_ask_candidates(
             candidate_limit: ask_tuning.ask_candidate_limit,
             hybrid_search_enabled: cfg.hybrid_search_enabled,
             hybrid_candidate_limit: ask_tuning.ask_hybrid_candidates,
-            score_kind: if rrf_mode {
-                AskExplainScoreKind::Rrf
-            } else if matches!(mode.vector_mode, VectorMode::Named) {
-                AskExplainScoreKind::NamedDense
-            } else {
-                AskExplainScoreKind::Cosine
-            },
+            score_kind: retrieval_score_kind,
             vector_mode: format!("{:?}", mode.vector_mode).to_ascii_lowercase(),
             sparse_query_status: mode
                 .sparse_was_empty
@@ -218,6 +230,7 @@ pub(super) async fn retrieve_ask_candidates(
 fn rerank_with_optional_trace(
     ask_explain: bool,
     rrf_mode: bool,
+    dense_score_kind: AskExplainScoreKind,
     retrieved_candidates: &[RetrievedCandidate],
     query_tokens: &[String],
     rerank_params: &RerankParams<'_>,
@@ -225,6 +238,7 @@ fn rerank_with_optional_trace(
     if ask_explain {
         apply_mode_aware_rerank_with_trace(
             rrf_mode,
+            dense_score_kind,
             retrieved_candidates,
             query_tokens,
             rerank_params,
@@ -234,6 +248,16 @@ fn rerank_with_optional_trace(
             apply_mode_aware_rerank(rrf_mode, retrieved_candidates, query_tokens, rerank_params),
             Vec::new(),
         )
+    }
+}
+
+fn retrieval_score_kind(vector_mode: VectorMode, rrf_mode: bool) -> AskExplainScoreKind {
+    if rrf_mode {
+        AskExplainScoreKind::Rrf
+    } else if matches!(vector_mode, VectorMode::Named) {
+        AskExplainScoreKind::NamedDense
+    } else {
+        AskExplainScoreKind::Cosine
     }
 }
 
@@ -261,29 +285,6 @@ async fn embed_ask_query_forms(
         return Err(anyhow!("TEI returned no vector for ask query"));
     }
     Ok(ask_vectors)
-}
-
-fn build_ask_candidates(
-    hits: Vec<qdrant::QdrantSearchHit>,
-    secondary_res: Option<SearchHitsResult>,
-    build_policy: &CandidateBuildPolicy,
-) -> Vec<RetrievedCandidate> {
-    let mut retrieved_candidates = build_candidates_from_hits(hits, build_policy);
-
-    // Secondary keyword-form search: errors are swallowed since primary already
-    // succeeded.
-    if let Some(secondary_res) = secondary_res {
-        match secondary_res {
-            Ok(kw_hits) => {
-                let secondary = build_candidates_from_hits(kw_hits, build_policy);
-                retrieved_candidates = merge_candidates(retrieved_candidates, secondary);
-            }
-            Err(e) => log_warn(&format!(
-                "ask: keyword search failed (continuing with NL only): {e}"
-            )),
-        }
-    }
-    retrieved_candidates
 }
 
 type SearchHitsResult =

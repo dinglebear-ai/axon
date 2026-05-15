@@ -9,7 +9,11 @@ use super::query_rewrite::{QueryComplexity, build_query_forms};
 use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
 use super::{FullDocsSource, resolve_ask_full_docs};
 use crate::core::config::Config;
-use crate::vector::ops::commands::retrieval::RetrievedCandidate;
+use crate::services::types::{
+    AskExplainContext, AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainRetrieval,
+    AskExplainScoreKind, AskExplainSelectionDecision, AskExplainSelectionDecisionKind,
+};
+use crate::vector::ops::commands::retrieval::{CandidateRankingTrace, RetrievedCandidate};
 use crate::vector::ops::ranking::AskCandidate;
 use crate::vector::ops::ranking::is_low_signal_url;
 use crate::vector::ops::tei::qdrant_store::VectorMode;
@@ -50,6 +54,69 @@ fn rerank_params<'a>(domains: &'a [String]) -> RerankParams<'a> {
     }
 }
 
+fn explain_retrieval() -> AskExplainRetrieval {
+    AskExplainRetrieval {
+        query: "rust docs".to_string(),
+        keyword_query: "rust docs".to_string(),
+        dual_search: false,
+        collection: "cortex".to_string(),
+        candidate_limit: 150,
+        hybrid_search_enabled: true,
+        hybrid_candidate_limit: 100,
+        score_kind: AskExplainScoreKind::Cosine,
+        vector_mode: "unnamed".to_string(),
+        sparse_query_status: None,
+    }
+}
+
+fn explain_context() -> AskExplainContext {
+    AskExplainContext {
+        planned_full_doc_urls: Vec::new(),
+        full_doc_fetch_skipped: false,
+        full_doc_fetch_skip_reason: "disabled".to_string(),
+        full_doc_fetch_mode: "cosine".to_string(),
+        final_source_order: Vec::new(),
+        context_char_budget: 1000,
+        context_chars_used: 100,
+        truncated_by_budget: false,
+    }
+}
+
+fn kept_trace(url: &str, chunk_index: i64) -> CandidateRankingTrace {
+    CandidateRankingTrace {
+        candidate: RetrievedCandidate {
+            candidate: AskCandidate {
+                score: 0.7,
+                url: url.to_string(),
+                path: url.to_string(),
+                chunk_text: format!("rust docs candidate chunk {chunk_index} long enough"),
+                url_tokens: HashSet::new(),
+                chunk_tokens: HashSet::new(),
+                rerank_score: 0.8,
+            },
+            chunk_index: Some(chunk_index),
+        },
+        score_kind: AskExplainScoreKind::Cosine,
+        score_components: Vec::new(),
+        filter_decisions: vec![AskExplainFilterDecision {
+            kind: AskExplainFilterDecisionKind::Kept,
+            reason: None,
+        }],
+    }
+}
+
+fn selection(
+    candidate_index: usize,
+    url: &str,
+    kind: AskExplainSelectionDecisionKind,
+) -> super::build::ContextCandidateSelection {
+    super::build::ContextCandidateSelection {
+        candidate_index,
+        url: url.to_string(),
+        decisions: vec![AskExplainSelectionDecision { kind, reason: None }],
+    }
+}
+
 #[test]
 fn ask_hybrid_candidates_is_distinct_from_query_candidates() {
     let cfg = Config {
@@ -63,6 +130,64 @@ fn ask_hybrid_candidates_is_distinct_from_query_candidates() {
     );
     assert_eq!(cfg.ask_hybrid_candidates, 150);
     assert_eq!(cfg.hybrid_search_candidates, 100);
+}
+
+#[test]
+fn ask_explain_trace_caps_candidate_output() {
+    let traces = (0..51)
+        .map(|idx| kept_trace(&format!("https://docs.example.com/{idx}"), idx))
+        .collect::<Vec<_>>();
+    let selections = (0..51)
+        .map(|idx| {
+            selection(
+                idx as usize,
+                &format!("https://docs.example.com/{idx}"),
+                AskExplainSelectionDecisionKind::SelectedTopChunk,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let trace = super::build_explain_trace(
+        "rust docs",
+        Some(explain_retrieval()),
+        traces,
+        explain_context(),
+        selections,
+    )
+    .expect("trace");
+
+    assert_eq!(trace.candidate_trace_limit, 50);
+    assert_eq!(trace.candidates.len(), 50);
+    assert!(trace.candidate_trace_truncated);
+}
+
+#[test]
+fn ask_explain_trace_maps_duplicate_url_selections_by_kept_order() {
+    let url = "https://docs.example.com/rust";
+    let trace = super::build_explain_trace(
+        "rust docs",
+        Some(explain_retrieval()),
+        vec![kept_trace(url, 1), kept_trace(url, 2)],
+        explain_context(),
+        vec![
+            selection(0, url, AskExplainSelectionDecisionKind::SelectedTopChunk),
+            selection(
+                1,
+                url,
+                AskExplainSelectionDecisionKind::SelectedSupplemental,
+            ),
+        ],
+    )
+    .expect("trace");
+
+    assert_eq!(
+        trace.candidates[0].selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::SelectedTopChunk
+    );
+    assert_eq!(
+        trace.candidates[1].selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::SelectedSupplemental
+    );
 }
 
 #[test]
