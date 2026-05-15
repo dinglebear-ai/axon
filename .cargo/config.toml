@@ -1,16 +1,19 @@
+# =============================================================================
+# .cargo/config.toml — Cargo workspace configuration for axon_rust
+#
+# Most build settings (linker, profile tuning, jobs) live in the developer's
+# ~/.cargo/config.toml. This file only adds workspace-local settings that the
+# global config cannot provide.
+#
+# See docs/RUST.md for expected global config and system tool requirements.
+# See https://github.com/jmagar/rmcp-template/blob/main/docs/RUST.md for the
+# canonical family reference.
+# =============================================================================
+
 [alias]
-xtask = "run -p xtask --"
+# The `cargo xtask` convention: `cargo xtask <cmd>` delegates to the xtask crate.
+# See: https://github.com/matklad/cargo-xtask
+xtask = "run --package xtask --"
 
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
-
-[profile.dev]
-# Reduce debug-info memory and disk pressure while keeping backtraces useful.
-debug = 1
-# Favor compile-time and lower memory use for day-to-day development.
-codegen-units = 8
-
-[profile.test]
-# Test builds are often the heaviest local workload; keep them closer to dev.
-debug = 1
-codegen-units = 8
