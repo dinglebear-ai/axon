@@ -154,6 +154,7 @@ ci:
     just verify
 
 precommit:
+    python3 scripts/check_compose_port_bindings.py --staged
     python3 scripts/enforce_no_legacy_symbols.py
     if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; elif [ -f "scripts/enforce_monoliths.py" ]; then python3 scripts/enforce_monoliths.py --staged; else echo "ERROR: enforce_monoliths.py not found" && exit 1; fi
     just fmt-check
