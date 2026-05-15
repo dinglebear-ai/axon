@@ -258,11 +258,11 @@ fn compute_scored_breakdowns<'a>(
             };
 
             // Use pre-extracted host from URL and pre-normalized domains (MED-4).
-            let authority_boost = if host_matches_domains(&candidate.url, &normalized_domains) {
-                authoritative_boost.max(0.0)
-            } else {
-                0.0
-            };
+            let authority_boost = authority_boost_for_normalized_domains(
+                &candidate.url,
+                &normalized_domains,
+                authoritative_boost,
+            );
 
             // Phrase matching: use case-insensitive byte search instead of
             // allocating a full lowercased copy of chunk_text (HIGH-2).
@@ -334,6 +334,31 @@ fn host_matches_domains(url: &str, normalized_domains: &[String]) -> bool {
     normalized_domains
         .iter()
         .any(|normalized| host == *normalized || host.ends_with(&format!(".{normalized}")))
+}
+
+pub(crate) fn authority_boost_for_url(
+    url: &str,
+    authoritative_domains: &[String],
+    authoritative_boost: f64,
+) -> f64 {
+    let normalized_domains: Vec<String> = authoritative_domains
+        .iter()
+        .map(|d| d.trim().to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+        .collect();
+    authority_boost_for_normalized_domains(url, &normalized_domains, authoritative_boost)
+}
+
+fn authority_boost_for_normalized_domains(
+    url: &str,
+    normalized_domains: &[String],
+    authoritative_boost: f64,
+) -> f64 {
+    if host_matches_domains(url, normalized_domains) {
+        authoritative_boost.max(0.0)
+    } else {
+        0.0
+    }
 }
 
 pub fn select_diverse_candidates(

@@ -1,4 +1,7 @@
-use super::{CandidateScorePolicy, RetrievedCandidate, candidate_has_topical_overlap};
+use super::{
+    CandidateScorePolicy, RetrievedCandidate, candidate_has_topical_overlap,
+    product_authority_boost_for_url,
+};
 use crate::services::types::{
     AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainScoreComponent,
     AskExplainScoreComponentStatus, AskExplainScoreKind,
@@ -65,12 +68,24 @@ pub(crate) fn dropped_candidate_trace(
 pub(crate) fn score_rrf_candidates_with_trace(
     candidates: &[RetrievedCandidate],
     query_tokens: &[String],
+    policy: &CandidateScorePolicy<'_>,
 ) -> (Vec<RetrievedCandidate>, Vec<CandidateRankingTrace>) {
     let mut selected = Vec::new();
     let mut traces = Vec::with_capacity(candidates.len());
     for candidate in candidates {
         let mut candidate = candidate.clone();
-        candidate.candidate.rerank_score = candidate.candidate.score;
+        let authority_boost = ranking::authority_boost_for_url(
+            &candidate.candidate.url,
+            policy.authoritative_domains,
+            policy.authoritative_boost,
+        );
+        let product_boost = product_authority_boost_for_url(
+            &candidate.candidate.url,
+            query_tokens,
+            policy.product_authority_boost,
+        );
+        candidate.candidate.rerank_score =
+            candidate.candidate.score + authority_boost + product_boost;
         let has_overlap = candidate_has_topical_overlap(&candidate.candidate, query_tokens);
         let filter_decisions = if has_overlap {
             selected.push(candidate.clone());
@@ -85,10 +100,21 @@ pub(crate) fn score_rrf_candidates_with_trace(
         traces.push(CandidateRankingTrace {
             candidate,
             score_kind: AskExplainScoreKind::Rrf,
-            score_components: rrf_score_components(retrieval_score),
+            score_components: rrf_score_components(
+                retrieval_score,
+                authority_boost,
+                product_boost,
+                policy,
+            ),
             filter_decisions,
         });
     }
+    selected.sort_by(|a, b| {
+        b.candidate
+            .rerank_score
+            .partial_cmp(&a.candidate.rerank_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     (selected, traces)
 }
 
@@ -113,10 +139,10 @@ fn score_and_filter_candidates_inner(
     let mut selected = Vec::new();
     let mut traces = trace_enabled.then(|| Vec::with_capacity(candidates.len()));
     for (idx, breakdown) in scored {
-        let product_boost = super::query_product_authority_boost(
+        let product_boost = product_authority_boost_for_url(
             &candidates[idx].candidate.url,
             query_tokens,
-            policy,
+            policy.product_authority_boost,
         );
         let mut candidate = candidates[idx].clone();
         candidate.candidate.rerank_score = breakdown.rerank_score + product_boost;
@@ -216,7 +242,23 @@ fn dense_score_components(
     ]
 }
 
-fn rrf_score_components(retrieval_score: f64) -> Vec<AskExplainScoreComponent> {
+fn rrf_score_components(
+    retrieval_score: f64,
+    authority_boost: f64,
+    product_authority_boost: f64,
+    policy: &CandidateScorePolicy<'_>,
+) -> Vec<AskExplainScoreComponent> {
+    let authority_status =
+        if policy.authoritative_boost > 0.0 && !policy.authoritative_domains.is_empty() {
+            AskExplainScoreComponentStatus::Applied
+        } else {
+            AskExplainScoreComponentStatus::NotApplicable
+        };
+    let product_status = if policy.product_authority_boost > 0.0 {
+        AskExplainScoreComponentStatus::Applied
+    } else {
+        AskExplainScoreComponentStatus::NotApplicable
+    };
     vec![
         score_component(
             "retrieval_score",
@@ -227,8 +269,18 @@ fn rrf_score_components(retrieval_score: f64) -> Vec<AskExplainScoreComponent> {
         skipped_rrf_component("lexical_url_token_boost"),
         skipped_rrf_component("lexical_chunk_token_boost"),
         skipped_rrf_component("docs_path_boost"),
-        skipped_rrf_component("authority_boost"),
-        skipped_rrf_component("product_authority_boost"),
+        score_component(
+            "authority_boost",
+            authority_boost,
+            authority_status,
+            Some("RRF ask applies source-authority boosts without lexical reranking"),
+        ),
+        score_component(
+            "product_authority_boost",
+            product_authority_boost,
+            product_status,
+            Some("RRF ask applies source-authority boosts without lexical reranking"),
+        ),
         skipped_rrf_component("phrase_match_boost"),
     ]
 }

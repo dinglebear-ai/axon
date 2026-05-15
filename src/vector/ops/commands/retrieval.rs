@@ -316,12 +316,12 @@ fn host_from_url(url: &str) -> Option<String> {
         .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
 }
 
-fn query_product_authority_boost(
+pub(crate) fn product_authority_boost_for_url(
     url: &str,
     query_tokens: &[String],
-    policy: &CandidateScorePolicy<'_>,
+    product_authority_boost: f64,
 ) -> f64 {
-    if policy.product_authority_boost <= 0.0 || query_tokens.is_empty() {
+    if product_authority_boost <= 0.0 || query_tokens.is_empty() {
         return 0.0;
     }
     let Some(host) = host_from_url(url) else {
@@ -336,7 +336,7 @@ fn query_product_authority_boost(
             && (host == rule.domain || host.ends_with(&format!(".{}", rule.domain)))
     });
     if official_match {
-        policy.product_authority_boost
+        product_authority_boost
     } else {
         0.0
     }

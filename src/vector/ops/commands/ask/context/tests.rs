@@ -50,6 +50,7 @@ fn rerank_params<'a>(domains: &'a [String]) -> RerankParams<'a> {
     RerankParams {
         authoritative_domains: domains,
         authoritative_boost: 0.5,
+        product_authority_boost: 0.35,
         min_relevance_score: 0.45,
     }
 }
@@ -364,6 +365,38 @@ fn apply_mode_aware_rerank_rrf_keeps_low_scores() {
     );
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].candidate.rerank_score, 0.03);
+}
+
+#[test]
+fn apply_mode_aware_rerank_rrf_boosts_product_official_domain() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://docs.openclaw.ai/cli/plugins",
+            "Claude marketplace plugins command reference long enough to keep",
+            0.70,
+        ),
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/discover-plugins",
+            "Claude marketplace plugins official documentation long enough to keep",
+            0.50,
+        ),
+    ];
+    let selected = apply_mode_aware_rerank(
+        true,
+        &candidates,
+        &[
+            "claude".to_string(),
+            "marketplace".to_string(),
+            "plugins".to_string(),
+        ],
+        &rerank_params(&[]),
+    );
+
+    assert_eq!(
+        selected[0].candidate.url,
+        "https://code.claude.com/docs/en/discover-plugins"
+    );
+    assert!(selected[0].candidate.rerank_score > selected[1].candidate.rerank_score);
 }
 
 #[test]
