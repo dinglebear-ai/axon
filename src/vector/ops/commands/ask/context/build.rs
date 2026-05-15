@@ -104,21 +104,19 @@ pub(super) async fn build_context_from_candidates(
         timing,
     })
     .await?;
-    // Map URL → rerank_score for sort-by-score in the flattened context.
-    let url_to_score: std::collections::HashMap<String, f64> = top_full_doc_indices
-        .iter()
-        .filter_map(|&idx| reranked.get(idx).map(|c| (c.url.clone(), c.rerank_score)))
-        .collect();
-    let (full_docs_selected, next_source_idx) = append_full_docs_to_context(
+    let (full_docs_selected, next_source_idx) = append_planned_full_docs(
+        AppendPlannedFullDocsInputs {
+            reranked,
+            top_full_doc_indices,
+            fetched_docs,
+            query_tokens,
+            separator,
+            max_context_chars,
+        },
         &mut context_entries,
         &mut context_char_count,
         &mut inserted_full_doc_urls,
         source_idx,
-        separator,
-        max_context_chars,
-        fetched_docs,
-        query_tokens,
-        &url_to_score,
     );
     source_idx = next_source_idx;
 
@@ -172,6 +170,46 @@ pub(super) async fn build_context_from_candidates(
 }
 
 type FetchedFullDocs = Vec<(usize, String, Vec<qdrant::QdrantPoint>)>;
+
+struct AppendPlannedFullDocsInputs<'a> {
+    reranked: &'a [ranking::AskCandidate],
+    top_full_doc_indices: &'a [usize],
+    fetched_docs: FetchedFullDocs,
+    query_tokens: &'a [String],
+    separator: &'a str,
+    max_context_chars: usize,
+}
+
+fn append_planned_full_docs(
+    inputs: AppendPlannedFullDocsInputs<'_>,
+    context_entries: &mut Vec<(f64, String)>,
+    context_char_count: &mut usize,
+    inserted_full_doc_urls: &mut HashSet<String>,
+    source_idx: usize,
+) -> (usize, usize) {
+    // Map URL → rerank_score for sort-by-score in the flattened context.
+    let url_to_score: std::collections::HashMap<String, f64> = inputs
+        .top_full_doc_indices
+        .iter()
+        .filter_map(|&idx| {
+            inputs
+                .reranked
+                .get(idx)
+                .map(|c| (c.url.clone(), c.rerank_score))
+        })
+        .collect();
+    append_full_docs_to_context(
+        context_entries,
+        context_char_count,
+        inserted_full_doc_urls,
+        source_idx,
+        inputs.separator,
+        inputs.max_context_chars,
+        inputs.fetched_docs,
+        inputs.query_tokens,
+        &url_to_score,
+    )
+}
 
 struct FetchFullDocsInputs<'a> {
     cfg: &'a Config,
