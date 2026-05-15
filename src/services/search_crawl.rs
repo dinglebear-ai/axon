@@ -12,7 +12,7 @@ use std::error::Error;
 /// Typed result returned by [`search_and_crawl`].
 ///
 /// Contains Tavily search results plus the outcome of auto-enqueueing
-/// one shallow crawl job per result URL.
+/// one bounded crawl job per result URL.
 pub struct SearchAndCrawlResult {
     pub results: Vec<Value>,
     pub crawl_jobs: Vec<SearchCrawlJob>,
@@ -44,7 +44,7 @@ pub enum SearchCrawlRejectionKind {
     QueueRejected,
 }
 
-/// Run a Tavily search and enqueue one shallow crawl job per result URL.
+/// Run a Tavily search and enqueue one bounded crawl job per result URL.
 ///
 /// This is the canonical entry point for both the CLI and MCP search action.
 /// Callers receive a typed result and decide their own UX (error on zero jobs,
@@ -79,8 +79,8 @@ fn crawl_config(cfg: &Config) -> Config {
     // SECURITY: clear headers so auth meant for the search caller is never
     // replayed against URLs returned by Tavily.
     let mut c = cfg.clone();
-    c.max_pages = 1;
-    c.max_depth = 1;
+    c.max_pages = 200;
+    c.max_depth = 10;
     c.discover_sitemaps = false;
     c.max_sitemaps = 0;
     c.custom_headers = Vec::new();

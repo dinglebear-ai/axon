@@ -28,6 +28,10 @@ pub(super) struct DispatchOutput {
     pub positional: Vec<String>,
     pub ask_diagnostics: bool,
     pub ask_explain: bool,
+    pub ask_stream: bool,
+    pub ask_follow_up: bool,
+    pub ask_session: Option<String>,
+    pub ask_reset_session: bool,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -58,6 +62,10 @@ impl DispatchOutput {
             positional: Vec::new(),
             ask_diagnostics: false,
             ask_explain: false,
+            ask_stream: false,
+            ask_follow_up: false,
+            ask_session: None,
+            ask_reset_session: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -150,6 +158,10 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         }
         CliCommand::Ask(args) => {
             out.ask_explain = args.explain;
+            out.ask_stream = !args.no_stream && !args.explain;
+            out.ask_follow_up = args.follow_up;
+            out.ask_session = args.session;
+            out.ask_reset_session = args.reset_session;
             out.ask_diagnostics = args.diagnostics || args.explain;
             set_simple(&mut out, CommandKind::Ask, args.value);
         }

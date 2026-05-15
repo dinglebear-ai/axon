@@ -23,6 +23,69 @@ fn ask_explain_cli_sets_explain_and_diagnostics() {
 
     assert!(cfg.ask_explain);
     assert!(cfg.ask_diagnostics);
+    assert!(!cfg.ask_stream);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn ask_stream_cli_defaults_to_stream_without_diagnostics() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut cfg = None;
+    with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
+        env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
+        cfg = Some(into_config(cli_with_services(&["ask", "what changed?"])).unwrap());
+    });
+    let cfg = cfg.unwrap();
+
+    assert!(cfg.ask_stream);
+    assert!(!cfg.ask_explain);
+    assert!(!cfg.ask_diagnostics);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn ask_no_stream_cli_disables_default_stream() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut cfg = None;
+    with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
+        env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
+        cfg =
+            Some(into_config(cli_with_services(&["ask", "--no-stream", "what changed?"])).unwrap());
+    });
+    let cfg = cfg.unwrap();
+
+    assert!(!cfg.ask_stream);
+    assert!(!cfg.ask_explain);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn ask_follow_up_cli_sets_session_options() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut cfg = None;
+    with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
+        env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
+        cfg = Some(
+            into_config(cli_with_services(&[
+                "ask",
+                "--follow-up",
+                "--session",
+                "rust",
+                "--reset-session",
+                "what about tests?",
+            ]))
+            .unwrap(),
+        );
+    });
+    let cfg = cfg.unwrap();
+
+    assert!(cfg.ask_follow_up);
+    assert_eq!(cfg.ask_session.as_deref(), Some("rust"));
+    assert!(cfg.ask_reset_session);
+    assert!(cfg.ask_stream);
 }
 
 #[allow(unsafe_code)]
@@ -53,7 +116,7 @@ fn toml_chunk_limit_wins_over_default() {
     assert_eq!(
         cfg.unwrap().ask_chunk_limit,
         5,
-        "TOML chunk-limit should override the default (10)"
+        "TOML chunk-limit should override the default (20)"
     );
 }
 
@@ -87,6 +150,162 @@ fn env_wins_over_toml_for_ask_chunk_limit() {
         8,
         "env AXON_ASK_CHUNK_LIMIT=8 should override TOML chunk-limit=5"
     );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_authoritative_domains_and_boost_win_over_defaults() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[ask]\nauthoritative-domains = [\"code.claude.com\", \" docs.rs \"]\nauthoritative-boost = 0.12"
+    )
+    .unwrap();
+
+    let mut got_domains = Vec::new();
+    let mut got_boost = 0.0;
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_ASK_AUTHORITATIVE_DOMAINS",
+            "AXON_ASK_AUTHORITATIVE_BOOST",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_AUTHORITATIVE_DOMAINS");
+            env::remove_var("AXON_ASK_AUTHORITATIVE_BOOST");
+            let cfg = into_config(cli_with_services(&["status"])).unwrap();
+            got_domains = cfg.ask_authoritative_domains;
+            got_boost = cfg.ask_authoritative_boost;
+        },
+    );
+
+    assert_eq!(got_domains, vec!["code.claude.com", "docs.rs"]);
+    assert!((got_boost - 0.12).abs() < f64::EPSILON);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn env_wins_over_toml_for_ask_authoritative_domains_and_boost() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[ask]\nauthoritative-domains = [\"code.claude.com\"]\nauthoritative-boost = 0.12"
+    )
+    .unwrap();
+
+    let mut got_domains = Vec::new();
+    let mut got_boost = 0.0;
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_ASK_AUTHORITATIVE_DOMAINS",
+            "AXON_ASK_AUTHORITATIVE_BOOST",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::set_var("AXON_ASK_AUTHORITATIVE_DOMAINS", "docs.rs,example.com");
+            env::set_var("AXON_ASK_AUTHORITATIVE_BOOST", "0.2");
+            let cfg = into_config(cli_with_services(&["status"])).unwrap();
+            got_domains = cfg.ask_authoritative_domains;
+            got_boost = cfg.ask_authoritative_boost;
+        },
+    );
+
+    assert_eq!(got_domains, vec!["docs.rs", "example.com"]);
+    assert!((got_boost - 0.2).abs() < f64::EPSILON);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_ask_context_knobs_win_over_defaults() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[ask]\nmax-context-chars = 123456\nfull-docs = 7\nbackfill-chunks = 3\ndoc-fetch-concurrency = 9\ndoc-chunk-limit = 111\nmin-citations-nontrivial = 4"
+    )
+    .unwrap();
+
+    let mut got = None;
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_ASK_MAX_CONTEXT_CHARS",
+            "AXON_ASK_FULL_DOCS",
+            "AXON_ASK_BACKFILL_CHUNKS",
+            "AXON_ASK_DOC_FETCH_CONCURRENCY",
+            "AXON_ASK_DOC_CHUNK_LIMIT",
+            "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_ASK_MAX_CONTEXT_CHARS");
+            env::remove_var("AXON_ASK_FULL_DOCS");
+            env::remove_var("AXON_ASK_BACKFILL_CHUNKS");
+            env::remove_var("AXON_ASK_DOC_FETCH_CONCURRENCY");
+            env::remove_var("AXON_ASK_DOC_CHUNK_LIMIT");
+            env::remove_var("AXON_ASK_MIN_CITATIONS_NONTRIVIAL");
+            got = Some(into_config(cli_with_services(&["status"])).unwrap());
+        },
+    );
+    let cfg = got.unwrap();
+
+    assert_eq!(cfg.ask_max_context_chars, 123456);
+    assert_eq!(cfg.ask_full_docs, 7);
+    assert_eq!(cfg.ask_backfill_chunks, 3);
+    assert_eq!(cfg.ask_doc_fetch_concurrency, 9);
+    assert_eq!(cfg.ask_doc_chunk_limit, 111);
+    assert_eq!(cfg.ask_min_citations_nontrivial, 4);
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn env_wins_over_toml_for_ask_context_knobs() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[ask]\nmax-context-chars = 123456\nfull-docs = 7\nbackfill-chunks = 3\ndoc-fetch-concurrency = 9\ndoc-chunk-limit = 111\nmin-citations-nontrivial = 4"
+    )
+    .unwrap();
+
+    let mut got = None;
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_ASK_MAX_CONTEXT_CHARS",
+            "AXON_ASK_FULL_DOCS",
+            "AXON_ASK_BACKFILL_CHUNKS",
+            "AXON_ASK_DOC_FETCH_CONCURRENCY",
+            "AXON_ASK_DOC_CHUNK_LIMIT",
+            "AXON_ASK_MIN_CITATIONS_NONTRIVIAL",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::set_var("AXON_ASK_MAX_CONTEXT_CHARS", "222222");
+            env::set_var("AXON_ASK_FULL_DOCS", "8");
+            env::set_var("AXON_ASK_BACKFILL_CHUNKS", "4");
+            env::set_var("AXON_ASK_DOC_FETCH_CONCURRENCY", "10");
+            env::set_var("AXON_ASK_DOC_CHUNK_LIMIT", "222");
+            env::set_var("AXON_ASK_MIN_CITATIONS_NONTRIVIAL", "5");
+            got = Some(into_config(cli_with_services(&["status"])).unwrap());
+        },
+    );
+    let cfg = got.unwrap();
+
+    assert_eq!(cfg.ask_max_context_chars, 222222);
+    assert_eq!(cfg.ask_full_docs, 8);
+    assert_eq!(cfg.ask_backfill_chunks, 4);
+    assert_eq!(cfg.ask_doc_fetch_concurrency, 10);
+    assert_eq!(cfg.ask_doc_chunk_limit, 222);
+    assert_eq!(cfg.ask_min_citations_nontrivial, 5);
 }
 
 #[allow(unsafe_code)]
@@ -215,7 +434,7 @@ fn toml_ask_candidate_limit_wins_over_default() {
     assert_eq!(
         cfg.unwrap().ask_candidate_limit,
         50,
-        "TOML candidate-limit should override the default (150)"
+        "TOML candidate-limit should override the default (250)"
     );
 }
 

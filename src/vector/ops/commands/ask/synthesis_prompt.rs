@@ -4,11 +4,17 @@
 pub(crate) const SKILL_MD: &str =
     include_str!("../../../../../plugins/skills/axon-rag-synthesize/SKILL.md");
 
-/// System prompt shim passed to Gemini headless.
-/// The skill carries the full synthesis instructions — this shim just tells
-/// Gemini to invoke it before answering.
-pub(crate) const ASK_RAG_SYSTEM_PROMPT: &str =
-    "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.";
+/// System prompt passed to Gemini headless.
+///
+/// Keep the skill invocation for clients that support native skill activation,
+/// but inline the full contract as well. Headless model runs are not guaranteed
+/// to activate the skill, and uncited answers are rejected by the ask
+/// normalizer, so the citation contract must be present in the prompt itself.
+pub(crate) const ASK_RAG_SYSTEM_PROMPT: &str = concat!(
+    "Use the axon-rag-synthesize skill to synthesize an answer from the provided context.\n\n",
+    "You must also follow these instructions directly if the skill is unavailable:\n\n",
+    include_str!("../../../../../plugins/skills/axon-rag-synthesize/SKILL.md")
+);
 
 pub(crate) fn synthesis_prompt() -> &'static str {
     ASK_RAG_SYSTEM_PROMPT
@@ -92,7 +98,13 @@ mod tests {
         let prompt = synthesis_prompt();
         assert!(
             prompt.contains("axon-rag-synthesize"),
-            "shim must reference the skill by name"
+            "prompt must reference the skill by name"
+        );
+        assert!(
+            prompt.contains("Use\n[S1], [S2], etc. exactly as shown")
+                || prompt.contains("Use\r\n[S1], [S2], etc. exactly as shown")
+                || prompt.contains("Use [S1], [S2], etc. exactly as shown"),
+            "prompt must include direct source citation instructions"
         );
         assert!(
             !prompt.trim().is_empty(),

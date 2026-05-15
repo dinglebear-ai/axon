@@ -112,19 +112,19 @@ pub struct AskConfig {
 impl Default for AskConfig {
     fn default() -> Self {
         Self {
-            ask_max_context_chars: 120_000,
-            ask_candidate_limit: 150,
-            ask_chunk_limit: 10,
-            ask_full_docs: 4,
-            ask_backfill_chunks: 3,
+            ask_max_context_chars: 300_000,
+            ask_candidate_limit: 250,
+            ask_chunk_limit: 20,
+            ask_full_docs: 6,
+            ask_backfill_chunks: 5,
             ask_doc_fetch_concurrency: 4,
-            ask_doc_chunk_limit: 48,
+            ask_doc_chunk_limit: 96,
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
             ask_diagnostics: false,
-            ask_hybrid_candidates: 100,
+            ask_hybrid_candidates: 150,
         }
     }
 }
@@ -310,9 +310,9 @@ mod tests {
     #[test]
     fn ask_config_default_values() {
         let c = AskConfig::default();
-        assert_eq!(c.ask_max_context_chars, 120_000);
-        assert_eq!(c.ask_candidate_limit, 150);
-        assert_eq!(c.ask_hybrid_candidates, 100);
+        assert_eq!(c.ask_max_context_chars, 300_000);
+        assert_eq!(c.ask_candidate_limit, 250);
+        assert_eq!(c.ask_hybrid_candidates, 150);
         assert!((c.ask_min_relevance_score - 0.45).abs() < f64::EPSILON);
         assert_eq!(c.ask_min_citations_nontrivial, 2);
         assert!(c.ask_authoritative_domains.is_empty());

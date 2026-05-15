@@ -55,7 +55,7 @@ impl AskScoreBreakdown {
 pub fn tokenize_query(text: &str) -> Vec<String> {
     text.to_ascii_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|t| t.len() >= 3 && !STOP_WORDS.contains(*t))
+        .filter(|t| t.len() >= 2 && !STOP_WORDS.contains(*t))
         .map(str::to_string)
         .collect()
 }
@@ -334,19 +334,6 @@ fn host_matches_domains(url: &str, normalized_domains: &[String]) -> bool {
     normalized_domains
         .iter()
         .any(|normalized| host == *normalized || host.ends_with(&format!(".{normalized}")))
-}
-
-pub(crate) fn authority_boost_for_url(
-    url: &str,
-    authoritative_domains: &[String],
-    authoritative_boost: f64,
-) -> f64 {
-    let normalized_domains: Vec<String> = authoritative_domains
-        .iter()
-        .map(|d| d.trim().to_ascii_lowercase())
-        .filter(|d| !d.is_empty())
-        .collect();
-    authority_boost_for_normalized_domains(url, &normalized_domains, authoritative_boost)
 }
 
 fn authority_boost_for_normalized_domains(

@@ -9,8 +9,10 @@ use spider::url::Url;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
+mod tokens;
 mod trace;
 
+pub(crate) use tokens::{candidate_has_topical_overlap, product_authority_boost_for_url};
 pub(crate) use trace::{
     CandidateRankingTrace, dropped_candidate_trace, score_and_filter_candidates,
     score_and_filter_candidates_with_trace, score_rrf_candidates_with_trace,
@@ -310,86 +312,28 @@ pub(crate) fn authoritative_ratio(candidates: &[ranking::AskCandidate], domains:
     authoritative as f64 / candidates.len() as f64
 }
 
+pub(crate) fn product_authority_ratio(
+    candidates: &[ranking::AskCandidate],
+    query_tokens: &[String],
+    product_authority_boost: f64,
+) -> f64 {
+    if candidates.is_empty() || query_tokens.is_empty() || product_authority_boost <= 0.0 {
+        return 0.0;
+    }
+    let authoritative = candidates
+        .iter()
+        .filter(|candidate| {
+            product_authority_boost_for_url(&candidate.url, query_tokens, product_authority_boost)
+                > 0.0
+        })
+        .count();
+    authoritative as f64 / candidates.len() as f64
+}
+
 fn host_from_url(url: &str) -> Option<String> {
     Url::parse(url)
         .ok()
         .and_then(|parsed| parsed.host_str().map(|h| h.to_ascii_lowercase()))
-}
-
-pub(crate) fn product_authority_boost_for_url(
-    url: &str,
-    query_tokens: &[String],
-    product_authority_boost: f64,
-) -> f64 {
-    if product_authority_boost <= 0.0 || query_tokens.is_empty() {
-        return 0.0;
-    }
-    let Some(host) = host_from_url(url) else {
-        return 0.0;
-    };
-    let token_set = query_tokens
-        .iter()
-        .map(String::as_str)
-        .collect::<HashSet<_>>();
-    let official_match = PRODUCT_OFFICIAL_DOMAINS.iter().any(|rule| {
-        rule.tokens.iter().any(|token| token_set.contains(token))
-            && (host == rule.domain || host.ends_with(&format!(".{}", rule.domain)))
-    });
-    if official_match {
-        product_authority_boost
-    } else {
-        0.0
-    }
-}
-
-struct ProductOfficialDomain {
-    tokens: &'static [&'static str],
-    domain: &'static str,
-}
-
-const PRODUCT_OFFICIAL_DOMAINS: &[ProductOfficialDomain] = &[
-    ProductOfficialDomain {
-        tokens: &["claude", "anthropic"],
-        domain: "code.claude.com",
-    },
-    ProductOfficialDomain {
-        tokens: &["openclaw"],
-        domain: "docs.openclaw.ai",
-    },
-    ProductOfficialDomain {
-        tokens: &["codex", "openai"],
-        domain: "developers.openai.com",
-    },
-];
-
-fn candidate_topical_overlap_count(
-    candidate: &ranking::AskCandidate,
-    query_tokens: &[String],
-) -> usize {
-    query_tokens
-        .iter()
-        .filter(|token| {
-            candidate.url_tokens.contains(token.as_str())
-                || candidate.chunk_tokens.contains(token.as_str())
-        })
-        .count()
-}
-
-pub(crate) fn candidate_has_topical_overlap(
-    candidate: &ranking::AskCandidate,
-    query_tokens: &[String],
-) -> bool {
-    if query_tokens.is_empty() {
-        return true;
-    }
-    let overlap = candidate_topical_overlap_count(candidate, query_tokens);
-    let coverage = overlap as f64 / query_tokens.len() as f64;
-    match query_tokens.len() {
-        0 => true,
-        1 | 2 => overlap >= 1,
-        3 | 4 => overlap >= 1 || coverage >= 0.5,
-        _ => overlap >= 2 && coverage >= 0.34,
-    }
 }
 
 #[cfg(test)]

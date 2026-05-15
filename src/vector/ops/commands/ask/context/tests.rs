@@ -288,7 +288,9 @@ fn context_full_doc_selection_is_independent_of_chunk_urls() {
         test_candidate("https://c.dev/docs/four", 0.60),
     ];
 
-    let (chunk_indices, full_doc_indices) = select_context_indices(&candidates, 2, 2);
+    let query_tokens = Vec::new();
+    let (chunk_indices, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 2);
     assert_eq!(chunk_indices.len(), 2, "should select 2 top chunks");
     assert_eq!(full_doc_indices.len(), 2, "should select 2 full docs");
 
@@ -309,12 +311,50 @@ fn context_full_doc_selection_is_independent_of_chunk_urls() {
 }
 
 #[test]
+fn full_doc_selection_prefers_url_entity_matches() {
+    let candidates = vec![
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/debug-your-config",
+            "subagents mcp servers settings skills",
+            1.00,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/desktop",
+            "mcp servers skills claude code desktop",
+            0.96,
+        )
+        .candidate,
+        retrieved_candidate(
+            "https://code.claude.com/docs/en/sub-agents",
+            "tools disallowedTools skills mcpServers",
+            0.72,
+        )
+        .candidate,
+    ];
+    let query_tokens =
+        crate::vector::ops::ranking::tokenize_query("setup agents not inherit mcp servers skills");
+
+    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 2, 2);
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        full_doc_urls.contains(&"https://code.claude.com/docs/en/sub-agents"),
+        "canonical URL entity matches should get full-doc treatment: {full_doc_urls:?}"
+    );
+}
+
+#[test]
 fn planned_full_doc_urls_are_empty_when_fetch_is_skipped() {
     let candidates = vec![
         test_candidate("https://a.dev/docs/one", 0.90),
         test_candidate("https://b.dev/docs/two", 0.80),
     ];
-    let (_, full_doc_indices) = select_context_indices(&candidates, 2, 2);
+    let query_tokens = Vec::new();
+    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 2, 2);
 
     let skipped = planned_full_doc_urls(&candidates, &full_doc_indices, true);
     let fetched = planned_full_doc_urls(&candidates, &full_doc_indices, false);
@@ -364,20 +404,20 @@ fn apply_mode_aware_rerank_rrf_keeps_low_scores() {
         &rerank_params(&[]),
     );
     assert_eq!(selected.len(), 1);
-    assert_eq!(selected[0].candidate.rerank_score, 0.03);
+    assert!(selected[0].candidate.rerank_score > 0.03);
 }
 
 #[test]
-fn apply_mode_aware_rerank_rrf_boosts_product_official_domain() {
+fn apply_mode_aware_rerank_rrf_boosts_docs_like_product_token_url() {
     let candidates = vec![
         retrieved_candidate(
-            "https://docs.openclaw.ai/cli/plugins",
-            "Claude marketplace plugins command reference long enough to keep",
+            "https://docs.other.dev/cli/plugins",
+            "Widget marketplace plugins command reference long enough to keep",
             0.70,
         ),
         retrieved_candidate(
-            "https://code.claude.com/docs/en/discover-plugins",
-            "Claude marketplace plugins official documentation long enough to keep",
+            "https://docs.widget.dev/docs/en/discover-plugins",
+            "Widget marketplace plugins official documentation long enough to keep",
             0.50,
         ),
     ];
@@ -385,7 +425,7 @@ fn apply_mode_aware_rerank_rrf_boosts_product_official_domain() {
         true,
         &candidates,
         &[
-            "claude".to_string(),
+            "widget".to_string(),
             "marketplace".to_string(),
             "plugins".to_string(),
         ],
@@ -394,7 +434,7 @@ fn apply_mode_aware_rerank_rrf_boosts_product_official_domain() {
 
     assert_eq!(
         selected[0].candidate.url,
-        "https://code.claude.com/docs/en/discover-plugins"
+        "https://docs.widget.dev/docs/en/discover-plugins"
     );
     assert!(selected[0].candidate.rerank_score > selected[1].candidate.rerank_score);
 }
@@ -521,19 +561,19 @@ fn authoritative_domains_match_exact_and_suffix_hosts() {
 // ---- Adaptive ask_full_docs resolver (bd axon_rust-721) ----
 
 #[test]
-fn simple_query_uses_2_full_docs_when_user_default() {
-    // cfg.ask_full_docs is left at its hardcoded default (4) and not pinned
+fn simple_query_uses_4_full_docs_when_user_default() {
+    // cfg.ask_full_docs is left at its hardcoded default (6) and not pinned
     // (ask_full_docs_explicit=false). A simple query should flip to the
-    // adaptive value of 2.
-    let (resolved, source) = resolve_ask_full_docs(4, false, QueryComplexity::Simple);
-    assert_eq!(resolved, 2);
+    // adaptive value of 4.
+    let (resolved, source) = resolve_ask_full_docs(6, false, QueryComplexity::Simple);
+    assert_eq!(resolved, 4);
     assert_eq!(source.as_str(), "adaptive_simple");
 }
 
 #[test]
-fn complex_query_uses_3_full_docs_when_user_default() {
-    let (resolved, source) = resolve_ask_full_docs(4, false, QueryComplexity::Complex);
-    assert_eq!(resolved, 3);
+fn complex_query_uses_6_full_docs_when_user_default() {
+    let (resolved, source) = resolve_ask_full_docs(6, false, QueryComplexity::Complex);
+    assert_eq!(resolved, 6);
     assert_eq!(source.as_str(), "adaptive_complex");
 }
 

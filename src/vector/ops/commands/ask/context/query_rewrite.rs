@@ -13,13 +13,12 @@ pub(crate) enum QueryComplexity {
 
 impl QueryComplexity {
     /// Default `ask_full_docs` value when the user did not pin a value via
-    /// `AXON_ASK_FULL_DOCS` or a CLI flag. Fewer full-doc fetches on simple
-    /// queries cuts the largest non-LLM cost without hurting recall — they
-    /// already get the answer from the top-ranked chunks.
+    /// `AXON_ASK_FULL_DOCS` or a CLI flag. `ask` is a Gemini-backed one-shot
+    /// synthesis path, so defaults favor recall over minimizing prompt tokens.
     pub(crate) fn full_docs_default(self) -> usize {
         match self {
-            QueryComplexity::Simple => 2,
-            QueryComplexity::Complex => 3,
+            QueryComplexity::Simple => 4,
+            QueryComplexity::Complex => 6,
         }
     }
 }
@@ -68,12 +67,12 @@ mod tests {
     }
 
     #[test]
-    fn full_docs_default_simple_is_two() {
-        assert_eq!(QueryComplexity::Simple.full_docs_default(), 2);
+    fn full_docs_default_simple_is_four() {
+        assert_eq!(QueryComplexity::Simple.full_docs_default(), 4);
     }
 
     #[test]
-    fn full_docs_default_complex_is_three() {
-        assert_eq!(QueryComplexity::Complex.full_docs_default(), 3);
+    fn full_docs_default_complex_is_six() {
+        assert_eq!(QueryComplexity::Complex.full_docs_default(), 6);
     }
 }

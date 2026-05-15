@@ -63,12 +63,28 @@ pub(super) struct TomlAskSection {
     /// so old `[ask] backend = "headless"` config is accepted and ignored.
     #[serde(rename = "backend")]
     pub _backend: Option<serde::de::IgnoredAny>,
+    /// Max context characters passed to the LLM (clamped 20_000–1_000_000).
+    pub max_context_chars: Option<usize>,
     /// Max chunks returned per ask query (clamped 3–40).
     pub chunk_limit: Option<usize>,
     /// Max candidate chunks fetched before scoring (clamped 8–300).
     pub candidate_limit: Option<usize>,
+    /// Max full documents included in context (clamped 1–20).
+    pub full_docs: Option<usize>,
+    /// Backfill chunks from top documents to pad context (clamped 0–20).
+    pub backfill_chunks: Option<usize>,
+    /// Concurrent document fetches during context build (clamped 1–16).
+    pub doc_fetch_concurrency: Option<usize>,
+    /// Max chunks per document in context (clamped 8–2000).
+    pub doc_chunk_limit: Option<usize>,
     /// Minimum relevance score threshold (clamped -1.0–2.0).
     pub min_relevance_score: Option<f64>,
+    /// Authoritative domains to boost in reranking.
+    pub authoritative_domains: Option<Vec<String>>,
+    /// Boost weight for authoritative domains in reranking.
+    pub authoritative_boost: Option<f64>,
+    /// Min unique citations for non-trivial answers (clamped 1–5).
+    pub min_citations_nontrivial: Option<usize>,
     /// In-process document-chunk cache for the ask full-doc fetch path.
     /// Only useful in long-lived parents (`axon serve`, `axon mcp`).
     /// (bd axon_rust-pmc)

@@ -2,9 +2,12 @@
 xtask = "run -p xtask --"
 
 [build]
-# Keep peak memory sane on large Rust builds. The cargo wrapper also exports
-# CARGO_BUILD_JOBS=4 when unset, but this gives the repo an explicit baseline.
-jobs = 4
+# Keep peak memory sane on large Rust builds while allowing this repo to use
+# the host-level parallelism cap.
+jobs = 20
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
 
 [profile.dev]
 # Reduce debug-info memory and disk pressure while keeping backtraces useful.

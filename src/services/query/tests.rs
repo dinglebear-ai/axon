@@ -169,14 +169,14 @@ fn ask_result_serializes_absent_explain_as_null() {
 #[test]
 fn map_ask_payload_preserves_explain_contract() {
     let payload = json!({
-        "query": "claude marketplace plugins",
+        "query": "widget marketplace plugins",
         "answer": "",
         "diagnostics": null,
         "explain": {
             "mode": "explain_only",
             "retrieval": {
-                "query": "claude marketplace plugins",
-                "keyword_query": "claude marketplace plugins",
+                "query": "widget marketplace plugins",
+                "keyword_query": "widget marketplace plugins",
                 "dual_search": false,
                 "collection": "cortex",
                 "candidate_limit": 150,
@@ -188,16 +188,16 @@ fn map_ask_payload_preserves_explain_contract() {
             },
             "candidates": [{
                 "id": "c0",
-                "url": "https://code.claude.com/docs/en/discover-plugins",
+                "url": "https://docs.widget.dev/docs/en/discover-plugins",
                 "chunk_index": 2,
                 "retrieval_score": 0.7,
                 "rerank_score": 1.18,
                 "score_kind": "cosine",
                 "score_components": [{
-                    "name": "product_authority",
+                    "name": "product_authority_boost",
                     "value": 0.35,
                     "status": "applied",
-                    "reason": "query names claude"
+                    "reason": "docs-like URL contains query product token"
                 }],
                 "filter_decisions": [{
                     "kind": "kept",
@@ -211,14 +211,14 @@ fn map_ask_payload_preserves_explain_contract() {
             }],
             "context": {
                 "planned_full_doc_urls": [
-                    "https://code.claude.com/docs/en/discover-plugins"
+                    "https://docs.widget.dev/docs/en/discover-plugins"
                 ],
                 "full_doc_fetch_skipped": false,
                 "full_doc_fetch_skip_reason": "disabled",
                 "full_doc_fetch_mode": "cosine",
                 "final_source_order": [{
                     "source_id": "S1",
-                    "url": "https://code.claude.com/docs/en/discover-plugins",
+                    "url": "https://docs.widget.dev/docs/en/discover-plugins",
                     "tier": "top_chunk"
                 }],
                 "context_char_budget": 120000,
@@ -281,7 +281,9 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
             "min_relevance_score": 0.4,
             "doc_fetch_concurrency": 8,
             "top_domains": ["docs.example.com"],
-            "authority_ratio": 0.75
+            "authority_ratio": 0.75,
+            "configured_authority_ratio": 0.25,
+            "product_authority_ratio": 0.75
         },
         "timing_ms": {
             "retrieval": 1,
@@ -298,6 +300,8 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
     assert_eq!(diagnostics.detected_complexity, "simple");
     assert_eq!(diagnostics.resolved_full_docs, 2);
     assert_eq!(diagnostics.full_docs_source, "adaptive");
+    assert_eq!(diagnostics.configured_authority_ratio, 0.25);
+    assert_eq!(diagnostics.product_authority_ratio, 0.75);
 }
 
 #[test]

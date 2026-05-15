@@ -73,6 +73,8 @@ pub(crate) struct AskContext {
     pub diagnostic_sources: Vec<String>,
     pub top_domains: Vec<String>,
     pub authoritative_ratio: f64,
+    pub configured_authority_ratio: f64,
+    pub product_authority_ratio: f64,
     /// True when the adaptive skip gate elided full-doc fetch.
     /// (bd axon_rust-30y)
     pub full_doc_fetch_skipped: bool,
@@ -155,6 +157,8 @@ pub(crate) async fn build_ask_context(
         diagnostic_sources: built.diagnostic_sources,
         top_domains: retrieval.top_domains,
         authoritative_ratio: retrieval.authoritative_ratio,
+        configured_authority_ratio: retrieval.configured_authority_ratio,
+        product_authority_ratio: retrieval.product_authority_ratio,
         full_doc_fetch_skipped: built.full_doc_fetch_skipped,
         full_doc_fetch_skip_reason: built.full_doc_fetch_skip_reason,
         detected_complexity,

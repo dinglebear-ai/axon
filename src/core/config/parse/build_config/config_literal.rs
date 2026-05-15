@@ -191,6 +191,10 @@ fn populate_services_and_ask_basics(
         .unwrap_or_default();
     cfg.ask_diagnostics = inputs.dispatched.ask_diagnostics;
     cfg.ask_explain = inputs.dispatched.ask_explain;
+    cfg.ask_stream = inputs.dispatched.ask_stream;
+    cfg.ask_follow_up = inputs.dispatched.ask_follow_up;
+    cfg.ask_session = inputs.dispatched.ask_session.clone();
+    cfg.ask_reset_session = inputs.dispatched.ask_reset_session;
     cfg.ask_graph = false;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;
@@ -238,6 +242,15 @@ fn populate_ask_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.ask_authoritative_domains = env::var("AXON_ASK_AUTHORITATIVE_DOMAINS")
         .ok()
         .map(|raw| parse_csv_env(&raw, |s| s.to_ascii_lowercase()))
+        .or_else(|| {
+            toml.ask.authoritative_domains.as_ref().map(|domains| {
+                domains
+                    .iter()
+                    .map(|domain| domain.trim().to_ascii_lowercase())
+                    .filter(|domain| !domain.is_empty())
+                    .collect()
+            })
+        })
         .unwrap_or_default();
 }
 

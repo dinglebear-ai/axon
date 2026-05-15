@@ -239,6 +239,10 @@ fn apply_optional_model(req: CompletionRequest, model: &str) -> CompletionReques
 
 const REPEAT_GUARD_STOP: &str = "repeat_guard_stop";
 
+fn is_repeat_guard_stop_error(message: &str) -> bool {
+    message.starts_with(REPEAT_GUARD_STOP)
+}
+
 #[derive(Default)]
 struct StreamProcessorState {
     answer: String,
@@ -321,8 +325,14 @@ async fn run_streaming_completion_inner(
     .await;
     let fallback_text = match stream_result {
         Ok(r) => r.text,
-        Err(e) if e.to_string() == REPEAT_GUARD_STOP => String::new(),
-        Err(e) => return Err(e.to_string().into()),
+        Err(e) => {
+            let message = e.to_string();
+            if is_repeat_guard_stop_error(&message) {
+                String::new()
+            } else {
+                return Err(message.into());
+            }
+        }
     };
     let ttft = state.first_token_at;
     let answer = finalize_stream_answer(state.answer, state.saw_stream_payload, fallback_text)?;

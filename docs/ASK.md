@@ -22,3 +22,17 @@ Explain mode:
 - The response includes `explain.retrieval`, per-candidate `score_components`, `filter_decisions`, `selection_decisions`, and `explain.context.final_source_order`.
 - Use `--diagnostics` for aggregate counters; use `--explain` when debugging why a specific source ranked, survived filtering, or entered/left the prompt context.
 - Score scale is mode-specific: cosine/dense scores can be compared to `ask.min-relevance-score`; RRF scores are rank-fusion values and mark additive rerank boosts as skipped.
+
+Streaming mode:
+
+- `axon ask "<question>"` prints Gemini token deltas as they arrive for interactive use by default.
+- Use `--no-stream` to disable answer streaming and render only the final response.
+- Streaming uses the in-process ask path. If `AXON_SERVER_URL` / `--server-url` is set, the CLI silently ignores it for that request because `/v1/ask` is a buffered JSON endpoint.
+- `--json` and `--explain` remain buffered.
+
+Follow-up mode:
+
+- Successful non-explain `ask` turns are saved locally under `$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`).
+- Use `axon ask --follow-up "<question>"` to include recent turns from the default local session.
+- Use `--session <name>` to keep separate local threads and `--reset-session` to clear one before changing topics.
+- Follow-up context is prepended by Axon before retrieval/synthesis; Gemini headless still runs as a stateless one-shot process, and answers must still be grounded in retrieved context with `[S#]` citations.

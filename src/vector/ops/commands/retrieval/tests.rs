@@ -167,21 +167,88 @@ fn candidate_has_topical_overlap_chunk_tokens_count_toward_overlap() {
 }
 
 #[test]
-fn score_policy_boosts_official_product_docs_for_named_product_queries() {
+fn candidate_has_topical_overlap_rejects_generic_only_matches_when_product_named() {
+    let candidate = make_candidate(
+        "https://www.postgresql.org/docs/current/sql-createview.html",
+        "CREATE VIEW examples and SQL reference content",
+        0.4,
+    )
+    .candidate;
+    let query_tokens = vec!["create".to_string(), "view".to_string(), "gpui".to_string()];
+
+    assert!(!candidate_has_topical_overlap(&candidate, &query_tokens));
+}
+
+#[test]
+fn candidate_has_topical_overlap_rejects_find_only_matches_when_crate_named() {
+    let candidate = make_candidate(
+        "https://www.postgresql.org/docs/current/spi-spi-cursor-find.html",
+        "Find an SPI cursor in PostgreSQL reference documentation",
+        0.4,
+    )
+    .candidate;
+    let query_tokens = vec![
+        "find".to_string(),
+        "rust".to_string(),
+        "crate".to_string(),
+        "documentation".to_string(),
+    ];
+
+    assert!(!candidate_has_topical_overlap(&candidate, &query_tokens));
+}
+
+#[test]
+fn candidate_has_topical_overlap_rejects_manage_only_matches_when_tool_named() {
+    let candidate = make_candidate(
+        "https://www.postgresql.org/docs/current/manage-ag-dropdb.html",
+        "Destroying a database administration reference",
+        0.4,
+    )
+    .candidate;
+    let query_tokens = vec![
+        "uv".to_string(),
+        "manage".to_string(),
+        "python".to_string(),
+        "dependencies".to_string(),
+    ];
+
+    assert!(!candidate_has_topical_overlap(&candidate, &query_tokens));
+}
+
+#[test]
+fn candidate_has_topical_overlap_rejects_topic_only_matches_when_language_named() {
+    let candidate = make_candidate(
+        "https://www.postgresql.org/docs/current/runtime-config-error-handling.html",
+        "PostgreSQL runtime error handling reference",
+        0.4,
+    )
+    .candidate;
+    let query_tokens = vec![
+        "structure".to_string(),
+        "error".to_string(),
+        "handling".to_string(),
+        "rust".to_string(),
+    ];
+
+    assert!(!candidate_has_topical_overlap(&candidate, &query_tokens));
+}
+
+#[test]
+fn score_policy_boosts_docs_like_url_with_query_product_token() {
     let candidates = vec![
         make_candidate(
-            "https://docs.openclaw.ai/cli/plugins",
-            "plugins marketplace commands install list inspect openclaw docs",
+            "https://docs.other.dev/cli/plugins",
+            "plugins marketplace commands install list inspect unrelated docs",
             0.28,
         ),
         make_candidate(
-            "https://code.claude.com/docs/en/plugins",
-            "Claude Code plugins marketplace standalone configuration official docs",
+            "https://docs.widget.dev/docs/en/plugins",
+            "Widget plugins marketplace standalone configuration official docs",
             0.17,
         ),
     ];
     let query_tokens = vec![
-        "claude".to_string(),
+        "widget".to_string(),
         "marketplace".to_string(),
         "plugins".to_string(),
     ];
@@ -195,30 +262,157 @@ fn score_policy_boosts_official_product_docs_for_named_product_queries() {
 
     let selected = score_and_filter_candidates(&candidates, &query_tokens, &policy);
 
+    assert_eq!(selected.len(), 1);
     assert_eq!(
         selected[0].candidate.url,
-        "https://code.claude.com/docs/en/plugins"
+        "https://docs.widget.dev/docs/en/plugins"
     );
-    assert!(
-        selected[0].candidate.rerank_score > selected[1].candidate.rerank_score,
-        "official Claude docs should outrank cross-product plugin docs for Claude queries"
+}
+
+#[test]
+fn product_authority_ratio_counts_docs_like_urls_with_query_product_token() {
+    let candidates = vec![
+        make_candidate(
+            "https://docs.widget.dev/docs/en/plugins",
+            "Widget plugins marketplace official docs",
+            0.8,
+        )
+        .candidate,
+        make_candidate(
+            "https://docs.other.dev/cli/plugins",
+            "Other plugins marketplace commands install list inspect",
+            0.7,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec!["widget".to_string(), "plugins".to_string()];
+
+    let ratio = product_authority_ratio(&candidates, &query_tokens, 0.35);
+
+    assert!((ratio - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn product_authority_ratio_is_zero_without_matching_product_token() {
+    let candidates = vec![
+        make_candidate(
+            "https://docs.widget.dev/docs/en/plugins",
+            "Widget plugins marketplace official docs",
+            0.8,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec!["plugins".to_string()];
+
+    assert_eq!(
+        product_authority_ratio(&candidates, &query_tokens, 0.35),
+        0.0
+    );
+}
+
+#[test]
+fn product_authority_ratio_ignores_generic_package_publish_tokens() {
+    let candidates = vec![
+        make_candidate(
+            "https://docs.astral.sh/uv/guides/package",
+            "Publish your package with uv publish",
+            0.8,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec![
+        "publish".to_string(),
+        "python".to_string(),
+        "package".to_string(),
+        "pypi".to_string(),
+    ];
+
+    assert_eq!(
+        product_authority_ratio(&candidates, &query_tokens, 0.35),
+        0.0
+    );
+}
+
+#[test]
+fn product_authority_ratio_ignores_language_tokens_as_product_identity() {
+    let candidates = vec![
+        make_candidate(
+            "https://playwright.dev/python/docs/ci",
+            "Python continuous integration guide",
+            0.8,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec![
+        "uv".to_string(),
+        "python".to_string(),
+        "dependencies".to_string(),
+    ];
+
+    assert_eq!(
+        product_authority_ratio(&candidates, &query_tokens, 0.35),
+        0.0
+    );
+}
+
+#[test]
+fn product_authority_ratio_requires_host_or_early_path_identity_match() {
+    let candidates = vec![
+        make_candidate(
+            "https://www.postgresql.org/docs/current/runtime-config-error-handling.html",
+            "PostgreSQL runtime error handling docs",
+            0.8,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec![
+        "rust".to_string(),
+        "error".to_string(),
+        "handling".to_string(),
+    ];
+
+    assert_eq!(
+        product_authority_ratio(&candidates, &query_tokens, 0.35),
+        0.0
+    );
+}
+
+#[test]
+fn product_authority_ratio_counts_early_path_identity_match() {
+    let candidates = vec![
+        make_candidate(
+            "https://docs.astral.sh/uv/concepts/projects/dependencies",
+            "uv Python dependency management",
+            0.8,
+        )
+        .candidate,
+    ];
+    let query_tokens = vec![
+        "uv".to_string(),
+        "python".to_string(),
+        "dependencies".to_string(),
+    ];
+
+    assert_eq!(
+        product_authority_ratio(&candidates, &query_tokens, 0.35),
+        1.0
     );
 }
 
 #[test]
 fn score_trace_components_sum_to_final_rerank_score() {
     let candidates = vec![make_candidate(
-        "https://code.claude.com/docs/en/plugins",
-        "Claude Code plugins marketplace official docs",
+        "https://docs.widget.dev/docs/en/plugins",
+        "Widget plugins marketplace official docs",
         0.41,
     )];
     let query_tokens = vec![
-        "claude".to_string(),
+        "widget".to_string(),
         "marketplace".to_string(),
         "plugins".to_string(),
     ];
     let policy = CandidateScorePolicy {
-        authoritative_domains: &["code.claude.com".to_string()],
+        authoritative_domains: &["docs.widget.dev".to_string()],
         authoritative_boost: 0.12,
         product_authority_boost: 0.35,
         min_relevance_score: None,
@@ -253,7 +447,7 @@ fn score_trace_components_sum_to_final_rerank_score() {
             .any(|component| component.name == "product_authority_boost"
                 && component.value > 0.0
                 && component.status == AskExplainScoreComponentStatus::Applied),
-        "trace should make the Claude official-domain product boost visible"
+        "trace should make the docs-like product-token boost visible"
     );
 }
 
@@ -287,18 +481,18 @@ fn score_trace_uses_supplied_dense_score_kind() {
 fn score_trace_preserves_normal_rerank_output() {
     let candidates = vec![
         make_candidate(
-            "https://docs.openclaw.ai/cli/plugins",
-            "plugins marketplace commands install list inspect openclaw docs",
+            "https://docs.other.dev/cli/plugins",
+            "plugins marketplace commands install list inspect other docs",
             0.28,
         ),
         make_candidate(
-            "https://code.claude.com/docs/en/plugins",
-            "Claude Code plugins marketplace standalone configuration official docs",
+            "https://docs.widget.dev/docs/en/plugins",
+            "Widget plugins marketplace standalone configuration official docs",
             0.17,
         ),
     ];
     let query_tokens = vec![
-        "claude".to_string(),
+        "widget".to_string(),
         "marketplace".to_string(),
         "plugins".to_string(),
     ];
@@ -327,20 +521,20 @@ fn score_trace_preserves_normal_rerank_output() {
 }
 
 #[test]
-fn rrf_score_trace_skips_additive_boosts_and_min_relevance() {
+fn rrf_score_trace_applies_lexical_boosts_without_min_relevance() {
     let candidates = vec![
         make_candidate(
-            "https://code.claude.com/docs/en/plugins",
-            "Claude Code plugins marketplace official docs",
+            "https://docs.widget.dev/docs/en/plugins",
+            "Widget plugins marketplace official docs",
             0.02,
         ),
         make_candidate(
-            "https://docs.openclaw.ai/cli/plugins",
+            "https://docs.other.dev/cli/plugins",
             "unrelated command reference",
             0.30,
         ),
     ];
-    let query_tokens = vec!["claude".to_string(), "plugins".to_string()];
+    let query_tokens = vec!["widget".to_string(), "plugins".to_string()];
     let policy = CandidateScorePolicy {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
@@ -352,52 +546,36 @@ fn rrf_score_trace_skips_additive_boosts_and_min_relevance() {
     let (selected, trace) = score_rrf_candidates_with_trace(&candidates, &query_tokens, &policy);
 
     assert_eq!(
-        selected[0].candidate.url, "https://code.claude.com/docs/en/plugins",
+        selected[0].candidate.url, "https://docs.widget.dev/docs/en/plugins",
         "RRF trace path should not apply the cosine min relevance threshold"
     );
-    assert!((selected[0].candidate.rerank_score - 0.37).abs() < f64::EPSILON);
+    assert!(selected[0].candidate.rerank_score > 0.37);
     assert_eq!(trace[0].score_kind, AskExplainScoreKind::Rrf);
     assert!(
-        trace[0]
-            .score_components
-            .iter()
-            .filter(|component| {
-                component.name != "retrieval_score"
-                    && component.name != "authority_boost"
-                    && component.name != "product_authority_boost"
-            })
-            .all(|component| component.status == AskExplainScoreComponentStatus::Skipped),
-        "lexical/doc/phrase rerank components must be marked skipped in RRF mode"
-    );
-    assert!(
         trace[0].score_components.iter().any(|component| {
-            component.name == "product_authority_boost"
+            component.name == "lexical_url_token_boost"
                 && component.status == AskExplainScoreComponentStatus::Applied
-                && component.value == 0.35
+                && component.value > 0.0
         }),
-        "product authority must be visible in RRF explain traces"
+        "RRF trace path should apply lexical URL boosts during final ask context reranking"
     );
 }
 
 #[test]
-fn score_policy_boosts_openclaw_docs_for_openclaw_queries() {
+fn score_policy_boosts_docs_rs_crate_page_for_crate_queries() {
     let candidates = vec![
         make_candidate(
-            "https://code.claude.com/docs/en/plugins",
-            "Claude Code plugins marketplace official docs",
+            "https://docs.other.dev/docs/layout",
+            "Other layout documentation with rendering concepts",
             0.30,
         ),
         make_candidate(
-            "https://docs.openclaw.ai/cli/plugins",
-            "OpenClaw plugins marketplace commands install list inspect",
+            "https://docs.rs/gpui/latest/gpui/",
+            "GPUI crate documentation application views windows render",
             0.20,
         ),
     ];
-    let query_tokens = vec![
-        "openclaw".to_string(),
-        "marketplace".to_string(),
-        "plugins".to_string(),
-    ];
+    let query_tokens = vec!["gpui".to_string(), "views".to_string()];
     let policy = CandidateScorePolicy {
         authoritative_domains: &[],
         authoritative_boost: 0.0,
@@ -410,6 +588,6 @@ fn score_policy_boosts_openclaw_docs_for_openclaw_queries() {
 
     assert_eq!(
         selected[0].candidate.url,
-        "https://docs.openclaw.ai/cli/plugins"
+        "https://docs.rs/gpui/latest/gpui/"
     );
 }

@@ -92,27 +92,31 @@ impl Default for Config {
             mcp_allowed_origins: vec![],
             ask_diagnostics: false,
             ask_explain: false,
+            ask_stream: false,
+            ask_follow_up: false,
+            ask_session: None,
+            ask_reset_session: false,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
-            ask_max_context_chars: 120_000,
-            ask_candidate_limit: 150,
-            ask_chunk_limit: 10,
-            ask_full_docs: 4,
+            ask_max_context_chars: 300_000,
+            ask_candidate_limit: 250,
+            ask_chunk_limit: 20,
+            ask_full_docs: 6,
             ask_full_docs_explicit: false,
-            ask_backfill_chunks: 3,
+            ask_backfill_chunks: 5,
             ask_doc_fetch_concurrency: 4,
-            ask_doc_chunk_limit: 48,
+            ask_doc_chunk_limit: 96,
             ask_min_relevance_score: 0.45,
             ask_authoritative_domains: vec![],
             ask_authoritative_boost: 0.0,
             ask_min_citations_nontrivial: 2,
             hybrid_search_enabled: true,
             hybrid_search_candidates: 100,
-            ask_hybrid_candidates: 100,
+            ask_hybrid_candidates: 150,
             ask_cache_enabled: false,
             ask_cache_max_capacity_bytes: 256 * 1024 * 1024,
             ask_cache_ttl_secs: 300,
-            ask_fulldoc_skip_enabled: true,
+            ask_fulldoc_skip_enabled: false,
             ask_fulldoc_skip_min_urls: 3,
             ask_fulldoc_skip_min_chars: 4000,
             ask_fulldoc_skip_score_delta: 0.15,
@@ -320,6 +324,10 @@ impl fmt::Debug for Config {
             .field("mcp_allowed_origins", &self.mcp_allowed_origins)
             .field("ask_diagnostics", &self.ask_diagnostics)
             .field("ask_explain", &self.ask_explain)
+            .field("ask_stream", &self.ask_stream)
+            .field("ask_follow_up", &self.ask_follow_up)
+            .field("ask_session", &self.ask_session)
+            .field("ask_reset_session", &self.ask_reset_session)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)
