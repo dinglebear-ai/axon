@@ -330,6 +330,35 @@ mod tests {
         assert_eq!(result, PathBuf::from(".cache/axon-rust/data"));
     }
 
+    #[cfg(windows)]
+    #[allow(unsafe_code)]
+    #[serial_test::serial]
+    #[test]
+    fn axon_data_dir_accepts_windows_absolute_path() {
+        let saved = std::env::var("AXON_DATA_DIR").ok();
+        unsafe { std::env::set_var("AXON_DATA_DIR", r"C:\Users\jmaga\appdata\axon") };
+
+        let direct = axon_data_dir();
+        let base = axon_data_base_dir();
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("AXON_DATA_DIR", v) },
+            None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+        }
+
+        let expected = PathBuf::from(r"C:\Users\jmaga\appdata\axon");
+        assert_eq!(direct, Some(expected.clone()));
+        assert_eq!(base, expected);
+        assert!(
+            base.is_absolute(),
+            "drive-qualified Windows AXON_DATA_DIR must remain absolute"
+        );
+        assert_eq!(
+            base.join("jobs.db"),
+            PathBuf::from(r"C:\Users\jmaga\appdata\axon\jobs.db")
+        );
+    }
+
     #[allow(unsafe_code)]
     #[serial_test::serial]
     #[test]
