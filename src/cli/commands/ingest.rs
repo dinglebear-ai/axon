@@ -175,7 +175,9 @@ mod tests {
 
     #[tokio::test]
     async fn run_ingest_requires_target() -> Result<(), Box<dyn Error + Send + Sync>> {
+        let temp = tempfile::tempdir()?;
         let mut cfg = Config::test_default();
+        cfg.sqlite_path = temp.path().join("jobs.db");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec![];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
@@ -194,7 +196,9 @@ mod tests {
     #[tokio::test]
     async fn run_ingest_unknown_target_gives_helpful_error()
     -> Result<(), Box<dyn Error + Send + Sync>> {
+        let temp = tempfile::tempdir()?;
         let mut cfg = Config::test_default();
+        cfg.sqlite_path = temp.path().join("jobs.db");
         cfg.command = CommandKind::Ingest;
         cfg.positional = vec!["not-a-target".to_string()];
         let ctx = ServiceContext::new(Arc::new(cfg.clone()))
