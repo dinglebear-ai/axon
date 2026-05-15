@@ -95,7 +95,11 @@ fn context_trace_final_source_order_matches_prompt_order() {
     assert_eq!(order[0].source_id, "S1");
     assert_eq!(order[0].url, "https://b.test/docs");
     assert_eq!(order[0].tier, "top_chunk");
+    assert_eq!(order[0].sort_rank, 1);
+    assert_eq!(order[0].sort_score, 0.8);
     assert_eq!(order[1].source_id, "S2");
     assert_eq!(order[1].url, "https://a.test/docs");
     assert_eq!(order[1].tier, "full_doc");
+    assert_eq!(order[1].sort_rank, 2);
+    assert_eq!(order[1].sort_score, 0.7);
 }
