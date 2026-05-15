@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::process::Command;
 
 #[test]
@@ -151,6 +153,7 @@ fn plugin_setup_uses_canonical_axon_home() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn plugin_setup_smoke_delegates_to_shared_setup() {
     let temp_root =
