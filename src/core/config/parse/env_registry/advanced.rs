@@ -61,6 +61,14 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_LOG_COLOR",
+        ComposeEnv,
+        ComposeInterpolation,
+        None,
+        Canonical,
+        false,
+    ),
+    spec(
         "GEMINI_HOME",
         ComposeEnv,
         ComposeInterpolation,

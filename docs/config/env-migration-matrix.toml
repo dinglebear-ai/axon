@@ -983,6 +983,30 @@ compatibility = "warn-env-override"
 reason = "Non-secret tuning knob; migrate to config.toml."
 
 [[env]]
+key = "AXON_LOG_COLOR"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Docker Compose color toggle for container log output. Compose cannot read TOML."
+
+[[env]]
+key = "REDDIT_SECRET"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests"]
+secret = true
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "test-fixture"
+reason = "Synthetic redaction fixture value used in tests; runtime credential key is REDDIT_CLIENT_SECRET."
+
+[[env]]
 key = "AXON_HNSW_EF_SEARCH_LEGACY"
 classification = "move-toml"
 runtime_placement = "not-runtime"

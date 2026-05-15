@@ -2,14 +2,24 @@
 
 use super::super::*;
 
+#[allow(unsafe_code)]
+#[serial_test::serial]
 #[test]
 fn ask_explain_cli_sets_explain_and_diagnostics() {
-    let cfg = into_config(cli_with_services(&[
-        "ask",
-        "--explain",
-        "claude marketplace plugins",
-    ]))
-    .unwrap();
+    let _guard = ENV_LOCK.lock().unwrap();
+    let mut cfg = None;
+    with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
+        env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
+        cfg = Some(
+            into_config(cli_with_services(&[
+                "ask",
+                "--explain",
+                "claude marketplace plugins",
+            ]))
+            .unwrap(),
+        );
+    });
+    let cfg = cfg.unwrap();
 
     assert!(cfg.ask_explain);
     assert!(cfg.ask_diagnostics);

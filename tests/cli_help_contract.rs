@@ -43,8 +43,8 @@ fn ingest_help_describes_target_argument() {
 fn top_level_help_describes_http_mcp_runtime() {
     let stdout = run_help(&["--help"]);
     assert!(
-        stdout.contains("Start MCP HTTP server runtime"),
-        "expected top-level help to describe HTTP MCP runtime, got:\n{stdout}"
+        stdout.contains("Start MCP stdio or unified HTTP runtime"),
+        "expected top-level help to describe MCP stdio/unified HTTP runtime, got:\n{stdout}"
     );
     assert!(
         !stdout.contains("Start MCP stdio server"),
