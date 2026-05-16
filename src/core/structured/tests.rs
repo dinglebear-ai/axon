@@ -348,6 +348,53 @@ fn extract_json_ld_non_ascii_before_script_no_panic() {
 }
 
 #[test]
+fn next_data_ignores_decoy_before_real_script() {
+    // cubic finding #4 (next_data.rs:17): the original code grabbed the
+    // first `__NEXT_DATA__` occurrence anywhere in the document and
+    // walked `<script>` boundaries from there — so a comment, a
+    // `data-*="__NEXT_DATA__"` attribute on some other tag, or an
+    // inline mention earlier in the body could mask the real
+    // `<script id="__NEXT_DATA__">` block. The new implementation
+    // walks `<script>` tags in order and only accepts one whose
+    // opening tag carries `id="__NEXT_DATA__"`.
+    let html = r#"
+        <!-- mentions __NEXT_DATA__ in a comment -->
+        <div data-marker="__NEXT_DATA__">decoy</div>
+        <script type="application/json">{"__NEXT_DATA__": "not it"}</script>
+        <script id="__NEXT_DATA__" type="application/json">
+            {"props":{"pageProps":{"title":"Real","items":[1,2,3]}},"page":"/p","buildId":"abc"}
+        </script>
+    "#;
+    let results = extract_next_data(html);
+    assert_eq!(results.len(), 1, "must find the real script block");
+    assert_eq!(results[0]["title"], "Real");
+    assert_eq!(results[0]["items"][2], 3);
+}
+
+#[test]
+fn next_data_accepts_alternate_attribute_order_and_quoting() {
+    // The real script tag may come after other attributes and use single
+    // quotes — the attribute scanner must tolerate both.
+    let html = r#"<script type="application/json" id='__NEXT_DATA__' data-foo="bar">
+        {"props":{"pageProps":{"v":42}}}
+    </script>"#;
+    let results = extract_next_data(html);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["v"], 42);
+}
+
+#[test]
+fn next_data_rejects_data_attribute_decoy() {
+    // A `data-id="__NEXT_DATA__"` attribute on some other script must
+    // NOT be picked up as the real `id="__NEXT_DATA__"` script.
+    let html = r#"<script data-id="__NEXT_DATA__" type="application/json">
+        {"props":{"pageProps":{"v":"wrong"}}}
+    </script>"#;
+    let results = extract_next_data(html);
+    assert!(results.is_empty(), "data-id decoy must not match");
+}
+
+#[test]
 fn sveltekit_preserves_non_ascii_string_literals() {
     // SvelteKit data payloads can include non-ASCII string values
     // (titles, descriptions in CJK / emoji). Per-byte `b as char` casting
