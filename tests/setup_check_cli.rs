@@ -14,8 +14,6 @@ fn write_executable(path: &Path, body: &str) {
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
     }
-    #[cfg(not(unix))]
-    let _ = path;
 }
 
 fn fake_path(dir: &Path) -> String {

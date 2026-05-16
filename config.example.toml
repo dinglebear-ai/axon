@@ -191,3 +191,28 @@
 # Crawl queue cap — reject new jobs above this count (0 = unlimited).
 # Env: AXON_MAX_PENDING_CRAWL_JOBS
 # max-pending-crawl-jobs = 100
+
+# Embed queue cap — reject new jobs above this count (0 = unlimited).
+# Env: AXON_MAX_PENDING_EMBED_JOBS
+# max-pending-embed-jobs = 50
+
+# Extract queue cap — reject new jobs above this count (0 = unlimited).
+# Env: AXON_MAX_PENDING_EXTRACT_JOBS
+# max-pending-extract-jobs = 50
+
+# Ingest queue cap — reject new jobs above this count (0 = unlimited).
+# Env: AXON_MAX_PENDING_INGEST_JOBS
+# max-pending-ingest-jobs = 50
+
+# Timeout in seconds for --wait true job polling (clamped 30-3600).
+# Env: AXON_JOB_WAIT_TIMEOUT_SECS
+# job-wait-timeout-secs = 300
+
+[chrome]
+# Custom User-Agent header sent by Chrome. Leave unset to use Spider's default.
+# Env: AXON_CHROME_USER_AGENT
+# user-agent = "Mozilla/5.0 (compatible; Axon/1.0)"
+
+# Log rotation is configured via env var only (not TOML), because
+# init_tracing() runs before Config is built.
+# Env: AXON_LOG_MAX_BYTES (default: 10485760 = 10 MiB; 0 = disable rotation)

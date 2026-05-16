@@ -133,4 +133,15 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         false,
     ),
+    spec("GEMINI_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("GOOGLE_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec(
+        "AXON_WEB_API_TOKEN",
+        KeepEnv,
+        ContainerRequired,
+        None,
+        Canonical,
+        true,
+    ),
+    spec("AXON_CHROME_PROXY", KeepEnv, Both, None, Canonical, false),
 ];

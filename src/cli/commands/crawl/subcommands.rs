@@ -1,15 +1,15 @@
 use super::audit;
 use crate::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
-    handle_job_errors, handle_job_recover, handle_job_status, handle_worker_mode,
-    print_list_footer, truncate_chars,
+    handle_job_recover, handle_job_status, handle_worker_mode, print_list_footer, truncate_chars,
 };
-use crate::cli::commands::job_contracts::JobSummaryEntry;
+use crate::cli::commands::job_contracts::{JobErrorsResponse, JobSummaryEntry};
 use crate::core::config::Config;
 use crate::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
 };
 use crate::jobs::backend::JobKind;
+use crate::jobs::lite::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
 use crate::services::jobs as job_service;
 use crate::services::types::ServiceJob;
@@ -37,7 +37,7 @@ pub(super) async fn maybe_handle_subcommand(
         "errors" => {
             let id = parse_required_job_id(cfg, "errors")?;
             let job = job_service::job_status(service_context, JobKind::Crawl, id).await?;
-            handle_job_errors(cfg, job, id, "crawl")?;
+            render_errors_subcommand(cfg, job, id)?;
         }
         "list" => handle_list_subcommand(cfg, service_context).await?,
         "cleanup" => {
@@ -82,7 +82,154 @@ fn parse_required_job_id(cfg: &Config, action: &str) -> Result<Uuid, Box<dyn Err
     Ok(Uuid::parse_str(id)?)
 }
 
-fn print_status_metrics(metrics: &serde_json::Value) {
+fn crawl_error_metrics(metrics: Option<&serde_json::Value>) -> (u64, u64, Option<&str>) {
+    let Some(metrics) = metrics else {
+        return (0, 0, None);
+    };
+    let error_pages = metrics
+        .get("error_pages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let waf_blocked_pages = metrics
+        .get("waf_blocked_pages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let sitemap_backfill_error = metrics
+        .get("sitemap_backfill_error")
+        .and_then(|v| v.as_str());
+    (error_pages, waf_blocked_pages, sitemap_backfill_error)
+}
+
+fn is_reclaimed_retry(job: &ServiceJob) -> bool {
+    job.error_text
+        .as_deref()
+        .map(str::trim_start)
+        .is_some_and(|text| text == RECLAIMED_ERROR_TEXT)
+}
+
+fn reclaim_progress_suffix(job: &ServiceJob) -> &'static str {
+    if is_reclaimed_retry(job) {
+        " · reclaimed retry"
+    } else {
+        ""
+    }
+}
+
+fn render_errors_subcommand(
+    cfg: &Config,
+    job: Option<ServiceJob>,
+    id: Uuid,
+) -> Result<(), Box<dyn Error>> {
+    let Some(job) = job else {
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "error": format!("job not found: {id}"),
+                    "job_id": id
+                }))?
+            );
+        } else {
+            println!(
+                "{} {}",
+                symbol_for_status("error"),
+                muted(&format!("job not found: {id}"))
+            );
+        }
+        return Ok(());
+    };
+
+    let (error_pages, waf_blocked_pages, sitemap_backfill_error) =
+        crawl_error_metrics(job.result_json.as_ref());
+    if cfg.json_output {
+        let mut out = serde_json::to_value(JobErrorsResponse::from_job(
+            job.id,
+            job.status.clone(),
+            job.error_text.clone(),
+        ))?;
+        if let Some(object) = out.as_object_mut() {
+            object.insert("job_id".to_string(), serde_json::json!(job.id));
+            object.insert("url".to_string(), serde_json::json!(job.url));
+            object.insert("error_text".to_string(), serde_json::json!(job.error_text));
+            object.insert(
+                "metrics".to_string(),
+                serde_json::json!({
+                    "error_pages": error_pages,
+                    "waf_blocked_pages": waf_blocked_pages,
+                    "sitemap_backfill_error": sitemap_backfill_error,
+                    "diagnostic_counts": job.result_json.as_ref().and_then(|m| m.get("diagnostic_counts")).cloned(),
+                    "diagnostics": job.result_json.as_ref().and_then(|m| m.get("diagnostics")).cloned(),
+                }),
+            );
+        }
+        println!("{}", serde_json::to_string_pretty(&out)?);
+        return Ok(());
+    }
+
+    println!(
+        "{} crawl job {} {}",
+        symbol_for_status(&job.status),
+        accent(&id.to_string()),
+        status_text(&job.status)
+    );
+    println!(
+        "  {} {}",
+        muted("Error:"),
+        job.error_text.as_deref().unwrap_or("None")
+    );
+    println!("  {} {}", muted("Page errors:"), error_pages);
+    println!("  {} {}", muted("WAF-blocked pages:"), waf_blocked_pages);
+    if let Some(error) = sitemap_backfill_error {
+        println!("  {} {}", muted("Sitemap backfill:"), error);
+    }
+    if let Some(counts) = job
+        .result_json
+        .as_ref()
+        .and_then(|metrics| metrics.get("diagnostic_counts"))
+        .and_then(|value| value.as_object())
+        .filter(|counts| !counts.is_empty())
+    {
+        println!("  {}", muted("Diagnostic counts:"));
+        for (class, count) in counts {
+            println!("    {} {}", muted(class), count);
+        }
+    }
+    if let Some(samples) = job
+        .result_json
+        .as_ref()
+        .and_then(|metrics| metrics.get("diagnostics"))
+        .and_then(|value| value.as_array())
+        .filter(|samples| !samples.is_empty())
+    {
+        println!("  {}", muted("Diagnostic samples:"));
+        for sample in samples.iter().take(10) {
+            let phase = sample
+                .get("phase")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let class = sample
+                .get("class")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let message = sample
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let url = sample.get("url").and_then(|value| value.as_str());
+            match url {
+                Some(url) => println!("    {}:{} {} {}", phase, class, muted(message), muted(url)),
+                None => println!("    {}:{} {}", phase, class, muted(message)),
+            }
+        }
+    }
+    if error_pages == 0 && waf_blocked_pages == 0 && sitemap_backfill_error.is_none() {
+        println!("  {}", muted("No page-level crawl errors recorded."));
+    }
+    println!("Job ID: {id}");
+    Ok(())
+}
+
+fn print_status_metrics(id: Uuid, metrics: &serde_json::Value) {
     let md_created = metrics
         .get("md_created")
         .and_then(|v| v.as_u64())
@@ -120,6 +267,27 @@ fn print_status_metrics(metrics: &serde_json::Value) {
     println!("  {} {}", muted("filtered urls:"), filtered_urls);
     println!("  {} {}", muted("pages crawled:"), pages_crawled);
     println!("  {} {}", muted("pages discovered:"), pages_discovered);
+    let error_pages = metrics
+        .get("error_pages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let waf_blocked_pages = metrics
+        .get("waf_blocked_pages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    if error_pages > 0 || waf_blocked_pages > 0 {
+        println!(
+            "  {} {} errors, {} waf-blocked",
+            muted("crawl errors:"),
+            error_pages,
+            waf_blocked_pages
+        );
+        println!(
+            "  {} axon crawl errors {}",
+            muted("details:"),
+            muted(&id.to_string())
+        );
+    }
     if sitemap_candidates > 0 || sitemap_written > 0 {
         println!(
             "  {} {}/{}",
@@ -178,11 +346,16 @@ pub(crate) fn render_status_subcommand(
             );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
-            if let Some(err) = job.error_text.as_deref() {
+            if job.attempt_count > 0 {
+                println!("  {} {}", muted("Attempt:"), job.attempt_count);
+            }
+            if is_reclaimed_retry(&job) {
+                println!("  {} retry after worker shutdown", muted("Reclaimed:"));
+            } else if let Some(err) = job.error_text.as_deref() {
                 println!("  {} {}", muted("Error:"), err);
             }
             if let Some(metrics) = job.result_json.as_ref() {
-                print_status_metrics(metrics);
+                print_status_metrics(job.id, metrics);
             }
             println!();
             println!("Job ID: {}", job.id);
@@ -213,10 +386,22 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
             if crawled == 0 && docs == 0 {
                 return None;
             }
-            if docs > 0 {
-                Some(format!("{crawled} crawled · {docs} docs"))
+            let errors = metrics
+                .get("error_pages")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let error_suffix = if errors > 0 {
+                format!(" · {errors} errors")
             } else {
-                Some(format!("{crawled} crawled"))
+                String::new()
+            };
+            let reclaim_suffix = reclaim_progress_suffix(job);
+            if docs > 0 {
+                Some(format!(
+                    "{crawled} crawled · {docs} docs{error_suffix}{reclaim_suffix}"
+                ))
+            } else {
+                Some(format!("{crawled} crawled{error_suffix}{reclaim_suffix}"))
             }
         }
         "completed" => {
@@ -245,6 +430,7 @@ fn job_progress_summary(job: &ServiceJob) -> Option<String> {
             };
             Some(truncated)
         }
+        "pending" => is_reclaimed_retry(job).then(|| "reclaimed retry".to_string()),
         _ => None,
     }
 }

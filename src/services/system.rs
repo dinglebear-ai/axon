@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::health::build_doctor_report;
 use crate::jobs::backend::JobKind;
+use crate::jobs::lite::store::RECLAIMED_ERROR_TEXT;
 use crate::services::context::ServiceContext;
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::jobs as job_service;
@@ -421,21 +422,22 @@ fn include_status_view(status: &str, active_only: bool, recent_only: bool) -> bo
 }
 
 fn include_status_job(status: &str, error_text: Option<&str>, reclaimed_only: bool) -> bool {
-    let reclaimed = is_watchdog_reclaimed_failure(status, error_text);
+    let reclaimed = is_watchdog_reclaimed_job(error_text);
     if reclaimed_only {
         reclaimed
     } else {
-        !reclaimed
+        !is_watchdog_reclaimed_failure(status, error_text)
     }
 }
 
 fn is_watchdog_reclaimed_failure(status: &str, error_text: Option<&str>) -> bool {
-    if status != "failed" {
-        return false;
-    }
-    error_text
-        .map(str::trim_start)
-        .is_some_and(|text| text.starts_with(WATCHDOG_RECLAIM_PREFIX))
+    status == "failed" && is_watchdog_reclaimed_job(error_text)
+}
+
+fn is_watchdog_reclaimed_job(error_text: Option<&str>) -> bool {
+    error_text.map(str::trim_start).is_some_and(|text| {
+        text.starts_with(WATCHDOG_RECLAIM_PREFIX) || text == RECLAIMED_ERROR_TEXT
+    })
 }
 
 #[must_use = "dedupe returns a Result that should be handled"]
@@ -659,6 +661,10 @@ mod tests {
             "failed",
             Some("watchdog reclaimed stale running ingest job (idle=360s marker=amqp)")
         ));
+        assert!(is_watchdog_reclaimed_failure(
+            "failed",
+            Some(RECLAIMED_ERROR_TEXT)
+        ));
         assert!(!is_watchdog_reclaimed_failure(
             "error",
             Some("watchdog reclaimed stale running crawl job (idle=361s marker=polling)")
@@ -679,6 +685,16 @@ mod tests {
             Some("watchdog reclaimed stale running extract job (idle=360s marker=amqp)");
         assert!(!include_status_job("failed", reclaimed_err, false));
         assert!(include_status_job("failed", reclaimed_err, true));
+        assert!(include_status_job(
+            "running",
+            Some(RECLAIMED_ERROR_TEXT),
+            false
+        ));
+        assert!(include_status_job(
+            "running",
+            Some(RECLAIMED_ERROR_TEXT),
+            true
+        ));
         assert!(include_status_job("completed", None, false));
         assert!(!include_status_job("completed", None, true));
     }

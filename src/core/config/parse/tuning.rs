@@ -95,6 +95,7 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         16,
         256,
     );
+    cfg.job_wait_timeout_secs = job_wait_timeout_secs(toml);
 }
 
 pub(crate) fn apply_default_lite_tuning(cfg: &mut Config) {
@@ -264,6 +265,16 @@ fn qdrant_point_buffer(toml: &TomlConfig) -> usize {
         256,
         128,
         16_384,
+    )
+}
+
+fn job_wait_timeout_secs(toml: &TomlConfig) -> u64 {
+    resolve_clamped_u64(
+        "AXON_JOB_WAIT_TIMEOUT_SECS",
+        toml.workers.job_wait_timeout_secs,
+        300,
+        30,
+        3600,
     )
 }
 

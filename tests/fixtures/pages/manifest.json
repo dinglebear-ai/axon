@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "description": "DOM extraction benchmark fixture corpus. Hand-crafted, license-clean HTML representing thin, medium, and dense documentation/blog pages.",
+  "fixtures": [
+    {
+      "filename": "thin_01.html",
+      "url": "https://example.com/404",
+      "expected_word_count": 25,
+      "page_type": "thin"
+    },
+    {
+      "filename": "thin_02.html",
+      "url": "https://example.com/login",
+      "expected_word_count": 20,
+      "page_type": "thin"
+    },
+    {
+      "filename": "thin_03.html",
+      "url": "https://example.com/docs",
+      "expected_word_count": 15,
+      "page_type": "thin"
+    },
+    {
+      "filename": "medium_01.html",
+      "url": "https://example.com/blog/http-caching",
+      "expected_word_count": 280,
+      "page_type": "medium"
+    },
+    {
+      "filename": "medium_02.html",
+      "url": "https://example.com/docs/vector-index-tuning",
+      "expected_word_count": 330,
+      "page_type": "medium"
+    },
+    {
+      "filename": "medium_03.html",
+      "url": "https://example.com/blog/rust-async-cancellation",
+      "expected_word_count": 300,
+      "page_type": "medium"
+    },
+    {
+      "filename": "dense_01.html",
+      "url": "https://example.com/blog/embedding-pipelines",
+      "expected_word_count": 1100,
+      "page_type": "dense"
+    },
+    {
+      "filename": "dense_02.html",
+      "url": "https://example.com/blog/operating-a-crawler",
+      "expected_word_count": 1050,
+      "page_type": "dense"
+    }
+  ]
+}

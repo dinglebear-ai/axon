@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, lift_err};
 use crate::jobs::lite::config_snapshot::apply_lite_config_snapshot;
-use crate::jobs::lite::ops::update_result_json;
+use crate::jobs::lite::ops::update_result_json_for_attempt;
 
 use super::JobResult;
 
@@ -25,6 +25,12 @@ pub async fn run_extract_job_lite(
         tracing::warn!(id = %id, table = "axon_extract_jobs", "job row not found at execution time, may have been deleted mid-run");
         return Ok(None);
     };
+    let attempt_id: Option<String> =
+        sqlx::query_scalar("SELECT active_attempt_id FROM axon_extract_jobs WHERE id=?")
+            .bind(id.to_string())
+            .fetch_optional(pool)
+            .await?
+            .flatten();
     let effective_cfg = apply_lite_config_snapshot(cfg, &config_json).map_err(lift_err)?;
 
     let urls: Vec<String> = serde_json::from_str(&urls_json).map_err(
@@ -79,7 +85,15 @@ pub async fn run_extract_job_lite(
             "urls": idx + 1,
             "total_items": total_items,
         });
-        if let Err(e) = update_result_json(pool, JobKind::Extract, id, &progress).await {
+        if let Err(e) = update_result_json_for_attempt(
+            pool,
+            JobKind::Extract,
+            id,
+            attempt_id.as_deref(),
+            &progress,
+        )
+        .await
+        {
             tracing::warn!(job_id = %id, error = %e, "failed to persist extract progress");
         }
     }

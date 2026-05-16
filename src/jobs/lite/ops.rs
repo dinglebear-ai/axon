@@ -4,8 +4,9 @@ mod retry;
 
 pub use enqueue::enqueue_job;
 pub use lifecycle::{
-    cancel_row, claim_next_pending, mark_completed, mark_failed, touch_heartbeat,
-    update_result_json,
+    ClaimedJob, cancel_row, claim_next_pending, claim_next_pending_for_attempt, mark_completed,
+    mark_completed_for_attempt, mark_failed, mark_failed_for_attempt, touch_heartbeat,
+    touch_heartbeat_for_attempt, update_result_json, update_result_json_for_attempt,
 };
 
 #[cfg(test)]
