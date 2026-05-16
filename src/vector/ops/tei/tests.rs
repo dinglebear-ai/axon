@@ -191,6 +191,7 @@ fn prepared_doc_with_ingest_metadata_compiles() {
         content_type: "text",
         title: Some("src/lib.rs".to_string()),
         extra: Some(serde_json::json!({"gh_owner": "owner", "gh_repo": "repo"})),
+        extractor_name: None,
     };
     assert_eq!(doc.source_type, "github");
     assert_eq!(doc.content_type, "text");

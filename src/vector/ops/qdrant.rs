@@ -18,8 +18,8 @@ pub(crate) use types::DirectRetrieveResult;
 pub(crate) use types::RetrieveVariantError;
 pub use types::{QdrantPayload, QdrantPoint, QdrantSearchHit};
 pub use utils::{
-    base_url, payload_text_typed, payload_url_typed, qdrant_base, query_snippet,
-    render_full_doc_filtered, render_full_doc_from_points,
+    PAYLOAD_SCHEMA_VERSION, base_url, payload_text_typed, payload_url_typed, qdrant_base,
+    query_snippet, render_full_doc_filtered, render_full_doc_from_points,
 };
 
 pub(crate) use client::{

@@ -3,7 +3,9 @@ use crate::vector::ops::sparse::{self, SparseVector};
 use crate::vector::ops::tei::qdrant_store::{VectorMode, get_or_fetch_vector_mode};
 use std::error::Error;
 
-use super::super::filter::build_scraped_at_filter;
+use super::super::filter::{
+    build_schema_version_filter, build_scraped_at_filter, combine_must_filters,
+};
 use super::super::hybrid::{qdrant_hybrid_search, qdrant_named_dense_search};
 use super::super::search;
 use super::super::types::QdrantSearchHit;
@@ -53,6 +55,26 @@ impl<'a> VectorSearchRequest<'a> {
 
     pub(crate) fn with_candidates_override(mut self, candidates: Option<usize>) -> Self {
         self.candidates_override = candidates;
+        self
+    }
+
+    /// Add an optional `payload_schema_version >= min` filter to the request.
+    ///
+    /// Composes with any existing filter (e.g. `scraped_at` range) via
+    /// `combine_must_filters`. Default ask/query retrieval passes `None` and
+    /// applies no version filter, preserving backward compatibility with
+    /// pre-`axon_rust-lu6a` points that lack the `payload_schema_version`
+    /// field. Opt-in callers (vertical-aware queries from `xvu9`) pass
+    /// `Some(N)` to restrict to points indexed under schema version N or
+    /// later.
+    #[allow(dead_code)] // wired for xvu9 / future vertical-aware retrieval paths
+    pub(crate) fn with_payload_schema_version_min(mut self, min: Option<u32>) -> Self {
+        if let Some(version_filter) = build_schema_version_filter(min) {
+            self.filter = match self.filter.take() {
+                Some(existing) => Some(combine_must_filters(&[existing, version_filter])),
+                None => Some(version_filter),
+            };
+        }
         self
     }
 }
