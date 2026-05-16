@@ -556,6 +556,11 @@ pub struct Config {
     /// Default: None (no upper bound). Flag: `--before`.
     pub before: Option<String>,
 
+    /// Include a per-schema-version chunk-count breakdown in `axon sources` output.
+    /// O(N) scroll over the collection; opt-in only. Default: false.
+    /// Flag: `--by-schema-version`. See bead `axon_rust-lu6a`.
+    pub sources_by_schema_version: bool,
+
     // P5 — opt-in crawl safety/compat flags
     /// Bypass Content Security Policy in Chrome — helps on pages that block inline JS via CSP.
     /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. Flag: `--bypass-csp`.

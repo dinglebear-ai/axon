@@ -163,6 +163,7 @@ impl Default for Config {
             search_time_range: None,
             since: None,
             before: None,
+            sources_by_schema_version: false,
             bypass_csp: false,
             accept_invalid_certs: false,
             screenshot_full_page: true,

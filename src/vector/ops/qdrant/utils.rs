@@ -13,6 +13,17 @@ pub fn qdrant_base(cfg: &Config) -> &str {
     cfg.qdrant_url.trim_end_matches('/')
 }
 
+/// Current schema version written into every new Qdrant payload.
+///
+/// Existing points indexed before this constant was introduced have no
+/// `payload_schema_version` field; treat them as implicit version `1`. New
+/// upserts carry version `2` (this constant). Retrieval may filter
+/// `payload_schema_version >= N` to scope queries to vertical-aware fields
+/// (see `build_schema_version_filter` in `qdrant/filter.rs`).
+///
+/// Bumped when a new required payload field lands. See bead `axon_rust-lu6a`.
+pub const PAYLOAD_SCHEMA_VERSION: u32 = 2;
+
 pub(crate) fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     crate::core::config::validate_collection_name(name)
 }
