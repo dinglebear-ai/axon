@@ -87,6 +87,7 @@ pub(super) async fn prepare_embed_docs(
             content_type: "markdown",
             title: None,
             extra: None,
+            extractor_name: None,
         });
     }
     Ok(prepared)

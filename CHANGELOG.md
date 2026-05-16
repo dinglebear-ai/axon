@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-15
+
+### Added
+
+- vector: every new Qdrant upsert now stamps `payload_schema_version` (integer, currently `2`) and optional `extractor_name` (keyword) on the payload. Existing pre-2.1.0 points (~3.79M) have no version field and are treated as implicit version `1`. `PAYLOAD_SCHEMA_VERSION` const lives in `src/vector/ops/qdrant/utils.rs` and is re-exported from `crate::vector::ops::qdrant`. (bd axon_rust-lu6a)
+- vector: retrieval supports an optional `payload_schema_version >= N` filter via `VectorSearchRequest::with_payload_schema_version_min` and the new helper `qdrant::filter::build_schema_version_filter`. Default ask/query retrieval applies no filter — backward-compatible with existing points. Opt-in callers (vertical-aware queries from `xvu9`) pass `Some(N)` to scope results.
+- cli: `axon sources --by-schema-version` adds a per-version chunk-count breakdown via collection scroll. Opt-in only — expensive on large collections. Breakdown is exposed in JSON output under `schema_version_breakdown`.
+- vector: new integer payload index on `payload_schema_version` plus a keyword index on `extractor_name` so `/facet` and range filters work efficiently.
+
 ## [2.0.0] - 2026-05-15
 
 ### Added

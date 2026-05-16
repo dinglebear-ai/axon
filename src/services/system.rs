@@ -20,7 +20,9 @@ pub use self::domains::{
     detailed_domains, domains, map_domains_payload, summarize_detailed_domains,
     summarize_detailed_domains_limited,
 };
-pub use self::sources::{map_sources_payload, sources};
+pub use self::sources::{
+    map_sources_payload, sources, sources_schema_version_breakdown, sources_with_breakdown,
+};
 pub use self::stats::{map_stats_payload, stats};
 pub use self::status::{StatusJobs, build_status_payload, full_status, load_status_jobs};
 
