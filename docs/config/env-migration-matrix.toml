@@ -2337,3 +2337,123 @@ container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
 reason = "OAuth protection test harness variable."
+
+[[env]]
+key = "AXON_ENABLE_VERTICALS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "verticals.enabled"
+compatibility = "warn-env-override"
+reason = "Webclaw vertical dispatch feature gate. Operator tuning — move to config.toml."
+
+[[env]]
+key = "AXON_AUTO_DISPATCH_SKIP"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "verticals.auto-dispatch-skip"
+compatibility = "warn-env-override"
+reason = "Comma-separated list of vertical names to skip during auto-dispatch. Operator tuning."
+
+[[env]]
+key = "AXON_STRUCTURED_DATA_MAX_BYTES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "payload.structured-data-max-bytes"
+compatibility = "warn-env-override"
+reason = "Max bytes for structured data extraction payload. Operator tuning."
+
+[[env]]
+key = "AXON_LADDER_STRATEGY1_THRESHOLD"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.ladder-strategy1-threshold"
+compatibility = "warn-env-override"
+reason = "Multi-strategy DOM retry ladder threshold for strategy 1. Operator tuning."
+
+[[env]]
+key = "AXON_LADDER_STRATEGY2_THRESHOLD"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.ladder-strategy2-threshold"
+compatibility = "warn-env-override"
+reason = "Multi-strategy DOM retry ladder threshold for strategy 2. Operator tuning."
+
+[[env]]
+key = "AXON_LADDER_BODY_MULTIPLIER"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "scrape.ladder-body-multiplier"
+compatibility = "warn-env-override"
+reason = "Body size multiplier for DOM ladder strategy selection. Operator tuning."
+
+[[env]]
+key = "AXON_CHALLENGE_WARMUP"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "antibot.cookie-warmup"
+compatibility = "warn-env-override"
+reason = "Enable antibot cookie warmup on challenge-page detection. Operator tuning."
+
+[[env]]
+key = "AXON_ANTIBOT_MAX_BODY_SCAN_BYTES"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "config-toml", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "antibot.max-body-scan-bytes"
+compatibility = "warn-env-override"
+reason = "Max bytes to scan for antibot challenge signals in response body. Operator tuning."
+
+[[env]]
+key = "AXON_VERTICAL_CACHE_TTL_GITHUB"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Per-vertical cache TTL override (dynamic prefix AXON_VERTICAL_CACHE_TTL_<NAME>=secs). GITHUB is the documented example; other vertical names follow the same pattern."
+
+[[env]]
+key = "AXON_ENV_FILE_RESOLVED"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Script-internal variable set by scripts/axon to track the resolved env file path. Not read by the Rust binary."
