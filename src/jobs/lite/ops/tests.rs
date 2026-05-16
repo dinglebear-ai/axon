@@ -45,7 +45,7 @@ async fn claim_returns_none_when_queue_empty() {
 }
 
 #[tokio::test]
-async fn claim_clears_reclaimed_error_text() {
+async fn claim_preserves_reclaimed_error_text_until_terminal_state() {
     let pool = test_pool().await;
     let id = Uuid::new_v4().to_string();
     sqlx::query(
@@ -71,7 +71,7 @@ async fn claim_clears_reclaimed_error_text() {
             .await
             .expect("claimed row");
     assert_eq!(row.0, "running");
-    assert_eq!(row.1, None);
+    assert_eq!(row.1.as_deref(), Some(RECLAIMED_ERROR_TEXT));
 }
 
 #[tokio::test]
@@ -146,6 +146,39 @@ async fn update_result_json_persists_progress_without_changing_status() {
     assert_eq!(result_json["phase"], "collecting_files");
     assert_eq!(result_json["files_done"], 25);
     assert_eq!(result_json["chunks_embedded"], 42);
+}
+
+#[tokio::test]
+async fn update_result_json_skips_non_running_rows() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Embed {
+            input: "test".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_lite(),
+    )
+    .await
+    .expect("enqueue");
+
+    update_result_json(
+        &pool,
+        JobKind::Embed,
+        id,
+        &serde_json::json!({ "chunks_embedded": 99 }),
+    )
+    .await
+    .expect("skip pending progress");
+
+    let row: (String, Option<String>) =
+        sqlx::query_as("SELECT status, result_json FROM axon_embed_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("fetch");
+    assert_eq!(row.0, "pending");
+    assert_eq!(row.1, None);
 }
 
 #[tokio::test]

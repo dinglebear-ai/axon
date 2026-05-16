@@ -35,8 +35,8 @@ async fn claim_next_pending_inner(
     // concurrent workers.
     sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
-    let row: Option<(String,)> = match sqlx::query_as(&format!(
-        "SELECT id FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
+    let row: Option<(String, Option<String>)> = match sqlx::query_as(&format!(
+        "SELECT id, error_text FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
         table
     ))
     .fetch_optional(&mut *conn)
@@ -54,9 +54,9 @@ async fn claim_next_pending_inner(
             sqlx::query("ROLLBACK").execute(&mut *conn).await?;
             Ok(None)
         }
-        Some((id_str,)) => {
+        Some((id_str, error_text)) => {
             let update_result = match sqlx::query(&format!(
-                "UPDATE {} SET status='running', started_at=?, updated_at=?, error_text=NULL \
+                "UPDATE {} SET status='running', started_at=?, updated_at=? \
                  WHERE id=? AND status='pending'",
                 table
             ))
@@ -80,6 +80,14 @@ async fn claim_next_pending_inner(
             }
 
             sqlx::query("COMMIT").execute(&mut *conn).await?;
+            if error_text.is_some() {
+                tracing::info!(
+                    table,
+                    job_id = %id_str,
+                    previous_error = error_text.as_deref().unwrap_or_default(),
+                    "claiming pending job with existing recovery marker"
+                );
+            }
             Ok(Some(
                 Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
             ))
@@ -185,14 +193,23 @@ pub async fn update_result_json(
         let now = now_ms();
         let table = kind.table_name();
         sqlx::query(&format!(
-            "UPDATE {} SET result_json=?, updated_at=? WHERE id=?",
+            "UPDATE {} SET result_json=?, updated_at=? WHERE id=? AND status='running'",
             table
         ))
         .bind(result_json.to_string())
         .bind(now)
         .bind(id.to_string())
         .execute(pool)
-        .await?;
+        .await
+        .map(|result| {
+            if result.rows_affected() == 0 {
+                tracing::debug!(
+                    table,
+                    job_id = %id,
+                    "progress update skipped because job is no longer running"
+                );
+            }
+        })?;
         Ok(())
     })
     .await
