@@ -196,3 +196,86 @@ fn explicit_missing_config_path_returns_err() {
         "error should explain the config path read failure"
     );
 }
+
+// ── New schema field tests ────────────────────────────────────────────────────
+
+#[test]
+fn services_url_fields_parse_without_error() {
+    // [services] URL fields should be accepted by the parser (parse-warn-and-ignore
+    // semantics) even though they do not affect service URLs at runtime.
+    let result = load_toml_config_from_str(
+        r#"
+[services]
+qdrant-url = "http://custom-qdrant:6333"
+tei-url = "http://custom-tei:80"
+chrome-remote-url = "http://custom-chrome:6000"
+"#,
+    );
+    assert!(
+        result.is_ok(),
+        "services URL fields should parse without error: {:?}",
+        result.err()
+    );
+    let cfg = result.unwrap();
+    assert_eq!(
+        cfg.services.qdrant_url.as_deref(),
+        Some("http://custom-qdrant:6333")
+    );
+    assert_eq!(
+        cfg.services.tei_url.as_deref(),
+        Some("http://custom-tei:80")
+    );
+    assert_eq!(
+        cfg.services.chrome_remote_url.as_deref(),
+        Some("http://custom-chrome:6000")
+    );
+}
+
+#[test]
+fn workers_job_wait_timeout_secs_parses() {
+    let result = load_toml_config_from_str("[workers]\njob-wait-timeout-secs = 600");
+    assert!(
+        result.is_ok(),
+        "job-wait-timeout-secs should parse: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().workers.job_wait_timeout_secs, Some(600));
+}
+
+#[test]
+fn chrome_user_agent_parses() {
+    let result = load_toml_config_from_str(
+        r#"[chrome]
+user-agent = "Mozilla/5.0 (Axon Test)""#,
+    );
+    assert!(
+        result.is_ok(),
+        "chrome user-agent should parse: {:?}",
+        result.err()
+    );
+    assert_eq!(
+        result.unwrap().chrome.user_agent.as_deref(),
+        Some("Mozilla/5.0 (Axon Test)")
+    );
+}
+
+#[test]
+fn logging_max_bytes_parses() {
+    let result = load_toml_config_from_str("[logging]\nmax-bytes = 5242880");
+    assert!(
+        result.is_ok(),
+        "logging max-bytes should parse: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().logging.max_bytes, Some(5_242_880));
+}
+
+#[test]
+fn unknown_workers_field_fails_parse() {
+    // deny_unknown_fields on TomlWorkersSection must reject typos
+    let result = load_toml_config_from_str("[workers]\nmax-pending-embed-job = 10");
+    assert!(
+        result.is_err(),
+        "unknown [workers] field should be rejected by deny_unknown_fields"
+    );
+}

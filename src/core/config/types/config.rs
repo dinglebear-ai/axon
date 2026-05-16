@@ -608,6 +608,15 @@ pub struct Config {
 
     /// Override log level before tracing init. Flag: `--log-level`, env: `AXON_LOG_LEVEL`.
     pub log_level: Option<String>,
+
+    /// Timeout in seconds for `--wait true` job polling.
+    /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`. TOML: `workers.job-wait-timeout-secs`.
+    /// Clamped 30–3600. Default: 300.
+    pub job_wait_timeout_secs: u64,
+
+    /// Log file rotation threshold in bytes (0 = disable rotation).
+    /// Env: `AXON_LOG_MAX_BYTES`. TOML: `logging.max-bytes`. Default: 10485760 (10 MiB).
+    pub log_max_bytes: u64,
 }
 
 #[cfg(test)]

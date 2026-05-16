@@ -36,6 +36,11 @@ pub(super) struct LiteralInputs<'a> {
 /// Top-level builder. Mirrors the original literal precisely; field population
 /// is delegated to `populate_*` helpers (each <120 lines per monolith policy).
 pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
+    // Warn unconditionally whenever any [services] URL fields appear in config.toml,
+    // regardless of whether the env var is also set. This fires once at build time
+    // so users migrating from old configs see the message even if the env var overrides.
+    warn_services_section_if_present(inputs.toml);
+
     // Resolve fallible inputs first so `?` short-circuits before we mutate `cfg`.
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
     let qdrant_url = resolve_qdrant_url(inputs.global, inputs.toml)?;
@@ -102,7 +107,8 @@ fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.chrome_user_agent = g
         .chrome_user_agent
         .clone()
-        .or_else(|| env::var("AXON_CHROME_USER_AGENT").ok());
+        .or_else(|| env::var("AXON_CHROME_USER_AGENT").ok())
+        .or_else(|| inputs.toml.chrome.user_agent.clone());
     cfg.chrome_headless = g.chrome_headless;
     cfg.chrome_anti_bot = g.chrome_anti_bot;
     cfg.chrome_intercept = g.chrome_intercept;
@@ -375,6 +381,28 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
                     .to_string()
             })?,
     ))
+}
+
+/// Emit a startup warning for each `[services]` URL field that is `Some(...)` in
+/// the config.toml, regardless of whether the env var is also set. The warning
+/// fires once at config-build time so users migrating from old configs see the
+/// message even when the env var overrides the TOML value.
+fn warn_services_section_if_present(toml: &TomlConfig) {
+    if toml.services.qdrant_url.is_some() {
+        log_warn(
+            "[services] qdrant-url in config.toml is ignored; set QDRANT_URL in ~/.axon/.env instead",
+        );
+    }
+    if toml.services.tei_url.is_some() {
+        log_warn(
+            "[services] tei-url in config.toml is ignored; set TEI_URL in ~/.axon/.env instead",
+        );
+    }
+    if toml.services.chrome_remote_url.is_some() {
+        log_warn(
+            "[services] chrome-remote-url in config.toml is ignored; set AXON_CHROME_REMOTE_URL in ~/.axon/.env instead",
+        );
+    }
 }
 
 fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
