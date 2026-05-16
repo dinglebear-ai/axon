@@ -26,6 +26,10 @@ fn job(status: &str) -> ServiceJob {
             "chunks_embedded": 8
         })),
         config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
     }
 }
 

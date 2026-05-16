@@ -4,6 +4,7 @@ use sqlx::{
     SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
+use uuid::Uuid;
 
 /// Open a SQLite pool, enable WAL mode, and run all migrations.
 ///
@@ -104,18 +105,31 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
 /// silently breaks the renderer.
 pub(crate) const RECLAIMED_ERROR_TEXT: &str = "reclaimed after unexpected shutdown";
 
-/// Per-kind reclaim count returned by `reclaim_stale_running_jobs_detailed`.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ReclaimCounts {
-    pub crawl: u64,
-    pub embed: u64,
-    pub extract: u64,
-    pub ingest: u64,
+/// Per-kind reclaimed job IDs returned by `reclaim_stale_running_jobs_detailed`.
+#[derive(Debug, Default, Clone)]
+pub struct ReclaimedJobs {
+    pub crawl: Vec<Uuid>,
+    pub embed: Vec<Uuid>,
+    pub extract: Vec<Uuid>,
+    pub ingest: Vec<Uuid>,
 }
 
-impl ReclaimCounts {
-    pub fn total(&self) -> u64 {
-        self.crawl + self.embed + self.extract + self.ingest
+impl ReclaimedJobs {
+    pub fn total(&self) -> usize {
+        self.crawl.len() + self.embed.len() + self.extract.len() + self.ingest.len()
+    }
+
+    pub fn count_for(&self, kind: JobKind) -> usize {
+        self.ids_for(kind).len()
+    }
+
+    pub fn ids_for(&self, kind: JobKind) -> &[Uuid] {
+        match kind {
+            JobKind::Crawl => &self.crawl,
+            JobKind::Embed => &self.embed,
+            JobKind::Extract => &self.extract,
+            JobKind::Ingest => &self.ingest,
+        }
     }
 }
 
@@ -129,33 +143,33 @@ pub async fn reclaim_stale_running_jobs(
     Ok(
         reclaim_stale_running_jobs_detailed(pool, stale_threshold_ms)
             .await?
-            .total(),
+            .total() as u64,
     )
 }
 
 pub async fn reclaim_stale_running_jobs_detailed(
     pool: &SqlitePool,
     stale_threshold_ms: i64,
-) -> Result<ReclaimCounts, sqlx::Error> {
-    let mut counts = ReclaimCounts::default();
+) -> Result<ReclaimedJobs, sqlx::Error> {
+    let mut reclaimed = ReclaimedJobs::default();
     for kind in JobKind::all() {
-        let n = reclaim_stale_running_jobs_for_table(pool, *kind, stale_threshold_ms)
+        let ids = reclaim_stale_running_jobs_for_table_ids(pool, *kind, stale_threshold_ms)
             .await
             .inspect_err(|e| {
                 tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
             })?;
         match kind {
-            JobKind::Crawl => counts.crawl = n,
-            JobKind::Embed => counts.embed = n,
-            JobKind::Extract => counts.extract = n,
-            JobKind::Ingest => counts.ingest = n,
+            JobKind::Crawl => reclaimed.crawl = ids,
+            JobKind::Embed => reclaimed.embed = ids,
+            JobKind::Extract => reclaimed.extract = ids,
+            JobKind::Ingest => reclaimed.ingest = ids,
         }
     }
-    let total = counts.total();
+    let total = reclaimed.total();
     if total > 0 {
         tracing::info!(reclaimed = total, "watchdog: sweep complete");
     }
-    Ok(counts)
+    Ok(reclaimed)
 }
 
 pub async fn reclaim_stale_running_jobs_for_table(
@@ -163,31 +177,50 @@ pub async fn reclaim_stale_running_jobs_for_table(
     kind: JobKind,
     stale_threshold_ms: i64,
 ) -> Result<u64, sqlx::Error> {
+    Ok(
+        reclaim_stale_running_jobs_for_table_ids(pool, kind, stale_threshold_ms)
+            .await?
+            .len() as u64,
+    )
+}
+
+pub async fn reclaim_stale_running_jobs_for_table_ids(
+    pool: &SqlitePool,
+    kind: JobKind,
+    stale_threshold_ms: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
     // SAFETY: `kind.table_name()` returns a compile-time `&'static str` from
     // a closed enum dispatch; no caller-controlled value reaches `format!`.
     // Status literals come from a closed enum too.
     let table = kind.table_name();
     let threshold = now_ms() - stale_threshold_ms;
-    let stale_ids = sqlx::query_scalar::<_, String>(&format!(
-        "SELECT id FROM {} WHERE status='running' AND updated_at < ?",
-        table
-    ))
-    .bind(threshold)
-    .fetch_all(pool)
-    .await?;
-    let result = sqlx::query(&format!(
+    let reclaimed_at = now_ms();
+    let reclaimed_rows: Vec<String> = sqlx::query_scalar(&format!(
         "UPDATE {} SET status='pending', error_text=?, \
-         updated_at=? WHERE status='running' AND updated_at < ?",
+         updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
+         WHERE status='running' AND updated_at < ? RETURNING id",
         table
     ))
     .bind(RECLAIMED_ERROR_TEXT)
-    .bind(now_ms())
+    .bind(reclaimed_at)
+    .bind(reclaimed_at)
+    .bind("stale running job exceeded watchdog threshold")
     .bind(threshold)
-    .execute(pool)
+    .fetch_all(pool)
     .await?;
-    let n = result.rows_affected();
+    let ids: Vec<Uuid> = reclaimed_rows
+        .into_iter()
+        .filter_map(|job_id| match Uuid::parse_str(&job_id) {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::warn!(table, raw = %job_id, error = %e, "watchdog: reclaimed row had corrupt UUID");
+                None
+            }
+        })
+        .collect();
+    let n = ids.len();
     if n > 0 {
-        for job_id in stale_ids.iter().take(n as usize) {
+        for job_id in &ids {
             tracing::warn!(
                 table,
                 job_id = %job_id,
@@ -200,7 +233,7 @@ pub async fn reclaim_stale_running_jobs_for_table(
             "watchdog: reclaimed stale running jobs"
         );
     }
-    Ok(n)
+    Ok(ids)
 }
 
 /// Reclaim stale watch leases from a previous crashed process.
@@ -350,14 +383,23 @@ mod tests {
             "only the stale running row should be reclaimed"
         );
 
-        let (status, error_text): (String, Option<String>) =
-            sqlx::query_as("SELECT status, error_text FROM axon_crawl_jobs WHERE id = ?")
-                .bind(&stale_id)
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let (status, error_text, active_attempt_id, last_reclaimed_at): (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+        ) = sqlx::query_as(
+            "SELECT status, error_text, active_attempt_id, last_reclaimed_at \
+                 FROM axon_crawl_jobs WHERE id = ?",
+        )
+        .bind(&stale_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(status, "pending");
         assert_eq!(error_text.as_deref(), Some(RECLAIMED_ERROR_TEXT));
+        assert_eq!(active_attempt_id, None);
+        assert!(last_reclaimed_at.is_some());
 
         let fresh_status: String =
             sqlx::query_scalar("SELECT status FROM axon_crawl_jobs WHERE id = ?")

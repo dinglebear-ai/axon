@@ -1,4 +1,4 @@
-use super::{CrawlSummary, canonicalize_url_for_dedupe};
+use super::{CrawlDiagnostic, CrawlSummary, canonicalize_url_for_dedupe};
 use crate::core::config::Config;
 use crate::core::content::{build_selector_config, bytes_to_markdown, url_to_stable_filename};
 use crate::core::logging::{log_info, log_warn};
@@ -20,6 +20,7 @@ pub(super) struct RefetchResult {
     pub url: String,
     /// `Some(markdown)` on success, `None` if the page is still thin or fetch failed.
     pub markdown: Option<String>,
+    pub diagnostic: Option<CrawlDiagnostic>,
 }
 
 // Re-export the inline CDP renderer so the collector can call it directly.
@@ -73,7 +74,11 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
 /// Fetch a single URL using Chrome via spider (makes a new HTTP request).
 ///
 /// Used by the post-crawl batch fallback path when we don't have the HTML bytes.
-async fn fetch_url_with_chrome(cfg: &Config, url: &str, min_chars: usize) -> Option<String> {
+async fn fetch_url_with_chrome(
+    cfg: &Config,
+    url: &str,
+    min_chars: usize,
+) -> (Option<String>, Option<CrawlDiagnostic>) {
     let mut website = build_single_page_website(cfg, url);
     let mut rx = website.subscribe(16);
 
@@ -87,7 +92,17 @@ async fn fetch_url_with_chrome(cfg: &Config, url: &str, min_chars: usize) -> Opt
         Ok(Some(p)) => p,
         _ => {
             log_warn(&format!("thin_refetch: no page received for {url}"));
-            return None;
+            return (
+                None,
+                Some(
+                    CrawlDiagnostic::new(
+                        "chrome_render",
+                        "chrome_no_page",
+                        "Chrome re-fetch completed without returning a page",
+                    )
+                    .with_url(url.to_string()),
+                ),
+            );
         }
     };
 
@@ -96,17 +111,41 @@ async fn fetch_url_with_chrome(cfg: &Config, url: &str, min_chars: usize) -> Opt
             "thin_refetch: HTTP {} for {url}",
             page.status_code.as_u16()
         ));
-        return None;
+        return (
+            None,
+            Some(
+                CrawlDiagnostic::new(
+                    "chrome_render",
+                    "chrome_non_2xx",
+                    format!(
+                        "Chrome re-fetch returned HTTP {}",
+                        page.status_code.as_u16()
+                    ),
+                )
+                .with_url(url.to_string())
+                .with_http_status(page.status_code.as_u16()),
+            ),
+        );
     }
 
     let sel_cfg = build_selector_config(cfg);
     let trimmed = bytes_to_markdown(page.get_html_bytes_u8(), sel_cfg.as_ref());
 
     if trimmed.len() < min_chars {
-        return None;
+        return (
+            None,
+            Some(
+                CrawlDiagnostic::new(
+                    "chrome_render",
+                    "chrome_still_thin",
+                    format!("Chrome re-fetch markdown below {min_chars} chars"),
+                )
+                .with_url(url.to_string()),
+            ),
+        );
     }
 
-    Some(trimmed)
+    (Some(trimmed), None)
 }
 
 /// Re-fetch thin pages with Chrome after the HTTP crawl completes.
@@ -139,8 +178,12 @@ pub(crate) async fn chrome_refetch_thin_pages(
         .map(|url| {
             let cfg = Arc::clone(&cfg);
             async move {
-                let markdown = fetch_url_with_chrome(&cfg, &url, min_chars).await;
-                RefetchResult { url, markdown }
+                let (markdown, diagnostic) = fetch_url_with_chrome(&cfg, &url, min_chars).await;
+                RefetchResult {
+                    url,
+                    markdown,
+                    diagnostic,
+                }
             }
         })
         .buffer_unordered(THIN_REFETCH_CONCURRENCY)
@@ -173,6 +216,9 @@ pub(super) async fn write_refetch_results(
     let mut manifest = tokio::io::BufWriter::new(file);
 
     for result in results {
+        if let Some(diagnostic) = result.diagnostic {
+            summary.push_diagnostic(diagnostic);
+        }
         let Some(markdown) = result.markdown else {
             continue;
         };

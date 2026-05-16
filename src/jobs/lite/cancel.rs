@@ -32,6 +32,20 @@ impl CancelStore {
         self.tokens.remove(&id);
     }
 
+    /// Cancel an in-memory token without changing the SQLite row.
+    ///
+    /// Used by the periodic watchdog after it has already reclaimed the row
+    /// back to `pending`; this stops the old local owner before another worker
+    /// retries the same job ID.
+    pub fn cancel_local(&self, id: Uuid) -> bool {
+        if let Some((_, token)) = self.tokens.remove(&id) {
+            token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Cancel a job: update the DB row AND fire the in-memory token.
     pub async fn cancel(
         &self,

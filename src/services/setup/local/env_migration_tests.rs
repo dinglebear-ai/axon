@@ -131,13 +131,15 @@ fn migration_retains_matrix_only_runtime_keys_and_quotes_shell_sensitive_values(
     }
 
     let result = migrate_env_file(&env_path).unwrap();
+    // GEMINI_API_KEY is now classified as KeepEnv in the registry,
+    // so only UNKNOWN_KEEP remains unclassified.
     assert!(
         result
             .phase
             .detail
-            .contains("preserved_unclassified_retained=2")
+            .contains("preserved_unclassified_retained=1")
     );
-    assert!(result.phase.detail.contains("retained_env=1"));
+    assert!(result.phase.detail.contains("retained_env=2"));
     assert!(result.phase.detail.contains("compose_env=1"));
 
     let raw = std::fs::read_to_string(&env_path).unwrap();

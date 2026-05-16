@@ -16,8 +16,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use super::CrawlSummary;
 use super::thin_refetch::{RefetchResult, THIN_REFETCH_CONCURRENCY, write_refetch_results};
+use super::{CrawlDiagnostic, CrawlSummary};
 use crate::core::logging::log_warn;
 
 /// Apply the outcome of `process_page()`: update summary counters, spawn Chrome
@@ -119,6 +119,14 @@ pub(super) async fn collect_crawl_pages(
                 log_warn(&format!(
                     "crawl broadcast lagged: {n} pages dropped — increase subscribe buffer or reduce concurrency"
                 ));
+                summary.push_diagnostic(
+                    CrawlDiagnostic::new(
+                        "collector",
+                        "broadcast_lag",
+                        format!("crawl broadcast lagged: {n} pages dropped"),
+                    )
+                    .with_dropped(n),
+                );
                 continue;
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -182,6 +190,15 @@ async fn process_received_page(
             page.status_code.as_u16()
         ));
         summary.error_pages += 1;
+        summary.push_diagnostic(
+            CrawlDiagnostic::new(
+                "http_fetch",
+                "http_status",
+                format!("skipped page with HTTP {}", page.status_code.as_u16()),
+            )
+            .with_url(url.clone())
+            .with_http_status(page.status_code.as_u16()),
+        );
         emit_progress(col, summary, last_progress).await;
         return Ok(());
     }

@@ -93,6 +93,10 @@ pub struct JobStatusRow {
     pub finished_at: Option<DateTime<Utc>>,
     pub error_text: Option<String>,
     pub result_json: Option<serde_json::Value>,
+    pub attempt_count: i64,
+    pub active_attempt_id: Option<String>,
+    pub last_reclaimed_at: Option<DateTime<Utc>>,
+    pub last_reclaimed_reason: Option<String>,
 }
 
 /// Lightweight summary for list views.

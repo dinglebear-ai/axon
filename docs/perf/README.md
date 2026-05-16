@@ -22,9 +22,11 @@ Artifacts land in `docs/perf/results-<timestamp>-<sha>.json`.
 
 ## What The Harness Measures
 
-For each prompt it runs `axon ask --json` N times, parses the `timing_ms` object
-from each response, and stores the raw timing objects under the
-`gemini-headless` backend label.
+For each prompt it runs `axon ask --json --diagnostics` N times, parses the
+`timing_ms` object from each response, and stores the raw timing objects under
+the `gemini-headless` backend label. Diagnostics are intentional: without them
+the response keeps only the legacy five buckets and omits TEI, Qdrant, rerank,
+full-doc fetch, TTFT, and normalization sub-stage timings.
 
 Output schema:
 
@@ -41,12 +43,18 @@ Output schema:
       "runs_requested": 30,
       "samples": 30,
       "timings": [
-        { "total_ms": 1234 }
+        { "retrieval": 100, "context_build": 40, "llm": 1100, "total": 1234 }
       ]
     }
   ]
 }
 ```
+
+The artifact keeps short run metadata (`backend`, `prompt_id`, `mode`, git SHA,
+timestamp) plus numerical/boolean timing values. The harness rejects forbidden
+content-bearing keys (`query`, `prompt`, `answer`, `chunk_text`, `url`,
+`source`) and strings longer than 100 characters before writing a successful
+result.
 
 ## Cold Vs Warm
 

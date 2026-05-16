@@ -1,13 +1,13 @@
 use super::{build_crawl_result_json, run_crawl_job_lite};
 use crate::core::config::Config;
-use crate::crawl::engine::CrawlSummary;
+use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::jobs::backend::JobPayload;
 use crate::jobs::lite::ops::enqueue_job;
 use crate::jobs::lite::store::open_sqlite_pool;
 use std::path::Path;
 
 fn make_summary() -> CrawlSummary {
-    CrawlSummary {
+    let mut summary = CrawlSummary {
         pages_seen: 7,
         markdown_files: 5,
         pages_discovered: 9,
@@ -16,7 +16,13 @@ fn make_summary() -> CrawlSummary {
         waf_blocked_pages: 0,
         elapsed_ms: 1234,
         ..CrawlSummary::default()
-    }
+    };
+    summary.push_diagnostic(
+        CrawlDiagnostic::new("http_fetch", "http_status", "skipped page with HTTP 500")
+            .with_url("https://example.com/broken")
+            .with_http_status(500),
+    );
+    summary
 }
 
 #[tokio::test]
@@ -72,6 +78,22 @@ fn crawl_result_json_uses_canonical_keys() {
     assert_eq!(
         obj.get("waf_blocked_pages").and_then(|v| v.as_u64()),
         Some(0)
+    );
+    assert_eq!(
+        obj.get("diagnostic_count").and_then(|v| v.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        obj.get("diagnostic_counts")
+            .and_then(|v| v.get("http_fetch:http_status"))
+            .and_then(|v| v.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        obj.get("diagnostics")
+            .and_then(|v| v.as_array())
+            .map(Vec::len),
+        Some(1)
     );
     assert_eq!(obj.get("elapsed_ms").and_then(|v| v.as_u64()), Some(1234));
     assert_eq!(
@@ -133,6 +155,9 @@ fn crawl_result_json_required_keys() {
         "thin_md",
         "error_pages",
         "waf_blocked_pages",
+        "diagnostic_count",
+        "diagnostic_counts",
+        "diagnostics",
         "elapsed_ms",
         "embed_job_id",
     ] {

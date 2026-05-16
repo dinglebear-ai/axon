@@ -1,8 +1,8 @@
 use super::{CollectorConfig, PageOutcome, write_page_to_manifest};
 use crate::core::content::url_to_stable_filename;
 use crate::core::logging::{log_info, log_warn};
-use crate::crawl::engine::CrawlSummary;
 use crate::crawl::engine::thin_refetch::{RefetchResult, render_html_with_chrome};
+use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
 use crate::crawl::manifest::ManifestEntry;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::sync::Arc;
@@ -33,6 +33,11 @@ pub(super) fn spawn_chrome_render(
                 return RefetchResult {
                     url,
                     markdown: None,
+                    diagnostic: Some(CrawlDiagnostic::new(
+                        "chrome_render",
+                        "chrome_semaphore_closed",
+                        "Chrome render semaphore closed before task acquired a permit",
+                    )),
                 };
             }
         };
@@ -45,7 +50,19 @@ pub(super) fn spawn_chrome_render(
             selector_config,
         )
         .await;
-        RefetchResult { url, markdown }
+        let diagnostic = markdown.is_none().then(|| {
+            CrawlDiagnostic::new(
+                "chrome_render",
+                "chrome_render_failed_or_thin",
+                "inline Chrome render failed or still produced thin markdown",
+            )
+            .with_url(url.clone())
+        });
+        RefetchResult {
+            url,
+            markdown,
+            diagnostic,
+        }
     });
 }
 
