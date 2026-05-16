@@ -12,7 +12,9 @@ use crate::jobs::backend::JobKind;
 
 use crate::core::config::Config;
 use crate::jobs::lite::cancel::CancelStore;
-use crate::jobs::lite::ops::{claim_next_pending, mark_completed, mark_failed};
+use crate::jobs::lite::ops::{
+    claim_next_pending_for_attempt, mark_completed_for_attempt, mark_failed_for_attempt,
+};
 use sqlx::SqlitePool;
 use std::future::Future;
 use std::sync::Arc;
@@ -147,10 +149,13 @@ pub fn spawn_workers(
     worker_handles.push(tokio::spawn(watchdog_loop(
         Arc::clone(&pool),
         Arc::clone(&cfg),
-        Arc::clone(&crawl_notify),
-        Arc::clone(&embed_notify),
-        Arc::clone(&extract_notify),
-        Arc::clone(&ingest_notify),
+        Arc::clone(&cancel_store),
+        WatchdogNotifies {
+            crawl: Arc::clone(&crawl_notify),
+            embed: Arc::clone(&embed_notify),
+            extract: Arc::clone(&extract_notify),
+            ingest: Arc::clone(&ingest_notify),
+        },
         shutdown.clone(),
     )));
 
@@ -171,13 +176,18 @@ pub fn spawn_workers(
 /// watchdog reclaims rows whose `updated_at` has gone stale (process died, runner
 /// panicked, etc.). After a reclaim, wakes the worker channels whose kind had
 /// rows reclaimed — not the others — so untouched lanes stay parked.
+struct WatchdogNotifies {
+    crawl: Arc<Notify>,
+    embed: Arc<Notify>,
+    extract: Arc<Notify>,
+    ingest: Arc<Notify>,
+}
+
 async fn watchdog_loop(
     pool: Arc<SqlitePool>,
     cfg: Arc<Config>,
-    crawl_notify: Arc<Notify>,
-    embed_notify: Arc<Notify>,
-    extract_notify: Arc<Notify>,
-    ingest_notify: Arc<Notify>,
+    cancel_store: Arc<CancelStore>,
+    notifies: WatchdogNotifies,
     shutdown: CancellationToken,
 ) {
     let stale_threshold_ms =
@@ -198,22 +208,23 @@ async fn watchdog_loop(
                 )
                 .await
                 {
-                    Ok(counts) if counts.total() > 0 => {
+                    Ok(reclaimed) if reclaimed.total() > 0 => {
+                        cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
                         // notify_waiters (not notify_one) so all parked lanes
                         // for each kind wake — a single reclaim sweep can free
                         // multiple jobs of the same kind, and embed/ingest run
                         // multiple lanes that share one Notify handle.
-                        if counts.crawl > 0 {
-                            crawl_notify.notify_waiters();
+                        if reclaimed.count_for(JobKind::Crawl) > 0 {
+                            notifies.crawl.notify_waiters();
                         }
-                        if counts.embed > 0 {
-                            embed_notify.notify_waiters();
+                        if reclaimed.count_for(JobKind::Embed) > 0 {
+                            notifies.embed.notify_waiters();
                         }
-                        if counts.extract > 0 {
-                            extract_notify.notify_waiters();
+                        if reclaimed.count_for(JobKind::Extract) > 0 {
+                            notifies.extract.notify_waiters();
                         }
-                        if counts.ingest > 0 {
-                            ingest_notify.notify_waiters();
+                        if reclaimed.count_for(JobKind::Ingest) > 0 {
+                            notifies.ingest.notify_waiters();
                         }
                     }
                     Ok(_) => {}
@@ -222,6 +233,27 @@ async fn watchdog_loop(
                     }
                 }
             }
+        }
+    }
+}
+
+fn cancel_reclaimed_local_tokens(
+    cancel_store: &CancelStore,
+    reclaimed: &crate::jobs::lite::store::ReclaimedJobs,
+) {
+    for kind in JobKind::all() {
+        for reclaimed_job in reclaimed.jobs_for(*kind) {
+            let canceled = reclaimed_job
+                .attempt_id
+                .as_deref()
+                .is_some_and(|attempt_id| cancel_store.cancel_local(reclaimed_job.id, attempt_id));
+            tracing::info!(
+                table = kind.table_name(),
+                job_id = %reclaimed_job.id,
+                attempt_id = reclaimed_job.attempt_id.as_deref().unwrap_or("unknown"),
+                canceled_local_token = canceled,
+                "watchdog: canceled local owner for reclaimed job"
+            );
         }
     }
 }
@@ -253,33 +285,51 @@ async fn worker_loop<F, Fut>(
         loop {
             let mut processed = 0usize;
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
-                match claim_next_pending(&pool, kind).await {
-                    Ok(Some(id)) => {
-                        let cancel_token = cancel_store.register(id);
-                        let _hb = HeartbeatGuard::spawn(Arc::clone(&pool), kind, id);
-                        let result = run_job(Arc::clone(&pool), id, cancel_token).await;
-                        cancel_store.remove(id);
+                match claim_next_pending_for_attempt(&pool, kind).await {
+                    Ok(Some(claimed)) => {
+                        let cancel_token =
+                            cancel_store.register(claimed.id, claimed.attempt_id.clone());
+                        let _hb = HeartbeatGuard::spawn(
+                            Arc::clone(&pool),
+                            kind,
+                            claimed.id,
+                            claimed.attempt_id.clone(),
+                        );
+                        let result = run_job(Arc::clone(&pool), claimed.id, cancel_token).await;
+                        cancel_store.remove(claimed.id, &claimed.attempt_id);
                         processed += 1;
                         match result {
                             Ok(result_json) => {
-                                if let Err(e) =
-                                    mark_completed(&pool, kind, id, result_json.as_ref()).await
+                                if let Err(e) = mark_completed_for_attempt(
+                                    &pool,
+                                    kind,
+                                    claimed.id,
+                                    Some(&claimed.attempt_id),
+                                    result_json.as_ref(),
+                                )
+                                .await
                                 {
                                     tracing::error!(
                                         table = kind.table_name(),
-                                        job_id = %id,
+                                        job_id = %claimed.id,
                                         error = %e,
                                         "lite worker: failed to mark job completed — job will remain in 'running' state"
                                     );
                                 }
                             }
                             Err(e) => {
-                                if let Err(mark_err) =
-                                    mark_failed(&pool, kind, id, &e.to_string()).await
+                                if let Err(mark_err) = mark_failed_for_attempt(
+                                    &pool,
+                                    kind,
+                                    claimed.id,
+                                    Some(&claimed.attempt_id),
+                                    &e.to_string(),
+                                )
+                                .await
                                 {
                                     tracing::error!(
                                         table = kind.table_name(),
-                                        job_id = %id,
+                                        job_id = %claimed.id,
                                         error = %mark_err,
                                         "lite worker: failed to mark job failed — job will remain in 'running' state"
                                     );
@@ -400,7 +450,7 @@ mod tests {
     use crate::jobs::backend::JobPayload;
     use crate::jobs::lite::cancel::CancelStore;
     use crate::jobs::lite::ops::enqueue_job;
-    use crate::jobs::lite::store::open_sqlite_pool;
+    use crate::jobs::lite::store::{ReclaimedJobs, open_sqlite_pool};
 
     #[tokio::test]
     async fn worker_picks_up_job_via_notify() {
@@ -422,10 +472,13 @@ mod tests {
         let notify2 = Arc::clone(&notify);
         let (tx, rx) = tokio::sync::oneshot::channel::<uuid::Uuid>();
         tokio::spawn(async move {
-            if let Some(claimed_id) = claim_next_pending(&pool2, JobKind::Embed).await.unwrap() {
-                assert_eq!(claimed_id, id);
+            if let Some(claimed) = claim_next_pending_for_attempt(&pool2, JobKind::Embed)
+                .await
+                .unwrap()
+            {
+                assert_eq!(claimed.id, id);
                 notify2.notify_one();
-                let _ = tx.send(claimed_id);
+                let _ = tx.send(claimed.id);
             }
         });
 
@@ -472,5 +525,50 @@ mod tests {
         })
         .await
         .expect("worker tasks should stop when WorkerHandles is dropped");
+    }
+
+    #[test]
+    fn watchdog_reclaim_cancels_local_tokens_before_retry_notify() {
+        let cancel_store = CancelStore::new();
+        let id = uuid::Uuid::new_v4();
+        let token = cancel_store.register(id, "attempt-1");
+        let reclaimed = ReclaimedJobs {
+            embed: vec![crate::jobs::lite::store::ReclaimedJob {
+                id,
+                attempt_id: Some("attempt-1".to_string()),
+            }],
+            ..Default::default()
+        };
+
+        cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
+
+        assert!(token.is_cancelled(), "old local owner must be canceled");
+        assert!(
+            !cancel_store.cancel_local(id, "attempt-1"),
+            "token should be removed after watchdog local cancel"
+        );
+    }
+
+    #[test]
+    fn watchdog_reclaim_does_not_cancel_new_attempt_token() {
+        let cancel_store = CancelStore::new();
+        let id = uuid::Uuid::new_v4();
+        let old_token = cancel_store.register(id, "attempt-1");
+        let new_token = cancel_store.register(id, "attempt-2");
+        let reclaimed = ReclaimedJobs {
+            embed: vec![crate::jobs::lite::store::ReclaimedJob {
+                id,
+                attempt_id: Some("attempt-1".to_string()),
+            }],
+            ..Default::default()
+        };
+
+        cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
+
+        assert!(old_token.is_cancelled(), "stale attempt should be canceled");
+        assert!(
+            !new_token.is_cancelled(),
+            "fresh retry attempt must not be canceled by stale reclaim"
+        );
     }
 }

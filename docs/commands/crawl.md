@@ -82,6 +82,9 @@ axon crawl https://example.com --render-mode chrome --max-pages 200 --max-depth 
 # Job status
 axon crawl status 550e8400-e29b-41d4-a716-446655440000
 
+# Crawl diagnostics for a job
+axon crawl errors 550e8400-e29b-41d4-a716-446655440000
+
 # Enqueue through the canonical server
 AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://example.com --json
 ```
@@ -94,6 +97,7 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon crawl https://example.com --json
 - Sync mode writes crawl artifacts under `<output-dir>/domains/<domain>/sync/`.
 - With `--discover-sitemaps true`, both async worker mode and sync `--wait true` mode run Axon's sitemap backfill before the embed handoff. Sync mode performs the embed inline; async mode queues a dependent embed job after backfill completes.
 - Completed crawl status JSON may include `output_files` when the worker has a manifest-backed file list available.
+- `axon crawl errors <job_id>` reports `error_text`, page-error aggregates, WAF-blocked counts, sitemap backfill errors, and bounded diagnostic samples from `result_json.diagnostics`. Samples are capped so a large crawl cannot grow the SQLite row without bound.
 - `--render-mode auto-switch` now treats one- and two-page HTTP crawls as too little signal and may retry in Chrome even when the pages are not technically thin.
 - Malformed discovered URLs are filtered before they enter the accepted result set, which keeps crawl/page counts aligned with canonical URLs instead of raw Spider candidates.
 - `clear` is destructive and prompts unless `--yes` is passed.

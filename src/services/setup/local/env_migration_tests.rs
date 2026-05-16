@@ -131,13 +131,15 @@ fn migration_retains_matrix_only_runtime_keys_and_quotes_shell_sensitive_values(
     }
 
     let result = migrate_env_file(&env_path).unwrap();
+    // GEMINI_API_KEY is now classified as KeepEnv in the registry,
+    // so only UNKNOWN_KEEP remains unclassified.
     assert!(
         result
             .phase
             .detail
-            .contains("preserved_unclassified_retained=2")
+            .contains("preserved_unclassified_retained=1")
     );
-    assert!(result.phase.detail.contains("retained_env=1"));
+    assert!(result.phase.detail.contains("retained_env=2"));
     assert!(result.phase.detail.contains("compose_env=1"));
 
     let raw = std::fs::read_to_string(&env_path).unwrap();
@@ -251,5 +253,91 @@ fn migration_rejects_shadowed_axon_env_file() {
 
     unsafe {
         std::env::remove_var("AXON_ENV_FILE");
+    }
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn migration_output_covers_all_buckets_in_detail_summary() {
+    // Exercises every classification bucket in a single migration call:
+    //   retained_env         — TAVILY_API_KEY (keep-env)
+    //   compose_env          — AXON_MCP_HTTP_PUBLISH (compose-env)
+    //   moved_toml           — TEI_MAX_CLIENT_BATCH_SIZE (move-toml)
+    //   deleted              — AXON_AMQP_URL (delete — legacy AMQP)
+    //   compatibility_shims  — OPENAI_MODEL (compat-shim, WarnEnvOverride)
+    //   preserved_unclassified_retained — UNKNOWN_CUSTOM_KEY (not in registry)
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let env_path = dir.path().join(".env");
+    let previous_home = std::env::var_os("HOME");
+    let previous_config_path = std::env::var_os("AXON_CONFIG_PATH");
+    std::fs::write(
+        &env_path,
+        [
+            "TAVILY_API_KEY=secret",
+            "AXON_MCP_HTTP_PUBLISH=8001",
+            "TEI_MAX_CLIENT_BATCH_SIZE=32",
+            "AXON_AMQP_URL=amqp://legacy",
+            "OPENAI_MODEL=gpt-4",
+            "UNKNOWN_CUSTOM_KEY=some-value",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    unsafe {
+        std::env::remove_var("AXON_ENV_FILE");
+        std::env::remove_var("AXON_CONFIG_PATH");
+        std::env::set_var("HOME", dir.path());
+    }
+
+    let result = migrate_env_file(&env_path).unwrap();
+    let detail = &result.phase.detail;
+
+    assert!(detail.contains("backup="), "detail missing backup bucket");
+    assert!(
+        detail.contains("retained_env=1"),
+        "detail missing retained_env bucket: {detail}"
+    );
+    assert!(
+        detail.contains("compose_env=1"),
+        "detail missing compose_env bucket: {detail}"
+    );
+    assert!(
+        detail.contains("moved_toml=1"),
+        "detail missing moved_toml bucket: {detail}"
+    );
+    assert!(
+        detail.contains("deleted=1"),
+        "detail missing deleted bucket: {detail}"
+    );
+    assert!(
+        detail.contains("compatibility_shims=1"),
+        "detail missing compatibility_shims bucket: {detail}"
+    );
+    assert!(
+        detail.contains("preserved_unclassified_retained=1"),
+        "detail missing preserved_unclassified_retained bucket: {detail}"
+    );
+    // Verify no secret values are leaked in the detail string.
+    assert!(
+        !detail.contains("secret"),
+        "detail must not contain secret values: {detail}"
+    );
+    assert!(
+        !detail.contains("gpt-4"),
+        "detail must not contain model name values: {detail}"
+    );
+
+    unsafe {
+        if let Some(previous_home) = previous_home {
+            std::env::set_var("HOME", previous_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(previous_config_path) = previous_config_path {
+            std::env::set_var("AXON_CONFIG_PATH", previous_config_path);
+        } else {
+            std::env::remove_var("AXON_CONFIG_PATH");
+        }
     }
 }

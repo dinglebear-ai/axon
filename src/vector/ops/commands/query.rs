@@ -8,23 +8,27 @@ use crate::vector::ops::source_display::display_source;
 use crate::vector::ops::{qdrant, ranking, tei};
 use std::error::Error;
 
+type QueryError = Box<dyn Error + Send + Sync>;
+
 pub async fn query_results(
     cfg: &Config,
     query: &str,
     limit: usize,
     offset: usize,
-) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+) -> Result<Vec<serde_json::Value>, QueryError> {
     let mut query_vectors =
         embed_retrieval_inputs(cfg, &[tei::EmbedInput::query(query)], "TEI embed for query")
-            .await?;
+            .await
+            .map_err(|e| -> QueryError { e.to_string().into() })?;
     if query_vectors.is_empty() {
         return Err("TEI returned no vector for query".into());
     }
     let vector = query_vectors.remove(0);
 
-    let fetch_limit = ((limit + offset).max(1) * 16).max(limit + offset).min(1000);
+    let total = limit + offset;
+    let fetch_limit = (total.max(1) * 16).min(1000);
     let request = qdrant::VectorSearchRequest::from_query(cfg, &vector, query, fetch_limit)
-        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+        .map_err(|e| -> QueryError { e.to_string().into() })?;
     let hits = dispatch_vector_search_with_diagnostics(
         cfg,
         &request,
@@ -36,26 +40,21 @@ pub async fn query_results(
             fetch_limit: Some(fetch_limit),
         },
     )
-    .await
-    .map_err(|e| -> Box<dyn Error> { e })?;
+    .await?;
     let _mode = vector_mode_metadata(cfg, &request)
         .await
-        .map_err(|e| -> Box<dyn Error> { e.into() })?;
+        .map_err(|e| -> QueryError { e.to_string().into() })?;
     let query_tokens = ranking::tokenize_query(query);
     let build_policy = CandidateBuildPolicy {
         allow_low_signal: query_allows_low_signal(&query_tokens, query),
     };
     let score_policy = query_score_policy(cfg);
     let retrieval = build_typed_retrieval_result(hits, &query_tokens, &build_policy, &score_policy);
-    if retrieval.retrieved_candidates.is_empty() {
-        return Ok(Vec::new());
-    }
-    if retrieval.reranked_candidates.is_empty() {
+    if retrieval.retrieved_candidates.is_empty() || retrieval.reranked_candidates.is_empty() {
         return Ok(Vec::new());
     }
     let reranked = candidates_only(&retrieval.reranked_candidates);
-    let selected_indices =
-        ranking::select_diverse_candidates(&reranked, (limit + offset).max(1), 2);
+    let selected_indices = ranking::select_diverse_candidates(&reranked, total.max(1), 2);
 
     Ok(selected_indices
         .into_iter()

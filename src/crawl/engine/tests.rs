@@ -12,6 +12,7 @@ fn summary(pages_seen: u32, thin: u32, markdown_files: u32) -> CrawlSummary {
         error_pages: 0,
         waf_blocked_pages: 0,
         waf_blocked_urls: HashSet::new(),
+        diagnostics: Vec::new(),
     }
 }
 

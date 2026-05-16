@@ -43,6 +43,53 @@ pub(crate) use url_utils::{
 pub(crate) use url_utils::{is_junk_discovered_url, regex_escape};
 pub use waf::{WafDiagnostics, build_waf_diagnostics};
 
+pub const MAX_CRAWL_DIAGNOSTICS: usize = 100;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CrawlDiagnostic {
+    pub phase: String,
+    pub class: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dropped: Option<u64>,
+}
+
+impl CrawlDiagnostic {
+    pub fn new(
+        phase: impl Into<String>,
+        class: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            phase: phase.into(),
+            class: class.into(),
+            message: message.into(),
+            url: None,
+            http_status: None,
+            dropped: None,
+        }
+    }
+
+    pub fn with_url(mut self, url: impl Into<String>) -> Self {
+        self.url = Some(url.into());
+        self
+    }
+
+    pub fn with_http_status(mut self, status: u16) -> Self {
+        self.http_status = Some(status);
+        self
+    }
+
+    pub fn with_dropped(mut self, dropped: u64) -> Self {
+        self.dropped = Some(dropped);
+        self
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct CrawlSummary {
     pub pages_seen: u32,
@@ -61,6 +108,16 @@ pub struct CrawlSummary {
     pub waf_blocked_pages: u32,
     /// Canonical URLs of WAF-blocked pages; used for targeted stealth Chrome retry.
     pub waf_blocked_urls: HashSet<String>,
+    /// Bounded diagnostic samples for operator-facing `axon crawl errors`.
+    pub diagnostics: Vec<CrawlDiagnostic>,
+}
+
+impl CrawlSummary {
+    pub fn push_diagnostic(&mut self, diagnostic: CrawlDiagnostic) {
+        if self.diagnostics.len() < MAX_CRAWL_DIAGNOSTICS {
+            self.diagnostics.push(diagnostic);
+        }
+    }
 }
 
 pub fn should_fallback_to_chrome(summary: &CrawlSummary, max_pages: u32, cfg: &Config) -> bool {

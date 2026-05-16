@@ -121,6 +121,10 @@ pub struct ServiceJob {
     pub urls_json: Option<serde_json::Value>,
     pub result_json: Option<serde_json::Value>,
     pub config_json: Option<serde_json::Value>,
+    pub attempt_count: i64,
+    pub active_attempt_id: Option<String>,
+    pub last_reclaimed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_reclaimed_reason: Option<String>,
 }
 
 // ── From<XJob> for ServiceJob ────────────────────────────────────────────────
@@ -141,6 +145,10 @@ impl From<crate::jobs::crawl::CrawlJob> for ServiceJob {
             urls_json: None,
             result_json: job.result_json,
             config_json: None,
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         }
     }
 }
@@ -161,6 +169,10 @@ impl From<crate::jobs::embed::EmbedJob> for ServiceJob {
             urls_json: None,
             result_json: job.result_json,
             config_json: Some(job.config_json),
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         }
     }
 }
@@ -181,6 +193,10 @@ impl From<crate::jobs::extract::ExtractJob> for ServiceJob {
             urls_json: Some(job.urls_json),
             result_json: job.result_json,
             config_json: None,
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         }
     }
 }
@@ -201,6 +217,10 @@ impl From<crate::jobs::ingest::IngestJob> for ServiceJob {
             urls_json: None,
             result_json: job.result_json,
             config_json: Some(job.config_json),
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         }
     }
 }
@@ -223,6 +243,10 @@ impl ServiceJob {
             urls_json: None,
             result_json: row.result_json,
             config_json: None,
+            attempt_count: row.attempt_count,
+            active_attempt_id: row.active_attempt_id,
+            last_reclaimed_at: row.last_reclaimed_at,
+            last_reclaimed_reason: row.last_reclaimed_reason,
         }
     }
 
@@ -242,6 +266,10 @@ impl ServiceJob {
             urls_json: None,
             result_json: None,
             config_json: None,
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         }
     }
 }

@@ -1,4 +1,5 @@
-use super::{CollectorConfig, CrawlSummary};
+use super::CollectorConfig;
+use crate::crawl::engine::{CrawlDiagnostic, CrawlSummary};
 
 pub(super) fn track_waf_block(
     waf_check: bool,
@@ -12,6 +13,14 @@ pub(super) fn track_waf_block(
     }
     summary.waf_blocked_pages += 1;
     summary.waf_blocked_urls.insert(url.to_string());
+    summary.push_diagnostic(
+        CrawlDiagnostic::new(
+            "http_fetch",
+            "waf_blocked",
+            "page reported WAF or anti-bot block",
+        )
+        .with_url(url.to_string()),
+    );
 }
 
 /// Emit progress at most once per `PROGRESS_INTERVAL`. Cloning `CrawlSummary`

@@ -172,6 +172,33 @@ impl JobBackend for LiteBackend {
     async fn job_errors(&self, id: JobId, kind: JobKind) -> BackendResult<Option<String>> {
         Ok(query::job_errors(&self.pool, kind, id).await?)
     }
+
+    /// Override the trait default to use `cfg.job_wait_timeout_secs` (resolved from
+    /// CLI > env > TOML > default) instead of reading AXON_JOB_WAIT_TIMEOUT_SECS directly.
+    async fn wait_for_job(&self, id: JobId, kind: JobKind) -> BackendResult<String> {
+        let timeout_secs = self.cfg.job_wait_timeout_secs;
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+
+        loop {
+            match self.job_status(id, kind).await? {
+                Some(row) => match row.status {
+                    crate::jobs::status::JobStatus::Completed
+                    | crate::jobs::status::JobStatus::Failed
+                    | crate::jobs::status::JobStatus::Canceled => {
+                        return Ok(row.status.as_str().to_string());
+                    }
+                    _ => {}
+                },
+                None => {
+                    return Err(format!("job {id} not found in {}", kind.table_name()).into());
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Err(format!("job {id} did not complete within {timeout_secs}s").into());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
 }
 
 #[cfg(test)]

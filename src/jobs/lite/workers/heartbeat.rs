@@ -5,7 +5,7 @@ use sqlx::SqlitePool;
 use tokio::task::JoinHandle;
 
 use crate::jobs::backend::JobKind;
-use crate::jobs::lite::ops::touch_heartbeat;
+use crate::jobs::lite::ops::touch_heartbeat_for_attempt;
 
 /// Default heartbeat interval. Watchdog stale threshold (default 300s + 60s
 /// confirm = 360s) is much larger, so a 30s interval gives ~12x margin.
@@ -20,7 +20,12 @@ pub(super) struct HeartbeatGuard {
 }
 
 impl HeartbeatGuard {
-    pub(super) fn spawn(pool: Arc<SqlitePool>, kind: JobKind, id: uuid::Uuid) -> Self {
+    pub(super) fn spawn(
+        pool: Arc<SqlitePool>,
+        kind: JobKind,
+        id: uuid::Uuid,
+        attempt_id: String,
+    ) -> Self {
         let handle = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(HEARTBEAT_INTERVAL);
             // Skip the immediate tick — claim_next_pending already sets updated_at.
@@ -28,7 +33,9 @@ impl HeartbeatGuard {
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                if let Err(e) = touch_heartbeat(&pool, kind, id).await {
+                if let Err(e) =
+                    touch_heartbeat_for_attempt(&pool, kind, id, Some(&attempt_id)).await
+                {
                     tracing::warn!(
                         table = kind.table_name(),
                         job_id = %id,

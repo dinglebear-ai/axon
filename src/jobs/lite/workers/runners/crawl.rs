@@ -51,8 +51,9 @@ pub async fn run_crawl_job_lite(
         &id.to_string(),
     );
 
+    let attempt_id = current_attempt_id(pool, id, "axon_crawl_jobs").await?;
     let (progress_tx, progress_task) =
-        spawn_crawl_progress_persister(pool, id, job_output_dir.clone());
+        spawn_crawl_progress_persister(pool, id, attempt_id, job_output_dir.clone());
     let id_str = id.to_string();
     let crawl_fut = async {
         crate::crawl::engine::run_crawl_once(
@@ -125,6 +126,18 @@ pub async fn run_crawl_job_lite(
         embed_deferred.as_deref(),
         sitemap_backfill_error.as_deref(),
     )))
+}
+
+async fn current_attempt_id(
+    pool: &SqlitePool,
+    id: uuid::Uuid,
+    table: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(&format!("SELECT active_attempt_id FROM {table} WHERE id=?"))
+        .bind(id.to_string())
+        .fetch_optional(pool)
+        .await
+        .map(Option::flatten)
 }
 
 async fn validate_crawl_job_url(
@@ -346,6 +359,9 @@ fn build_crawl_result_json(
         "thin_md": summary.thin_pages,
         "error_pages": summary.error_pages,
         "waf_blocked_pages": summary.waf_blocked_pages,
+        "diagnostic_count": summary.diagnostics.len(),
+        "diagnostic_counts": diagnostic_counts_json(summary),
+        "diagnostics": &summary.diagnostics,
         "elapsed_ms": summary.elapsed_ms,
         "embed_job_id": embed_job_id,
     });
@@ -379,6 +395,20 @@ fn build_crawl_result_json(
         );
     }
     value
+}
+
+fn diagnostic_counts_json(summary: &crate::crawl::engine::CrawlSummary) -> serde_json::Value {
+    let mut counts = serde_json::Map::new();
+    for diagnostic in &summary.diagnostics {
+        let key = format!("{}:{}", diagnostic.phase, diagnostic.class);
+        let next = counts
+            .get(&key)
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+            + 1;
+        counts.insert(key, serde_json::Value::from(next));
+    }
+    serde_json::Value::Object(counts)
 }
 
 fn format_elapsed_ms(elapsed_ms: u128) -> String {

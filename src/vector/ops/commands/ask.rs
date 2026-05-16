@@ -89,13 +89,9 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let normalize_started = std::time::Instant::now();
     let answer = normalize_ask_answer(cfg, query, answer_text, &context);
     timing.record(AskTimingSlot::Normalize, normalize_started);
-    if cfg.ask_stream
-        && !cfg.json_output
-        && !cfg.ask_explain
-        && answer.trim() != answer_text.trim()
-        && answer.starts_with("Insufficient evidence in indexed sources")
+    if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain && answer.trim() != answer_text.trim()
     {
-        println!("\n\n{answer}");
+        print_normalized_stream_correction(&answer);
     }
 
     let total_elapsed_ms = ask_started.elapsed().as_millis();
@@ -155,6 +151,16 @@ fn ask_diagnostics_json(
         "resolved_full_docs": ctx.resolved_full_docs,
         "full_docs_source": ctx.full_docs_source,
     })
+}
+
+fn print_normalized_stream_correction(answer: &str) {
+    if answer.starts_with("Insufficient evidence in indexed sources") {
+        println!("\n\n{answer}");
+    } else if let Some(idx) = answer.find("\n## Citation Validation Failed\n") {
+        println!("{}", &answer[idx..]);
+    } else {
+        println!("\n\n---\n\n{answer}");
+    }
 }
 
 fn ask_context_with_follow_up(cfg: &Config, context: &str) -> String {

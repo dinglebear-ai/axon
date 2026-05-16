@@ -12,7 +12,7 @@ mod followup;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
-    let active_session = followup::selected_session_name(cfg);
+    let active_session = followup::resolve_selected_session_name(cfg)?;
     let mut session_cfg = cfg.clone();
     session_cfg.ask_session = Some(active_session.clone());
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Operating a self-hosted crawler at scale</title></head>
+<body>
+<header role="banner"><nav><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/blog">Blog</a></nav></header>
+<aside role="complementary" id="sidebar">
+  <h2>In this article</h2>
+  <ul>
+    <li><a href="#concurrency">Concurrency</a></li>
+    <li><a href="#politeness">Politeness</a></li>
+    <li><a href="#rendering">Rendering</a></li>
+    <li><a href="#deduplication">Deduplication</a></li>
+    <li><a href="#observability">Observability</a></li>
+    <li><a href="#failure">Failure modes</a></li>
+  </ul>
+</aside>
+<main>
+<article>
+<h1>Operating a self-hosted crawler at scale</h1>
+<p>Running a crawler that hits more than a thousand pages a day stops being a project and starts being an operations problem. This article documents the lessons from a year of running such a system: what to instrument, what to throttle, what to retry, and what to give up on.</p>
+<h2 id="concurrency">Concurrency</h2>
+<p>The first knob anyone reaches for is concurrency. Raising in-flight requests from 1 to 16 typically yields a 10x throughput bump; from 16 to 64 maybe another 2x; beyond 64 you are throwing money away and starting to look like a botnet. Pick a profile per CPU core (we use 8x on a modern host) and clamp the maximum to something reasonable like 192.</p>
+<p>Two-tier concurrency works well: a global semaphore caps total in-flight requests, and a per-host semaphore (typically 4–8) caps requests against a single origin. The per-host cap is what stops you from accidentally DOS-ing a small site when your queue is full of its URLs. Without it, every retry storm becomes someone else's problem.</p>
+<h2 id="politeness">Politeness</h2>
+<p>Respect robots.txt by default. The CLI flag to disable it should be loud and opt-in. The same applies to crawl delay — when a host advertises one, honor it. Send a real <code>User-Agent</code> string that identifies you and provides a contact URL. Site operators who can identify your bot and message you are far less likely to block you than ones who see only an unidentified header.</p>
+<p>Back off when you see 429 or 503. Back off harder when you see a Cloudflare challenge page or a captcha. There is no business value in trying to brute-force past anti-bot systems; the right move is to add the domain to a "review" bucket and decide whether you actually need it.</p>
+<h2 id="rendering">Rendering</h2>
+<p>Most pages are HTML. Most modern pages are HTML that does nothing useful until JavaScript runs. You will need a headless browser for at least 30% of real-world targets. Run it as a separate service, not in-process, so you can recycle crashed instances and rate-limit memory consumption.</p>
+<p>Auto-switching between HTTP and Chrome is worth implementing: try plain HTTP first, count the fraction of "thin" pages (under some character threshold), and re-fetch via Chrome if the fraction exceeds 60%. Track the auto-switch rate as a per-domain metric — sites that switch frequently are candidates for explicit always-Chrome configuration.</p>
+<h2 id="deduplication">Deduplication</h2>
+<p>You will discover the same URL multiple times. Canonicalize aggressively: lowercase the host, strip default ports, normalize percent-encoding, drop fragments. Even with canonicalization you will find many URLs that point to the same content (session IDs in the path, tracking parameters in the query string).</p>
+<p>For content-level deduplication, hash the extracted text after stripping boilerplate. Build a Bloom filter of seen hashes per crawl, and skip duplicates. For longer-running indexing, store the hash in your vector store payload and dedupe at query time so you do not return four copies of the same passage.</p>
+<h2 id="observability">Observability</h2>
+<p>Every crawl emits a stream of events: discovered URL, fetch start, fetch complete, extract, embed, store. Log each with a correlation ID per job. Aggregate by domain and by job. The two most useful dashboards are: success/thin/fail rate per domain over time, and end-to-end latency from URL-discovered to vector-indexed.</p>
+<p>Alert on changes, not absolutes. A 5% failure rate on a domain that has been at 5% for months is not an alert; a domain that jumped from 0.5% to 5% overnight is. Use rate-of-change anomaly detection if you have the time; otherwise weekly review meetings will catch most regressions.</p>
+<h2 id="failure">Failure modes</h2>
+<p>The failure modes you will spend most of your time on, in rough frequency order: anti-bot challenges, soft 404s (HTTP 200 with an empty page), redirect loops, malformed HTML that breaks your parser, content-type lies (HTML served as text/plain or vice versa), and pages whose main content is loaded by a websocket after a delay.</p>
+<p>For each, write a detector that flags the symptom and a remediation that either retries with different settings or quarantines the URL for manual review. Building these detectors is the bulk of crawler engineering once the happy path is solid.</p>
+</article>
+</main>
+<footer role="contentinfo"><p>Example crawler-ops handbook.</p></footer>
+</body>
+</html>

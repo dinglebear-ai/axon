@@ -26,6 +26,10 @@ fn job(status: &str) -> ServiceJob {
             "chunks_embedded": 8
         })),
         config_json: None,
+        attempt_count: 0,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
     }
 }
 
@@ -103,5 +107,39 @@ fn render_status_payload_surfaces_reclaimed_pending_crawl_rows() {
     assert!(
         !rendered.contains(RECLAIMED_ERROR_TEXT),
         "raw reclaim marker leaked into output:\n{rendered}"
+    );
+}
+
+#[test]
+fn render_status_payload_surfaces_reclaimed_running_crawl_rows() {
+    let mut reclaimed = job("running");
+    reclaimed.error_text = Some(RECLAIMED_ERROR_TEXT.to_string());
+    reclaimed.result_json = Some(json!({
+        "pages_crawled": 42,
+        "md_created": 30,
+        "error_pages": 2
+    }));
+
+    let payload = build_status_payload(
+        &[reclaimed],
+        &[],
+        &[],
+        &[],
+        &crate::services::types::StatusTotals::default(),
+    );
+
+    let rendered = render_status_payload(&payload).expect("payload should render");
+
+    assert!(
+        rendered.contains("reclaimed retry"),
+        "expected reclaimed retry suffix; got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("2 errors"),
+        "expected crawl error count; got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("processing resumed"),
+        "expected reclaim hint; got:\n{rendered}"
     );
 }
