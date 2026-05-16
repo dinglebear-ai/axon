@@ -36,10 +36,8 @@ pub(super) struct LiteralInputs<'a> {
 /// Top-level builder. Mirrors the original literal precisely; field population
 /// is delegated to `populate_*` helpers (each <120 lines per monolith policy).
 pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
-    // Warn unconditionally whenever any [services] URL fields appear in config.toml,
-    // regardless of whether the env var is also set. This fires once at build time
-    // so users migrating from old configs see the message even if the env var overrides.
     warn_services_section_if_present(inputs.toml);
+    warn_compat_shim_env_vars();
 
     // Resolve fallible inputs first so `?` short-circuits before we mutate `cfg`.
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
@@ -383,26 +381,65 @@ fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, 
     ))
 }
 
-/// Emit a startup warning for each `[services]` URL field that is `Some(...)` in
-/// the config.toml, regardless of whether the env var is also set. The warning
-/// fires once at config-build time so users migrating from old configs see the
-/// message even when the env var overrides the TOML value.
+/// Emit a one-time process warning for each `[services]` URL field present in
+/// config.toml. Guarded by a `OnceLock` so repeated Config builds (tests, sub-
+/// commands) only emit each message once per process.
 fn warn_services_section_if_present(toml: &TomlConfig) {
-    if toml.services.qdrant_url.is_some() {
-        log_warn(
-            "[services] qdrant-url in config.toml is ignored; set QDRANT_URL in ~/.axon/.env instead",
-        );
+    use std::sync::OnceLock;
+    static WARNED: OnceLock<()> = OnceLock::new();
+    // Skip if any field is absent — only warn when the stale [services] block exists.
+    let any_set = toml.services.qdrant_url.is_some()
+        || toml.services.tei_url.is_some()
+        || toml.services.chrome_remote_url.is_some();
+    if !any_set {
+        return;
     }
-    if toml.services.tei_url.is_some() {
-        log_warn(
-            "[services] tei-url in config.toml is ignored; set TEI_URL in ~/.axon/.env instead",
-        );
-    }
-    if toml.services.chrome_remote_url.is_some() {
-        log_warn(
-            "[services] chrome-remote-url in config.toml is ignored; set AXON_CHROME_REMOTE_URL in ~/.axon/.env instead",
-        );
-    }
+    WARNED.get_or_init(|| {
+        if toml.services.qdrant_url.is_some() {
+            log_warn(
+                "[services] qdrant-url in config.toml is ignored; set QDRANT_URL in ~/.axon/.env instead",
+            );
+        }
+        if toml.services.tei_url.is_some() {
+            log_warn(
+                "[services] tei-url in config.toml is ignored; set TEI_URL in ~/.axon/.env instead",
+            );
+        }
+        if toml.services.chrome_remote_url.is_some() {
+            log_warn(
+                "[services] chrome-remote-url in config.toml is ignored; set AXON_CHROME_REMOTE_URL in ~/.axon/.env instead",
+            );
+        }
+    });
+}
+
+/// Emit once-per-process deprecation warnings for CompatibilityShim env vars that
+/// are currently set. Fires at every Config build but is guarded by a OnceLock so
+/// users see warnings on first invocation, not on every repeated subcommand.
+fn warn_compat_shim_env_vars() {
+    use crate::core::config::parse::env_registry::{EnvClassification, LegacyBehavior, all_specs};
+    use std::sync::OnceLock;
+    static WARNED: OnceLock<()> = OnceLock::new();
+    WARNED.get_or_init(|| {
+        for spec in all_specs() {
+            if spec.classification != EnvClassification::CompatibilityShim {
+                continue;
+            }
+            if env::var(spec.key).is_err() {
+                continue;
+            }
+            let reason = match spec.legacy_behavior {
+                LegacyBehavior::WarnEnvOverride => {
+                    "still accepted but will be removed; set the TOML equivalent instead"
+                }
+                LegacyBehavior::WarnAndIgnore => {
+                    "ignored; this variable has no effect in the current runtime"
+                }
+                _ => "deprecated; consult docs/env-migration-matrix.md for the replacement",
+            };
+            log_warn(&format!("env var {} is deprecated: {}", spec.key, reason));
+        }
+    });
 }
 
 fn warn_legacy_service_url(toml_key: &str, env_key: &str) {

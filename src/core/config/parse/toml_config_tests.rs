@@ -260,14 +260,13 @@ user-agent = "Mozilla/5.0 (Axon Test)""#,
 }
 
 #[test]
-fn logging_max_bytes_parses() {
+fn unknown_logging_section_is_rejected() {
+    // [logging] was removed from TomlConfig — deny_unknown_fields must reject it.
     let result = load_toml_config_from_str("[logging]\nmax-bytes = 5242880");
     assert!(
-        result.is_ok(),
-        "logging max-bytes should parse: {:?}",
-        result.err()
+        result.is_err(),
+        "[logging] section should be rejected since log rotation is env-only"
     );
-    assert_eq!(result.unwrap().logging.max_bytes, Some(5_242_880));
 }
 
 #[test]

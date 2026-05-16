@@ -24,8 +24,6 @@ pub(super) struct TomlConfig {
     pub workers: TomlWorkersSection,
     #[serde(default)]
     pub chrome: TomlChromeSection,
-    #[serde(default)]
-    pub logging: TomlLoggingSection,
 }
 
 #[derive(Deserialize, Default)]
@@ -165,14 +163,6 @@ pub(super) struct TomlWorkersSection {
 pub(super) struct TomlChromeSection {
     /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
     pub user_agent: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(super) struct TomlLoggingSection {
-    /// Size threshold in bytes that triggers log file rotation (0 = disable rotation).
-    /// Env: `AXON_LOG_MAX_BYTES`. Default: 10485760 (10 MiB).
-    pub max_bytes: Option<u64>,
 }
 
 /// Load TOML config from the first found path:

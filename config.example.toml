@@ -213,8 +213,6 @@
 # Env: AXON_CHROME_USER_AGENT
 # user-agent = "Mozilla/5.0 (compatible; Axon/1.0)"
 
-[logging]
-# Log file rotation threshold in bytes. 0 disables rotation (single file grows without bound).
-# Default: 10485760 (10 MiB).
-# Env: AXON_LOG_MAX_BYTES
-# max-bytes = 10485760
+# Log rotation is configured via env var only (not TOML), because
+# init_tracing() runs before Config is built.
+# Env: AXON_LOG_MAX_BYTES (default: 10485760 = 10 MiB; 0 = disable rotation)
