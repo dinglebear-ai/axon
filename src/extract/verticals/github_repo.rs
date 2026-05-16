@@ -48,7 +48,7 @@ pub fn matches(url: &str) -> bool {
 }
 
 /// Extract repository metadata from the GitHub REST API.
-pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
+pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
         url: url.to_string(),
