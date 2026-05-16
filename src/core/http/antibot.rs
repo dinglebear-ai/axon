@@ -207,7 +207,10 @@ mod tests {
             "<html><body><script>bazadebezolkohpepadr = ...</script></body></html>".to_string();
         let d = detect_challenge(&body, no_headers, 150_000).unwrap();
         assert_eq!(d.vendor, ChallengeVendor::Akamai);
-        assert!(d.akamai_warmup_recoverable, "Akamai must be marked recoverable");
+        assert!(
+            d.akamai_warmup_recoverable,
+            "Akamai must be marked recoverable"
+        );
     }
 
     #[test]
@@ -227,7 +230,8 @@ mod tests {
 
     #[test]
     fn detects_cloudflare_interstitial() {
-        let body = "<html><body><h1>Just a moment</h1><div class=\"cf-spinner\"></div></body></html>";
+        let body =
+            "<html><body><h1>Just a moment</h1><div class=\"cf-spinner\"></div></body></html>";
         let d = detect_challenge(body, no_headers, 150_000).unwrap();
         assert_eq!(d.vendor, ChallengeVendor::Cloudflare);
     }
@@ -236,7 +240,8 @@ mod tests {
     fn interstitial_requires_both_phrase_and_spinner() {
         // "checking your browser" without cf-spinner = NOT a challenge
         // (might be legitimate help-page copy).
-        let body = "<html><p>Welcome — we are checking your browser version for compatibility.</p></html>";
+        let body =
+            "<html><p>Welcome — we are checking your browser version for compatibility.</p></html>";
         assert!(detect_challenge(body, no_headers, 150_000).is_none());
     }
 
@@ -296,9 +301,7 @@ mod tests {
     #[test]
     fn hcaptcha_skipped_when_body_too_large() {
         let filler: String = "<p>article body content</p>".repeat(4000);
-        let body = format!(
-            "<html>{filler}hcaptcha.com <div class=\"h-captcha\"></div></html>"
-        );
+        let body = format!("<html>{filler}hcaptcha.com <div class=\"h-captcha\"></div></html>");
         assert!(detect_challenge(&body, no_headers, 200_000).is_none());
     }
 
@@ -341,8 +344,7 @@ mod tests {
     fn huge_body_scans_head_window() {
         // 5 MiB body — must still detect the fingerprint near the top
         // without lowercasing the whole thing.
-        let mut body =
-            "<html><script>var _cf_chl_opt = {};</script>".to_string();
+        let mut body = "<html><script>var _cf_chl_opt = {};</script>".to_string();
         body.push_str(&"x".repeat(5 * 1024 * 1024));
         body.push_str("</html>");
         let d = detect_challenge(&body, no_headers, 150_000).unwrap();
