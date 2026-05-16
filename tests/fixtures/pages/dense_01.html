@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>A complete guide to embedding pipelines</title></head>
+<body>
+<header role="banner"><nav><a href="/">Home</a> · <a href="/blog">Blog</a></nav></header>
+<aside role="complementary" id="sidebar">
+  <h2>Contents</h2>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#chunking">Chunking</a></li>
+    <li><a href="#models">Model selection</a></li>
+    <li><a href="#batching">Batching</a></li>
+    <li><a href="#storage">Storage</a></li>
+    <li><a href="#retrieval">Retrieval</a></li>
+    <li><a href="#evaluation">Evaluation</a></li>
+  </ul>
+</aside>
+<main>
+<article>
+<h1 id="overview">A complete guide to embedding pipelines</h1>
+<p>This guide covers the end-to-end design of a production embedding pipeline: chunking heuristics, model selection, batching for throughput, storage choices, retrieval strategies, and evaluation. Each section is opinionated. The goal is to give you defensible defaults you can ship with, plus the tradeoffs you will need to understand if you deviate.</p>
+<h2 id="chunking">Chunking</h2>
+<p>The unit of retrieval is the chunk. A chunk that is too small loses context; a chunk that is too large dilutes relevance. The defensible default for prose is 1,000–2,000 characters with 10–20% overlap. For code, prefer AST-aware splitters that respect function and class boundaries. For tabular data, treat each row (or row group) as a chunk and prepend the column headers.</p>
+<p>Document-level metadata should be attached to every chunk: source URL, title, section heading, position. This metadata is what enables filters in the query path and provides the citation surface in your UI. Resist the temptation to skip metadata — you will regret it the first time a user asks "where did this come from."</p>
+<h2 id="models">Model selection</h2>
+<p>The embedding model determines what "similar" means in your vector space. Three families dominate: general-purpose dense embeddings (E5, BGE, GTE), instruction-tuned dense embeddings (Qwen3-Embedding, NV-Embed), and sparse lexical models (BM25, SPLADE, BM42). The 2025 frontier is hybrid retrieval — dense for semantic similarity, sparse for exact-term matches — fused via Reciprocal Rank Fusion or learned rerankers.</p>
+<p>Instruction-tuned models are asymmetric: queries and documents are embedded differently. A natural-language question and the corresponding answer paragraph will score lower than a keyword-form query against the same paragraph. The fix is to embed the question in both forms and union the candidate set, or to use a query-rewriter to canonicalize before embedding. This is a real production gotcha and the source of many "the retriever just doesn't work" tickets.</p>
+<h2 id="batching">Batching</h2>
+<p>Throughput is dominated by GPU saturation. For TEI or similar inference servers, batch sizes of 32–128 typically saturate an A100 or RTX 4090. The right batch size depends on sequence length: longer sequences fill the batch faster and reduce the throughput optimum.</p>
+<p>Handle 413 (Payload Too Large) errors gracefully by splitting batches in half and retrying. Handle 429 and transient 5xx with exponential backoff and jitter. Set per-document timeouts generously — embedding a 200-page PDF can legitimately take 5 minutes. Track per-batch latency and queue depth as your two primary throughput metrics.</p>
+<h2 id="storage">Storage</h2>
+<p>For under 1M vectors, any vector database is fine. For 1M–100M vectors, the meaningful choices are Qdrant, Milvus, Weaviate, and pgvector with HNSW. For 100M+, you are looking at sharded deployments and the operational cost dominates.</p>
+<p>Use named vectors if your provider supports them — they let you store dense and sparse vectors alongside each other for hybrid search, and they let you evolve the schema without re-indexing everything. Use payload indexes on the fields you filter by (URL, domain, date). Quantize on-disk if memory is tight; the recall hit from int8 is usually under 1% and the memory saving is 4x.</p>
+<h2 id="retrieval">Retrieval</h2>
+<p>The naive retrieval is: embed the query, search the index, return top-K. The production retrieval is: rewrite the query (expand acronyms, resolve coreferences, generate a hypothetical answer), embed both the original and rewritten forms, run hybrid dense + sparse search, rerank the top 50 with a cross-encoder, return top-K to the LLM.</p>
+<p>Each step adds latency. Profile your end-to-end response time and add only the steps that move the recall@K needle on your evaluation set. Don't bolt on every paper that crosses your feed.</p>
+<h2 id="evaluation">Evaluation</h2>
+<p>You cannot improve what you do not measure. Build an evaluation set of 50–500 query/answer pairs sourced from real user logs. Score against recall@10 (does the right chunk appear in the top 10) and answer accuracy (does the LLM-generated answer match a reference). Run the evaluation on every change to chunking, model, or retrieval logic. Bake it into CI for the components that change most often.</p>
+<p>LLM-as-judge scoring is cheap and works well for binary correctness. For nuanced metrics (faithfulness, citation accuracy, specificity), use a stronger judge model and validate periodically against human annotators. The judge will drift; verify quarterly.</p>
+</article>
+</main>
+<footer role="contentinfo"><p>Example RAG engineering handbook.</p></footer>
+</body>
+</html>

@@ -173,6 +173,15 @@ impl AxonMcpServer {
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
+            AxonRequest::Debug(_)
+            | AxonRequest::Dedupe(_)
+            | AxonRequest::Migrate(_)
+            | AxonRequest::Watch(_)
+            | AxonRequest::Setup(_) => {
+                return Err(invalid_params(
+                    "this action is available through the HTTP API, not MCP",
+                ));
+            }
         };
         serde_json::to_string(&response)
             .map_err(|e| internal_error(format!("serialize {action} response: {e}")))

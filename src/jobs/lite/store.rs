@@ -216,17 +216,27 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
     let table = kind.table_name();
     let threshold = now_ms() - stale_threshold_ms;
     let reclaimed_at = now_ms();
-    let reclaimed_rows: Vec<(String, Option<String>)> = sqlx::query_as(&format!(
+    let mut conn = pool.acquire().await?;
+    sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+    let reclaimed_rows: Vec<(String, Option<String>)> = match sqlx::query_as(&format!(
         "SELECT id, active_attempt_id FROM {} WHERE status='running' AND updated_at < ?",
         table
     ))
     .bind(threshold)
-    .fetch_all(pool)
-    .await?;
+    .fetch_all(&mut *conn)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(err) => {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            return Err(err);
+        }
+    };
     if reclaimed_rows.is_empty() {
+        sqlx::query("ROLLBACK").execute(&mut *conn).await?;
         return Ok(Vec::new());
     }
-    sqlx::query(&format!(
+    if let Err(err) = sqlx::query(&format!(
         "UPDATE {} SET status='pending', error_text=?, \
          updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
          WHERE status='running' AND updated_at < ?",
@@ -237,8 +247,13 @@ pub async fn reclaim_stale_running_jobs_for_table_jobs(
     .bind(reclaimed_at)
     .bind("stale running job exceeded watchdog threshold")
     .bind(threshold)
-    .execute(pool)
-    .await?;
+    .execute(&mut *conn)
+    .await
+    {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        return Err(err);
+    }
+    sqlx::query("COMMIT").execute(&mut *conn).await?;
     let jobs: Vec<ReclaimedJob> = reclaimed_rows
         .into_iter()
         .filter_map(|(job_id, attempt_id)| match Uuid::parse_str(&job_id) {

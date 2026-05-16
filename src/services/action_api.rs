@@ -3,7 +3,8 @@ mod commands;
 use std::error::Error;
 
 use crate::mcp::schema::{
-    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction,
+    AxonRequest, CrawlSubaction, EmbedSubaction, ExtractSubaction, IngestSubaction, SetupMode,
+    WatchSubaction,
 };
 use crate::services::context::ServiceContext;
 use crate::services::system;
@@ -53,6 +54,32 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             IngestSubaction::Status | IngestSubaction::List => Some("axon:read"),
             _ => Some("axon:write"),
         },
+        AxonRequest::Query(_)
+        | AxonRequest::Retrieve(_)
+        | AxonRequest::Search(_)
+        | AxonRequest::Map(_)
+        | AxonRequest::Evaluate(_)
+        | AxonRequest::Suggest(_)
+        | AxonRequest::Doctor(_)
+        | AxonRequest::Domains(_)
+        | AxonRequest::Sources(_)
+        | AxonRequest::Stats(_)
+        | AxonRequest::Help(_)
+        | AxonRequest::Artifacts(_)
+        | AxonRequest::Research(_)
+        | AxonRequest::Ask(_)
+        | AxonRequest::Debug(_) => Some("axon:read"),
+        AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) => Some("axon:write"),
+        AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
+            WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
+                Some("axon:read")
+            }
+            WatchSubaction::Create | WatchSubaction::RunNow => Some("axon:write"),
+        },
+        AxonRequest::Setup(req) => match req.mode.unwrap_or(SetupMode::Check) {
+            SetupMode::Check => Some("axon:read"),
+            SetupMode::FirstRun | SetupMode::Repair | SetupMode::MigrateEnv => Some("axon:write"),
+        },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         _ => None,
     }
@@ -94,6 +121,11 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Research(_) => "research",
         AxonRequest::Ask(_) => "ask",
         AxonRequest::Screenshot(_) => "screenshot",
+        AxonRequest::Debug(_) => "debug",
+        AxonRequest::Dedupe(_) => "dedupe",
+        AxonRequest::Migrate(_) => "migrate",
+        AxonRequest::Watch(_) => "watch",
+        AxonRequest::Setup(_) => "setup",
         AxonRequest::ElicitDemo(_) => "elicit_demo",
     }
 }

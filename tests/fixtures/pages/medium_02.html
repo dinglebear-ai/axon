@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Vector Search Index Tuning</title></head>
+<body>
+<header role="banner"><nav><a href="/">Home</a> · <a href="/docs">Docs</a></nav></header>
+<aside role="complementary" id="sidebar">
+  <h2>Section</h2>
+  <ul><li><a href="#hnsw">HNSW</a></li><li><a href="#ivf">IVF</a></li><li><a href="#quant">Quantization</a></li></ul>
+</aside>
+<main>
+<article>
+<h1>Vector Search Index Tuning</h1>
+<p>Choosing an index is a tradeoff between recall, latency, and memory. The three families you will encounter in practice are flat (brute force), HNSW (graph-based), and IVF (inverted-file based).</p>
+<h2 id="hnsw">HNSW</h2>
+<p>Hierarchical Navigable Small World graphs maintain layered proximity links. The two tuning knobs that matter are <code>M</code> (graph fan-out) and <code>ef_construction</code> / <code>ef_search</code> (candidate list size). Higher values increase recall and memory; lower values reduce both. Start with <code>M=16</code>, <code>ef_construction=200</code>, then sweep <code>ef_search</code> from 32 upward until recall@10 crosses the threshold you need.</p>
+<h2 id="ivf">IVF</h2>
+<p>Inverted-file indexes cluster vectors into Voronoi cells using k-means. Queries probe the nearest <code>nprobe</code> cells. IVF scales to billions of vectors when paired with product quantization, but at small N (under 1M) HNSW usually dominates on both speed and recall. The rule of thumb: pick <code>nlist ≈ sqrt(N)</code> and <code>nprobe ≈ 1–5%</code> of <code>nlist</code>.</p>
+<h2 id="quant">Quantization</h2>
+<p>Scalar quantization (int8) cuts memory by 4x with minor recall loss. Product quantization is more aggressive — 32x compression is typical — but only worth the complexity above tens of millions of vectors. Binary quantization (1-bit per dimension) is the extreme; pair it with rerank passes against the full vectors.</p>
+<h2>What to measure</h2>
+<p>Track recall@10 against a ground-truth flat index on a held-out query set. Track p99 latency under your real query distribution, not just synthetic load. Memory usage matters when you scale horizontally — a cheaper-per-host index lets you fit more shards per node.</p>
+</article>
+</main>
+<footer role="contentinfo"><p>Example RAG docs.</p></footer>
+</body>
+</html>

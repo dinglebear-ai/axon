@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Getting Started with HTTP Caching</title>
+<meta name="description" content="A practical introduction to HTTP caching primitives.">
+</head>
+<body>
+<header role="banner"><nav><a href="/">Home</a> · <a href="/blog">Blog</a></nav></header>
+<aside role="complementary"><h2>Recent posts</h2><ul><li><a href="#">Async I/O</a></li><li><a href="#">DNS basics</a></li></ul></aside>
+<main>
+<article>
+<h1>Getting Started with HTTP Caching</h1>
+<p>HTTP caching reduces latency and load by reusing previously fetched resources. Caches live in browsers, proxies, and CDNs. Understanding three primitives — freshness, validation, and invalidation — covers almost every real-world scenario.</p>
+<h2>Freshness</h2>
+<p>A response is fresh until it expires. The server signals freshness with <code>Cache-Control: max-age=N</code> or, less commonly, an absolute <code>Expires</code> header. When a cached response is fresh, the cache serves it directly with zero network round-trips. This is the fastest possible path and the reason caching exists.</p>
+<h2>Validation</h2>
+<p>Once a response is stale, the cache must validate it before reuse. Validation typically uses <code>ETag</code> (an opaque versioned identifier) or <code>Last-Modified</code> (a timestamp). The cache sends a conditional request — <code>If-None-Match</code> or <code>If-Modified-Since</code> — and the server either returns <code>304 Not Modified</code> (reuse) or a fresh <code>200 OK</code> with a new body.</p>
+<h2>Invalidation</h2>
+<p>Unsafe methods (POST, PUT, DELETE) invalidate cache entries for the affected URL. This prevents staleness when state changes. The exact rules vary; the safe assumption is that any state-mutating request invalidates its target.</p>
+<h2>Practical advice</h2>
+<p>Set <code>Cache-Control: public, max-age=31536000, immutable</code> on fingerprinted static assets. Use short <code>max-age</code> with <code>stale-while-revalidate</code> for HTML. Always include <code>Vary</code> when responses depend on request headers like <code>Accept-Encoding</code> or <code>Cookie</code>.</p>
+</article>
+</main>
+<footer role="contentinfo"><p>&copy; 2026 Example Blog.</p></footer>
+</body>
+</html>
