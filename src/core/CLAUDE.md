@@ -1,5 +1,5 @@
 # src/core — Shared Infrastructure
-Last Modified: 2026-05-09
+Last Modified: 2026-05-16
 
 Foundational crate. Owns configuration parsing, the `Config` struct, HTTP client + SSRF protection, content transformation, logging, terminal UI, and health checks. Every other crate imports from here.
 
@@ -42,11 +42,20 @@ core/
 │   └── proptest_tests.rs # Property-based URL/SSRF tests
 ├── content.rs            # build_transform_config(), to_markdown(), url_to_filename(), extract_*()
 ├── content/
-│   ├── engine.rs         # ExtractWebConfig + run_extract_with_engine(): deterministic extraction + LLM fallback
+│   ├── engine.rs                # ExtractWebConfig + run_extract_with_engine(): deterministic extraction + LLM fallback
+│   ├── engine_tests.rs          # sidecar tests for engine.rs
 │   ├── engine/
-│   │   └── chrome.rs        # Chrome-backed extraction helpers
-│   ├── deterministic.rs  # DeterministicExtractionEngine + parsers (JsonLd / OG / HtmlTable)
-│   └── tests.rs          # Content transformation and extraction tests
+│   │   └── chrome.rs                # Chrome-backed extraction helpers
+│   ├── deterministic.rs         # DeterministicExtractionEngine + parsers (JsonLd / OG / HtmlTable)
+│   ├── deterministic_tests.rs   # sidecar tests for deterministic.rs
+│   ├── extract_ladder.rs        # DOM retry ladder — re-extract thin pages with successively richer parsers before Chrome fallback (jh32)
+│   ├── extract_ladder_tests.rs  # sidecar tests for extract_ladder.rs
+│   ├── extraction.rs            # Top-level extraction orchestration helpers
+│   ├── filename.rs              # url_to_filename() — URL → safe output path
+│   ├── markdown.rs              # to_markdown() and markdown transformation helpers
+│   ├── url_parsing.rs           # URL parse + normalize helpers used by extraction
+│   ├── url_parsing_tests.rs     # sidecar tests for url_parsing.rs
+│   └── tests.rs                 # Content transformation + extraction tests (legacy inline coverage)
 ├── health.rs             # browser_diagnostics_pattern() + Chrome diagnostics env vars
 ├── health/
 │   └── doctor.rs         # probe_tei_info, probe_openai, build_browser_runtime
