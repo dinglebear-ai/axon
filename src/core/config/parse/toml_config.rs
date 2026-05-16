@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub(super) struct TomlConfig {
     #[serde(default)]
-    #[allow(dead_code)]
     pub services: TomlServicesSection,
     #[serde(default)]
     pub search: TomlSearchSection,
@@ -23,11 +22,14 @@ pub(super) struct TomlConfig {
     pub tei: TomlTeiSection,
     #[serde(default)]
     pub workers: TomlWorkersSection,
+    #[serde(default)]
+    pub chrome: TomlChromeSection,
+    #[serde(default)]
+    pub logging: TomlLoggingSection,
 }
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-#[allow(dead_code)]
 pub(super) struct TomlServicesSection {
     /// Deprecated compatibility fallback. Runtime still accepts this temporarily
     /// and warns; move to `QDRANT_URL` in `.env`.
@@ -153,6 +155,24 @@ pub(super) struct TomlWorkersSection {
     pub max_pending_extract_jobs: Option<usize>,
     /// Ingest queue cap (0 = unlimited).
     pub max_pending_ingest_jobs: Option<usize>,
+    /// Timeout in seconds for `--wait true` job polling (clamped 30–3600).
+    /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`.
+    pub job_wait_timeout_secs: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlChromeSection {
+    /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
+    pub user_agent: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlLoggingSection {
+    /// Size threshold in bytes that triggers log file rotation (0 = disable rotation).
+    /// Env: `AXON_LOG_MAX_BYTES`. Default: 10485760 (10 MiB).
+    pub max_bytes: Option<u64>,
 }
 
 /// Load TOML config from the first found path:
