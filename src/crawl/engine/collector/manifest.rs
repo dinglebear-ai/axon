@@ -125,4 +125,5 @@ pub async fn append_manifest_entry(
 }
 
 #[cfg(test)]
+#[path = "manifest_tests.rs"]
 mod tests;

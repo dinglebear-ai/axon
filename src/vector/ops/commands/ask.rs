@@ -8,6 +8,7 @@ mod normalize;
 mod output;
 pub(crate) mod synthesis_prompt;
 #[cfg(test)]
+#[path = "ask_tests.rs"]
 mod tests;
 pub(crate) mod timing;
 

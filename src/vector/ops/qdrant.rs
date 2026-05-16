@@ -5,6 +5,7 @@ mod filter;
 mod hybrid;
 mod search;
 #[cfg(test)]
+#[path = "qdrant_tests.rs"]
 mod tests;
 mod types;
 mod utils;

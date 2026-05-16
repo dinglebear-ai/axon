@@ -9,6 +9,7 @@ use std::sync::{LazyLock, RwLock};
 
 mod payload_indexes;
 #[cfg(test)]
+#[path = "qdrant_store_tests.rs"]
 mod tests;
 use payload_indexes::ensure_payload_indexes;
 

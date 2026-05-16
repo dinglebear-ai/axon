@@ -259,4 +259,5 @@ pub(super) fn candidate_has_topical_overlap(
 }
 
 #[cfg(test)]
+#[path = "heuristics_tests.rs"]
 mod tests;

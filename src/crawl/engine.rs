@@ -5,6 +5,7 @@ pub(crate) mod map;
 mod runtime;
 pub(crate) mod sitemap;
 #[cfg(test)]
+#[path = "engine_tests.rs"]
 mod tests;
 mod thin_refetch;
 mod url_utils;

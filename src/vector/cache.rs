@@ -10,6 +10,7 @@
 mod doc_cache;
 mod generation;
 #[cfg(test)]
+#[path = "cache_tests.rs"]
 mod tests;
 
 use crate::core::config::Config;

@@ -212,4 +212,5 @@ pub(crate) async fn qdrant_named_dense_search(
 }
 
 #[cfg(test)]
+#[path = "hybrid_tests.rs"]
 mod tests;

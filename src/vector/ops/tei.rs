@@ -4,6 +4,7 @@ pub(crate) mod qdrant_store;
 mod tei_client;
 mod tei_manifest;
 #[cfg(test)]
+#[path = "tei_tests.rs"]
 mod tests;
 mod text_embed;
 
