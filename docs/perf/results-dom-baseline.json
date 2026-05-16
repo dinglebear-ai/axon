@@ -1,0 +1,94 @@
+{
+  "bead": "axon_rust-4j1n",
+  "captured_at": "2026-05-16T03:17:06Z",
+  "git_sha": "c7aef89b11ee991a2f20577fc5ce5467fabfb676",
+  "branch": "worktree-agent-a4c7cb11ee413b351",
+  "bench": "dom_extraction",
+  "extractor": "axon::core::content::bytes_to_markdown",
+  "profile": "release",
+  "host": {
+    "os": "Linux",
+    "kernel": "7.0.0-15-generic",
+    "rustc": "1.94.0"
+  },
+  "fixture_corpus": {
+    "total_fixtures": 8,
+    "thin_count": 3,
+    "medium_count": 3,
+    "dense_count": 2,
+    "source": "tests/fixtures/pages/manifest.json"
+  },
+  "criterion_per_fixture": {
+    "thin/thin_01.html": {
+      "time_us_low": 84.823,
+      "time_us_estimate": 86.694,
+      "time_us_high": 88.792,
+      "throughput_mib_s_estimate": 5.5332
+    },
+    "thin/thin_02.html": {
+      "time_us_low": 86.762,
+      "time_us_estimate": 86.909,
+      "time_us_high": 87.063,
+      "throughput_mib_s_estimate": 6.6388
+    },
+    "thin/thin_03.html": {
+      "time_us_low": 52.315,
+      "time_us_estimate": 54.327,
+      "time_us_high": 56.657,
+      "throughput_mib_s_estimate": 11.2
+    },
+    "medium/medium_01.html": {
+      "time_us_low": 79.8,
+      "time_us_estimate": 79.953,
+      "time_us_high": 80.123,
+      "throughput_mib_s_estimate": 26.85
+    },
+    "medium/medium_02.html": {
+      "time_us_low": 103.21,
+      "time_us_estimate": 111.37,
+      "time_us_high": 120.88,
+      "throughput_mib_s_estimate": 19.737
+    },
+    "medium/medium_03.html": {
+      "time_us_low": 72.273,
+      "time_us_estimate": 75.572,
+      "time_us_high": 79.463,
+      "throughput_mib_s_estimate": 24.318
+    },
+    "dense/dense_01.html": {
+      "time_us_low": 111.34,
+      "time_us_estimate": 119.85,
+      "time_us_high": 130.78,
+      "throughput_mib_s_estimate": 43.501
+    },
+    "dense/dense_02.html": {
+      "time_us_low": 90.801,
+      "time_us_estimate": 90.915,
+      "time_us_high": 91.028,
+      "throughput_mib_s_estimate": 54.536
+    }
+  },
+  "aggregate_ms": {
+    "comment": "200 iterations per fixture, Instant-based timing inside the bench, release profile.",
+    "thin":   { "p50": 0.083, "p95": 0.096, "p99": 0.103, "n": 600 },
+    "medium": { "p50": 0.127, "p95": 0.143, "p99": 0.148, "n": 600 },
+    "dense":  { "p50": 0.093, "p95": 0.111, "p99": 0.117, "n": 400 },
+    "overall":{ "p50": 0.089, "p95": 0.133, "p99": 0.146, "n": 1600 }
+  },
+  "gates": {
+    "jh32_threshold_comment": "DOM retry ladder must complete in <2x baseline. Use overall p95 = 0.133 ms as the reference; ladder gate ceiling = 0.266 ms p95 on this corpus.",
+    "jh32_p95_ceiling_ms": 0.266
+  },
+  "reproduce": {
+    "build":  "cargo build --bench dom_extraction",
+    "quick":  "cargo bench --bench dom_extraction -- --quick",
+    "full":   "cargo bench --bench dom_extraction",
+    "direct": "./target/release/deps/dom_extraction-<hash> --bench"
+  },
+  "notes": [
+    "Fixture corpus is hand-crafted license-clean HTML representing thin (<200 word) error/login/landing pages, medium (200-1000 word) blog/doc pages with sidebars, and dense (>1000 word) long-form articles.",
+    "Criterion's measured wall-clock numbers and our aggregate-Instant numbers differ slightly because criterion auto-adjusts iteration count per sample while the aggregate runs a fixed 200 iterations per fixture; both are debug-free release-profile measurements with single-pass DOM extraction (bytes_to_markdown).",
+    "Run on a multi-tenant dev box with sccache enabled; expect noise on highly variable per-fixture numbers (e.g. medium_02, dense_01).",
+    "Bead 1jto walker scope decision uses docs/perf/thin-page-rate.md, not this file."
+  ]
+}

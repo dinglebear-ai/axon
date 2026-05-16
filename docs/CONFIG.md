@@ -366,6 +366,22 @@ containing cached source text.
 |----------|---------|-------------|
 | `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53333` | Host-accessible Qdrant URL for integration tests |
 
+### Webclaw port (axon_rust-zehr)
+
+Per-site vertical extractors, DOM retry ladder, antibot detection, structured-data payload tuning.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_ENABLE_VERTICALS` | `true` | Enable per-site vertical extractors (GitHub, PyPI, Reddit, HN, etc.). TOML: `verticals.enabled`. |
+| `AXON_AUTO_DISPATCH_SKIP` | (empty) | Comma-separated extractor names to SKIP in auto-dispatch (still available via `--vertical`). TOML: `verticals.auto-dispatch-skip`. |
+| `AXON_VERTICAL_CACHE_TTL_<NAME>` | github=86400, reddit=3600, hn=21600 | Per-vertical cache TTL in seconds. e.g. `AXON_VERTICAL_CACHE_TTL_GITHUB=43200`. TOML: `[verticals.cache-ttl-secs]`. |
+| `AXON_STRUCTURED_DATA_MAX_BYTES` | `65536` | Max bytes per chunk in Qdrant `structured_blob` field. Clamped 1024–16777216. TOML: `payload.structured-data-max-bytes`. |
+| `AXON_LADDER_STRATEGY1_THRESHOLD` | `30` | DOM retry ladder Strategy 1 word threshold. Clamped 1–1000. TOML: `scrape.ladder-strategy1-threshold`. |
+| `AXON_LADDER_STRATEGY2_THRESHOLD` | `200` | DOM retry ladder Strategy 2 word threshold. Clamped 1–10000. TOML: `scrape.ladder-strategy2-threshold`. |
+| `AXON_LADDER_BODY_MULTIPLIER` | `2.0` | Body-fallback wins only if it produces N× scored words. Clamped 1.0–10.0. TOML: `scrape.ladder-body-multiplier`. |
+| `AXON_CHALLENGE_WARMUP` | `true` | Enable Akamai/CF cookie warmup retry on antibot challenge. TOML: `antibot.cookie-warmup`. |
+| `AXON_ANTIBOT_MAX_BODY_SCAN_BYTES` | `150000` | Max bytes scanned for antibot challenge patterns. Clamped 1000–10485760. TOML: `antibot.max-body-scan-bytes`. |
+
 ## Dev vs container URL resolution
 
 The CLI auto-detects its runtime environment:

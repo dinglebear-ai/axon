@@ -48,6 +48,11 @@ pub struct SourcesResult {
     pub offset: usize,
     /// Indexed URLs paired with their chunk counts.
     pub urls: Vec<(String, usize)>,
+    /// Optional per-schema-version chunk counts (populated only when the
+    /// caller opts in via `--by-schema-version`). Implicit pre-`axon_rust-lu6a`
+    /// points (no `payload_schema_version` field) are reported under the
+    /// key `1`. See `services::system::sources_with_breakdown`.
+    pub schema_version_breakdown: Option<std::collections::BTreeMap<u32, usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -556,6 +556,11 @@ pub struct Config {
     /// Default: None (no upper bound). Flag: `--before`.
     pub before: Option<String>,
 
+    /// Include a per-schema-version chunk-count breakdown in `axon sources` output.
+    /// O(N) scroll over the collection; opt-in only. Default: false.
+    /// Flag: `--by-schema-version`. See bead `axon_rust-lu6a`.
+    pub sources_by_schema_version: bool,
+
     // P5 — opt-in crawl safety/compat flags
     /// Bypass Content Security Policy in Chrome — helps on pages that block inline JS via CSP.
     /// Spider: `with_csp_bypass(true)`. Chrome only. Default: false. Flag: `--bypass-csp`.
@@ -613,6 +618,61 @@ pub struct Config {
     /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`. TOML: `workers.job-wait-timeout-secs`.
     /// Clamped 30–3600. Default: 300.
     pub job_wait_timeout_secs: u64,
+
+    // ── Webclaw port (axon_rust-zehr) ──────────────────────────────────────
+    /// Enable per-site vertical extractors (GitHub, PyPI, Reddit, etc.).
+    /// Env: `AXON_ENABLE_VERTICALS`. TOML: `verticals.enabled`. Default: `true`.
+    pub enable_verticals: bool,
+
+    /// Vertical extractor names to SKIP in auto-dispatch (still available via
+    /// `--vertical <name>` or MCP `vertical_scrape`). Empty means auto-dispatch
+    /// every registered extractor.
+    /// Env: `AXON_AUTO_DISPATCH_SKIP` (comma-separated). TOML: `verticals.auto-dispatch-skip`.
+    pub auto_dispatch_skip: Vec<String>,
+
+    /// Per-vertical cache TTL in seconds. Keys are extractor names.
+    /// Built-in defaults: github=86400, reddit=3600, hn=21600.
+    /// Env override per-vertical: `AXON_VERTICAL_CACHE_TTL_<UPPER>=secs`.
+    /// TOML: `[verticals.cache-ttl-secs]` table.
+    pub vertical_cache_ttl_secs: std::collections::HashMap<String, u64>,
+
+    /// Maximum bytes stored in the Qdrant `structured_blob` payload field per
+    /// chunk. Larger structured-data payloads (e.g. multi-MB `__NEXT_DATA__`)
+    /// are dropped rather than serialized.
+    /// Env: `AXON_STRUCTURED_DATA_MAX_BYTES`. TOML: `payload.structured-data-max-bytes`.
+    /// Default: 65536 (64 KiB).
+    pub structured_data_max_bytes: usize,
+
+    /// DOM retry ladder Strategy 1 threshold: re-run extraction with
+    /// `only_main_content=false` when the scored extractor produces fewer than
+    /// this many words.
+    /// Env: `AXON_LADDER_STRATEGY1_THRESHOLD`. TOML: `scrape.ladder-strategy1-threshold`.
+    /// Default: 30.
+    pub ladder_word_threshold_strategy1: usize,
+
+    /// DOM retry ladder Strategy 2 threshold: re-run extraction with
+    /// `include_selectors=["body"]` when the scored extractor produces fewer
+    /// than this many words AND no user `include_selectors` were supplied.
+    /// Env: `AXON_LADDER_STRATEGY2_THRESHOLD`. TOML: `scrape.ladder-strategy2-threshold`.
+    /// Default: 200.
+    pub ladder_word_threshold_strategy2: usize,
+
+    /// DOM retry ladder body-fallback multiplier: body-fallback wins only if
+    /// it produces more than `multiplier * scored_word_count` words.
+    /// Env: `AXON_LADDER_BODY_MULTIPLIER`. TOML: `scrape.ladder-body-multiplier`.
+    /// Default: 2.0.
+    pub ladder_body_multiplier: f64,
+
+    /// Enable Akamai/CF cookie warmup retry on antibot challenge detection.
+    /// Env: `AXON_CHALLENGE_WARMUP`. TOML: `antibot.cookie-warmup`. Default: `true`.
+    pub antibot_cookie_warmup: bool,
+
+    /// Maximum bytes scanned for antibot challenge patterns. Pages larger
+    /// than this skip the substring scan (the byte-length gate is already
+    /// applied per-vendor in the detection logic).
+    /// Env: `AXON_ANTIBOT_MAX_BODY_SCAN_BYTES`. TOML: `antibot.max-body-scan-bytes`.
+    /// Default: 150000.
+    pub antibot_max_body_scan_bytes: usize,
 }
 
 #[cfg(test)]

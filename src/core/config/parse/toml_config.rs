@@ -24,6 +24,54 @@ pub(super) struct TomlConfig {
     pub workers: TomlWorkersSection,
     #[serde(default)]
     pub chrome: TomlChromeSection,
+    #[serde(default)]
+    pub scrape: TomlScrapeSection,
+    #[serde(default)]
+    pub verticals: TomlVerticalsSection,
+    #[serde(default)]
+    pub antibot: TomlAntibotSection,
+    #[serde(default)]
+    pub payload: TomlPayloadSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlScrapeSection {
+    /// DOM retry ladder Strategy 1 threshold (words). Default 30.
+    pub ladder_strategy1_threshold: Option<usize>,
+    /// DOM retry ladder Strategy 2 threshold (words). Default 200.
+    pub ladder_strategy2_threshold: Option<usize>,
+    /// Body-fallback multiplier; fallback wins only if it produces N x scored
+    /// word count. Default 2.0.
+    pub ladder_body_multiplier: Option<f64>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlVerticalsSection {
+    /// Enable per-site vertical extractors. Default true.
+    pub enabled: Option<bool>,
+    /// Vertical extractor names to SKIP in auto-dispatch.
+    pub auto_dispatch_skip: Option<Vec<String>>,
+    /// Per-vertical cache TTL in seconds (extractor name → TTL).
+    pub cache_ttl_secs: Option<std::collections::HashMap<String, u64>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlAntibotSection {
+    /// Enable Akamai/CF cookie warmup retry on challenge detection. Default true.
+    pub cookie_warmup: Option<bool>,
+    /// Maximum bytes scanned for antibot challenge patterns. Default 150000.
+    pub max_body_scan_bytes: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlPayloadSection {
+    /// Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
+    /// Default 65536 (64 KiB).
+    pub structured_data_max_bytes: Option<usize>,
 }
 
 #[derive(Deserialize, Default)]
