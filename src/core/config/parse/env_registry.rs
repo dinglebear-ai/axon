@@ -75,7 +75,6 @@ pub(crate) fn all_specs() -> impl Iterator<Item = &'static EnvKeySpec> {
 pub(crate) fn spec_for(key: &str) -> Option<&'static EnvKeySpec> {
     all_specs().find(|spec| spec.key == key)
 }
-
 #[cfg(test)]
 #[path = "env_registry_tests.rs"]
 mod tests;

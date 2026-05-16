@@ -123,7 +123,6 @@ impl Write for SizeRotatingFile {
         self.current.flush()
     }
 }
-
 #[cfg(test)]
 #[path = "size_rotating_tests.rs"]
 mod tests;

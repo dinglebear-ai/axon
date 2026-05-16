@@ -415,7 +415,6 @@ pub(crate) fn estimate_llm_cost_usd(
     ((prompt_tokens as f64 / 1_000_000.0) * input_per_million)
         + ((completion_tokens as f64 / 1_000_000.0) * output_per_million)
 }
-
 #[cfg(test)]
 #[path = "deterministic_tests.rs"]
 mod tests;

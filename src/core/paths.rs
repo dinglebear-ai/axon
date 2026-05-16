@@ -131,7 +131,6 @@ pub async fn ensure_private_dir_async(path: PathBuf) -> std::io::Result<()> {
         .await
         .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
 }
-
 #[cfg(test)]
 #[path = "paths_tests.rs"]
 mod tests;

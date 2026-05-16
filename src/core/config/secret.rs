@@ -98,7 +98,6 @@ impl<T: PartialEq> PartialEq for Secret<T> {
 }
 
 impl<T: Eq> Eq for Secret<T> {}
-
 #[cfg(test)]
 #[path = "secret_tests.rs"]
 mod tests;

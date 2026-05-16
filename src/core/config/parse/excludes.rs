@@ -169,7 +169,6 @@ pub(crate) fn normalize_exclude_prefixes(input: Vec<String>) -> NormalizedExclud
         disable_defaults: disable_by_empty,
     }
 }
-
 #[cfg(test)]
 #[path = "excludes_tests.rs"]
 mod tests;

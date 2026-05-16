@@ -34,7 +34,6 @@ pub fn browser_diagnostics_pattern() -> BrowserDiagnosticsPattern {
         output_dir,
     }
 }
-
 #[cfg(test)]
 #[allow(unsafe_code)]
 #[path = "health_tests.rs"]

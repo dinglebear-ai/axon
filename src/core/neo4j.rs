@@ -100,7 +100,6 @@ impl Neo4jClient {
         Ok(json)
     }
 }
-
 #[cfg(test)]
 #[path = "neo4j_tests.rs"]
 mod tests;

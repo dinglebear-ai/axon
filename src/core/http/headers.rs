@@ -29,7 +29,6 @@ pub fn parse_custom_headers(raw_headers: &[String]) -> reqwest::header::HeaderMa
     }
     map
 }
-
 #[cfg(test)]
 #[path = "headers_tests.rs"]
 mod tests;

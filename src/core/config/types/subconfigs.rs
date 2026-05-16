@@ -255,7 +255,6 @@ impl Default for QueueConfig {
         }
     }
 }
-
 #[cfg(test)]
 #[path = "subconfigs_tests.rs"]
 mod tests;

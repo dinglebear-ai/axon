@@ -39,7 +39,6 @@ pub fn parse_args() -> Config {
         }
     }
 }
-
 #[cfg(test)]
 #[path = "parse_tests.rs"]
 mod tests;

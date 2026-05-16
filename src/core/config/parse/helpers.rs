@@ -232,7 +232,6 @@ pub(super) fn parse_viewport(s: &str) -> (u32, u32) {
         _ => DEFAULT,
     }
 }
-
 #[cfg(test)]
 #[path = "helpers_tests.rs"]
 mod tests;
