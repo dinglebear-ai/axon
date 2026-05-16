@@ -46,6 +46,10 @@ pub(crate) struct PreparedDoc {
     pub(crate) title: Option<String>,
     /// Source-specific metadata fields (gh_*, reddit_*, yt_*).
     pub(crate) extra: Option<serde_json::Value>,
+    /// Optional vertical-extractor identifier (e.g. `"docs"`, `"github-issue"`).
+    /// `None` for generic scrape/embed paths — leave absent from payload rather
+    /// than writing a placeholder. See bead `axon_rust-lu6a`.
+    pub(crate) extractor_name: Option<String>,
 }
 
 /// Build a Qdrant point JSON value with the correct vector format for the collection mode.

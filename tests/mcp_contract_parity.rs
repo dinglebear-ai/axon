@@ -203,6 +203,7 @@ fn sources_result_has_expected_fields() {
         limit: 10,
         offset: 0,
         urls: vec![("https://example.com".to_string(), 3)],
+        schema_version_breakdown: None,
     };
     assert_eq!(r.count, 5);
     assert_eq!(r.limit, 10);

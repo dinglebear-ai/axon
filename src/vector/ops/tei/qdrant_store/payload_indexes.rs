@@ -25,8 +25,12 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
         "source_type",
         "gh_file_language",
         "chunking_method",
+        // axon_rust-lu6a: optional vertical-extractor identifier (e.g. "docs").
+        // Indexed so `/facet` and term-match filters work; absent fields are
+        // tolerated by Qdrant (point simply won't match an equality filter).
+        "extractor_name",
     ];
-    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(keyword_fields.len() + 2);
+    let mut futures: Vec<IndexFut<'_>> = Vec::with_capacity(keyword_fields.len() + 3);
 
     for field in &keyword_fields {
         let url = index_url.clone();
@@ -50,6 +54,22 @@ pub(super) async fn ensure_payload_indexes(cfg: &Config) -> Result<(), Box<dyn E
             .put(&chunk_index_url)
             .json(&serde_json::json!({
                 "field_name": "chunk_index",
+                "field_schema": "integer"
+            }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }));
+
+    // axon_rust-lu6a: integer index on payload_schema_version so retrieval can
+    // filter `range: { gte: N }` efficiently and `/facet` can group by version.
+    let schema_version_url = index_url.clone();
+    futures.push(Box::pin(async move {
+        client
+            .put(&schema_version_url)
+            .json(&serde_json::json!({
+                "field_name": "payload_schema_version",
                 "field_schema": "integer"
             }))
             .send()

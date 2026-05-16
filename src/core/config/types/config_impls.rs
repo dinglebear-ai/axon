@@ -163,6 +163,7 @@ impl Default for Config {
             search_time_range: None,
             since: None,
             before: None,
+            sources_by_schema_version: false,
             bypass_csp: false,
             accept_invalid_certs: false,
             screenshot_full_page: true,
@@ -178,6 +179,23 @@ impl Default for Config {
             local_mode: false,
             server_url: None,
             job_wait_timeout_secs: 300,
+
+            // ── Webclaw port (axon_rust-zehr) ─────────────────────────────
+            enable_verticals: true,
+            auto_dispatch_skip: Vec::new(),
+            vertical_cache_ttl_secs: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("github".to_string(), 86_400);
+                m.insert("reddit".to_string(), 3_600);
+                m.insert("hn".to_string(), 21_600);
+                m
+            },
+            structured_data_max_bytes: 65_536,
+            ladder_word_threshold_strategy1: 30,
+            ladder_word_threshold_strategy2: 200,
+            ladder_body_multiplier: 2.0,
+            antibot_cookie_warmup: true,
+            antibot_max_body_scan_bytes: 150_000,
         }
     }
 }

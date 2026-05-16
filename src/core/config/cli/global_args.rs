@@ -361,6 +361,11 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) before: Option<String>,
 
+    /// Include per-payload-schema-version chunk-count breakdown on `axon sources`.
+    /// Triggers a full collection scroll; opt-in only. See bead axon_rust-lu6a.
+    #[arg(global = true, long = "by-schema-version", action = ArgAction::SetTrue)]
+    pub(in crate::core::config) sources_by_schema_version: bool,
+
     /// Bypass Content Security Policy in Chrome (helps pages that block inline JS via CSP)
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::core::config) bypass_csp: bool,
