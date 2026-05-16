@@ -1,5 +1,5 @@
 # src/mcp — Axon MCP Server Guide
-Last Modified: 2026-05-09
+Last Modified: 2026-05-16
 
 ## Purpose
 `src/mcp` implements the Axon Model Context Protocol server (`axon mcp`) that exposes crawler/RAG capabilities through a single MCP tool.
@@ -28,6 +28,7 @@ mcp/
 │   ├── handlers_query.rs           # query, retrieve, search, map, scrape, ask, research
 │   ├── handlers_elicit.rs          # elicitation prompts
 │   ├── handlers_system.rs          # doctor, domains, sources, stats, status, artifacts, help
+│   ├── handlers_vertical_scrape.rs # vertical_scrape action — DISCOVERY ONLY (list/capabilities)
 │   ├── handlers_system/
 │   │   └── screenshot.rs           # screenshot handler split off from handlers_system
 │   ├── artifacts.rs                # Artifact response wrapper
@@ -99,8 +100,19 @@ Domains (`action`):
 - `sources`
 - `stats`
 - `artifacts`
+- `vertical_scrape`
 
 This pattern is mandatory. Do not add separate MCP tools for each operation.
+
+### `vertical_scrape` — Discovery Only
+
+`vertical_scrape` exposes the vertical extractor **catalog**. It does NOT run extraction.
+
+- `subaction=list` — returns every `ExtractorInfo` from `src/extract::list_extractors()`
+- `subaction=capabilities` — returns metadata for a single extractor (by `extractor` param)
+- `subaction=run` — **removed**. Returns `invalid_params` with a redirect message: use `action=scrape url=<url>` instead — `services::scrape::scrape` calls `dispatch_by_url()` before the generic HTTP path when `cfg.enable_verticals` is true (default), so extractors fire automatically.
+
+This split means clients that want to discover what URL patterns Axon supports query `vertical_scrape:list`, then call `scrape` against any URL. See `src/extract/CLAUDE.md` for the framework, and `src/mcp/server/handlers_vertical_scrape.rs:1-9` for the rationale.
 
 ## Current Action Map
 

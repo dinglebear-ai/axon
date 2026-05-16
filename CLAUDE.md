@@ -1,5 +1,5 @@
 # Axon CLI (Rust + Spider.rs)
-Last Modified: 2026-05-09
+Last Modified: 2026-05-16
 
 Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
 
@@ -167,8 +167,11 @@ High-level subsystem map:
   - `src/cli/*` command handlers
   - `src/core/config/{cli,parse,types}.rs` flag/env parsing and runtime config resolution
 - Crawl + content:
-  - `src/crawl/engine.rs`
-  - `src/core/http.rs` and `src/core/content.rs`
+  - `src/crawl/engine.rs` (collector pipeline runs antibot detect, structured-data pass, DOM ladder before commit)
+  - `src/core/http.rs` and `src/core/content.rs` (including `extract_ladder.rs` retry strategy)
+- Vertical extractors:
+  - `src/extract/` — per-site extractor framework (registry + 13 verticals: github_repo, pypi, npm, crates_io, reddit, etc.) — see `src/extract/CLAUDE.md`
+  - Auto-routed from `services::scrape::scrape` via `dispatch_by_url()` when `cfg.enable_verticals = true` (default on)
 - Async jobs:
   - `src/jobs/lite.rs` + `src/jobs/lite/` (SQLite-backed enqueue/query/store/cancel)
   - `src/jobs/lite/workers.rs` + `src/jobs/lite/workers/runners/{crawl,embed,extract,ingest}.rs` (in-process worker lanes)
@@ -355,6 +358,9 @@ The `ServiceContext` (in `src/services/context.rs`) is constructed at startup an
 See `src/jobs/CLAUDE.md` for the `JobBackend` trait and `LiteBackend` details, and `src/services/CLAUDE.md` for the `ServiceJobRuntime` abstraction.
 
 ## Gotchas
+
+### `scrape` auto-routes to vertical extractors
+With `cfg.enable_verticals = true` (the default), `services::scrape::scrape` calls `src/extract::dispatch_by_url()` before the generic HTTP path. Any URL matching a registered vertical (github_repo, pypi, npm, etc. — see `src/extract/CLAUDE.md`) returns a richer `ScrapedDoc` with `extractor_name`/`extractor_version` payload fields, not the raw HTML→markdown output. Disable in `~/.axon/config.toml` with `enable_verticals = false` for A/B comparison or to force the generic path. The MCP `vertical_scrape` action is **discovery-only** (`list`/`capabilities`); `subaction=run` was removed in favor of routing through `scrape`.
 
 ### `--wait false` (default) = fire-and-forget
 By default, `crawl`, `extract`, `embed`, and `ingest` enqueue jobs and return immediately. Use `--wait true` to block until completion. Without workers running, enqueued jobs will pend forever.

@@ -1,5 +1,5 @@
 # src/crawl — Spider.rs Crawl Engine
-Last Modified: 2026-05-09
+Last Modified: 2026-05-16
 
 Wraps spider.rs for site crawling with HTTP and Chrome rendering paths.
 
@@ -10,8 +10,13 @@ crawl/
 ├── engine.rs              # Module root. `run_crawl_once()` (line 96), `run_sitemap_only()` (215), `should_fallback_to_chrome()` (66)
 ├── engine/
 │   ├── runtime.rs         # configure_website()/configure_website_with_crawl_id() — spider Website builder, control-thread wiring, request/identity settings
-│   ├── collector.rs       # Crawl collection pipeline
-│   ├── collector/         # Collector submodules
+│   ├── collector.rs       # Crawl collection pipeline — runs antibot detect + structured-data pass on each page
+│   ├── collector/         # Per-page collection submodules
+│   │   ├── page.rs            # Per-page handler: calls `detect_challenge` (antibot), structured-data pass, DOM ladder
+│   │   ├── manifest.rs        # Crawl manifest accumulator
+│   │   ├── manifest_tests.rs  # sidecar tests for manifest.rs
+│   │   ├── chrome_tasks.rs    # Per-page Chrome render tasks
+│   │   └── util.rs            # Shared collector helpers
 │   ├── map.rs             # Map-mode helpers
 │   ├── map/               # `crawl_and_collect_map()` lives here (engine/map/strategy.rs)
 │   ├── sitemap.rs         # `append_sitemap_backfill()`, sitemap discovery + filtering, `<lastmod>` parsing
@@ -56,6 +61,18 @@ website.with_retry(retries as u8)   // clamp to u8 — must not exceed 255
 `with_no_control_thread(false)` enables spider's control handler — **do not set to `true`**, it breaks graceful cancel.
 
 `scrape.rs`, `thin_refetch.rs`, and `content/engine.rs` have their **own independent** `Website::new()` paths — keep retry, `custom_headers`, and UA settings in sync when changing `configure_website()` behavior.
+
+### Per-Page Passes (Collector Pipeline)
+
+`engine/collector/page.rs` runs three passes on every collected HTML page **before** the page is committed to the manifest. Each is independently bounded by a `cfg.*_max_bytes` cap to keep large HTML pages cheap.
+
+| Pass | Function | Cap (env) | Triggered when | Outcome on hit |
+|------|----------|-----------|----------------|----------------|
+| **Antibot detection** (gc59 / jej7.1) | `core::http::detect_challenge` | `cfg.antibot_max_body_scan_bytes` (env `AXON_ANTIBOT_MAX_BODY_SCAN_BYTES`, default 150 KiB) | 8 WAF signatures matched in scanned prefix | Page is skipped — not embedded, not added to manifest; logged as `antibot.detected` |
+| **Structured-data pass** (jej7.2 / xvu9 / d5mb) | JSON-LD + `__NEXT_DATA__` + `__next_f` walkers (1jto, 2dhc) | `cfg.structured_data_max_bytes` (env `AXON_STRUCTURED_DATA_MAX_BYTES`, default 64 KiB) | Page has structured-data island | Output is attached to `ManifestEntry.structured` and flows through to `ScrapedDoc.structured` |
+| **DOM retry ladder** (jh32) | `core::content::extract_ladder` | `cfg.ladder_body_multiplier` (env `AXON_LADDER_BODY_MULTIPLIER`) | Page is thin after initial parse and `cfg.ladder_strategy` allows it | Re-parses with progressively richer DOM strategies before triggering Chrome fallback — saves Chrome resources on near-misses |
+
+All three are feature-gated by `cfg.enable_*` toggles introduced in `zehr`; defaults make them on. Antibot detection runs first because there's no point running structured-data/ladder against a challenge page.
 
 ### Auto-Switch Logic
 `try_auto_switch()` triggers Chrome fallback when:
