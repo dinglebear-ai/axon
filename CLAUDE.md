@@ -572,6 +572,51 @@ foo/
 - When splitting an existing `foo/mod.rs`: copy it to `foo.rs`, delete `foo/mod.rs` — the submodule files stay in `foo/` unchanged
 - This applies everywhere: `src/`, `src/*/`, nested modules — no exceptions
 
+### Test files — sidecar `_tests.rs` convention (ENFORCED)
+
+**Tests live in sibling files**, not inline `#[cfg(test)] mod tests { ... }` blocks. For each source file with tests, create a sibling `_tests.rs` file and declare it inside the source with the `#[path]` attribute:
+
+```plaintext
+foo.rs          ← source code
+foo_tests.rs    ← sidecar test file (one per original `#[cfg(test)] mod X` block)
+```
+
+In `foo.rs`:
+
+```rust
+#[cfg(test)]
+#[path = "foo_tests.rs"]
+mod tests;
+```
+
+In `foo_tests.rs`:
+
+```rust
+use super::*;  // tests still see foo.rs's private items
+
+#[test]
+fn it_works() { ... }
+```
+
+**Rules:**
+
+- **One sidecar per original `#[cfg(test)] mod X { ... }` block.** Never wrap multiple blocks under a single `mod tests` — this breaks `cargo test foo::<orig_mod_name>::test_x` selectors and risks visibility escalation. If `foo.rs` had `mod tests`, `mod legacy`, and `mod proptest_tests`, emit three sidecar files: `foo_tests.rs`, `foo_legacy_tests.rs`, `foo_proptest_tests.rs`, with three matching `#[path]` declarations in `foo.rs`.
+- **Source-side `mod` name must match the original block's mod name** (`mod legacy`, `mod proptest_tests`, not always `mod tests`). Test selectors stay identical to pre-migration.
+- **Why `#[path]`?** It decouples disk location from module hierarchy. The file is a sibling of `foo.rs` on disk, but the module is a **child** of `foo`, so `use super::*;` keeps private-item access. A sibling-declared `mod foo_tests;` (without `#[path]`) would make `foo_tests` a sibling of `foo` in the module tree and lose private access.
+- **Compound cfg gates carry over.** A source with `#[cfg(all(test, unix))]` becomes:
+  ```rust
+  #[cfg(all(test, unix))]
+  #[path = "foo_tests.rs"]
+  mod tests;
+  ```
+  The sidecar inherits the parent's gate; do not re-gate items inside it.
+- **`mod test_support;` and other non-`#[cfg(test)]` helper modules are NOT sidecars** — they stay declared as regular submodules with their files in `foo/`.
+- **Footgun.** If a sidecar `foo_tests.rs` itself declares `mod bar;` (without `#[path]`), rustc resolves `bar` relative to the sidecar's on-disk location and looks for `foo_tests/bar.rs`, *not* `foo/bar.rs`. Inline the submodule or pass an explicit `#[path]` from the sidecar.
+- **Monolith policy.** `**/*_tests.*` is exempt from the 500-line cap — sidecars can hold large test suites without splitting.
+- **No `xtask` CI guardrail** for inline-test regressions; the convention is enforced by docs + reviewer attention.
+
+Worked examples in the repo: `src/cli/commands/mcp.rs` + `src/cli/commands/mcp_tests.rs` (single block), `src/ingest/sessions.rs` + `src/ingest/sessions_tests.rs` + `src/ingest/sessions_decode_tests.rs` (multi-block).
+
 ## Worktrees
 
 - Use `.worktrees/` under the repository root for all future git worktrees for this repo.
