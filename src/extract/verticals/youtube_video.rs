@@ -13,10 +13,7 @@ pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "youtube_video",
     label: "YouTube Video",
     description: "Matches YouTube video URLs. Use `axon ingest` for full transcript extraction via yt-dlp.",
-    url_patterns: &[
-        "https://youtube.com/watch?v={id}",
-        "https://youtu.be/{id}",
-    ],
+    url_patterns: &["https://youtube.com/watch?v={id}", "https://youtu.be/{id}"],
     auto_dispatch: false,
 };
 
@@ -34,7 +31,11 @@ pub fn matches(url: &str) -> bool {
             return parsed.query_pairs().any(|(k, _)| k == "v");
         }
         // /shorts/{id} or /live/{id}
-        let segs: Vec<&str> = path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        let segs: Vec<&str> = path
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         if segs.len() >= 2 && matches!(segs[0], "shorts" | "live" | "embed") {
             return true;
         }
@@ -82,7 +83,12 @@ fn extract_video_id_simple(url: &str) -> Option<String> {
                 return Some(v.into_owned());
             }
         }
-        let segs: Vec<&str> = parsed.path().trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        let segs: Vec<&str> = parsed
+            .path()
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         if segs.len() >= 2 && matches!(segs[0], "shorts" | "live" | "embed") {
             return Some(segs[1].to_string());
         }

@@ -16,10 +16,7 @@ pub const INFO: ExtractorInfo = ExtractorInfo {
     name: "ebay",
     label: "eBay Listing",
     description: "Attempts eBay listing extraction. Antibot-gated — explicit-only via --vertical ebay.",
-    url_patterns: &[
-        "https://ebay.com/itm/{id}",
-        "https://ebay.com/sch/*",
-    ],
+    url_patterns: &["https://ebay.com/itm/{id}", "https://ebay.com/sch/*"],
     auto_dispatch: false,
 };
 
@@ -53,33 +50,47 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .header("Accept-Language", "en-US,en;q=0.9")
         .send()
         .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status: 0 })?;
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        403 | 503 => return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
-            vertical: INFO.name,
-            vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
-        }),
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        403 | 503 => {
+            return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
+                vertical: INFO.name,
+                vendor: crate::services::error::ChallengeVendor::Other("ebay-bot"),
+            });
+        }
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
+        }
     }
 
-    let body = resp.text().await.map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status,
-    })?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status,
+        })?;
 
     // Heuristic antibot detection
     let is_blocked = body.contains("Robot or human?")
@@ -100,7 +111,10 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .and_then(|j| j["name"].as_str())
         .map(str::to_string);
 
-    let mut md = format!("# eBay Listing\n\n");
+    let mut md = "# eBay Listing
+
+"
+    .to_string();
     if let Some(ref t) = title {
         md = format!("# {t}\n\n");
     }
@@ -109,7 +123,7 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
             md.push_str(&format!("**Price:** {price}\n"));
         }
         if let Some(condition) = j["offers"]["itemCondition"].as_str() {
-            let condition_short = condition.split('/').last().unwrap_or(condition);
+            let condition_short = condition.split('/').next_back().unwrap_or(condition);
             md.push_str(&format!("**Condition:** {condition_short}\n"));
         }
         if let Some(brand) = j["brand"]["name"].as_str() {

@@ -1,4 +1,4 @@
-use super::redact_session_text;
+use super::*;
 
 #[test]
 fn session_text_redacts_common_secret_tokens() {

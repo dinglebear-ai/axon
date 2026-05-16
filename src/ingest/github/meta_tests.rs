@@ -11,7 +11,7 @@ fn make_common_params() -> GitHubPayloadParams {
 }
 
 #[test]
-fn payload_has_31_keys() {
+fn payload_has_32_keys() {
     let params = make_common_params();
     let payload = build_github_payload(&params);
     let obj = payload.as_object().expect("payload is an object");

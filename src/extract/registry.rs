@@ -68,7 +68,9 @@ pub async fn dispatch_by_url(
     if verticals::docker_hub::INFO.auto_dispatch && verticals::docker_hub::matches(url) {
         return Some(verticals::docker_hub::extract(url, ctx).await);
     }
-    if verticals::huggingface_model::INFO.auto_dispatch && verticals::huggingface_model::matches(url) {
+    if verticals::huggingface_model::INFO.auto_dispatch
+        && verticals::huggingface_model::matches(url)
+    {
         return Some(verticals::huggingface_model::extract(url, ctx).await);
     }
     if verticals::dev_to::INFO.auto_dispatch && verticals::dev_to::matches(url) {
@@ -88,90 +90,53 @@ pub async fn dispatch_by_url(
 ///
 /// Returns `Err(VerticalUnsupportedUrl)` if the URL doesn't match the
 /// named extractor's `matches()` predicate.
+/// Guard: reject the URL if it does not match the named extractor, then call extract.
+async fn guard_and_dispatch<F, Fut>(
+    vertical: &'static str,
+    matches: bool,
+    url: &str,
+    extract: F,
+) -> Result<ScrapedDoc, VerticalError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<ScrapedDoc, VerticalError>>,
+{
+    if !matches {
+        return Err(VerticalError::VerticalUnsupportedUrl {
+            vertical,
+            url: url.to_string(),
+        });
+    }
+    extract().await
+}
+
 pub async fn dispatch_by_name(
     name: &str,
     url: &str,
     ctx: &VerticalContext,
 ) -> Result<ScrapedDoc, VerticalError> {
+    macro_rules! dispatch {
+        ($mod:ident) => {{
+            guard_and_dispatch(stringify!($mod), verticals::$mod::matches(url), url, || {
+                verticals::$mod::extract(url, ctx)
+            })
+            .await
+        }};
+    }
     match name {
-        "github_repo" => {
-            if !verticals::github_repo::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "github_repo", url: url.to_string() });
-            }
-            verticals::github_repo::extract(url, ctx).await
-        }
-        "github_release" => {
-            if !verticals::github_release::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "github_release", url: url.to_string() });
-            }
-            verticals::github_release::extract(url, ctx).await
-        }
-        "reddit" => {
-            if !verticals::reddit::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "reddit", url: url.to_string() });
-            }
-            verticals::reddit::extract(url, ctx).await
-        }
-        "pypi" => {
-            if !verticals::pypi::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "pypi", url: url.to_string() });
-            }
-            verticals::pypi::extract(url, ctx).await
-        }
-        "npm" => {
-            if !verticals::npm::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "npm", url: url.to_string() });
-            }
-            verticals::npm::extract(url, ctx).await
-        }
-        "crates_io" => {
-            if !verticals::crates_io::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "crates_io", url: url.to_string() });
-            }
-            verticals::crates_io::extract(url, ctx).await
-        }
-        "docker_hub" => {
-            if !verticals::docker_hub::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "docker_hub", url: url.to_string() });
-            }
-            verticals::docker_hub::extract(url, ctx).await
-        }
-        "huggingface_model" => {
-            if !verticals::huggingface_model::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "huggingface_model", url: url.to_string() });
-            }
-            verticals::huggingface_model::extract(url, ctx).await
-        }
-        "dev_to" => {
-            if !verticals::dev_to::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "dev_to", url: url.to_string() });
-            }
-            verticals::dev_to::extract(url, ctx).await
-        }
-        "shopify" => {
-            if !verticals::shopify::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "shopify", url: url.to_string() });
-            }
-            verticals::shopify::extract(url, ctx).await
-        }
-        "youtube_video" => {
-            if !verticals::youtube_video::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "youtube_video", url: url.to_string() });
-            }
-            verticals::youtube_video::extract(url, ctx).await
-        }
-        "amazon" => {
-            if !verticals::amazon::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "amazon", url: url.to_string() });
-            }
-            verticals::amazon::extract(url, ctx).await
-        }
-        "ebay" => {
-            if !verticals::ebay::matches(url) {
-                return Err(VerticalError::VerticalUnsupportedUrl { vertical: "ebay", url: url.to_string() });
-            }
-            verticals::ebay::extract(url, ctx).await
-        }
+        "github_repo" => dispatch!(github_repo),
+        "github_release" => dispatch!(github_release),
+        "reddit" => dispatch!(reddit),
+        "pypi" => dispatch!(pypi),
+        "npm" => dispatch!(npm),
+        "crates_io" => dispatch!(crates_io),
+        "docker_hub" => dispatch!(docker_hub),
+        "huggingface_model" => dispatch!(huggingface_model),
+        "dev_to" => dispatch!(dev_to),
+        "shopify" => dispatch!(shopify),
+        "youtube_video" => dispatch!(youtube_video),
+        "amazon" => dispatch!(amazon),
+        "ebay" => dispatch!(ebay),
         other => Err(VerticalError::VerticalUnsupportedUrl {
             vertical: "unknown",
             url: format!("no extractor named '{other}'"),
@@ -191,126 +156,189 @@ mod tests {
         ));
         for info in list() {
             let result = dispatch_by_name(info.name, "https://example.com", &ctx).await;
-            match result {
-                Err(VerticalError::VerticalUnsupportedUrl { vertical, .. }) => {
-                    assert_ne!(
-                        vertical, "unknown",
-                        "Extractor '{}' is in catalog but missing from dispatch_by_name match arm",
-                        info.name
-                    );
-                }
-                _ => {}
+            if let Err(VerticalError::VerticalUnsupportedUrl { vertical, .. }) = result {
+                assert_ne!(
+                    vertical, "unknown",
+                    "Extractor '{}' is in catalog but missing from dispatch_by_name match arm",
+                    info.name
+                );
             }
         }
     }
 
     #[test]
     fn dispatch_by_url_matches_github_repo() {
-        assert!(verticals::github_repo::matches("https://github.com/rust-lang/rust"));
+        assert!(verticals::github_repo::matches(
+            "https://github.com/rust-lang/rust"
+        ));
     }
 
     #[test]
     fn dispatch_by_url_falls_through_for_unknown_url() {
-        assert!(!verticals::github_repo::matches("https://example.com/some/page"));
+        assert!(!verticals::github_repo::matches(
+            "https://example.com/some/page"
+        ));
     }
 
     #[test]
     fn github_repo_matches_rejects_reserved_owner() {
-        assert!(!verticals::github_repo::matches("https://github.com/settings/profile"));
+        assert!(!verticals::github_repo::matches(
+            "https://github.com/settings/profile"
+        ));
     }
 
     #[test]
     fn github_repo_matches_rejects_sub_paths() {
-        assert!(!verticals::github_repo::matches("https://github.com/rust-lang/rust/pulls"));
+        assert!(!verticals::github_repo::matches(
+            "https://github.com/rust-lang/rust/pulls"
+        ));
     }
 
     #[test]
     fn github_repo_matches_rejects_non_github() {
-        assert!(!verticals::github_repo::matches("https://gitlab.com/user/repo"));
+        assert!(!verticals::github_repo::matches(
+            "https://gitlab.com/user/repo"
+        ));
     }
 
     #[test]
     fn github_release_matches_releases_path() {
-        assert!(verticals::github_release::matches("https://github.com/rust-lang/rust/releases"));
-        assert!(verticals::github_release::matches("https://github.com/rust-lang/rust/releases/tag/1.0.0"));
-        assert!(!verticals::github_release::matches("https://github.com/rust-lang/rust"));
+        assert!(verticals::github_release::matches(
+            "https://github.com/rust-lang/rust/releases"
+        ));
+        assert!(verticals::github_release::matches(
+            "https://github.com/rust-lang/rust/releases/tag/1.0.0"
+        ));
+        assert!(!verticals::github_release::matches(
+            "https://github.com/rust-lang/rust"
+        ));
     }
 
     #[test]
     fn reddit_matches_reddit_hosts() {
         assert!(verticals::reddit::matches("https://reddit.com/r/rust"));
-        assert!(verticals::reddit::matches("https://old.reddit.com/r/programming"));
+        assert!(verticals::reddit::matches(
+            "https://old.reddit.com/r/programming"
+        ));
         assert!(!verticals::reddit::matches("https://example.com/r/test"));
     }
 
     #[test]
     fn pypi_matches_project_paths() {
-        assert!(verticals::pypi::matches("https://pypi.org/project/requests"));
-        assert!(verticals::pypi::matches("https://pypi.org/project/requests/2.28.0"));
-        assert!(!verticals::pypi::matches("https://pypi.org/simple/requests"));
+        assert!(verticals::pypi::matches(
+            "https://pypi.org/project/requests"
+        ));
+        assert!(verticals::pypi::matches(
+            "https://pypi.org/project/requests/2.28.0"
+        ));
+        assert!(!verticals::pypi::matches(
+            "https://pypi.org/simple/requests"
+        ));
     }
 
     #[test]
     fn npm_matches_package_paths() {
         assert!(verticals::npm::matches("https://npmjs.com/package/react"));
-        assert!(verticals::npm::matches("https://www.npmjs.com/package/@types/node"));
+        assert!(verticals::npm::matches(
+            "https://www.npmjs.com/package/@types/node"
+        ));
         assert!(!verticals::npm::matches("https://npmjs.com/search?q=react"));
     }
 
     #[test]
     fn crates_io_matches_crates_paths() {
-        assert!(verticals::crates_io::matches("https://crates.io/crates/serde"));
-        assert!(verticals::crates_io::matches("https://crates.io/crates/serde/1.0.0"));
-        assert!(!verticals::crates_io::matches("https://crates.io/search?q=serde"));
+        assert!(verticals::crates_io::matches(
+            "https://crates.io/crates/serde"
+        ));
+        assert!(verticals::crates_io::matches(
+            "https://crates.io/crates/serde/1.0.0"
+        ));
+        assert!(!verticals::crates_io::matches(
+            "https://crates.io/search?q=serde"
+        ));
     }
 
     #[test]
     fn docker_hub_matches_repository_paths() {
-        assert!(verticals::docker_hub::matches("https://hub.docker.com/r/library/nginx"));
-        assert!(verticals::docker_hub::matches("https://hub.docker.com/_/nginx"));
-        assert!(!verticals::docker_hub::matches("https://hub.docker.com/search?q=nginx"));
+        assert!(verticals::docker_hub::matches(
+            "https://hub.docker.com/r/library/nginx"
+        ));
+        assert!(verticals::docker_hub::matches(
+            "https://hub.docker.com/_/nginx"
+        ));
+        assert!(!verticals::docker_hub::matches(
+            "https://hub.docker.com/search?q=nginx"
+        ));
     }
 
     #[test]
     fn youtube_video_matches_watch_urls() {
-        assert!(verticals::youtube_video::matches("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
-        assert!(verticals::youtube_video::matches("https://youtu.be/dQw4w9WgXcQ"));
-        assert!(!verticals::youtube_video::matches("https://youtube.com/channel/UCtest"));
+        assert!(verticals::youtube_video::matches(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ));
+        assert!(verticals::youtube_video::matches(
+            "https://youtu.be/dQw4w9WgXcQ"
+        ));
+        assert!(!verticals::youtube_video::matches(
+            "https://youtube.com/channel/UCtest"
+        ));
     }
 
     #[test]
     fn dev_to_matches_article_paths() {
-        assert!(verticals::dev_to::matches("https://dev.to/username/my-cool-article"));
+        assert!(verticals::dev_to::matches(
+            "https://dev.to/username/my-cool-article"
+        ));
         assert!(!verticals::dev_to::matches("https://dev.to/t/rust"));
         assert!(!verticals::dev_to::matches("https://dev.to/username"));
     }
 
     #[test]
     fn shopify_matches_product_paths() {
-        assert!(verticals::shopify::matches("https://mystore.myshopify.com/products/cool-shirt"));
-        assert!(!verticals::shopify::matches("https://github.com/products/cool-shirt"));
-        assert!(!verticals::shopify::matches("https://amazon.com/products/thing"));
+        assert!(verticals::shopify::matches(
+            "https://mystore.myshopify.com/products/cool-shirt"
+        ));
+        assert!(!verticals::shopify::matches(
+            "https://github.com/products/cool-shirt"
+        ));
+        assert!(!verticals::shopify::matches(
+            "https://amazon.com/products/thing"
+        ));
     }
 
     #[test]
     fn huggingface_model_matches_model_paths() {
-        assert!(verticals::huggingface_model::matches("https://huggingface.co/openai/whisper-large"));
-        assert!(!verticals::huggingface_model::matches("https://huggingface.co/datasets/squad"));
-        assert!(!verticals::huggingface_model::matches("https://huggingface.co/spaces/gradio/hello"));
+        assert!(verticals::huggingface_model::matches(
+            "https://huggingface.co/openai/whisper-large"
+        ));
+        assert!(!verticals::huggingface_model::matches(
+            "https://huggingface.co/datasets/squad"
+        ));
+        assert!(!verticals::huggingface_model::matches(
+            "https://huggingface.co/spaces/gradio/hello"
+        ));
     }
 
     #[test]
     fn amazon_matches_product_urls() {
-        assert!(verticals::amazon::matches("https://amazon.com/dp/B08N5WRWNW"));
-        assert!(verticals::amazon::matches("https://www.amazon.com/gp/product/B08N5WRWNW"));
-        assert!(verticals::amazon::matches("https://amazon.co.uk/dp/B08N5WRWNW"));
+        assert!(verticals::amazon::matches(
+            "https://amazon.com/dp/B08N5WRWNW"
+        ));
+        assert!(verticals::amazon::matches(
+            "https://www.amazon.com/gp/product/B08N5WRWNW"
+        ));
+        assert!(verticals::amazon::matches(
+            "https://amazon.co.uk/dp/B08N5WRWNW"
+        ));
         assert!(!verticals::amazon::matches("https://amazon.com/s?k=shirts"));
     }
 
     #[test]
     fn ebay_matches_listing_urls() {
         assert!(verticals::ebay::matches("https://ebay.com/itm/123456789"));
-        assert!(verticals::ebay::matches("https://www.ebay.co.uk/itm/987654321"));
+        assert!(verticals::ebay::matches(
+            "https://www.ebay.co.uk/itm/987654321"
+        ));
         assert!(!verticals::ebay::matches("https://ebay.com/motors"));
     }
 }

@@ -118,8 +118,8 @@ pub(super) async fn prepare_embed_docs(
         // present (e.g. single-URL embed, plain file embed).
         let structured = manifest_structured
             .as_ref()
-            .and_then(|blob| structured_payload_from_blob(blob))
-            .or_else(|| remote_structured.clone());
+            .and_then(structured_payload_from_blob)
+            .or(remote_structured.clone());
         prepared.push(PreparedDoc {
             url,
             domain,

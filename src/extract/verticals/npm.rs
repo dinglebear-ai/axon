@@ -65,32 +65,51 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header("User-Agent", format!("axon/{} (+https://github.com/jmagar/axon_rust)", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!(
+                "axon/{} (+https://github.com/jmagar/axon_rust)",
+                env!("CARGO_PKG_VERSION")
+            ),
+        )
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status: 0 })?;
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
+        }
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|_| {
-        VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status }
-    })?;
+    let data: serde_json::Value =
+        resp.json()
+            .await
+            .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            })?;
 
     let name = data["name"].as_str().unwrap_or(&pkg_name);
     let description = data["description"].as_str().unwrap_or("");
@@ -102,7 +121,10 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let author = if let Some(s) = data["author"].as_str() {
         s.to_string()
     } else if let Some(obj) = data["author"].as_object() {
-        obj.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string()
+        obj.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
     } else {
         String::new()
     };

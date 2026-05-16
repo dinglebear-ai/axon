@@ -45,7 +45,11 @@ pub fn matches(url: &str) -> bool {
         }
     }
     let path = parsed.path();
-    let segs: Vec<&str> = path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    let segs: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
     // Must contain /products/{handle} (handle must be non-empty, no dots)
     if let Some(pos) = segs.iter().position(|&s| s == "products") {
         let handle_idx = pos + 1;
@@ -61,17 +65,22 @@ fn extract_handle(url: &str) -> Option<(String, String)> {
     let parsed = url::Url::parse(url).ok()?;
     let host = parsed.host_str()?.to_string();
     let path = parsed.path().to_string();
-    let segs: Vec<&str> = path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    let segs: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
     let pos = segs.iter().position(|&s| s == "products")?;
     let handle = segs.get(pos + 1)?.to_string();
     Some((host, handle))
 }
 
 pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
-    let (host, handle) = extract_handle(url).ok_or_else(|| VerticalError::VerticalUnsupportedUrl {
-        vertical: INFO.name,
-        url: url.to_string(),
-    })?;
+    let (host, handle) =
+        extract_handle(url).ok_or_else(|| VerticalError::VerticalUnsupportedUrl {
+            vertical: INFO.name,
+            url: url.to_string(),
+        })?;
 
     let api_url = format!("https://{host}/products/{handle}.json");
 
@@ -82,32 +91,51 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header("User-Agent", format!("axon/{} (+https://github.com/jmagar/axon_rust)", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!(
+                "axon/{} (+https://github.com/jmagar/axon_rust)",
+                env!("CARGO_PKG_VERSION")
+            ),
+        )
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status: 0 })?;
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
+        }
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|_| {
-        VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status }
-    })?;
+    let data: serde_json::Value =
+        resp.json()
+            .await
+            .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            })?;
 
     let product = &data["product"];
     let title_str = product["title"].as_str().unwrap_or(&handle);
@@ -118,10 +146,17 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
     let body_text: String = body_html
         .chars()
         .scan(false, |in_tag, c| {
-            if c == '<' { *in_tag = true; Some(None) }
-            else if c == '>' { *in_tag = false; Some(None) }
-            else if *in_tag { Some(None) }
-            else { Some(Some(c)) }
+            if c == '<' {
+                *in_tag = true;
+                Some(None)
+            } else if c == '>' {
+                *in_tag = false;
+                Some(None)
+            } else if *in_tag {
+                Some(None)
+            } else {
+                Some(Some(c))
+            }
         })
         .flatten()
         .take(500)

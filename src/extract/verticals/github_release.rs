@@ -36,6 +36,76 @@ pub fn matches(url: &str) -> bool {
     segs[2] == "releases"
 }
 
+fn format_release_markdown(
+    owner: &str,
+    repo: &str,
+    url: &str,
+    data: &serde_json::Value,
+) -> (String, Option<String>) {
+    let mut md = format!(
+        "# {owner}/{repo} — Releases
+
+"
+    );
+    let title;
+    if data.is_array() {
+        title = Some(format!("{owner}/{repo} releases"));
+        let releases = data.as_array().unwrap();
+        for r in releases.iter().take(5) {
+            let tag = r["tag_name"].as_str().unwrap_or("unknown");
+            let name = r["name"].as_str().unwrap_or(tag);
+            let published = r["published_at"].as_str().unwrap_or("");
+            let body = r["body"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .take(400)
+                .collect::<String>();
+            md.push_str(&format!(
+                "## {name} ({tag})
+"
+            ));
+            if !published.is_empty() {
+                md.push_str(&format!(
+                    "Published: {published}
+
+"
+                ));
+            }
+            if !body.is_empty() {
+                md.push_str(&body);
+                md.push_str(
+                    "
+
+",
+                );
+            }
+        }
+    } else {
+        let tag = data["tag_name"].as_str().unwrap_or("unknown");
+        let name = data["name"].as_str().unwrap_or(tag);
+        let published = data["published_at"].as_str().unwrap_or("");
+        let body = data["body"].as_str().unwrap_or("");
+        title = Some(format!("{name} ({tag})"));
+        md.push_str(&format!(
+            "## {name} ({tag})
+"
+        ));
+        if !published.is_empty() {
+            md.push_str(&format!(
+                "Published: {published}
+
+"
+            ));
+        }
+        if !body.is_empty() {
+            md.push_str(body);
+            md.push('\n');
+        }
+    }
+    md.push_str(&format!("\n**GitHub:** {url}\n"));
+    (md, title)
+}
 pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError> {
     let parsed = url::Url::parse(url).map_err(|_| VerticalError::VerticalUnsupportedUrl {
         vertical: INFO.name,
@@ -66,79 +136,62 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let mut req = client
         .get(&api_url)
-        .header("User-Agent", format!("axon/{} (+https://github.com/jmagar/axon_rust)", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!(
+                "axon/{} (+https://github.com/jmagar/axon_rust)",
+                env!("CARGO_PKG_VERSION")
+            ),
+        )
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28");
 
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("Bearer {token}"));
-        }
+    if let Ok(token) = std::env::var("GITHUB_TOKEN")
+        && !token.is_empty()
+    {
+        req = req.header("Authorization", format!("Bearer {token}"));
     }
 
-    let resp = req.send().await.map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status: 0,
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
-    }
-
-    let data: serde_json::Value = resp.json().await.map_err(|_| {
-        VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status }
-    })?;
-
-    let mut md = format!("# {owner}/{repo} — Releases\n\n");
-    let title;
-
-    if data.is_array() {
-        title = Some(format!("{owner}/{repo} releases"));
-        let releases = data.as_array().unwrap();
-        for r in releases.iter().take(5) {
-            let tag = r["tag_name"].as_str().unwrap_or("unknown");
-            let name = r["name"].as_str().unwrap_or(tag);
-            let published = r["published_at"].as_str().unwrap_or("");
-            let body = r["body"].as_str().unwrap_or("").chars().take(400).collect::<String>();
-            md.push_str(&format!("## {name} ({tag})\n"));
-            if !published.is_empty() {
-                md.push_str(&format!("Published: {published}\n\n"));
-            }
-            if !body.is_empty() {
-                md.push_str(&body);
-                md.push_str("\n\n");
-            }
-        }
-    } else {
-        let tag = data["tag_name"].as_str().unwrap_or("unknown");
-        let name = data["name"].as_str().unwrap_or(tag);
-        let published = data["published_at"].as_str().unwrap_or("");
-        let body = data["body"].as_str().unwrap_or("");
-        title = Some(format!("{name} ({tag})"));
-        md.push_str(&format!("## {name} ({tag})\n"));
-        if !published.is_empty() {
-            md.push_str(&format!("Published: {published}\n\n"));
-        }
-        if !body.is_empty() {
-            md.push_str(body);
-            md.push('\n');
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
         }
     }
 
-    md.push_str(&format!("\n**GitHub:** {url}\n"));
+    let data: serde_json::Value =
+        resp.json()
+            .await
+            .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            })?;
+
+    let (md, title) = format_release_markdown(owner, repo, url, &data);
 
     Ok(ScrapedDoc {
         url: url.to_string(),

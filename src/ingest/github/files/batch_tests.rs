@@ -1,4 +1,4 @@
-use super::GitHubFileEmbedStats;
+use super::*;
 
 #[test]
 fn failed_batch_accounting_counts_batches_docs_and_chunks() {

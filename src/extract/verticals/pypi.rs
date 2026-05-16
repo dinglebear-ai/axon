@@ -62,31 +62,50 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
 
     let resp = client
         .get(&api_url)
-        .header("User-Agent", format!("axon/{} (+https://github.com/jmagar/axon_rust)", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            format!(
+                "axon/{} (+https://github.com/jmagar/axon_rust)",
+                env!("CARGO_PKG_VERSION")
+            ),
+        )
         .send()
         .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status: 0 })?;
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
+        }
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|_| {
-        VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status }
-    })?;
+    let data: serde_json::Value =
+        resp.json()
+            .await
+            .map_err(|_| VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            })?;
 
     let info = &data["info"];
     let pkg_name = info["name"].as_str().unwrap_or(name);

@@ -552,16 +552,13 @@ impl AxonToolResponse {
 /// - `run` — invoke the named extractor; does NOT fall through to generic scrape
 /// - `list` — return the extractor catalog (id, label, description, url_patterns)
 /// - `capabilities` — per-extractor auth_required + rate_limit info
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VerticalScrapeSubaction {
+    #[default]
     Run,
     List,
     Capabilities,
-}
-
-impl Default for VerticalScrapeSubaction {
-    fn default() -> Self { Self::Run }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
