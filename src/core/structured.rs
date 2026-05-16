@@ -24,6 +24,7 @@
 
 mod data_island;
 mod json_ld;
+mod next_app;
 mod next_data;
 mod sveltekit;
 #[cfg(test)]
@@ -31,6 +32,9 @@ mod tests;
 
 pub use data_island::{DEFAULT_MAX_CHUNKS as DATA_ISLAND_DEFAULT_MAX_CHUNKS, extract_data_islands};
 pub use json_ld::{extract_json_ld, sanitize_json_newlines};
+pub use next_app::{
+    DEFAULT_MAX_NEXT_APP_STRINGS, extract_next_app_strings, is_app_router_page,
+};
 pub use next_data::extract_next_data;
 pub use sveltekit::extract_sveltekit;
 
