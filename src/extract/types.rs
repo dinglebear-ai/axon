@@ -1,0 +1,37 @@
+//! Shared types returned by vertical extractors.
+
+/// Output of a successful vertical extraction.
+///
+/// Carries enough information to build a `PreparedDoc` for embedding.
+/// The `extractor_name` + `extractor_version` fields flow through to the
+/// Qdrant payload so retrieval can filter by source extractor.
+#[derive(Debug, Clone)]
+pub struct ScrapedDoc {
+    pub url: String,
+    pub markdown: String,
+    pub title: Option<String>,
+    /// Stable extractor identifier (e.g. `"github_repo"`, `"pypi"`).
+    pub extractor_name: &'static str,
+    /// Monotone version bump when extraction logic changes in a
+    /// backward-incompatible way (triggers reindex on upgrade).
+    pub extractor_version: u32,
+    /// Optional structured-data blob (JSON-LD, API response fragment).
+    pub structured: Option<serde_json::Value>,
+}
+
+/// Catalog entry for one registered vertical extractor.
+#[derive(Debug, Clone)]
+pub struct ExtractorInfo {
+    /// Stable machine-readable name — used as the `dispatch_by_name` key.
+    pub name: &'static str,
+    /// Human-readable label for `axon scrape --list-verticals`.
+    pub label: &'static str,
+    /// One-sentence description.
+    pub description: &'static str,
+    /// URL patterns this extractor claims (for documentation / discovery).
+    pub url_patterns: &'static [&'static str],
+    /// Whether this extractor fires in automatic URL-based dispatch
+    /// (`dispatch_by_url`). Set to `false` for antibot-gated or ToS-risky
+    /// extractors that require explicit opt-in via `--vertical <name>`.
+    pub auto_dispatch: bool,
+}
