@@ -10,7 +10,9 @@ use super::super::is_excluded_url_path;
 use super::super::{
     CrawlSummary, MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url,
 };
-use crate::core::content::{bytes_to_markdown, url_to_stable_filename};
+use crate::core::content::{
+    LadderThresholds, LadderTier, extract_with_ladder, url_to_stable_filename,
+};
 use crate::crawl::manifest::ManifestEntry;
 
 pub struct CollectorConfig {
@@ -26,6 +28,7 @@ pub struct CollectorConfig {
     pub chrome_ws_url: Option<String>,
     pub chrome_timeout_secs: u64,
     pub output_dir: PathBuf,
+    pub ladder_thresholds: LadderThresholds,
 }
 
 pub enum PageOutcome {
@@ -47,7 +50,19 @@ pub enum PageOutcome {
 }
 
 pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> PageOutcome {
-    let trimmed = bytes_to_markdown(html_bytes, col.selector_config.as_ref());
+    let ladder = extract_with_ladder(
+        html_bytes,
+        col.selector_config.as_ref(),
+        col.ladder_thresholds,
+    );
+    if ladder.tier != LadderTier::Scored {
+        crate::core::logging::log_debug(&format!(
+            "ladder.tier_used url={url} tier={} words={}",
+            ladder.tier.as_str(),
+            ladder.word_count,
+        ));
+    }
+    let trimmed = ladder.markdown;
     let chars = trimmed.len();
 
     if trimmed.is_empty() {

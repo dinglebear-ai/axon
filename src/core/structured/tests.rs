@@ -313,6 +313,41 @@ fn extract_json_ld_handles_mixed_case_close_tag() {
 }
 
 #[test]
+fn extract_json_ld_handles_mixed_case_open_tag() {
+    // cubic finding #1 (json_ld.rs:16): the `<script` opener scan was
+    // case-sensitive — valid `<SCRIPT type="application/ld+json">` or
+    // `<Script ...>` tags were silently skipped. The fix swaps the
+    // bytewise `.find()` for `ascii_case_insensitive_find`.
+    let html = r#"<SCRIPT type="application/ld+json">{"@type":"Article","name":"Up"}</SCRIPT>"#;
+    let results = extract_json_ld(html);
+    assert_eq!(results.len(), 1, "mixed-case <SCRIPT> opener must match");
+    assert_eq!(results[0]["@type"], "Article");
+    assert_eq!(results[0]["name"], "Up");
+
+    let mixed = r#"<Script type="application/LD+JSON">{"@type":"Product"}</Script>"#;
+    let results = extract_json_ld(mixed);
+    assert_eq!(results.len(), 1, "mixed-case <Script> opener must match");
+    assert_eq!(results[0]["@type"], "Product");
+}
+
+#[test]
+fn extract_json_ld_non_ascii_before_script_no_panic() {
+    // cubic finding #2 (json_ld.rs:34): the old code called
+    // `remaining.to_lowercase()` before computing the close offset, then
+    // sliced the original `remaining` with that offset. On non-ASCII
+    // input the byte offset is wrong (German `ß` → `ss` shifts every
+    // following byte) and the slice can panic at a UTF-8 boundary.
+    // The fix searches on bytes and never lowercases the haystack —
+    // this test pins the regression by mixing multi-byte text with a
+    // valid JSON-LD block.
+    let html = "<p>weiß und groß — Δοκιμή 🌱</p>\
+                <script type=\"application/ld+json\">{\"@type\":\"Article\",\"headline\":\"Δοκιμή\"}</script>";
+    let results = extract_json_ld(html);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["headline"], "Δοκιμή");
+}
+
+#[test]
 fn sveltekit_preserves_non_ascii_string_literals() {
     // SvelteKit data payloads can include non-ASCII string values
     // (titles, descriptions in CJK / emoji). Per-byte `b as char` casting
