@@ -58,7 +58,7 @@ jobs:
     # Direct3D + windows-rs; cross-compiling that from Linux is fragile, so
     # the palette stays on native Windows. The main axon.exe is cross-compiled
     # in ci.yml instead.
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, axon]
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
