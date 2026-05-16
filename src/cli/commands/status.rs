@@ -208,10 +208,22 @@ fn crawl_progress_summary(
             if crawled == 0 && docs == 0 {
                 return None;
             }
-            if docs > 0 {
-                Some(format!("{crawled} crawled · {docs} docs"))
+            let errors = metrics
+                .get("error_pages")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let reclaim = reclaimed_suffix(job);
+            let error_suffix = if errors > 0 {
+                format!(" · {errors} errors")
             } else {
-                Some(format!("{crawled} crawled"))
+                String::new()
+            };
+            if docs > 0 {
+                Some(format!(
+                    "{crawled} crawled · {docs} docs{error_suffix}{reclaim}"
+                ))
+            } else {
+                Some(format!("{crawled} crawled{error_suffix}{reclaim}"))
             }
         }
         "completed" => {
@@ -243,7 +255,17 @@ fn crawl_progress_summary(
             }
             Some(summary)
         }
+        "pending" => reclaimed_suffix(job)
+            .strip_prefix(" · ")
+            .map(ToOwned::to_owned),
         _ => None,
+    }
+}
+
+fn reclaimed_suffix(job: &ServiceJob) -> String {
+    match job.error_text.as_deref().map(str::trim_start) {
+        Some(RECLAIMED_ERROR_TEXT) => " · reclaimed retry".to_string(),
+        _ => String::new(),
     }
 }
 

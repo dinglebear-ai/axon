@@ -19,8 +19,12 @@ pub(super) fn spawn_crawl_progress_persister(
                 "output_dir": output_dir,
                 "output_path": output_dir.join("markdown"),
                 "pages_crawled": summary.pages_seen,
+                "pages_discovered": summary.pages_discovered,
                 "md_created": summary.markdown_files,
                 "thin_md": summary.thin_pages,
+                "error_pages": summary.error_pages,
+                "waf_blocked_pages": summary.waf_blocked_pages,
+                "reused_pages": summary.reused_pages,
             });
             if let Err(e) = update_result_json(&pool, JobKind::Crawl, id, &progress).await {
                 tracing::warn!(job_id = %id, error = %e, "failed to persist crawl progress");
