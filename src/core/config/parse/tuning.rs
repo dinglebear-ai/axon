@@ -96,6 +96,88 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         256,
     );
     cfg.job_wait_timeout_secs = job_wait_timeout_secs(toml);
+
+    // ── Webclaw port (axon_rust-zehr) ──────────────────────────────────────
+    cfg.enable_verticals = env_bool_opt("AXON_ENABLE_VERTICALS")
+        .or(toml.verticals.enabled)
+        .unwrap_or(true);
+    cfg.auto_dispatch_skip = resolve_auto_dispatch_skip(toml);
+    cfg.vertical_cache_ttl_secs = resolve_vertical_cache_ttl_secs(toml);
+    cfg.structured_data_max_bytes = resolve_clamped_usize(
+        "AXON_STRUCTURED_DATA_MAX_BYTES",
+        toml.payload.structured_data_max_bytes,
+        65_536,
+        1_024,
+        16_777_216,
+    );
+    cfg.ladder_word_threshold_strategy1 = resolve_clamped_usize(
+        "AXON_LADDER_STRATEGY1_THRESHOLD",
+        toml.scrape.ladder_strategy1_threshold,
+        30,
+        1,
+        1_000,
+    );
+    cfg.ladder_word_threshold_strategy2 = resolve_clamped_usize(
+        "AXON_LADDER_STRATEGY2_THRESHOLD",
+        toml.scrape.ladder_strategy2_threshold,
+        200,
+        1,
+        10_000,
+    );
+    cfg.ladder_body_multiplier = resolve_clamped_f64(
+        "AXON_LADDER_BODY_MULTIPLIER",
+        toml.scrape.ladder_body_multiplier,
+        2.0,
+        1.0,
+        10.0,
+    );
+    cfg.antibot_cookie_warmup = env_bool_opt("AXON_CHALLENGE_WARMUP")
+        .or(toml.antibot.cookie_warmup)
+        .unwrap_or(true);
+    cfg.antibot_max_body_scan_bytes = resolve_clamped_usize(
+        "AXON_ANTIBOT_MAX_BODY_SCAN_BYTES",
+        toml.antibot.max_body_scan_bytes,
+        150_000,
+        1_000,
+        10_485_760,
+    );
+}
+
+fn resolve_auto_dispatch_skip(toml: &TomlConfig) -> Vec<String> {
+    if let Ok(v) = std::env::var("AXON_AUTO_DISPATCH_SKIP") {
+        return v
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+    }
+    toml.verticals
+        .auto_dispatch_skip
+        .clone()
+        .unwrap_or_default()
+}
+
+fn resolve_vertical_cache_ttl_secs(toml: &TomlConfig) -> std::collections::HashMap<String, u64> {
+    let mut map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    map.insert("github".to_string(), 86_400);
+    map.insert("reddit".to_string(), 3_600);
+    map.insert("hn".to_string(), 21_600);
+    // TOML overrides (whole-table replacement of defaults at the key level).
+    if let Some(ref t) = toml.verticals.cache_ttl_secs {
+        for (k, v) in t {
+            map.insert(k.to_lowercase(), *v);
+        }
+    }
+    // Env per-vertical override: AXON_VERTICAL_CACHE_TTL_<UPPER>=secs
+    for (k, v) in std::env::vars() {
+        if let Some(name) = k.strip_prefix("AXON_VERTICAL_CACHE_TTL_") {
+            if let Ok(secs) = v.parse::<u64>() {
+                map.insert(name.to_lowercase(), secs);
+            }
+        }
+    }
+    map
 }
 
 pub(crate) fn apply_default_lite_tuning(cfg: &mut Config) {
