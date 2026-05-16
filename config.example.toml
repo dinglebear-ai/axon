@@ -216,3 +216,55 @@
 # Log rotation is configured via env var only (not TOML), because
 # init_tracing() runs before Config is built.
 # Env: AXON_LOG_MAX_BYTES (default: 10485760 = 10 MiB; 0 = disable rotation)
+
+# ─── Webclaw Port (axon_rust-zehr) ───────────────────────────────────────────
+
+[scrape]
+# DOM retry ladder Strategy 1 threshold (words). Re-run extraction with
+# `only_main_content=false` when scored extractor produces fewer words.
+# Env: AXON_LADDER_STRATEGY1_THRESHOLD. Default: 30. Clamped 1–1000.
+# ladder-strategy1-threshold = 30
+
+# DOM retry ladder Strategy 2 threshold (words). Re-run extraction with
+# `include_selectors=["body"]` when scored extractor produces fewer words
+# AND no user `include_selectors` were supplied.
+# Env: AXON_LADDER_STRATEGY2_THRESHOLD. Default: 200. Clamped 1–10000.
+# ladder-strategy2-threshold = 200
+
+# Body-fallback multiplier: body wins only if it produces N x scored words.
+# Env: AXON_LADDER_BODY_MULTIPLIER. Default: 2.0. Clamped 1.0–10.0.
+# ladder-body-multiplier = 2.0
+
+[verticals]
+# Enable per-site vertical extractors (GitHub, PyPI, Reddit, HN, etc.).
+# Env: AXON_ENABLE_VERTICALS. Default: true.
+# enabled = true
+
+# Vertical extractor names to SKIP in auto-dispatch (still available via
+# `--vertical <name>` or MCP `vertical_scrape`).
+# Env: AXON_AUTO_DISPATCH_SKIP (comma-separated). Default: empty.
+# auto-dispatch-skip = ["amazon_product", "ebay_listing"]
+
+# Per-vertical cache TTL in seconds. Built-in defaults: github=86400,
+# reddit=3600, hn=21600. Override per-vertical via
+# AXON_VERTICAL_CACHE_TTL_<UPPER>=secs or this table:
+# [verticals.cache-ttl-secs]
+# github = 86400
+# reddit = 3600
+# hn = 21600
+
+[antibot]
+# Enable Akamai/Cloudflare cookie warmup retry on antibot challenge.
+# Env: AXON_CHALLENGE_WARMUP. Default: true.
+# cookie-warmup = true
+
+# Maximum bytes scanned for antibot challenge patterns (per-page).
+# Env: AXON_ANTIBOT_MAX_BODY_SCAN_BYTES. Default: 150000. Clamped 1000–10485760.
+# max-body-scan-bytes = 150000
+
+[payload]
+# Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
+# Larger payloads (e.g. multi-MB __NEXT_DATA__) are dropped rather than
+# serialized.
+# Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536 (64 KiB). Clamped 1024–16777216.
+# structured-data-max-bytes = 65536
