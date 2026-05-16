@@ -147,9 +147,24 @@ mime_guess = "2"
 rust-embed = "8"
 
 [features]
+# Feature gates for optional heavy dependencies from the webclaw port.
+# All default OFF — enabling them is a build-time choice.
+# See docs/FEATURES.md for full rationale and CI impact.
 default = []
 test-helpers = []
 live-qdrant = []
+
+# TLS fingerprinting via wreq+BoringSSL. Requires cmake/clang/perl/go.
+# CI impact: +8-12 min cold build, +400MB target/. See axon_rust-wf4s.
+tls-fingerprinting = []
+
+# QuickJS sandbox for window.__* JS blob extraction. Requires rquickjs.
+# Process-isolation wrapper required. See axon_rust-b6xi.
+quickjs = []
+
+# Instagram/LinkedIn social verticals. Requires cloud antibot bypass.
+# Gate with AXON_ENABLE_SOCIAL_VERTICALS=1 env var at runtime. See axon_rust-2mrr.
+social-verticals = []
 
 [profile.release]
 opt-level = 3
