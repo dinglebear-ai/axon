@@ -81,6 +81,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             SetupMode::FirstRun | SetupMode::Repair | SetupMode::MigrateEnv => Some("axon:write"),
         },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
+        AxonRequest::VerticalScrape(_) => Some("axon:write"),
         _ => None,
     }
 }
@@ -127,6 +128,7 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Watch(_) => "watch",
         AxonRequest::Setup(_) => "setup",
         AxonRequest::ElicitDemo(_) => "elicit_demo",
+        AxonRequest::VerticalScrape(_) => "vertical_scrape",
     }
 }
 

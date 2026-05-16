@@ -12,6 +12,8 @@ mod handlers_embed_ingest;
 mod handlers_query;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
+#[path = "server/handlers_vertical_scrape.rs"]
+mod handlers_vertical_scrape;
 #[path = "server/http.rs"]
 mod http;
 #[cfg(test)]
@@ -170,6 +172,7 @@ impl AxonMcpServer {
             AxonRequest::ElicitDemo(req) => handlers_elicit::handle_elicit_demo(&peer, req).await?,
             AxonRequest::Artifacts(req) => self.handle_artifacts(req).await?,
             AxonRequest::Scrape(req) => self.handle_scrape(req).await?,
+            AxonRequest::VerticalScrape(req) => self.handle_vertical_scrape(req).await?,
             AxonRequest::Research(req) => self.handle_research(req).await?,
             AxonRequest::Ask(req) => self.handle_ask(req).await?,
             AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
