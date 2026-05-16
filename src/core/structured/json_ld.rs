@@ -52,8 +52,10 @@ pub fn extract_json_ld(html: &str) -> Vec<Value> {
     let close_tag = b"</script>";
     let html_bytes = html.as_bytes();
 
+    let script_open = b"<script";
     let mut search_from = 0;
-    while let Some(tag_start) = html[search_from..].find("<script") {
+    while let Some(tag_start) = ascii_case_insensitive_find(&html_bytes[search_from..], script_open)
+    {
         let abs_start = search_from + tag_start;
         let tag_region = &html[abs_start..];
 

@@ -11,7 +11,7 @@ mod url_utils;
 mod waf;
 
 use crate::core::config::{Config, RenderMode};
-use crate::core::content::build_selector_config;
+use crate::core::content::{LadderThresholds, build_selector_config};
 use crate::core::logging::{log_done, log_info};
 use crate::crawl::manifest::ManifestEntry;
 use collector::{CollectorConfig, collect_crawl_pages};
@@ -222,6 +222,7 @@ pub async fn run_crawl_once(
             chrome_ws_url: inline_chrome_ws_url,
             chrome_timeout_secs: cfg.chrome_network_idle_timeout_secs,
             output_dir: output_dir.to_path_buf(),
+            ladder_thresholds: LadderThresholds::from_config(cfg),
         },
     ));
 
@@ -309,6 +310,7 @@ pub async fn run_sitemap_only(
             chrome_ws_url: None,
             chrome_timeout_secs: cfg.chrome_network_idle_timeout_secs,
             output_dir: output_dir.to_path_buf(),
+            ladder_thresholds: LadderThresholds::from_config(cfg),
         },
     ));
 

@@ -1,8 +1,9 @@
 mod deterministic;
 mod engine;
+mod extract_ladder;
 mod extraction;
 mod filename;
-mod markdown;
+pub(crate) mod markdown;
 mod url_parsing;
 
 #[cfg(test)]
@@ -13,6 +14,7 @@ pub use deterministic::{
     PageExtraction,
 };
 pub use engine::{ExtractWebConfig, run_extract_with_engine};
+pub use extract_ladder::{LadderResult, LadderThresholds, LadderTier, extract_with_ladder};
 pub use extraction::{extract_anchor_hrefs, extract_links, extract_meta_description, find_between};
 pub use filename::{url_to_domain, url_to_filename, url_to_stable_filename};
 pub use markdown::{
