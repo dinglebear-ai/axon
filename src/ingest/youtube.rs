@@ -328,6 +328,7 @@ pub async fn ingest_youtube(
                 title: Some(title.to_string()),
                 extra: extra.clone(),
                 extractor_name: None,
+                structured: None,
             });
         }
 
@@ -347,6 +348,7 @@ pub async fn ingest_youtube(
                     title: Some(format!("{} — description", m.title)),
                     extra: extra.clone(),
                     extractor_name: None,
+                    structured: None,
                 });
             }
         }

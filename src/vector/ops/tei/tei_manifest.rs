@@ -2,7 +2,12 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (String, bool)> {
+/// Entry in the manifest URL map: (url, changed, structured_blob).
+/// `structured_blob` is `None` when no structured data was extracted from the
+/// page at crawl time (bead axon_rust-jej7.2).
+pub(super) type ManifestEntry = (String, bool, Option<serde_json::Value>);
+
+pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, ManifestEntry> {
     let Some(parent) = markdown_dir.parent() else {
         return HashMap::new();
     };
@@ -25,6 +30,10 @@ pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (St
             .get("changed")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        // Structured-data blob written by process_page() (bead axon_rust-jej7.2).
+        // Absent on manifest entries from before this bead or when no structured
+        // data was found on the page. Passed through to PreparedDoc for Qdrant.
+        let structured = parsed.get("structured").cloned();
 
         let normalized = if let Some(rel) = parsed.get("relative_path").and_then(|v| v.as_str()) {
             parent.join(rel)
@@ -33,11 +42,43 @@ pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (St
         } else {
             continue;
         };
-        out.insert(normalized, (url, changed));
+        out.insert(normalized, (url, changed, structured));
     }
     out
 }
 
 #[cfg(test)]
-#[path = "tei_manifest_tests.rs"]
-mod tests;
+mod tests {
+    use super::read_manifest_url_map;
+    use std::fs;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    #[test]
+    fn read_manifest_url_map_maps_markdown_file_to_url() {
+        let root = std::env::temp_dir().join(format!("axon-tei-manifest-test-{}", Uuid::new_v4()));
+        let markdown_dir = root.join("markdown");
+        fs::create_dir_all(&markdown_dir).expect("create markdown dir");
+
+        let markdown_file = markdown_dir.join("001-example.md");
+        fs::write(&markdown_file, "# test").expect("write markdown file");
+
+        let manifest_path = root.join("manifest.jsonl");
+        let line = serde_json::json!({
+            "url": "https://example.com/docs",
+            "file_path": markdown_file.to_string_lossy(),
+            "markdown_chars": 42
+        });
+        fs::write(&manifest_path, format!("{line}\n")).expect("write manifest");
+
+        let mapped = read_manifest_url_map(&markdown_dir);
+        let key =
+            fs::canonicalize(&markdown_file).unwrap_or_else(|_| PathBuf::from(&markdown_file));
+        assert_eq!(
+            mapped.get(&key).map(|(u, _, _)| u.as_str()),
+            Some("https://example.com/docs")
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+}

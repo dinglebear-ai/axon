@@ -32,6 +32,7 @@ pub enum AxonRequest {
     Watch(WatchRequest),
     Setup(SetupRequest),
     ElicitDemo(ElicitDemoRequest),
+    VerticalScrape(VerticalScrapeRequest),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
@@ -542,6 +543,44 @@ impl AxonToolResponse {
             data,
         }
     }
+}
+
+// ── vertical_scrape ─────────────────────────────────────────────────────────
+
+/// Subaction for the `vertical_scrape` action.
+///
+/// - `run` — invoke the named extractor; does NOT fall through to generic scrape
+/// - `list` — return the extractor catalog (id, label, description, url_patterns)
+/// - `capabilities` — per-extractor auth_required + rate_limit info
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum VerticalScrapeSubaction {
+    Run,
+    List,
+    Capabilities,
+}
+
+impl Default for VerticalScrapeSubaction {
+    fn default() -> Self { Self::Run }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct VerticalScrapeRequest {
+    /// Which operation to perform (default: run).
+    #[serde(default)]
+    pub subaction: VerticalScrapeSubaction,
+    /// Extractor name — required for `run` and `capabilities`.
+    /// One of: github_repo, github_release, reddit, pypi, npm, crates_io,
+    /// docker_hub, huggingface_model, dev_to, shopify, youtube_video, amazon, ebay.
+    /// Use `list` to discover the full catalog.
+    pub extractor: Option<String>,
+    /// URL to extract (required for `run`).
+    pub url: Option<String>,
+    /// Whether to embed the result into Qdrant after extraction.
+    pub embed: Option<bool>,
+    /// Qdrant collection to embed into (overrides cfg.collection).
+    pub collection: Option<String>,
 }
 
 pub fn parse_axon_request(raw: Map<String, Value>) -> Result<AxonRequest, String> {

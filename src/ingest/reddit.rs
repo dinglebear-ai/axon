@@ -271,6 +271,7 @@ async fn build_post_doc(
             title: Some(title.to_string()),
             extra: Some(extra),
             extractor_name: None,
+            structured: None,
         }),
         comment_fetch_attempted,
         comment_fetch_failed,
@@ -346,6 +347,7 @@ async fn ingest_thread(
         title: Some(title.to_string()),
         extra: Some(extra),
         extractor_name: None,
+        structured: None,
     };
     let summary = embed_prepared_docs(cfg, vec![doc], None).await?;
     Ok(RedditIngestSummary {

@@ -96,7 +96,7 @@ fn bench_per_page(c: &mut Criterion) {
 
 /// Manual aggregate pass: walks all fixtures, runs N iterations each, and
 /// prints p50/p95/p99 in ms grouped by page_type plus overall. The numbers
-/// land in stderr so we can capture them in `docs/perf/results-dom-baseline.json`.
+/// land in stderr so we can capture them in `docs/perf/dom-extraction-baseline.json`.
 fn bench_aggregate(c: &mut Criterion) {
     let fixtures = load_fixtures();
     let iters_per_fx: usize = 200;

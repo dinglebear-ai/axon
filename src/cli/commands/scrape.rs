@@ -67,7 +67,39 @@ pub(crate) fn emit_scrape_result(
     Ok(())
 }
 
+async fn run_explicit_vertical(cfg: &Config, name: &str) -> Result<(), Box<dyn Error>> {
+    use crate::extract::{VerticalContext, dispatch_by_name};
+    let urls = parse_urls(cfg);
+    if urls.is_empty() {
+        return Err(anyhow::anyhow!("scrape requires at least one URL").into());
+    }
+    let ctx = VerticalContext::new(std::sync::Arc::new(cfg.clone()));
+    for url in &urls {
+        let doc = dispatch_by_name(name, url, &ctx).await
+            .map_err(|e| anyhow::anyhow!("vertical scrape failed: {e}"))?;
+        if cfg.json_output {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "url": doc.url, "extractor": doc.extractor_name,
+                "title": doc.title, "markdown": doc.markdown,
+            }))?);
+        } else {
+            println!("{}", doc.markdown);
+        }
+    }
+    Ok(())
+}
+
 pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    // Explicit vertical override for auto_dispatch=false extractors (amazon, ebay, youtube).
+    // Transparent auto-dispatch for auto_dispatch=true extractors happens inside
+    // services::scrape::scrape() — no env var needed for those.
+    // Usage: AXON_VERTICAL=amazon axon scrape https://amazon.com/dp/{asin} --local
+    if let Ok(name) = std::env::var("AXON_VERTICAL") {
+        if !name.is_empty() {
+            return run_explicit_vertical(cfg, &name).await;
+        }
+    }
+
     let urls = parse_urls(cfg);
     if urls.is_empty() {
         return Err(

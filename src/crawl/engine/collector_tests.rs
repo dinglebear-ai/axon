@@ -16,6 +16,13 @@ fn test_collector_config(scope: Option<MapScope>) -> CollectorConfig {
         chrome_ws_url: None,
         chrome_timeout_secs: 1,
         output_dir: std::env::temp_dir(),
+        ladder_thresholds: crate::core::content::LadderThresholds {
+            strategy1: 30,
+            strategy2: 200,
+            body_multiplier: 2.0,
+        },
+        antibot_max_scan_bytes: 150_000,
+        structured_max_bytes: 65_536,
     }
 }
 

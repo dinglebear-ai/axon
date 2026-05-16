@@ -192,6 +192,7 @@ fn prepared_doc_with_ingest_metadata_compiles() {
         title: Some("src/lib.rs".to_string()),
         extra: Some(serde_json::json!({"gh_owner": "owner", "gh_repo": "repo"})),
         extractor_name: None,
+        structured: None,
     };
     assert_eq!(doc.source_type, "github");
     assert_eq!(doc.content_type, "text");
@@ -330,4 +331,77 @@ fn build_point_named_sparse_has_nonzero_entries_for_real_text() {
         !indices.is_empty(),
         "real text must produce non-empty sparse vector"
     );
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// StructuredPayload::from_pass — bead axon_rust-xvu9: 64KB cap reducer.
+// ───────────────────────────────────────────────────────────────────────
+
+#[test]
+fn structured_payload_from_pass_empty_returns_none() {
+    use crate::core::structured::StructuredDataPass;
+    use crate::vector::ops::tei::StructuredPayload;
+    let pass = StructuredDataPass::default();
+    assert!(StructuredPayload::from_pass(&pass, 65_536).is_none());
+}
+
+#[test]
+fn structured_payload_from_pass_carries_dominant_jsonld() {
+    use crate::core::structured::StructuredDataPass;
+    use crate::vector::ops::tei::StructuredPayload;
+    let pass = StructuredDataPass {
+        json_ld: vec![serde_json::json!({
+            "@type": "Product",
+            "@id": "https://example.com/p/1",
+            "name": "Widget",
+        })],
+        next_data: vec![],
+        sveltekit: vec![],
+    };
+    let payload = StructuredPayload::from_pass(&pass, 65_536).expect("payload");
+    assert_eq!(payload.kind, "jsonld");
+    assert_eq!(payload.schema_type.as_deref(), Some("Product"));
+    assert_eq!(
+        payload.schema_id.as_deref(),
+        Some("https://example.com/p/1")
+    );
+    assert_eq!(payload.blob["name"], "Widget");
+}
+
+#[test]
+fn structured_payload_from_pass_drops_oversized_blob() {
+    use crate::core::structured::StructuredDataPass;
+    use crate::vector::ops::tei::StructuredPayload;
+    // Synthesize a single JSON-LD entry whose serialized form > 64KB.
+    let big_body = "x".repeat(100_000);
+    let pass = StructuredDataPass {
+        json_ld: vec![serde_json::json!({
+            "@type": "Article",
+            "articleBody": big_body,
+        })],
+        next_data: vec![],
+        sveltekit: vec![],
+    };
+    // Caller's cap is 64KB — payload exceeds, so reducer returns None
+    // rather than truncating to invalid JSON.
+    assert!(StructuredPayload::from_pass(&pass, 65_536).is_none());
+}
+
+#[test]
+fn structured_payload_from_pass_under_cap_is_kept() {
+    use crate::core::structured::StructuredDataPass;
+    use crate::vector::ops::tei::StructuredPayload;
+    // ~6KB serialized — well under 64KB.
+    let body = "y".repeat(5_000);
+    let pass = StructuredDataPass {
+        json_ld: vec![serde_json::json!({
+            "@type": "Article",
+            "articleBody": body,
+        })],
+        next_data: vec![],
+        sveltekit: vec![],
+    };
+    let payload = StructuredPayload::from_pass(&pass, 65_536).expect("payload");
+    assert_eq!(payload.kind, "jsonld");
+    assert!(payload.blob["articleBody"].as_str().unwrap().len() >= 5_000);
 }

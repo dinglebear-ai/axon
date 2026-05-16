@@ -1,5 +1,8 @@
 # Spider.rs Feature Flags
 
+> **Webclaw port feature flags** (tls-fingerprinting, quickjs, social-verticals) are documented in
+> [`docs/FEATURES.md`](FEATURES.md) — that file also covers runtime env-var gates.
+
 **Total feature entries tracked in this inventory: 79 (includes `basic` meta-feature)**
 **Flags enabled in axon_rust: 21 (spider) + 2 (spider_agent) + spider_transformations (no flags)**
 

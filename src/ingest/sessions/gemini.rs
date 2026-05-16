@@ -205,6 +205,7 @@ async fn process_gemini_file(
         title,
         extra: Some(extra),
         extractor_name: None,
+        structured: None,
     };
     Ok(Some(SessionDoc { doc, collection }))
 }

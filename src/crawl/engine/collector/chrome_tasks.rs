@@ -110,6 +110,10 @@ pub(super) async fn write_thin_page_if_needed(
         markdown_chars: trimmed.len(),
         content_hash: Some(content_hash),
         changed: true,
+        // Chrome re-render of thin pages: raw HTML is not threaded here, so
+        // structured data from this path is absent (None). A follow-up could
+        // thread HTML bytes through the RefetchResult to add structured data.
+        structured: None,
     };
     let thin_write = PageOutcome::Write {
         filename,

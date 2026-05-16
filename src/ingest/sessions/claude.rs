@@ -157,6 +157,7 @@ async fn parse_claude_file(
         title,
         extra: Some(extra),
         extractor_name: None,
+        structured: None,
     };
     Ok(Some(SessionDoc { doc, collection }))
 }

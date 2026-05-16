@@ -182,6 +182,7 @@ pub(super) async fn read_file_embed_docs(
                 title: Some(path.to_string()),
                 extra: Some(extra),
                 extractor_name: None,
+                structured: None,
             }
         })
         .collect();
