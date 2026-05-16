@@ -155,7 +155,7 @@ URLs, API keys, secrets, and Gemini headless runtime controls belong in `~/.axon
 | `AXON_SERVER_URL` | -- | Generic CLI server-mode endpoint. When set, supported stateful CLI commands call `axon serve` through `/v1/actions`. |
 | `AXON_LOCAL_MODE` | `false` | Force local CLI execution even when `AXON_SERVER_URL` is configured. Equivalent to `--local`. |
 | `AXON_SERVER_INSECURE` | -- | Set to `1` to allow bearer-token auth over plaintext HTTP to non-loopback hosts. Not recommended; prefer HTTPS. |
-| `AXON_MCP_HTTP_PUBLISH` | `127.0.0.1:8001` | Docker Compose host publish address for the `axon` MCP HTTP service. Set to `0.0.0.0:8001` only when intentionally exposing beyond the host and `AXON_MCP_HTTP_TOKEN` is configured. |
+| `AXON_MCP_HTTP_PUBLISH` | `8001` | Docker Compose host publish address for the `axon` MCP HTTP service. The default `8001` maps to `0.0.0.0:8001` inside Compose — the container is reachable on the host's port 8001 from all interfaces. Set to `127.0.0.1:8001` to restrict to loopback only. |
 | `AXON_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind address for `axon serve` / MCP HTTP. Non-loopback requires bearer or OAuth auth. |
 | `AXON_MCP_HTTP_PORT` | `8001` | HTTP listen port for `axon serve` / MCP HTTP. |
 
@@ -223,6 +223,11 @@ temporary overrides and legacy scripts.
 | `workers.embed-doc-timeout-secs` | `AXON_EMBED_DOC_TIMEOUT_SECS` | `300` | Per-document embed timeout (clamped 30-3600) |
 | `workers.queue-summary-secs` | `AXON_QUEUE_SUMMARY_SECS` | `30` | Queue summary logging interval (0 disables, clamped 0-3600) |
 | `workers.qdrant-point-buffer` | `AXON_QDRANT_POINT_BUFFER` | `256` | Buffered Qdrant points before flush (clamped 128-16384) |
+| `workers.job-wait-timeout-secs` | `AXON_JOB_WAIT_TIMEOUT_SECS` | `300` | Timeout for `--wait true` job polling (clamped 30-3600) |
+| `workers.max-pending-embed-jobs` | `AXON_MAX_PENDING_EMBED_JOBS` | `50` | Embed queue cap — reject new jobs above this count (0 = unlimited) |
+| `workers.max-pending-extract-jobs` | `AXON_MAX_PENDING_EXTRACT_JOBS` | `50` | Extract queue cap (0 = unlimited) |
+| `workers.max-pending-ingest-jobs` | `AXON_MAX_PENDING_INGEST_JOBS` | `50` | Ingest queue cap (0 = unlimited) |
+| `chrome.user-agent` | `AXON_CHROME_USER_AGENT` | *(Spider default)* | Custom User-Agent sent by Chrome |
 
 ### Search and research
 
@@ -316,7 +321,7 @@ password under `~/.axon/panel-password`. MCP and `/v1/actions` use
 | `RUST_LOG` | `info` | Rust tracing filter |
 | `AXON_LOG_DIR` | `$AXON_DATA_DIR/logs` (default `~/.axon/logs`) | Directory holding the active log + rotated archives |
 | `AXON_LOG_FILE` | `axon.log` | Filename of the active log (joined under `AXON_LOG_DIR`); rotated archives are `<file>.1`, `<file>.2`, … |
-| `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation (single file grows unboundedly). Default is 10 MB. |
+| `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation. Env-only — log rotation initialises before `config.toml` is parsed. |
 | `AXON_LOG_MAX_FILES` | `3` | Number of rotated archives to retain. `0` truncates without keeping any archive. |
 
 ### MCP server
