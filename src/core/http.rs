@@ -6,6 +6,7 @@
 //! for connect-time SSRF checks; use [`validate_url_with_dns()`] before handing
 //! URLs to non-reqwest fetchers.
 
+mod antibot;
 mod cdp;
 mod client;
 mod error;
@@ -18,6 +19,7 @@ mod ssrf;
 mod tests;
 
 // Re-export the full public API so downstream `use crate::core::http::*` continues to work.
+pub use antibot::{ChallengeDetection, detect_challenge};
 pub(crate) use client::internal_service_http_client;
 pub use client::{build_client, fetch_html, http_client};
 pub use error::HttpError;

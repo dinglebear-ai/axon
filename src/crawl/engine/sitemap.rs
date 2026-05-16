@@ -435,6 +435,9 @@ async fn write_backfill_entry(
         markdown_chars,
         content_hash: Some(content_hash),
         changed: true,
+        // Sitemap backfill fetches plain HTTP responses — raw HTML is not
+        // available at manifest-write time, so structured data is absent.
+        structured: None,
     };
     let mut line = serde_json::to_string(&entry)?;
     line.push('\n');

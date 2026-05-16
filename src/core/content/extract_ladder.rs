@@ -1,33 +1,26 @@
 //! Multi-strategy DOM extraction retry ladder (axon_rust-jh32).
 //!
-//! Ports webclaw `lib.rs:144-177` — two cheap retries before falling back to
-//! Chrome. Inserts as Tier-1.5 between the HTTP fetch and Chrome auto-switch
-//! escalation: pages that produce thin markdown via the scored extractor get
-//! a chance to recover via cheaper retries before paying for Chrome.
+//! Ports webclaw `lib.rs:144-177`. Inserts as Tier-1.5 between the HTTP
+//! fetch and Chrome auto-switch escalation: pages that produce thin
+//! markdown via the scored extractor get up to two cheaper retries
+//! before paying for Chrome.
 //!
 //! ## Strategies
-//! - **Scored** (tier 0): user's selector config + main_content scoring (the
-//!   existing `bytes_to_markdown` behavior). This is what every caller runs
-//!   today.
-//! - **Relaxed** (tier 1, Strategy 1): if scored result <
-//!   `ladder_word_threshold_strategy1` (default 30) AND a user-supplied
-//!   `root_selector` was active, retry with the selector dropped. Use the
-//!   retry only if it yields more words.
-//! - **Body** (tier 2, Strategy 2): if scored/relaxed result <
-//!   `ladder_word_threshold_strategy2` (default 200) AND no user
-//!   `root_selector` is set, retry with `main_content: false` (raw body
-//!   minus boilerplate). Win only if body produces >
-//!   `ladder_body_multiplier × scored_words` (default 2.0) AND > 50 words.
+//! - **Scored** (tier 0): user's selector + main_content scoring.
+//! - **Relaxed** (tier 1): if scored < `strategy1` words AND a user
+//!   `root_selector` was active, retry without it.
+//! - **Body** (tier 2): if still thin AND no user selector, retry with
+//!   `main_content: false` (raw body minus boilerplate). Wins only if
+//!   it produces > `body_multiplier × prev_words` (default 2.0) AND > 50 words.
 //!
-//! ## Body-byte probe gate (lavra-research critical recommendation)
-//! Before invoking either retry, a cheap byte-length probe of the raw `<body>`
-//! region skips the ladder when the body is < 5 KiB. This avoids 2–3 × scrape
-//! latency on pages that are genuinely empty.
+//! ## Body-byte probe gate
+//! Cheap byte-length scan of the raw `<body>` region; < 5 KiB skips both
+//! retries. Prevents 2–3× DOM walks on genuinely-empty pages.
 //!
-//! ## Invariants (do NOT change)
-//! - `readability: false` and `clean_html: false` from `markdown.rs` are
-//!   production-confirmed regressions when flipped. The Body tier reuses the
-//!   same constants — it only relaxes `main_content`.
+//! ## Invariants (DO NOT change)
+//! `readability: false` and `clean_html: false` from `markdown.rs` are
+//! production-confirmed regressions when flipped. Body tier relaxes only
+//! `main_content`.
 
 use crate::core::content::markdown::{
     BOILERPLATE_SELECTORS, bytes_to_markdown, clean_markdown_whitespace,
@@ -37,13 +30,9 @@ use spider_transformations::transformation::content::{
 };
 use std::sync::LazyLock;
 
-/// Minimum raw `<body>` byte size to attempt either retry.
 const BODY_BYTE_PROBE_THRESHOLD: usize = 5 * 1024;
-
-/// Hardcoded floor on the body-fallback word count (mirrors webclaw).
 const BODY_TIER_MIN_WORDS: usize = 50;
 
-/// Which strategy produced the final markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LadderTier {
     Scored,
@@ -68,7 +57,6 @@ pub struct LadderResult {
     pub word_count: usize,
 }
 
-/// Threshold knobs read from `Config` once by the caller.
 #[derive(Debug, Clone, Copy)]
 pub struct LadderThresholds {
     pub strategy1: usize,
@@ -86,9 +74,6 @@ impl LadderThresholds {
     }
 }
 
-/// TransformConfig for the Body tier — `main_content: false` so the whole body
-/// minus boilerplate flows through. All other knobs preserve the
-/// production-confirmed `markdown.rs` defaults.
 static TRANSFORM_CONFIG_BODY: LazyLock<TransformConfig> = LazyLock::new(|| TransformConfig {
     return_format: ReturnFormat::Markdown,
     readability: false,
@@ -98,7 +83,6 @@ static TRANSFORM_CONFIG_BODY: LazyLock<TransformConfig> = LazyLock::new(|| Trans
     filter_svg: true,
 });
 
-/// Run the DOM extraction ladder.
 pub fn extract_with_ladder(
     html: &[u8],
     selector_config: Option<&SelectorConfiguration>,
@@ -192,6 +176,85 @@ fn extract_body_only(html: &[u8]) -> String {
 fn has_root_selector(sc: &SelectorConfiguration) -> bool {
     sc.root_selector.is_some()
 }
+
 #[cfg(test)]
-#[path = "extract_ladder_tests.rs"]
-mod tests;
+mod tests {
+    use super::*;
+
+    fn thresholds(s1: usize, s2: usize, mult: f64) -> LadderThresholds {
+        LadderThresholds {
+            strategy1: s1,
+            strategy2: s2,
+            body_multiplier: mult,
+        }
+    }
+
+    #[test]
+    fn ladder_tier_as_str_is_stable() {
+        assert_eq!(LadderTier::Scored.as_str(), "scored");
+        assert_eq!(LadderTier::Relaxed.as_str(), "relaxed");
+        assert_eq!(LadderTier::Body.as_str(), "body");
+    }
+
+    #[test]
+    fn approximate_body_bytes_handles_no_body_tag() {
+        let html = b"<p>fragment</p>";
+        assert_eq!(approximate_body_bytes(html), html.len());
+    }
+
+    #[test]
+    fn approximate_body_bytes_returns_distance_between_body_markers() {
+        let html = b"<html><head></head><body><p>hello there</p></body></html>";
+        let bytes = approximate_body_bytes(html);
+        assert!(bytes > 10);
+        assert!(bytes < html.len());
+    }
+
+    #[test]
+    fn small_body_skips_retries_returns_scored_tier() {
+        let html = b"<html><body><p>hi</p></body></html>";
+        let t = thresholds(30, 200, 2.0);
+        let r = extract_with_ladder(html, None, t);
+        assert_eq!(r.tier, LadderTier::Scored);
+    }
+
+    #[test]
+    fn dense_page_scored_tier_wins_no_retry() {
+        let prose: String = "lorem ipsum dolor sit amet ".repeat(80);
+        let filler: String = "x".repeat(6 * 1024);
+        let html = format!(
+            "<html><body><main><p>{prose}</p><div hidden=\"true\">{filler}</div></main></body></html>",
+        );
+        let t = thresholds(30, 200, 2.0);
+        let r = extract_with_ladder(html.as_bytes(), None, t);
+        assert_eq!(r.tier, LadderTier::Scored);
+        assert!(r.word_count >= 200);
+        assert!(r.markdown.contains("lorem ipsum"));
+    }
+
+    #[test]
+    fn body_tier_only_fires_when_body_multiplier_met() {
+        let prose: String = "alpha beta gamma delta epsilon zeta eta theta ".repeat(60);
+        let filler: String = "y".repeat(6 * 1024);
+        let html = format!(
+            "<html><body><main></main><div>{prose}</div><span>{filler}</span></body></html>",
+        );
+        let t = thresholds(30, 200, 2.0);
+        let r = extract_with_ladder(html.as_bytes(), None, t);
+        assert!(r.word_count > 0);
+        assert!(matches!(
+            r.tier,
+            LadderTier::Scored | LadderTier::Relaxed | LadderTier::Body
+        ));
+    }
+
+    #[test]
+    fn ladder_thresholds_respect_cfg() {
+        let prose: String = "word ".repeat(80);
+        let filler: String = "z".repeat(6 * 1024);
+        let html = format!("<html><body><div>{prose}</div><span>{filler}</span></body></html>");
+        let t = thresholds(30, 5, 2.0);
+        let r = extract_with_ladder(html.as_bytes(), None, t);
+        assert_eq!(r.tier, LadderTier::Scored);
+    }
+}

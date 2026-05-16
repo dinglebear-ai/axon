@@ -103,6 +103,7 @@ pub async fn ingest_issues(
                     title: Some(title),
                     extra: Some(extra),
                     extractor_name: None,
+                    structured: None,
                 });
             }
         }
@@ -216,6 +217,7 @@ pub async fn ingest_pull_requests(
                     title: Some(embed_title),
                     extra: Some(extra),
                     extractor_name: None,
+                    structured: None,
                 });
             }
         }

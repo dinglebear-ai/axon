@@ -1,3 +1,7 @@
+mod taxonomy;
+
+pub use taxonomy::{ChallengeVendor, ServiceTaxonomyError, taxonomy_from_error};
+
 use crate::core::config::Config;
 use serde_json::{Value, json};
 use std::error::Error as StdError;
