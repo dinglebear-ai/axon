@@ -82,7 +82,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Rendering | `render_mode: RenderMode`, `chrome_remote_url`, `chrome_headless/anti_bot/intercept/stealth/bootstrap` (all default true) |
 | Page Filtering | `min_markdown_chars` (default 200), `drop_thin_markdown` (default true), `respect_robots` (default false) |
 | Sitemap | `discover_sitemaps` (default true), `sitemap_since_days` (0 = all), `sitemap_only` |
-| Vector Store | `collection` (default "cortex"), `embed` (default true), `search_limit` (default 10) |
+| Vector Store | `collection` (default "axon"), `embed` (default true), `search_limit` (default 10) |
 | Output | `output_dir` (`.cache/axon-rust/output`), `output_path`, `json_output`, `format: ScrapeFormat` |
 | Performance | `performance_profile`, `batch_concurrency` (default 16), `wait` (default false), `yes` (default false) |
 | Service URLs | `qdrant_url`, `tei_url`, `openai_base_url`, `openai_api_key`, `openai_model`, `tavily_api_key` |

@@ -91,7 +91,11 @@ WORKDIR /home/axon
 # bind-mounts the host's ~/.axon onto this path so config.toml, .env,
 # jobs.db, output/, logs/, artifacts/ persist across container restarts.
 ENV HOME=/home/axon \
+    AXON_HOME=/home/axon/.axon \
     AXON_DATA_DIR=/home/axon/.axon \
+    AXON_IN_CONTAINER=1 \
+    AXON_MCP_HTTP_HOST=0.0.0.0 \
+    CLICOLOR_FORCE=1 \
     RUST_LOG=info
 
 EXPOSE 8001

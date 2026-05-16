@@ -139,9 +139,6 @@ pub async fn extract_start_with_context(
 
     // Always route through service_context.jobs.enqueue() so that notify()
     // fires immediately and workers wake without 0-5 second polling delay.
-    // The previous `if !cfg.lite_mode` branch called start_extract_job() which
-    // opened a fresh SQLite pool per call (re-running migrations) and never
-    // called notify().
     let config_json = extract_config_json(cfg, prompt.or_else(|| cfg.query.clone()))?;
     let job_id = service_context
         .jobs

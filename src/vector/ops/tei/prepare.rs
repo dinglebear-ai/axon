@@ -206,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_embed_docs_uses_given_source_type() {
-        let cfg = Config::default_lite();
+        let cfg = Config::default_minimal();
         let temp_dir = TempDir::new().expect("tempdir");
         let input_path = temp_dir.path().join("doc.md");
         tokio::fs::write(&input_path, "# Crawl doc\n\nhello there")
@@ -223,7 +223,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_embed_docs_defaults_to_embed() {
-        let cfg = Config::default_lite();
+        let cfg = Config::default_minimal();
         let temp_dir = TempDir::new().expect("tempdir");
         let input_path = temp_dir.path().join("doc.md");
         tokio::fs::write(&input_path, "# Embed doc\n\nthis is a test")

@@ -102,7 +102,7 @@ impl LiteBackend {
         path: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pool = Arc::new(open_sqlite_pool(path).await?);
-        let default_cfg = Arc::new(Config::default_lite());
+        let default_cfg = Arc::new(Config::default_minimal());
         let cancel_store = Self::init(Arc::clone(&pool), &default_cfg).await?;
 
         Ok(Self {

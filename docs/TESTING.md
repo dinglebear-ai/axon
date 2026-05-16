@@ -230,8 +230,6 @@ mcporter --config config/mcporter.json call axon.axon action:crawl subaction:lis
 Notes:
 - Script artifacts/logs are written under `.cache/mcporter-test/`.
 - The script generates suite-specific mcporter configs under `.cache/mcporter-test/`.
-  It may set `AXON_LITE=1` for compatibility, but SQLite/in-process jobs are
-  always used.
 - The suite requires Qdrant and TEI to be running.
 - `screenshot` uses a higher mcporter call timeout than the default because Chrome startup can exceed 60s on some machines.
 - CI parity: the `mcp-smoke` workflow job runs this same script in GitHub Actions.

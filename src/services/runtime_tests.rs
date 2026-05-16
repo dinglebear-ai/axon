@@ -22,7 +22,7 @@ async fn has_active_jobs_is_isolated_per_kind() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue crawl");
@@ -34,7 +34,7 @@ async fn has_active_jobs_is_isolated_per_kind() {
             input: "doc".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue embed");
@@ -62,7 +62,7 @@ async fn has_active_jobs_false_after_terminal_states() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue crawl");
@@ -73,7 +73,7 @@ async fn has_active_jobs_false_after_terminal_states() {
             input: "doc".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue embed");
@@ -106,7 +106,7 @@ async fn drain_terminates_quickly_on_terminal_state() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -117,7 +117,7 @@ async fn drain_terminates_quickly_on_terminal_state() {
             input: "x".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue embed");

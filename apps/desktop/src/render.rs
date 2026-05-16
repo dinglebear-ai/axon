@@ -11,7 +11,12 @@ use crate::theme::{
     AURORA_TEXT_PRIMARY,
 };
 
-pub(crate) fn render_prompt_row(query_is_empty: bool, prompt: SharedString) -> impl IntoElement {
+pub(crate) fn render_prompt_row(
+    query_is_empty: bool,
+    locked_command: Option<CommandAction>,
+    prompt: SharedString,
+    status_dot: impl IntoElement,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
@@ -21,6 +26,7 @@ pub(crate) fn render_prompt_row(query_is_empty: bool, prompt: SharedString) -> i
         .px_3()
         .border_b_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
+        .child(status_dot)
         .child(
             div()
                 .font_family(AURORA_FONT_DISPLAY)
@@ -29,14 +35,22 @@ pub(crate) fn render_prompt_row(query_is_empty: bool, prompt: SharedString) -> i
                 .text_color(rgb(AURORA_TEXT_PRIMARY))
                 .child("axon"),
         )
-        .child(
-            div()
-                .font_family(AURORA_FONT_MONO)
-                .font_weight(FontWeight(650.0))
-                .text_size(px(11.0))
-                .text_color(rgb(AURORA_ACCENT_STRONG))
-                .child("palette"),
-        )
+        .when_some(locked_command, |el, action| {
+            el.child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .bg(rgb(AURORA_NAV_BG))
+                    .border_1()
+                    .border_color(rgb(AURORA_BORDER_STRONG))
+                    .font_family(AURORA_FONT_MONO)
+                    .font_weight(FontWeight(650.0))
+                    .text_size(px(11.0))
+                    .text_color(rgb(AURORA_ACCENT_STRONG))
+                    .child(action.subcommand),
+            )
+        })
         .child(
             div()
                 .flex_1()
@@ -55,13 +69,14 @@ pub(crate) fn render_action_rows(
     actions: Vec<CommandAction>,
     selected: usize,
     running_subcommand: Option<&'static str>,
+    hide_list: bool,
 ) -> impl IntoElement {
     let is_empty = actions.is_empty();
     div()
         .flex()
         .flex_col()
         .py_1()
-        .when(is_empty, |el| el.child(render_empty_row()))
+        .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
         .when(!is_empty, |el| {
             el.children(actions.into_iter().enumerate().map(move |(i, action)| {
                 let is_sel = i == selected;

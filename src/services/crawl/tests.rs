@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use uuid::Uuid;
 
 fn test_config(start_url: &str) -> Config {
-    let mut cfg = Config::default_lite();
+    let mut cfg = Config::default_minimal();
     cfg.start_url = start_url.to_string();
     cfg
 }
@@ -297,10 +297,9 @@ fn predict_crawl_output_dir_uses_runtime_job_layout() {
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_completes_in_lite_mode()
+async fn crawl_start_with_context_completes_with_lite_backend()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = test_config("https://docs.rs");
-    cfg.lite_mode = true;
     cfg.wait = true;
     let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
 
@@ -319,7 +318,6 @@ async fn crawl_start_with_context_completes_in_lite_mode()
 async fn crawl_start_waits_for_only_its_dependent_embed_job()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = test_config("https://docs.rs");
-    cfg.lite_mode = true;
     cfg.wait = true;
     let crawl_job_id = Uuid::new_v4();
     let embed_job_id = Uuid::new_v4();
@@ -346,9 +344,8 @@ async fn crawl_start_waits_for_only_its_dependent_embed_job()
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_rejects_empty_urls_in_lite_mode() {
-    let mut cfg = test_config("https://docs.rs");
-    cfg.lite_mode = true;
+async fn crawl_start_with_context_rejects_empty_urls_with_lite_backend() {
+    let cfg = test_config("https://docs.rs");
     let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
 
     let err = crawl_start_with_context(&cfg, &[], &ctx, None)
@@ -358,10 +355,9 @@ async fn crawl_start_with_context_rejects_empty_urls_in_lite_mode() {
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_enqueues_without_blocking_in_lite_mode()
+async fn crawl_start_with_context_enqueues_without_blocking_with_lite_backend()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut cfg = test_config("https://docs.rs");
-    cfg.lite_mode = true;
     cfg.wait = false;
     let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CompletedLiteRuntime));
 
@@ -376,9 +372,8 @@ async fn crawl_start_with_context_enqueues_without_blocking_in_lite_mode()
 }
 
 #[tokio::test]
-async fn crawl_start_with_context_surfaces_canceled_jobs_in_lite_mode() {
+async fn crawl_start_with_context_surfaces_canceled_jobs_with_lite_backend() {
     let mut cfg = test_config("https://docs.rs");
-    cfg.lite_mode = true;
     cfg.wait = true;
     let ctx = ServiceContext::from_runtime(Arc::new(cfg.clone()), Arc::new(CanceledLiteRuntime));
 

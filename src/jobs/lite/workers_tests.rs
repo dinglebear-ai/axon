@@ -15,7 +15,7 @@ async fn worker_picks_up_job_via_notify() {
             input: "test content".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .unwrap();
@@ -52,7 +52,7 @@ async fn worker_picks_up_job_via_notify() {
 #[tokio::test]
 async fn dropping_worker_handles_gracefully_stops_worker_loops() {
     let pool = Arc::new(open_sqlite_pool(":memory:").await.unwrap());
-    let cfg = Arc::new(Config::default_lite());
+    let cfg = Arc::new(Config::default_minimal());
     let cancel_store = Arc::new(CancelStore::new());
 
     let handles = spawn_workers(pool, cfg, cancel_store);

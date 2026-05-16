@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-05-16
+
+### Removed
+
+- chore: remove `AXON_LITE` / `--lite` compat shim. The CLI flag, env var reading, `cfg.lite_mode` field, doctor `lite_mode` JSON output, and the dead `postgres`/`redis`/`amqp` doctor render branch are all gone. SQLite/in-process is the only runtime — has been for months. The migration registry still scrubs `AXON_LITE` from legacy `~/.axon/.env` files via `axon setup migrate-env` (see bd `axon_rust-kbad` for deferred final cleanup).
+- chore: remove `GOOGLE_API_KEY` and `GOOGLE_APPLICATION_CREDENTIALS` from the Gemini headless env allowlist and runtime env registry. Listed in the migration registry as `Delete` so legacy `.env` files get scrubbed on next `axon setup migrate-env`.
+
+### Changed
+
+- chore: hard-rename `AXON_LOG_DIR` + `AXON_LOG_FILE` → single `AXON_LOG_PATH` env var (full path to active log file; rotated siblings live in the same directory). Default unchanged: `$AXON_DATA_DIR/logs/axon.log`. Legacy vars listed in migration registry for cleanup.
+- chore: rename default Qdrant collection `cortex` → `axon`. Affects `Config::default().collection`, the clap `--collection` default, and the `cfg.collection != "cortex"` "is user-customized?" checks in `build_config.rs` and `src/ingest/sessions.rs::resolve_collection`.
+- chore: rename `Config::default_lite()` → `Config::default_minimal()` and `apply_default_lite_tuning()` → `apply_default_minimal_tuning()`. Test fn names `*_in_lite_mode` → `*_with_lite_backend`.
+- docs: scrub `AXON_LITE` / `--lite` / `cortex` references across CLAUDE.md, docs/CONFIG.md, docs/TESTING.md, .env.example, config.example.toml. Root CLAUDE.md updated to point at `axon setup migrate-env` for the env scrub (was misleadingly described as "auto-scrubs"). The OPENAI_* docstring corrected — those vars are active wire types for the extract pipeline, not legacy compat.
+- docs: add `src/extract/CLAUDE.md` (vertical extractor framework + 13 verticals). Refresh `src/core/CLAUDE.md` content/ map (extract_ladder, extraction, markdown, filename, url_parsing + sidecars). Refresh `src/crawl/CLAUDE.md` collector/ map with per-page passes (antibot detect, structured-data, DOM ladder). Add `vertical_scrape` action (discovery-only) to `src/mcp/CLAUDE.md`. Update all sub-CLAUDE.md `Last Modified` headers.
+- env: restructure `.env.example` into labeled sections (Data + URLs, MCP, Web panel, Ingest, Gemini, Logging, Compose). Add missing actively-read vars (`AXON_HOME`, `AXON_COLLECTION`, `AXON_MCP_HTTP_HOST/PORT`, `AXON_WEB_ALLOWED_ORIGINS`, `AXON_WEB_API_TOKEN`).
+- docker: refactor docker-compose.yaml with `x-common-service` and `x-gpu-service` YAML anchors to reduce duplication. Dockerfile: pin container env defaults (`AXON_HOME`, `AXON_IN_CONTAINER`, `AXON_MCP_HTTP_HOST=0.0.0.0`, `CLICOLOR_FORCE`).
+- desktop: tighten command-palette match logic; return empty matches early on empty query.
+
 ## [2.1.1] - 2026-05-16
 
 ### Changed

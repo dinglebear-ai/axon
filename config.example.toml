@@ -52,7 +52,7 @@
 
 # Default Qdrant collection name.
 # Env: AXON_COLLECTION (or --collection flag)
-# collection = "cortex"
+# collection = "axon"
 
 [ask]
 # LLM synthesis uses Gemini headless. Override the Gemini model with

@@ -1,8 +1,8 @@
 use std::process::{Command, Output};
 
 use gpui::{
-    App, Context, FocusHandle, Focusable, FontWeight, IntoElement, ParentElement, Render,
-    ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
+    App, Context, FocusHandle, Focusable, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+    Render, ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use crate::actions::{
@@ -14,10 +14,28 @@ use crate::render::{
     render_action_rows, render_output_body, render_palette_footer, render_prompt_row,
 };
 use crate::theme::{
-    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
-    AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
+    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG,
+    AURORA_TEXT_PRIMARY, AURORA_FONT_SANS,
 };
-use crate::{MoveDown, MoveUp, Submit};
+use crate::{MoveDown, MoveUp, Submit, TabComplete};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConnectionState {
+    Unknown,
+    Checking,
+    Connected,
+    Disconnected,
+}
+
+impl ConnectionState {
+    pub(crate) fn dot_color(self) -> u32 {
+        match self {
+            Self::Unknown | Self::Checking => AURORA_BORDER_STRONG,
+            Self::Connected => 0x4ade80,
+            Self::Disconnected => 0xf87171,
+        }
+    }
+}
 
 pub(crate) struct Palette {
     query: String,
@@ -27,6 +45,8 @@ pub(crate) struct Palette {
     running: Option<RunningCommand>,
     next_run_id: u64,
     output_scroll: ScrollHandle,
+    locked_command: Option<CommandAction>,
+    connection: ConnectionState,
 }
 
 struct RunningCommand {
@@ -41,9 +61,13 @@ struct CommandResult {
     result: Result<Output, String>,
 }
 
+struct HealthResult {
+    ok: bool,
+}
+
 impl Palette {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
-        Self {
+        let mut palette = Self {
             query: String::new(),
             selected: 0,
             focus: cx.focus_handle(),
@@ -51,11 +75,52 @@ impl Palette {
             running: None,
             next_run_id: 1,
             output_scroll: ScrollHandle::new(),
-        }
+            locked_command: None,
+            connection: ConnectionState::Unknown,
+        };
+        palette.spawn_health_check(cx);
+        palette
+    }
+
+    fn spawn_health_check(&mut self, cx: &mut Context<Self>) {
+        self.connection = ConnectionState::Checking;
+        cx.notify();
+
+        let task = cx.background_spawn(async move {
+            let ok = Command::new("axon")
+                .args(["doctor", "--json"])
+                .output()
+                .map(|o| {
+                    let stdout = String::from_utf8_lossy(&o.stdout);
+                    // Check for "all_ok":true with or without a space after the colon.
+                    stdout.contains(r#""all_ok":true"#) || stdout.contains(r#""all_ok": true"#)
+                })
+                .unwrap_or(false);
+            HealthResult { ok }
+        });
+
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.connection = if result.ok {
+                    ConnectionState::Connected
+                } else {
+                    ConnectionState::Disconnected
+                };
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn matches(&self) -> Vec<CommandAction> {
+        if self.locked_command.is_some() {
+            return vec![];
+        }
         let input = self.query.trim();
+        if input.is_empty() {
+            return vec![];
+        }
         let head = input.split_whitespace().next().unwrap_or("");
         let direct_url = looks_like_url(input);
 
@@ -63,21 +128,44 @@ impl Palette {
             .iter()
             .copied()
             .filter(|action| {
-                input.is_empty()
-                    || action_matches(*action, head)
+                action_matches(*action, head)
                     || action_matches(*action, input)
                     || (direct_url && action.accepts_direct_url())
             })
             .collect()
     }
 
-    fn submit(&mut self, _: &Submit, _window: &mut Window, cx: &mut Context<Self>) {
-        let actions = self.matches();
-        let Some(action) = actions.get(self.selected).copied() else {
+    fn tab_complete(&mut self, _: &TabComplete, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.locked_command.is_some() {
             return;
-        };
+        }
+        let actions = self.matches();
+        if let Some(action) = actions.get(self.selected).copied() {
+            self.locked_command = Some(action);
+            // Strip the command token from the query if the user typed it exactly,
+            // leaving behind only the argument portion they may have typed.
+            let input = self.query.trim();
+            let mut parts = input.splitn(2, char::is_whitespace);
+            let head = parts.next().unwrap_or("");
+            let tail = parts.next().map(str::trim).unwrap_or("");
+            if action_invoked_by(action, head) {
+                self.query = tail.to_string();
+            }
+            self.selected = 0;
+            cx.notify();
+        }
+    }
 
-        let arg = self.argument_for(action);
+    fn submit(&mut self, _: &Submit, _window: &mut Window, cx: &mut Context<Self>) {
+        let (action, arg) = if let Some(locked) = self.locked_command {
+            (locked, self.query.trim().to_string())
+        } else {
+            let actions = self.matches();
+            let Some(action) = actions.get(self.selected).copied() else {
+                return;
+            };
+            (action, self.argument_for(action).to_string())
+        };
 
         if action.arg_mode != ArgMode::None && arg.is_empty() {
             self.command_output = Some(CommandOutput::notice(
@@ -99,7 +187,7 @@ impl Palette {
             return;
         }
 
-        let args = match build_axon_args(action, arg) {
+        let args = match build_axon_args(action, &arg) {
             Ok(args) => args,
             Err(error) => {
                 self.command_output = Some(CommandOutput::notice(
@@ -154,6 +242,7 @@ impl Palette {
         })
         .detach();
 
+        self.locked_command = None;
         self.query.clear();
         self.selected = 0;
         cx.notify();
@@ -183,10 +272,17 @@ impl Palette {
         let key = ev.keystroke.key.as_str();
         match key {
             "backspace" => {
-                self.query.pop();
+                if self.query.is_empty() && self.locked_command.is_some() {
+                    self.locked_command = None;
+                } else {
+                    self.query.pop();
+                }
             }
             "escape" => {
-                if self.command_output.is_some() {
+                if self.locked_command.is_some() {
+                    // Unlock but preserve typed argument so user can reselect a command.
+                    self.locked_command = None;
+                } else if self.command_output.is_some() {
                     self.command_output = None;
                 } else if !self.query.is_empty() {
                     self.query.clear();
@@ -238,11 +334,35 @@ impl Render for Palette {
         let selected_action = actions.get(selected).copied();
         let running_subcommand = self.running.as_ref().map(|running| running.subcommand);
         let command_output = self.command_output.clone();
-        let prompt = if self.query.is_empty() {
-            SharedString::from("type a command or URL")
+        let locked = self.locked_command;
+        let hide_list = self.query.is_empty() || locked.is_some();
+
+        let prompt: SharedString = if self.query.is_empty() {
+            if let Some(action) = locked {
+                let hint = action.example.splitn(2, ' ').nth(1).unwrap_or(action.example);
+                SharedString::from(hint.to_string())
+            } else {
+                SharedString::from("type a command or URL")
+            }
         } else {
             SharedString::from(format!("> {}", self.query))
         };
+        let query_is_empty = self.query.is_empty();
+
+        let connection = self.connection;
+        let status_dot = div()
+            .id("status-dot")
+            .size(px(8.0))
+            .rounded_full()
+            .flex_shrink_0()
+            .cursor_pointer()
+            .bg(rgb(connection.dot_color()))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+                    this.spawn_health_check(cx);
+                }),
+            );
 
         div()
             .key_context("Palette")
@@ -250,13 +370,13 @@ impl Render for Palette {
             .on_action(cx.listener(Self::submit))
             .on_action(cx.listener(Self::move_down))
             .on_action(cx.listener(Self::move_up))
+            .on_action(cx.listener(Self::tab_complete))
             .on_key_down(cx.listener(Self::on_key))
             .flex()
             .flex_col()
             .size_full()
             .overflow_hidden()
             .font_family(AURORA_FONT_SANS)
-            .font_weight(FontWeight(480.0))
             .bg(rgb(AURORA_PAGE_BG))
             .text_color(rgb(AURORA_TEXT_PRIMARY))
             .p_5()
@@ -273,8 +393,8 @@ impl Render for Palette {
                     .border_1()
                     .border_color(rgb(AURORA_BORDER_STRONG))
                     .shadow_lg()
-                    .child(render_prompt_row(self.query.is_empty(), prompt))
-                    .child(render_action_rows(actions, selected, running_subcommand))
+                    .child(render_prompt_row(query_is_empty, locked, prompt, status_dot))
+                    .child(render_action_rows(actions, selected, running_subcommand, hide_list))
                     .when_some(selected_action, |el, action| {
                         el.child(render_palette_footer(
                             action,

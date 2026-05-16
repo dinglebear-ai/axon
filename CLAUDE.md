@@ -5,7 +5,7 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 
 ## Quick Start
 
-> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. There is no Postgres/Redis/RabbitMQ path; the `--lite` flag and `AXON_LITE=1` env are accepted for backwards compatibility only.
+> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. The `AXON_LITE` / `--lite` compat shim was removed; run `axon setup migrate-env` to scrub legacy keys from `~/.axon/.env`.
 
 ```bash
 # Recommended: use the wrapper script (auto-sources .env)
@@ -125,7 +125,7 @@ All flags are `--global` (usable with any subcommand).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--collection <name>` | string | `cortex` | Qdrant collection name. Also settable via `AXON_COLLECTION` env var. |
+| `--collection <name>` | string | `axon` | Qdrant collection name. Also settable via `AXON_COLLECTION` env var. |
 | `--embed <bool>` | bool | `true` | Auto-embed scraped content into Qdrant. |
 | `--limit <n>` | usize | `10` | Result limit for search/query commands. |
 | `--query <text>` | string | — | Query text (alternative to positional argument for some commands). |
@@ -284,7 +284,9 @@ AXON_HEADLESS_GEMINI_HOME=
 AXON_HEADLESS_GEMINI_MODEL=
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
-# OPENAI_MODEL is retained for compatibility; only gemini-* values are reused by Gemini.
+# OpenAI-compatible LLM endpoint for the `extract` pipeline and streaming ask path.
+# Read by src/services/extract.rs, src/jobs/lite/workers/runners/extract.rs,
+# and src/vector/ops/commands/streaming.rs. Independent of the Gemini headless path.
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key-or-empty
 OPENAI_MODEL=your-model-name
@@ -292,8 +294,8 @@ OPENAI_MODEL=your-model-name
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
 
-# Qdrant collection (default: cortex)
-AXON_COLLECTION=cortex
+# Qdrant collection (default: axon)
+AXON_COLLECTION=axon
 
 # Search and research (required for search/research commands)
 TAVILY_API_KEY=your-tavily-api-key
@@ -335,12 +337,10 @@ AXON_MCP_ALLOWED_ORIGINS=
 
 ## Runtime Mode
 
-Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path has been removed; the `--lite` flag and `AXON_LITE=1` env var are accepted for compatibility only.
+Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. Only Qdrant and TEI are required as external services. The legacy Postgres/Redis/RabbitMQ/AMQP path and the `AXON_LITE` / `--lite` compat shim have been removed.
 
 ```bash
-axon scrape https://example.com           # SQLite/in-process runtime
-AXON_LITE=1 axon scrape https://example.com   # accepted, no behavior change
-axon --lite scrape https://example.com        # accepted, no behavior change
+axon scrape https://example.com           # SQLite/in-process runtime (only mode)
 ```
 
 **Supported commands:** scrape, crawl (sync + async), map, embed, query, ask, evaluate, suggest, retrieve, extract, ingest, sessions, search, research, sources, domains, stats, status, doctor, debug, dedupe, screenshot, migrate, MCP server, serve.
@@ -349,7 +349,6 @@ axon --lite scrape https://example.com        # accepted, no behavior change
 
 ```bash
 # Env vars for runtime tuning
-AXON_LITE=1                              # accepted for compatibility
 AXON_SQLITE_PATH=/path/to/jobs.db        # optional; default: $AXON_DATA_DIR/jobs.db (i.e. ~/.axon/jobs.db)
 ```
 

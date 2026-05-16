@@ -190,7 +190,7 @@ pub(super) fn flatten_session_result(
 }
 
 pub(crate) fn resolve_collection(cfg: &Config, derived_name: &str) -> String {
-    if cfg.collection != "cortex" {
+    if cfg.collection != "axon" {
         return cfg.collection.clone();
     }
     if derived_name.is_empty() {

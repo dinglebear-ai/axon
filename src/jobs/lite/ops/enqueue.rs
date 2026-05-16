@@ -76,7 +76,7 @@ async fn rollback_best_effort(conn: &mut SqliteConnection) {
 /// Insert a new job row with status='pending'. Returns the new job's UUID.
 ///
 /// Pending-queue caps are sourced from `cfg.max_pending_{crawl,embed,extract,ingest}_jobs`
-/// (priority CLI flag > env > TOML > default). Pass `&Config::default_lite()` from
+/// (priority CLI flag > env > TOML > default). Pass `&Config::default_minimal()` from
 /// tests to use the built-in defaults (100/50/50/50) — those are well above any
 /// reasonable test fixture so production caps don't accidentally fail tests.
 ///

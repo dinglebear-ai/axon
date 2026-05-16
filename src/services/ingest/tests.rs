@@ -84,9 +84,8 @@ impl ServiceJobRuntime for CaptureRuntime {
 }
 
 #[tokio::test]
-async fn ingest_start_with_context_enqueues_sessions_jobs_in_lite_mode() {
+async fn ingest_start_with_context_enqueues_sessions_jobs_with_lite_backend() {
     let mut cfg = Config::test_default();
-    cfg.lite_mode = true;
     cfg.sessions_claude = true;
     cfg.sessions_codex = false;
     cfg.sessions_gemini = true;

@@ -24,7 +24,6 @@ pub(super) struct LiteralInputs<'a> {
     pub toml: &'a TomlConfig,
     pub dispatched: &'a DispatchOutput,
     pub collection: String,
-    pub lite_mode: bool,
     pub sqlite_path: std::path::PathBuf,
     pub crawl_concurrency_limit: Option<usize>,
     pub backfill_concurrency_limit: Option<usize>,
@@ -122,7 +121,6 @@ fn populate_perf_and_credentials(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.embed = g.embed;
     cfg.batch_concurrency = g.batch_concurrency.clamp(1, 512);
     cfg.wait = g.wait;
-    cfg.lite_mode = inputs.lite_mode;
     cfg.sqlite_path = inputs.sqlite_path.clone();
     cfg.yes = g.yes;
     cfg.performance_profile = g.performance_profile;

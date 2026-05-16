@@ -74,9 +74,9 @@ async fn run_watch_rejects_unknown_subcommand() {
 }
 
 #[tokio::test]
-async fn run_watch_lists_in_lite_mode() -> Result<(), Box<dyn Error>> {
+async fn run_watch_lists_with_lite_backend() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
-    let mut cfg = Config::default_lite();
+    let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
     let service_context = test_service_context(&cfg).await;
     run_watch(&cfg, &service_context).await?;

@@ -292,7 +292,7 @@ async fn extract_runner_returns_canceled_when_token_pre_cancelled() {
             urls: vec!["https://example.invalid/".into()],
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -311,7 +311,7 @@ async fn extract_runner_returns_canceled_when_token_pre_cancelled() {
     let token = CancellationToken::new();
     token.cancel();
 
-    let cfg = Config::default_lite();
+    let cfg = Config::default_minimal();
     let result = run_extract_job_lite(&pool, &cfg, id, Some(token)).await;
     let err = result.expect_err("pre-cancelled token must short-circuit extract runner");
     assert!(

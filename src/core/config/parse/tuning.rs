@@ -180,13 +180,13 @@ fn resolve_vertical_cache_ttl_secs(toml: &TomlConfig) -> std::collections::HashM
     map
 }
 
-pub(crate) fn apply_default_lite_tuning(cfg: &mut Config) {
+pub(crate) fn apply_default_minimal_tuning(cfg: &mut Config) {
     match load_toml_config() {
         Ok(toml) => apply_env_toml_tuning(cfg, &toml),
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "axon: failed to load TOML tuning for default_lite; using hardcoded defaults"
+                "axon: failed to load TOML tuning for default_minimal; using hardcoded defaults"
             );
         }
     }
