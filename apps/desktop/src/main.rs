@@ -43,7 +43,7 @@ fn build_application() -> Application {
     ))
 }
 
-actions!(palette, [Submit, MoveDown, MoveUp]);
+actions!(palette, [Submit, MoveDown, MoveUp, TabComplete]);
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -78,6 +78,7 @@ fn main() -> Result<()> {
             KeyBinding::new("enter", Submit, Some("Palette")),
             KeyBinding::new("down", MoveDown, Some("Palette")),
             KeyBinding::new("up", MoveUp, Some("Palette")),
+            KeyBinding::new("tab", TabComplete, Some("Palette")),
         ]);
 
         let bounds = Bounds::centered(None, size(px(720.0), px(560.0)), cx);

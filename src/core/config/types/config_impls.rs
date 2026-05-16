@@ -47,11 +47,10 @@ impl Default for Config {
             cache: true,
             cache_skip_browser: false,
             format: ScrapeFormat::Markdown,
-            collection: "cortex".to_string(),
+            collection: "axon".to_string(),
             embed: true,
             batch_concurrency: 16,
             wait: false,
-            lite_mode: false,
             sqlite_path: crate::core::paths::axon_data_base_dir().join("jobs.db"),
             yes: false,
             performance_profile: PerformanceProfile::HighStable,
@@ -221,13 +220,10 @@ impl Config {
 }
 
 impl Config {
-    /// A minimal Config used by LiteBackend — lite mode enabled, no external services required.
-    pub fn default_lite() -> Self {
-        let mut cfg = Self {
-            lite_mode: true,
-            ..Default::default()
-        };
-        crate::core::config::parse::tuning::apply_default_lite_tuning(&mut cfg);
+    /// Construct a minimal `Config` with default tuning applied.
+    pub fn default_minimal() -> Self {
+        let mut cfg = Self::default();
+        crate::core::config::parse::tuning::apply_default_minimal_tuning(&mut cfg);
         cfg
     }
 }
@@ -294,7 +290,6 @@ impl fmt::Debug for Config {
             .field("embed", &self.embed)
             .field("batch_concurrency", &self.batch_concurrency)
             .field("wait", &self.wait)
-            .field("lite_mode", &self.lite_mode)
             .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)
             .field("performance_profile", &self.performance_profile)

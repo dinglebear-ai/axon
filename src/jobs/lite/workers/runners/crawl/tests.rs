@@ -28,7 +28,7 @@ fn make_summary() -> CrawlSummary {
 #[tokio::test]
 async fn run_crawl_job_lite_rejects_blocked_url_before_crawl() {
     let pool = open_sqlite_pool(":memory:").await.expect("pool");
-    let cfg = Config::default_lite();
+    let cfg = Config::default_minimal();
     let id = enqueue_job(
         &pool,
         &JobPayload::Crawl {

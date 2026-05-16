@@ -60,7 +60,7 @@ fn config_default_crawl_settings() {
 #[test]
 fn config_default_vector_settings() {
     let cfg = Config::default();
-    assert_eq!(cfg.collection, "cortex");
+    assert_eq!(cfg.collection, "axon");
     assert!(cfg.embed);
     assert_eq!(cfg.search_limit, 10);
     assert_eq!(cfg.qdrant_url, "http://127.0.0.1:53333");
@@ -114,7 +114,7 @@ fn config_default_ignores_env_tuning_knobs() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn config_default_lite_applies_toml_tuning_when_env_unset() {
+fn config_default_minimal_applies_toml_tuning_when_env_unset() {
     with_env_saved(
         &[
             "AXON_CONFIG_PATH",
@@ -139,9 +139,8 @@ fn config_default_lite_applies_toml_tuning_when_env_unset() {
                 env::remove_var("AXON_HNSW_EF_SEARCH");
             }
 
-            let cfg = Config::default_lite();
+            let cfg = Config::default_minimal();
 
-            assert!(cfg.lite_mode);
             assert_eq!(cfg.tei_max_retries, 4);
             assert_eq!(cfg.ingest_lanes, 6);
             assert_eq!(cfg.hnsw_ef_search, 300);

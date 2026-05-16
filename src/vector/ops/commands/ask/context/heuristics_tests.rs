@@ -418,7 +418,7 @@ fn make_skip_candidate(url: &str, chunk_text: &str, rerank_score: f64) -> AskCan
 }
 
 fn skip_test_config() -> Config {
-    let mut cfg = Config::default_lite();
+    let mut cfg = Config::default_minimal();
     cfg.ask_fulldoc_skip_enabled = true;
     cfg.ask_fulldoc_skip_min_urls = 3;
     cfg.ask_fulldoc_skip_min_chars = 4000;

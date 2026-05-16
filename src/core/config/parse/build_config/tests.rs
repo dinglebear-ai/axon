@@ -1,14 +1,13 @@
 //! Tests for `build_config::into_config()`.
 //!
 //! Split into two themed submodules (bead axon_rust-2j9.6):
-//!   * `lite_mode`        — AXON_LITE / MCP origin / URL-required env tests
+//!   * `env_required`     — MCP origin / URL-required env tests
 //!   * `priority_chain`   — `CLI > env > TOML > default` tests for ask/hybrid/tei/workers/search
 //!
-//! Test BODIES are unchanged from the previous flat `mod tests` in `build_config.rs`.
 //! Shared fixtures (`ENV_LOCK`, `cli_with_services`, `with_env_saved`) live here so
 //! both submodules can reference them via `super::*`.
 
-mod lite_mode;
+mod env_required;
 mod priority_chain;
 
 pub(super) use super::{into_config, into_config_with_sources};

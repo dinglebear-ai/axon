@@ -1,30 +1,9 @@
-//! AXON_LITE / MCP origin / URL-required env tests.
+//! MCP origin / URL-required env tests.
 //! Test BODIES unchanged from the previous flat `mod tests` (bead 2j9.6).
 
 #![allow(clippy::needless_pass_by_value)]
 
 use super::*;
-
-#[allow(unsafe_code)]
-#[test]
-fn into_config_reads_axon_lite_env_var() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    unsafe {
-        env::set_var("AXON_LITE", "1");
-        env::set_var("QDRANT_URL", "http://localhost:53333");
-        env::set_var("TEI_URL", "http://localhost:52000");
-    }
-
-    let cli = Cli::parse_from(["axon", "scrape", "https://example.com"]);
-    let cfg = into_config(cli).expect("lite mode should not require PG/Redis/AMQP");
-    assert!(cfg.lite_mode);
-
-    unsafe {
-        env::remove_var("AXON_LITE");
-        env::remove_var("QDRANT_URL");
-        env::remove_var("TEI_URL");
-    }
-}
 
 #[allow(unsafe_code)]
 #[test]
