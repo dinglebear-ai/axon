@@ -268,7 +268,8 @@ Keys in live env but not in .env.example (stale or operator-specific):
 - `AXON_WEB_API_TOKEN` — secret; registered in runtime.rs; add to .env.example if the sample should advertise web API auth
 - `CHROME_URL` — stale alias; delete from live .env
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` — compat-shim; in registry as WarnAndIgnore
-- `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS`, `TEI_TOKENIZATION_WORKERS` — compose-env server args; already in registry
+- `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS` — compose-env server args; already in registry
+- `TEI_TOKENIZATION_WORKERS` — observed live compose-env server arg; not yet registered
 
 Keys in .env.example but not in live env (user hasn't set them):
 - `AXON_IMAGE` — compose override; optional
@@ -289,7 +290,7 @@ Keys in .env.example but not in live env (user hasn't set them):
 | Container injection risk noted | ✅ compose-env / both placement |
 | AXON_ENV_FILE / AXON_CONFIG_PATH shadowing risk noted | ✅ trusted-bootstrap with HostOnly |
 | TOML [services] URL behavior documented | ✅ section above |
-| Deprecation warnings wired for CompatibilityShim vars | ✅ ztqd.4: env_migration.rs emits tracing::warn! during `axon setup` migration |
+| CompatibilityShim vars classified for migration reporting | ✅ ztqd.4: env_migration.rs records them in setup migration output; no runtime warning log is emitted yet |
 | .env.example cleaned of Delete/CompatibilityShim/ACP keys | ✅ ztqd.4: trimmed to 34 lines matching target structure |
 | Stale Delete-classified keys confirmed absent from active src/ | ✅ ztqd.4: only appear in #[cfg(test)] fixtures in parse.rs |
 | GEMINI_API_KEY and GOOGLE_API_KEY classified in registry | ✅ ztqd.1: added to runtime.rs as KeepEnv |

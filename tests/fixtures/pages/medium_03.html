@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Rust Async Cancellation</title></head>
+<body>
+<header role="banner"><nav><a href="/">Home</a></nav></header>
+<main>
+<article>
+<h1>Cancellation in Rust async</h1>
+<p>Rust futures are cancelled by dropping them. Unlike Go or Java, there is no signal sent to the task — the executor simply stops polling and runs destructors. This shapes the entire programming model.</p>
+<h2>Cancel points</h2>
+<p>A future only observes cancellation at <code>.await</code> boundaries. Between await points, the future runs synchronously and cannot be interrupted. This is sometimes called "cancellation safety": code between awaits is effectively atomic with respect to cancel.</p>
+<h2>Drop guards</h2>
+<p>If you hold a lock, a database transaction, or a file handle across an await, the corresponding RAII guard will run on cancel. This is the language's main guarantee: resources are released. Whether your application invariants survive depends on whether the partial work is safe to roll back.</p>
+<h2>The tokio::select! gotcha</h2>
+<p>Inside <code>tokio::select!</code>, the unselected branches are dropped at the await point. If a future has stashed state that it needs to drive forward later — for example a buffered read in the middle of decoding a frame — dropping it loses that state. Cancellation-safe primitives (like <code>tokio::sync::mpsc::Receiver::recv</code>) document this explicitly. Treat undocumented futures as cancel-unsafe.</p>
+<h2>Structured concurrency</h2>
+<p>For long-running work, prefer spawning a task and holding the <code>JoinHandle</code>. Cancel by sending a shutdown signal through a channel; let the task drain and exit cleanly. The downside is more code; the upside is that cleanup is explicit rather than implicit-in-drop.</p>
+</article>
+</main>
+<footer role="contentinfo"><p>Example engineering notes.</p></footer>
+</body>
+</html>

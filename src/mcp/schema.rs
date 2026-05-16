@@ -26,6 +26,11 @@ pub enum AxonRequest {
     Research(ResearchRequest),
     Ask(AskRequest),
     Screenshot(ScreenshotRequest),
+    Debug(DebugRequest),
+    Dedupe(DedupeRequest),
+    Migrate(MigrateRequest),
+    Watch(WatchRequest),
+    Setup(SetupRequest),
     ElicitDemo(ElicitDemoRequest),
 }
 
@@ -39,7 +44,7 @@ pub enum ResponseMode {
     AutoInline,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CrawlRequest {
     pub subaction: Option<CrawlSubaction>,
@@ -87,7 +92,7 @@ pub enum McpScrapeFormat {
     Json,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractRequest {
     pub subaction: Option<ExtractSubaction>,
@@ -112,7 +117,7 @@ pub enum ExtractSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EmbedRequest {
     pub subaction: Option<EmbedSubaction>,
@@ -135,7 +140,7 @@ pub enum EmbedSubaction {
     Recover,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IngestRequest {
     pub subaction: Option<IngestSubaction>,
@@ -299,6 +304,68 @@ pub struct MapRequest {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DebugRequest {
+    pub context: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DedupeRequest {
+    pub collection: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MigrateRequest {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WatchRequest {
+    pub subaction: Option<WatchSubaction>,
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub task_type: Option<String>,
+    pub task_payload: Option<Value>,
+    pub every_seconds: Option<i64>,
+    pub enabled: Option<bool>,
+    pub limit: Option<i64>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchSubaction {
+    Create,
+    List,
+    Get,
+    RunNow,
+    History,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetupRequest {
+    pub mode: Option<SetupMode>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SetupMode {
+    Check,
+    FirstRun,
+    Repair,
+    MigrateEnv,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
