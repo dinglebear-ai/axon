@@ -32,6 +32,10 @@ pub struct CollectorConfig {
     /// Maximum bytes scanned for antibot challenge patterns.
     /// Passed from `cfg.antibot_max_body_scan_bytes` (default 150 KiB).
     pub antibot_max_scan_bytes: usize,
+    /// Maximum serialized bytes for a structured-data blob (bead axon_rust-jej7.2).
+    /// Passed from `cfg.structured_data_max_bytes` (default 65 536 bytes).
+    /// Blobs exceeding this limit are dropped rather than truncated.
+    pub structured_max_bytes: usize,
 }
 
 pub enum PageOutcome {
@@ -116,6 +120,14 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
         };
     }
 
+    // Structured-data extraction (bead axon_rust-jej7.2): run on raw HTML before
+    // it is discarded. `html_str` was already borrowed for challenge detection above;
+    // here we borrow it again to run JSON-LD / __NEXT_DATA__ / SvelteKit extraction.
+    // Memory is bounded: `html_str` is a `Cow<str>` from `from_utf8_lossy`, so it
+    // borrows the original `html_bytes` slice rather than allocating a copy for
+    // ASCII-clean input. The allocation (if any) is dropped at the end of this function.
+    let structured_blob = extract_structured_blob(&html_str, col.structured_max_bytes);
+
     if let Some(prev) = col.previous_manifest.get(url)
         && prev.content_hash.as_deref() == Some(&content_hash)
     {
@@ -126,6 +138,7 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
             markdown_chars: chars,
             content_hash: Some(content_hash),
             changed: false,
+            structured: structured_blob,
         };
         return PageOutcome::Reused {
             filename,
@@ -141,12 +154,43 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
         markdown_chars: chars,
         content_hash: Some(content_hash),
         changed: true,
+        structured: structured_blob,
     };
     PageOutcome::Write {
         filename,
         trimmed,
         entry,
     }
+}
+
+/// Run `core::structured::extract_all()` on the HTML string and reduce to a
+/// single dominant entry as a plain JSON value suitable for `ManifestEntry::structured`.
+/// Returns `None` when no structured data was found or the blob exceeds `max_bytes`.
+///
+/// The returned value (when `Some`) is a JSON object with fields:
+///   `kind` (str), `blob` (object), and optionally `schema_type`/`schema_id` (str).
+fn extract_structured_blob(html: &str, max_bytes: usize) -> Option<serde_json::Value> {
+    use crate::core::structured::extract_all;
+    let pass = extract_all(html);
+    if pass.is_empty() {
+        return None;
+    }
+    let (kind, value) = pass.dominant()?;
+    let blob_bytes = serde_json::to_vec(value).ok()?;
+    if blob_bytes.len() > max_bytes {
+        return None;
+    }
+    let blob: serde_json::Value = serde_json::from_slice(&blob_bytes).ok()?;
+    let schema_type = crate::core::structured::schema_type_of(value);
+    let schema_id = crate::core::structured::schema_id_of(value);
+    let mut obj = serde_json::json!({ "kind": kind, "blob": blob });
+    if let Some(t) = schema_type {
+        obj["schema_type"] = serde_json::Value::String(t);
+    }
+    if let Some(id) = schema_id {
+        obj["schema_id"] = serde_json::Value::String(id);
+    }
+    Some(obj)
 }
 
 pub fn canonicalize_and_track_page(

@@ -12,12 +12,19 @@ use spider::url::Url;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-async fn read_inputs(input: &str) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+/// Input record: (source_url_or_path, content, structured_blob).
+/// `structured_blob` is populated from the crawl manifest when input is a
+/// crawl-output directory (bead axon_rust-jej7.2). Always `None` for single
+/// files or raw-text inputs — those don't carry a crawl manifest.
+type InputRecord = (String, String, Option<serde_json::Value>);
+
+async fn read_inputs(input: &str) -> Result<Vec<InputRecord>, Box<dyn Error>> {
     let path = PathBuf::from(input);
     match tokio::fs::metadata(&path).await {
         Ok(meta) if meta.is_file() => Ok(vec![(
             path.to_string_lossy().to_string(),
             tokio::fs::read_to_string(&path).await?,
+            None,
         )]),
         Ok(meta) if meta.is_dir() => {
             let manifest_urls = read_manifest_url_map(&path);
@@ -33,19 +40,19 @@ async fn read_inputs(input: &str) -> Result<Vec<(String, String)>, Box<dyn Error
             let mut out = Vec::new();
             for p in files {
                 let canonical = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
-                let (source, changed) = manifest_urls
+                let (source, changed, structured) = manifest_urls
                     .get(&canonical)
-                    .map(|(u, c)| (u.clone(), *c))
-                    .unwrap_or_else(|| (p.to_string_lossy().to_string(), true));
+                    .map(|(u, c, s)| (u.clone(), *c, s.clone()))
+                    .unwrap_or_else(|| (p.to_string_lossy().to_string(), true, None));
                 if !changed {
                     continue;
                 }
                 let content = tokio::fs::read_to_string(&p).await?;
-                out.push((source, content));
+                out.push((source, content, structured));
             }
             Ok(out)
         }
-        _ => Ok(vec![(input.to_string(), input.to_string())]),
+        _ => Ok(vec![(input.to_string(), input.to_string(), None)]),
     }
 }
 
@@ -60,7 +67,9 @@ pub(super) async fn prepare_embed_docs(
     // When fetching a remote URL, run the structured-data pass on the raw
     // HTML before converting to markdown so we can attach JSON-LD /
     // __NEXT_DATA__ / SvelteKit payloads to every chunk. Local file / dir
-    // inputs do not carry HTML — structured stays `None` for those.
+    // inputs do not carry HTML — structured stays `None` for those (crawl
+    // path writes structured blobs into the manifest instead, so the crawl
+    // case is handled below via `manifest_structured`).
     let mut remote_structured: Option<StructuredPayload> = None;
     if docs.len() == 1 && !Path::new(input).exists() && input.starts_with("http") {
         let client = http_client()?.clone();
@@ -78,11 +87,11 @@ pub(super) async fn prepare_embed_docs(
                 );
             }
         }
-        docs = vec![(input.to_string(), to_markdown(&html, None))];
+        docs = vec![(input.to_string(), to_markdown(&html, None), None)];
     }
     let input_is_dir = Path::new(input).is_dir();
     let mut prepared = Vec::new();
-    for (url, raw) in docs {
+    for (url, raw, manifest_structured) in docs {
         if raw.trim().is_empty() {
             continue;
         }
@@ -103,6 +112,14 @@ pub(super) async fn prepare_embed_docs(
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))
             .unwrap_or_else(|| "unknown".to_string());
+        // Reconstruct StructuredPayload from the manifest blob written by
+        // process_page() at crawl time (bead axon_rust-jej7.2). Falls back
+        // to the remote-URL path's StructuredPayload when no manifest blob is
+        // present (e.g. single-URL embed, plain file embed).
+        let structured = manifest_structured
+            .as_ref()
+            .and_then(|blob| structured_payload_from_blob(blob))
+            .or_else(|| remote_structured.clone());
         prepared.push(PreparedDoc {
             url,
             domain,
@@ -112,10 +129,43 @@ pub(super) async fn prepare_embed_docs(
             title: None,
             extra: None,
             extractor_name: None,
-            structured: remote_structured.clone(),
+            structured,
         });
     }
     Ok(prepared)
+}
+
+/// Reconstruct a `StructuredPayload` from the JSON blob stored in the crawl
+/// manifest (bead axon_rust-jej7.2). The blob is the JSON object produced by
+/// `extract_structured_blob()` in `collector/page.rs`:
+///   `{ "kind": "jsonld" | "next_data" | "sveltekit",
+///      "blob": <raw JSON value>,
+///      "schema_type"?: "Article" | ...,
+///      "schema_id"?: "https://..." }`
+///
+/// Returns `None` when `kind` is missing or not a known static string.
+fn structured_payload_from_blob(blob: &serde_json::Value) -> Option<StructuredPayload> {
+    let kind: &'static str = match blob.get("kind").and_then(|v| v.as_str())? {
+        "jsonld" => "jsonld",
+        "next_data" => "next_data",
+        "sveltekit" => "sveltekit",
+        _ => return None,
+    };
+    let inner_blob = blob.get("blob")?.clone();
+    let schema_type = blob
+        .get("schema_type")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let schema_id = blob
+        .get("schema_id")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    Some(StructuredPayload {
+        kind,
+        schema_type,
+        schema_id,
+        blob: inner_blob,
+    })
 }
 
 pub(super) fn emit_empty_embed(

@@ -12,6 +12,13 @@ pub struct ManifestEntry {
     pub content_hash: Option<String>,
     #[serde(default = "default_true")]
     pub changed: bool,
+    /// Structured-data payload extracted from raw HTML at crawl time (bead
+    /// axon_rust-jej7.2). Serialized to JSONL as an inline JSON object with
+    /// `kind`, optional `schema_type`, optional `schema_id`, and `blob` fields.
+    /// `None` when no JSON-LD / __NEXT_DATA__ / SvelteKit data was found, or
+    /// when the blob exceeded `cfg.structured_data_max_bytes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
