@@ -235,14 +235,14 @@ fn insertion_mode_for_decisions(
         AskExplainInsertionMode::InsertedFullDoc
     } else if decisions
         .iter()
-        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::PlannedFullDoc)
-    {
-        AskExplainInsertionMode::PlannedFullDoc
-    } else if decisions
-        .iter()
         .any(|decision| decision.kind == AskExplainSelectionDecisionKind::SelectedSupplemental)
     {
         AskExplainInsertionMode::Supplemental
+    } else if decisions
+        .iter()
+        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::PlannedFullDoc)
+    {
+        AskExplainInsertionMode::PlannedFullDoc
     } else {
         AskExplainInsertionMode::NotSelected
     }

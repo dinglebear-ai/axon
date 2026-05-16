@@ -169,6 +169,37 @@ fn context_trace_emits_selection_metadata() {
 }
 
 #[test]
+fn context_trace_prioritizes_supplemental_mode_over_planned_only() {
+    let reranked = vec![candidate("https://a.test/docs", 0.90)];
+    let planned = HashSet::from(["https://a.test/docs".to_string()]);
+    let final_source_order = vec![AskExplainContextSource {
+        source_id: "S1".to_string(),
+        url: "https://a.test/docs".to_string(),
+        tier: "supplemental".to_string(),
+    }];
+
+    let decisions = build_context_selection_decisions(ContextSelectionInputs {
+        reranked: &reranked,
+        top_chunk_indices: &[],
+        selected_top_chunk_indices: &[],
+        planned_full_doc_urls: &planned,
+        top_full_doc_indices: &[0],
+        inserted_full_doc_urls: &HashSet::new(),
+        supplemental_indices: &[0],
+        supplemental_count: 1,
+        full_doc_fetch_skipped: false,
+        final_source_order: &final_source_order,
+    });
+
+    assert_eq!(
+        decisions[0].metadata.insertion_mode,
+        Some(AskExplainInsertionMode::Supplemental)
+    );
+    assert_eq!(decisions[0].metadata.planned_full_doc_rank, Some(1));
+    assert_eq!(decisions[0].metadata.selected_context_rank, Some(1));
+}
+
+#[test]
 fn context_trace_ranks_duplicate_url_by_context_tier() {
     let reranked = vec![
         candidate("https://a.test/docs", 0.90),

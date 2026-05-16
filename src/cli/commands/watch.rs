@@ -261,7 +261,9 @@ mod tests {
 
     #[tokio::test]
     async fn run_watch_rejects_unknown_subcommand() {
+        let tmp = tempfile::tempdir().expect("tempdir");
         let mut cfg = Config::test_default();
+        cfg.sqlite_path = tmp.path().join("jobs.db");
         cfg.positional = vec!["bogus".to_string()];
         let service_context = test_service_context(&cfg).await;
         let err = run_watch(&cfg, &service_context)
@@ -272,7 +274,9 @@ mod tests {
 
     #[tokio::test]
     async fn run_watch_lists_in_lite_mode() -> Result<(), Box<dyn Error>> {
-        let cfg = Config::default_lite();
+        let tmp = tempfile::tempdir()?;
+        let mut cfg = Config::default_lite();
+        cfg.sqlite_path = tmp.path().join("jobs.db");
         let service_context = test_service_context(&cfg).await;
         run_watch(&cfg, &service_context).await?;
         Ok(())

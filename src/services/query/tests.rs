@@ -282,7 +282,9 @@ fn ask_explain_candidate_deserializes_without_rank_fields() {
     });
     let parsed: AskExplainCandidate = serde_json::from_value(value).unwrap();
     assert_eq!(parsed.raw_rerank_rank, None);
+    assert_eq!(parsed.planned_full_doc_rank, None);
     assert_eq!(parsed.selected_context_rank, None);
+    assert_eq!(parsed.insertion_mode, None);
 }
 
 #[test]
