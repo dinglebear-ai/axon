@@ -1,0 +1,35 @@
+use super::*;
+
+#[test]
+fn headless_safety_rejects_forbidden_flags() {
+    let spec = HeadlessCommandSpec {
+        agent: "codex",
+        program: "codex".to_string(),
+        args: vec!["exec".to_string(), "--full-auto".to_string()],
+        prompt_transport: PromptTransport::Stdin,
+        output_mode: "jsonl",
+    };
+    assert!(spec.validate().is_err());
+}
+
+#[test]
+fn headless_safety_redacts_and_bounds_stderr() {
+    let raw = format!(
+        "{} OPENAI_API_KEY=sk-secret TOKEN=atk_token normal",
+        "x".repeat(STDERR_TAIL_LIMIT + 64)
+    );
+    let redacted = redacted_stderr_tail(raw.as_bytes());
+    assert!(redacted.len() <= STDERR_TAIL_LIMIT + 128);
+    assert!(!redacted.contains("sk-secret"));
+    assert!(!redacted.contains("atk_token"));
+    assert!(redacted.contains("[REDACTED]"));
+}
+
+#[test]
+fn headless_safety_keeps_only_stderr_tail() {
+    let mut buf = Vec::new();
+    append_bounded_tail(&mut buf, &vec![b'a'; STDERR_TAIL_LIMIT]);
+    append_bounded_tail(&mut buf, b"tail");
+    assert_eq!(buf.len(), STDERR_TAIL_LIMIT);
+    assert!(buf.ends_with(b"tail"));
+}

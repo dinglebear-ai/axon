@@ -1,6 +1,7 @@
 pub mod types;
 
 #[cfg(test)]
+#[path = "ingest_tests.rs"]
 mod tests;
 
 pub use self::types::{IngestJob, IngestJobConfig, IngestSource};

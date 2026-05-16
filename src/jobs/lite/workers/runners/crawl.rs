@@ -420,4 +420,5 @@ fn format_elapsed_ms(elapsed_ms: u128) -> String {
 }
 
 #[cfg(test)]
+#[path = "crawl_tests.rs"]
 mod tests;
