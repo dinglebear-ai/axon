@@ -89,11 +89,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     let normalize_started = std::time::Instant::now();
     let answer = normalize_ask_answer(cfg, query, answer_text, &context);
     timing.record(AskTimingSlot::Normalize, normalize_started);
-    let streamed_answer = matches!(llm, output::AskLlmCompletion::Streamed { .. });
-    if (cfg.ask_stream || streamed_answer)
-        && !cfg.json_output
-        && !cfg.ask_explain
-        && answer.trim() != answer_text.trim()
+    if cfg.ask_stream && !cfg.json_output && !cfg.ask_explain && answer.trim() != answer_text.trim()
     {
         print_normalized_stream_correction(&answer);
     }

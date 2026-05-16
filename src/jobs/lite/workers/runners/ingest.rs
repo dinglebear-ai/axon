@@ -33,8 +33,9 @@ pub async fn run_ingest_job_lite(
     let attempt_id: Option<String> =
         sqlx::query_scalar("SELECT active_attempt_id FROM axon_ingest_jobs WHERE id=?")
             .bind(id.to_string())
-            .fetch_one(pool)
-            .await?;
+            .fetch_optional(pool)
+            .await?
+            .flatten();
     let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id, attempt_id);
 
     // The ingest service functions return `Box<dyn Error>` (not Send+Sync), so we

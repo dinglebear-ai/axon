@@ -3,7 +3,7 @@ use crate::cli::commands::common::{
     filter_jobs_for_status_view, handle_job_cancel, handle_job_cleanup, handle_job_clear,
     handle_job_recover, handle_job_status, handle_worker_mode, print_list_footer, truncate_chars,
 };
-use crate::cli::commands::job_contracts::JobSummaryEntry;
+use crate::cli::commands::job_contracts::{JobErrorsResponse, JobSummaryEntry};
 use crate::core::config::Config;
 use crate::core::ui::{
     accent, confirm_destructive, muted, primary, status_text, symbol_for_status,
@@ -142,19 +142,26 @@ fn render_errors_subcommand(
     let (error_pages, waf_blocked_pages, sitemap_backfill_error) =
         crawl_error_metrics(job.result_json.as_ref());
     if cfg.json_output {
-        let out = serde_json::json!({
-            "job_id": job.id,
-            "status": job.status,
-            "url": job.url,
-            "error_text": job.error_text,
-            "metrics": {
-                "error_pages": error_pages,
-                "waf_blocked_pages": waf_blocked_pages,
-                "sitemap_backfill_error": sitemap_backfill_error,
-                "diagnostic_counts": job.result_json.as_ref().and_then(|m| m.get("diagnostic_counts")).cloned(),
-                "diagnostics": job.result_json.as_ref().and_then(|m| m.get("diagnostics")).cloned(),
-            }
-        });
+        let mut out = serde_json::to_value(JobErrorsResponse::from_job(
+            job.id,
+            job.status.clone(),
+            job.error_text.clone(),
+        ))?;
+        if let Some(object) = out.as_object_mut() {
+            object.insert("job_id".to_string(), serde_json::json!(job.id));
+            object.insert("url".to_string(), serde_json::json!(job.url));
+            object.insert("error_text".to_string(), serde_json::json!(job.error_text));
+            object.insert(
+                "metrics".to_string(),
+                serde_json::json!({
+                    "error_pages": error_pages,
+                    "waf_blocked_pages": waf_blocked_pages,
+                    "sitemap_backfill_error": sitemap_backfill_error,
+                    "diagnostic_counts": job.result_json.as_ref().and_then(|m| m.get("diagnostic_counts")).cloned(),
+                    "diagnostics": job.result_json.as_ref().and_then(|m| m.get("diagnostics")).cloned(),
+                }),
+            );
+        }
         println!("{}", serde_json::to_string_pretty(&out)?);
         return Ok(());
     }

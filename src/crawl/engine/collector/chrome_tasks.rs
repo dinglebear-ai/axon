@@ -27,17 +27,21 @@ pub(super) fn spawn_chrome_render(
     selector_config: Option<SelectorConfiguration>,
 ) {
     chrome_tasks.spawn(async move {
+        let diagnostic_url = url.clone();
         let _permit = match sem.acquire().await {
             Ok(p) => p,
             Err(_) => {
                 return RefetchResult {
                     url,
                     markdown: None,
-                    diagnostic: Some(CrawlDiagnostic::new(
-                        "chrome_render",
-                        "chrome_semaphore_closed",
-                        "Chrome render semaphore closed before task acquired a permit",
-                    )),
+                    diagnostic: Some(
+                        CrawlDiagnostic::new(
+                            "chrome_render",
+                            "chrome_semaphore_closed",
+                            "Chrome render semaphore closed before task acquired a permit",
+                        )
+                        .with_url(diagnostic_url),
+                    ),
                 };
             }
         };

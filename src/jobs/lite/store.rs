@@ -105,13 +105,20 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
 /// silently breaks the renderer.
 pub(crate) const RECLAIMED_ERROR_TEXT: &str = "reclaimed after unexpected shutdown";
 
-/// Per-kind reclaimed job IDs returned by `reclaim_stale_running_jobs_detailed`.
+/// A stale job attempt reclaimed by the watchdog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReclaimedJob {
+    pub id: Uuid,
+    pub attempt_id: Option<String>,
+}
+
+/// Per-kind reclaimed jobs returned by `reclaim_stale_running_jobs_detailed`.
 #[derive(Debug, Default, Clone)]
 pub struct ReclaimedJobs {
-    pub crawl: Vec<Uuid>,
-    pub embed: Vec<Uuid>,
-    pub extract: Vec<Uuid>,
-    pub ingest: Vec<Uuid>,
+    pub crawl: Vec<ReclaimedJob>,
+    pub embed: Vec<ReclaimedJob>,
+    pub extract: Vec<ReclaimedJob>,
+    pub ingest: Vec<ReclaimedJob>,
 }
 
 impl ReclaimedJobs {
@@ -120,10 +127,10 @@ impl ReclaimedJobs {
     }
 
     pub fn count_for(&self, kind: JobKind) -> usize {
-        self.ids_for(kind).len()
+        self.jobs_for(kind).len()
     }
 
-    pub fn ids_for(&self, kind: JobKind) -> &[Uuid] {
+    pub fn jobs_for(&self, kind: JobKind) -> &[ReclaimedJob] {
         match kind {
             JobKind::Crawl => &self.crawl,
             JobKind::Embed => &self.embed,
@@ -153,16 +160,16 @@ pub async fn reclaim_stale_running_jobs_detailed(
 ) -> Result<ReclaimedJobs, sqlx::Error> {
     let mut reclaimed = ReclaimedJobs::default();
     for kind in JobKind::all() {
-        let ids = reclaim_stale_running_jobs_for_table_ids(pool, *kind, stale_threshold_ms)
+        let jobs = reclaim_stale_running_jobs_for_table_jobs(pool, *kind, stale_threshold_ms)
             .await
             .inspect_err(|e| {
                 tracing::error!(table = kind.table_name(), error = %e, "watchdog: per-table sweep failed");
             })?;
         match kind {
-            JobKind::Crawl => reclaimed.crawl = ids,
-            JobKind::Embed => reclaimed.embed = ids,
-            JobKind::Extract => reclaimed.extract = ids,
-            JobKind::Ingest => reclaimed.ingest = ids,
+            JobKind::Crawl => reclaimed.crawl = jobs,
+            JobKind::Embed => reclaimed.embed = jobs,
+            JobKind::Extract => reclaimed.extract = jobs,
+            JobKind::Ingest => reclaimed.ingest = jobs,
         }
     }
     let total = reclaimed.total();
@@ -189,16 +196,40 @@ pub async fn reclaim_stale_running_jobs_for_table_ids(
     kind: JobKind,
     stale_threshold_ms: i64,
 ) -> Result<Vec<Uuid>, sqlx::Error> {
+    Ok(
+        reclaim_stale_running_jobs_for_table_jobs(pool, kind, stale_threshold_ms)
+            .await?
+            .into_iter()
+            .map(|job| job.id)
+            .collect(),
+    )
+}
+
+pub async fn reclaim_stale_running_jobs_for_table_jobs(
+    pool: &SqlitePool,
+    kind: JobKind,
+    stale_threshold_ms: i64,
+) -> Result<Vec<ReclaimedJob>, sqlx::Error> {
     // SAFETY: `kind.table_name()` returns a compile-time `&'static str` from
     // a closed enum dispatch; no caller-controlled value reaches `format!`.
     // Status literals come from a closed enum too.
     let table = kind.table_name();
     let threshold = now_ms() - stale_threshold_ms;
     let reclaimed_at = now_ms();
-    let reclaimed_rows: Vec<String> = sqlx::query_scalar(&format!(
+    let reclaimed_rows: Vec<(String, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT id, active_attempt_id FROM {} WHERE status='running' AND updated_at < ?",
+        table
+    ))
+    .bind(threshold)
+    .fetch_all(pool)
+    .await?;
+    if reclaimed_rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    sqlx::query(&format!(
         "UPDATE {} SET status='pending', error_text=?, \
          updated_at=?, active_attempt_id=NULL, last_reclaimed_at=?, last_reclaimed_reason=? \
-         WHERE status='running' AND updated_at < ? RETURNING id",
+         WHERE status='running' AND updated_at < ?",
         table
     ))
     .bind(RECLAIMED_ERROR_TEXT)
@@ -206,24 +237,25 @@ pub async fn reclaim_stale_running_jobs_for_table_ids(
     .bind(reclaimed_at)
     .bind("stale running job exceeded watchdog threshold")
     .bind(threshold)
-    .fetch_all(pool)
+    .execute(pool)
     .await?;
-    let ids: Vec<Uuid> = reclaimed_rows
+    let jobs: Vec<ReclaimedJob> = reclaimed_rows
         .into_iter()
-        .filter_map(|job_id| match Uuid::parse_str(&job_id) {
-            Ok(id) => Some(id),
+        .filter_map(|(job_id, attempt_id)| match Uuid::parse_str(&job_id) {
+            Ok(id) => Some(ReclaimedJob { id, attempt_id }),
             Err(e) => {
                 tracing::warn!(table, raw = %job_id, error = %e, "watchdog: reclaimed row had corrupt UUID");
                 None
             }
         })
         .collect();
-    let n = ids.len();
+    let n = jobs.len();
     if n > 0 {
-        for job_id in &ids {
+        for job in &jobs {
             tracing::warn!(
                 table,
-                job_id = %job_id,
+                job_id = %job.id,
+                attempt_id = job.attempt_id.as_deref().unwrap_or("unknown"),
                 "watchdog: reclaimed stale running job and reset it to pending"
             );
         }
@@ -233,7 +265,7 @@ pub async fn reclaim_stale_running_jobs_for_table_ids(
             "watchdog: reclaimed stale running jobs"
         );
     }
-    Ok(ids)
+    Ok(jobs)
 }
 
 /// Reclaim stale watch leases from a previous crashed process.

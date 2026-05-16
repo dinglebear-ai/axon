@@ -10,7 +10,7 @@ use uuid::Uuid;
 /// Cancellation is in-process only. Cross-process cancellation via SQLite
 /// polling is not implemented in lite mode (single-process assumption).
 pub struct CancelStore {
-    tokens: DashMap<Uuid, CancellationToken>,
+    tokens: DashMap<(Uuid, String), CancellationToken>,
 }
 
 impl CancelStore {
@@ -21,15 +21,15 @@ impl CancelStore {
     }
 
     /// Register a new cancellation token for a job. Returns a clone for the job to hold.
-    pub fn register(&self, id: Uuid) -> CancellationToken {
+    pub fn register(&self, id: Uuid, attempt_id: impl Into<String>) -> CancellationToken {
         let token = CancellationToken::new();
-        self.tokens.insert(id, token.clone());
+        self.tokens.insert((id, attempt_id.into()), token.clone());
         token
     }
 
     /// Remove a job's token (call when job reaches any terminal state).
-    pub fn remove(&self, id: Uuid) {
-        self.tokens.remove(&id);
+    pub fn remove(&self, id: Uuid, attempt_id: &str) {
+        self.tokens.remove(&(id, attempt_id.to_string()));
     }
 
     /// Cancel an in-memory token without changing the SQLite row.
@@ -37,8 +37,8 @@ impl CancelStore {
     /// Used by the periodic watchdog after it has already reclaimed the row
     /// back to `pending`; this stops the old local owner before another worker
     /// retries the same job ID.
-    pub fn cancel_local(&self, id: Uuid) -> bool {
-        if let Some((_, token)) = self.tokens.remove(&id) {
+    pub fn cancel_local(&self, id: Uuid, attempt_id: &str) -> bool {
+        if let Some((_, token)) = self.tokens.remove(&(id, attempt_id.to_string())) {
             token.cancel();
             true
         } else {
@@ -54,8 +54,10 @@ impl CancelStore {
         kind: JobKind,
     ) -> Result<bool, sqlx::Error> {
         let updated = cancel_row(pool, kind, id).await?;
-        if let Some(entry) = self.tokens.get(&id) {
-            entry.value().cancel();
+        for entry in self.tokens.iter() {
+            if entry.key().0 == id {
+                entry.value().cancel();
+            }
         }
         Ok(updated)
     }
@@ -91,7 +93,7 @@ mod tests {
         .unwrap();
 
         let store = Arc::new(CancelStore::new());
-        let token = store.register(id);
+        let token = store.register(id, "attempt-1");
 
         store.cancel(id, &pool, JobKind::Crawl).await.unwrap();
 

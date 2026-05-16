@@ -135,8 +135,9 @@ async fn current_attempt_id(
 ) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar(&format!("SELECT active_attempt_id FROM {table} WHERE id=?"))
         .bind(id.to_string())
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await
+        .map(Option::flatten)
 }
 
 async fn validate_crawl_job_url(
