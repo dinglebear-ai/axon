@@ -183,6 +183,14 @@ fn candidate_has_topical_overlap_ignores_short_query_tokens_for_topical_gate() {
 }
 
 #[test]
+fn candidate_has_topical_overlap_allows_all_short_identity_query_tokens() {
+    let candidate = make_candidate("https://docs.rs/axum", "router guide", 0.4).candidate;
+    let query_tokens = vec!["ui".to_string(), "rs".to_string()];
+
+    assert!(candidate_has_topical_overlap(&candidate, &query_tokens));
+}
+
+#[test]
 fn candidate_has_topical_overlap_rejects_generic_only_matches_when_product_named() {
     let candidate = make_candidate(
         "https://www.postgresql.org/docs/current/sql-createview.html",
