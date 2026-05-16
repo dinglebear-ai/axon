@@ -40,6 +40,11 @@ pub fn sanitized_git_stderr(stderr: &[u8], token: Option<&str>) -> String {
 }
 
 /// Run `git clone --depth=1` into a temp directory with SSRF validation and timeout.
+///
+/// When a token is provided, it is embedded in the clone URL as
+/// `https://x-access-token:{token}@github.com/...` — the most reliable auth
+/// method in headless/no-TTY environments. GIT_TERMINAL_PROMPT=0 ensures git
+/// fails fast rather than blocking on credential prompts.
 pub(super) async fn clone_repo(
     common: &GitHubCommonFields,
     branch: &str,
@@ -49,46 +54,43 @@ pub(super) async fn clone_repo(
 
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
-    let clone_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
 
-    validate_url(&clone_url)?;
+    // Validate the unauthenticated URL for SSRF before embedding credentials.
+    let public_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
+    validate_url(&public_url)?;
 
-    let base_args = [
-        "clone",
-        "--depth=1",
-        "--branch",
-        branch,
-        "--single-branch",
-        "--",
-        &clone_url,
-        &tmp_path,
-    ];
+    let clone_url = match token {
+        Some(t) if !t.is_empty() => format!(
+            "https://x-access-token:{t}@github.com/{}/{}.git",
+            common.owner, common.name
+        ),
+        _ => public_url.clone(),
+    };
 
     let ctx = format!("git clone {}", common.repo_slug);
+    let mut command = tokio::process::Command::new("git");
+    command
+        .args([
+            "clone",
+            "--depth=1",
+            "--branch",
+            branch,
+            "--single-branch",
+            "--",
+            &clone_url,
+            &tmp_path,
+        ])
+        .env("GIT_TERMINAL_PROMPT", "0");
 
-    if let Some(t) = token {
-        let mut command = tokio::process::Command::new("git");
-        command
-            .args(base_args)
-            .env("GIT_CONFIG_COUNT", "1")
-            .env("GIT_CONFIG_KEY_0", "http.extraHeader")
-            .env("GIT_CONFIG_VALUE_0", format!("Authorization: token {t}"));
-        let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
+    let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
 
-        if output.status.success() {
-            return Ok(tmp);
-        }
+    if output.status.success() {
+        return Ok(tmp);
+    }
 
-        let stderr = sanitized_git_stderr(&output.stderr, Some(t));
-        if !should_retry_unauthenticated_clone(common, &stderr) {
-            bail!(
-                "authenticated git clone failed for {} (exit {}): {}",
-                common.repo_slug,
-                output.status,
-                stderr
-            );
-        }
+    let stderr = sanitized_git_stderr(&output.stderr, token);
 
+    if token.is_some() && should_retry_unauthenticated_clone(common, &stderr) {
         log_warn(&format!(
             "command=ingest_github auth_clone_failed repo={}/{} retrying_unauthenticated",
             common.owner, common.name
@@ -97,16 +99,36 @@ pub(super) async fn clone_repo(
         tokio::fs::create_dir_all(tmp.path()).await.map_err(|e| {
             anyhow::anyhow!("failed to recreate tmp dir for unauthenticated retry: {e}")
         })?;
+
+        let mut fallback = tokio::process::Command::new("git");
+        fallback
+            .args([
+                "clone",
+                "--depth=1",
+                "--branch",
+                branch,
+                "--single-branch",
+                "--",
+                &public_url,
+                &tmp_path,
+            ])
+            .env("GIT_TERMINAL_PROMPT", "0");
+        let fallback_output = run_command_with_timeout(fallback, SUBPROCESS_TIMEOUT, &ctx).await?;
+        if fallback_output.status.success() {
+            return Ok(tmp);
+        }
+        let fallback_stderr = sanitized_git_stderr(&fallback_output.stderr, token);
+        bail!(
+            "git clone failed (exit {}): {}",
+            fallback_output.status,
+            fallback_stderr
+        );
     }
 
-    let mut command = tokio::process::Command::new("git");
-    command.args(base_args);
-    let output = run_command_with_timeout(command, SUBPROCESS_TIMEOUT, &ctx).await?;
-
-    if !output.status.success() {
-        let stderr = sanitized_git_stderr(&output.stderr, token);
-        bail!("git clone failed (exit {}): {}", output.status, stderr);
-    }
-
-    Ok(tmp)
+    bail!(
+        "git clone failed for {} (exit {}): {}",
+        common.repo_slug,
+        output.status,
+        stderr
+    );
 }
