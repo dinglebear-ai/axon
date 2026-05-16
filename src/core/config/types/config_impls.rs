@@ -178,7 +178,6 @@ impl Default for Config {
             local_mode: false,
             server_url: None,
             job_wait_timeout_secs: 300,
-            log_max_bytes: 10 * 1024 * 1024, // 10 MiB
         }
     }
 }
@@ -429,7 +428,6 @@ impl fmt::Debug for Config {
             )
             .field("quiet", &self.quiet)
             .field("job_wait_timeout_secs", &self.job_wait_timeout_secs)
-            .field("log_max_bytes", &self.log_max_bytes)
             .field("client_mode", &self.client_mode)
             .field("local_mode", &self.local_mode)
             .field(

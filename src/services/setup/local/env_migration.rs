@@ -105,7 +105,19 @@ fn compat_shim_reason(behavior: LegacyBehavior) -> &'static str {
         LegacyBehavior::WarnAndIgnore => {
             "ignored; this variable has no effect in the current runtime"
         }
-        _ => "deprecated; consult docs/env-migration-matrix.md for the replacement",
+        // These variants should not reach compat_shim_reason — classification
+        // is checked before calling this function. If a new variant is added,
+        // the compiler will surface this match as non-exhaustive.
+        LegacyBehavior::Canonical
+        | LegacyBehavior::Advanced
+        | LegacyBehavior::DeleteOnMigration => {
+            debug_assert!(
+                false,
+                "compat_shim_reason called for non-shim behavior {:?}",
+                behavior
+            );
+            "deprecated; consult docs/env-migration-matrix.md for the replacement"
+        }
     }
 }
 

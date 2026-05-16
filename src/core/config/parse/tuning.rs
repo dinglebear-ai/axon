@@ -96,7 +96,6 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         256,
     );
     cfg.job_wait_timeout_secs = job_wait_timeout_secs(toml);
-    cfg.log_max_bytes = log_max_bytes(toml);
 }
 
 pub(crate) fn apply_default_lite_tuning(cfg: &mut Config) {
@@ -277,14 +276,6 @@ fn job_wait_timeout_secs(toml: &TomlConfig) -> u64 {
         30,
         3600,
     )
-}
-
-fn log_max_bytes(toml: &TomlConfig) -> u64 {
-    // No meaningful upper bound — 0 is valid (disables rotation).
-    // Use a wide clamp (0–u64::MAX) so env_u64_opt does pure parse-or-warn.
-    performance::env_u64_opt("AXON_LOG_MAX_BYTES", 0, u64::MAX)
-        .or(toml.logging.max_bytes)
-        .unwrap_or(10 * 1024 * 1024) // 10 MiB
 }
 
 fn max_pending(toml: &TomlConfig, kind: &str) -> usize {
