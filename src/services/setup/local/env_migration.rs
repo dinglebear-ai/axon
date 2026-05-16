@@ -1,5 +1,5 @@
 use super::{LocalSetupPhase, LocalSetupStatus, PhaseTimer};
-use crate::core::config::parse::env_registry::{self, EnvClassification};
+use crate::core::config::parse::env_registry::{self, EnvClassification, LegacyBehavior};
 use crate::services::setup::config_store;
 use std::collections::BTreeMap;
 use std::io::{self, Write as _};
@@ -41,13 +41,14 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
     let mut report = EnvMigrationReport::new(backup_path);
 
     for (key, value) in parsed {
-        let classification = env_registry::spec_for(&key).map(|spec| {
+        let spec_info = env_registry::spec_for(&key).map(|spec| {
             (
                 spec.classification,
                 spec.toml_destination.map(str::to_string),
+                spec.legacy_behavior,
             )
         });
-        let Some((classification, toml_destination)) = classification else {
+        let Some((classification, toml_destination, legacy_behavior)) = spec_info else {
             retained.insert(key, value);
             report.preserved_unclassified += 1;
             continue;
@@ -76,6 +77,8 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
                 report.deleted += 1;
             }
             EnvClassification::CompatibilityShim => {
+                let reason = compat_shim_reason(legacy_behavior);
+                tracing::warn!("env var {key} is deprecated: {reason}");
                 retained.insert(key, value);
                 report.compatibility_shims += 1;
             }
@@ -92,6 +95,18 @@ pub(super) fn migrate_env_file(path: &Path) -> io::Result<EnvMigrationResult> {
         phase: timer.finish(LocalSetupStatus::Ok, report.detail()),
         values: retained,
     })
+}
+
+fn compat_shim_reason(behavior: LegacyBehavior) -> &'static str {
+    match behavior {
+        LegacyBehavior::WarnEnvOverride => {
+            "still accepted but will be removed; set the TOML equivalent instead"
+        }
+        LegacyBehavior::WarnAndIgnore => {
+            "ignored; this variable has no effect in the current runtime"
+        }
+        _ => "deprecated; consult docs/env-migration-matrix.md for the replacement",
+    }
 }
 
 fn write_moved_toml_values(values: &[MovedTomlValue]) -> io::Result<()> {
