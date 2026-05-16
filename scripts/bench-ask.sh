@@ -88,12 +88,39 @@ run_one_ask() {
     fi
 
     local out
-    if ! out=$("$AXON_BIN" ask "$prompt_text" --json "${extra_args[@]}" 2>/dev/null); then
+    if ! out=$("$AXON_BIN" ask "$prompt_text" --json --diagnostics "${extra_args[@]}" 2>/dev/null); then
         echo "{}"
         return 0
     fi
 
     jq -c '.timing_ms // {}' <<<"$out" 2>/dev/null || echo "{}"
+}
+
+validate_artifact() {
+    local path="$1"
+    jq -e '
+        def forbidden_key:
+            paths(objects) as $p
+            | getpath($p)
+            | to_entries[]
+            | select(.key as $k | ["query", "answer", "chunk_text", "url", "source", "prompt", "prompt_text"] | index($k))
+            | "forbidden key \(.key) at \($p | join("."))";
+        def long_string:
+            paths(strings) as $p
+            | getpath($p) as $s
+            | select($s | length > 100)
+            | "string longer than 100 chars at \($p | join("."))";
+        def bad_timing_value:
+            .results[]?.timings[]?
+            | paths(scalars) as $p
+            | getpath($p) as $v
+            | select(($v | type) != "number" and ($v | type) != "boolean")
+            | "non-numeric timing value at results.timings.\($p | join("."))";
+        [forbidden_key, long_string, bad_timing_value] as $violations
+        | if ($violations | length) == 0 then true else
+            $violations[] | halt_error(1)
+          end
+    ' "$path" >/dev/null
 }
 
 echo "bench-ask: backend=gemini-headless runs=$RUNS mode=$MODE prompts=$PROMPTS_FILE" >&2
@@ -138,6 +165,8 @@ jq -n \
         runs_per_prompt: $runs,
         results: $results
     }' > "$OUT"
+
+validate_artifact "$OUT"
 
 echo "wrote $OUT" >&2
 echo "$OUT"

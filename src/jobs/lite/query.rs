@@ -17,6 +17,10 @@ type JobStatusRowTuple = (
     Option<i64>,
     Option<String>,
     Option<String>,
+    i64,
+    Option<String>,
+    Option<i64>,
+    Option<String>,
 );
 
 pub(crate) fn ms_to_dt(ms: i64) -> DateTime<Utc> {
@@ -109,7 +113,8 @@ pub async fn job_status_row(
 ) -> Result<Option<JobStatusRow>, sqlx::Error> {
     let table = kind.table_name();
     let row: Option<JobStatusRowTuple> = sqlx::query_as(&format!(
-        "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, result_json \
+        "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, result_json, \
+         attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
          FROM {} WHERE id = ?",
         table
     ))
@@ -118,7 +123,20 @@ pub async fn job_status_row(
     .await?;
 
     Ok(row.map(
-        |(id, status, created_at, updated_at, started_at, finished_at, error_text, result_json)| {
+        |(
+            id,
+            status,
+            created_at,
+            updated_at,
+            started_at,
+            finished_at,
+            error_text,
+            result_json,
+            attempt_count,
+            active_attempt_id,
+            last_reclaimed_at,
+            last_reclaimed_reason,
+        )| {
             JobStatusRow {
                 id: Uuid::parse_str(&id).unwrap_or_else(|e| {
                     tracing::warn!(raw = %id, error = %e, "corrupt UUID in job status row, using nil");
@@ -136,6 +154,10 @@ pub async fn job_status_row(
                         None
                     })
                 }),
+                attempt_count,
+                active_attempt_id,
+                last_reclaimed_at: last_reclaimed_at.map(ms_to_dt),
+                last_reclaimed_reason,
             }
         },
     ))
@@ -158,21 +180,26 @@ pub async fn job_errors(
     Ok(row.and_then(|(e,)| e))
 }
 
-type ServiceJobTuple = (
-    String,
-    String,
-    i64,
-    i64,
-    Option<i64>,
-    Option<i64>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-);
+#[derive(sqlx::FromRow)]
+struct ServiceJobRow {
+    id: String,
+    status: String,
+    created_at: i64,
+    updated_at: i64,
+    started_at: Option<i64>,
+    finished_at: Option<i64>,
+    error_text: Option<String>,
+    url: Option<String>,
+    source_type: Option<String>,
+    target: Option<String>,
+    urls_json: Option<String>,
+    result_json: Option<String>,
+    config_json: Option<String>,
+    attempt_count: i64,
+    active_attempt_id: Option<String>,
+    last_reclaimed_at: Option<i64>,
+    last_reclaimed_reason: Option<String>,
+}
 
 /// Returns the per-kind `SELECT … FROM <table>` fragment (no trailing clause).
 /// The caller appends either a `WHERE id = ?` or `ORDER BY … LIMIT … OFFSET …`.
@@ -180,75 +207,68 @@ fn service_select_from(kind: JobKind) -> &'static str {
     match kind {
         JobKind::Crawl => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json \
+             url, NULL as source_type, NULL as target, NULL as urls_json, result_json, config_json, \
+             attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_crawl_jobs"
         }
         JobKind::Embed => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json \
+             NULL as url, NULL as source_type, input_text as target, NULL as urls_json, result_json, config_json, \
+             attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_embed_jobs"
         }
         JobKind::Extract => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json \
+             NULL as url, NULL as source_type, NULL as target, urls_json, result_json, config_json, \
+             attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_extract_jobs"
         }
         JobKind::Ingest => {
             "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-             NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
+             NULL as url, source_type, target, NULL as urls_json, result_json, config_json, \
+             attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
              FROM axon_ingest_jobs"
         }
     }
 }
 
-fn service_job_from_tuple(row: ServiceJobTuple) -> ServiceJob {
-    let (
-        id,
-        status,
-        created_at,
-        updated_at,
-        started_at,
-        finished_at,
-        error_text,
-        url,
-        source_type,
-        target,
-        urls_json,
-        result_json,
-        config_json,
-    ) = row;
+fn service_job_from_row(row: ServiceJobRow) -> ServiceJob {
     ServiceJob {
-        id: Uuid::parse_str(&id).unwrap_or_else(|e| {
-            tracing::warn!(raw = %id, error = %e, "corrupt UUID in service job row, using nil");
+        id: Uuid::parse_str(&row.id).unwrap_or_else(|e| {
+            tracing::warn!(raw = %row.id, error = %e, "corrupt UUID in service job row, using nil");
             Uuid::nil()
         }),
-        status,
-        created_at: ms_to_dt(created_at),
-        updated_at: ms_to_dt(updated_at),
-        started_at: started_at.map(ms_to_dt),
-        finished_at: finished_at.map(ms_to_dt),
-        error_text,
-        url,
-        source_type,
-        target,
-        urls_json: urls_json.and_then(|s| {
+        status: row.status,
+        created_at: ms_to_dt(row.created_at),
+        updated_at: ms_to_dt(row.updated_at),
+        started_at: row.started_at.map(ms_to_dt),
+        finished_at: row.finished_at.map(ms_to_dt),
+        error_text: row.error_text,
+        url: row.url,
+        source_type: row.source_type,
+        target: row.target,
+        urls_json: row.urls_json.and_then(|s| {
             serde_json::from_str(&s).unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "corrupt urls_json in service job row, using None");
                 None
             })
         }),
-        result_json: result_json.and_then(|s| {
+        result_json: row.result_json.and_then(|s| {
             serde_json::from_str(&s).unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "corrupt result_json in service job row, using None");
                 None
             })
         }),
-        config_json: config_json.and_then(|s| {
+        config_json: row.config_json.and_then(|s| {
             serde_json::from_str(&s).unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "corrupt config_json in service job row, using None");
                 None
             })
         }),
+        attempt_count: row.attempt_count,
+        active_attempt_id: row.active_attempt_id,
+        last_reclaimed_at: row.last_reclaimed_at.map(ms_to_dt),
+        last_reclaimed_reason: row.last_reclaimed_reason,
     }
 }
 
@@ -282,12 +302,12 @@ pub async fn list_service_jobs(
         service_select_from(kind),
         order_by,
     );
-    let rows: Vec<ServiceJobTuple> = sqlx::query_as(&query)
+    let rows: Vec<ServiceJobRow> = sqlx::query_as(&query)
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
         .await?;
-    Ok(rows.into_iter().map(service_job_from_tuple).collect())
+    Ok(rows.into_iter().map(service_job_from_row).collect())
 }
 
 pub async fn list_ingest_service_jobs(
@@ -296,9 +316,10 @@ pub async fn list_ingest_service_jobs(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ServiceJob>, sqlx::Error> {
-    let rows: Vec<ServiceJobTuple> = sqlx::query_as(
+    let rows: Vec<ServiceJobRow> = sqlx::query_as(
         "SELECT id, status, created_at, updated_at, started_at, finished_at, error_text, \
-         NULL as url, source_type, target, NULL as urls_json, result_json, config_json \
+         NULL as url, source_type, target, NULL as urls_json, result_json, config_json, \
+         attempt_count, active_attempt_id, last_reclaimed_at, last_reclaimed_reason \
          FROM axon_ingest_jobs \
          WHERE (?1 IS NULL OR source_type = ?1) \
          ORDER BY CASE status \
@@ -319,7 +340,7 @@ pub async fn list_ingest_service_jobs(
     .bind(offset)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(service_job_from_tuple).collect())
+    Ok(rows.into_iter().map(service_job_from_row).collect())
 }
 
 pub async fn service_job(
@@ -328,11 +349,11 @@ pub async fn service_job(
     id: Uuid,
 ) -> Result<Option<ServiceJob>, sqlx::Error> {
     let query = format!("{} WHERE id = ?", service_select_from(kind));
-    let row: Option<ServiceJobTuple> = sqlx::query_as(&query)
+    let row: Option<ServiceJobRow> = sqlx::query_as(&query)
         .bind(id.to_string())
         .fetch_optional(pool)
         .await?;
-    Ok(row.map(service_job_from_tuple))
+    Ok(row.map(service_job_from_row))
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, lift_err};
 use crate::jobs::lite::config_snapshot::decode_ingest_job_config;
-use crate::jobs::lite::ops::update_result_json;
+use crate::jobs::lite::ops::update_result_json_for_attempt;
 
 use super::JobResult;
 
@@ -30,7 +30,12 @@ pub async fn run_ingest_job_lite(
         format!("ingest job {id}: malformed config_json: {e} (preview: {preview:?})")
     })?;
 
-    let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id);
+    let attempt_id: Option<String> =
+        sqlx::query_scalar("SELECT active_attempt_id FROM axon_ingest_jobs WHERE id=?")
+            .bind(id.to_string())
+            .fetch_one(pool)
+            .await?;
+    let (progress_tx, progress_task) = spawn_ingest_progress_persister(pool, id, attempt_id);
 
     // The ingest service functions return `Box<dyn Error>` (not Send+Sync), so we
     // can't easily wrap them in a generic helper. Each branch races its own
@@ -130,6 +135,7 @@ pub async fn run_ingest_job_lite(
 fn spawn_ingest_progress_persister(
     pool: &SqlitePool,
     id: uuid::Uuid,
+    attempt_id: Option<String>,
 ) -> (mpsc::Sender<serde_json::Value>, tokio::task::JoinHandle<()>) {
     let pool = pool.clone();
     let (tx, mut rx) = mpsc::channel::<serde_json::Value>(128);
@@ -137,7 +143,15 @@ fn spawn_ingest_progress_persister(
         let mut current = serde_json::Value::Object(serde_json::Map::new());
         while let Some(progress) = rx.recv().await {
             merge_progress(&mut current, progress);
-            if let Err(e) = update_result_json(&pool, JobKind::Ingest, id, &current).await {
+            if let Err(e) = update_result_json_for_attempt(
+                &pool,
+                JobKind::Ingest,
+                id,
+                attempt_id.as_deref(),
+                &current,
+            )
+            .await
+            {
                 tracing::warn!(job_id = %id, error = %e, "failed to persist ingest progress");
             }
         }

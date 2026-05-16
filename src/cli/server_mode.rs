@@ -354,6 +354,10 @@ mod tests {
                 "chunks_embedded": 8
             })),
             config_json: None,
+            attempt_count: 0,
+            active_attempt_id: None,
+            last_reclaimed_at: None,
+            last_reclaimed_reason: None,
         };
         let payload = json!({
             "local_crawl_jobs": [job.clone()],

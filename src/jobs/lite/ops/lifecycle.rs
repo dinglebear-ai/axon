@@ -6,6 +6,13 @@ use crate::jobs::lite::store::now_ms;
 
 use super::retry::retry_busy;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimedJob {
+    pub id: Uuid,
+    pub attempt_id: String,
+    pub attempt_count: i64,
+}
+
 /// Atomically claim the oldest pending job in `table`.
 /// Returns None if no pending jobs exist.
 ///
@@ -16,16 +23,25 @@ pub async fn claim_next_pending(
     pool: &SqlitePool,
     kind: JobKind,
 ) -> Result<Option<Uuid>, sqlx::Error> {
-    retry_busy("claim_next_pending", || {
-        claim_next_pending_inner(pool, kind)
+    Ok(claim_next_pending_for_attempt(pool, kind)
+        .await?
+        .map(|claimed| claimed.id))
+}
+
+pub async fn claim_next_pending_for_attempt(
+    pool: &SqlitePool,
+    kind: JobKind,
+) -> Result<Option<ClaimedJob>, sqlx::Error> {
+    retry_busy("claim_next_pending_for_attempt", || {
+        claim_next_pending_for_attempt_inner(pool, kind)
     })
     .await
 }
 
-async fn claim_next_pending_inner(
+async fn claim_next_pending_for_attempt_inner(
     pool: &SqlitePool,
     kind: JobKind,
-) -> Result<Option<Uuid>, sqlx::Error> {
+) -> Result<Option<ClaimedJob>, sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
     let mut conn = pool.acquire().await?;
@@ -35,8 +51,8 @@ async fn claim_next_pending_inner(
     // concurrent workers.
     sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
 
-    let row: Option<(String, Option<String>)> = match sqlx::query_as(&format!(
-        "SELECT id, error_text FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
+    let row: Option<(String, Option<String>, i64)> = match sqlx::query_as(&format!(
+        "SELECT id, error_text, attempt_count FROM {} WHERE status='pending' ORDER BY created_at LIMIT 1",
         table
     ))
     .fetch_optional(&mut *conn)
@@ -54,14 +70,19 @@ async fn claim_next_pending_inner(
             sqlx::query("ROLLBACK").execute(&mut *conn).await?;
             Ok(None)
         }
-        Some((id_str, error_text)) => {
+        Some((id_str, error_text, previous_attempt_count)) => {
+            let attempt_id = Uuid::new_v4().to_string();
+            let attempt_count = previous_attempt_count + 1;
             let update_result = match sqlx::query(&format!(
-                "UPDATE {} SET status='running', started_at=?, updated_at=? \
+                "UPDATE {} SET status='running', started_at=?, updated_at=?, finished_at=NULL, \
+                 attempt_count=?, active_attempt_id=? \
                  WHERE id=? AND status='pending'",
                 table
             ))
             .bind(now)
             .bind(now)
+            .bind(attempt_count)
+            .bind(&attempt_id)
             .bind(&id_str)
             .execute(&mut *conn)
             .await
@@ -88,9 +109,11 @@ async fn claim_next_pending_inner(
                     "claiming pending job with existing recovery marker"
                 );
             }
-            Ok(Some(
-                Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
-            ))
+            Ok(Some(ClaimedJob {
+                id: Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
+                attempt_id,
+                attempt_count,
+            }))
         }
     }
 }
@@ -102,8 +125,18 @@ pub async fn mark_completed(
     id: Uuid,
     result_json: Option<&serde_json::Value>,
 ) -> Result<(), sqlx::Error> {
-    retry_busy("mark_completed", || {
-        mark_completed_inner(pool, kind, id, result_json)
+    mark_completed_for_attempt(pool, kind, id, None, result_json).await
+}
+
+pub async fn mark_completed_for_attempt(
+    pool: &SqlitePool,
+    kind: JobKind,
+    id: Uuid,
+    attempt_id: Option<&str>,
+    result_json: Option<&serde_json::Value>,
+) -> Result<(), sqlx::Error> {
+    retry_busy("mark_completed_for_attempt", || {
+        mark_completed_inner(pool, kind, id, attempt_id, result_json)
     })
     .await
 }
@@ -112,35 +145,43 @@ async fn mark_completed_inner(
     pool: &SqlitePool,
     kind: JobKind,
     id: Uuid,
+    attempt_id: Option<&str>,
     result_json: Option<&serde_json::Value>,
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
     let result = match result_json {
         Some(result) => {
-            sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, error_text=NULL \
-                 WHERE id=? AND status='running'",
-                table
-            ))
-            .bind(now)
-            .bind(now)
-            .bind(result.to_string())
-            .bind(id.to_string())
-            .execute(pool)
-            .await?
+            let sql = format!(
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, result_json=?, error_text=NULL, active_attempt_id=NULL \
+                 WHERE id=? AND status='running'{}",
+                table,
+                attempt_clause(attempt_id)
+            );
+            let mut query = sqlx::query(&sql);
+            query = query
+                .bind(now)
+                .bind(now)
+                .bind(result.to_string())
+                .bind(id.to_string());
+            if let Some(attempt_id) = attempt_id {
+                query = query.bind(attempt_id);
+            }
+            query.execute(pool).await?
         }
         None => {
-            sqlx::query(&format!(
-                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, error_text=NULL \
-                 WHERE id=? AND status='running'",
-                table
-            ))
-            .bind(now)
-            .bind(now)
-            .bind(id.to_string())
-            .execute(pool)
-            .await?
+            let sql = format!(
+                "UPDATE {} SET status='completed', finished_at=?, updated_at=?, error_text=NULL, active_attempt_id=NULL \
+                 WHERE id=? AND status='running'{}",
+                table,
+                attempt_clause(attempt_id)
+            );
+            let mut query = sqlx::query(&sql);
+            query = query.bind(now).bind(now).bind(id.to_string());
+            if let Some(attempt_id) = attempt_id {
+                query = query.bind(attempt_id);
+            }
+            query.execute(pool).await?
         }
     };
     if result.rows_affected() == 0 {
@@ -166,17 +207,29 @@ pub async fn touch_heartbeat(
     kind: JobKind,
     id: Uuid,
 ) -> Result<(), sqlx::Error> {
-    retry_busy("touch_heartbeat", || async {
+    touch_heartbeat_for_attempt(pool, kind, id, None).await
+}
+
+pub async fn touch_heartbeat_for_attempt(
+    pool: &SqlitePool,
+    kind: JobKind,
+    id: Uuid,
+    attempt_id: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    retry_busy("touch_heartbeat_for_attempt", || async {
         let now = now_ms();
         let table = kind.table_name();
-        sqlx::query(&format!(
-            "UPDATE {} SET updated_at=? WHERE id=? AND status='running'",
-            table
-        ))
-        .bind(now)
-        .bind(id.to_string())
-        .execute(pool)
-        .await?;
+        let sql = format!(
+            "UPDATE {} SET updated_at=? WHERE id=? AND status='running'{}",
+            table,
+            attempt_clause(attempt_id)
+        );
+        let mut query = sqlx::query(&sql);
+        query = query.bind(now).bind(id.to_string());
+        if let Some(attempt_id) = attempt_id {
+            query = query.bind(attempt_id);
+        }
+        query.execute(pool).await?;
         Ok(())
     })
     .await
@@ -189,19 +242,33 @@ pub async fn update_result_json(
     id: Uuid,
     result_json: &serde_json::Value,
 ) -> Result<(), sqlx::Error> {
-    retry_busy("update_result_json", || async {
+    update_result_json_for_attempt(pool, kind, id, None, result_json).await
+}
+
+pub async fn update_result_json_for_attempt(
+    pool: &SqlitePool,
+    kind: JobKind,
+    id: Uuid,
+    attempt_id: Option<&str>,
+    result_json: &serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    retry_busy("update_result_json_for_attempt", || async {
         let now = now_ms();
         let table = kind.table_name();
-        sqlx::query(&format!(
-            "UPDATE {} SET result_json=?, updated_at=? WHERE id=? AND status='running'",
-            table
-        ))
-        .bind(result_json.to_string())
-        .bind(now)
-        .bind(id.to_string())
-        .execute(pool)
-        .await
-        .map(|result| {
+        let sql = format!(
+            "UPDATE {} SET result_json=?, updated_at=? WHERE id=? AND status='running'{}",
+            table,
+            attempt_clause(attempt_id)
+        );
+        let mut query = sqlx::query(&sql);
+        query = query
+            .bind(result_json.to_string())
+            .bind(now)
+            .bind(id.to_string());
+        if let Some(attempt_id) = attempt_id {
+            query = query.bind(attempt_id);
+        }
+        query.execute(pool).await.map(|result| {
             if result.rows_affected() == 0 {
                 tracing::debug!(
                     table,
@@ -222,28 +289,43 @@ pub async fn mark_failed(
     id: Uuid,
     error: &str,
 ) -> Result<(), sqlx::Error> {
-    retry_busy("mark_failed", || mark_failed_inner(pool, kind, id, error)).await
+    mark_failed_for_attempt(pool, kind, id, None, error).await
+}
+
+pub async fn mark_failed_for_attempt(
+    pool: &SqlitePool,
+    kind: JobKind,
+    id: Uuid,
+    attempt_id: Option<&str>,
+    error: &str,
+) -> Result<(), sqlx::Error> {
+    retry_busy("mark_failed_for_attempt", || {
+        mark_failed_inner(pool, kind, id, attempt_id, error)
+    })
+    .await
 }
 
 async fn mark_failed_inner(
     pool: &SqlitePool,
     kind: JobKind,
     id: Uuid,
+    attempt_id: Option<&str>,
     error: &str,
 ) -> Result<(), sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
-    let result = sqlx::query(&format!(
-        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=? \
-         WHERE id=? AND status='running'",
-        table
-    ))
-    .bind(now)
-    .bind(now)
-    .bind(error)
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
+    let sql = format!(
+        "UPDATE {} SET status='failed', finished_at=?, updated_at=?, error_text=?, active_attempt_id=NULL \
+         WHERE id=? AND status='running'{}",
+        table,
+        attempt_clause(attempt_id)
+    );
+    let mut query = sqlx::query(&sql);
+    query = query.bind(now).bind(now).bind(error).bind(id.to_string());
+    if let Some(attempt_id) = attempt_id {
+        query = query.bind(attempt_id);
+    }
+    let result = query.execute(pool).await?;
     if result.rows_affected() == 0 {
         tracing::warn!(
             id = %id,
@@ -254,13 +336,21 @@ async fn mark_failed_inner(
     Ok(())
 }
 
+fn attempt_clause(attempt_id: Option<&str>) -> &'static str {
+    if attempt_id.is_some() {
+        " AND active_attempt_id=?"
+    } else {
+        ""
+    }
+}
+
 /// Set a job's status to 'canceled'. Works on pending or running jobs.
 /// Returns true if a row was updated, false otherwise.
 pub async fn cancel_row(pool: &SqlitePool, kind: JobKind, id: Uuid) -> Result<bool, sqlx::Error> {
     let now = now_ms();
     let table = kind.table_name();
     let result = sqlx::query(&format!(
-        "UPDATE {} SET status='canceled', updated_at=?, finished_at=? \
+        "UPDATE {} SET status='canceled', updated_at=?, finished_at=?, active_attempt_id=NULL \
          WHERE id=? AND status IN ('pending','running')",
         table
     ))

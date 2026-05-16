@@ -151,6 +151,8 @@ fn render_errors_subcommand(
                 "error_pages": error_pages,
                 "waf_blocked_pages": waf_blocked_pages,
                 "sitemap_backfill_error": sitemap_backfill_error,
+                "diagnostic_counts": job.result_json.as_ref().and_then(|m| m.get("diagnostic_counts")).cloned(),
+                "diagnostics": job.result_json.as_ref().and_then(|m| m.get("diagnostics")).cloned(),
             }
         });
         println!("{}", serde_json::to_string_pretty(&out)?);
@@ -172,6 +174,46 @@ fn render_errors_subcommand(
     println!("  {} {}", muted("WAF-blocked pages:"), waf_blocked_pages);
     if let Some(error) = sitemap_backfill_error {
         println!("  {} {}", muted("Sitemap backfill:"), error);
+    }
+    if let Some(counts) = job
+        .result_json
+        .as_ref()
+        .and_then(|metrics| metrics.get("diagnostic_counts"))
+        .and_then(|value| value.as_object())
+        .filter(|counts| !counts.is_empty())
+    {
+        println!("  {}", muted("Diagnostic counts:"));
+        for (class, count) in counts {
+            println!("    {} {}", muted(class), count);
+        }
+    }
+    if let Some(samples) = job
+        .result_json
+        .as_ref()
+        .and_then(|metrics| metrics.get("diagnostics"))
+        .and_then(|value| value.as_array())
+        .filter(|samples| !samples.is_empty())
+    {
+        println!("  {}", muted("Diagnostic samples:"));
+        for sample in samples.iter().take(10) {
+            let phase = sample
+                .get("phase")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let class = sample
+                .get("class")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown");
+            let message = sample
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            let url = sample.get("url").and_then(|value| value.as_str());
+            match url {
+                Some(url) => println!("    {}:{} {} {}", phase, class, muted(message), muted(url)),
+                None => println!("    {}:{} {}", phase, class, muted(message)),
+            }
+        }
     }
     if error_pages == 0 && waf_blocked_pages == 0 && sitemap_backfill_error.is_none() {
         println!("  {}", muted("No page-level crawl errors recorded."));
@@ -297,6 +339,9 @@ pub(crate) fn render_status_subcommand(
             );
             println!("  {} {}", muted("Created:"), job.created_at);
             println!("  {} {}", muted("Updated:"), job.updated_at);
+            if job.attempt_count > 0 {
+                println!("  {} {}", muted("Attempt:"), job.attempt_count);
+            }
             if is_reclaimed_retry(&job) {
                 println!("  {} retry after worker shutdown", muted("Reclaimed:"));
             } else if let Some(err) = job.error_text.as_deref() {

@@ -3,9 +3,13 @@ use crate::core::config::Config;
 use crate::jobs::backend::{JobKind, JobPayload};
 use crate::jobs::error::JobError;
 use crate::jobs::lite::ops::{
-    cancel_row, claim_next_pending, enqueue_job, mark_completed, mark_failed, update_result_json,
+    cancel_row, claim_next_pending, claim_next_pending_for_attempt, enqueue_job, mark_completed,
+    mark_completed_for_attempt, mark_failed, touch_heartbeat_for_attempt, update_result_json,
+    update_result_json_for_attempt,
 };
-use crate::jobs::lite::store::{RECLAIMED_ERROR_TEXT, open_sqlite_pool};
+use crate::jobs::lite::store::{
+    RECLAIMED_ERROR_TEXT, open_sqlite_pool, reclaim_stale_running_jobs_for_table,
+};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -75,6 +79,46 @@ async fn claim_preserves_reclaimed_error_text_until_terminal_state() {
 }
 
 #[tokio::test]
+async fn claim_assigns_attempt_metadata_and_reclaim_creates_new_attempt() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Embed {
+            input: "docs".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_lite(),
+    )
+    .await
+    .expect("enqueue");
+
+    let first = claim_next_pending_for_attempt(&pool, JobKind::Embed)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    assert_eq!(first.id, id);
+    assert_eq!(first.attempt_count, 1);
+
+    sqlx::query("UPDATE axon_embed_jobs SET updated_at = 1 WHERE id = ?")
+        .bind(id.to_string())
+        .execute(&pool)
+        .await
+        .expect("age row");
+    let reclaimed = reclaim_stale_running_jobs_for_table(&pool, JobKind::Embed, 5_000)
+        .await
+        .expect("reclaim");
+    assert_eq!(reclaimed, 1);
+
+    let second = claim_next_pending_for_attempt(&pool, JobKind::Embed)
+        .await
+        .expect("second claim")
+        .expect("claimed");
+    assert_eq!(second.id, id);
+    assert_eq!(second.attempt_count, 2);
+    assert_ne!(first.attempt_id, second.attempt_id);
+}
+
+#[tokio::test]
 async fn mark_completed_updates_status() {
     let pool = test_pool().await;
     let id = enqueue_job(
@@ -100,6 +144,93 @@ async fn mark_completed_updates_status() {
         .await
         .expect("fetch");
     assert_eq!(status.0, "completed");
+}
+
+#[tokio::test]
+async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
+    let pool = test_pool().await;
+    let id = enqueue_job(
+        &pool,
+        &JobPayload::Crawl {
+            url: "https://example.com".into(),
+            config_json: "{}".into(),
+        },
+        &Config::default_lite(),
+    )
+    .await
+    .expect("enqueue");
+
+    let first = claim_next_pending_for_attempt(&pool, JobKind::Crawl)
+        .await
+        .expect("claim")
+        .expect("claimed");
+    sqlx::query("UPDATE axon_crawl_jobs SET updated_at = 1 WHERE id = ?")
+        .bind(id.to_string())
+        .execute(&pool)
+        .await
+        .expect("age row");
+    reclaim_stale_running_jobs_for_table(&pool, JobKind::Crawl, 5_000)
+        .await
+        .expect("reclaim");
+    let second = claim_next_pending_for_attempt(&pool, JobKind::Crawl)
+        .await
+        .expect("retry claim")
+        .expect("claimed");
+
+    update_result_json_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&first.attempt_id),
+        &serde_json::json!({ "pages_crawled": 999 }),
+    )
+    .await
+    .expect("stale progress ignored");
+    touch_heartbeat_for_attempt(&pool, JobKind::Crawl, id, Some(&first.attempt_id))
+        .await
+        .expect("stale heartbeat ignored");
+    mark_completed_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&first.attempt_id),
+        Some(&serde_json::json!({ "stale": true })),
+    )
+    .await
+    .expect("stale complete ignored");
+
+    let row: (String, Option<String>, i64) = sqlx::query_as(
+        "SELECT status, result_json, attempt_count FROM axon_crawl_jobs WHERE id = ?",
+    )
+    .bind(id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("row");
+    assert_eq!(row.0, "running");
+    assert_eq!(row.1, None);
+    assert_eq!(row.2, 2);
+
+    update_result_json_for_attempt(
+        &pool,
+        JobKind::Crawl,
+        id,
+        Some(&second.attempt_id),
+        &serde_json::json!({ "pages_crawled": 1 }),
+    )
+    .await
+    .expect("current progress accepted");
+    let result_json: Option<String> =
+        sqlx::query_scalar("SELECT result_json FROM axon_crawl_jobs WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("result json");
+    assert!(
+        result_json
+            .as_deref()
+            .is_some_and(|json| json.contains("pages_crawled")),
+        "current attempt should be able to persist progress"
+    );
 }
 
 #[tokio::test]

@@ -85,12 +85,12 @@ Every `axon_*_jobs` row carries the same lifecycle columns. The transitions are:
 | Transition           | SQL written                                                                                          | Where                                                  |
 |----------------------|------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
 | insert (pending)     | `status='pending'`, `created_at=now`, `updated_at=now`                                               | `enqueue_job` (`lite/ops/enqueue.rs`)                  |
-| claim (→running)     | `status='running'`, `started_at=now`, `updated_at=now` *(guarded by `WHERE status='pending'`)*       | `claim_next_pending_inner` (`lite/ops/lifecycle.rs`)   |
-| live progress        | `result_json=…`, `updated_at=now` *(no status change)*                                               | `update_result_json` (`lite/ops/lifecycle.rs`)         |
-| complete             | `status='completed'`, `finished_at=now`, `updated_at=now`, `result_json=…` *(if provided)*           | `mark_completed_inner` (`lite/ops/lifecycle.rs`)       |
-| fail                 | `status='failed'`, `finished_at=now`, `updated_at=now`, `error_text=…`                               | `mark_failed_inner` (`lite/ops/lifecycle.rs`)          |
-| cancel               | `status='canceled'`, `finished_at=now`, `updated_at=now` *(guarded by `WHERE status IN ('pending','running')`)* | `cancel_row` (`lite/ops/lifecycle.rs`)                 |
-| stale reclaim        | `status='pending'`, `error_text='reclaimed after unexpected shutdown'`, `updated_at=now` *(guarded by `WHERE status='running' AND updated_at<threshold`)* | `reclaim_stale_running_jobs_for_table` (`lite/store.rs`) |
+| claim (→running)     | `status='running'`, `started_at=now`, `updated_at=now`, `attempt_count+=1`, `active_attempt_id=<uuid>` *(guarded by `WHERE status='pending'`)* | `claim_next_pending_inner` (`lite/ops/lifecycle.rs`)   |
+| live progress        | `result_json=…`, `updated_at=now` *(guarded by `status='running'` and the active attempt when called by a worker)* | `update_result_json` (`lite/ops/lifecycle.rs`)         |
+| complete             | `status='completed'`, `finished_at=now`, `updated_at=now`, `active_attempt_id=NULL`, `result_json=…` *(if provided; active-attempt guarded in workers)* | `mark_completed_inner` (`lite/ops/lifecycle.rs`)       |
+| fail                 | `status='failed'`, `finished_at=now`, `updated_at=now`, `active_attempt_id=NULL`, `error_text=…` *(active-attempt guarded in workers)* | `mark_failed_inner` (`lite/ops/lifecycle.rs`)          |
+| cancel               | `status='canceled'`, `finished_at=now`, `updated_at=now`, `active_attempt_id=NULL` *(guarded by `WHERE status IN ('pending','running')`)* | `cancel_row` (`lite/ops/lifecycle.rs`)                 |
+| stale reclaim        | `status='pending'`, `error_text='reclaimed after unexpected shutdown'`, `active_attempt_id=NULL`, `last_reclaimed_at=now`, `last_reclaimed_reason=…`, `updated_at=now` *(guarded by `WHERE status='running' AND updated_at<threshold`)* | `reclaim_stale_running_jobs_for_table` (`lite/store.rs`) |
 
 `mark_completed` and `mark_failed` use `WHERE status='running'` so a row that was canceled mid-execution stays in `canceled` — the worker's terminal write is logged as a warning and silently dropped (`lite/ops/lifecycle.rs:138-145`, `200-207`).
 
@@ -116,12 +116,12 @@ The single claim primitive — used by every worker lane — is `claim_next_pend
 1. Acquire a SQLite connection from the pool.
 2. `BEGIN IMMEDIATE` — under WAL this acquires the write lock up front, serializing concurrent claims atomically and removing the SELECT/UPDATE TOCTOU window between lanes.
 3. `SELECT id FROM <table> WHERE status='pending' ORDER BY created_at LIMIT 1`.
-4. `UPDATE … SET status='running', started_at=?, updated_at=? WHERE id=? AND status='pending'`. The `AND status='pending'` predicate is the second-line defence — if a different lane somehow claimed it first the update affects 0 rows and the call returns `Ok(None)`.
+4. `UPDATE … SET status='running', started_at=?, updated_at=?, attempt_count=attempt_count+1, active_attempt_id=? WHERE id=? AND status='pending'`. The `AND status='pending'` predicate is the second-line defence — if a different lane somehow claimed it first the update affects 0 rows and the call returns `Ok(None)`.
 5. `COMMIT` (or `ROLLBACK` on any error).
 
 Lock-contention errors (`database is locked`, `database table is locked`) are swallowed by `retry_busy` (`lite/ops/retry.rs`) up to 5 attempts with exponential backoff starting at 25 ms.
 
-Once a worker holds an `Uuid`, `worker_loop` (`src/jobs/lite/workers.rs:170-238`) drives the per-kind runner:
+Once a worker holds an `Uuid` plus `active_attempt_id`, `worker_loop` (`src/jobs/lite/workers.rs:170-238`) drives the per-kind runner:
 
 - **Ok(`Some(result_json)`)** → `mark_completed(pool, kind, id, result_json)`.
 - **Ok(`None`)** → `mark_completed(pool, kind, id, None)`. Returned when the row was deleted between claim and execute (e.g. `axon … clear` mid-run); a warn is logged.
@@ -133,9 +133,9 @@ A worker processes up to `WORKER_BATCH_LIMIT = 32` jobs per wake before yielding
 
 ### Live progress writes
 
-Long-running jobs persist progress through `update_result_json` without changing status:
+Long-running jobs persist progress through `update_result_json` without changing status. Worker-originated progress includes the active attempt ID in the SQL predicate, so late progress from an older reclaimed attempt cannot update a newer retry that reused the same job ID.
 
-- **Crawl** uses `spawn_crawl_progress_persister` (`workers/progress.rs:9-28`). The crawl engine sends `CrawlSummary` on a 32-slot mpsc channel; the persister updates `result_json` after each message.
+- **Crawl** uses `spawn_crawl_progress_persister` (`workers/progress.rs:9-28`). The crawl engine sends `CrawlSummary` on a 32-slot mpsc channel; the persister updates aggregate progress counters after each message. Final crawl `result_json` includes bounded diagnostic samples under `diagnostics` plus `diagnostic_counts` for `axon crawl errors`.
 - **Embed** uses `spawn_embed_progress_persister` (`workers/progress.rs:30-48`) keyed off `EmbedProgress` from `vector::ops::tei`.
 - **Extract** and **ingest** runners write progress directly via `update_result_json` from inside their bodies.
 
@@ -184,7 +184,9 @@ UPDATE <table>
 
 (`src/jobs/lite/store.rs:90-130`.)
 
-Reclaimed jobs go back to `pending` so the next claim cycle picks them up. The previous `error_text` is overwritten with the marker string. `started_at` and `finished_at` are not touched.
+Reclaimed jobs go back to `pending` so the next claim cycle picks them up. The previous `error_text` is overwritten with the marker string, `active_attempt_id` is cleared to reject late writes from the old owner, and `last_reclaimed_at` / `last_reclaimed_reason` are updated. The next claim increments `attempt_count` and assigns a fresh `active_attempt_id`.
+
+When periodic reclaim happens inside a live worker process, the watchdog cancels any matching local `CancellationToken` before waking worker lanes. Startup reclaim does not have local tokens from the prior process.
 
 The same function powers `axon … recover`, which `ServiceJobRuntime::recover_jobs` (`src/services/runtime.rs:239-248`) wires through to `reclaim_stale_running_jobs_for_table` for a single kind.
 
@@ -300,7 +302,7 @@ Each kind exposes the same job-management subcommands. Invocation: `axon <kind> 
 |--------------------|--------------------------------------------------|--------|
 | `status <id>`      | `ServiceJobRuntime::job_status`                  | Read row → `ServiceJob` |
 | `cancel <id>`      | `ServiceJobRuntime::cancel_job`                  | DB flip + in-memory token (where applicable) |
-| `errors <id>`      | `JobBackend::job_errors`                         | Read `error_text` |
+| `errors <id>`      | `JobBackend::job_errors`; crawl has custom renderer | Generic kinds read `error_text`; crawl also reads `result_json.diagnostic_counts` and bounded `diagnostics` samples |
 | `list`             | `lite_query::list_jobs` (paginated)              | Most-recent 500, summary view |
 | `cleanup`          | `lite_query::cleanup_jobs`                       | Delete `completed`/`failed` older than 24 h |
 | `clear`            | `lite_query::clear_jobs`                         | Delete every row in the table |
