@@ -29,6 +29,9 @@ pub struct CollectorConfig {
     pub chrome_timeout_secs: u64,
     pub output_dir: PathBuf,
     pub ladder_thresholds: LadderThresholds,
+    /// Maximum bytes scanned for antibot challenge patterns.
+    /// Passed from `cfg.antibot_max_body_scan_bytes` (default 150 KiB).
+    pub antibot_max_scan_bytes: usize,
 }
 
 pub enum PageOutcome {
@@ -37,6 +40,12 @@ pub enum PageOutcome {
         content_hash: String,
     },
     Empty,
+    /// Antibot challenge page detected (CF/Akamai/DataDome/etc).
+    /// Page is skipped — not embedded, not saved to disk.
+    /// Cookie-warmup retry is a follow-up (TODO: thread CookieJar through collector).
+    Challenged {
+        vendor: String,
+    },
     Reused {
         filename: String,
         trimmed: String,
@@ -64,6 +73,28 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
     }
     let trimmed = ladder.markdown;
     let chars = trimmed.len();
+
+    // Challenge detection — MUST run before thin-page filter so CF/Akamai pages
+    // are not silently dropped as empty content.
+    // Headers are unavailable in the collector path; body-based detection catches
+    // the most important cases. Cookie-warmup retry is deferred (TODO: thread
+    // CookieJar through the collector pipeline).
+    let html_str = String::from_utf8_lossy(html_bytes);
+    if let Some(cd) = crate::core::http::detect_challenge(
+        &html_str,
+        |_| None,
+        col.antibot_max_scan_bytes,
+    ) {
+        tracing::warn!(
+            url = %url,
+            vendor = %cd.vendor.as_str(),
+            akamai_recoverable = cd.akamai_warmup_recoverable,
+            "antibot.detected: challenge page, skipping"
+        );
+        return PageOutcome::Challenged {
+            vendor: cd.vendor.as_str().to_string(),
+        };
+    }
 
     if trimmed.is_empty() {
         return PageOutcome::Empty;

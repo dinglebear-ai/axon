@@ -56,6 +56,22 @@ async fn apply_page_outcome(
             .await;
         }
         PageOutcome::Empty => return Ok(true),
+        PageOutcome::Challenged { ref vendor } => {
+            tracing::warn!(
+                vendor = %vendor,
+                url = %url,
+                "antibot.skipped: challenge page not embedded"
+            );
+            summary.push_diagnostic(
+                CrawlDiagnostic::new(
+                    "antibot",
+                    "challenge_detected",
+                    format!("challenge from {vendor}"),
+                )
+                .with_url(url.to_string()),
+            );
+            return Ok(true);
+        }
         ref w @ (PageOutcome::Reused { .. } | PageOutcome::Write { .. }) => {
             apply_written_page_outcome(w, url, col, summary, manifest).await?;
         }
@@ -252,6 +268,7 @@ mod tests {
                 strategy2: 200,
                 body_multiplier: 2.0,
             },
+            antibot_max_scan_bytes: 150_000,
         }
     }
 

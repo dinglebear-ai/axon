@@ -223,6 +223,7 @@ pub async fn run_crawl_once(
             chrome_timeout_secs: cfg.chrome_network_idle_timeout_secs,
             output_dir: output_dir.to_path_buf(),
             ladder_thresholds: LadderThresholds::from_config(cfg),
+            antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
         },
     ));
 
@@ -311,6 +312,7 @@ pub async fn run_sitemap_only(
             chrome_timeout_secs: cfg.chrome_network_idle_timeout_secs,
             output_dir: output_dir.to_path_buf(),
             ladder_thresholds: LadderThresholds::from_config(cfg),
+            antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
         },
     ));
 
