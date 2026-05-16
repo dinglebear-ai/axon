@@ -1,4 +1,4 @@
-use super::{decode_claude_project_path, decode_path_walk, normalize_git_remote_to_owner_repo};
+use super::*;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -34,9 +34,11 @@ fn decode_simple_path_with_dashes() {
 
 #[test]
 fn decode_prefers_dash_dir_over_underscore_when_both_exist() {
-    // If a real `axon-rust` dir exists it should be found before `axon_rust` variant
+    // Both `axon-rust` and `axon_rust` must exist for this test to exercise the
+    // preference ordering rather than passing vacuously because only one dir exists.
     let tmp = TempDir::new().unwrap();
     mk(&tmp, "home/user/axon-rust");
+    mk(&tmp, "home/user/axon_rust");
     let parts: Vec<String> = vec!["home", "user", "axon", "rust"]
         .into_iter()
         .map(str::to_string)

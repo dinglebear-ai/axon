@@ -46,26 +46,36 @@ fn search_start_stays_on_char_boundary_with_multibyte_content() {
 
 #[test]
 fn chunk_code_unknown_ext_falls_back() {
-    if let Some(chunks) = chunk_code(&"hello world ".repeat(200), "unknownext") {
-        assert!(chunks.iter().all(|chunk| chunk.len() <= 2200));
-    }
+    // Unknown extensions return None (caller should fall back to chunk_text).
+    // This asserts the contract explicitly rather than passing vacuously on None.
+    let result = chunk_code(&"hello world ".repeat(200), "unknownext");
+    assert!(
+        result.is_none(),
+        "chunk_code should return None for an unknown extension so callers fall back to chunk_text"
+    );
 }
 
 #[test]
 fn unauthenticated_clone_retry_respects_visibility_and_auth_errors() {
+    // Private repos: never retry unauthenticated regardless of error type.
     assert!(!should_retry_unauthenticated_clone(
         &github_common(Some(true)),
         "remote: Repository not found.\nfatal: Authentication failed",
     ));
-    assert!(!should_retry_unauthenticated_clone(
+    // Public repo + auth/token failure → retry without token (token is invalid/over-scoped
+    // but the public repo is still accessible without any auth).
+    assert!(should_retry_unauthenticated_clone(
         &github_common(Some(false)),
         "remote: Invalid username or token.\nfatal: Authentication failed",
     ));
-    assert!(should_retry_unauthenticated_clone(
+    // Public repo + non-auth error (network failure) → don't retry; removing auth won't help.
+    assert!(!should_retry_unauthenticated_clone(
         &github_common(Some(false)),
         "error: RPC failed; curl 56 GnuTLS recv error",
     ));
-    assert!(!should_retry_unauthenticated_clone(
+    // Unknown visibility + permission error → retry unauthenticated (repo may be public
+    // and the token is invalid or over-scoped).
+    assert!(should_retry_unauthenticated_clone(
         &github_common(None),
         "remote: Permission to owner/repo.git denied to user.",
     ));
