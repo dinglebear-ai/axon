@@ -50,6 +50,63 @@ pub(crate) struct PreparedDoc {
     /// `None` for generic scrape/embed paths — leave absent from payload rather
     /// than writing a placeholder. See bead `axon_rust-lu6a`.
     pub(crate) extractor_name: Option<String>,
+    /// Optional structured-data attached at page level (JSON-LD / __NEXT_DATA__ /
+    /// SvelteKit). `None` for paths that don't run the structured pass. When set,
+    /// these payload fields land on every chunk so retrieval can filter by
+    /// `structured_kind` / `structured_type` and dedup by `structured_id`.
+    /// The full payload lives in `structured_blob` (capped to
+    /// `cfg.structured_data_max_bytes` by the caller). See bead `axon_rust-xvu9`.
+    pub(crate) structured: Option<StructuredPayload>,
+}
+
+/// Per-page structured-data payload attached to every chunk of a doc.
+///
+/// Produced by `core::structured::extract_all()` at scrape time and reduced
+/// to a single dominant entry for payload storage:
+/// - `kind` = which extractor produced this (`"jsonld"` | `"next_data"` | `"sveltekit"`)
+/// - `schema_type` = top-level `@type` of the dominant entry, if any
+/// - `schema_id` = top-level `@id` for cross-page dedup, if any
+/// - `blob` = the full serialized pass (JSON value), capped by caller before
+///   construction
+#[derive(Debug, Clone)]
+pub(crate) struct StructuredPayload {
+    pub(crate) kind: &'static str,
+    pub(crate) schema_type: Option<String>,
+    pub(crate) schema_id: Option<String>,
+    pub(crate) blob: serde_json::Value,
+}
+
+impl StructuredPayload {
+    /// Reduce a structured pass to a single payload, enforcing the
+    /// `max_bytes` cap on `structured_blob` (bead axon_rust-xvu9).
+    ///
+    /// Returns `None` when the pass is empty or when the serialized blob
+    /// exceeds `max_bytes` (oversized payloads are DROPPED, not truncated —
+    /// truncation would yield invalid JSON, and silently shipping a
+    /// half-payload would defeat downstream filtering).
+    ///
+    /// `kind`, `schema_type` (top-level `@type`), and `schema_id`
+    /// (top-level `@id`) are taken from the dominant entry as returned by
+    /// [`crate::core::structured::StructuredDataPass::dominant`].
+    pub(crate) fn from_pass(
+        pass: &crate::core::structured::StructuredDataPass,
+        max_bytes: usize,
+    ) -> Option<Self> {
+        let (kind, value) = pass.dominant()?;
+        let blob = serde_json::to_vec(value).ok()?;
+        if blob.len() > max_bytes {
+            return None;
+        }
+        let blob_value = serde_json::from_slice::<serde_json::Value>(&blob).ok()?;
+        let schema_type = crate::core::structured::schema_type_of(value);
+        let schema_id = crate::core::structured::schema_id_of(value);
+        Some(Self {
+            kind,
+            schema_type,
+            schema_id,
+            blob: blob_value,
+        })
+    }
 }
 
 /// Build a Qdrant point JSON value with the correct vector format for the collection mode.

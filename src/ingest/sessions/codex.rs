@@ -146,6 +146,7 @@ async fn parse_codex_file(
         title,
         extra: Some(extra),
         extractor_name: None,
+        structured: None,
     };
     Ok(Some(SessionDoc { doc, collection }))
 }

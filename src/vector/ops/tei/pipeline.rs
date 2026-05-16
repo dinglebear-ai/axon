@@ -105,6 +105,20 @@ async fn embed_prepared_doc(
         {
             payload["extractor_name"] = serde_json::Value::String(name.clone());
         }
+        // Structured-data fields are OPTIONAL — only populated when a page
+        // produced JSON-LD / __NEXT_DATA__ / SvelteKit data via the
+        // `core::structured::extract_all()` pass. Same agent-native absent-
+        // when-empty pattern as `extractor_name`. (bd axon_rust-xvu9)
+        if let Some(sd) = &doc.structured {
+            payload["structured_kind"] = serde_json::Value::String(sd.kind.to_string());
+            if let Some(t) = &sd.schema_type {
+                payload["structured_type"] = serde_json::Value::String(t.clone());
+            }
+            if let Some(id) = &sd.schema_id {
+                payload["structured_id"] = serde_json::Value::String(id.clone());
+            }
+            payload["structured_blob"] = sd.blob.clone();
+        }
         if let Some(serde_json::Value::Object(map)) = &doc.extra {
             for (k, v) in map {
                 payload[k] = v.clone();

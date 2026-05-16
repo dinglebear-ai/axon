@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-05-16
+
+### Added
+
+- vector: emit typed JSON-LD / `__NEXT_DATA__` / SvelteKit structured-data fields (`structured_kind`, `structured_type`, `structured_id`, `structured_blob`) on Qdrant payloads alongside markdown chunks. New `src/core/structured` module ports webclaw's three extractors plus `sanitize_json_newlines` (Bluesky-style raw-newline fallback). Per-chunk blob is capped at `cfg.structured_data_max_bytes` (default 64 KiB) — oversized blobs are dropped, not truncated. Wired into the remote-URL embed path via `prepare_embed_docs`. Existing 3.79M points remain on the implicit-v1 schema with no filter applied by default. (bd axon_rust-xvu9, axon_rust-d5mb)
+
 ## [2.1.0] - 2026-05-16
 
 ### Added
