@@ -286,3 +286,41 @@ fn sanitize_handles_unterminated_string_no_panic() {
     // Should not panic — just round-trip the bytes without changing classification.
     let _ = sanitize_json_newlines(input);
 }
+
+#[test]
+fn extract_json_ld_skips_oversized_block_pre_parse() {
+    // Synthesize a JSON-LD block > MAX_JSON_LD_BLOCK_BYTES (512 KiB).
+    // Must be skipped without invoking serde_json::from_str so a hostile
+    // page cannot pin a worker on multi-MB parse cost.
+    let big_payload = "x".repeat(600 * 1024);
+    let html = format!(
+        "<script type=\"application/ld+json\">{{\"@type\":\"Article\",\"body\":\"{}\"}}</script>",
+        big_payload
+    );
+    let results = extract_json_ld(&html);
+    assert!(results.is_empty());
+}
+
+#[test]
+fn extract_json_ld_handles_mixed_case_close_tag() {
+    // ASCII-case-insensitive byte search must match `</SCRIPT>` exactly
+    // like `</script>` — this used to require to_lowercase() on the full
+    // suffix.
+    let html = r#"<script type="application/ld+json">{"@type":"Article"}</SCRIPT>"#;
+    let results = extract_json_ld(html);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["@type"], "Article");
+}
+
+#[test]
+fn sveltekit_preserves_non_ascii_string_literals() {
+    // SvelteKit data payloads can include non-ASCII string values
+    // (titles, descriptions in CJK / emoji). Per-byte `b as char` casting
+    // inside js_literal_to_json would corrupt the UTF-8 bytes; this test
+    // guards against regression by reading the value back through the
+    // public extractor.
+    let html = "<script>kit.start(app, target, { data: [null, {\"type\":\"data\",\"data\":{\"title\":\"日本語タイトル 🌱 dasdadasd\"}}, null] });</script>";
+    let results = extract_sveltekit(html);
+    assert_eq!(results.len(), 1, "should extract one sveltekit payload");
+    assert_eq!(results[0]["title"], "日本語タイトル 🌱 dasdadasd");
+}

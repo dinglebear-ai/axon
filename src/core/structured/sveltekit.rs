@@ -54,9 +54,15 @@ pub fn extract_sveltekit(html: &str) -> Vec<Value> {
 ///
 /// Handles `{foo:"bar", baz:123}` → `{"foo":"bar", "baz":123}`. Does NOT
 /// handle template literals, BigInt literals, or trailing commas.
+///
+/// Accumulates into a `Vec<u8>` and round-trips through `String::from_utf8`
+/// so multi-byte UTF-8 inside string literals (non-ASCII characters in
+/// SvelteKit page payloads) is preserved verbatim. Falls back to the
+/// original input on the impossible case where output is not valid UTF-8
+/// (input was already invalid UTF-8 — unreachable for `&str`).
 fn js_literal_to_json(input: &str) -> String {
     let bytes = input.as_bytes();
-    let mut out = String::with_capacity(input.len() + input.len() / 10);
+    let mut out: Vec<u8> = Vec::with_capacity(input.len() + input.len() / 10);
     let mut i = 0;
     let len = bytes.len();
 
@@ -64,14 +70,14 @@ fn js_literal_to_json(input: &str) -> String {
         let b = bytes[i];
 
         if b == b'"' {
-            out.push('"');
+            out.push(b'"');
             i += 1;
             while i < len {
                 let c = bytes[i];
-                out.push(c as char);
+                out.push(c);
                 i += 1;
                 if c == b'\\' && i < len {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 } else if c == b'"' {
                     break;
@@ -81,10 +87,10 @@ fn js_literal_to_json(input: &str) -> String {
         }
 
         if (b == b'{' || b == b',' || b == b'[') && i + 1 < len {
-            out.push(b as char);
+            out.push(b);
             i += 1;
             while i < len && bytes[i].is_ascii_whitespace() {
-                out.push(bytes[i] as char);
+                out.push(bytes[i]);
                 i += 1;
             }
             if i < len && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
@@ -92,26 +98,29 @@ fn js_literal_to_json(input: &str) -> String {
                 while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
                     i += 1;
                 }
-                let key = &input[key_start..i];
+                let key = &bytes[key_start..i];
                 while i < len && bytes[i].is_ascii_whitespace() {
                     i += 1;
                 }
                 if i < len && bytes[i] == b':' {
-                    out.push('"');
-                    out.push_str(key);
-                    out.push('"');
+                    out.push(b'"');
+                    out.extend_from_slice(key);
+                    out.push(b'"');
                 } else {
-                    out.push_str(key);
+                    out.extend_from_slice(key);
                 }
             }
             continue;
         }
 
-        out.push(b as char);
+        out.push(b);
         i += 1;
     }
 
-    out
+    // `out` is a faithful byte-level rewrite of `input` (a valid `&str`),
+    // so the result is always valid UTF-8 — but recover gracefully if a
+    // future change introduces multi-byte-aware insertions.
+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
 }
 
 /// Extract content between balanced brackets, handling string escaping.

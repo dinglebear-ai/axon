@@ -93,18 +93,20 @@ impl StructuredPayload {
         max_bytes: usize,
     ) -> Option<Self> {
         let (kind, value) = pass.dominant()?;
-        let blob = serde_json::to_vec(value).ok()?;
-        if blob.len() > max_bytes {
+        // Measure the serialized footprint once. Clone the original Value
+        // into the payload — no need to round-trip bytes -> Value just to
+        // get back the same data. (review: avoid double serialization)
+        let blob_bytes = serde_json::to_vec(value).ok()?;
+        if blob_bytes.len() > max_bytes {
             return None;
         }
-        let blob_value = serde_json::from_slice::<serde_json::Value>(&blob).ok()?;
         let schema_type = crate::core::structured::schema_type_of(value);
         let schema_id = crate::core::structured::schema_id_of(value);
         Some(Self {
             kind,
             schema_type,
             schema_id,
-            blob: blob_value,
+            blob: value.clone(),
         })
     }
 }
