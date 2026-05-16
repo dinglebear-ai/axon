@@ -2,7 +2,12 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (String, bool)> {
+/// Entry in the manifest URL map: (url, changed, structured_blob).
+/// `structured_blob` is `None` when no structured data was extracted from the
+/// page at crawl time (bead axon_rust-jej7.2).
+pub(super) type ManifestEntry = (String, bool, Option<serde_json::Value>);
+
+pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, ManifestEntry> {
     let Some(parent) = markdown_dir.parent() else {
         return HashMap::new();
     };
@@ -25,6 +30,10 @@ pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (St
             .get("changed")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        // Structured-data blob written by process_page() (bead axon_rust-jej7.2).
+        // Absent on manifest entries from before this bead or when no structured
+        // data was found on the page. Passed through to PreparedDoc for Qdrant.
+        let structured = parsed.get("structured").cloned();
 
         let normalized = if let Some(rel) = parsed.get("relative_path").and_then(|v| v.as_str()) {
             parent.join(rel)
@@ -33,7 +42,7 @@ pub(super) fn read_manifest_url_map(markdown_dir: &Path) -> HashMap<PathBuf, (St
         } else {
             continue;
         };
-        out.insert(normalized, (url, changed));
+        out.insert(normalized, (url, changed, structured));
     }
     out
 }
@@ -66,7 +75,7 @@ mod tests {
         let key =
             fs::canonicalize(&markdown_file).unwrap_or_else(|_| PathBuf::from(&markdown_file));
         assert_eq!(
-            mapped.get(&key).map(|(u, _)| u.as_str()),
+            mapped.get(&key).map(|(u, _, _)| u.as_str()),
             Some("https://example.com/docs")
         );
 

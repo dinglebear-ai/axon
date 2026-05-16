@@ -263,6 +263,10 @@ pub(super) async fn write_refetch_results(
             markdown_chars: markdown.len(),
             content_hash: Some(content_hash),
             changed: true,
+            // Thin-refetch Chrome re-render: raw HTML is not available here,
+            // so structured data is absent. HTML bytes would need to be
+            // threaded through RefetchResult to enable extraction.
+            structured: None,
         };
         match serde_json::to_string(&entry) {
             Ok(mut line) => {

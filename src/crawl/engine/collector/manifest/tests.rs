@@ -10,6 +10,7 @@ fn entry(relative_path: &str) -> ManifestEntry {
         markdown_chars: 10,
         content_hash: Some("hash".to_string()),
         changed: false,
+        structured: None,
     }
 }
 

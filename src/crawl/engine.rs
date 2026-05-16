@@ -224,6 +224,7 @@ pub async fn run_crawl_once(
             output_dir: output_dir.to_path_buf(),
             ladder_thresholds: LadderThresholds::from_config(cfg),
             antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
+            structured_max_bytes: cfg.structured_data_max_bytes,
         },
     ));
 
@@ -313,6 +314,7 @@ pub async fn run_sitemap_only(
             output_dir: output_dir.to_path_buf(),
             ladder_thresholds: LadderThresholds::from_config(cfg),
             antibot_max_scan_bytes: cfg.antibot_max_body_scan_bytes,
+            structured_max_bytes: cfg.structured_data_max_bytes,
         },
     ));
 
