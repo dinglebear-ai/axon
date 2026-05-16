@@ -10,8 +10,9 @@ fn github_slug() {
 
 #[test]
 fn github_slug_with_dots() {
+    // Repo slug containing a dot (e.g. "my.project") should be accepted as a GitHub slug.
     assert!(matches!(
-        classify_target("rust-lang/rust", false),
+        classify_target("owner/my.project", false),
         Ok(IngestSource::Github { .. })
     ));
 }

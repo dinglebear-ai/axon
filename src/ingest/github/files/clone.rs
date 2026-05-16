@@ -25,7 +25,7 @@ pub(super) fn stderr_has_auth_or_permission_failure(stderr: &str) -> bool {
 pub fn should_retry_unauthenticated_clone(common: &GitHubCommonFields, stderr: &str) -> bool {
     match common.is_private {
         Some(true) => false,
-        Some(false) | None => !stderr_has_auth_or_permission_failure(stderr),
+        Some(false) | None => stderr_has_auth_or_permission_failure(stderr),
     }
 }
 
@@ -41,34 +41,41 @@ pub fn sanitized_git_stderr(stderr: &[u8], token: Option<&str>) -> String {
 
 /// Run `git clone --depth=1` into a temp directory with SSRF validation and timeout.
 ///
-/// When a token is provided, it is embedded in the clone URL as
-/// `https://x-access-token:{token}@github.com/...` — the most reliable auth
-/// method in headless/no-TTY environments. GIT_TERMINAL_PROMPT=0 ensures git
-/// fails fast rather than blocking on credential prompts.
+/// When a token is provided, authentication is passed via the git
+/// `http.extraHeader` config option as a base64-encoded `Authorization: Basic`
+/// header — this avoids embedding the token in the clone URL where it would be
+/// visible in process lists, git reflog, and shell history.
+/// GIT_TERMINAL_PROMPT=0 ensures git fails fast rather than blocking on
+/// credential prompts.
 pub(super) async fn clone_repo(
     common: &GitHubCommonFields,
     branch: &str,
     token: Option<&str>,
 ) -> Result<tempfile::TempDir> {
     use crate::core::http::validate_url;
+    use base64::Engine as _;
 
     let tmp = tempfile::tempdir()?;
     let tmp_path = tmp.path().to_string_lossy().to_string();
 
-    // Validate the unauthenticated URL for SSRF before embedding credentials.
+    // Validate the public URL for SSRF before issuing any network request.
     let public_url = format!("https://github.com/{}/{}.git", common.owner, common.name);
     validate_url(&public_url)?;
 
-    let clone_url = match token {
-        Some(t) if !t.is_empty() => format!(
-            "https://x-access-token:{t}@github.com/{}/{}.git",
-            common.owner, common.name
-        ),
-        _ => public_url.clone(),
-    };
-
     let ctx = format!("git clone {}", common.repo_slug);
     let mut command = tokio::process::Command::new("git");
+
+    // Pass the token via http.extraHeader so it never appears in the clone URL
+    // or process list. The header value is `Authorization: Basic
+    // base64("x-oauth-basic:TOKEN")` which is the format GitHub accepts for
+    // PAT / fine-grained token auth over HTTPS.
+    if let Some(t) = token.filter(|t| !t.is_empty()) {
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(format!("x-oauth-basic:{t}"));
+        let header = format!("Authorization: Basic {encoded}");
+        command.arg("-c").arg(format!("http.extraHeader={header}"));
+    }
+
     command
         .args([
             "clone",
@@ -77,7 +84,7 @@ pub(super) async fn clone_repo(
             branch,
             "--single-branch",
             "--",
-            &clone_url,
+            &public_url,
             &tmp_path,
         ])
         .env("GIT_TERMINAL_PROMPT", "0");

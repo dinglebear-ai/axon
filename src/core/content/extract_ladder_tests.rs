@@ -57,17 +57,60 @@ fn dense_page_scored_tier_wins_no_retry() {
 
 #[test]
 fn body_tier_only_fires_when_body_multiplier_met() {
+    // No user selector → user_had_root_selector is false → body-tier branch is eligible.
+    // The exact tier depends on spider_transformations fallback behavior when <main> is empty;
+    // what matters is that content is extracted and the Relaxed tier does NOT fire
+    // (which would require a user root_selector, absent here).
     let prose: String = "alpha beta gamma delta epsilon zeta eta theta ".repeat(60);
     let filler: String = "y".repeat(6 * 1024);
     let html =
         format!("<html><body><main></main><div>{prose}</div><span>{filler}</span></body></html>",);
     let t = thresholds(30, 200, 2.0);
     let r = extract_with_ladder(html.as_bytes(), None, t);
-    assert!(r.word_count > 0, "must produce some markdown");
-    assert!(matches!(
+    // Relaxed tier requires a user root_selector — must not fire without one.
+    assert_ne!(
         r.tier,
-        LadderTier::Scored | LadderTier::Relaxed | LadderTier::Body
-    ));
+        LadderTier::Relaxed,
+        "relaxed tier must not fire when no user root_selector is provided"
+    );
+    assert!(
+        r.word_count > BODY_TIER_MIN_WORDS,
+        "extraction must yield substantial content"
+    );
+    assert!(
+        r.markdown.contains("alpha"),
+        "extracted markdown must include prose words"
+    );
+}
+
+#[test]
+fn relaxed_tier_fires_when_root_selector_yields_thin_content() {
+    // A root_selector pointing at an empty element makes scored thin.
+    // Relaxed (no selector) should pick up the prose and win.
+    let prose: String = "quick brown fox jumps over the lazy dog ".repeat(30);
+    let filler: String = "z".repeat(6 * 1024);
+    let html = format!(
+        "<html><body><section id=\"empty\"></section><article><p>{prose}</p></article><span>{filler}</span></body></html>",
+    );
+    let sc = SelectorConfiguration {
+        root_selector: Some("#empty".to_string()),
+        ..SelectorConfiguration::default()
+    };
+    let t = thresholds(300, 300, 1.5);
+    let r = extract_with_ladder(html.as_bytes(), Some(&sc), t);
+    assert_eq!(
+        r.tier,
+        LadderTier::Relaxed,
+        "relaxed tier should win when root selector yields thin content but body has prose"
+    );
+    assert!(
+        r.word_count > 50,
+        "relaxed extraction must contain meaningful word count"
+    );
+    assert!(
+        r.markdown.contains("quick brown fox"),
+        "relaxed extraction must include prose words"
+    );
 }
 
 #[test]
