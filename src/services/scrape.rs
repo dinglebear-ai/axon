@@ -2,9 +2,11 @@ use crate::core::config::Config;
 use crate::core::content::build_selector_config;
 use crate::core::http::normalize_url;
 use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_output};
+use crate::extract::{VerticalContext, dispatch_by_url};
 use crate::services::events::ServiceEvent;
 use crate::services::types::{ArtifactHandle, DocumentBackend, ScrapeResult};
 use std::error::Error;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// Map a raw JSON payload into a [`ScrapeResult`].
@@ -57,6 +59,29 @@ pub async fn scrape(
     crate::core::http::validate_url(&normalized).map_err(|e| -> Box<dyn Error> {
         format!("invalid scrape url {normalized}: {e}").into()
     })?;
+
+    // Vertical-extractor fast path: if a registered extractor claims this URL,
+    // use it instead of the generic HTTP scrape. Falls through on None (no match)
+    // or on Err (extractor failure — caller decides whether to propagate or
+    // continue with generic scrape). Today we propagate errors so agents get the
+    // machine-readable error code (e.g. VerticalBlockedAntibot) rather than
+    // silently falling back to HTML that looks like a CAPTCHA page.
+    if cfg.enable_verticals {
+        let ctx = VerticalContext::new(Arc::new(cfg.clone()));
+        if let Some(result) = dispatch_by_url(&normalized, &ctx).await {
+            let doc = result.map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+            let payload = serde_json::json!({ "url": doc.url, "markdown": doc.markdown });
+            let mut scrape_result = map_scrape_payload(payload)?;
+            scrape_result.backend = Some(DocumentBackend::LiveScrape);
+            tracing::debug!(
+                url = %normalized,
+                extractor = doc.extractor_name,
+                "vertical.dispatched: extractor handled scrape"
+            );
+            return Ok(scrape_result);
+        }
+    }
+
     let mut website = build_scrape_website(cfg, &normalized).map_err(|e| -> Box<dyn Error> {
         format!("failed to build scrape config for {normalized}: {e}").into()
     })?;

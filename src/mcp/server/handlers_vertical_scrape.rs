@@ -1,14 +1,16 @@
-//! MCP `vertical_scrape` action handler (axon_rust-kxot).
+//! MCP `vertical_scrape` action handler (axon_rust-kxot) — discovery only.
 //!
-//! Exposes the vertical-extractor framework via a single
-//! `action=vertical_scrape` action with option-C dispatch
-//! (extractor as a param — not 27 separate subactions).
+//! `subaction=list` and `subaction=capabilities` expose the extractor catalog.
+//!
+//! Actual extraction happens transparently through `action=scrape` — the
+//! service layer (`services::scrape::scrape`) calls `dispatch_by_url()` before
+//! the generic HTTP path. No separate action needed for running extractors.
+//!
+//! `subaction=run` was removed; use `action=scrape url=<url>` instead.
 
-use crate::extract::{VerticalContext, dispatch_by_name, list_extractors};
+use crate::extract::list_extractors;
 use crate::mcp::schema::{AxonToolResponse, VerticalScrapeRequest, VerticalScrapeSubaction};
-use crate::mcp::server::common::{internal_error, invalid_params};
-use crate::services::context::ServiceContext;
-use crate::services::error::ServiceTaxonomyError;
+use crate::mcp::server::common::invalid_params;
 use rmcp::ErrorData;
 use serde_json::json;
 
@@ -21,11 +23,12 @@ impl super::super::AxonMcpServer {
             VerticalScrapeSubaction::List => Ok(handle_list()),
             VerticalScrapeSubaction::Capabilities => handle_capabilities(req.extractor),
             VerticalScrapeSubaction::Run => {
-                let svc = self
-                    .base_service_context()
-                    .await
-                    .map_err(|e| internal_error(e.to_string()))?;
-                handle_run(req.extractor, req.url, &svc).await
+                // Redirect: extraction now lives in action=scrape (services layer).
+                Err(invalid_params(
+                    "subaction=run is no longer needed: use action=scrape with any URL — \
+                    vertical extractors fire automatically. \
+                    Use subaction=list to discover which URLs each extractor claims.",
+                ))
             }
         }
     }
@@ -97,66 +100,3 @@ fn extractor_cap_json(info: crate::extract::ExtractorInfo) -> serde_json::Value 
     })
 }
 
-async fn handle_run(
-    extractor: Option<String>,
-    url: Option<String>,
-    svc: &ServiceContext,
-) -> Result<AxonToolResponse, ErrorData> {
-    let extractor_name = extractor
-        .ok_or_else(|| invalid_params("extractor is required for subaction=run"))?;
-    let url = url.ok_or_else(|| invalid_params("url is required for subaction=run"))?;
-
-    let ctx = VerticalContext::from(svc);
-    match dispatch_by_name(&extractor_name, &url, &ctx).await {
-        Ok(doc) => Ok(AxonToolResponse::ok(
-            "vertical_scrape",
-            "run",
-            json!({
-                "url": doc.url,
-                "extractor": doc.extractor_name,
-                "extractor_version": doc.extractor_version,
-                "title": doc.title,
-                "markdown": doc.markdown,
-                "structured": doc.structured,
-            }),
-        )),
-        Err(e) => Err(vertical_error_to_mcp(e, &extractor_name)),
-    }
-}
-
-/// Map VerticalError variants to machine-readable MCP `ErrorData` so agents
-/// can branch on retry strategy (per kxot locked decisions from lavra-research).
-fn vertical_error_to_mcp(e: ServiceTaxonomyError, extractor: &str) -> ErrorData {
-    let (retriable, code, msg) = match &e {
-        ServiceTaxonomyError::VerticalRateLimited { .. } => {
-            (true, "vertical_rate_limited", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalAuthMissing { .. } => {
-            (false, "vertical_auth_missing", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalAuthInvalid { .. } => {
-            (false, "vertical_auth_invalid", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalUnsupportedUrl { .. } => {
-            (false, "vertical_unsupported_url", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalTargetNotFound { .. } => {
-            (false, "vertical_target_not_found", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalBlockedAntibot { .. } => {
-            (true, "vertical_blocked_antibot", e.to_string())
-        }
-        ServiceTaxonomyError::VerticalTargetUnavailable { .. } => {
-            (true, "vertical_target_unavailable", e.to_string())
-        }
-        _ => (false, "vertical_error", e.to_string()),
-    };
-    ErrorData::internal_error(
-        msg,
-        Some(json!({
-            "error_code": code,
-            "retriable": retriable,
-            "extractor": extractor,
-        })),
-    )
-}

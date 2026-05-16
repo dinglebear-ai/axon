@@ -67,57 +67,36 @@ pub(crate) fn emit_scrape_result(
     Ok(())
 }
 
-/// `AXON_VERTICAL=<name>` shortcut: dispatch a single URL to a named extractor
-/// instead of the generic scrape pipeline. Primary surface is the MCP
-/// `vertical_scrape` action; this env hook is the CLI equivalent.
-///
-/// Example: `AXON_VERTICAL=github_repo axon scrape https://github.com/owner/repo`
-async fn run_vertical_scrape(
-    cfg: &Config,
-    extractor_name: &str,
-) -> Result<(), Box<dyn Error>> {
+async fn run_explicit_vertical(cfg: &Config, name: &str) -> Result<(), Box<dyn Error>> {
     use crate::extract::{VerticalContext, dispatch_by_name};
-    use crate::core::ui::{accent, primary};
-
     let urls = parse_urls(cfg);
     if urls.is_empty() {
         return Err(anyhow::anyhow!("scrape requires at least one URL").into());
     }
     let ctx = VerticalContext::new(std::sync::Arc::new(cfg.clone()));
     for url in &urls {
-        match dispatch_by_name(extractor_name, url, &ctx).await {
-            Ok(doc) => {
-                if cfg.json_output {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&serde_json::json!({
-                            "url": doc.url,
-                            "extractor": doc.extractor_name,
-                            "title": doc.title,
-                            "markdown": doc.markdown,
-                        }))?
-                    );
-                } else {
-                    if let Some(title) = &doc.title {
-                        println!("{} {}", primary("Title:"), accent(title));
-                    }
-                    println!("\n{}", doc.markdown);
-                }
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!("vertical scrape failed: {e}").into());
-            }
+        let doc = dispatch_by_name(name, url, &ctx).await
+            .map_err(|e| anyhow::anyhow!("vertical scrape failed: {e}"))?;
+        if cfg.json_output {
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "url": doc.url, "extractor": doc.extractor_name,
+                "title": doc.title, "markdown": doc.markdown,
+            }))?);
+        } else {
+            println!("{}", doc.markdown);
         }
     }
     Ok(())
 }
 
 pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    // Vertical-extractor shortcut: AXON_VERTICAL=<name> routes to a named extractor.
-    // MCP users use action=vertical_scrape; CLI users set AXON_VERTICAL.
-    if let Ok(extractor_name) = std::env::var("AXON_VERTICAL") {
-        if !extractor_name.is_empty() {
-            return run_vertical_scrape(cfg, &extractor_name).await;
+    // Explicit vertical override for auto_dispatch=false extractors (amazon, ebay, youtube).
+    // Transparent auto-dispatch for auto_dispatch=true extractors happens inside
+    // services::scrape::scrape() — no env var needed for those.
+    // Usage: AXON_VERTICAL=amazon axon scrape https://amazon.com/dp/{asin} --local
+    if let Ok(name) = std::env::var("AXON_VERTICAL") {
+        if !name.is_empty() {
+            return run_explicit_vertical(cfg, &name).await;
         }
     }
 
