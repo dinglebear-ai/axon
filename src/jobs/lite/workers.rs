@@ -242,11 +242,15 @@ fn cancel_reclaimed_local_tokens(
     reclaimed: &crate::jobs::lite::store::ReclaimedJobs,
 ) {
     for kind in JobKind::all() {
-        for id in reclaimed.ids_for(*kind) {
-            let canceled = cancel_store.cancel_local(*id);
+        for reclaimed_job in reclaimed.jobs_for(*kind) {
+            let canceled = reclaimed_job
+                .attempt_id
+                .as_deref()
+                .is_some_and(|attempt_id| cancel_store.cancel_local(reclaimed_job.id, attempt_id));
             tracing::info!(
                 table = kind.table_name(),
-                job_id = %id,
+                job_id = %reclaimed_job.id,
+                attempt_id = reclaimed_job.attempt_id.as_deref().unwrap_or("unknown"),
                 canceled_local_token = canceled,
                 "watchdog: canceled local owner for reclaimed job"
             );
@@ -283,7 +287,8 @@ async fn worker_loop<F, Fut>(
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
                 match claim_next_pending_for_attempt(&pool, kind).await {
                     Ok(Some(claimed)) => {
-                        let cancel_token = cancel_store.register(claimed.id);
+                        let cancel_token =
+                            cancel_store.register(claimed.id, claimed.attempt_id.clone());
                         let _hb = HeartbeatGuard::spawn(
                             Arc::clone(&pool),
                             kind,
@@ -291,7 +296,7 @@ async fn worker_loop<F, Fut>(
                             claimed.attempt_id.clone(),
                         );
                         let result = run_job(Arc::clone(&pool), claimed.id, cancel_token).await;
-                        cancel_store.remove(claimed.id);
+                        cancel_store.remove(claimed.id, &claimed.attempt_id);
                         processed += 1;
                         match result {
                             Ok(result_json) => {
@@ -526,9 +531,12 @@ mod tests {
     fn watchdog_reclaim_cancels_local_tokens_before_retry_notify() {
         let cancel_store = CancelStore::new();
         let id = uuid::Uuid::new_v4();
-        let token = cancel_store.register(id);
+        let token = cancel_store.register(id, "attempt-1");
         let reclaimed = ReclaimedJobs {
-            embed: vec![id],
+            embed: vec![crate::jobs::lite::store::ReclaimedJob {
+                id,
+                attempt_id: Some("attempt-1".to_string()),
+            }],
             ..Default::default()
         };
 
@@ -536,8 +544,31 @@ mod tests {
 
         assert!(token.is_cancelled(), "old local owner must be canceled");
         assert!(
-            !cancel_store.cancel_local(id),
+            !cancel_store.cancel_local(id, "attempt-1"),
             "token should be removed after watchdog local cancel"
+        );
+    }
+
+    #[test]
+    fn watchdog_reclaim_does_not_cancel_new_attempt_token() {
+        let cancel_store = CancelStore::new();
+        let id = uuid::Uuid::new_v4();
+        let old_token = cancel_store.register(id, "attempt-1");
+        let new_token = cancel_store.register(id, "attempt-2");
+        let reclaimed = ReclaimedJobs {
+            embed: vec![crate::jobs::lite::store::ReclaimedJob {
+                id,
+                attempt_id: Some("attempt-1".to_string()),
+            }],
+            ..Default::default()
+        };
+
+        cancel_reclaimed_local_tokens(&cancel_store, &reclaimed);
+
+        assert!(old_token.is_cancelled(), "stale attempt should be canceled");
+        assert!(
+            !new_token.is_cancelled(),
+            "fresh retry attempt must not be canceled by stale reclaim"
         );
     }
 }

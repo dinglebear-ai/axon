@@ -29,8 +29,9 @@ pub async fn run_embed_job_lite(
     let attempt_id: Option<String> =
         sqlx::query_scalar("SELECT active_attempt_id FROM axon_embed_jobs WHERE id=?")
             .bind(id.to_string())
-            .fetch_one(pool)
-            .await?;
+            .fetch_optional(pool)
+            .await?
+            .flatten();
     let (progress_tx, progress_task) = spawn_embed_progress_persister(pool, id, attempt_id);
     // Eagerly convert the non-Send `Box<dyn Error>` returned by the embed pipeline
     // into a Send+Sync error so the resulting future can cross worker boundaries

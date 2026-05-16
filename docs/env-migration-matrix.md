@@ -40,6 +40,7 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_SERVER_URL` | keep-env | host-only | — | no | runtime.rs |
 | `AXON_MCP_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_CHROME_PROXY` | keep-env | both | — | no | runtime.rs |
 
 ### Auth / MCP Security
 
@@ -62,8 +63,8 @@ Generated: 2026-05-15 from source-derived inventory.
 | `REDDIT_CLIENT_ID` | keep-env | both | — | no | runtime.rs |
 | `REDDIT_CLIENT_SECRET` | keep-env | both | — | **yes** | runtime.rs |
 | `HF_TOKEN` | keep-env | compose-interp | — | **yes** | runtime.rs |
-| `GEMINI_API_KEY` | keep-env | both | — | **yes** | .env.example ⚠️ not in registry |
-| `GOOGLE_API_KEY` | keep-env | both | — | **yes** | .env.example ⚠️ not in registry |
+| `GEMINI_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
+| `GOOGLE_API_KEY` | keep-env | both | — | **yes** | runtime.rs |
 | `GOOGLE_APPLICATION_CREDENTIALS` | trusted-bootstrap | both | — | no | advanced.rs |
 
 ### LLM / Gemini Headless
@@ -137,7 +138,7 @@ The Rust binary never reads most of them directly.
 | `NVIDIA_REQUIRE_CUDA` | compose-env | compose-interp | GPU requirement constraint | advanced.rs |
 | `HF_HUB_CACHE` | compose-env | compose-interp | HF cache dir inside container | advanced.rs |
 | `HF_HUB_ENABLE_HF_TRANSFER` | compose-env | compose-interp | HF transfer acceleration | advanced.rs |
-| `TEI_MAX_BATCH_TOKENS` | compose-env | compose-interp | TEI server arg ⚠️ not in registry | docker-compose.yaml |
+| `TEI_MAX_BATCH_TOKENS` | compose-env | compose-interp | TEI server arg | advanced.rs |
 
 ### Move to TOML (migration.rs)
 
@@ -165,6 +166,10 @@ These env vars are being migrated to `config.toml`. Env override is retained tem
 | `AXON_HYBRID_CANDIDATES` | move-toml | not-runtime | `search.hybrid-candidates` | migration.rs |
 | `AXON_HNSW_EF_SEARCH` | move-toml | not-runtime | `search.hnsw-ef` | migration.rs |
 | `AXON_HNSW_EF_SEARCH_LEGACY` | move-toml | not-runtime | `search.hnsw-ef-legacy` | migration.rs |
+| `AXON_ASK_AUTHORITATIVE_DOMAINS` | move-toml | not-runtime | `ask.authoritative-domains` | migration.rs |
+| `AXON_CHROME_USER_AGENT` | move-toml | not-runtime | `chrome.user-agent` | migration.rs |
+| `AXON_JOB_WAIT_TIMEOUT_SECS` | move-toml | not-runtime | `workers.job-wait-timeout-secs` | migration.rs |
+| `AXON_LOG_MAX_BYTES` | move-toml | not-runtime | `logging.max-bytes` | migration.rs |
 
 ### Delete (migration.rs — legacy removed paths)
 
@@ -183,43 +188,45 @@ These env vars are being migrated to `config.toml`. Env override is retained tem
 
 ---
 
-## Gaps — Not in Registry (Action Required)
+## Direct Env Reads Covered by Registry
 
-These keys are read by source code but missing from the env_registry. Each needs a classification added.
+These keys are read directly in source code but already have registry classifications. This list is a cross-check, not an action queue.
 
-### Direct Reads in src/ Without Registry Entry
+### Direct Reads in src/
 
-| Key | Read site | Proposed class | Notes |
+| Key | Read site | Registry class | Notes |
 |-----|-----------|---------------|-------|
-| `AXON_ASK_AUTHORITATIVE_DOMAINS` | `src/core/config/parse/build_config/config_literal.rs:243` | move-toml → `ask.authoritative-domains` | Already documented in config.example.toml |
-| `AXON_CHROME_PROXY` | `src/core/config/parse/build_config/config_literal.rs:101` | move-toml → `chrome.proxy` or keep-env | Proxy URL; could be env since it's a URL |
-| `AXON_CHROME_USER_AGENT` | `src/core/http/client.rs:13,20` + `config_literal.rs:105` | move-toml → `chrome.user-agent` | Static string; reasonable in TOML |
-| `AXON_DOMAINS_DETAILED` | `src/cli/commands/domains.rs:21` | hard-default | Boolean flag; no real operator value |
-| `AXON_DOMAINS_FACET_LIMIT` | `src/cli/commands/domains.rs:30` | move-toml → `domains.facet-limit` | Operator tuning |
-| `AXON_JOB_WAIT_TIMEOUT_SECS` | `src/jobs/backend.rs:148` | move-toml → `workers.job-wait-timeout-secs` | Worker tuning |
-| `AXON_LOG_FULL_QUERIES` | `src/services/search.rs:45` | hard-default | Debug flag; not user-facing |
-| `AXON_LOG_MAX_BYTES` | `src/core/logging.rs:272` | move-toml → `logging.max-bytes` | Log rotation tuning |
-| `AXON_NO_WIPE` | `src/crawl/engine/dir_ops.rs:111` | hard-default | Internal debug flag |
-| `AXON_SETUP_SKIP_SMOKE` | `src/services/setup/local/runtime.rs:94` | external/test | CI/dev override; not user-facing |
-| `AXON_TEST_QDRANT_URL` | tests/ | external/test | Test-only |
+| `AXON_ASK_AUTHORITATIVE_DOMAINS` | `src/core/config/parse/build_config/config_literal.rs:243` | move-toml → `ask.authoritative-domains` | Registered in migration.rs |
+| `AXON_CHROME_PROXY` | `src/core/config/parse/build_config/config_literal.rs:101` | keep-env | Registered in runtime.rs |
+| `AXON_CHROME_USER_AGENT` | `src/core/http/client.rs:13,20` + `config_literal.rs:105` | move-toml → `chrome.user-agent` | Registered in migration.rs |
+| `AXON_DOMAINS_DETAILED` | `src/cli/commands/domains.rs:21` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_DOMAINS_FACET_LIMIT` | `src/cli/commands/domains.rs:30` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_JOB_WAIT_TIMEOUT_SECS` | `src/jobs/backend.rs:148` | move-toml → `workers.job-wait-timeout-secs` | Registered in migration.rs |
+| `AXON_LOG_FULL_QUERIES` | `src/services/search.rs:45` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_LOG_MAX_BYTES` | `src/core/logging.rs:272` | move-toml → `logging.max-bytes` | Registered in migration.rs |
+| `AXON_NO_WIPE` | `src/crawl/engine/dir_ops.rs:111` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_SETUP_SKIP_SMOKE` | `src/services/setup/local/runtime.rs:94` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_TEST_QDRANT_URL` | tests/ | delete/test-only | Registered in advanced.rs |
 | `COLUMNS` | `src/core/config/help.rs` | hard-default | Standard Unix terminal env |
 | `HOME` | multiple | hard-default | Standard Unix env; not user-settable |
 | `NO_COLOR` | `src/core/logging.rs:122` | hard-default | Standard no-color.org env |
 
 ### Keys in .env.example Not in Registry
 
-| Key | Proposed class | Notes |
-|-----|---------------|-------|
-| `GEMINI_API_KEY` | keep-env | Secret; used by Gemini CLI auth |
-| `GOOGLE_API_KEY` | keep-env | Secret; alternate Google credential path |
+All keys previously in `.env.example` but missing from registry have been resolved:
+
+| Key | Resolution |
+|-----|-----------|
+| `GEMINI_API_KEY` | ✅ Added to runtime.rs as KeepEnv (ztqd.1) |
+| `GOOGLE_API_KEY` | ✅ Added to runtime.rs as KeepEnv (ztqd.1) |
 
 ### Keys in Live ~/.axon/.env Not in Registry or .env.example
 
 | Key | Status | Action |
 |-----|--------|--------|
-| `AXON_WEB_API_TOKEN` | keep-env (secret) | Add to registry + .env.example |
-| `CHROME_URL` | stale alias | Delete; replaced by `AXON_CHROME_REMOTE_URL` |
-| `TEI_MAX_BATCH_TOKENS` | compose-env | Add to advanced.rs registry |
+| `AXON_WEB_API_TOKEN` | ✅ Added to runtime.rs registry as KeepEnv (ztqd.1) | Done |
+| `CHROME_URL` | ✅ Added to migration.rs as Delete (ztqd.1) | Done |
+| `TEI_MAX_BATCH_TOKENS` | ✅ Added to advanced.rs as ComposeEnv (ztqd.1) | Done |
 
 ---
 
@@ -258,10 +265,10 @@ Keys in live env but not in .env.example (stale or operator-specific):
 - `AXON_MCP_HTTP_HOST` — set by Compose; trusted-bootstrap for local overrides
 - `AXON_MCP_HTTP_PORT` — set by Compose; trusted-bootstrap for local overrides
 - `AXON_WEB_ALLOWED_ORIGINS` — in advanced.rs registry; add to .env.example
-- `AXON_WEB_API_TOKEN` — secret; add to registry + .env.example
+- `AXON_WEB_API_TOKEN` — secret; registered in runtime.rs; add to .env.example if the sample should advertise web API auth
 - `CHROME_URL` — stale alias; delete from live .env
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` — compat-shim; in registry as WarnAndIgnore
-- `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS`, `TEI_TOKENIZATION_WORKERS` — compose-env server args; already in registry (except `TEI_MAX_BATCH_TOKENS`)
+- `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS`, `TEI_TOKENIZATION_WORKERS` — compose-env server args; already in registry
 
 Keys in .env.example but not in live env (user hasn't set them):
 - `AXON_IMAGE` — compose override; optional
@@ -282,3 +289,31 @@ Keys in .env.example but not in live env (user hasn't set them):
 | Container injection risk noted | ✅ compose-env / both placement |
 | AXON_ENV_FILE / AXON_CONFIG_PATH shadowing risk noted | ✅ trusted-bootstrap with HostOnly |
 | TOML [services] URL behavior documented | ✅ section above |
+| Deprecation warnings wired for CompatibilityShim vars | ✅ ztqd.4: env_migration.rs emits tracing::warn! during `axon setup` migration |
+| .env.example cleaned of Delete/CompatibilityShim/ACP keys | ✅ ztqd.4: trimmed to 34 lines matching target structure |
+| Stale Delete-classified keys confirmed absent from active src/ | ✅ ztqd.4: only appear in #[cfg(test)] fixtures in parse.rs |
+| GEMINI_API_KEY and GOOGLE_API_KEY classified in registry | ✅ ztqd.1: added to runtime.rs as KeepEnv |
+| CHROME_URL stale alias classified for deletion | ✅ migration.rs: Delete entry added |
+| TEI_MAX_BATCH_TOKENS added to registry | ✅ advanced.rs: ComposeEnv entry added |
+
+### Scope Note (ztqd.4)
+
+Deprecation warnings for `CompatibilityShim` vars (`OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`) fire during `axon setup` env migration, not on every CLI invocation. The build_config/ path that runs at every startup is excluded from the allowed file ownership for this bead. If every-invocation coverage is needed, a follow-up bead should wire `env_registry::warn_compatibility_shims()` from within `into_config_with_sources()` in `build_config.rs`.
+
+### Keys Intentionally Dropped from .env.example (ztqd.4)
+
+The following KeepEnv/CompatibilityShim keys were in the old `.env.example` but are omitted from the new minimal target. They remain valid and work when set — they are just not shown in the example template:
+
+| Key | Class | Reason omitted |
+|-----|-------|---------------|
+| `AXON_DATA_DIR` | trusted-bootstrap | Operator-specific path override; not default setup |
+| `AXON_SERVER_URL` | keep-env | Rarely set; host-only URL override |
+| `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` | keep-env | OAuth detail; omitted for brevity |
+| `AXON_MCP_ALLOWED_ORIGINS` | keep-env | CORS detail; omitted for brevity |
+| `GEMINI_API_KEY` | keep-env | Optional alternate Google credential path |
+| `GOOGLE_API_KEY` | keep-env | Optional alternate Google credential path |
+| `GOOGLE_APPLICATION_CREDENTIALS` | trusted-bootstrap | Service account path; not typical setup |
+| `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | compose-env | TEI tuning; advanced use only |
+| `OPENAI_MODEL` | compat-shim | Deprecated; WarnEnvOverride |
+| `OPENAI_BASE_URL` | compat-shim | Deprecated; WarnAndIgnore |
+| `OPENAI_API_KEY` | compat-shim | Deprecated; WarnAndIgnore |

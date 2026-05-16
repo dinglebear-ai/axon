@@ -28,8 +28,9 @@ pub async fn run_extract_job_lite(
     let attempt_id: Option<String> =
         sqlx::query_scalar("SELECT active_attempt_id FROM axon_extract_jobs WHERE id=?")
             .bind(id.to_string())
-            .fetch_one(pool)
-            .await?;
+            .fetch_optional(pool)
+            .await?
+            .flatten();
     let effective_cfg = apply_lite_config_snapshot(cfg, &config_json).map_err(lift_err)?;
 
     let urls: Vec<String> = serde_json::from_str(&urls_json).map_err(
