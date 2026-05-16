@@ -482,7 +482,11 @@ fn extract_text_field(map: &Map<String, Value>, key: &str) -> Option<String> {
     let v = map.get(key)?;
     if let Some(s) = v.as_str() {
         let t = s.trim();
-        return if t.is_empty() { None } else { Some(t.to_string()) };
+        return if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        };
     }
     if let Some(child) = v.as_object()
         && let Some(nt) = child.get("nodeType").and_then(Value::as_str)
