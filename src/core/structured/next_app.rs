@@ -38,11 +38,34 @@ const MIN_STRING_LEN: usize = 20;
 /// Max output strings per page. Hard cap to keep payload bounded.
 pub const DEFAULT_MAX_NEXT_APP_STRINGS: usize = 500;
 
+/// ASCII case-insensitive byte search. Avoids the full-document
+/// `html.to_lowercase()` allocation that the previous implementation paid
+/// per call (and per `<script>` tag in the iterator below).
+fn ascii_case_insensitive_find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    let last = haystack.len() - needle.len();
+    'outer: for i in 0..=last {
+        for (j, &n) in needle.iter().enumerate() {
+            if !haystack[i + j].eq_ignore_ascii_case(&n) {
+                continue 'outer;
+            }
+        }
+        return Some(i);
+    }
+    None
+}
+
 /// Detect: does this HTML look like a Next.js App Router page (uses
 /// `self.__next_f.push`, no `__NEXT_DATA__`)?
+///
+/// Token search is ASCII-only and case-insensitive — avoids the
+/// `html.to_lowercase()` allocation on multi-MB pages.
 pub fn is_app_router_page(html: &str) -> bool {
-    let lower = html.to_lowercase();
-    lower.contains("self.__next_f.push") && !lower.contains("__next_data__")
+    let bytes = html.as_bytes();
+    ascii_case_insensitive_find(bytes, b"self.__next_f.push").is_some()
+        && ascii_case_insensitive_find(bytes, b"__next_data__").is_none()
 }
 
 /// Scan all `<script>` tags and return content-bearing string literals
@@ -88,42 +111,138 @@ pub fn extract_next_app_strings(html: &str, max_strings: usize) -> Vec<String> {
 // Script iteration (inline only — no src= attribute)
 // ════════════════════════════════════════════════════════════════════════════
 
+/// True when `opening` (the bytes between `<script` and `>`, exclusive of
+/// both) carries an attribute named `attr` at a real attribute boundary.
+///
+/// "Boundary" means the byte before the attribute name is one of the HTML5
+/// whitespace characters (space, tab, newline, CR, form feed) — i.e. an
+/// attribute separator — not part of another attribute name like
+/// `data-src` or `nosrc`.
+fn opening_tag_has_attribute(opening: &[u8], attr: &[u8]) -> bool {
+    let mut cursor = 0;
+    while let Some(pos) = ascii_case_insensitive_find(&opening[cursor..], attr) {
+        let abs = cursor + pos;
+        let left_ok = abs == 0
+            || matches!(
+                opening[abs - 1],
+                b' ' | b'\t' | b'\n' | b'\r' | b'\x0C' | b'/'
+            );
+        let after = abs + attr.len();
+        // Right side must be `=`, whitespace, `/`, or end of tag — otherwise
+        // we've matched a longer attribute name (e.g. `srcset` for `src`).
+        let right_ok = after >= opening.len()
+            || matches!(
+                opening[after],
+                b'=' | b' ' | b'\t' | b'\n' | b'\r' | b'\x0C' | b'/'
+            );
+        if left_ok && right_ok {
+            return true;
+        }
+        cursor = abs + 1;
+    }
+    false
+}
+
+/// True when the opening tag has `type="module"` (any quoting) or unquoted
+/// `type=module`. Only matches at a real attribute boundary.
+fn opening_tag_is_module_script(opening: &[u8]) -> bool {
+    let mut cursor = 0;
+    while let Some(pos) = ascii_case_insensitive_find(&opening[cursor..], b"type") {
+        let abs = cursor + pos;
+        let left_ok = abs == 0
+            || matches!(
+                opening[abs - 1],
+                b' ' | b'\t' | b'\n' | b'\r' | b'\x0C' | b'/'
+            );
+        let after = abs + 4;
+        if !left_ok || after >= opening.len() {
+            cursor = abs + 1;
+            continue;
+        }
+        // skip whitespace + `=`
+        let mut i = after;
+        while i < opening.len() && matches!(opening[i], b' ' | b'\t' | b'\n' | b'\r' | b'\x0C') {
+            i += 1;
+        }
+        if i >= opening.len() || opening[i] != b'=' {
+            cursor = abs + 1;
+            continue;
+        }
+        i += 1;
+        while i < opening.len() && matches!(opening[i], b' ' | b'\t' | b'\n' | b'\r' | b'\x0C') {
+            i += 1;
+        }
+        let quote = if i < opening.len() && (opening[i] == b'"' || opening[i] == b'\'') {
+            let q = opening[i];
+            i += 1;
+            Some(q)
+        } else {
+            None
+        };
+        let value_start = i;
+        let value_end = match quote {
+            Some(q) => {
+                while i < opening.len() && opening[i] != q {
+                    i += 1;
+                }
+                i
+            }
+            None => {
+                while i < opening.len()
+                    && !matches!(opening[i], b' ' | b'\t' | b'\n' | b'\r' | b'\x0C' | b'/')
+                {
+                    i += 1;
+                }
+                i
+            }
+        };
+        if opening[value_start..value_end].eq_ignore_ascii_case(b"module") {
+            return true;
+        }
+        cursor = value_end.max(abs + 1);
+    }
+    false
+}
+
 /// Iterate inline `<script>` body text from `html`. Skips scripts with
 /// `src=` attributes (external) and `type=module` (ES modules). The
 /// `self.__next_f.push` calls Next.js emits live in plain inline scripts.
+///
+/// All scans are byte-level and case-insensitive — we never allocate a
+/// full lowercase copy of the page (the previous implementation cloned
+/// `html[content_start..]` per `<script>` tag, which was O(N x HTML_len)).
 fn iter_inline_script_bodies(html: &str) -> Vec<String> {
     let mut out = Vec::new();
+    let html_bytes = html.as_bytes();
     let mut from = 0;
 
-    while let Some(tag_off) = html[from..].find("<script") {
+    while let Some(tag_off) = ascii_case_insensitive_find(&html_bytes[from..], b"<script") {
         let abs = from + tag_off;
-        let region = &html[abs..];
 
-        let Some(end_off) = region.find('>') else {
+        let Some(end_off) = html[abs..].find('>') else {
             from = abs + 7;
             continue;
         };
-        let opening = &region[..end_off];
-        let opening_lower = opening.to_lowercase();
+        // Opening-tag bytes between `<script` (inclusive) and `>` (exclusive).
+        // Skip past the leading `<script` so `opening_tag_has_attribute` sees
+        // the attribute region starting at the byte after the tag name.
+        let opening = &html_bytes[abs + 7..abs + end_off];
 
         // Skip external scripts (src=) and module scripts.
-        if opening_lower.contains(" src=") || opening_lower.contains("\tsrc=") {
-            from = abs + end_off + 1;
-            continue;
-        }
-        if opening_lower.contains("type=\"module\"") || opening_lower.contains("type='module'") {
+        if opening_tag_has_attribute(opening, b"src") || opening_tag_is_module_script(opening) {
             from = abs + end_off + 1;
             continue;
         }
 
         let content_start = abs + end_off + 1;
-        let rest = &html[content_start..];
-        let Some(close_off) = rest.to_lowercase().find("</script>") else {
+        let Some(close_off) =
+            ascii_case_insensitive_find(&html_bytes[content_start..], b"</script>")
+        else {
             from = content_start;
             continue;
         };
 
-        out.push(rest[..close_off].to_string());
+        out.push(html[content_start..content_start + close_off].to_string());
         from = content_start + close_off + 9;
     }
 
@@ -299,7 +418,10 @@ fn is_content_token(s: &str) -> bool {
     {
         return false;
     }
-    // Asset extensions
+    // Asset extensions — by this point `t` is guaranteed to contain a
+    // space (multi-word check above), so any token still ending in an
+    // asset extension here looks like asset metadata leaking into prose
+    // (e.g. "background: hero.png"); reject it.
     for ext in &[
         ".woff", ".woff2", ".ttf", ".otf", ".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".webp",
         ".ico", ".json",
@@ -322,7 +444,8 @@ mod tests {
 
     #[test]
     fn detects_app_router_page() {
-        let html = "<script>self.__next_f.push([1, \"hello world that is long enough text\"])</script>";
+        let html =
+            "<script>self.__next_f.push([1, \"hello world that is long enough text\"])</script>";
         assert!(is_app_router_page(html));
     }
 
@@ -355,7 +478,10 @@ mod tests {
         let html = r#"<script>self.__next_f.push([1, "{\"className\":\"mx-auto\",\"text\":\"Welcome to the project documentation page.\"}"])</script>"#;
         let out = extract_next_app_strings(html, DEFAULT_MAX_NEXT_APP_STRINGS);
         // The "mx-auto" class name is too short (8 chars); the prose passes
-        assert!(!out.iter().any(|s| s.contains("mx-auto") && s.len() < MIN_STRING_LEN));
+        assert!(
+            !out.iter()
+                .any(|s| s.contains("mx-auto") && s.len() < MIN_STRING_LEN)
+        );
         assert!(out.iter().any(|s| s.contains("Welcome to the project")));
     }
 
@@ -363,12 +489,16 @@ mod tests {
     fn filters_url_and_path_tokens() {
         let html = r#"<script>self.__next_f.push([1, "{\"href\":\"/some/nested/path/here/that/is/long\",\"src\":\"https://example.com/img.png\"}"])</script>"#;
         let out = extract_next_app_strings(html, DEFAULT_MAX_NEXT_APP_STRINGS);
-        assert!(out.iter().all(|s| !s.starts_with('/') && !s.starts_with("http")));
+        assert!(
+            out.iter()
+                .all(|s| !s.starts_with('/') && !s.starts_with("http"))
+        );
     }
 
     #[test]
     fn filters_asset_extensions() {
-        let html = r#"<script>self.__next_f.push([1, "static/chunks/main-bundle-abcdef.js"])</script>"#;
+        let html =
+            r#"<script>self.__next_f.push([1, "static/chunks/main-bundle-abcdef.js"])</script>"#;
         let out = extract_next_app_strings(html, DEFAULT_MAX_NEXT_APP_STRINGS);
         assert!(out.is_empty());
     }
@@ -423,7 +553,10 @@ mod tests {
         // A push call whose string contains escaped quotes
         let html = r#"<script>self.__next_f.push([1, "He said \"hello world from the project page\" loudly."])</script>"#;
         let out = extract_next_app_strings(html, DEFAULT_MAX_NEXT_APP_STRINGS);
-        assert!(out.iter().any(|s| s.contains("hello world from the project")));
+        assert!(
+            out.iter()
+                .any(|s| s.contains("hello world from the project"))
+        );
     }
 
     #[test]
@@ -433,7 +566,9 @@ mod tests {
 
     #[test]
     fn content_token_accepts_real_sentence() {
-        assert!(is_content_token("This is a complete sentence with letters."));
+        assert!(is_content_token(
+            "This is a complete sentence with letters."
+        ));
     }
 
     #[test]
