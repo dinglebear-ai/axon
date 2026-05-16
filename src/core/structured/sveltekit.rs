@@ -118,8 +118,13 @@ fn js_literal_to_json(input: &str) -> String {
     }
 
     // `out` is a faithful byte-level rewrite of `input` (a valid `&str`),
-    // so the result is always valid UTF-8 — but recover gracefully if a
-    // future change introduces multi-byte-aware insertions.
+    // so the result is always valid UTF-8. Any future change that breaks
+    // this invariant (e.g. inserting partial multi-byte sequences) should
+    // fail loudly in tests rather than silently fall back to the raw input.
+    debug_assert!(
+        std::str::from_utf8(&out).is_ok(),
+        "js_literal_to_json must preserve UTF-8 byte-for-byte"
+    );
     String::from_utf8(out).unwrap_or_else(|_| input.to_string())
 }
 
