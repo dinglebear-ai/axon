@@ -75,13 +75,17 @@ async fn run_explicit_vertical(cfg: &Config, name: &str) -> Result<(), Box<dyn E
     }
     let ctx = VerticalContext::new(std::sync::Arc::new(cfg.clone()));
     for url in &urls {
-        let doc = dispatch_by_name(name, url, &ctx).await
+        let doc = dispatch_by_name(name, url, &ctx)
+            .await
             .map_err(|e| anyhow::anyhow!("vertical scrape failed: {e}"))?;
         if cfg.json_output {
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                "url": doc.url, "extractor": doc.extractor_name,
-                "title": doc.title, "markdown": doc.markdown,
-            }))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "url": doc.url, "extractor": doc.extractor_name,
+                    "title": doc.title, "markdown": doc.markdown,
+                }))?
+            );
         } else {
             println!("{}", doc.markdown);
         }
@@ -94,10 +98,10 @@ pub async fn run_scrape(cfg: &Config) -> Result<(), Box<dyn Error>> {
     // Transparent auto-dispatch for auto_dispatch=true extractors happens inside
     // services::scrape::scrape() — no env var needed for those.
     // Usage: AXON_VERTICAL=amazon axon scrape https://amazon.com/dp/{asin} --local
-    if let Ok(name) = std::env::var("AXON_VERTICAL") {
-        if !name.is_empty() {
-            return run_explicit_vertical(cfg, &name).await;
-        }
+    if let Ok(name) = std::env::var("AXON_VERTICAL")
+        && !name.is_empty()
+    {
+        return run_explicit_vertical(cfg, &name).await;
     }
 
     let urls = parse_urls(cfg);

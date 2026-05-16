@@ -33,7 +33,11 @@ pub fn matches(url: &str) -> bool {
         return false;
     }
     let path = parsed.path();
-    let segs: Vec<&str> = path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+    let segs: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
     // /dp/{asin} or /gp/product/{asin} or /{category}/dp/{asin}/...
     if segs.len() >= 2 && segs[0] == "dp" {
         return true;
@@ -42,10 +46,10 @@ pub fn matches(url: &str) -> bool {
         return true;
     }
     // /category/dp/{asin}
-    if let Some(pos) = segs.iter().position(|&s| s == "dp") {
-        if pos + 1 < segs.len() {
-            return true;
-        }
+    if let Some(pos) = segs.iter().position(|&s| s == "dp")
+        && pos + 1 < segs.len()
+    {
+        return true;
     }
     false
 }
@@ -63,33 +67,47 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .header("Accept-Language", "en-US,en;q=0.9")
         .send()
         .await
-        .map_err(|_| VerticalError::VerticalTargetUnavailable { vertical: INFO.name, status: 0 })?;
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status: 0,
+        })?;
 
     let status = resp.status().as_u16();
     match status {
-        403 | 503 => return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
-            vertical: INFO.name,
-            vendor: crate::services::error::ChallengeVendor::Other("amazon-bot"),
-        }),
-        404 => return Err(VerticalError::VerticalTargetNotFound {
-            vertical: INFO.name,
-            url: url.to_string(),
-        }),
-        429 => return Err(VerticalError::VerticalRateLimited {
-            vertical: INFO.name,
-            retry_after: None,
-        }),
+        403 | 503 => {
+            return Err(ServiceTaxonomyError::VerticalBlockedAntibot {
+                vertical: INFO.name,
+                vendor: crate::services::error::ChallengeVendor::Other("amazon-bot"),
+            });
+        }
+        404 => {
+            return Err(VerticalError::VerticalTargetNotFound {
+                vertical: INFO.name,
+                url: url.to_string(),
+            });
+        }
+        429 => {
+            return Err(VerticalError::VerticalRateLimited {
+                vertical: INFO.name,
+                retry_after: None,
+            });
+        }
         200 => {}
-        _ => return Err(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status,
-        }),
+        _ => {
+            return Err(VerticalError::VerticalTargetUnavailable {
+                vertical: INFO.name,
+                status,
+            });
+        }
     }
 
-    let body = resp.text().await.map_err(|_| VerticalError::VerticalTargetUnavailable {
-        vertical: INFO.name,
-        status,
-    })?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|_| VerticalError::VerticalTargetUnavailable {
+            vertical: INFO.name,
+            status,
+        })?;
 
     // Heuristic antibot detection: Amazon challenge pages contain these strings
     let is_blocked = body.contains("Type the characters you see in this image")
@@ -111,7 +129,10 @@ pub async fn extract(url: &str, _ctx: &VerticalContext) -> Result<ScrapedDoc, Ve
         .and_then(|j| j["name"].as_str())
         .map(str::to_string);
 
-    let mut md = format!("# Amazon Product\n\n");
+    let mut md = "# Amazon Product
+
+"
+    .to_string();
     if let Some(ref t) = title {
         md = format!("# {t}\n\n");
     }

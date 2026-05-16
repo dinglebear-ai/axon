@@ -85,11 +85,9 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
     // the most important cases. Cookie-warmup retry is deferred (TODO: thread
     // CookieJar through the collector pipeline).
     let html_str = String::from_utf8_lossy(html_bytes);
-    if let Some(cd) = crate::core::http::detect_challenge(
-        &html_str,
-        |_| None,
-        col.antibot_max_scan_bytes,
-    ) {
+    if let Some(cd) =
+        crate::core::http::detect_challenge(&html_str, |_| None, col.antibot_max_scan_bytes)
+    {
         tracing::warn!(
             url = %url,
             vendor = %cd.vendor.as_str(),

@@ -168,10 +168,9 @@ fn taxonomy_display_messages_are_human_readable() {
 
 #[test]
 fn taxonomy_downcast_works_through_boxed_error_chain() {
-    let err: Box<dyn StdError + 'static> =
-        Box::new(ServiceTaxonomyError::VerticalAuthMissing {
-            vertical: "github_repo",
-        });
+    let err: Box<dyn StdError + 'static> = Box::new(ServiceTaxonomyError::VerticalAuthMissing {
+        vertical: "github_repo",
+    });
     let recovered = taxonomy_from_error(err.as_ref()).expect("downcast");
     assert_eq!(recovered.mcp_code(), "vertical_auth_missing");
     assert!(!recovered.retriable());

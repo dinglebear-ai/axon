@@ -1,4 +1,4 @@
-use super::line_range_for_chunk;
+use super::*;
 
 #[test]
 fn line_range_first_line() {

@@ -83,9 +83,7 @@ fn handle_capabilities(extractor: Option<String>) -> Result<AxonToolResponse, Er
 fn extractor_cap_json(info: crate::extract::ExtractorInfo) -> serde_json::Value {
     let auth_required = matches!(info.name, "github_repo" | "github_release" | "reddit");
     let env_vars: &[&str] = match info.name {
-        "github_repo" | "github_release" => {
-            &["GITHUB_TOKEN (optional — 60/hr anon, 5000/hr auth)"]
-        }
+        "github_repo" | "github_release" => &["GITHUB_TOKEN (optional — 60/hr anon, 5000/hr auth)"],
         "reddit" => &["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
         "huggingface_model" => &["HF_TOKEN (optional)"],
         _ => &[],
@@ -99,4 +97,3 @@ fn extractor_cap_json(info: crate::extract::ExtractorInfo) -> serde_json::Value 
         "env_vars": env_vars,
     })
 }
-

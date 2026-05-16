@@ -7,9 +7,7 @@ use chrome_tasks::{apply_thin_page_outcome, drain_chrome_tasks};
 use manifest::write_page_to_manifest;
 use util::{emit_progress, track_waf_block};
 
-pub(super) use page::{
-    CollectorConfig, PageOutcome, canonicalize_and_track_page, process_page,
-};
+pub(super) use page::{CollectorConfig, PageOutcome, canonicalize_and_track_page, process_page};
 
 use std::collections::HashSet;
 use std::sync::Arc;

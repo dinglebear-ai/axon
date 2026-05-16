@@ -1,4 +1,4 @@
-use super::{RedditTarget, classify_target, validate_subreddit};
+use super::*;
 
 #[test]
 fn classify_bare_subreddit_name() {
