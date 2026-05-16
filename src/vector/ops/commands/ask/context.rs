@@ -10,10 +10,11 @@ mod retrieval;
 mod tests;
 
 use super::AskTiming;
-use crate::services::types::AskExplainTrace;
+use crate::services::types::{AskExplainTrace, CorpusHealthDiagnostic, CorpusHealthKind};
 use build::build_context_from_candidates;
 use query_rewrite::{QueryComplexity, build_query_forms};
 use retrieval::retrieve_ask_candidates;
+use spider::url::Url;
 
 const ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT: usize = 50;
 
@@ -75,6 +76,7 @@ pub(crate) struct AskContext {
     pub authoritative_ratio: f64,
     pub configured_authority_ratio: f64,
     pub product_authority_ratio: f64,
+    pub corpus_health: CorpusHealthDiagnostic,
     /// True when the adaptive skip gate elided full-doc fetch.
     /// (bd axon_rust-30y)
     pub full_doc_fetch_skipped: bool,
@@ -135,6 +137,13 @@ pub(crate) async fn build_ask_context(
     let graph_entities_found = 0usize;
     let graph_elapsed_ms = 0u128;
     let context = built.context;
+    let selected_urls = selected_context_urls(&built.selection_decisions);
+    let corpus_health = classify_corpus_health(
+        &retrieval.top_domains,
+        &selected_urls,
+        retrieval.candidates.len(),
+        context.len(),
+    );
 
     if cfg.ask_graph {
         log_warn(
@@ -159,6 +168,7 @@ pub(crate) async fn build_ask_context(
         authoritative_ratio: retrieval.authoritative_ratio,
         configured_authority_ratio: retrieval.configured_authority_ratio,
         product_authority_ratio: retrieval.product_authority_ratio,
+        corpus_health,
         full_doc_fetch_skipped: built.full_doc_fetch_skipped,
         full_doc_fetch_skip_reason: built.full_doc_fetch_skip_reason,
         detected_complexity,
@@ -167,6 +177,7 @@ pub(crate) async fn build_ask_context(
         explain: if cfg.ask_explain {
             build_explain_trace(
                 query,
+                &retrieval.reranked,
                 retrieval.explain_retrieval,
                 retrieval.candidate_traces,
                 built.explain_context,
@@ -180,6 +191,7 @@ pub(crate) async fn build_ask_context(
 
 fn build_explain_trace(
     query: &str,
+    reranked: &[crate::vector::ops::ranking::AskCandidate],
     retrieval: Option<crate::services::types::AskExplainRetrieval>,
     candidate_traces: Vec<crate::vector::ops::commands::retrieval::CandidateRankingTrace>,
     context: crate::services::types::AskExplainContext,
@@ -187,38 +199,53 @@ fn build_explain_trace(
 ) -> Option<AskExplainTrace> {
     use crate::services::types::{AskExplainCandidate, AskExplainMode};
     use crate::vector::ops::ranking;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
 
     let retrieval = retrieval?;
-    let mut selections_by_kept_index = selections
-        .into_iter()
-        .map(|selection| (selection.candidate_index, selection.decisions))
-        .collect::<HashMap<_, _>>();
+    let mut selections_by_key: HashMap<_, VecDeque<_>> = HashMap::new();
+    for selection in selections {
+        selections_by_key
+            .entry(selection.key)
+            .or_default()
+            .push_back((selection.decisions, selection.metadata));
+    }
+    let mut raw_rerank_ranks: HashMap<_, VecDeque<_>> = HashMap::new();
+    for (idx, candidate) in reranked.iter().enumerate() {
+        raw_rerank_ranks
+            .entry(build::candidate_selection_key(candidate))
+            .or_default()
+            .push_back(idx + 1);
+    }
     let query_tokens = ranking::tokenize_query(query);
     let total_candidate_traces = candidate_traces.len();
-    let mut kept_candidate_index = 0usize;
     let candidates = candidate_traces
         .into_iter()
         .take(ASK_EXPLAIN_CANDIDATE_TRACE_LIMIT)
         .enumerate()
         .map(|(idx, trace)| {
-            let selection_decisions = if trace.filter_decisions.iter().any(|decision| {
-                decision.kind == crate::services::types::AskExplainFilterDecisionKind::Kept
-            }) {
-                let decisions = selections_by_kept_index
-                    .remove(&kept_candidate_index)
-                    .unwrap_or_else(default_not_selected_decision);
-                kept_candidate_index += 1;
-                decisions
-            } else {
-                default_not_selected_decision()
-            };
+            let (selection_decisions, selection_metadata) =
+                if trace.filter_decisions.iter().any(|decision| {
+                    decision.kind == crate::services::types::AskExplainFilterDecisionKind::Kept
+                }) {
+                    pop_front_for_key(
+                        &mut selections_by_key,
+                        &build::candidate_selection_key(&trace.candidate.candidate),
+                    )
+                    .unwrap_or_else(default_not_selected_selection)
+                } else {
+                    default_not_selected_selection()
+                };
             let candidate = trace.candidate.candidate;
             let snippet = ranking::get_meaningful_snippet(&candidate.chunk_text, &query_tokens);
+            let candidate_key = build::candidate_selection_key(&candidate);
             AskExplainCandidate {
                 id: format!("candidate-{}", idx + 1),
                 url: candidate.url,
                 chunk_index: trace.candidate.chunk_index,
+                raw_rerank_rank: pop_front_for_key(&mut raw_rerank_ranks, &candidate_key),
+                planned_full_doc_rank: selection_metadata.planned_full_doc_rank,
+                selected_context_rank: selection_metadata.selected_context_rank,
+                insertion_mode: selection_metadata.insertion_mode,
                 retrieval_score: candidate.score,
                 rerank_score: candidate.rerank_score,
                 score_kind: trace.score_kind,
@@ -240,9 +267,100 @@ fn build_explain_trace(
     })
 }
 
-fn default_not_selected_decision() -> Vec<crate::services::types::AskExplainSelectionDecision> {
-    vec![crate::services::types::AskExplainSelectionDecision {
-        kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
-        reason: None,
-    }]
+fn pop_front_for_key<K, V>(
+    values_by_key: &mut std::collections::HashMap<K, std::collections::VecDeque<V>>,
+    key: &K,
+) -> Option<V>
+where
+    K: Eq + std::hash::Hash,
+{
+    let values = values_by_key.get_mut(key)?;
+    let value = values.pop_front();
+    if values.is_empty() {
+        values_by_key.remove(key);
+    }
+    value
+}
+
+fn selected_context_urls(selections: &[build::ContextCandidateSelection]) -> Vec<String> {
+    selections
+        .iter()
+        .filter(|selection| {
+            matches!(
+                selection.metadata.insertion_mode,
+                Some(
+                    crate::services::types::AskExplainInsertionMode::TopChunk
+                        | crate::services::types::AskExplainInsertionMode::InsertedFullDoc
+                        | crate::services::types::AskExplainInsertionMode::Supplemental
+                )
+            )
+        })
+        .map(|selection| selection.url.clone())
+        .collect()
+}
+
+fn classify_corpus_health(
+    top_domains: &[String],
+    selected_urls: &[String],
+    candidate_pool: usize,
+    context_chars: usize,
+) -> CorpusHealthDiagnostic {
+    let top_domain_count = top_domains.len();
+    let selected_domain_count = selected_urls
+        .iter()
+        .filter_map(|url| Url::parse(url).ok())
+        .filter_map(|url| url.host_str().map(str::to_string))
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    let (kind, reason) = if candidate_pool == 0 {
+        (
+            CorpusHealthKind::NoRetrievalCandidates,
+            "retrieval returned no candidates".to_string(),
+        )
+    } else if selected_urls.is_empty() {
+        (
+            CorpusHealthKind::RetrievedNotSelected,
+            "retrieval returned candidates but none reached selected context".to_string(),
+        )
+    } else if context_chars < 2_000 {
+        (
+            CorpusHealthKind::ThinDomain,
+            "selected context is very small; indexed coverage may be thin".to_string(),
+        )
+    } else if top_domain_count == 0 {
+        (
+            CorpusHealthKind::Unknown,
+            "top-domain diagnostics were unavailable".to_string(),
+        )
+    } else {
+        (
+            CorpusHealthKind::Healthy,
+            "retrieval produced selected context".to_string(),
+        )
+    };
+
+    CorpusHealthDiagnostic {
+        kind,
+        reason,
+        selected_domain_count,
+        top_domain_count,
+    }
+}
+
+fn default_not_selected_selection() -> (
+    Vec<crate::services::types::AskExplainSelectionDecision>,
+    build::CandidateSelectionMetadata,
+) {
+    (
+        vec![crate::services::types::AskExplainSelectionDecision {
+            kind: crate::services::types::AskExplainSelectionDecisionKind::NotSelected,
+            reason: None,
+        }],
+        build::CandidateSelectionMetadata {
+            planned_full_doc_rank: None,
+            selected_context_rank: None,
+            insertion_mode: Some(crate::services::types::AskExplainInsertionMode::NotSelected),
+        },
+    )
 }

@@ -228,6 +228,7 @@ pub(super) fn authoritative_ratio(candidates: &[AskCandidate], domains: &[String
 fn candidate_topical_overlap_count(candidate: &AskCandidate, query_tokens: &[String]) -> usize {
     query_tokens
         .iter()
+        .filter(|token| token.len() >= 3)
         .filter(|token| {
             candidate.url_tokens.contains(token.as_str())
                 || candidate.chunk_tokens.contains(token.as_str())
@@ -243,9 +244,13 @@ pub(super) fn candidate_has_topical_overlap(
     if query_tokens.is_empty() {
         return true;
     }
+    let topical_token_count = query_tokens.iter().filter(|token| token.len() >= 3).count();
+    if topical_token_count == 0 {
+        return true;
+    }
     let overlap = candidate_topical_overlap_count(candidate, query_tokens);
-    let coverage = overlap as f64 / query_tokens.len() as f64;
-    match query_tokens.len() {
+    let coverage = overlap as f64 / topical_token_count as f64;
+    match topical_token_count {
         0 => true,
         1 | 2 => overlap >= 1,
         3 | 4 => overlap >= 1 || coverage >= 0.5,

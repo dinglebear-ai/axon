@@ -16,6 +16,24 @@ Benchmarking:
 - Quality set: `docs/eval/README.md`
 - Parity report: `docs/perf/quality-parity-2026-05-07.md`
 
+### Retrieval Quality Gates
+
+Fast gates:
+- token policy unit tests
+- explain/schema unit tests
+- selection unit tests
+
+Medium gates:
+- `scripts/evaluate-retrieval.sh`
+- `ALLOW_MISS=1 scripts/evaluate-retrieval.sh` for exploratory sweeps with known misses
+
+Slow gates:
+- `axon evaluate`
+- `scripts/evaluate-ask-golden.sh`
+- `scripts/bench-ask.sh`
+
+Use slow gates for release signoff, not for every small retrieval tuning loop.
+
 Explain mode:
 
 - `axon ask --explain --json "<question>"` runs retrieval, reranking, and context assembly, then skips Gemini synthesis.

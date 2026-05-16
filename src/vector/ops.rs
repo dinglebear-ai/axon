@@ -6,6 +6,7 @@ pub mod source_display;
 pub mod sparse;
 pub mod stats;
 pub mod tei;
+pub(crate) mod token_policy;
 
 // Re-export public API — no passthrough wrappers needed.
 pub use input::{chunk_markdown, chunk_text, url_lookup_candidates};

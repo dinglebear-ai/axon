@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-16
+
+### Added
+
+- retrieval: add typed corpus-health diagnostics and richer `ask --explain` selection metadata so ranking, full-document selection, and corpus coverage failures can be separated without scraping logs.
+- eval: add a tracked retrieval fixture harness for repeatable domain-quality sweeps, including strict expected-domain matching and regression coverage for script pass/fail semantics.
+
+### Fixed
+
+- retrieval: keep explain selection metadata attached to the right candidate after rerank reordering or duplicate URLs by using stable candidate keys instead of kept-index ordinals.
+- retrieval: harden full-document selection with URL dedupe, configurable per-domain diversity, and fallback fill when a single domain is the only available source.
+
 ## [2.0.0] - 2026-05-15
 
 ### Added

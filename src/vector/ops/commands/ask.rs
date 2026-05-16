@@ -1,6 +1,7 @@
 use crate::core::config::Config;
 use crate::core::logging::log_info;
 use crate::services::llm_backend;
+use crate::services::types::{CorpusHealthDiagnostic, CorpusHealthKind};
 
 mod context;
 mod normalize;
@@ -43,7 +44,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
             "query": query,
             "answer": "",
             "session": serde_json::Value::Null,
-            "diagnostics": ask_diagnostics_json(cfg, &ctx, diagnostics_enabled),
+            "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
             "explain": ctx.explain,
             "timing_ms": build_timing_json(
                 ctx.retrieval_elapsed_ms,
@@ -100,7 +101,7 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
         "query": query,
         "answer": answer,
         "session": serde_json::Value::Null,
-        "diagnostics": ask_diagnostics_json(cfg, &ctx, diagnostics_enabled),
+        "diagnostics": build_diagnostics_json(diagnostics_enabled, cfg, &ctx),
         "explain": serde_json::Value::Null,
         "timing_ms": build_timing_json(
             ctx.retrieval_elapsed_ms,
@@ -113,12 +114,8 @@ pub async fn ask_payload(cfg: &Config, query: &str) -> anyhow::Result<serde_json
     }))
 }
 
-fn ask_diagnostics_json(
-    cfg: &Config,
-    ctx: &AskContext,
-    diagnostics_enabled: bool,
-) -> serde_json::Value {
-    if !diagnostics_enabled {
+fn build_diagnostics_json(enabled: bool, cfg: &Config, ctx: &AskContext) -> serde_json::Value {
+    if !enabled {
         return serde_json::Value::Null;
     }
     serde_json::json!({
@@ -145,6 +142,7 @@ fn ask_diagnostics_json(
         "authority_ratio": ctx.authoritative_ratio,
         "configured_authority_ratio": ctx.configured_authority_ratio,
         "product_authority_ratio": ctx.product_authority_ratio,
+        "corpus_health": &ctx.corpus_health,
         "full_doc_fetch_skipped": ctx.full_doc_fetch_skipped,
         "full_doc_fetch_skip_reason": ctx.full_doc_fetch_skip_reason,
         "detected_complexity": ctx.detected_complexity,
@@ -209,6 +207,12 @@ fn history_only_ask_context(elapsed_ms: u128) -> AskContext {
         authoritative_ratio: 0.0,
         configured_authority_ratio: 0.0,
         product_authority_ratio: 0.0,
+        corpus_health: CorpusHealthDiagnostic {
+            kind: CorpusHealthKind::NoRetrievalCandidates,
+            reason: "answered_from_follow_up_history".to_string(),
+            selected_domain_count: 0,
+            top_domain_count: 0,
+        },
         full_doc_fetch_skipped: true,
         full_doc_fetch_skip_reason: "history_only",
         detected_complexity: "simple",

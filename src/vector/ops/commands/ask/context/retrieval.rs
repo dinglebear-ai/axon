@@ -196,6 +196,7 @@ pub(super) async fn retrieve_ask_candidates(
         query_tokens,
         ask_tuning.ask_chunk_limit,
         ask_tuning.ask_full_docs,
+        super::build::SelectionPolicy::default(),
     );
     timing.record(AskTimingSlot::TopSelect, top_select_started);
 

@@ -2,11 +2,27 @@ use crate::vector::ops::ranking;
 use spider::url::Url;
 use std::collections::HashSet;
 
+#[derive(Debug, Clone, Copy)]
+pub(in crate::vector::ops::commands::ask::context) struct SelectionPolicy {
+    pub prefer_authoritative: bool,
+    pub max_docs_per_domain: usize,
+}
+
+impl Default for SelectionPolicy {
+    fn default() -> Self {
+        Self {
+            prefer_authoritative: true,
+            max_docs_per_domain: 3,
+        }
+    }
+}
+
 pub fn select_context_indices(
     reranked: &[ranking::AskCandidate],
     query_tokens: &[String],
     chunk_limit: usize,
     full_doc_limit: usize,
+    policy: SelectionPolicy,
 ) -> (Vec<usize>, Vec<usize>) {
     let top_chunk_indices = ranking::select_diverse_candidates(reranked, chunk_limit, 1);
     // Full-doc indices are selected independently from the full reranked pool.
@@ -18,11 +34,11 @@ pub fn select_context_indices(
     // Enable ask_fulldoc_skip_enabled to restore fast-path when top chunks
     // already provide sufficient coverage.
     let full_doc_candidate_indices = full_doc_candidate_indices(reranked, query_tokens);
-    let mut top_full_doc_indices = ranking::select_diverse_candidates_from_indices(
+    let mut top_full_doc_indices = select_full_doc_indices_with_policy(
         reranked,
         &full_doc_candidate_indices,
         full_doc_limit,
-        1,
+        policy,
     );
     include_preferred_top_chunk_docs(
         reranked,
@@ -31,8 +47,91 @@ pub fn select_context_indices(
         &top_chunk_indices,
         &mut top_full_doc_indices,
         full_doc_limit,
+        policy,
     );
     (top_chunk_indices, top_full_doc_indices)
+}
+
+fn select_full_doc_indices_with_policy(
+    reranked: &[ranking::AskCandidate],
+    candidate_indices: &[usize],
+    full_doc_limit: usize,
+    policy: SelectionPolicy,
+) -> Vec<usize> {
+    if full_doc_limit == 0 {
+        return Vec::new();
+    }
+    let max_docs_per_domain = policy.max_docs_per_domain.max(1);
+    let mut selected = Vec::new();
+    let mut deferred = Vec::new();
+    for &idx in candidate_indices {
+        if selected.len() >= full_doc_limit {
+            break;
+        }
+        if url_already_selected(reranked, &selected, idx) {
+            continue;
+        }
+        if domain_count_for_selected(reranked, &selected, idx) >= max_docs_per_domain {
+            deferred.push(idx);
+            continue;
+        }
+        selected.push(idx);
+    }
+    for idx in deferred {
+        if selected.len() >= full_doc_limit {
+            break;
+        }
+        if !url_already_selected(reranked, &selected, idx) {
+            selected.push(idx);
+        }
+    }
+    selected
+}
+
+fn url_already_selected(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    candidate_idx: usize,
+) -> bool {
+    url_already_selected_except(reranked, selected, None, candidate_idx)
+}
+
+fn url_already_selected_except(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    exclude_selected_at: Option<usize>,
+    candidate_idx: usize,
+) -> bool {
+    selected.iter().enumerate().any(|(selected_at, &idx)| {
+        Some(selected_at) != exclude_selected_at && reranked[idx].url == reranked[candidate_idx].url
+    })
+}
+
+fn domain_count_for_selected(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    candidate_idx: usize,
+) -> usize {
+    domain_count_for_selected_except(reranked, selected, None, candidate_idx)
+}
+
+fn domain_count_for_selected_except(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    exclude_selected_at: Option<usize>,
+    candidate_idx: usize,
+) -> usize {
+    let Some(candidate_host) = host_from_url(&reranked[candidate_idx].url) else {
+        return 0;
+    };
+    selected
+        .iter()
+        .enumerate()
+        .filter(|(selected_at, _)| Some(*selected_at) != exclude_selected_at)
+        .filter(|&(_, &idx)| {
+            host_from_url(&reranked[idx].url).as_deref() == Some(candidate_host.as_str())
+        })
+        .count()
 }
 
 fn full_doc_candidate_indices(
@@ -133,8 +232,9 @@ fn include_preferred_top_chunk_docs(
     top_chunk_indices: &[usize],
     top_full_doc_indices: &mut Vec<usize>,
     full_doc_limit: usize,
+    policy: SelectionPolicy,
 ) {
-    if full_doc_limit == 0 {
+    if full_doc_limit == 0 || !policy.prefer_authoritative {
         return;
     }
     let entity_tokens = full_doc_entity_tokens(query_tokens);
@@ -171,6 +271,9 @@ fn include_preferred_top_chunk_docs(
             continue;
         }
         if top_full_doc_indices.len() < full_doc_limit {
+            if !can_add_full_doc_index(reranked, top_full_doc_indices, idx, policy) {
+                continue;
+            }
             top_full_doc_indices.push(idx);
             continue;
         }
@@ -179,6 +282,8 @@ fn include_preferred_top_chunk_docs(
             query_tokens,
             dominant_hosts,
             top_full_doc_indices,
+            idx,
+            policy,
         ) {
             top_full_doc_indices[replace_at] = idx;
         }
@@ -190,12 +295,23 @@ fn replacement_slot_for_preferred_doc(
     query_tokens: &[String],
     dominant_hosts: &HashSet<String>,
     top_full_doc_indices: &[usize],
+    candidate_idx: usize,
+    policy: SelectionPolicy,
 ) -> Option<usize> {
     let entity_tokens = full_doc_entity_tokens(query_tokens);
     top_full_doc_indices
         .iter()
         .enumerate()
-        .filter(|(_, idx_ref)| {
+        .filter(|(replace_at, idx_ref)| {
+            if !can_replace_full_doc_index(
+                reranked,
+                top_full_doc_indices,
+                *replace_at,
+                candidate_idx,
+                policy,
+            ) {
+                return false;
+            }
             let idx = **idx_ref;
             let candidate = &reranked[idx];
             !host_from_url(&candidate.url).is_some_and(|host| dominant_hosts.contains(&host))
@@ -215,6 +331,29 @@ fn replacement_slot_for_preferred_doc(
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|(replace_at, _)| replace_at)
+}
+
+fn can_add_full_doc_index(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    candidate_idx: usize,
+    policy: SelectionPolicy,
+) -> bool {
+    !url_already_selected(reranked, selected, candidate_idx)
+        && domain_count_for_selected(reranked, selected, candidate_idx)
+            < policy.max_docs_per_domain.max(1)
+}
+
+fn can_replace_full_doc_index(
+    reranked: &[ranking::AskCandidate],
+    selected: &[usize],
+    replace_at: usize,
+    candidate_idx: usize,
+    policy: SelectionPolicy,
+) -> bool {
+    !url_already_selected_except(reranked, selected, Some(replace_at), candidate_idx)
+        && domain_count_for_selected_except(reranked, selected, Some(replace_at), candidate_idx)
+            < policy.max_docs_per_domain.max(1)
 }
 
 fn host_from_url(url: &str) -> Option<String> {
