@@ -68,12 +68,28 @@ pub async fn open_sqlite_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
     let opts: SqliteConnectOptions = connect_str.parse()?;
     let opts = opts
         .pragma("journal_mode", "WAL")
-        .pragma("busy_timeout", "10000")
+        // NORMAL is the recommended synchronous setting for WAL — durable per
+        // commit without the extra checkpoint fsync that FULL (default) adds.
+        .pragma("synchronous", "NORMAL")
+        // Raise auto-checkpoint threshold from 1000 pages (~4 MB) to 4000
+        // (~16 MB). Fewer checkpoints = fewer windows where SIGKILL can corrupt
+        // the main database mid-checkpoint. We flush explicitly on shutdown via
+        // `checkpoint_and_close`.
+        .pragma("wal_autocheckpoint", "4000")
+        // 64 MB page cache. Reduces I/O contention when many workers read/write
+        // the same hot pages concurrently.
+        .pragma("cache_size", "-65536")
+        .pragma("temp_store", "MEMORY")
+        .pragma("busy_timeout", "30000")
         .pragma("foreign_keys", "ON");
 
+    // 4 connections: enough for concurrent readers in WAL mode; SQLite only
+    // allows one writer at a time so more connections beyond this are just
+    // queueing overhead.
     let pool = SqlitePoolOptions::new()
-        .max_connections(8)
-        .acquire_timeout(std::time::Duration::from_secs(30))
+        .max_connections(4)
+        .min_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(60))
         .connect_with(opts)
         .await?;
 
@@ -298,12 +314,92 @@ pub async fn reclaim_stale_watch_leases(pool: &SqlitePool) -> Result<u64, sqlx::
     Ok(result.rows_affected())
 }
 
+/// Checkpoint all WAL frames into the main database file and close the pool.
+///
+/// Call this on graceful shutdown before dropping the pool. A TRUNCATE
+/// checkpoint moves every WAL frame into the main database and resets the WAL
+/// to zero bytes — if the process is then SIGKILL'd there is nothing left to
+/// corrupt. Without this, an unkilled checkpoint mid-write is the primary
+/// cause of `database disk image is malformed` errors on restart.
+///
+/// Non-fatal: logs warnings on failure but does not propagate the error, since
+/// the pool is being closed regardless.
+pub async fn checkpoint_and_close(pool: &SqlitePool) {
+    match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(pool)
+        .await
+    {
+        Ok(_) => tracing::info!("lite: WAL checkpoint complete"),
+        Err(e) => tracing::warn!(error = %e, "lite: WAL checkpoint failed on shutdown"),
+    }
+    pool.close().await;
+}
+
+/// Like `open_sqlite_pool`, but recovers automatically if the database is
+/// corrupted (`SQLITE_CORRUPT` / code 11).
+///
+/// On corruption: renames `jobs.db` → `jobs.db.corrupted.<timestamp>`, then
+/// opens a fresh database. Job history is lost but Qdrant vector data is
+/// unaffected. Logs a `tracing::error!` so the operator sees it.
+pub async fn open_sqlite_pool_or_recover(path: &str) -> Result<SqlitePool, sqlx::Error> {
+    match open_sqlite_pool(path).await {
+        Ok(pool) => {
+            // Quick integrity probe — catches corruption that slipped past the
+            // open (e.g. partial WAL frames from a prior SIGKILL).
+            let corrupt = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|s| s != "ok")
+                .unwrap_or(false);
+            if !corrupt {
+                return Ok(pool);
+            }
+            pool.close().await;
+            tracing::error!(path, "lite: quick_check detected corruption — recovering");
+            rename_corrupted(path);
+            open_sqlite_pool(path).await
+        }
+        Err(e) => {
+            let is_corrupt = e.to_string().contains("malformed")
+                || e.to_string().contains("corrupt")
+                || e.to_string().contains("code: 11");
+            if is_corrupt && path != ":memory:" {
+                tracing::error!(path, error = %e, "lite: database corrupt at open — recovering");
+                rename_corrupted(path);
+                open_sqlite_pool(path).await
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+fn rename_corrupted(path: &str) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let dest = format!("{path}.corrupted.{ts}");
+    if let Err(e) = std::fs::rename(path, &dest) {
+        tracing::warn!(src = path, dst = dest, error = %e, "lite: could not rename corrupted db");
+    } else {
+        tracing::info!(src = path, dst = dest, "lite: renamed corrupted db");
+    }
+    // Also remove WAL/SHM sidecars so the fresh db starts clean.
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = format!("{path}{suffix}");
+        let _ = std::fs::remove_file(&sidecar);
+    }
+}
+
 /// Open a SQLite pool from the path stored in `cfg.sqlite_path`.
 ///
 /// Shared by `services/jobs.rs` and `jobs/watch_lite.rs` to avoid duplicating
 /// the `open_sqlite_pool(&cfg.sqlite_path.to_string_lossy())` call pattern.
 pub(crate) async fn open_config_pool(cfg: &Config) -> Result<SqlitePool, sqlx::Error> {
-    open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await
+    open_sqlite_pool_or_recover(&cfg.sqlite_path.to_string_lossy()).await
 }
 
 /// Current time as Unix milliseconds.

@@ -16,7 +16,7 @@ use crate::jobs::backend::{
 };
 
 use self::cancel::CancelStore;
-use self::store::open_sqlite_pool;
+use self::store::{checkpoint_and_close, open_sqlite_pool, open_sqlite_pool_or_recover};
 
 /// Lite-mode job backend: SQLite persistence + optional in-process tokio workers.
 ///
@@ -56,7 +56,7 @@ impl LiteBackend {
             workers = false,
             "lite: opening SQLite job backend"
         );
-        let pool = Arc::new(open_sqlite_pool(&path).await?);
+        let pool = Arc::new(open_sqlite_pool_or_recover(&path).await?);
         let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
 
         Ok(Self {
@@ -80,7 +80,7 @@ impl LiteBackend {
             workers = true,
             "lite: opening SQLite job backend"
         );
-        let pool = Arc::new(open_sqlite_pool(&path).await?);
+        let pool = Arc::new(open_sqlite_pool_or_recover(&path).await?);
         let cancel_store = Self::init(Arc::clone(&pool), &cfg).await?;
 
         let worker_handles = workers::spawn_workers(
@@ -121,6 +121,18 @@ impl LiteBackend {
     /// Expose the cancel store so the service layer can fire CancellationTokens on cancel.
     pub fn cancel_store(&self) -> &Arc<CancelStore> {
         &self.cancel_store
+    }
+
+    /// Graceful shutdown: stop workers, checkpoint the WAL, then close the pool.
+    ///
+    /// Call this on SIGTERM before the process exits. Without an explicit
+    /// checkpoint, a SIGKILL arriving mid-WAL-write can leave the database in
+    /// a corrupted state (`database disk image is malformed`).
+    pub async fn shutdown(mut self) {
+        // Drop workers first so all in-flight jobs finish or are cancelled.
+        drop(self.workers.take());
+        // Flush WAL → main database file before releasing the pool.
+        checkpoint_and_close(&self.pool).await;
     }
 
     /// Wake the worker for `kind` if workers are running. Returns false if this backend
