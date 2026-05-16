@@ -278,9 +278,7 @@ pub async fn list_service_jobs(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ServiceJob>, sqlx::Error> {
-    let order_by = match kind {
-        JobKind::Crawl => {
-            "ORDER BY CASE status \
+    let order_by = "ORDER BY CASE status \
                 WHEN 'running' THEN 0 \
                 WHEN 'pending' THEN 1 \
                 WHEN 'completed' THEN 2 \
@@ -290,10 +288,8 @@ pub async fn list_service_jobs(
              END, \
              created_at DESC, \
              updated_at DESC, \
-             id ASC"
-        }
-        _ => "ORDER BY created_at DESC, updated_at DESC, id ASC",
-    };
+             id ASC";
+    let _ = kind;
     // SAFETY: service_select_from(kind) and order_by are compile-time `&'static
     // str` from a closed enum dispatch; no caller-controlled values reach this
     // format!(). Limit/offset are bound parameters.
