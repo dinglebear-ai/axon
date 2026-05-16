@@ -10,7 +10,6 @@ pub use enums::{
     RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use overrides::ConfigOverrides;
-
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

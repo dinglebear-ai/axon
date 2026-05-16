@@ -382,7 +382,6 @@ async fn probe_vector_mode(qdrant_url: &str, collection: &str) -> Option<String>
         None
     }
 }
-
 #[cfg(test)]
 #[path = "lite_tests.rs"]
 mod tests;

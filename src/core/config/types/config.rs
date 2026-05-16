@@ -674,7 +674,6 @@ pub struct Config {
     /// Default: 150000.
     pub antibot_max_body_scan_bytes: usize,
 }
-
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod tests;

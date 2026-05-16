@@ -181,7 +181,6 @@ pub fn extract_robots_sitemaps(robots_txt: &str) -> Vec<String> {
     out.dedup();
     out
 }
-
 #[cfg(test)]
 #[path = "url_parsing_tests.rs"]
 mod tests;

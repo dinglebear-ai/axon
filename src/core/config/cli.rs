@@ -404,7 +404,6 @@ pub(super) enum JobSubcommand {
     Worker,
     Recover,
 }
-
 #[cfg(test)]
 #[path = "cli_tests.rs"]
 mod tests;

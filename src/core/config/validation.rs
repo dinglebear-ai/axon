@@ -53,7 +53,6 @@ pub fn validate_collection_name(name: &str) -> Result<(), CollectionNameError> {
     }
     Ok(())
 }
-
 #[cfg(test)]
 #[path = "validation_tests.rs"]
 mod tests;
