@@ -68,6 +68,15 @@ pub(super) async fn prepare_embed_docs(
         let pass = extract_all(&html);
         if !pass.is_empty() {
             remote_structured = StructuredPayload::from_pass(&pass, cfg.structured_data_max_bytes);
+            if let Some(ref sp) = remote_structured {
+                tracing::debug!(
+                    url = %input,
+                    kind = sp.kind,
+                    schema_type = ?sp.schema_type,
+                    blob_bytes = serde_json::to_string(&sp.blob).map_or(0, |s| s.len()),
+                    "structured.extracted"
+                );
+            }
         }
         docs = vec![(input.to_string(), to_markdown(&html, None))];
     }

@@ -65,11 +65,12 @@ pub fn process_page(html_bytes: &[u8], url: &str, col: &CollectorConfig) -> Page
         col.ladder_thresholds,
     );
     if ladder.tier != LadderTier::Scored {
-        crate::core::logging::log_debug(&format!(
-            "ladder.tier_used url={url} tier={} words={}",
-            ladder.tier.as_str(),
-            ladder.word_count,
-        ));
+        tracing::debug!(
+            url = %url,
+            tier = ladder.tier.as_str(),
+            words = ladder.word_count,
+            "ladder.tier_used"
+        );
     }
     let trimmed = ladder.markdown;
     let chars = trimmed.len();
