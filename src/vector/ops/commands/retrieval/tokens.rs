@@ -77,6 +77,7 @@ fn candidate_topical_overlap_count(
 ) -> usize {
     query_tokens
         .iter()
+        .filter(|token| token.len() >= 3)
         .filter(|token| {
             candidate.url_tokens.contains(token.as_str())
                 || candidate.chunk_tokens.contains(token.as_str())
@@ -85,7 +86,7 @@ fn candidate_topical_overlap_count(
 }
 
 fn candidate_matches_any_token(candidate: &ranking::AskCandidate, tokens: &[&String]) -> bool {
-    tokens.iter().any(|token| {
+    tokens.iter().filter(|token| token.len() >= 3).any(|token| {
         candidate.url_tokens.contains(token.as_str())
             || candidate.chunk_tokens.contains(token.as_str())
     })
@@ -98,16 +99,24 @@ pub(crate) fn candidate_has_topical_overlap(
     if query_tokens.is_empty() {
         return true;
     }
-    let salient_tokens = query_tokens
+    let topical_tokens = query_tokens
         .iter()
+        .filter(|token| token.len() >= 3)
+        .collect::<Vec<_>>();
+    if topical_tokens.is_empty() {
+        return true;
+    }
+    let salient_tokens = topical_tokens
+        .iter()
+        .copied()
         .filter(|token| !token_policy::is_generic_topical_token(token.as_str()))
         .collect::<Vec<_>>();
     if !salient_tokens.is_empty() && !candidate_matches_any_token(candidate, &salient_tokens) {
         return false;
     }
     let overlap = candidate_topical_overlap_count(candidate, query_tokens);
-    let coverage = overlap as f64 / query_tokens.len() as f64;
-    match query_tokens.len() {
+    let coverage = overlap as f64 / topical_tokens.len() as f64;
+    match topical_tokens.len() {
         0 => true,
         1 | 2 => overlap >= 1,
         3 | 4 => overlap >= 1 || coverage >= 0.5,

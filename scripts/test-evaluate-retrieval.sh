@@ -46,7 +46,29 @@ if AXON_BIN="$TMP/fake-axon" OUT="$TMP/default.jsonl" "$REPO/scripts/evaluate-re
 fi
 
 ALLOW_MISS=1 AXON_BIN="$TMP/fake-axon" OUT="$TMP/allow-miss.jsonl" "$REPO/scripts/evaluate-retrieval.sh" "$TMP/fixtures.jsonl" >"$TMP/summary.json"
-jq -e '.total == 4 and .pass == 3 and (.failures | length == 1)' "$TMP/summary.json" >/dev/null
+jq -e '
+  .total == 4
+  and .pass == 3
+  and (.runtime_failures | length == 0)
+  and (.failures | length == 1)
+  and .failures[0].id == "miss"
+' "$TMP/summary.json" >/dev/null
+
+cat >"$TMP/runtime-failure.jsonl" <<'JSONL'
+{"id":"infra","domain":"docs.example.com","query":"infra-failure","expected":"known_miss"}
+JSONL
+
+if ALLOW_MISS=1 AXON_BIN="$TMP/fake-axon" OUT="$TMP/runtime-output.jsonl" "$REPO/scripts/evaluate-retrieval.sh" "$TMP/runtime-failure.jsonl" >"$TMP/runtime-summary.json"; then
+  echo "expected runtime failures to fail even with ALLOW_MISS=1" >&2
+  exit 1
+fi
+jq -e '
+  .total == 1
+  and .pass == 0
+  and (.runtime_failures | length == 1)
+  and .runtime_failures[0].id == "infra"
+  and .runtime_failures[0].status == "axon_failed"
+' "$TMP/runtime-summary.json" >/dev/null
 
 : >"$TMP/empty.jsonl"
 if ALLOW_MISS=1 AXON_BIN="$TMP/fake-axon" OUT="$TMP/empty-output.jsonl" "$REPO/scripts/evaluate-retrieval.sh" "$TMP/empty.jsonl" >/dev/null 2>&1; then

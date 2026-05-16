@@ -93,12 +93,17 @@ jq -s --arg output "$OUT" '
     pass: (map(select(.pass)) | length),
     top_pass: (map(select(.top_pass)) | length),
     selected_pass: (map(select(.selected_pass)) | length),
+    runtime_failures: map(select(.status != "ok")),
     failures: map(select(.pass | not)),
     output: $output
   }
 ' "$OUT" > "$SUMMARY"
 
 cat "$SUMMARY"
+
+if jq -e '.runtime_failures | length > 0' "$SUMMARY" >/dev/null; then
+  exit 1
+fi
 
 if [ "$ALLOW_MISS" != "1" ] && jq -e '.failures | length > 0' "$SUMMARY" >/dev/null; then
   exit 1
