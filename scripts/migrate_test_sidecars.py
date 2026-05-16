@@ -26,8 +26,10 @@ def find_inline_blocks(content: str) -> list[tuple[int, int, str, str, str]]:
     """
     results = []
     # Match cfg gate variants, then optional attributes, then mod X {
+    # Use a balanced-paren approach for the cfg attribute to handle nested parens
+    # e.g. #[cfg(all(test, unix))] where [^)]* would stop at the inner ')'.
     pattern = re.compile(
-        r'(#\[cfg\([^)]*\btest\b[^)]*\)\])'  # cfg gate
+        r'(#\[cfg\((?:[^()]*|\([^()]*\))*\btest\b(?:[^()]*|\([^()]*\))*\)\])'  # cfg gate (balanced)
         r'(\s*(?:#\[[^\]]*\]\s*)*)'            # optional other attributes between cfg and mod
         r'\s*\n\s*mod\s+(\w+)\s*\{',           # mod name {
         re.MULTILINE
@@ -145,19 +147,36 @@ def migrate_file(source: Path, dry_run: bool = False) -> bool:
 
 def main():
     dry_run = "--dry-run" in sys.argv
+    check_mode = "--check" in sys.argv
     specific = [a for a in sys.argv[1:] if not a.startswith("--")]
 
+    paths: list[Path] = []
     if specific:
         paths = [Path(p) for p in specific]
     else:
         # Scan all .rs files in src/ and xtask/, skip _tests.rs and tests.rs
-        paths = []
         for root in [PROJECT_ROOT / "src", PROJECT_ROOT / "xtask"]:
             for p in root.rglob("*.rs"):
                 name = p.name
                 if name.endswith("_tests.rs") or name == "tests.rs" or name == "proptest_tests.rs":
                     continue
                 paths.append(p)
+
+    if check_mode:
+        # Check mode: fail non-zero if any inline blocks remain (CI guard).
+        remaining = 0
+        for source in sorted(paths):
+            content = source.read_text(encoding="utf-8", errors="ignore")
+            blocks = find_inline_blocks(content)
+            if blocks:
+                remaining += len(blocks)
+                for _, _, mod_name, cfg_gate, _, _ in blocks:
+                    print(f"INLINE: {source.relative_to(PROJECT_ROOT)}: {cfg_gate} mod {mod_name}")
+        if remaining:
+            print(f"\nFAIL: {remaining} inline test block(s) remain. Run migrate_test_sidecars.py to fix.")
+            sys.exit(1)
+        print(f"OK: no inline #[cfg(test)] mod blocks found in {len(paths)} files")
+        return
 
     migrated = 0
     skipped = 0

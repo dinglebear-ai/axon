@@ -399,5 +399,5 @@ pub(crate) async fn normalize_api_key_header(mut req: Request<Body>, next: Next)
 mod legacy;
 
 #[cfg(test)]
-#[path = "auth/tests.rs"]
+#[path = "auth_tests.rs"]
 mod tests;
