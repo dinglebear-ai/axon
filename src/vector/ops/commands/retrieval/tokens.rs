@@ -1,4 +1,5 @@
 use crate::vector::ops::ranking;
+use crate::vector::ops::token_policy;
 use spider::url::Url;
 use std::collections::HashSet;
 
@@ -19,7 +20,8 @@ pub(crate) fn product_authority_boost_for_url(
 
     let identity_tokens = product_identity_tokens(url);
     let product_token_match = query_tokens.iter().any(|token| {
-        !is_generic_authority_token(token.as_str()) && identity_tokens.contains(token.as_str())
+        !token_policy::is_generic_authority_token(token.as_str())
+            && identity_tokens.contains(token.as_str())
     });
     if product_token_match {
         product_authority_boost
@@ -55,7 +57,7 @@ fn product_identity_tokens(url: &str) -> HashSet<String> {
     };
     let mut tokens = HashSet::new();
     if let Some(host) = parsed.host_str() {
-        tokens.extend(tokenize_identity_segment(host));
+        tokens.extend(token_policy::identity_tokens(host));
     }
     for segment in parsed
         .path_segments()
@@ -64,123 +66,9 @@ fn product_identity_tokens(url: &str) -> HashSet<String> {
         .filter(|segment| !segment.is_empty())
         .take(2)
     {
-        tokens.extend(tokenize_identity_segment(segment));
+        tokens.extend(token_policy::identity_tokens(segment));
     }
     tokens
-}
-
-fn tokenize_identity_segment(text: &str) -> HashSet<String> {
-    text.to_ascii_lowercase()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|token| token.len() >= 2)
-        .map(str::to_string)
-        .collect()
-}
-
-fn is_generic_authority_token(token: &str) -> bool {
-    matches!(
-        token,
-        "api"
-            | "app"
-            | "book"
-            | "build"
-            | "cli"
-            | "code"
-            | "command"
-            | "commands"
-            | "config"
-            | "create"
-            | "documentation"
-            | "error"
-            | "errors"
-            | "find"
-            | "docs"
-            | "guide"
-            | "guides"
-            | "handling"
-            | "install"
-            | "java"
-            | "javascript"
-            | "js"
-            | "dependency"
-            | "dependencies"
-            | "go"
-            | "manage"
-            | "management"
-            | "marketplace"
-            | "node"
-            | "nodejs"
-            | "package"
-            | "packages"
-            | "plugin"
-            | "plugins"
-            | "publish"
-            | "publishing"
-            | "py"
-            | "python"
-            | "reference"
-            | "registry"
-            | "rs"
-            | "rust"
-            | "setup"
-            | "structure"
-            | "structured"
-            | "structuring"
-            | "tool"
-            | "tools"
-            | "ts"
-            | "typescript"
-            | "using"
-            | "view"
-            | "views"
-    )
-}
-
-fn is_generic_topical_token(token: &str) -> bool {
-    matches!(
-        token,
-        "api"
-            | "app"
-            | "book"
-            | "build"
-            | "cli"
-            | "code"
-            | "command"
-            | "commands"
-            | "config"
-            | "create"
-            | "documentation"
-            | "error"
-            | "errors"
-            | "find"
-            | "docs"
-            | "guide"
-            | "guides"
-            | "handling"
-            | "install"
-            | "dependency"
-            | "dependencies"
-            | "manage"
-            | "management"
-            | "marketplace"
-            | "package"
-            | "packages"
-            | "plugin"
-            | "plugins"
-            | "publish"
-            | "publishing"
-            | "reference"
-            | "registry"
-            | "setup"
-            | "structure"
-            | "structured"
-            | "structuring"
-            | "tool"
-            | "tools"
-            | "using"
-            | "view"
-            | "views"
-    )
 }
 
 fn candidate_topical_overlap_count(
@@ -189,6 +77,7 @@ fn candidate_topical_overlap_count(
 ) -> usize {
     query_tokens
         .iter()
+        .filter(|token| token.len() >= 3)
         .filter(|token| {
             candidate.url_tokens.contains(token.as_str())
                 || candidate.chunk_tokens.contains(token.as_str())
@@ -197,7 +86,7 @@ fn candidate_topical_overlap_count(
 }
 
 fn candidate_matches_any_token(candidate: &ranking::AskCandidate, tokens: &[&String]) -> bool {
-    tokens.iter().any(|token| {
+    tokens.iter().filter(|token| token.len() >= 3).any(|token| {
         candidate.url_tokens.contains(token.as_str())
             || candidate.chunk_tokens.contains(token.as_str())
     })
@@ -210,16 +99,24 @@ pub(crate) fn candidate_has_topical_overlap(
     if query_tokens.is_empty() {
         return true;
     }
-    let salient_tokens = query_tokens
+    let topical_tokens = query_tokens
         .iter()
-        .filter(|token| !is_generic_topical_token(token.as_str()))
+        .filter(|token| token.len() >= 3)
+        .collect::<Vec<_>>();
+    if topical_tokens.is_empty() {
+        return true;
+    }
+    let salient_tokens = topical_tokens
+        .iter()
+        .copied()
+        .filter(|token| !token_policy::is_generic_topical_token(token.as_str()))
         .collect::<Vec<_>>();
     if !salient_tokens.is_empty() && !candidate_matches_any_token(candidate, &salient_tokens) {
         return false;
     }
     let overlap = candidate_topical_overlap_count(candidate, query_tokens);
-    let coverage = overlap as f64 / query_tokens.len() as f64;
-    match query_tokens.len() {
+    let coverage = overlap as f64 / topical_tokens.len() as f64;
+    match topical_tokens.len() {
         0 => true,
         1 | 2 => overlap >= 1,
         3 | 4 => overlap >= 1 || coverage >= 0.5,

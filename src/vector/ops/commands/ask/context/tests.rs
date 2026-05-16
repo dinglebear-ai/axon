@@ -1,5 +1,6 @@
 use super::build::{
-    collect_supplemental_candidate_indices, planned_full_doc_urls, select_context_indices,
+    SelectionPolicy, collect_supplemental_candidate_indices, planned_full_doc_urls,
+    select_context_indices,
 };
 use super::heuristics::{
     candidate_has_topical_overlap, query_requests_low_signal_sources, should_inject_supplemental,
@@ -10,8 +11,9 @@ use super::retrieval::{RerankParams, apply_mode_aware_rerank, is_rrf_mode};
 use super::{FullDocsSource, resolve_ask_full_docs};
 use crate::core::config::Config;
 use crate::services::types::{
-    AskExplainContext, AskExplainFilterDecision, AskExplainFilterDecisionKind, AskExplainRetrieval,
-    AskExplainScoreKind, AskExplainSelectionDecision, AskExplainSelectionDecisionKind,
+    AskExplainContext, AskExplainFilterDecision, AskExplainFilterDecisionKind,
+    AskExplainInsertionMode, AskExplainRetrieval, AskExplainScoreKind, AskExplainSelectionDecision,
+    AskExplainSelectionDecisionKind, CorpusHealthKind,
 };
 use crate::vector::ops::commands::retrieval::{CandidateRankingTrace, RetrievedCandidate};
 use crate::vector::ops::ranking::AskCandidate;
@@ -83,18 +85,22 @@ fn explain_context() -> AskExplainContext {
     }
 }
 
+fn trace_candidate(url: &str, chunk_index: i64, score: f64, rerank_score: f64) -> AskCandidate {
+    AskCandidate {
+        score,
+        url: url.to_string(),
+        path: url.to_string(),
+        chunk_text: format!("rust docs candidate chunk {chunk_index} long enough"),
+        url_tokens: HashSet::new(),
+        chunk_tokens: HashSet::new(),
+        rerank_score,
+    }
+}
+
 fn kept_trace(url: &str, chunk_index: i64) -> CandidateRankingTrace {
     CandidateRankingTrace {
         candidate: RetrievedCandidate {
-            candidate: AskCandidate {
-                score: 0.7,
-                url: url.to_string(),
-                path: url.to_string(),
-                chunk_text: format!("rust docs candidate chunk {chunk_index} long enough"),
-                url_tokens: HashSet::new(),
-                chunk_tokens: HashSet::new(),
-                rerank_score: 0.8,
-            },
+            candidate: trace_candidate(url, chunk_index, 0.7, 0.8),
             chunk_index: Some(chunk_index),
         },
         score_kind: AskExplainScoreKind::Cosine,
@@ -106,15 +112,37 @@ fn kept_trace(url: &str, chunk_index: i64) -> CandidateRankingTrace {
     }
 }
 
+fn reranked_from_traces(traces: &[CandidateRankingTrace]) -> Vec<AskCandidate> {
+    traces
+        .iter()
+        .map(|trace| trace.candidate.candidate.clone())
+        .collect()
+}
+
 fn selection(
     candidate_index: usize,
     url: &str,
     kind: AskExplainSelectionDecisionKind,
 ) -> super::build::ContextCandidateSelection {
+    selection_for_chunk(candidate_index, url, candidate_index as i64, kind)
+}
+
+fn selection_for_chunk(
+    candidate_index: usize,
+    url: &str,
+    chunk_index: i64,
+    kind: AskExplainSelectionDecisionKind,
+) -> super::build::ContextCandidateSelection {
     super::build::ContextCandidateSelection {
         candidate_index,
+        key: super::build::candidate_selection_key(&trace_candidate(url, chunk_index, 0.0, 0.0)),
         url: url.to_string(),
         decisions: vec![AskExplainSelectionDecision { kind, reason: None }],
+        metadata: super::build::CandidateSelectionMetadata {
+            planned_full_doc_rank: None,
+            selected_context_rank: None,
+            insertion_mode: None::<AskExplainInsertionMode>,
+        },
     }
 }
 
@@ -138,6 +166,7 @@ fn ask_explain_trace_caps_candidate_output() {
     let traces = (0..51)
         .map(|idx| kept_trace(&format!("https://docs.example.com/{idx}"), idx))
         .collect::<Vec<_>>();
+    let reranked = reranked_from_traces(&traces);
     let selections = (0..51)
         .map(|idx| {
             selection(
@@ -150,6 +179,7 @@ fn ask_explain_trace_caps_candidate_output() {
 
     let trace = super::build_explain_trace(
         "rust docs",
+        &reranked,
         Some(explain_retrieval()),
         traces,
         explain_context(),
@@ -165,16 +195,20 @@ fn ask_explain_trace_caps_candidate_output() {
 #[test]
 fn ask_explain_trace_maps_duplicate_url_selections_by_kept_order() {
     let url = "https://docs.example.com/rust";
+    let traces = vec![kept_trace(url, 1), kept_trace(url, 2)];
+    let reranked = reranked_from_traces(&traces);
     let trace = super::build_explain_trace(
         "rust docs",
+        &reranked,
         Some(explain_retrieval()),
-        vec![kept_trace(url, 1), kept_trace(url, 2)],
+        traces,
         explain_context(),
         vec![
-            selection(0, url, AskExplainSelectionDecisionKind::SelectedTopChunk),
-            selection(
+            selection_for_chunk(0, url, 1, AskExplainSelectionDecisionKind::SelectedTopChunk),
+            selection_for_chunk(
                 1,
                 url,
+                2,
                 AskExplainSelectionDecisionKind::SelectedSupplemental,
             ),
         ],
@@ -189,6 +223,101 @@ fn ask_explain_trace_maps_duplicate_url_selections_by_kept_order() {
         trace.candidates[1].selection_decisions[0].kind,
         AskExplainSelectionDecisionKind::SelectedSupplemental
     );
+}
+
+#[test]
+fn ask_explain_trace_maps_reordered_kept_traces_by_candidate_key() {
+    let first_url = "https://docs.example.com/first";
+    let boosted_url = "https://docs.example.com/boosted";
+    let traces = vec![kept_trace(first_url, 1), kept_trace(boosted_url, 2)];
+    let reranked = vec![
+        traces[1].candidate.candidate.clone(),
+        traces[0].candidate.candidate.clone(),
+    ];
+    let trace = super::build_explain_trace(
+        "rust docs",
+        &reranked,
+        Some(explain_retrieval()),
+        traces,
+        explain_context(),
+        vec![
+            selection_for_chunk(
+                0,
+                boosted_url,
+                2,
+                AskExplainSelectionDecisionKind::SelectedTopChunk,
+            ),
+            selection_for_chunk(
+                1,
+                first_url,
+                1,
+                AskExplainSelectionDecisionKind::SelectedSupplemental,
+            ),
+        ],
+    )
+    .expect("trace");
+
+    assert_eq!(
+        trace.candidates[0].selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::SelectedSupplemental
+    );
+    assert_eq!(trace.candidates[0].raw_rerank_rank, Some(2));
+    assert_eq!(
+        trace.candidates[1].selection_decisions[0].kind,
+        AskExplainSelectionDecisionKind::SelectedTopChunk
+    );
+    assert_eq!(trace.candidates[1].raw_rerank_rank, Some(1));
+}
+
+#[test]
+fn corpus_health_classifies_no_candidates() {
+    let health = super::classify_corpus_health(&[], &[], 0, 0);
+    assert_eq!(health.kind, CorpusHealthKind::NoRetrievalCandidates);
+    assert_eq!(health.selected_domain_count, 0);
+    assert_eq!(health.top_domain_count, 0);
+}
+
+#[test]
+fn corpus_health_classifies_retrieved_not_selected() {
+    let health = super::classify_corpus_health(&["docs.example.com:3".to_string()], &[], 3, 0);
+    assert_eq!(health.kind, CorpusHealthKind::RetrievedNotSelected);
+}
+
+#[test]
+fn corpus_health_counts_unique_selected_domains_and_ignores_bad_urls() {
+    let selected = vec![
+        "https://docs.example.com/a".to_string(),
+        "https://docs.example.com/b".to_string(),
+        "not a url".to_string(),
+        "https://api.example.com/c".to_string(),
+    ];
+    let health = super::classify_corpus_health(
+        &[
+            "docs.example.com:2".to_string(),
+            "api.example.com:1".to_string(),
+        ],
+        &selected,
+        4,
+        3_000,
+    );
+    assert_eq!(health.kind, CorpusHealthKind::Healthy);
+    assert_eq!(health.selected_domain_count, 2);
+    assert_eq!(health.top_domain_count, 2);
+}
+
+#[test]
+fn corpus_health_classifies_thin_and_unknown_context() {
+    let thin = super::classify_corpus_health(
+        &["docs.example.com:1".to_string()],
+        &["https://docs.example.com/a".to_string()],
+        1,
+        100,
+    );
+    assert_eq!(thin.kind, CorpusHealthKind::ThinDomain);
+
+    let unknown =
+        super::classify_corpus_health(&[], &["https://docs.example.com/a".to_string()], 1, 3_000);
+    assert_eq!(unknown.kind, CorpusHealthKind::Unknown);
 }
 
 #[test]
@@ -290,7 +419,7 @@ fn context_full_doc_selection_is_independent_of_chunk_urls() {
 
     let query_tokens = Vec::new();
     let (chunk_indices, full_doc_indices) =
-        select_context_indices(&candidates, &query_tokens, 2, 2);
+        select_context_indices(&candidates, &query_tokens, 2, 2, SelectionPolicy::default());
     assert_eq!(chunk_indices.len(), 2, "should select 2 top chunks");
     assert_eq!(full_doc_indices.len(), 2, "should select 2 full docs");
 
@@ -335,7 +464,8 @@ fn full_doc_selection_prefers_url_entity_matches() {
     let query_tokens =
         crate::vector::ops::ranking::tokenize_query("setup agents not inherit mcp servers skills");
 
-    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 2, 2);
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 2, SelectionPolicy::default());
     let full_doc_urls = full_doc_indices
         .iter()
         .map(|&idx| candidates[idx].url.as_str())
@@ -389,7 +519,8 @@ fn full_doc_selection_prefers_dominant_authoritative_host_over_external_summary(
     ];
     let query_tokens = crate::vector::ops::ranking::tokenize_query("qdrant hybrid queries");
 
-    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 3, 3);
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 3, 3, SelectionPolicy::default());
     let full_doc_urls = full_doc_indices
         .iter()
         .map(|&idx| candidates[idx].url.as_str())
@@ -404,13 +535,126 @@ fn full_doc_selection_prefers_dominant_authoritative_host_over_external_summary(
 }
 
 #[test]
+fn selection_limits_full_docs_per_domain_when_alternatives_exist() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.99),
+        test_candidate("https://a.dev/docs/two", 0.98),
+        test_candidate("https://a.dev/docs/three", 0.97),
+        test_candidate("https://b.dev/docs/one", 0.90),
+        test_candidate("https://b.dev/docs/two", 0.89),
+    ];
+    let policy = SelectionPolicy {
+        max_docs_per_domain: 2,
+        ..SelectionPolicy::default()
+    };
+
+    let (_, full_doc_indices) = select_context_indices(&candidates, &[], 2, 4, policy);
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls
+            .iter()
+            .filter(|url| url.contains("https://a.dev/"))
+            .count(),
+        2
+    );
+    assert!(
+        full_doc_urls
+            .iter()
+            .any(|url| url.contains("https://b.dev/")),
+        "selection should admit alternate domains after the per-domain cap: {full_doc_urls:?}"
+    );
+}
+
+#[test]
+fn selection_deduplicates_full_doc_urls() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.99),
+        test_candidate("https://a.dev/docs/one", 0.98),
+        test_candidate("https://a.dev/docs/one", 0.97),
+        test_candidate("https://b.dev/docs/two", 0.90),
+    ];
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &[], 2, 3, SelectionPolicy::default());
+    let full_doc_urls = full_doc_indices
+        .iter()
+        .map(|&idx| candidates[idx].url.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        full_doc_urls,
+        vec!["https://a.dev/docs/one", "https://b.dev/docs/two"]
+    );
+}
+
+#[test]
+fn selection_fills_from_single_domain_when_no_alternatives_exist() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.99),
+        test_candidate("https://a.dev/docs/two", 0.98),
+        test_candidate("https://a.dev/docs/three", 0.97),
+        test_candidate("https://a.dev/docs/four", 0.96),
+        test_candidate("https://a.dev/docs/five", 0.95),
+    ];
+
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &[], 2, 5, SelectionPolicy::default());
+
+    assert_eq!(full_doc_indices.len(), 5);
+}
+
+#[test]
+fn selection_preserves_non_authoritative_high_signal_example() {
+    let candidates = vec![
+        test_candidate("https://blog.example.com/deep-topic", 0.99),
+        test_candidate("https://docs.example.com/reference", 0.70),
+        test_candidate("https://docs.example.com/reference-two", 0.69),
+    ];
+    let policy = SelectionPolicy {
+        prefer_authoritative: false,
+        ..SelectionPolicy::default()
+    };
+
+    let (chunk_indices, full_doc_indices) = select_context_indices(&candidates, &[], 1, 1, policy);
+
+    assert_eq!(
+        candidates[chunk_indices[0]].url,
+        "https://blog.example.com/deep-topic"
+    );
+    assert_eq!(
+        candidates[full_doc_indices[0]].url,
+        "https://blog.example.com/deep-topic"
+    );
+}
+
+#[test]
+fn selection_without_authority_signal_preserves_existing_diversity() {
+    let candidates = vec![
+        test_candidate("https://a.dev/docs/one", 0.99),
+        test_candidate("https://b.dev/docs/two", 0.98),
+        test_candidate("https://c.dev/docs/three", 0.97),
+    ];
+
+    let (chunk_indices, full_doc_indices) =
+        select_context_indices(&candidates, &[], 2, 2, SelectionPolicy::default());
+
+    assert_eq!(chunk_indices, vec![0, 1]);
+    assert_eq!(full_doc_indices, vec![0, 1]);
+}
+
+#[test]
 fn planned_full_doc_urls_are_empty_when_fetch_is_skipped() {
     let candidates = vec![
         test_candidate("https://a.dev/docs/one", 0.90),
         test_candidate("https://b.dev/docs/two", 0.80),
     ];
     let query_tokens = Vec::new();
-    let (_, full_doc_indices) = select_context_indices(&candidates, &query_tokens, 2, 2);
+    let (_, full_doc_indices) =
+        select_context_indices(&candidates, &query_tokens, 2, 2, SelectionPolicy::default());
 
     let skipped = planned_full_doc_urls(&candidates, &full_doc_indices, true);
     let fetched = planned_full_doc_urls(&candidates, &full_doc_indices, false);

@@ -308,6 +308,16 @@ fn print_diagnostics(diag: &Option<crate::services::types::AskDiagnostics>) {
             diag.top_domains.join(", ")
         );
     }
+    if let Some(health) = &diag.corpus_health {
+        println!(
+            "  {} {:?} selected_domains={} top_domains={} reason={}",
+            muted("Corpus health:"),
+            health.kind,
+            health.selected_domain_count,
+            health.top_domain_count,
+            health.reason
+        );
+    }
 }
 
 #[cfg(test)]

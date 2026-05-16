@@ -491,6 +491,27 @@ pub struct AskDiagnostics {
     pub configured_authority_ratio: f64,
     #[serde(default)]
     pub product_authority_ratio: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corpus_health: Option<CorpusHealthDiagnostic>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusHealthKind {
+    Healthy,
+    NoRetrievalCandidates,
+    ThinDomain,
+    RetrievedNotSelected,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct CorpusHealthDiagnostic {
+    pub kind: CorpusHealthKind,
+    pub reason: String,
+    pub selected_domain_count: usize,
+    pub top_domain_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -577,12 +598,32 @@ pub struct AskExplainSelectionDecision {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AskExplainInsertionMode {
+    TopChunk,
+    PlannedFullDoc,
+    InsertedFullDoc,
+    Supplemental,
+    NotSelected,
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AskExplainCandidate {
     pub id: String,
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chunk_index: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_rerank_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_full_doc_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_context_rank: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insertion_mode: Option<AskExplainInsertionMode>,
     pub retrieval_score: f64,
     pub rerank_score: f64,
     pub score_kind: AskExplainScoreKind,

@@ -1,15 +1,41 @@
 use crate::services::types::{
-    AskExplainContextSource, AskExplainSelectionDecision, AskExplainSelectionDecisionKind,
+    AskExplainContextSource, AskExplainInsertionMode, AskExplainSelectionDecision,
+    AskExplainSelectionDecisionKind,
 };
 use crate::vector::ops::ranking;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(in crate::vector::ops::commands::ask::context) struct CandidateSelectionKey {
+    url: String,
+    chunk_text: String,
+}
+
+pub(in crate::vector::ops::commands::ask::context) fn candidate_selection_key(
+    candidate: &ranking::AskCandidate,
+) -> CandidateSelectionKey {
+    CandidateSelectionKey {
+        url: candidate.url.clone(),
+        chunk_text: candidate.chunk_text.clone(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub(in crate::vector::ops::commands::ask::context) struct ContextCandidateSelection {
     pub(in crate::vector::ops::commands::ask::context) candidate_index: usize,
+    pub(in crate::vector::ops::commands::ask::context) key: CandidateSelectionKey,
     pub(in crate::vector::ops::commands::ask::context) url: String,
     pub(in crate::vector::ops::commands::ask::context) decisions: Vec<AskExplainSelectionDecision>,
+    pub(in crate::vector::ops::commands::ask::context) metadata: CandidateSelectionMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::vector::ops::commands::ask::context) struct CandidateSelectionMetadata {
+    pub(in crate::vector::ops::commands::ask::context) planned_full_doc_rank: Option<usize>,
+    pub(in crate::vector::ops::commands::ask::context) selected_context_rank: Option<usize>,
+    pub(in crate::vector::ops::commands::ask::context) insertion_mode:
+        Option<AskExplainInsertionMode>,
 }
 
 pub(crate) struct ContextSelectionInputs<'a> {
@@ -22,6 +48,7 @@ pub(crate) struct ContextSelectionInputs<'a> {
     pub(crate) supplemental_indices: &'a [usize],
     pub(crate) supplemental_count: usize,
     pub(crate) full_doc_fetch_skipped: bool,
+    pub(crate) final_source_order: &'a [AskExplainContextSource],
 }
 
 pub(crate) fn build_context_selection_decisions(
@@ -30,6 +57,8 @@ pub(crate) fn build_context_selection_decisions(
     let top_chunk_set = index_set(inputs.top_chunk_indices);
     let selected_top_chunk_set = index_set(inputs.selected_top_chunk_indices);
     let top_full_doc_set = index_set(inputs.top_full_doc_indices);
+    let planned_full_doc_ranks = index_rank_map(inputs.top_full_doc_indices);
+    let selected_context_ranks = selected_context_rank_map(inputs.final_source_order);
     let supplemental_selected = inputs
         .supplemental_indices
         .iter()
@@ -60,9 +89,19 @@ pub(crate) fn build_context_selection_decisions(
                 supplemental_budget_skipped: &supplemental_budget_skipped,
                 full_doc_fetch_skipped: inputs.full_doc_fetch_skipped,
             });
+            let insertion_mode = insertion_mode_for_decisions(&decisions);
+            let selected_context_rank = selected_context_ranks
+                .get(&(candidate.url.clone(), insertion_mode))
+                .copied();
             ContextCandidateSelection {
                 candidate_index: idx,
+                key: candidate_selection_key(candidate),
                 url: candidate.url.clone(),
+                metadata: CandidateSelectionMetadata {
+                    planned_full_doc_rank: planned_full_doc_ranks.get(&idx).copied(),
+                    selected_context_rank,
+                    insertion_mode: Some(insertion_mode),
+                },
                 decisions,
             }
         })
@@ -181,6 +220,34 @@ fn selection_decision(
     }
 }
 
+fn insertion_mode_for_decisions(
+    decisions: &[AskExplainSelectionDecision],
+) -> AskExplainInsertionMode {
+    if decisions
+        .iter()
+        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::SelectedTopChunk)
+    {
+        AskExplainInsertionMode::TopChunk
+    } else if decisions
+        .iter()
+        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::InsertedFullDoc)
+    {
+        AskExplainInsertionMode::InsertedFullDoc
+    } else if decisions
+        .iter()
+        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::SelectedSupplemental)
+    {
+        AskExplainInsertionMode::Supplemental
+    } else if decisions
+        .iter()
+        .any(|decision| decision.kind == AskExplainSelectionDecisionKind::PlannedFullDoc)
+    {
+        AskExplainInsertionMode::PlannedFullDoc
+    } else {
+        AskExplainInsertionMode::NotSelected
+    }
+}
+
 pub(crate) fn selected_top_chunk_indices(
     reranked: &[ranking::AskCandidate],
     top_chunk_indices: &[usize],
@@ -271,6 +338,36 @@ fn parse_source_header(
 
 fn index_set(indices: &[usize]) -> HashSet<usize> {
     indices.iter().copied().collect()
+}
+
+fn index_rank_map(indices: &[usize]) -> HashMap<usize, usize> {
+    indices
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(rank, idx)| (idx, rank + 1))
+        .collect()
+}
+
+fn selected_context_rank_map(
+    sources: &[AskExplainContextSource],
+) -> HashMap<(String, AskExplainInsertionMode), usize> {
+    let mut ranks = HashMap::new();
+    for (idx, source) in sources.iter().enumerate() {
+        if let Some(mode) = insertion_mode_for_context_tier(&source.tier) {
+            ranks.entry((source.url.clone(), mode)).or_insert(idx + 1);
+        }
+    }
+    ranks
+}
+
+fn insertion_mode_for_context_tier(tier: &str) -> Option<AskExplainInsertionMode> {
+    match tier {
+        "top_chunk" => Some(AskExplainInsertionMode::TopChunk),
+        "full_doc" => Some(AskExplainInsertionMode::InsertedFullDoc),
+        "supplemental" => Some(AskExplainInsertionMode::Supplemental),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
