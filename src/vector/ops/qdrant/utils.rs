@@ -262,4 +262,5 @@ pub(crate) fn retrieve_max_points(max_points: Option<usize>) -> usize {
 
 #[cfg(test)]
 #[allow(unsafe_code)]
+#[path = "utils_tests.rs"]
 mod tests;

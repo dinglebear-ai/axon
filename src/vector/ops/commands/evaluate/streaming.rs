@@ -342,4 +342,5 @@ pub(super) async fn run_parallel_answers_streaming(
 }
 
 #[cfg(test)]
+#[path = "streaming_tests.rs"]
 mod tests;

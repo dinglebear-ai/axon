@@ -7,6 +7,7 @@ mod heuristics;
 mod query_rewrite;
 mod retrieval;
 #[cfg(test)]
+#[path = "context_tests.rs"]
 mod tests;
 
 use super::AskTiming;

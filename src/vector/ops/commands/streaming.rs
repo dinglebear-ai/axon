@@ -487,6 +487,7 @@ pub(crate) async fn judge_llm_non_streaming(
 }
 
 #[cfg(test)]
+#[path = "streaming_test_support.rs"]
 mod test_support;
 #[cfg(test)]
 pub(crate) use test_support::{
@@ -496,4 +497,5 @@ pub(crate) use test_support::{
     process_sse_line,
 };
 #[cfg(test)]
+#[path = "streaming_tests.rs"]
 mod tests;
