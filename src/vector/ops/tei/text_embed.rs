@@ -41,7 +41,7 @@ pub async fn embed_path_native_with_progress(
         return Err("QDRANT_URL not configured".into());
     }
     let prepared =
-        prepare::prepare_embed_docs(input, &cfg.exclude_path_prefix, source_type).await?;
+        prepare::prepare_embed_docs(cfg, input, &cfg.exclude_path_prefix, source_type).await?;
     if prepared.is_empty() {
         return prepare::emit_empty_embed(progress_tx);
     }

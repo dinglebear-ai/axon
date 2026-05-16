@@ -1,6 +1,11 @@
-use super::{EmbedProgress, EmbedSummary, PreparedDoc, tei_manifest::read_manifest_url_map};
+use super::{
+    EmbedProgress, EmbedSummary, PreparedDoc, StructuredPayload,
+    tei_manifest::read_manifest_url_map,
+};
+use crate::core::config::Config;
 use crate::core::content::{is_excluded_url_path, to_markdown};
 use crate::core::http::{fetch_html, http_client};
+use crate::core::structured::extract_all;
 use crate::core::ui::{accent, symbol_for_status};
 use crate::vector::ops::input;
 use spider::url::Url;
@@ -45,15 +50,25 @@ async fn read_inputs(input: &str) -> Result<Vec<(String, String)>, Box<dyn Error
 }
 
 pub(super) async fn prepare_embed_docs(
+    cfg: &Config,
     input: &str,
     exclude_prefixes: &[String],
     source_type: Option<&str>,
 ) -> Result<Vec<PreparedDoc>, Box<dyn Error>> {
     let resolved_source_type = source_type.unwrap_or("embed");
     let mut docs = read_inputs(input).await?;
+    // When fetching a remote URL, run the structured-data pass on the raw
+    // HTML before converting to markdown so we can attach JSON-LD /
+    // __NEXT_DATA__ / SvelteKit payloads to every chunk. Local file / dir
+    // inputs do not carry HTML — structured stays `None` for those.
+    let mut remote_structured: Option<StructuredPayload> = None;
     if docs.len() == 1 && !Path::new(input).exists() && input.starts_with("http") {
         let client = http_client()?.clone();
         let html = fetch_html(&client, input).await?;
+        let pass = extract_all(&html);
+        if !pass.is_empty() {
+            remote_structured = StructuredPayload::from_pass(&pass, cfg.structured_data_max_bytes);
+        }
         docs = vec![(input.to_string(), to_markdown(&html, None))];
     }
     let input_is_dir = Path::new(input).is_dir();
@@ -88,6 +103,7 @@ pub(super) async fn prepare_embed_docs(
             title: None,
             extra: None,
             extractor_name: None,
+            structured: remote_structured.clone(),
         });
     }
     Ok(prepared)
@@ -110,11 +126,7 @@ pub(super) fn emit_empty_embed(
     })
 }
 
-pub(super) fn emit_embed_summary(
-    cfg: &crate::core::config::Config,
-    docs_embedded: usize,
-    chunks_embedded: usize,
-) {
+pub(super) fn emit_embed_summary(cfg: &Config, docs_embedded: usize, chunks_embedded: usize) {
     if cfg.json_output {
         return;
     }
@@ -130,17 +142,19 @@ pub(super) fn emit_embed_summary(
 #[cfg(test)]
 mod tests {
     use super::prepare_embed_docs;
+    use crate::core::config::Config;
     use tempfile::TempDir;
 
     #[tokio::test]
     async fn prepare_embed_docs_uses_given_source_type() {
+        let cfg = Config::default_lite();
         let temp_dir = TempDir::new().expect("tempdir");
         let input_path = temp_dir.path().join("doc.md");
         tokio::fs::write(&input_path, "# Crawl doc\n\nhello there")
             .await
             .expect("write markdown fixture");
 
-        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], Some("crawl"))
+        let prepared = prepare_embed_docs(&cfg, &input_path.to_string_lossy(), &[], Some("crawl"))
             .await
             .expect("prepare docs");
 
@@ -150,13 +164,14 @@ mod tests {
 
     #[tokio::test]
     async fn prepare_embed_docs_defaults_to_embed() {
+        let cfg = Config::default_lite();
         let temp_dir = TempDir::new().expect("tempdir");
         let input_path = temp_dir.path().join("doc.md");
         tokio::fs::write(&input_path, "# Embed doc\n\nthis is a test")
             .await
             .expect("write markdown fixture");
 
-        let prepared = prepare_embed_docs(&input_path.to_string_lossy(), &[], None)
+        let prepared = prepare_embed_docs(&cfg, &input_path.to_string_lossy(), &[], None)
             .await
             .expect("prepare docs");
 
