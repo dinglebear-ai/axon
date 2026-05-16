@@ -107,6 +107,26 @@ VALID_TOML_DESTINATIONS = {
     "workers.max-pending-embed-jobs",
     "workers.max-pending-extract-jobs",
     "workers.max-pending-ingest-jobs",
+    "workers.job-wait-timeout-secs",
+    "chrome.user-agent",
+    "ask.max-context-chars",
+    "ask.full-docs",
+    "ask.backfill-chunks",
+    "ask.doc-fetch-concurrency",
+    "ask.doc-chunk-limit",
+    "ask.authoritative-domains",
+    "ask.authoritative-boost",
+    "ask.min-citations-nontrivial",
+    "logging.max-bytes",
+    # Webclaw feature destinations
+    "verticals.enabled",
+    "verticals.auto-dispatch-skip",
+    "payload.structured-data-max-bytes",
+    "scrape.ladder-strategy1-threshold",
+    "scrape.ladder-strategy2-threshold",
+    "scrape.ladder-body-multiplier",
+    "antibot.cookie-warmup",
+    "antibot.max-body-scan-bytes",
 }
 
 
