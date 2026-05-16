@@ -299,6 +299,7 @@ pub fn taxonomy_from_error<'a>(
     None
 }
 
+
 #[cfg(test)]
 #[path = "taxonomy_tests.rs"]
 mod tests;
