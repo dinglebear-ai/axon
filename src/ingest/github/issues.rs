@@ -102,6 +102,7 @@ pub async fn ingest_issues(
                     content_type: "text",
                     title: Some(title),
                     extra: Some(extra),
+                    extractor_name: None,
                 });
             }
         }
@@ -214,6 +215,7 @@ pub async fn ingest_pull_requests(
                     content_type: "text",
                     title: Some(embed_title),
                     extra: Some(extra),
+                    extractor_name: None,
                 });
             }
         }

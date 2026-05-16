@@ -119,6 +119,7 @@ async fn build_wiki_docs(tmp_path: &str, common: &GitHubCommonFields) -> Result<
                 content_type: "text",
                 title: Some(title),
                 extra: Some(extra),
+                extractor_name: None,
             });
         }
     }

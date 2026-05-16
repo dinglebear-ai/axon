@@ -5,7 +5,9 @@ use super::{
 };
 use crate::core::config::Config;
 use crate::core::logging::{log_debug, log_info, log_warn};
-use crate::vector::ops::qdrant::{env_usize_clamped, qdrant_delete_stale_tail};
+use crate::vector::ops::qdrant::{
+    PAYLOAD_SCHEMA_VERSION, env_usize_clamped, qdrant_delete_stale_tail,
+};
 use chrono::Utc;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::error::Error;
@@ -85,9 +87,23 @@ async fn embed_prepared_doc(
             "chunk_index": idx,
             "chunk_text": chunk,
             "scraped_at": timestamp,
+            // Stamp the schema version this point was indexed under so that
+            // retrieval can opt into version-aware filtering. Existing points
+            // (~3.79M as of axon_rust-lu6a) lack this field and are treated
+            // as implicit version 1. See `qdrant::PAYLOAD_SCHEMA_VERSION`.
+            "payload_schema_version": PAYLOAD_SCHEMA_VERSION,
         });
         if let Some(t) = &doc.title {
             payload["title"] = serde_json::Value::String(t.clone());
+        }
+        // `extractor_name` is OPTIONAL — generic crawl/embed paths leave it
+        // None so the field is absent. Vertical extractors (xvu9 / upnq) set
+        // it to a stable keyword; filtering on absence is the agent-native
+        // pattern. (bd axon_rust-lu6a)
+        if let Some(name) = &doc.extractor_name
+            && !name.is_empty()
+        {
+            payload["extractor_name"] = serde_json::Value::String(name.clone());
         }
         if let Some(serde_json::Value::Object(map)) = &doc.extra {
             for (k, v) in map {
@@ -437,5 +453,34 @@ mod tests {
             chunks.is_empty(),
             "all-empty input must produce zero chunks"
         );
+    }
+
+    // axon_rust-lu6a: schema-version + extractor_name payload tests.
+    #[test]
+    fn payload_schema_version_is_at_least_two() {
+        assert!(crate::vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION >= 2);
+    }
+
+    #[test]
+    fn pipeline_payload_stamps_schema_version_and_extractor() {
+        use crate::vector::ops::qdrant::PAYLOAD_SCHEMA_VERSION;
+        let mut payload = serde_json::json!({
+            "url": "https://example.com/x",
+            "chunk_index": 0,
+            "chunk_text": "body",
+            "payload_schema_version": PAYLOAD_SCHEMA_VERSION,
+        });
+        assert_eq!(
+            payload["payload_schema_version"].as_u64(),
+            Some(u64::from(PAYLOAD_SCHEMA_VERSION))
+        );
+        assert!(payload.get("extractor_name").is_none());
+        let extractor = Some("docs".to_string());
+        if let Some(name) = &extractor
+            && !name.is_empty()
+        {
+            payload["extractor_name"] = serde_json::Value::String(name.clone());
+        }
+        assert_eq!(payload["extractor_name"].as_str(), Some("docs"));
     }
 }

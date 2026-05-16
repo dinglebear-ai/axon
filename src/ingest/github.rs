@@ -234,6 +234,7 @@ async fn embed_repo_metadata(
         content_type: "text",
         title: Some(owner_name.to_string()),
         extra: Some(extra),
+        extractor_name: None,
     };
     let summary = embed_prepared_docs(cfg, vec![doc], None)
         .await

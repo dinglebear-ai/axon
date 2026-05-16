@@ -137,6 +137,27 @@ pub(crate) fn url_filter(url_match: &str) -> serde_json::Value {
     })
 }
 
+/// Build a Qdrant filter constraining `payload_schema_version >= min`.
+///
+/// Returns `None` when `min` is `None` so callers can compose the filter
+/// without changing behavior for legacy retrieval paths. Existing points
+/// indexed before `axon_rust-lu6a` have no `payload_schema_version` field
+/// and will be excluded by any such filter — that's the intended behavior
+/// when retrieval needs vertical-aware fields.
+///
+/// Default ask/query retrieval does NOT apply this filter — backward
+/// compatibility with the ~3.79M pre-lu6a points is preserved.
+#[allow(dead_code)] // wired for xvu9 / future vertical-aware retrieval paths
+pub(crate) fn build_schema_version_filter(min: Option<u32>) -> Option<serde_json::Value> {
+    let min = min?;
+    Some(serde_json::json!({
+        "must": [{
+            "key": "payload_schema_version",
+            "range": { "gte": min }
+        }]
+    }))
+}
+
 pub(crate) fn combine_must_filters(filters: &[serde_json::Value]) -> serde_json::Value {
     let mut must = Vec::new();
     for filter in filters {
@@ -271,6 +292,35 @@ mod tests {
         // Must be parseable as RFC3339
         let parsed = DateTime::parse_from_rfc3339(gte);
         assert!(parsed.is_ok(), "gte must be valid RFC3339: {gte}");
+    }
+
+    #[test]
+    fn build_schema_version_filter_none_returns_none() {
+        assert!(build_schema_version_filter(None).is_none());
+    }
+
+    #[test]
+    fn build_schema_version_filter_some_emits_range_gte() {
+        let f = build_schema_version_filter(Some(2)).expect("filter");
+        let must = f["must"].as_array().expect("must array");
+        assert_eq!(must.len(), 1);
+        assert_eq!(must[0]["key"].as_str(), Some("payload_schema_version"));
+        assert_eq!(must[0]["range"]["gte"].as_u64(), Some(2));
+    }
+
+    #[test]
+    fn schema_version_filter_composes_with_scraped_at() {
+        let scraped = build_scraped_at_filter(Some("2026-01-01"), None)
+            .unwrap()
+            .unwrap();
+        let version = build_schema_version_filter(Some(2)).unwrap();
+        let combined = combine_must_filters(&[scraped, version]);
+        let must = combined["must"].as_array().unwrap();
+        assert_eq!(must.len(), 2);
+        // Both keys must be present after composition.
+        let keys: Vec<&str> = must.iter().filter_map(|m| m["key"].as_str()).collect();
+        assert!(keys.contains(&"scraped_at"));
+        assert!(keys.contains(&"payload_schema_version"));
     }
 
     #[test]

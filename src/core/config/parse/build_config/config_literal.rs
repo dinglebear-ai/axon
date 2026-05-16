@@ -294,6 +294,7 @@ fn populate_misc(
     cfg.search_time_range = g.search_time_range.clone();
     cfg.since = g.since.clone();
     cfg.before = g.before.clone();
+    cfg.sources_by_schema_version = g.sources_by_schema_version;
     cfg.bypass_csp = g.bypass_csp;
     cfg.accept_invalid_certs = g.accept_invalid_certs;
     cfg.screenshot_full_page = g.screenshot_full_page;
