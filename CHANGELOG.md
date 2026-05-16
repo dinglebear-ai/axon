@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-05-16
+
+### Changed
+
+- refactor: migrate all inline `#[cfg(test)] mod tests { ... }` blocks to sibling `_tests.rs` sidecar files (epic `axon_rust-lon7`). Production source files are now free of test code. The `#[cfg(test)] #[path = "foo_tests.rs"] mod tests;` pattern preserves private-item access. 143 source files migrated; adds `scripts/migrate_test_sidecars.py` for bulk migration. CLAUDE.md updated with pattern docs, footgun notes, and worked examples. vendor/lab-auth excluded.
+
 ## [2.1.0] - 2026-05-16
 
 ### Added
