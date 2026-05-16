@@ -176,10 +176,5 @@ pub trait JobBackend: Send + Sync {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    // Compile-time test: verify Arc<dyn JobBackend> is object-safe
-    fn _assert_object_safe(_: Arc<dyn JobBackend>) {}
-}
+#[path = "backend_tests.rs"]
+mod tests;
