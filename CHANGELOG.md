@@ -7,9 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-05-17
+
+### Changed
+
+- **release**: Re-version PR #100's feat-level work as `2.5.0` to comply with the repo policy that `feat`-prefixed changes bump the minor (not patch). The original `2.4.0` bump was correct for the feature commit, but subsequent review-fix patch bumps (`2.4.1`, `2.4.2`) shipped under the same feature PR — per policy, the rolled-up release tag for this PR is a minor. Supersedes `2.4.2`. (PR #100 review feedback)
+
+## [2.4.2] - 2026-05-17
+
+### Fixed
+
+- **palette/ui**: Stale-conversation idle-timeout sweep now runs on every submit instead of only `ask` submits, so non-ask commands after a long idle still clear the stale conversation state. (PR #100 review feedback)
+- **.env.example**: Removed `AXON_LITE=` template entry. The migration matrix classifies the key as `delete-on-migration`; runtime still accepts it as a backward-compat no-op, but it has no place in an env template. Aligns env-template with migration policy. (PR #100 review feedback)
+- **docs/config/env-migration-matrix.toml**: Added `env-template` to `AXON_LOG_PATH` surfaces so migration metadata reflects that the key is present in `.env.example`. (PR #100 review feedback)
+
+## [2.4.1] - 2026-05-17
+
+### Fixed
+
+- **palette/ui**: `submit()` now gates the `ask-reset` sentinel behind the running-command guard. Previously a user could submit `ask-reset` while an `ask` subprocess was still in flight; when that subprocess finished and called `finalize_result()`, it would recreate the conversation we just cleared, contradicting the "Next ask will start a fresh session." notice.
+- **palette/render**: Conversation hint footer slot now has an explicit `w(px(180.0))` so it actually is a fixed-width slot — its appearance/disappearance no longer shifts surrounding footer elements.
+- **.env.example**: Removed `GOOGLE_API_KEY` / `GOOGLE_APPLICATION_CREDENTIALS` (Gemini subprocess env allowlist scrubs them — setting them has no effect). Reverted `AXON_LOG_DIR` / `AXON_LOG_FILE` back to the actually-honored `AXON_LOG_PATH`.
+
+## [2.4.0] - 2026-05-17
+
 ### Added
 
 - **palette**: Minimal-on-launch window sizing. The palette now opens at the height of the prompt input row only (~91px including chrome) instead of the previous fixed 560px and grows content-driven as the user types, runs a command, or sees output. Hysteresis: clearing the query collapses the action list but keeps the most recent output card; dismissing the output card collapses fully. `apps/desktop` bumped to 0.3.0.
+- palette: auto-continue `axon ask` conversations. The first `ask` of a session shells out plain; every subsequent `ask` while the conversation is "live" prepends `--follow-up` so the CLI threads it onto the same session. State is in-memory only (no cross-restart persistence). Conversations idle-time out after 30 minutes of inactivity, matching the ACP session cache TTL.
+- palette: new "Reset ask conversation" action (aliases `reset-ask`, `new-chat`, `fresh-ask`) that clears the live conversation without shelling out. Surfaces a transient "Conversation reset" notice so the next ask starts fresh.
+- palette: footer hint slot showing `· conversation: N turn(s)` when a follow-up chain is active. Layout space is always reserved so the hint's appearance does not shift surrounding footer elements.
 
 ### Changed
 

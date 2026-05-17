@@ -9,6 +9,7 @@
 
 mod actions;
 mod anim;
+mod conversation;
 mod layout;
 mod markdown;
 mod output;

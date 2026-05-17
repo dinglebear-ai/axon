@@ -19,12 +19,15 @@ fn axon_command() -> Command {
     cmd
 }
 
-use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, Size, Window, prelude::*, px};
+use gpui::{
+    App, Context, FocusHandle, Focusable, ScrollHandle, SharedString, Size, Window, prelude::*, px,
+};
 
 use crate::actions::{
     ACTIONS, ArgMode, CommandAction, action_invoked_by, action_matches, build_axon_args,
     display_command_line, looks_like_url,
 };
+use crate::conversation::{AskConversation, inject_follow_up};
 use crate::layout::{HeightSnapshot, MIN_WINDOW_HEIGHT};
 use crate::output::{CommandOutput, OutputKind};
 use crate::theme::AURORA_BORDER_STRONG;
@@ -79,6 +82,11 @@ pub(crate) struct Palette {
     /// target (which, on a cold launch with no input, equals
     /// `MIN_WINDOW_HEIGHT` — already the launch size).
     current_window_height: Option<f32>,
+    /// Live ask-conversation state. `Some` once the first `axon ask` succeeds;
+    /// every subsequent `axon ask` while this is `Some` is shelled out with
+    /// `--follow-up` so the CLI threads it onto the same session. In-memory
+    /// only — does not survive palette restart.
+    ask_conversation: Option<AskConversation>,
 }
 
 pub(crate) struct RunningCommand {
@@ -138,6 +146,7 @@ impl Palette {
             connection: ConnectionState::Unknown,
             health_check_id: 0,
             current_window_height: None,
+            ask_conversation: None,
         };
         palette.spawn_health_check(cx);
         palette
@@ -271,6 +280,35 @@ impl Palette {
             (action, self.argument_for(action).to_string())
         };
 
+        // Palette-internal sentinel: "Reset ask conversation" never shells
+        // out. Handle inline and return — but only when no command is
+        // currently running, otherwise an in-flight `ask` that finishes
+        // after the reset would recreate the conversation we just cleared.
+        if action.subcommand == "ask-reset" {
+            if self.running.is_some() {
+                self.command_output = Some(CommandOutput::notice(
+                    OutputKind::Warning,
+                    "Command already running",
+                    "Wait for the current axon command to finish.",
+                ));
+                cx.notify();
+                return;
+            }
+            self.handle_reset_conversation(cx);
+            return;
+        }
+
+        // Idle-timeout sweep: drop stale conversation before any submit runs.
+        // Checked on submit (not render) so we avoid continuous redraws. Runs on
+        // every submit — not gated to `ask` — so a non-ask command after a long
+        // idle still clears the stale conversation state.
+        if self
+            .ask_conversation
+            .is_some_and(|c| c.is_stale(Instant::now()))
+        {
+            self.ask_conversation = None;
+        }
+
         if action.arg_mode != ArgMode::None && arg.is_empty() {
             self.command_output = Some(CommandOutput::notice(
                 OutputKind::Warning,
@@ -291,7 +329,7 @@ impl Palette {
             return;
         }
 
-        let args = match build_axon_args(action, &arg) {
+        let mut args = match build_axon_args(action, &arg) {
             Ok(args) => args,
             Err(error) => {
                 self.command_output = Some(CommandOutput::notice(
@@ -303,6 +341,9 @@ impl Palette {
                 return;
             }
         };
+        // For `axon ask`, auto-prepend `--follow-up` when a live conversation
+        // exists so the CLI threads this turn onto the same session.
+        inject_follow_up(action.subcommand, &mut args, self.ask_conversation.as_ref());
         let command_line = display_command_line(&args);
         let run_id = self.next_run_id;
         self.next_run_id += 1;
@@ -338,12 +379,7 @@ impl Palette {
                     this.running = None;
                 }
 
-                this.command_output = Some(match result.result {
-                    Ok(output) => {
-                        CommandOutput::from_process(&result.command_line, result.subcommand, output)
-                    }
-                    Err(error) => CommandOutput::spawn_error(&result.command_line, error),
-                });
+                this.command_output = Some(this.finalize_result(result));
                 cx.notify();
             });
         })
@@ -454,6 +490,54 @@ impl Palette {
             });
             self.current_window_height = Some(clamped);
         }
+    }
+
+    /// Handle the palette-internal "Reset ask conversation" action — clear
+    /// the live conversation and surface a transient notice.
+    fn handle_reset_conversation(&mut self, cx: &mut Context<Self>) {
+        self.ask_conversation = None;
+        self.command_output = Some(CommandOutput::notice(
+            OutputKind::Success,
+            "Conversation reset",
+            "Next ask will start a fresh session.",
+        ));
+        self.locked_command = None;
+        self.query.clear();
+        self.selected = 0;
+        cx.notify();
+    }
+
+    /// Map a completed background command into a `CommandOutput` and update
+    /// conversation state on success.
+    fn finalize_result(&mut self, result: CommandResult) -> CommandOutput {
+        match result.result {
+            Ok(output) => {
+                // Conversation lifecycle: only successful `axon ask` turns
+                // count. A failed ask leaves the previous conversation
+                // untouched so a transient CLI error doesn't reset the chain.
+                if result.subcommand == "ask" && output.status.success() {
+                    let now = Instant::now();
+                    match self.ask_conversation.as_mut() {
+                        Some(c) => c.bump(now),
+                        None => self.ask_conversation = Some(AskConversation::new(now)),
+                    }
+                }
+                CommandOutput::from_process(&result.command_line, result.subcommand, output)
+            }
+            Err(error) => CommandOutput::spawn_error(&result.command_line, error),
+        }
+    }
+
+    /// Compact footer-status string describing the live ask conversation,
+    /// or `None` when no conversation is active. Rendered in the footer so
+    /// the user sees at a glance that follow-up mode is engaged.
+    fn conversation_hint(&self) -> Option<SharedString> {
+        let convo = self.ask_conversation?;
+        let label = match convo.turn_count {
+            1 => "· conversation: 1 turn".to_string(),
+            n => format!("· conversation: {n} turns"),
+        };
+        Some(SharedString::from(label))
     }
 
     fn argument_for(&self, action: CommandAction) -> &str {
