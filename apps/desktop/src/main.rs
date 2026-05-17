@@ -8,6 +8,8 @@
 //! The palette shells out to the `axon` binary on $PATH.
 
 mod actions;
+mod anim;
+mod layout;
 mod markdown;
 mod output;
 mod render;
@@ -85,7 +87,14 @@ fn main() -> Result<()> {
             KeyBinding::new("tab", TabComplete, Some("Palette")),
         ]);
 
-        let bounds = Bounds::centered(None, size(px(720.0), px(560.0)), cx);
+        // Launch height is the prompt-only minimum from `layout::MIN_WINDOW_HEIGHT`.
+        // The window then grows on demand as the user types, runs commands,
+        // and produces output. See `Palette::tick_window_resize`.
+        let bounds = Bounds::centered(
+            None,
+            size(px(720.0), px(crate::layout::MIN_WINDOW_HEIGHT)),
+            cx,
+        );
         let window = cx
             .open_window(
                 WindowOptions {

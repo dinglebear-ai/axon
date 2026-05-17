@@ -19,28 +19,26 @@ fn axon_command() -> Command {
     cmd
 }
 
-use gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-    Render, ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
-};
+use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, Size, Window, prelude::*, px};
 
 use crate::actions::{
     ACTIONS, ArgMode, CommandAction, action_invoked_by, action_matches, build_axon_args,
     display_command_line, looks_like_url,
 };
+use crate::layout::{HeightSnapshot, MIN_WINDOW_HEIGHT};
 use crate::output::{CommandOutput, OutputKind};
-use crate::render::{
-    render_action_rows, render_output_body, render_palette_footer, render_prompt_row,
-};
-use crate::theme::{
-    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
-    AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
-};
+use crate::theme::AURORA_BORDER_STRONG;
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
 #[cfg(test)]
 #[path = "ui_tests.rs"]
 mod tests;
+
+// `Render for Palette` impl lives in `ui_render.rs`. Sibling file declared
+// with `#[path]` so it remains a child module of `ui` and retains access
+// to `Palette`'s private fields. See the project monolith policy.
+#[path = "ui_render.rs"]
+mod ui_render;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
@@ -74,6 +72,13 @@ pub(crate) struct Palette {
     /// completions only apply when their captured id still matches the latest,
     /// so a slower older probe can't overwrite a newer result.
     health_check_id: u64,
+    /// Last window height we pushed via `Window::resize`. Used to avoid
+    /// re-resizing on every render frame when the target is unchanged.
+    /// `None` until the first render commits a height. Starts as `None`
+    /// so the very first render unconditionally syncs to the computed
+    /// target (which, on a cold launch with no input, equals
+    /// `MIN_WINDOW_HEIGHT` — already the launch size).
+    current_window_height: Option<f32>,
 }
 
 pub(crate) struct RunningCommand {
@@ -132,6 +137,7 @@ impl Palette {
             locked_command: None,
             connection: ConnectionState::Unknown,
             health_check_id: 0,
+            current_window_height: None,
         };
         palette.spawn_health_check(cx);
         palette
@@ -404,6 +410,48 @@ impl Palette {
         cx.notify();
     }
 
+    /// Build a `HeightSnapshot` from the current palette state. Called
+    /// once per `render()` to drive the window-resize sync.
+    fn height_snapshot(&self, actions: &[CommandAction], hide_list: bool) -> HeightSnapshot {
+        let selected_action = actions.get(self.selected).copied();
+        let footer_visible = selected_action.is_some();
+        let (output_body_visible, output_notice_visible) = match &self.command_output {
+            Some(output) if output.has_body() => (true, false),
+            Some(_) => (false, true),
+            None => (false, false),
+        };
+        HeightSnapshot {
+            action_row_count: if hide_list { 0 } else { actions.len() },
+            footer_visible,
+            output_body_visible,
+            output_notice_visible,
+        }
+    }
+
+    /// Snap the window height to `target_height` when it differs from the
+    /// last committed value. This is the v1 "no easing" approach — render
+    /// is already called when content changes, so the resize tracks the
+    /// content. Per the PR #99 launch-time hotfix, we do NOT spawn a
+    /// repeating tick task; resize only fires in response to user-driven
+    /// content changes (typing, command runs, dismissals).
+    fn sync_window_height(&mut self, target_height: f32, window: &mut Window) {
+        // The minimum target is `MIN_WINDOW_HEIGHT` — never let the
+        // computed value collapse the window below the prompt row.
+        let clamped = target_height.max(MIN_WINDOW_HEIGHT);
+        let needs_resize = match self.current_window_height {
+            None => true,
+            Some(prev) => (prev - clamped).abs() > 0.5,
+        };
+        if needs_resize {
+            let current_width = window.bounds().size.width;
+            window.resize(Size {
+                width: current_width,
+                height: px(clamped),
+            });
+            self.current_window_height = Some(clamped);
+        }
+    }
+
     fn argument_for(&self, action: CommandAction) -> &str {
         if action.arg_mode == ArgMode::None {
             return "";
@@ -425,128 +473,5 @@ impl Palette {
 impl Focusable for Palette {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus.clone()
-    }
-}
-
-impl Render for Palette {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let actions = self.matches();
-        let selected = self.selected;
-        let selected_action = actions.get(selected).copied();
-        let running_subcommand = self.running.as_ref().map(|running| running.subcommand);
-        let command_output = self.command_output.clone();
-        let locked = self.locked_command;
-        let hide_list = self.query.is_empty() || locked.is_some();
-
-        let prompt: SharedString = if self.query.is_empty() {
-            if let Some(action) = locked {
-                let hint = action
-                    .example
-                    .splitn(2, ' ')
-                    .nth(1)
-                    .unwrap_or(action.example);
-                SharedString::from(hint.to_string())
-            } else {
-                SharedString::from("type a command or URL")
-            }
-        } else {
-            SharedString::from(format!("> {}", self.query))
-        };
-        let query_is_empty = self.query.is_empty();
-
-        let connection = self.connection;
-        // The status dot is intentionally non-animated. An earlier revision
-        // pulsed it while a health check was in flight, but the auto-spawned
-        // launch-time probe combined with a repeating animation kept GPUI
-        // re-rendering the view every frame on slower compositors and could
-        // starve key-event dispatch — the user-visible symptom was a window
-        // that wouldn't accept input. Color alone is now the indicator:
-        // grey while `Checking`, green/red once the probe returns. The
-        // footer/output pulsing dots (which only render once a command is
-        // selected or running) are unaffected.
-        let status_dot = div()
-            .id("status-dot")
-            .size(px(8.0))
-            .rounded_full()
-            .flex_shrink_0()
-            .cursor_pointer()
-            .bg(rgb(connection.dot_color()))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
-                    this.spawn_health_check(cx);
-                }),
-            )
-            .into_any_element();
-
-        div()
-            .key_context("Palette")
-            .track_focus(&self.focus)
-            .on_action(cx.listener(Self::submit))
-            .on_action(cx.listener(Self::move_down))
-            .on_action(cx.listener(Self::move_up))
-            .on_action(cx.listener(Self::tab_complete))
-            .on_action(cx.listener(Self::clear_output))
-            .on_key_down(cx.listener(Self::on_key))
-            .flex()
-            .flex_col()
-            .size_full()
-            .overflow_hidden()
-            .font_family(AURORA_FONT_SANS)
-            .bg(rgb(AURORA_PAGE_BG))
-            .text_color(rgb(AURORA_TEXT_PRIMARY))
-            .p_5()
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(760.0))
-                    .mx_auto()
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .rounded_md()
-                    .bg(rgb(AURORA_PANEL_STRONG))
-                    .border_1()
-                    .border_color(rgb(AURORA_BORDER_STRONG))
-                    .shadow_lg()
-                    .child(render_prompt_row(
-                        query_is_empty,
-                        locked,
-                        prompt,
-                        status_dot,
-                    ))
-                    .child(render_action_rows(
-                        actions,
-                        selected,
-                        running_subcommand,
-                        hide_list,
-                    ))
-                    .when_some(selected_action, |el, action| {
-                        el.child(render_palette_footer(
-                            action,
-                            command_output.as_ref(),
-                            self.running.as_ref(),
-                        ))
-                    })
-                    .when_some(command_output.clone(), |el, output| {
-                        if output.has_body() {
-                            el.child(
-                                div()
-                                    .id("palette-output")
-                                    .max_h(px(320.0))
-                                    .overflow_scroll()
-                                    .scrollbar_width(px(12.0))
-                                    .track_scroll(&self.output_scroll)
-                                    .block_mouse_except_scroll()
-                                    .border_t_1()
-                                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                                    .bg(rgb(AURORA_NAV_BG))
-                                    .child(render_output_body(output)),
-                            )
-                        } else {
-                            el
-                        }
-                    }),
-            )
     }
 }
