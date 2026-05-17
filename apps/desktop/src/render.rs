@@ -363,8 +363,9 @@ fn render_output_section(
                     // construction time; the `SharedString` clones below
                     // are cheap (Arc bumps), so this renders without
                     // per-frame `String` allocations.
-                    el.flex().flex_col().children(rendered_lines.iter().map(
-                        |line| {
+                    el.flex()
+                        .flex_col()
+                        .children(rendered_lines.iter().map(|line| {
                             div()
                                 .w_full()
                                 .font_family(AURORA_FONT_MONO)
@@ -373,8 +374,7 @@ fn render_output_section(
                                 .line_height(px(20.0))
                                 .text_color(rgb(AURORA_OUTPUT_TEXT))
                                 .child(line.clone())
-                        },
-                    ))
+                        }))
                 }),
         )
 }
