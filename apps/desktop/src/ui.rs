@@ -27,10 +27,10 @@ use crate::output::{CommandOutput, OutputKind};
 use crate::render::{
     reflow_palette_window, render_action_list, render_palette_footer, render_prompt_row,
 };
-use crate::render_output::render_output_body;
+use crate::render_output::render_output_pane;
 use crate::theme::{
-    AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS,
-    AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_MEDIUM, AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
+    AURORA_ACCENT_STRONG, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_PAGE_BG,
+    AURORA_PANEL_MEDIUM, AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
 };
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
@@ -495,19 +495,10 @@ impl Render for Palette {
                     })
                     .when_some(command_output.clone(), |el, output| {
                         if output.has_body() {
-                            el.child(
-                                div()
-                                    .id("palette-output")
-                                    .max_h(px(320.0))
-                                    .overflow_scroll()
-                                    .scrollbar_width(px(12.0))
-                                    .track_scroll(&self.output_scroll)
-                                    .block_mouse_except_scroll()
-                                    .border_t_1()
-                                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                                    .bg(rgb(AURORA_NAV_BG))
-                                    .child(render_output_body(output)),
-                            )
+                            el.child(render_output_pane(
+                                output,
+                                &self.output_scroll,
+                            ))
                         } else {
                             el
                         }
