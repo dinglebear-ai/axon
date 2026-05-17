@@ -174,11 +174,16 @@ impl OutputKind {
 /// Covers:
 /// - **CSI** (`ESC [` … final byte in `0x40..=0x7E`) — colour/format codes.
 /// - **OSC** (`ESC ]` … terminated by `BEL` (`0x07`) or `ST` (`ESC \`)) —
-///   title-setting and similar OS commands.
-/// - **DCS** (`ESC P` … terminated by `ST`) — device control strings.
-/// - **APC** (`ESC _` … terminated by `ST`) — application program commands.
-/// - **PM**  (`ESC ^` … terminated by `ST`) — privacy messages.
-/// - **SOS** (`ESC X` … terminated by `ST`) — start of string.
+///   title-setting and similar OS commands. Per ECMA-48 / xterm convention,
+///   OSC accepts BEL as a shortcut terminator for legacy compatibility.
+/// - **DCS** (`ESC P` … terminated by `ST` only) — device control strings.
+/// - **APC** (`ESC _` … terminated by `ST` only) — application program commands.
+/// - **PM**  (`ESC ^` … terminated by `ST` only) — privacy messages.
+/// - **SOS** (`ESC X` … terminated by `ST` only) — start of string.
+///
+/// Per ECMA-48, DCS/APC/PM/SOS are NOT terminated by BEL — only OSC accepts
+/// BEL as a terminator (xterm legacy convention). Embedded BEL bytes inside
+/// DCS/APC/PM/SOS payloads must be passed through as content.
 ///
 /// Anything malformed (lone `ESC`, EOF mid-sequence) is silently dropped.
 fn strip_ansi(text: &str) -> String {
@@ -204,11 +209,17 @@ fn strip_ansi(text: &str) -> String {
                     }
                 }
             }
-            ']' | 'P' | '_' | '^' | 'X' => {
-                // OSC / DCS / APC / PM / SOS. All terminate on either
-                // BEL (0x07) or ST (ESC \).
+            ']' => {
+                // OSC — terminates on BEL (0x07) or ST (ESC \).
                 chars.next();
-                consume_until_string_terminator(&mut chars);
+                consume_until_string_terminator(&mut chars, /* allow_bel = */ true);
+            }
+            'P' | '_' | '^' | 'X' => {
+                // DCS / APC / PM / SOS — terminate ONLY on ST (ESC \).
+                // Embedded BEL bytes are part of the payload and must not
+                // short-circuit the sequence (ECMA-48 §8.3).
+                chars.next();
+                consume_until_string_terminator(&mut chars, /* allow_bel = */ false);
             }
             _ => {
                 // Some other Fp/Fe/Fs/two-char escape (e.g. ESC =, ESC c).
@@ -220,11 +231,19 @@ fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// Consume characters until a String Terminator (`BEL` or `ESC \`) is seen.
+/// Consume characters until a String Terminator is seen.
+///
 /// The terminator itself is consumed. EOF mid-sequence is silently accepted.
-fn consume_until_string_terminator(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+///
+/// `allow_bel = true` accepts `BEL` (`0x07`) as a shortcut terminator (OSC
+/// convention); `false` treats BEL as ordinary payload and waits for the
+/// canonical ST = `ESC \` (DCS/APC/PM/SOS semantics).
+fn consume_until_string_terminator(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    allow_bel: bool,
+) {
     while let Some(ch) = chars.next() {
-        if ch == '\x07' {
+        if allow_bel && ch == '\x07' {
             return;
         }
         if ch == '\x1b' {
