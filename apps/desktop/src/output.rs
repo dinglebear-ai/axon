@@ -217,7 +217,10 @@ fn truncate_output(mut text: String) -> String {
         return text;
     }
 
-    text.truncate(OUTPUT_LIMIT);
+    // floor_char_boundary finds the largest char boundary <= OUTPUT_LIMIT,
+    // preventing a panic when a multibyte character straddles the limit.
+    let boundary = text.floor_char_boundary(OUTPUT_LIMIT);
+    text.truncate(boundary);
     text.push_str("\n... output truncated ...");
     text
 }
