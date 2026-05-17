@@ -837,9 +837,63 @@ pub struct SearchResult {
     pub results: Vec<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// Origin of the synthesized summary returned by `research`.
+///
+/// `Llm` means the LLM produced the summary; `Fallback` means synthesis
+/// failed and a deterministic snippet-based summary was substituted;
+/// `None` means no extractions were available to summarize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SummarySource {
+    Llm,
+    Fallback,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchHit {
+    pub position: usize,
+    pub title: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchExtraction {
+    pub url: String,
+    pub title: String,
+    pub extracted: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ResearchUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchTiming {
+    pub total: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchPayload {
+    pub query: String,
+    pub limit: usize,
+    pub offset: usize,
+    pub search_results: Vec<ResearchHit>,
+    pub extractions: Vec<ResearchExtraction>,
+    pub summary: Option<String>,
+    pub summary_source: SummarySource,
+    pub usage: ResearchUsage,
+    pub timing_ms: ResearchTiming,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResearchResult {
-    pub payload: serde_json::Value,
+    pub payload: ResearchPayload,
 }
 
 // ── Lifecycle: crawl / embed / extract ───────────────────────────────────────
