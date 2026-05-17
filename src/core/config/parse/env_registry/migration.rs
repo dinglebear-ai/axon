@@ -244,6 +244,33 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         DeleteOnMigration,
         true,
     ),
+    // OpenAI-compatible LLM env vars — removed in 3.0.0 along with the OpenAI client
+    // path. All LLM operations now go through the Gemini headless backend
+    // (`AXON_HEADLESS_GEMINI_*`). `axon setup repair --migrate-env` scrubs these.
+    spec(
+        "OPENAI_BASE_URL",
+        Delete,
+        NotRuntime,
+        None,
+        DeleteOnMigration,
+        false,
+    ),
+    spec(
+        "OPENAI_API_KEY",
+        Delete,
+        NotRuntime,
+        None,
+        DeleteOnMigration,
+        true,
+    ),
+    spec(
+        "OPENAI_MODEL",
+        Delete,
+        NotRuntime,
+        None,
+        DeleteOnMigration,
+        false,
+    ),
     spec(
         "GOOGLE_APPLICATION_CREDENTIALS",
         Delete,

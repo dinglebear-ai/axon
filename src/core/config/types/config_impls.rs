@@ -79,9 +79,6 @@ impl Default for Config {
             reddit_scrape_links: false,
             tei_url: String::new(),
             qdrant_url: "http://127.0.0.1:53333".to_string(),
-            openai_base_url: String::new(),
-            openai_api_key: String::new(),
-            openai_model: String::new(),
             headless_gemini_model: String::new(),
             headless_gemini_cmd: "gemini".to_string(),
             headless_gemini_home: None,
@@ -237,8 +234,6 @@ impl Config {
     /// do not require manual updates across test helpers.
     pub fn test_default() -> Self {
         Self {
-            openai_base_url: "http://localhost:11434/v1".to_string(),
-            openai_model: "test-model".to_string(),
             tavily_api_key: "test-key".to_string(),
             ..Default::default()
         }
@@ -323,9 +318,6 @@ impl fmt::Debug for Config {
             .field("reddit_scrape_links", &self.reddit_scrape_links)
             .field("tei_url", &self.tei_url)
             .field("qdrant_url", &self.qdrant_url)
-            .field("openai_base_url", &self.openai_base_url)
-            .field("openai_api_key", &"[REDACTED]")
-            .field("openai_model", &self.openai_model)
             .field("headless_gemini_model", &self.headless_gemini_model)
             .field("headless_gemini_cmd", &self.headless_gemini_cmd)
             .field("headless_gemini_home", &self.headless_gemini_home)

@@ -165,7 +165,6 @@ fn config_default_output_flags() {
 #[test]
 fn config_default_secrets_are_empty() {
     let cfg = Config::default();
-    assert!(cfg.openai_api_key.is_empty());
     assert!(cfg.tavily_api_key.is_empty());
     assert!(cfg.github_token.is_none());
     assert!(cfg.reddit_client_id.is_none());
@@ -184,7 +183,6 @@ fn config_default_sessions_flags_off() {
 #[test]
 fn config_debug_redacts_secrets() {
     let cfg = Config {
-        openai_api_key: "sk-supersecret".to_string(),
         tavily_api_key: "tvly-supersecret".to_string(),
         github_token: Some("ghp_supersecret".to_string()),
         reddit_client_id: Some("my-reddit-id".to_string()),
@@ -197,7 +195,7 @@ fn config_debug_redacts_secrets() {
     // Secrets must NOT appear in Debug output.
     assert!(
         !debug_output.contains("supersecret"),
-        "openai_api_key, tavily_api_key, or github_token leaked"
+        "tavily_api_key or github_token leaked"
     );
     assert!(
         !debug_output.contains("my-reddit-id"),

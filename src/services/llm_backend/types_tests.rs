@@ -1,11 +1,8 @@
 use super::*;
 
 #[test]
-fn backend_config_ignores_legacy_openai_model_names() {
-    let cfg = Config {
-        openai_model: "gpt-4o-mini".to_string(),
-        ..Config::default()
-    };
+fn backend_config_defaults_to_no_model_when_unset() {
+    let cfg = Config::default();
     let backend = LlmBackendConfig::from_config(&cfg);
     assert_eq!(backend.gemini_model, None);
 }
@@ -13,7 +10,6 @@ fn backend_config_ignores_legacy_openai_model_names() {
 #[test]
 fn backend_config_accepts_explicit_gemini_model() {
     let cfg = Config {
-        openai_model: "gpt-4o-mini".to_string(),
         headless_gemini_model: "gemini-3.1-pro-preview".to_string(),
         ..Config::default()
     };

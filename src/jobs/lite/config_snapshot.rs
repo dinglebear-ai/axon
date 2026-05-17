@@ -86,8 +86,6 @@ struct LiteConfigSnapshot {
     reddit_scrape_links: Option<bool>,
     tei_url: Option<String>,
     qdrant_url: Option<String>,
-    openai_base_url: Option<String>,
-    openai_model: Option<String>,
     headless_gemini_model: Option<String>,
     headless_gemini_cmd: Option<String>,
     headless_gemini_home: Option<PathBuf>,
@@ -202,8 +200,6 @@ impl LiteConfigSnapshot {
             reddit_scrape_links: Some(cfg.reddit_scrape_links),
             tei_url: endpoints.tei_url,
             qdrant_url: endpoints.qdrant_url,
-            openai_base_url: endpoints.openai_base_url,
-            openai_model: Some(cfg.openai_model.clone()),
             headless_gemini_model: Some(cfg.headless_gemini_model.clone()),
             headless_gemini_cmd: Some(cfg.headless_gemini_cmd.clone()),
             headless_gemini_home: cfg.headless_gemini_home.clone(),
@@ -315,8 +311,6 @@ impl LiteConfigSnapshot {
             reddit_scrape_links,
             tei_url,
             qdrant_url,
-            openai_base_url,
-            openai_model,
             headless_gemini_model,
             headless_gemini_cmd,
             llm_completion_concurrency,
@@ -398,7 +392,6 @@ impl LiteConfigSnapshot {
 struct EndpointSnapshots {
     tei_url: Option<String>,
     qdrant_url: Option<String>,
-    openai_base_url: Option<String>,
 }
 
 fn snapshot_endpoints(
@@ -408,11 +401,6 @@ fn snapshot_endpoints(
     Ok(EndpointSnapshots {
         tei_url: endpoint_snapshot("tei_url", &cfg.tei_url, process_fallback_fields)?,
         qdrant_url: endpoint_snapshot("qdrant_url", &cfg.qdrant_url, process_fallback_fields)?,
-        openai_base_url: endpoint_snapshot(
-            "openai_base_url",
-            &cfg.openai_base_url,
-            process_fallback_fields,
-        )?,
     })
 }
 

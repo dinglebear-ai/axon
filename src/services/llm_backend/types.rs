@@ -32,8 +32,7 @@ impl LlmBackendConfig {
         Self {
             gemini_cmd: non_empty(cfg.headless_gemini_cmd.clone())
                 .unwrap_or_else(|| "gemini".to_string()),
-            gemini_model: non_empty(cfg.headless_gemini_model.clone())
-                .or_else(|| gemini_compatible_model(&cfg.openai_model)),
+            gemini_model: non_empty(cfg.headless_gemini_model.clone()),
             gemini_home: cfg.headless_gemini_home.clone(),
             completion_concurrency: cfg
                 .llm_completion_concurrency
@@ -145,11 +144,6 @@ pub fn normalize_stream_flag(mut req: CompletionRequest, stream: bool) -> Comple
 fn non_empty(value: String) -> Option<String> {
     let value = value.trim().to_string();
     (!value.is_empty()).then_some(value)
-}
-
-fn gemini_compatible_model(model: &str) -> Option<String> {
-    let model = model.trim();
-    model.starts_with("gemini-").then(|| model.to_string())
 }
 
 #[cfg(test)]

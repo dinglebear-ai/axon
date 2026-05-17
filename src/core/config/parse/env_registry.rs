@@ -21,6 +21,8 @@ pub(crate) enum RuntimePlacement {
 pub(crate) enum LegacyBehavior {
     Canonical,
     WarnEnvOverride,
+    #[allow(dead_code)]
+    // No active env keys use this behavior, but match arms still handle it defensively.
     WarnAndIgnore,
     DeleteOnMigration,
     Advanced,

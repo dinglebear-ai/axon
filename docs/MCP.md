@@ -36,8 +36,9 @@ LLM synthesis uses Gemini headless by default:
 - `AXON_LLM_COMPLETION_CONCURRENCY`
 - `AXON_LLM_COMPLETION_TIMEOUT_SECS`
 
-`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` are compatibility
-settings for OpenAI-compatible endpoints, not required MCP runtime config.
+The legacy `OPENAI_*` env vars were removed in 3.0.0; all LLM synthesis
+now runs through the Gemini headless backend. `axon setup repair --migrate-env`
+scrubs `OPENAI_*` entries from existing `~/.axon/.env`.
 
 MCP HTTP env vars:
 - `AXON_MCP_HTTP_HOST` (default `127.0.0.1`)

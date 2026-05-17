@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-17
+
+### BREAKING CHANGES
+
+- Removed the entire OpenAI-compatible LLM client path. All LLM operations
+  (`ask`, `evaluate`, `suggest`, `research`, `debug`, and `extract` LLM
+  fallback) now run exclusively through the Gemini headless backend
+  (`AXON_HEADLESS_GEMINI_*`).
+- Removed env vars: `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`.
+  They are no longer read at startup. `axon setup repair --migrate-env`
+  scrubs them from existing `~/.axon/.env` files (registered as
+  `Delete`/`DeleteOnMigration` in `env_registry/migration.rs`).
+- Removed CLI flags: `--openai-base-url`, `--openai-api-key`, `--openai-model`.
+- Removed `Config` fields `openai_base_url`, `openai_api_key`, `openai_model`
+  (and the matching fields on `ExtractWebConfig` and `ServiceUrls`). Test
+  struct literals that set these fields will fail to compile until updated.
+- Removed the `openai` service entry from the `doctor` JSON output and the
+  associated `probe_openai`, `resolve_openai_model`,
+  `openai_diagnostics_enabled`, and `openai_service_json` helpers.
+- Removed `estimate_llm_cost_usd` and the `estimated_cost_usd` field on
+  `ExtractionMetrics`, `FallbackResponse`, the extract aggregation, and
+  the `extract` summary JSON. The estimator was OpenAI-pricing-only and
+  returned `0.0` for every other model — including all Gemini models.
+- Removed dead `build_openai_chat_request` helper in
+  `src/vector/ops/commands/streaming.rs`.
+- Removed the `gemini_compatible_model` / `gemini_compatible_openai_model`
+  shims: `LlmBackendConfig.gemini_model` is now sourced exclusively from
+  `headless_gemini_model` (no fallback through `openai_model`).
+
+### Migration
+
+- Run `axon setup repair --migrate-env` to scrub the three removed env
+  vars from `~/.axon/.env`.
+- If you relied on a non-Gemini OpenAI-compatible endpoint for ask /
+  research / evaluate / extract, install the Gemini CLI and set
+  `AXON_HEADLESS_GEMINI_CMD` and (optionally) `AXON_HEADLESS_GEMINI_MODEL`.
+- Closes bead `axon_rust-6yxz` (env_registry misclassified OPENAI_BASE_URL
+  / OPENAI_API_KEY as `WarnAndIgnore`) — obsolete after removal.
+
 ## [2.7.0] - 2026-05-17
 
 ### Added

@@ -58,11 +58,10 @@ fn into_config_normalizes_tei_url_like_other_services() {
 
 #[allow(unsafe_code)]
 #[test]
-fn into_config_migrates_gemini_model_env_without_reusing_openai_names() {
+fn into_config_reads_gemini_env_settings() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(
         &[
-            "OPENAI_MODEL",
             "AXON_HEADLESS_GEMINI_MODEL",
             "AXON_HEADLESS_GEMINI_CMD",
             "AXON_HEADLESS_GEMINI_HOME",
@@ -70,14 +69,13 @@ fn into_config_migrates_gemini_model_env_without_reusing_openai_names() {
             "AXON_LLM_COMPLETION_TIMEOUT_SECS",
         ],
         || unsafe {
-            env::set_var("OPENAI_MODEL", "gpt-4o-mini");
+            env::set_var("AXON_HEADLESS_GEMINI_MODEL", "gemini-explicit");
             env::set_var("AXON_HEADLESS_GEMINI_CMD", "/usr/local/bin/gemini");
             env::set_var("AXON_HEADLESS_GEMINI_HOME", "/tmp/gemini-home");
             env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "3");
             env::set_var("AXON_LLM_COMPLETION_TIMEOUT_SECS", "42");
             let cfg = into_config_via_args(&["status"]).expect("status config");
-            assert_eq!(cfg.openai_model, "gpt-4o-mini");
-            assert_eq!(cfg.headless_gemini_model, "");
+            assert_eq!(cfg.headless_gemini_model, "gemini-explicit");
             assert_eq!(cfg.headless_gemini_cmd, "/usr/local/bin/gemini");
             assert_eq!(
                 cfg.headless_gemini_home,
@@ -91,13 +89,14 @@ fn into_config_migrates_gemini_model_env_without_reusing_openai_names() {
 
 #[allow(unsafe_code)]
 #[test]
-fn into_config_prefers_explicit_gemini_model_over_compatible_openai_model() {
+fn into_config_ignores_removed_openai_model_env() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(&["OPENAI_MODEL", "AXON_HEADLESS_GEMINI_MODEL"], || unsafe {
         env::set_var("OPENAI_MODEL", "gemini-legacy");
-        env::set_var("AXON_HEADLESS_GEMINI_MODEL", "gemini-explicit");
+        env::remove_var("AXON_HEADLESS_GEMINI_MODEL");
         let cfg = into_config_via_args(&["status"]).expect("status config");
-        assert_eq!(cfg.headless_gemini_model, "gemini-explicit");
+        // OPENAI_MODEL is no longer read; only AXON_HEADLESS_GEMINI_MODEL is canonical.
+        assert_eq!(cfg.headless_gemini_model, "");
     });
 }
 

@@ -204,8 +204,7 @@ async fn ask_llm_streaming_with_runner_builds_completion_request_and_collects_to
 
 #[tokio::test(flavor = "current_thread")]
 async fn ask_llm_streaming_with_runner_omits_blank_model_for_completion_only_config() {
-    let mut cfg = Config::test_default();
-    cfg.openai_model.clear();
+    let cfg = Config::test_default();
     let runner = MockRunner::with_streaming(&["hello"], "hello");
 
     let answer = ask_llm_streaming_with_runner(&runner, &cfg, "How?", "Context block", false)

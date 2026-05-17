@@ -16,11 +16,11 @@ use std::fmt;
 /// Connection URLs and API credentials for all external services.
 ///
 /// `Debug` is implemented manually to redact all secret fields. Do not add
-/// `#[derive(Debug)]` — that would print `openai_api_key`, `tavily_api_key`,
-/// and connection URLs containing passwords in plaintext.
+/// `#[derive(Debug)]` — that would print `tavily_api_key` and connection URLs
+/// containing passwords in plaintext.
 ///
-/// TODO(A-M-07): Wrap `openai_api_key`, `tavily_api_key`, and `github_token`
-/// with `Secret<String>` after migration is complete.
+/// TODO(A-M-07): Wrap `tavily_api_key` and `github_token` with `Secret<String>`
+/// after migration is complete.
 #[allow(dead_code)]
 #[derive(Clone, Default)]
 pub struct ServiceUrls {
@@ -29,9 +29,6 @@ pub struct ServiceUrls {
     pub amqp_url: String,
     pub qdrant_url: String,
     pub tei_url: String,
-    pub openai_base_url: String,
-    pub openai_api_key: String, // TODO(A-M-07): Secret<String>
-    pub openai_model: String,
     pub tavily_api_key: String, // TODO(A-M-07): Secret<String>
 }
 
@@ -43,9 +40,6 @@ impl fmt::Debug for ServiceUrls {
             .field("amqp_url", &"[REDACTED]")
             .field("qdrant_url", &self.qdrant_url)
             .field("tei_url", &self.tei_url)
-            .field("openai_base_url", &self.openai_base_url)
-            .field("openai_api_key", &"[REDACTED]")
-            .field("openai_model", &self.openai_model)
             .field("tavily_api_key", &"[REDACTED]")
             .finish()
     }

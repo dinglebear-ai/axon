@@ -79,43 +79,6 @@ pub(super) fn tei_info_summary(info: &Value) -> Option<String> {
     }
 }
 
-pub(super) fn resolve_openai_model(cfg: &Config) -> String {
-    if !cfg.openai_model.trim().is_empty() {
-        return cfg.openai_model.clone();
-    }
-
-    std::env::var("OPENAI_MODEL").unwrap_or_default()
-}
-
-/// Live probe: GET `{base}/models` with a 3s timeout. Returns (ok, detail).
-pub(super) async fn probe_openai(
-    cfg: &Config,
-    openai_model: &str,
-    client: &reqwest::Client,
-) -> (bool, String) {
-    let base = cfg.openai_base_url.trim().trim_end_matches('/');
-    if base.is_empty() {
-        return (false, "not configured".to_string());
-    }
-    if openai_model.trim().is_empty() {
-        return (false, "OPENAI_MODEL not set".to_string());
-    }
-
-    let url = format!("{base}/models");
-    let mut req = client.get(&url);
-    if !cfg.openai_api_key.trim().is_empty() {
-        req = req.bearer_auth(&cfg.openai_api_key);
-    }
-
-    match req.send().await {
-        Ok(resp) if resp.status().is_success() => {
-            (true, format!("http {} /models", resp.status().as_u16()))
-        }
-        Ok(resp) => (false, format!("http {} /models", resp.status().as_u16())),
-        Err(e) => (false, e.to_string()),
-    }
-}
-
 pub(super) async fn timed_probe<T, F>(future: F) -> (T, u64)
 where
     F: Future<Output = T>,
