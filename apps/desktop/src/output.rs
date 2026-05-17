@@ -1,11 +1,16 @@
 use std::process::Output;
 
+use gpui::SharedString;
+
 use crate::actions::{ACTIONS, CommandAction};
 use crate::theme::{
     AURORA_ACCENT_PINK, AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_WARNING,
 };
 
 const OUTPUT_LIMIT: usize = 12_000;
+/// Maximum number of lines rendered for a raw (non-markdown) output
+/// section. Mirrors the `take(MAX_RENDER_LINES)` cap in `render.rs`.
+pub(crate) const MAX_RENDER_LINES: usize = 220;
 
 #[derive(Clone)]
 pub(crate) struct CommandOutput {
@@ -30,6 +35,13 @@ pub(crate) struct OutputSection {
     pub(crate) label: &'static str,
     pub(crate) text: String,
     pub(crate) line_count: usize,
+    /// Pre-computed `SharedString` per visible line, capped at
+    /// `MAX_RENDER_LINES`. Built once when the section is created and
+    /// cloned cheaply (`Arc`-backed) on every render frame — avoids the
+    /// ~220 allocations/frame the raw renderer used to incur.
+    /// Only populated for raw (non-markdown) sections; markdown sections
+    /// render directly from `text`.
+    pub(crate) rendered_lines: Vec<SharedString>,
 }
 
 impl CommandOutput {
@@ -113,10 +125,22 @@ impl OutputSection {
     fn new(label: &'static str, text: impl Into<String>) -> Self {
         let text = truncate_output(text.into());
         let line_count = text.lines().count().max(1);
+        let rendered_lines = text
+            .lines()
+            .take(MAX_RENDER_LINES)
+            .map(|line| {
+                if line.is_empty() {
+                    SharedString::from(" ")
+                } else {
+                    SharedString::from(line.to_string())
+                }
+            })
+            .collect();
         Self {
             label,
             text,
             line_count,
+            rendered_lines,
         }
     }
 }
