@@ -152,7 +152,7 @@ mod tests {
     #[tokio::test]
     async fn catalog_exhaustiveness() {
         let ctx = VerticalContext::new(std::sync::Arc::new(
-            crate::core::config::Config::default_lite(),
+            crate::core::config::Config::default_minimal(),
         ));
         for info in list() {
             let result = dispatch_by_name(info.name, "https://example.com", &ctx).await;

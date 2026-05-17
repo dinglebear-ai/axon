@@ -14,7 +14,7 @@ async fn cancel_token_fires_immediately_for_same_process() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .unwrap();

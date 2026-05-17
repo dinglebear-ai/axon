@@ -4,7 +4,7 @@ use std::error::Error;
 use tempfile::NamedTempFile;
 
 fn lite_cfg(path: &std::path::Path) -> Config {
-    let mut cfg = Config::default_lite();
+    let mut cfg = Config::default_minimal();
     cfg.sqlite_path = path.to_path_buf();
     cfg
 }

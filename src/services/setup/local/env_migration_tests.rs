@@ -66,6 +66,10 @@ fn migration_prunes_legacy_runtime_delete_keys() {
             "AXON_PG_MCP_URL=postgres://legacy-mcp",
             "AXON_PG_URL=postgres://legacy",
             "AXON_REDIS_URL=redis://legacy",
+            "AXON_LOG_DIR=/var/log/axon",
+            "AXON_LOG_FILE=axon.log",
+            "GOOGLE_API_KEY=stale-google",
+            "GOOGLE_APPLICATION_CREDENTIALS=/etc/google.json",
             "TAVILY_API_KEY=secret",
         ]
         .join("\n"),
@@ -78,7 +82,7 @@ fn migration_prunes_legacy_runtime_delete_keys() {
     }
 
     let result = migrate_env_file(&env_path).unwrap();
-    assert!(result.phase.detail.contains("deleted=5"));
+    assert!(result.phase.detail.contains("deleted=9"));
     assert!(
         result
             .phase
@@ -92,6 +96,10 @@ fn migration_prunes_legacy_runtime_delete_keys() {
         "AXON_PG_MCP_URL",
         "AXON_PG_URL",
         "AXON_REDIS_URL",
+        "AXON_LOG_DIR",
+        "AXON_LOG_FILE",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
     ] {
         assert!(!raw.contains(key), "{key} should be pruned");
     }

@@ -132,9 +132,7 @@ pub struct Config {
     /// Block until async jobs complete instead of fire-and-forgetting. Flag: `--wait`.
     pub wait: bool,
 
-    /// Lite mode: SQLite + in-process workers instead of Postgres + RabbitMQ + Redis.
-    pub lite_mode: bool,
-    /// Path to the SQLite jobs database file (lite mode only).
+    /// Path to the SQLite jobs database file.
     pub sqlite_path: PathBuf,
 
     /// Skip confirmation prompts (non-interactive mode). Flag: `--yes`.

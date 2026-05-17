@@ -1,19 +1,19 @@
 //! Tests for `build_config::into_config()`.
 //!
 //! Split into two themed submodules (bead axon_rust-2j9.6):
-//!   * `lite_mode`        — AXON_LITE / MCP origin / URL-required env tests
+//!   * `env_required`     — MCP origin / URL-required env tests
 //!   * `priority_chain`   — `CLI > env > TOML > default` tests for ask/hybrid/tei/workers/search
 //!
-//! Test BODIES are unchanged from the previous flat `mod tests` in `build_config.rs`.
 //! Shared fixtures (`ENV_LOCK`, `cli_with_services`, `with_env_saved`) live here so
 //! both submodules can reference them via `super::*`.
 
-mod lite_mode;
+mod env_required;
 mod priority_chain;
 
 pub(super) use super::{into_config, into_config_with_sources};
 pub(super) use crate::core::config::cli::Cli;
 pub(super) use crate::core::config::parse::docker::normalize_local_service_url;
+pub(super) use crate::core::config::types::Config;
 pub(super) use clap::{CommandFactory, FromArgMatches, Parser, parser::ValueSource};
 pub(super) use std::env;
 pub(super) use std::io::Write as _;
@@ -36,7 +36,7 @@ pub(super) fn cli_with_services(extra: &[&str]) -> Cli {
     Cli::parse_from(args)
 }
 
-pub(super) fn cli_with_services_and_sources(extra: &[&str]) -> (Cli, bool) {
+pub(super) fn cli_with_services_and_sources(extra: &[&str]) -> (Cli, bool, bool) {
     let mut args = vec![
         "axon",
         "--qdrant-url",
@@ -48,8 +48,19 @@ pub(super) fn cli_with_services_and_sources(extra: &[&str]) -> (Cli, bool) {
     let matches = Cli::command().get_matches_from(args);
     let output_dir_was_explicit =
         matches.value_source("output_dir") == Some(ValueSource::CommandLine);
+    let collection_was_explicit =
+        matches.value_source("collection") == Some(ValueSource::CommandLine);
     let cli = Cli::from_arg_matches(&matches).expect("cli should parse");
-    (cli, output_dir_was_explicit)
+    (cli, output_dir_was_explicit, collection_was_explicit)
+}
+
+/// Convenience wrapper: parse via clap to recover value_sources, then call
+/// `into_config_with_sources`. Use this in tests that need accurate
+/// `--collection axon` / explicit-default detection.
+pub(super) fn into_config_via_args(extra: &[&str]) -> Result<Config, String> {
+    let (cli, output_dir_was_explicit, collection_was_explicit) =
+        cli_with_services_and_sources(extra);
+    into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
 }
 
 /// Save/restore an env var around a test body so panics don't leak state.
@@ -146,18 +157,39 @@ fn explicit_default_output_dir_flag_wins_over_env() {
     with_env_saved(&["AXON_OUTPUT_DIR"], || unsafe {
         env::set_var("AXON_OUTPUT_DIR", "/tmp/axon-output-from-env");
 
-        let (cli, output_dir_was_explicit) = cli_with_services_and_sources(&[
-            "--output-dir",
-            crate::core::config::cli::DEFAULT_OUTPUT_DIR,
-            "crawl",
-            "https://example.com",
-        ]);
-        let cfg = into_config_with_sources(cli, output_dir_was_explicit)
+        let (cli, output_dir_was_explicit, collection_was_explicit) =
+            cli_with_services_and_sources(&[
+                "--output-dir",
+                crate::core::config::cli::DEFAULT_OUTPUT_DIR,
+                "crawl",
+                "https://example.com",
+            ]);
+        let cfg = into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
             .expect("explicit default --output-dir should parse");
 
         assert_eq!(
             cfg.output_dir,
             Path::new(crate::core::config::cli::DEFAULT_OUTPUT_DIR)
         );
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn explicit_default_collection_flag_wins_over_env() {
+    // Regression: previously the sentinel check `global.collection != "axon"`
+    // treated explicit `--collection axon` the same as the clap default and
+    // fell through to env/TOML. With clap value_source threading,
+    // `--collection axon` on the CLI must win.
+    let _guard = ENV_LOCK.lock().unwrap();
+    with_env_saved(&["AXON_COLLECTION"], || unsafe {
+        env::set_var("AXON_COLLECTION", "from-env");
+
+        let (cli, output_dir_was_explicit, collection_was_explicit) =
+            cli_with_services_and_sources(&["--collection", "axon", "status"]);
+        let cfg = into_config_with_sources(cli, output_dir_was_explicit, collection_was_explicit)
+            .expect("explicit --collection axon should parse");
+
+        assert_eq!(cfg.collection, "axon");
     });
 }

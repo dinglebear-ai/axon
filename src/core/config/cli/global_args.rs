@@ -145,13 +145,13 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
     pub(in crate::core::config) embed: bool,
 
-    /// Qdrant collection name (default: cortex)
+    /// Qdrant collection name (default: axon)
     #[arg(
         global = true,
         long,
         env = "AXON_COLLECTION",
         hide_env_values = true,
-        default_value = "cortex"
+        default_value = "axon"
     )]
     pub(in crate::core::config) collection: String,
 
@@ -162,10 +162,6 @@ pub(in crate::core::config) struct GlobalArgs {
     /// Block until async job completes; false enqueues and returns (default: false)
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::core::config) wait: bool,
-
-    /// Compatibility flag. SQLite + in-process workers are always used.
-    #[arg(global = true, long, default_value_t = false, hide = true)]
-    pub(in crate::core::config) lite: bool,
 
     /// Path to the SQLite jobs database.
     #[arg(global = true, long, hide = true)]

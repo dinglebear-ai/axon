@@ -5,7 +5,7 @@ use chrono::Local;
 use size_rotating::SizeRotatingFile;
 use std::fmt;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::fmt::{
@@ -264,10 +264,24 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     //
     // tracing_appender::non_blocking serialises writes through one worker
     // thread, so the guard MUST be held for the process lifetime.
-    let log_dir: PathBuf = read_trimmed_env("AXON_LOG_DIR")
+    // Full path to active log file. Rotated siblings (.1, .2, ...) live in the same dir.
+    // Default: $AXON_DATA_DIR/logs/axon.log
+    let log_path: PathBuf = read_trimmed_env("AXON_LOG_PATH")
         .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            super::paths::axon_data_base_dir()
+                .join("logs")
+                .join("axon.log")
+        });
+    let log_dir: PathBuf = log_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(Path::to_path_buf)
         .unwrap_or_else(|| super::paths::axon_data_base_dir().join("logs"));
-    let log_file_name = read_trimmed_env("AXON_LOG_FILE").unwrap_or_else(|| "axon.log".to_string());
+    let log_file_name = log_path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "axon.log".to_string());
 
     let max_bytes = std::env::var("AXON_LOG_MAX_BYTES")
         .ok()

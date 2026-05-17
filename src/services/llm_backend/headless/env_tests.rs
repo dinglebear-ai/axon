@@ -23,14 +23,12 @@ fn capture_keeps_only_allowed_keys() {
         ("PATH", "/usr/bin"),
         ("OPENAI_API_KEY", "secret"),
         ("GEMINI_API_KEY", "gemini"),
-        ("GOOGLE_API_KEY", "google"),
         ("GOOGLE_CLOUD_LOCATION", "us-central1"),
     ]);
     assert_eq!(
         captured,
         vec![
             ("PATH", OsString::from("/usr/bin")),
-            ("GOOGLE_API_KEY", OsString::from("google")),
             ("GOOGLE_CLOUD_LOCATION", OsString::from("us-central1")),
             ("GEMINI_API_KEY", OsString::from("gemini")),
         ]

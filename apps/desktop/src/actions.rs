@@ -128,7 +128,8 @@ pub(crate) fn looks_like_url(input: &str) -> bool {
 }
 
 pub(crate) fn build_axon_args(action: CommandAction, arg: &str) -> Result<Vec<String>, String> {
-    let mut args = vec![action.subcommand.to_string()];
+    // --local forces in-process execution even when AXON_SERVER_URL is set.
+    let mut args = vec!["--local".to_string(), action.subcommand.to_string()];
     match action.arg_mode {
         ArgMode::None => {}
         ArgMode::Single => args.push(arg.to_string()),
