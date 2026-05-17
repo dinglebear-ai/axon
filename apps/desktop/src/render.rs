@@ -188,6 +188,7 @@ pub(crate) fn render_palette_footer(
     action: CommandAction,
     output: Option<&CommandOutput>,
     running: Option<&RunningCommand>,
+    conversation_hint: Option<SharedString>,
 ) -> impl IntoElement {
     let is_running = running.is_some();
     let status = output.map(|o| o.kind).unwrap_or(OutputKind::Warning);
@@ -285,6 +286,18 @@ pub(crate) fn render_palette_footer(
                         .text_color(rgb(AURORA_TEXT_MUTED))
                         .child(SharedString::from(detail.to_string())),
                 ),
+        )
+        // Conversation hint — fixed-width slot so its appearance/disappearance
+        // does not shift surrounding footer elements. Empty string when no
+        // ask conversation is live.
+        .child(
+            div()
+                .px_2()
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(500.0))
+                .text_size(px(11.0))
+                .text_color(rgb(AURORA_TEXT_MUTED))
+                .child(conversation_hint.unwrap_or_else(|| SharedString::from(""))),
         )
         // Dismiss button — only shown when there's output to clear.
         .when(has_output, |el| {
