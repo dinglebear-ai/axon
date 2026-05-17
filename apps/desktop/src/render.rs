@@ -93,6 +93,7 @@ pub(crate) fn render_action_rows(
 
 pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
     let empty = output.stdout.is_none() && output.stderr.is_none();
+    let title_accent = output.kind.accent_color();
     div()
         .flex()
         .flex_col()
@@ -106,10 +107,24 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
                 .gap_1()
                 .child(
                     div()
-                        .font_weight(FontWeight(680.0))
-                        .text_size(px(13.0))
-                        .text_color(rgb(AURORA_TEXT_PRIMARY))
-                        .child(SharedString::from(output.title)),
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .size(px(7.0))
+                                .rounded_full()
+                                .flex_shrink_0()
+                                .bg(rgb(title_accent)),
+                        )
+                        .child(
+                            div()
+                                .font_weight(FontWeight(680.0))
+                                .text_size(px(13.0))
+                                .text_color(rgb(AURORA_TEXT_PRIMARY))
+                                .child(SharedString::from(output.title)),
+                        ),
                 )
                 .child(
                     div()
@@ -305,13 +320,19 @@ fn render_output_section(
                     el.flex()
                         .flex_col()
                         .children(text.lines().take(220).map(|line| {
+                            let display = if line.is_empty() {
+                                SharedString::from(" ")
+                            } else {
+                                SharedString::from(line.to_string())
+                            };
                             div()
+                                .w_full()
                                 .font_family(AURORA_FONT_MONO)
                                 .font_weight(FontWeight(480.0))
                                 .text_size(px(12.0))
                                 .line_height(px(20.0))
                                 .text_color(rgb(AURORA_OUTPUT_TEXT))
-                                .child(SharedString::from(line.to_string()))
+                                .child(display)
                         }))
                 }),
         )
