@@ -415,16 +415,20 @@ impl Palette {
     fn height_snapshot(&self, actions: &[CommandAction], hide_list: bool) -> HeightSnapshot {
         let selected_action = actions.get(self.selected).copied();
         let footer_visible = selected_action.is_some();
-        let (output_body_visible, output_notice_visible) = match &self.command_output {
-            Some(output) if output.has_body() => (true, false),
-            Some(_) => (false, true),
-            None => (false, false),
-        };
+        // Only `has_body()` outputs are actually rendered (see `ui_render.rs`
+        // line ~127); a body-less notice produces no card and therefore no
+        // height contribution. Tracking only the body case avoids reserving
+        // blank space for content that is never drawn.
+        let output_body_visible = matches!(&self.command_output, Some(o) if o.has_body());
+        // The action list mounts when not hidden. With zero matches it
+        // still renders a one-row "No matching commands" placeholder.
+        let list_visible = !hide_list;
+        let empty_placeholder_visible = list_visible && actions.is_empty();
         HeightSnapshot {
-            action_row_count: if hide_list { 0 } else { actions.len() },
+            action_row_count: if list_visible { actions.len() } else { 0 },
+            empty_placeholder_visible,
             footer_visible,
             output_body_visible,
-            output_notice_visible,
         }
     }
 

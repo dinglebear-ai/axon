@@ -14,17 +14,17 @@
 ///
 /// Built from the live `Palette` inside `render()`. Plain numbers /
 /// booleans so the function is straightforward to test.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HeightSnapshot {
     /// Number of action rows that will be rendered (matches list visible).
     pub(crate) action_row_count: usize,
+    /// True when the action list is visible but has zero matches — the
+    /// "No matching commands" placeholder row is rendered in that case.
+    pub(crate) empty_placeholder_visible: bool,
     /// True when a selected action's footer slot is rendered.
     pub(crate) footer_visible: bool,
     /// True when the output card is rendered with a body (stdout/stderr).
     pub(crate) output_body_visible: bool,
-    /// True when the output card is rendered but has no body (notice /
-    /// empty-state "Working — waiting for axon...").
-    pub(crate) output_notice_visible: bool,
 }
 
 // ── per-component pixel budgets ───────────────────────────────────────────
@@ -60,16 +60,12 @@ const FOOTER_ROW: f32 = 52.0;
 /// less internal scroll runway, no visual difference).
 const OUTPUT_BODY: f32 = 320.0;
 
-/// Output card without body ("notice" style — empty-state pill or simple
-/// title line). Smaller than a full-body card.
-const OUTPUT_NOTICE: f32 = 96.0;
-
 /// Minimum window height — "prompt only" state. This is the launch height.
 pub(crate) const MIN_WINDOW_HEIGHT: f32 = PAGE_PADDING_V + CARD_BORDER_V + PROMPT_ROW;
 
 /// Maximum window height — even with everything visible, cap so the
-/// palette doesn't fill the whole display. Matches the original 560px
-/// fixed launch height as a reasonable upper bound for "everything open".
+/// palette doesn't fill the whole display. `720px` is the chosen upper
+/// bound for "everything open" on typical desktop displays.
 pub(crate) const MAX_WINDOW_HEIGHT: f32 = 720.0;
 
 /// Compute the target window height from a state snapshot.
@@ -78,6 +74,11 @@ pub(crate) fn compute_desired_height(snap: HeightSnapshot) -> f32 {
 
     if snap.action_row_count > 0 {
         h += ACTION_LIST_PADDING + (snap.action_row_count as f32) * ACTION_ROW;
+    } else if snap.empty_placeholder_visible {
+        // Even with zero matches, `render_action_rows` still renders the
+        // "No matching commands" placeholder row. Reserve one row of
+        // height so the placeholder is visible instead of clipped.
+        h += ACTION_LIST_PADDING + ACTION_ROW;
     }
 
     if snap.footer_visible {
@@ -86,8 +87,6 @@ pub(crate) fn compute_desired_height(snap: HeightSnapshot) -> f32 {
 
     if snap.output_body_visible {
         h += OUTPUT_BODY;
-    } else if snap.output_notice_visible {
-        h += OUTPUT_NOTICE;
     }
 
     h.min(MAX_WINDOW_HEIGHT)
