@@ -162,8 +162,8 @@ fn run_get(cfg: &Config) -> Result<(), Box<dyn Error>> {
             (value, "env")
         }
         Target::Toml => {
-            let path = svc::resolve_toml_path()
-                .ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
+            let path =
+                svc::resolve_toml_path().ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
             let document = svc::read_toml_document(&path)?;
             (svc::get_toml_entry(&document, key), "toml")
         }
@@ -247,8 +247,8 @@ fn run_unset(cfg: &Config) -> Result<(), Box<dyn Error>> {
             (path, removed)
         }
         Target::Toml => {
-            let path = svc::resolve_toml_path()
-                .ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
+            let path =
+                svc::resolve_toml_path().ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
             let mut document = svc::read_toml_document(&path)?;
             let removed = svc::unset_toml_entry(&mut document, key)?;
             if removed {
@@ -289,8 +289,8 @@ fn write_target(target: Target, key: &str, value: &str) -> Result<PathBuf, Box<d
             Ok(path)
         }
         Target::Toml => {
-            let path = svc::resolve_toml_path()
-                .ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
+            let path =
+                svc::resolve_toml_path().ok_or("HOME unset; cannot resolve ~/.axon/config.toml")?;
             let mut document = svc::read_toml_document(&path)?;
             svc::set_toml_entry(&mut document, key, value)?;
             svc::write_toml_document(&path, &document)?;
@@ -316,9 +316,9 @@ fn detect_target(key: &str, force_env: bool, force_toml: bool) -> Result<Target,
             .all(|c| c == '_' || c.is_ascii_uppercase() || c.is_ascii_digit())
         && !key.contains('.');
     let looks_toml = key.contains('.')
-        && key
-            .chars()
-            .all(|c| c == '.' || c == '-' || c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit());
+        && key.chars().all(|c| {
+            c == '.' || c == '-' || c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit()
+        });
     match (looks_env, looks_toml) {
         (true, false) => Ok(Target::Env),
         (false, true) => Ok(Target::Toml),

@@ -66,8 +66,14 @@ fn toml_set_get_unset_nested() {
     );
 
     let flat = flatten_toml(&doc);
-    assert_eq!(flat.get("ask.cache.enabled").map(String::as_str), Some("true"));
-    assert_eq!(flat.get("search.collection").map(String::as_str), Some("cortex"));
+    assert_eq!(
+        flat.get("ask.cache.enabled").map(String::as_str),
+        Some("true")
+    );
+    assert_eq!(
+        flat.get("search.collection").map(String::as_str),
+        Some("cortex")
+    );
 
     assert!(unset_toml_entry(&mut doc, "ask.cache.ttl-secs").unwrap());
     assert!(get_toml_entry(&doc, "ask.cache.ttl-secs").is_none());

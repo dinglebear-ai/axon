@@ -39,10 +39,10 @@ pub fn read_env_entries(path: &Path) -> io::Result<BTreeMap<String, String>> {
 }
 
 pub fn write_env_entries(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     let mut out = String::from("# Axon runtime env — managed by `axon config`.\n");
     for (key, value) in env {
@@ -94,10 +94,10 @@ pub fn read_toml_document(path: &Path) -> io::Result<toml_edit::DocumentMut> {
 }
 
 pub fn write_toml_document(path: &Path, document: &toml_edit::DocumentMut) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     write_private_file_atomic(path, &document.to_string())
 }
