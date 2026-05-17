@@ -319,8 +319,7 @@ password under `~/.axon/panel-password`. MCP and `/v1/actions` use
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUST_LOG` | `info` | Rust tracing filter |
-| `AXON_LOG_DIR` | `$AXON_DATA_DIR/logs` (default `~/.axon/logs`) | Directory holding the active log + rotated archives |
-| `AXON_LOG_FILE` | `axon.log` | Filename of the active log (joined under `AXON_LOG_DIR`); rotated archives are `<file>.1`, `<file>.2`, … |
+| `AXON_LOG_PATH` | `$AXON_DATA_DIR/logs/axon.log` (default `~/.axon/logs/axon.log`) | Full path to the active log file. Rotated archives (`<file>.1`, `<file>.2`, …) live in the same directory. |
 | `AXON_LOG_MAX_BYTES` | `10485760` | Size threshold (bytes) that triggers rotation. `0` disables rotation. Env-only — log rotation initialises before `config.toml` is parsed. |
 | `AXON_LOG_MAX_FILES` | `3` | Number of rotated archives to retain. `0` truncates without keeping any archive. |
 

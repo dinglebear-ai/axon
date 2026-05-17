@@ -22,6 +22,15 @@ x-common-service: &common-service
       max-file: "3"
       compress: "true"
 
+x-gpu-service: &gpu-service
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
 services:
   axon:
     <<: *common-service
@@ -32,14 +41,19 @@ services:
       - path: ${AXON_HOME:-${HOME}/.axon}/.env
         required: false
     environment:
-      # Container-internal service DNS (overrides host-side values from ~/.axon/.env).
+      # Host-bleed guards: container user is `axon` — override host paths.
+      # The shared ~/.axon/.env has these set to the host's $HOME, which
+      # doesn't exist inside the container. env_file values override Dockerfile
+      # ENV, so we must re-override here.
+      AXON_HOME: /home/axon/.axon
+      AXON_DATA_DIR: /home/axon/.axon
+      # Pin service URLs to container-internal DNS so the axon container always
+      # reaches its siblings regardless of what host-side URLs are in ~/.axon/.env.
+      # Without these overrides the container would inherit whatever loopback or
+      # external addresses the host ~/.axon/.env uses and fail to connect.
       QDRANT_URL: http://axon-qdrant:6333
       TEI_URL: http://axon-tei:80
       AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
-      # Bind to all interfaces inside the container; host port-publishing is
-      # how external traffic reaches it. Non-loopback bind requires a token.
-      AXON_MCP_HTTP_HOST: 0.0.0.0
-      AXON_MCP_HTTP_PORT: "8001"
       # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
       # set it for host CLI commands, but the server container must not inherit
       # it or container-local maintenance commands will route back through HTTP.
@@ -48,15 +62,7 @@ services:
       # into the container and change config/env loading paths.
       AXON_ENV_FILE: ""
       AXON_CONFIG_PATH: ""
-      # ~/.axon canonical layout inside the container.
-      HOME: /home/axon
-      AXON_HOME: /home/axon/.axon
-      AXON_DATA_DIR: /home/axon/.axon
-      AXON_IN_CONTAINER: "1"
       TZ: ${TZ:-America/New_York}
-      # Force ANSI colors in Docker (stderr is a pipe, not a TTY).
-      # Override with NO_COLOR=1 in ~/.axon/.env to disable.
-      CLICOLOR_FORCE: "${AXON_LOG_COLOR:-1}"
     volumes:
       # Persist config + secrets + jobs.db + output + logs + artifacts on the host.
       - ${AXON_HOME:-${HOME}/.axon}:/home/axon/.axon
@@ -118,9 +124,14 @@ services:
       start_period: 120s
 
   axon-tei:
-    <<: *common-service
+    <<: [*common-service, *gpu-service]
     image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
     container_name: axon-tei
+    environment:
+      # Container-internal path — not suitable for shared .env.
+      HF_HUB_CACHE: /data/cache
+      # TEI-specific filter — would suppress axon's logs if in shared .env.
+      RUST_LOG: text_embeddings_router=info
     ports:
       - "${TEI_HTTP_PORT:-52000}:80"
     volumes:
@@ -143,26 +154,6 @@ services:
       - --tokenization-workers
       - "${TEI_TOKENIZATION_WORKERS:-8}"
       - --auto-truncate
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
-      NVIDIA_REQUIRE_CUDA: "cuda>=12.2"
-      CUDA_VISIBLE_DEVICES: "${CUDA_VISIBLE_DEVICES:-0}"
-      PYTORCH_CUDA_ALLOC_CONF: max_split_size_mb:1024
-      OMP_NUM_THREADS: 8
-      MKL_NUM_THREADS: 8
-      TOKENIZERS_PARALLELISM: "true"
-      CUDA_CACHE_DISABLE: 0
-      RUST_LOG: text_embeddings_router=info
-      HF_HUB_CACHE: /data/cache
-      HF_HUB_ENABLE_HF_TRANSFER: 1
-      HF_TOKEN: ${HF_TOKEN:-}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 30s
@@ -174,6 +165,10 @@ services:
     # headless_browser manager + chrome-headless-shell
     # Port 6000: management API (GET / → "healthy", /fork, /shutdown)
     # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
+    # Security: no built-in auth on CDP/headless_browser. Keep external exposure
+    # controlled at the firewall, reverse proxy, or tunnel layer. Do not add
+    # host-qualified port bindings; pre-commit rejects them.
+    <<: *common-service
     container_name: axon-chrome
     build:
       context: ./config
@@ -183,23 +178,8 @@ services:
       - "9222:9222"  # CDP proxy
       - "9223:9223"  # raw Chrome DevTools
       - "6000:6000"  # management API
-    # Security: the upstream `headless_browser` crate and Chrome DevTools
-    # Protocol have no built-in authentication. Keep external exposure
-    # controlled at the firewall, reverse proxy, or tunnel layer. Do not add
-    # host-qualified port bindings here; pre-commit rejects them.
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
-    networks:
-      - axon
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        compress: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsSL --max-time 4 http://127.0.0.1:9222/json/version > /dev/null"]
       interval: 10s

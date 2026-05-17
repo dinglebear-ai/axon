@@ -28,7 +28,7 @@ async fn enqueue_and_claim_crawl_job() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -87,7 +87,7 @@ async fn claim_assigns_attempt_metadata_and_reclaim_creates_new_attempt() {
             input: "docs".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -127,7 +127,7 @@ async fn mark_completed_updates_status() {
             input: "test".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -155,7 +155,7 @@ async fn stale_attempt_writes_are_rejected_after_reclaim_and_retry() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -243,7 +243,7 @@ async fn update_result_json_persists_progress_without_changing_status() {
             source_type: "github".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -288,7 +288,7 @@ async fn update_result_json_skips_non_running_rows() {
             input: "test".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -321,7 +321,7 @@ async fn mark_failed_sets_error_text() {
             url: "https://fail.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -351,7 +351,7 @@ async fn mark_completed_preserves_existing_result_when_none_provided() {
             input: "test".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -386,7 +386,7 @@ async fn cancel_row_sets_finished_at() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -413,7 +413,7 @@ async fn cancel_row_returns_false_for_terminal_jobs() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -440,7 +440,7 @@ async fn mark_completed_succeeds_when_job_already_canceled() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -546,7 +546,7 @@ async fn embed_queue_cap_zero_disables_limit() {
                 input: format!("item-{i}"),
                 config_json: "{}".into(),
             },
-            &Config::default_lite(),
+            &Config::default_minimal(),
         )
         .await
         .unwrap_or_else(|e| panic!("enqueue {i} failed: {e}"));
@@ -566,7 +566,7 @@ async fn embed_queue_cap_allows_after_drain() {
             input: "first".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("first enqueue");
@@ -605,7 +605,7 @@ async fn concurrent_claims_only_return_one_job() {
             url: "https://example.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");
@@ -684,7 +684,7 @@ async fn enqueue_retries_when_sqlite_write_lock_is_temporarily_held() {
             url: "https://locked.example".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue should wait/retry until the write lock clears");
@@ -710,7 +710,7 @@ async fn concurrent_enqueue_respects_pending_cap_atomically() {
         .into_owned();
     let pool_a = Arc::new(open_sqlite_pool(&path).await.expect("pool a"));
     let pool_b = Arc::new(open_sqlite_pool(&path).await.expect("pool b"));
-    let mut cfg = Config::default_lite();
+    let mut cfg = Config::default_minimal();
     cfg.max_pending_crawl_jobs = 1;
 
     let cfg_a = cfg.clone();
@@ -781,7 +781,7 @@ async fn touch_heartbeat_advances_updated_at_only_on_running_rows() {
             input: "test".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .expect("enqueue");

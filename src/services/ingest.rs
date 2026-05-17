@@ -52,9 +52,6 @@ pub async fn ingest_start_with_context(
 ) -> Result<JobStartOutcome<IngestStartResult>, Box<dyn Error>> {
     // Always route through service_context.jobs.enqueue() so that notify()
     // fires immediately and workers wake without 0-5 second polling delay.
-    // The previous `if !cfg.lite_mode` branch called start_ingest_job() which
-    // opened a fresh SQLite pool per call (re-running migrations) and never
-    // called notify().
     let source_type = source_type_label(&source).to_string();
     let target = target_label(&source);
     let config_json = ingest_config_json(cfg, &source)?;

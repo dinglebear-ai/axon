@@ -4,7 +4,7 @@
 //!   * `command_dispatch`  — translates `CliCommand` → `(CommandKind, positional, accumulators)`.
 //!   * `config_literal`    — builds the populated `Config` literal.
 //!   * `post_init`         — applies output-path validation and profile defaults.
-//!   * `tests`             — split into `lite_mode` + `priority_chain/{ask,tei,workers_search}`.
+//!   * `tests`             — split into `env_url_required` + `priority_chain/{ask,tei,workers_search}`.
 
 mod command_dispatch;
 mod config_literal;
@@ -16,9 +16,7 @@ pub(in crate::core::config::parse) mod tests;
 use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};
 use super::super::types::{CommandKind, Config};
 use super::excludes;
-use super::helpers::{
-    default_sqlite_path, env_bool, parse_viewport, read_env, validate_collection_name,
-};
+use super::helpers::{default_sqlite_path, parse_viewport, read_env, validate_collection_name};
 // AXON_MCP_TRANSPORT is documented as a known knob in docs/CONFIG.md and is referenced
 // inside `config_literal::build` (via `resolve_mcp_transport`) so the
 // `cargo xtask check-mcp-http` grep keeps finding the canonical knob name.
@@ -26,12 +24,13 @@ use super::toml_config::load_toml_config;
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
-    into_config_with_sources(cli, false)
+    into_config_with_sources(cli, false, false)
 }
 
 pub(super) fn into_config_with_sources(
     cli: Cli,
     output_dir_was_explicit: bool,
+    collection_was_explicit: bool,
 ) -> Result<Config, String> {
     let mut global = cli.global;
     let fetch_retries_was_set = global.fetch_retries.is_some();
@@ -60,14 +59,21 @@ pub(super) fn into_config_with_sources(
     // Missing file = silent. Malformed file = hard fail with line number.
     let toml = load_toml_config()?;
 
-    // Resolve --collection with priority CLI > env > TOML > "cortex".
+    // Resolve --collection with priority CLI > env > TOML > "axon".
+    // `collection_was_explicit` (from clap's value_source) is the single
+    // source of truth for "the user passed --collection on the CLI". The old
+    // sentinel `global.collection != "axon"` also caught env-sourced non-default
+    // values, causing them to bypass read_env trimming/filtering — that
+    // could surface avoidable collection-name validation failures for values
+    // like `AXON_COLLECTION=" axon "` (trailing whitespace).
     // Validate the final resolved name regardless of source: it gets
     // interpolated into Qdrant URL paths via format!() with no
     // percent-encoding (CWE-22 — bd axon_rust-d71.6 / H2).
     // Use read_env (trims + filters empty) so a stray `AXON_COLLECTION=""`
     // or `AXON_COLLECTION="   "` falls through to TOML / default rather
     // than failing collection-name validation with an empty name.
-    let collection = if global.collection != "cortex" {
+    let cli_explicit = collection_was_explicit;
+    let collection = if cli_explicit {
         global.collection.clone()
     } else {
         read_env("AXON_COLLECTION")
@@ -75,8 +81,6 @@ pub(super) fn into_config_with_sources(
             .unwrap_or_else(|| global.collection.clone())
     };
     validate_collection_name(&collection)?;
-
-    let lite_mode = global.lite || env_bool("AXON_LITE", false);
 
     let sqlite_path = global
         .sqlite_path
@@ -107,7 +111,6 @@ pub(super) fn into_config_with_sources(
         toml: &toml,
         dispatched: &dispatched,
         collection,
-        lite_mode,
         sqlite_path,
         crawl_concurrency_limit,
         backfill_concurrency_limit,

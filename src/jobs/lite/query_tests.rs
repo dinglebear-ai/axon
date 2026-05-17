@@ -13,7 +13,7 @@ async fn list_jobs_returns_all_entries() {
             url: "https://a.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .unwrap();
@@ -23,7 +23,7 @@ async fn list_jobs_returns_all_entries() {
             url: "https://b.com".into(),
             config_json: "{}".into(),
         },
-        &Config::default_lite(),
+        &Config::default_minimal(),
     )
     .await
     .unwrap();

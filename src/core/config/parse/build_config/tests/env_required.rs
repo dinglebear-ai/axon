@@ -1,30 +1,9 @@
-//! AXON_LITE / MCP origin / URL-required env tests.
+//! MCP origin / URL-required env tests.
 //! Test BODIES unchanged from the previous flat `mod tests` (bead 2j9.6).
 
 #![allow(clippy::needless_pass_by_value)]
 
 use super::*;
-
-#[allow(unsafe_code)]
-#[test]
-fn into_config_reads_axon_lite_env_var() {
-    let _guard = ENV_LOCK.lock().unwrap();
-    unsafe {
-        env::set_var("AXON_LITE", "1");
-        env::set_var("QDRANT_URL", "http://localhost:53333");
-        env::set_var("TEI_URL", "http://localhost:52000");
-    }
-
-    let cli = Cli::parse_from(["axon", "scrape", "https://example.com"]);
-    let cfg = into_config(cli).expect("lite mode should not require PG/Redis/AMQP");
-    assert!(cfg.lite_mode);
-
-    unsafe {
-        env::remove_var("AXON_LITE");
-        env::remove_var("QDRANT_URL");
-        env::remove_var("TEI_URL");
-    }
-}
 
 #[allow(unsafe_code)]
 #[test]
@@ -96,7 +75,7 @@ fn into_config_migrates_gemini_model_env_without_reusing_openai_names() {
             env::set_var("AXON_HEADLESS_GEMINI_HOME", "/tmp/gemini-home");
             env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "3");
             env::set_var("AXON_LLM_COMPLETION_TIMEOUT_SECS", "42");
-            let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+            let cfg = into_config_via_args(&["status"]).expect("status config");
             assert_eq!(cfg.openai_model, "gpt-4o-mini");
             assert_eq!(cfg.headless_gemini_model, "");
             assert_eq!(cfg.headless_gemini_cmd, "/usr/local/bin/gemini");
@@ -117,7 +96,7 @@ fn into_config_prefers_explicit_gemini_model_over_compatible_openai_model() {
     with_env_saved(&["OPENAI_MODEL", "AXON_HEADLESS_GEMINI_MODEL"], || unsafe {
         env::set_var("OPENAI_MODEL", "gemini-legacy");
         env::set_var("AXON_HEADLESS_GEMINI_MODEL", "gemini-explicit");
-        let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+        let cfg = into_config_via_args(&["status"]).expect("status config");
         assert_eq!(cfg.headless_gemini_model, "gemini-explicit");
     });
 }
@@ -130,7 +109,7 @@ fn into_config_accepts_deprecated_ask_backend_toml() {
     write!(f, "[ask]\nbackend = \"headless\"\nchunk-limit = 8\n").unwrap();
     with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
-        let cfg = into_config(cli_with_services(&["status"])).expect("status config");
+        let cfg = into_config_via_args(&["status"]).expect("status config");
         assert_eq!(cfg.ask_chunk_limit, 8);
     });
 }
@@ -141,7 +120,7 @@ fn into_config_rejects_invalid_llm_runtime_env() {
     let _guard = ENV_LOCK.lock().unwrap();
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::set_var("AXON_LLM_COMPLETION_CONCURRENCY", "abc");
-        let err = into_config(cli_with_services(&["status"])).unwrap_err();
+        let err = into_config_via_args(&["status"]).unwrap_err();
         assert!(err.contains("AXON_LLM_COMPLETION_CONCURRENCY"));
     });
 }

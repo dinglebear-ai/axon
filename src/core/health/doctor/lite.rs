@@ -72,7 +72,6 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
 
     Ok(serde_json::json!({
         "observed_at_utc": chrono::Utc::now().to_rfc3339(),
-        "lite_mode": true,
         "services": Value::Object(services),
         "pipelines": {
             "crawl": true,

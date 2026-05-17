@@ -70,11 +70,7 @@ enum StackRuntimeMode {
 
 impl StackRuntimeMode {
     fn detect() -> Self {
-        if std::env::var("AXON_IN_CONTAINER")
-            .ok()
-            .is_some_and(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
-            || std::path::Path::new("/.dockerenv").exists()
-        {
+        if crate::core::config::parse::docker::running_in_container() {
             Self::Container
         } else {
             Self::Host
