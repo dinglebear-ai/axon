@@ -44,7 +44,10 @@ fn build_application() -> Application {
     ))
 }
 
-actions!(palette, [Submit, MoveDown, MoveUp, TabComplete, ClearOutput]);
+actions!(
+    palette,
+    [Submit, MoveDown, MoveUp, TabComplete, ClearOutput]
+);
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

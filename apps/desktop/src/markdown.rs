@@ -25,10 +25,17 @@ struct Span {
 // ── block types ───────────────────────────────────────────────────────────────
 
 enum Block {
-    Heading { level: HeadingLevel, spans: Vec<Span> },
+    Heading {
+        level: HeadingLevel,
+        spans: Vec<Span>,
+    },
     Paragraph(Vec<Span>),
     Code(String),
-    ListItem { ordered: bool, number: u64, spans: Vec<Span> },
+    ListItem {
+        ordered: bool,
+        number: u64,
+        spans: Vec<Span>,
+    },
     Rule,
 }
 
@@ -43,6 +50,16 @@ pub(crate) fn render_markdown(text: &str) -> impl IntoElement {
 }
 
 // ── parser ────────────────────────────────────────────────────────────────────
+
+fn make_span(text: String, bold: bool, italic: bool, code: bool) -> Span {
+    Span {
+        text,
+        bold,
+        italic,
+        code,
+        link_url: None,
+    }
+}
 
 fn parse(input: &str) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
@@ -143,24 +160,18 @@ fn parse(input: &str) -> Vec<Block> {
             Event::Text(text) => {
                 let t = text.into_string();
                 if !t.is_empty() {
-                    spans.push(Span { text: t, bold, italic, code: false, link_url: None });
+                    spans.push(make_span(t, bold, italic, false));
                 }
             }
             Event::Code(text) => {
                 let t = text.into_string();
                 if !t.is_empty() {
-                    spans.push(Span { text: t, bold, italic, code: true, link_url: None });
+                    spans.push(make_span(t, bold, italic, true));
                 }
             }
             Event::SoftBreak => {
                 if link_stack.is_empty() {
-                    spans.push(Span {
-                        text: " ".into(),
-                        bold: false,
-                        italic: false,
-                        code: false,
-                        link_url: None,
-                    });
+                    spans.push(make_span(" ".into(), false, false, false));
                 }
             }
             Event::HardBreak => {
@@ -189,7 +200,11 @@ fn flush_spans(
     }
     if in_item {
         let (ordered, number) = list_info(list_stack);
-        blocks.push(Block::ListItem { ordered, number, spans: s });
+        blocks.push(Block::ListItem {
+            ordered,
+            number,
+            spans: s,
+        });
     } else {
         blocks.push(Block::Paragraph(s));
     }
@@ -209,9 +224,11 @@ fn render_block(block: Block) -> impl IntoElement {
         Block::Heading { level, spans } => render_heading(level, spans).into_any_element(),
         Block::Paragraph(spans) => render_para(spans).into_any_element(),
         Block::Code(text) => render_code_block(text).into_any_element(),
-        Block::ListItem { ordered, number, spans } => {
-            render_list_item(ordered, number, spans).into_any_element()
-        }
+        Block::ListItem {
+            ordered,
+            number,
+            spans,
+        } => render_list_item(ordered, number, spans).into_any_element(),
         Block::Rule => render_rule().into_any_element(),
     }
 }
@@ -290,7 +307,11 @@ fn render_list_item(ordered: bool, number: u64, spans: Vec<Span>) -> impl IntoEl
 }
 
 fn render_rule() -> impl IntoElement {
-    div().h(px(1.0)).w_full().my_1().bg(rgb(AURORA_BORDER_DEFAULT))
+    div()
+        .h(px(1.0))
+        .w_full()
+        .my_1()
+        .bg(rgb(AURORA_BORDER_DEFAULT))
 }
 
 fn render_spans(spans: Vec<Span>) -> impl IntoElement {
@@ -320,7 +341,11 @@ fn render_span(span: Span) -> impl IntoElement {
             .into_any_element()
     } else {
         div()
-            .font_weight(if span.bold { FontWeight(700.0) } else { FontWeight(480.0) })
+            .font_weight(if span.bold {
+                FontWeight(700.0)
+            } else {
+                FontWeight(480.0)
+            })
             .when(span.italic, |el| el.italic())
             .when(span.code, |el| {
                 el.font_family(AURORA_FONT_MONO)
