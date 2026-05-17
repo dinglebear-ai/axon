@@ -279,8 +279,19 @@ impl Palette {
         };
 
         // Palette-internal sentinel: "Reset ask conversation" never shells
-        // out. Handle inline and return.
+        // out. Handle inline and return — but only when no command is
+        // currently running, otherwise an in-flight `ask` that finishes
+        // after the reset would recreate the conversation we just cleared.
         if action.subcommand == "ask-reset" {
+            if self.running.is_some() {
+                self.command_output = Some(CommandOutput::notice(
+                    OutputKind::Warning,
+                    "Command already running",
+                    "Wait for the current axon command to finish.",
+                ));
+                cx.notify();
+                return;
+            }
             self.handle_reset_conversation(cx);
             return;
         }
