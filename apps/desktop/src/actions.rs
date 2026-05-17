@@ -79,6 +79,17 @@ pub(crate) const ACTIONS: &[CommandAction] = &[
         example: "ingest https://github.com/zed-industries/zed",
     },
     CommandAction {
+        label: "Reset ask conversation",
+        // Sentinel — handled internally in `Palette::submit`, never shelled
+        // out. We still give it an `ArgMode` so the standard "no argument
+        // required" path applies.
+        subcommand: "ask-reset",
+        arg_mode: ArgMode::None,
+        aliases: &["ask-reset", "reset-ask", "new-chat", "fresh-ask"],
+        description: "Forget the live ask conversation so the next question starts fresh.",
+        example: "ask-reset",
+    },
+    CommandAction {
         label: "Job status",
         subcommand: "status",
         arg_mode: ArgMode::None,

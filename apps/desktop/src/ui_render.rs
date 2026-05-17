@@ -122,6 +122,7 @@ impl Render for Palette {
                             action,
                             command_output.as_ref(),
                             self.running.as_ref(),
+                            self.conversation_hint(),
                         ))
                     })
                     .when_some(command_output.clone(), |el, output| {
