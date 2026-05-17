@@ -150,13 +150,20 @@ CRAWL_FIELD_DESCRIPTIONS: dict[str, tuple[str, str]] = {
 }
 
 # Runtime env vars -- not in schema.rs, hardcoded here.
-RUNTIME_ENV_VARS: list[str] = [
+# Each entry is either a string (bare var name) or a (name, description) tuple.
+RUNTIME_ENV_VARS: list = [
     "QDRANT_URL",
     "TEI_URL",
+    ("AXON_HEADLESS_GEMINI_CMD", "path to Gemini CLI (default: `gemini`)"),
+    ("AXON_HEADLESS_GEMINI_MODEL", "Gemini model override (optional)"),
+    "TAVILY_API_KEY",
+]
+
+# Compatibility shims — still read at startup but no longer drive behavior.
+RUNTIME_ENV_VARS_DEPRECATED: list[str] = [
     "OPENAI_BASE_URL",
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
-    "TAVILY_API_KEY",
 ]
 
 MCP_TRANSPORT_ENV_VARS: list[str] = [

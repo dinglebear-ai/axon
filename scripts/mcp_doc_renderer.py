@@ -13,6 +13,7 @@ from mcp_schema_models import (
     MCP_AUTH_ENV_VARS,
     MCP_TRANSPORT_ENV_VARS,
     RUNTIME_ENV_VARS,
+    RUNTIME_ENV_VARS_DEPRECATED,
     STRUCT_TO_ACTION,
     EnumDef,
     FieldDef,
@@ -322,9 +323,19 @@ def _emit_mcp_resources(emit) -> None:
 def _emit_runtime_dependencies(emit) -> None:
     emit("## Runtime Dependencies")
     emit("Server reads existing Axon stack vars:")
-    for var in RUNTIME_ENV_VARS:
-        emit(f"- `{var}`")
+    for entry in RUNTIME_ENV_VARS:
+        if isinstance(entry, tuple):
+            name, desc = entry
+            emit(f"- `{name}` — {desc}")
+        else:
+            emit(f"- `{entry}`")
     emit()
+    if RUNTIME_ENV_VARS_DEPRECATED:
+        emit("> **Deprecated (compat shims — emit a warning at startup if set):**")
+        joined = ", ".join(f"`{v}`" for v in RUNTIME_ENV_VARS_DEPRECATED)
+        emit(f"> {joined} — these are no longer read;")
+        emit("> LLM synthesis runs through the Gemini headless path exclusively.")
+        emit()
     emit("MCP transport env vars:")
     for var in MCP_TRANSPORT_ENV_VARS:
         emit(f"- `{var}`")
