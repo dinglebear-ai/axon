@@ -358,10 +358,17 @@ fn env_example_keys() -> BTreeSet<String> {
 #[test]
 fn env_example_only_contains_production_runtime_keys() {
     let allowed: BTreeSet<&str> = [
+        // Data + service URLs
         "AXON_DATA_DIR",
+        "AXON_HOME",
+        "AXON_COLLECTION",
         "AXON_SERVER_URL",
-        "AXON_IMAGE",
-        "AXON_MCP_HTTP_PUBLISH",
+        "AXON_CHROME_REMOTE_URL",
+        "QDRANT_URL",
+        "TEI_URL",
+        // MCP HTTP server
+        "AXON_MCP_HTTP_HOST",
+        "AXON_MCP_HTTP_PORT",
         "AXON_MCP_HTTP_TOKEN",
         "AXON_MCP_AUTH_MODE",
         "AXON_MCP_PUBLIC_URL",
@@ -370,23 +377,38 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_MCP_AUTH_ADMIN_EMAIL",
         "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
         "AXON_MCP_ALLOWED_ORIGINS",
-        "QDRANT_URL",
-        "TEI_URL",
-        "TEI_HTTP_PORT",
-        "TEI_EMBEDDING_MODEL",
-        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
-        "NVIDIA_VISIBLE_DEVICES",
-        "CUDA_VISIBLE_DEVICES",
-        "AXON_CHROME_REMOTE_URL",
-        "GEMINI_HOME",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "HF_TOKEN",
+        // Web panel
+        "AXON_WEB_ALLOWED_ORIGINS",
+        "AXON_WEB_API_TOKEN",
+        // Ingest credentials
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",
         "REDDIT_CLIENT_ID",
         "REDDIT_CLIENT_SECRET",
+        "HF_TOKEN",
+        // Gemini headless LLM
+        "GEMINI_API_KEY",
+        "GEMINI_HOME",
+        "AXON_HEADLESS_GEMINI_HOME",
+        "AXON_HEADLESS_GEMINI_CMD",
+        "AXON_HEADLESS_GEMINI_MODEL",
+        // Logging
+        "AXON_LOG_PATH",
+        // Compose interpolation (Docker only)
+        "AXON_IMAGE",
+        "AXON_MCP_HTTP_PUBLISH",
+        "TEI_EMBEDDING_MODEL",
+        "TEI_HTTP_PORT",
+        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
+        "NVIDIA_VISIBLE_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+        "NVIDIA_REQUIRE_CUDA",
+        "PYTORCH_CUDA_ALLOC_CONF",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "TOKENIZERS_PARALLELISM",
+        "CUDA_CACHE_DISABLE",
+        "HF_HUB_ENABLE_HF_TRANSFER",
     ]
     .into_iter()
     .collect();
