@@ -72,11 +72,23 @@ pub(crate) struct Palette {
     // visible after submit clears the query (otherwise the user loses the
     // ↵/esc affordances right when they'd want to act on the output).
     last_action: Option<CommandAction>,
+    // Active follow-up conversation seeded by the most recent `ask`. The
+    // session name is what we pass to `axon ask --session <name>`. Once
+    // set, subsequent submits inject `--follow-up` so the answer is
+    // anchored to prior turns. Esc exits the conversation before any
+    // other dismiss behavior.
+    conversation: Option<Conversation>,
 }
 
 struct RunningCommand {
     id: u64,
     subcommand: &'static str,
+}
+
+#[derive(Clone)]
+struct Conversation {
+    session: String,
+    turns: usize,
 }
 
 struct CommandResult {
@@ -105,6 +117,7 @@ impl Palette {
             health_check_id: 0,
             last_window_height: 108.0, // matches main.rs initial window size
             last_action: None,
+            conversation: None,
         };
         palette.spawn_health_check(cx);
         palette
@@ -229,7 +242,7 @@ impl Palette {
             return;
         }
 
-        let args = match build_axon_args(action, &arg) {
+        let mut args = match build_axon_args(action, &arg) {
             Ok(args) => args,
             Err(error) => {
                 self.command_output = Some(CommandOutput::notice(
@@ -241,6 +254,28 @@ impl Palette {
                 return;
             }
         };
+        // Conversation mode: every `ask` from the palette participates in a
+        // single follow-up session. First submit seeds the session name and
+        // runs without `--follow-up` (creates the session). Subsequent
+        // submits inject `--follow-up` so the LLM sees prior turns.
+        if action.subcommand == "ask" {
+            let conv = self.conversation.get_or_insert_with(|| Conversation {
+                session: new_conversation_session(),
+                turns: 0,
+            });
+            let is_first_turn = conv.turns == 0;
+            // argv at this point is ["ask", "<question>"]; flags slot in
+            // between the subcommand and the positional question.
+            let session_flag = conv.session.clone();
+            let mut insert_at = 1;
+            if !is_first_turn {
+                args.insert(insert_at, "--follow-up".to_string());
+                insert_at += 1;
+            }
+            args.insert(insert_at, "--session".to_string());
+            args.insert(insert_at + 1, session_flag);
+            conv.turns += 1;
+        }
         let command_line = display_command_line(&args);
         let run_id = self.next_run_id;
         self.next_run_id += 1;
@@ -285,7 +320,14 @@ impl Palette {
         })
         .detach();
 
-        self.locked_command = None;
+        // After a successful submit, the palette resets. In conversation
+        // mode, however, we keep the palette locked to `ask` so the next
+        // keystrokes feel like a continuation, not a fresh command search.
+        if self.conversation.is_some() {
+            self.locked_command = Some(action);
+        } else {
+            self.locked_command = None;
+        }
         self.query.clear();
         self.selected = 0;
         cx.notify();
@@ -338,8 +380,16 @@ impl Palette {
                 }
             }
             "escape" => {
-                if self.locked_command.is_some() {
-                    // Unlock but preserve typed argument so user can reselect a command.
+                // Esc unwinds one level at a time:
+                //   1. exit follow-up conversation (preserves output)
+                //   2. unlock command lock
+                //   3. dismiss any rendered command output
+                //   4. clear the typed query
+                //   5. hide the window
+                if self.conversation.is_some() {
+                    self.conversation = None;
+                    self.locked_command = None;
+                } else if self.locked_command.is_some() {
                     self.locked_command = None;
                 } else if self.command_output.is_some() {
                     self.command_output = None;
@@ -407,8 +457,11 @@ impl Render for Palette {
             window,
         );
 
+        let conversation_turns = self.conversation.as_ref().map(|c| c.turns);
         let prompt: SharedString = if self.query.is_empty() {
-            if let Some(action) = locked {
+            if conversation_turns.is_some() {
+                SharedString::from("continue the conversation…")
+            } else if let Some(action) = locked {
                 let hint = action
                     .example
                     .splitn(2, ' ')
@@ -466,7 +519,8 @@ impl Render for Palette {
                     .shadow_2xl()
                     .child(render_prompt_row(
                         query_is_empty,
-                        locked,
+                        locked.filter(|_| conversation_turns.is_none()),
+                        conversation_turns,
                         prompt,
                         status_dot,
                     ))
@@ -505,4 +559,16 @@ impl Render for Palette {
                     }),
             )
     }
+}
+
+// Build a short, sortable session name local to this palette process.
+// Anchored at the unix epoch so two follow-ups started in the same
+// session never collide.
+fn new_conversation_session() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("palette-{secs}")
 }
