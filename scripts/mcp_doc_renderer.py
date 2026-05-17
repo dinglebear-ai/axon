@@ -333,8 +333,9 @@ def _emit_runtime_dependencies(emit) -> None:
     if RUNTIME_ENV_VARS_DEPRECATED:
         emit("> **Deprecated (compat shims — emit a warning at startup if set):**")
         joined = ", ".join(f"`{v}`" for v in RUNTIME_ENV_VARS_DEPRECATED)
-        emit(f"> {joined} — these are no longer read;")
-        emit("> LLM synthesis runs through the Gemini headless path exclusively.")
+        emit(f"> {joined} — still read at startup as compatibility shims;")
+        emit("> setting them emits a startup warning. LLM synthesis runs through")
+        emit("> the Gemini headless path exclusively.")
         emit()
     emit("MCP transport env vars:")
     for var in MCP_TRANSPORT_ENV_VARS:

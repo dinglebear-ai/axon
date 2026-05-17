@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 const USAGE_LINES: &[&str] = &[
     "axon config list [--env] [--toml] [--reveal]",
-    "axon config get <key> [--reveal]",
+    "axon config get <key> [--env|--toml] [--reveal]",
     "axon config set <key> <value> [--env|--toml]",
     "axon config unset <key> [--env|--toml]",
     "axon config path",
