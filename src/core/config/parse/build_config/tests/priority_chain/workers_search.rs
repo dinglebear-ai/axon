@@ -15,9 +15,7 @@ fn toml_workers_ingest_lanes_wins_over_default() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_INGEST_LANES");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ingest_lanes;
+        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
     });
     assert_eq!(got, 7, "TOML ingest-lanes=7 should override default (2)");
 }
@@ -33,9 +31,7 @@ fn toml_workers_ingest_lanes_clamps_lower_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_INGEST_LANES");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ingest_lanes;
+        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
     });
     assert_eq!(got, 1);
 }
@@ -51,9 +47,7 @@ fn toml_workers_ingest_lanes_clamps_upper_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_INGEST_LANES");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ingest_lanes;
+        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
     });
     assert_eq!(got, 16);
 }
@@ -69,9 +63,7 @@ fn env_wins_over_toml_for_workers_ingest_lanes() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_INGEST_LANES", "12");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ingest_lanes;
+        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
     });
     assert_eq!(got, 12, "env AXON_INGEST_LANES=12 should override TOML=7");
 }
@@ -87,9 +79,7 @@ fn toml_workers_embed_lanes_wins_over_default() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_EMBED_LANES");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .embed_lanes;
+        got = into_config_via_args(&["status"]).unwrap().embed_lanes;
     });
     assert_eq!(got, 6);
 }
@@ -105,9 +95,7 @@ fn env_wins_over_toml_for_workers_embed_lanes() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_EMBED_LANES", "9");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .embed_lanes;
+        got = into_config_via_args(&["status"]).unwrap().embed_lanes;
     });
     assert_eq!(got, 9);
 }
@@ -126,13 +114,9 @@ fn toml_workers_embed_lanes_clamps_bounds() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", low.path());
         env::remove_var("AXON_EMBED_LANES");
-        got_low = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .embed_lanes;
+        got_low = into_config_via_args(&["status"]).unwrap().embed_lanes;
         env::set_var("AXON_CONFIG_PATH", high.path());
-        got_high = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .embed_lanes;
+        got_high = into_config_via_args(&["status"]).unwrap().embed_lanes;
     });
     assert_eq!(got_low, 1);
     assert_eq!(got_high, 32);
@@ -152,11 +136,11 @@ fn toml_workers_queue_summary_secs_allows_disable_and_env_override() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_QUEUE_SUMMARY_SECS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .queue_summary_secs;
             env::set_var("AXON_QUEUE_SUMMARY_SECS", "12");
-            env_got = into_config(cli_with_services(&["status"]))
+            env_got = into_config_via_args(&["status"])
                 .unwrap()
                 .queue_summary_secs;
         },
@@ -182,16 +166,16 @@ fn toml_workers_qdrant_point_buffer_wins_and_clamps() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_QDRANT_POINT_BUFFER");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .qdrant_point_buffer;
             env::set_var("AXON_QDRANT_POINT_BUFFER", "2048");
-            env_got = into_config(cli_with_services(&["status"]))
+            env_got = into_config_via_args(&["status"])
                 .unwrap()
                 .qdrant_point_buffer;
             env::remove_var("AXON_QDRANT_POINT_BUFFER");
             env::set_var("AXON_CONFIG_PATH", high.path());
-            high_got = into_config(cli_with_services(&["status"]))
+            high_got = into_config_via_args(&["status"])
                 .unwrap()
                 .qdrant_point_buffer;
         },
@@ -214,7 +198,7 @@ fn toml_workers_max_pending_crawl_clamps_out_of_range() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_MAX_PENDING_CRAWL_JOBS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .max_pending_crawl_jobs;
         },
@@ -235,7 +219,7 @@ fn toml_workers_max_pending_embed_wins_over_default() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_MAX_PENDING_EMBED_JOBS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .max_pending_embed_jobs;
         },
@@ -256,7 +240,7 @@ fn toml_workers_max_pending_extract_wins_over_default() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_MAX_PENDING_EXTRACT_JOBS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .max_pending_extract_jobs;
         },
@@ -277,7 +261,7 @@ fn toml_workers_max_pending_ingest_wins_over_default() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_MAX_PENDING_INGEST_JOBS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .max_pending_ingest_jobs;
         },
@@ -298,7 +282,7 @@ fn toml_workers_embed_doc_timeout_secs_wins_over_default() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_EMBED_DOC_TIMEOUT_SECS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .embed_doc_timeout_secs;
         },
@@ -319,7 +303,7 @@ fn toml_workers_embed_doc_timeout_secs_clamps_lower_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_EMBED_DOC_TIMEOUT_SECS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .embed_doc_timeout_secs;
         },
@@ -340,7 +324,7 @@ fn toml_workers_embed_doc_timeout_secs_clamps_upper_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_EMBED_DOC_TIMEOUT_SECS");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .embed_doc_timeout_secs;
         },
@@ -359,9 +343,7 @@ fn toml_search_hnsw_ef_wins_over_default() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_HNSW_EF_SEARCH");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .hnsw_ef_search;
+        got = into_config_via_args(&["status"]).unwrap().hnsw_ef_search;
     });
     assert_eq!(got, 256, "TOML hnsw-ef=256 should override default (128)");
 }
@@ -377,9 +359,7 @@ fn env_wins_over_toml_for_search_hnsw_ef() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_HNSW_EF_SEARCH", "64");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .hnsw_ef_search;
+        got = into_config_via_args(&["status"]).unwrap().hnsw_ef_search;
     });
     assert_eq!(got, 64, "env wins over TOML");
 }
@@ -395,9 +375,7 @@ fn toml_search_hnsw_ef_clamps_out_of_range() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_HNSW_EF_SEARCH");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .hnsw_ef_search;
+        got = into_config_via_args(&["status"]).unwrap().hnsw_ef_search;
     });
     assert_eq!(
         got, 512,
@@ -416,9 +394,7 @@ fn toml_search_hnsw_ef_clamps_lower_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_HNSW_EF_SEARCH");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .hnsw_ef_search;
+        got = into_config_via_args(&["status"]).unwrap().hnsw_ef_search;
     });
     assert_eq!(got, 32);
 }
@@ -436,7 +412,7 @@ fn toml_search_hnsw_ef_legacy_wins_over_default() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .hnsw_ef_search_legacy;
         },
@@ -457,7 +433,7 @@ fn toml_search_hnsw_ef_legacy_clamps_lower_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .hnsw_ef_search_legacy;
         },
@@ -478,7 +454,7 @@ fn toml_search_hnsw_ef_legacy_clamps_upper_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .hnsw_ef_search_legacy;
         },
@@ -497,9 +473,7 @@ fn toml_search_collection_wins_over_default() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_COLLECTION");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .collection;
+        got = into_config_via_args(&["status"]).unwrap().collection;
     });
     assert_eq!(got, "toml_col");
 }
@@ -515,9 +489,7 @@ fn env_wins_over_toml_for_search_collection() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_COLLECTION", "env_col");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .collection;
+        got = into_config_via_args(&["status"]).unwrap().collection;
     });
     assert_eq!(got, "env_col");
 }
@@ -533,7 +505,7 @@ fn cli_wins_over_env_and_toml_for_collection() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_COLLECTION", "env_col");
-        got = into_config(cli_with_services(&["--collection", "cli_col", "status"]))
+        got = into_config_via_args(&["--collection", "cli_col", "status"])
             .unwrap()
             .collection;
     });
@@ -551,7 +523,7 @@ fn toml_search_collection_invalid_returns_err() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_COLLECTION"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_COLLECTION");
-        err_msg = into_config(cli_with_services(&["status"])).unwrap_err();
+        err_msg = into_config_via_args(&["status"]).unwrap_err();
     });
     assert!(
         err_msg.contains("invalid collection name"),

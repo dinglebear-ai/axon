@@ -11,12 +11,7 @@ fn ask_explain_cli_sets_explain_and_diagnostics() {
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
         cfg = Some(
-            into_config(cli_with_services(&[
-                "ask",
-                "--explain",
-                "claude marketplace plugins",
-            ]))
-            .unwrap(),
+            into_config_via_args(&["ask", "--explain", "claude marketplace plugins"]).unwrap(),
         );
     });
     let cfg = cfg.unwrap();
@@ -34,7 +29,7 @@ fn ask_stream_cli_defaults_to_stream_without_diagnostics() {
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
-        cfg = Some(into_config(cli_with_services(&["ask", "what changed?"])).unwrap());
+        cfg = Some(into_config_via_args(&["ask", "what changed?"]).unwrap());
     });
     let cfg = cfg.unwrap();
 
@@ -51,8 +46,7 @@ fn ask_no_stream_cli_disables_default_stream() {
     let mut cfg = None;
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
-        cfg =
-            Some(into_config(cli_with_services(&["ask", "--no-stream", "what changed?"])).unwrap());
+        cfg = Some(into_config_via_args(&["ask", "--no-stream", "what changed?"]).unwrap());
     });
     let cfg = cfg.unwrap();
 
@@ -69,14 +63,14 @@ fn ask_follow_up_cli_sets_session_options() {
     with_env_saved(&["AXON_LLM_COMPLETION_CONCURRENCY"], || unsafe {
         env::remove_var("AXON_LLM_COMPLETION_CONCURRENCY");
         cfg = Some(
-            into_config(cli_with_services(&[
+            into_config_via_args(&[
                 "ask",
                 "--follow-up",
                 "--session",
                 "rust",
                 "--reset-session",
                 "what about tests?",
-            ]))
+            ])
             .unwrap(),
         );
     });
@@ -102,7 +96,7 @@ fn toml_chunk_limit_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_CHUNK_LIMIT");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -134,7 +128,7 @@ fn env_wins_over_toml_for_ask_chunk_limit() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_ASK_CHUNK_LIMIT", "8");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -176,7 +170,7 @@ fn toml_ask_authoritative_domains_and_boost_win_over_defaults() {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_ASK_AUTHORITATIVE_DOMAINS");
             env::remove_var("AXON_ASK_AUTHORITATIVE_BOOST");
-            let cfg = into_config(cli_with_services(&["status"])).unwrap();
+            let cfg = into_config_via_args(&["status"]).unwrap();
             got_domains = cfg.ask_authoritative_domains;
             got_boost = cfg.ask_authoritative_boost;
         },
@@ -210,7 +204,7 @@ fn env_wins_over_toml_for_ask_authoritative_domains_and_boost() {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::set_var("AXON_ASK_AUTHORITATIVE_DOMAINS", "docs.rs,example.com");
             env::set_var("AXON_ASK_AUTHORITATIVE_BOOST", "0.2");
-            let cfg = into_config(cli_with_services(&["status"])).unwrap();
+            let cfg = into_config_via_args(&["status"]).unwrap();
             got_domains = cfg.ask_authoritative_domains;
             got_boost = cfg.ask_authoritative_boost;
         },
@@ -251,7 +245,7 @@ fn toml_ask_context_knobs_win_over_defaults() {
             env::remove_var("AXON_ASK_DOC_FETCH_CONCURRENCY");
             env::remove_var("AXON_ASK_DOC_CHUNK_LIMIT");
             env::remove_var("AXON_ASK_MIN_CITATIONS_NONTRIVIAL");
-            got = Some(into_config(cli_with_services(&["status"])).unwrap());
+            got = Some(into_config_via_args(&["status"]).unwrap());
         },
     );
     let cfg = got.unwrap();
@@ -295,7 +289,7 @@ fn env_wins_over_toml_for_ask_context_knobs() {
             env::set_var("AXON_ASK_DOC_FETCH_CONCURRENCY", "10");
             env::set_var("AXON_ASK_DOC_CHUNK_LIMIT", "222");
             env::set_var("AXON_ASK_MIN_CITATIONS_NONTRIVIAL", "5");
-            got = Some(into_config(cli_with_services(&["status"])).unwrap());
+            got = Some(into_config_via_args(&["status"]).unwrap());
         },
     );
     let cfg = got.unwrap();
@@ -319,9 +313,7 @@ fn toml_ask_chunk_limit_clamps_lower_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_CHUNK_LIMIT");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ask_chunk_limit;
+        got = into_config_via_args(&["status"]).unwrap().ask_chunk_limit;
     });
     assert_eq!(got, 3);
 }
@@ -337,9 +329,7 @@ fn toml_ask_chunk_limit_clamps_upper_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "AXON_ASK_CHUNK_LIMIT"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_CHUNK_LIMIT");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .ask_chunk_limit;
+        got = into_config_via_args(&["status"]).unwrap().ask_chunk_limit;
     });
     assert_eq!(got, 40);
 }
@@ -358,7 +348,7 @@ fn toml_hybrid_disabled_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_HYBRID_SEARCH");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -389,7 +379,7 @@ fn env_wins_over_toml_for_hybrid_enabled() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("AXON_HYBRID_SEARCH", "true");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -420,7 +410,7 @@ fn toml_ask_candidate_limit_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -451,7 +441,7 @@ fn toml_ask_candidate_limit_clamps_lower_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .ask_candidate_limit;
         },
@@ -472,7 +462,7 @@ fn toml_ask_candidate_limit_clamps_upper_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_ASK_CANDIDATE_LIMIT");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .ask_candidate_limit;
         },
@@ -494,7 +484,7 @@ fn toml_ask_min_relevance_score_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("AXON_ASK_MIN_RELEVANCE_SCORE");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -525,7 +515,7 @@ fn toml_ask_min_relevance_score_clamps_lower_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_ASK_MIN_RELEVANCE_SCORE");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .ask_min_relevance_score;
         },
@@ -546,7 +536,7 @@ fn toml_ask_min_relevance_score_clamps_upper_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("AXON_ASK_MIN_RELEVANCE_SCORE");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .ask_min_relevance_score;
         },
@@ -562,7 +552,7 @@ fn server_url_trims_and_ignores_empty_values() {
     let mut got = false;
     with_env_saved(&["AXON_SERVER_URL"], || unsafe {
         env::set_var("AXON_SERVER_URL", "   ");
-        got = into_config(cli_with_services(&["status"]))
+        got = into_config_via_args(&["status"])
             .unwrap()
             .server_url
             .is_none();
@@ -578,7 +568,7 @@ fn server_url_rejects_malformed_values() {
     let mut err = String::new();
     with_env_saved(&["AXON_SERVER_URL"], || unsafe {
         env::set_var("AXON_SERVER_URL", "://not-a-url");
-        err = into_config(cli_with_services(&["status"])).unwrap_err();
+        err = into_config_via_args(&["status"]).unwrap_err();
     });
     assert!(err.contains("invalid --server-url / AXON_SERVER_URL"));
 }
@@ -591,7 +581,7 @@ fn server_url_accepts_trimmed_values() {
     let mut got = String::new();
     with_env_saved(&["AXON_SERVER_URL"], || unsafe {
         env::set_var("AXON_SERVER_URL", "  http://127.0.0.1:8001/base  ");
-        got = into_config(cli_with_services(&["status"]))
+        got = into_config_via_args(&["status"])
             .unwrap()
             .server_url
             .unwrap()
@@ -609,7 +599,7 @@ fn generic_server_url_env_enables_server_mode() {
     let mut mode = crate::core::config::types::ClientMode::Local;
     with_env_saved(&["AXON_SERVER_URL"], || unsafe {
         env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001");
-        let cfg = into_config(cli_with_services(&["status"])).unwrap();
+        let cfg = into_config_via_args(&["status"]).unwrap();
         got = cfg.server_url.map(|url| url.to_string());
         mode = cfg.client_mode;
     });
@@ -625,15 +615,11 @@ fn cli_server_url_overrides_generic_env() {
     let mut got = String::new();
     with_env_saved(&["AXON_SERVER_URL"], || unsafe {
         env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001/env");
-        got = into_config(cli_with_services(&[
-            "--server-url",
-            "http://127.0.0.1:9000/cli",
-            "status",
-        ]))
-        .unwrap()
-        .server_url
-        .unwrap()
-        .to_string();
+        got = into_config_via_args(&["--server-url", "http://127.0.0.1:9000/cli", "status"])
+            .unwrap()
+            .server_url
+            .unwrap()
+            .to_string();
     });
     assert_eq!(got, "http://127.0.0.1:9000/cli");
 }
@@ -649,7 +635,7 @@ fn explicit_local_mode_bypasses_server_url() {
     with_env_saved(&["AXON_SERVER_URL", "AXON_LOCAL_MODE"], || unsafe {
         env::set_var("AXON_SERVER_URL", "http://127.0.0.1:8001");
         env::remove_var("AXON_LOCAL_MODE");
-        let cfg = into_config(cli_with_services(&["--local", "status"])).unwrap();
+        let cfg = into_config_via_args(&["--local", "status"]).unwrap();
         server_url_is_none = cfg.server_url.is_none();
         local_mode = cfg.local_mode;
         mode = cfg.client_mode;

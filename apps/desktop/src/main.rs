@@ -8,6 +8,7 @@
 //! The palette shells out to the `axon` binary on $PATH.
 
 mod actions;
+mod markdown;
 mod output;
 mod render;
 mod theme;
@@ -43,7 +44,7 @@ fn build_application() -> Application {
     ))
 }
 
-actions!(palette, [Submit, MoveDown, MoveUp, TabComplete]);
+actions!(palette, [Submit, MoveDown, MoveUp, TabComplete, ClearOutput]);
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

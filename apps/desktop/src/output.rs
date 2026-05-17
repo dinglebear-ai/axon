@@ -14,6 +14,7 @@ pub(crate) struct CommandOutput {
     pub(crate) subtitle: String,
     pub(crate) stdout: Option<OutputSection>,
     pub(crate) stderr: Option<OutputSection>,
+    pub(crate) use_markdown: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,7 @@ impl CommandOutput {
             subtitle: command_line.to_string(),
             stdout: None,
             stderr: None,
+            use_markdown: false,
         }
     }
 
@@ -53,6 +55,7 @@ impl CommandOutput {
             subtitle: subtitle.into(),
             stdout: None,
             stderr: None,
+            use_markdown: false,
         }
     }
 
@@ -63,6 +66,7 @@ impl CommandOutput {
             subtitle: command_line.to_string(),
             stdout: None,
             stderr: Some(OutputSection::new("spawn error", error)),
+            use_markdown: false,
         }
     }
 
@@ -80,6 +84,7 @@ impl CommandOutput {
             format!("{} failed", command_title(subcommand))
         };
         let subtitle = format!("{command_line} · {}", output.status);
+        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
 
         Self {
             kind,
@@ -87,6 +92,7 @@ impl CommandOutput {
             subtitle,
             stdout,
             stderr,
+            use_markdown,
         }
     }
 
@@ -100,8 +106,8 @@ impl OutputSection {
         if bytes.is_empty() {
             return None;
         }
-
-        Some(Self::new(label, String::from_utf8_lossy(bytes).trim_end()))
+        let raw = String::from_utf8_lossy(bytes);
+        Some(Self::new(label, strip_ansi(raw.trim_end())))
     }
 
     fn new(label: &'static str, text: impl Into<String>) -> Self {
@@ -133,6 +139,30 @@ impl OutputKind {
             OutputKind::Error => AURORA_ACCENT_PINK,
         }
     }
+}
+
+/// Strip ANSI CSI escape sequences (e.g. `\x1b[1;31m`, `\x1b[0m`).
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // consume until final byte: an ASCII letter
+                for ch in chars.by_ref() {
+                    if ch.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                chars.next(); // skip the single non-CSI escape char
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn command_title(subcommand: &str) -> &'static str {

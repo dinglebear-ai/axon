@@ -5,7 +5,7 @@ Web crawl, scrape, extract, embed, and query — all in one binary backed by a s
 
 ## Quick Start
 
-> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. The `AXON_LITE` / `--lite` compat shim was removed; run `axon setup migrate-env` to scrub legacy keys from `~/.axon/.env`.
+> **SQLite/in-process jobs are the runtime.** axon requires only Qdrant and TEI. Jobs are stored in SQLite and workers run in-process inside the same tokio runtime. The `AXON_LITE` / `--lite` compat shim was removed; run `axon setup repair --migrate-env` to scrub legacy keys from `~/.axon/.env`.
 
 ```bash
 # Recommended: use the wrapper script (auto-sources .env)
@@ -284,9 +284,10 @@ AXON_HEADLESS_GEMINI_HOME=
 AXON_HEADLESS_GEMINI_MODEL=
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
-# OpenAI-compatible LLM endpoint for the `extract` pipeline and streaming ask path.
-# Read by src/services/extract.rs, src/jobs/lite/workers/runners/extract.rs,
-# and src/vector/ops/commands/streaming.rs. Independent of the Gemini headless path.
+# OpenAI-compatible LLM endpoint for the `extract` pipeline.
+# Read by src/services/extract.rs and src/jobs/lite/workers/runners/extract.rs.
+# Ask/evaluate streaming uses Gemini headless (`AXON_HEADLESS_GEMINI_*`);
+# `OPENAI_MODEL` is only reused there when it starts with `gemini-`.
 OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
 OPENAI_API_KEY=your-key-or-empty
 OPENAI_MODEL=your-model-name
