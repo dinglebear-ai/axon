@@ -6,9 +6,6 @@ name: axon
 # relocating the full Axon appdata tree to another absolute path.
 
 x-common-service: &common-service
-  env_file:
-    - path: ${AXON_HOME:-${HOME}/.axon}/.env
-      required: false
   networks:
     - axon
   restart: unless-stopped
@@ -40,6 +37,9 @@ services:
     image: ${AXON_IMAGE:-ghcr.io/jmagar/axon:latest}
     container_name: axon
     user: "1000:1000"
+    env_file:
+      - path: ${AXON_HOME:-${HOME}/.axon}/.env
+        required: false
     environment:
       # Container-internal service DNS (overrides host-side values from ~/.axon/.env).
       QDRANT_URL: http://axon-qdrant:6333
