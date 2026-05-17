@@ -272,12 +272,16 @@ pub fn redact(value: &str) -> String {
     }
 }
 
+// Env keys must be UPPER_SNAKE to match the auto-routing convention in
+// `detect_target`: the router infers `.env` from uppercase keys and `.toml`
+// from dotted lowercase paths. Accepting lowercase here would let callers
+// write keys that auto-routing would silently misclassify on a later read.
 fn is_valid_env_key(key: &str) -> bool {
     let mut chars = key.chars();
     chars
         .next()
-        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
-        && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+        .is_some_and(|first| first == '_' || first.is_ascii_uppercase())
+        && chars.all(|c| c == '_' || c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 fn write_private_file_atomic(path: &Path, contents: &str) -> io::Result<()> {
