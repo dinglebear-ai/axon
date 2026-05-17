@@ -292,6 +292,7 @@ pub(crate) fn render_palette_footer(
         // ask conversation is live.
         .child(
             div()
+                .w(px(180.0))
                 .px_2()
                 .font_family(AURORA_FONT_MONO)
                 .font_weight(FontWeight(500.0))

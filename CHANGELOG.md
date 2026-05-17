@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-05-17
+
+### Fixed
+
+- **palette/ui**: `submit()` now gates the `ask-reset` sentinel behind the running-command guard. Previously a user could submit `ask-reset` while an `ask` subprocess was still in flight; when that subprocess finished and called `finalize_result()`, it would recreate the conversation we just cleared, contradicting the "Next ask will start a fresh session." notice.
+- **palette/render**: Conversation hint footer slot now has an explicit `w(px(180.0))` so it actually is a fixed-width slot — its appearance/disappearance no longer shifts surrounding footer elements.
+- **.env.example**: Removed `GOOGLE_API_KEY` / `GOOGLE_APPLICATION_CREDENTIALS` (Gemini subprocess env allowlist scrubs them — setting them has no effect). Reverted `AXON_LOG_DIR` / `AXON_LOG_FILE` back to the actually-honored `AXON_LOG_PATH`.
+
+## [2.4.0] - 2026-05-17
+
 ### Added
 
 - **palette**: Minimal-on-launch window sizing. The palette now opens at the height of the prompt input row only (~91px including chrome) instead of the previous fixed 560px and grows content-driven as the user types, runs a command, or sees output. Hysteresis: clearing the query collapses the action list but keeps the most recent output card; dismissing the output card collapses fully. `apps/desktop` bumped to 0.3.0.
