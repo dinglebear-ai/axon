@@ -20,9 +20,8 @@ fn axon_command() -> Command {
 }
 
 use gpui::{
-    Animation, AnimationExt, App, Context, FocusHandle, Focusable, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Render, ScrollHandle, SharedString, Styled, Window, div,
-    prelude::*, pulsating_between, px, rgb,
+    App, Context, FocusHandle, Focusable, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+    Render, ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use crate::actions::{
@@ -456,7 +455,16 @@ impl Render for Palette {
         let query_is_empty = self.query.is_empty();
 
         let connection = self.connection;
-        let base_status_dot = div()
+        // The status dot is intentionally non-animated. An earlier revision
+        // pulsed it while a health check was in flight, but the auto-spawned
+        // launch-time probe combined with a repeating animation kept GPUI
+        // re-rendering the view every frame on slower compositors and could
+        // starve key-event dispatch — the user-visible symptom was a window
+        // that wouldn't accept input. Color alone is now the indicator:
+        // grey while `Checking`, green/red once the probe returns. The
+        // footer/output pulsing dots (which only render once a command is
+        // selected or running) are unaffected.
+        let status_dot = div()
             .id("status-dot")
             .size(px(8.0))
             .rounded_full()
@@ -468,22 +476,8 @@ impl Render for Palette {
                 cx.listener(|this, _: &MouseDownEvent, _window, cx| {
                     this.spawn_health_check(cx);
                 }),
-            );
-        // While the health check is in flight, pulse the dot so the user can
-        // tell the click registered and a probe is actively running.
-        let status_dot = if matches!(connection, ConnectionState::Checking) {
-            base_status_dot
-                .with_animation(
-                    "status-dot-checking",
-                    Animation::new(Duration::from_millis(1100))
-                        .repeat()
-                        .with_easing(pulsating_between(0.35, 1.0)),
-                    |el, delta| el.opacity(delta),
-                )
-                .into_any_element()
-        } else {
-            base_status_dot.into_any_element()
-        };
+            )
+            .into_any_element();
 
         div()
             .key_context("Palette")

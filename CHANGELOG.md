@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-05-17
+
+### Fixed
+
+- **palette**: Drop the repeating `pulsating_between` animation on the launch-time health-check status dot. The auto-spawned `axon doctor --json` probe combined with `Animation::new(...).repeat()` could keep GPUI re-rendering every frame on slower compositors and starve key-event dispatch, producing the user-visible "window opens but won't accept typing" freeze. The dot now changes color only (grey/checking → green/connected → red/disconnected). The footer and output-card pulsing dots, which only render once a command is selected or running, are unaffected.
+
 ## [2.3.1] - 2026-05-17
 
 ### Fixed
