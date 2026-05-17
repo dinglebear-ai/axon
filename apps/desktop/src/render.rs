@@ -1,6 +1,9 @@
+use std::time::Duration;
+
 use gpui::{
-    AnyElement, App, Div, FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement,
-    SharedString, Stateful, Styled, Window, div, prelude::*, px, rgb,
+    Animation, AnimationExt, AnyElement, App, Div, FontWeight, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement, SharedString, Stateful, Styled, Window, div, ease_in_out,
+    prelude::*, px, rgb,
 };
 
 use crate::ClearOutput;
@@ -9,8 +12,8 @@ use crate::output::{CommandOutput, OutputKind};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
     AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG,
-    AURORA_PANEL_STRONG, AURORA_PRESSED_BG, AURORA_ROW_HOVER_BG, AURORA_TEXT_MUTED,
-    AURORA_TEXT_PRIMARY,
+    AURORA_OUTPUT_MUTED, AURORA_PANEL_STRONG, AURORA_PRESSED_BG, AURORA_ROW_HOVER_BG,
+    AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 
 pub(crate) fn render_prompt_row(
@@ -70,9 +73,10 @@ pub(crate) fn render_prompt_row(
                 .flex_row()
                 .items_center()
                 .gap_2()
-                // Accent caret prefix — replaces the inline "> " text that
-                // used to live inside the SharedString. Always visible so the
-                // input has a stable shape even when the query is empty.
+                // Animated caret prefix — gently pulses opacity when the
+                // user is typing, so the palette feels alive even when no
+                // keystroke is in flight. Reverts to a static muted glyph
+                // when the query is empty (no flicker on the empty state).
                 .child(
                     div()
                         .font_family(AURORA_FONT_MONO)
@@ -83,7 +87,24 @@ pub(crate) fn render_prompt_row(
                         } else {
                             AURORA_ACCENT_PRIMARY
                         }))
-                        .child("›"),
+                        .child("›")
+                        .with_animation(
+                            "palette-caret",
+                            Animation::new(Duration::from_millis(1100))
+                                .repeat()
+                                .with_easing(ease_in_out),
+                            move |el, t| {
+                                let opacity = if query_is_empty {
+                                    1.0
+                                } else {
+                                    // 0.45..1.0 triangle wave so the pulse is
+                                    // visible but never "off".
+                                    let v = 1.0 - (t * 2.0 - 1.0).abs();
+                                    0.45 + 0.55 * v
+                                };
+                                el.opacity(opacity)
+                            },
+                        ),
                 )
                 .child(
                     div()
@@ -310,9 +331,16 @@ where
         .enumerate()
         .map(|(i, action)| {
             let is_running = running_subcommand == Some(action.subcommand);
+            // Per-row fade-in: each row is keyed by its index, so a new
+            // result set re-runs the animation. Cheap (one shot, 140ms).
             render_action_row(action, i, i == selected, is_running)
                 .on_mouse_down(MouseButton::Left, make_on_click(i))
                 .on_hover(make_on_hover(i))
+                .with_animation(
+                    ("axon-action-row-fade", i),
+                    Animation::new(Duration::from_millis(140)).with_easing(ease_in_out),
+                    |el, t| el.opacity(t),
+                )
                 .into_any_element()
         })
         .collect();
@@ -324,16 +352,40 @@ where
         .when(!is_empty, |el| el.children(rows))
 }
 
+// Polished empty state — vertically centered glyph + headline + hint.
+// Replaces the previous one-liner so a no-match query feels intentional,
+// not broken.
 fn render_empty_row() -> impl IntoElement {
     div()
-        .h(px(36.0))
         .flex()
+        .flex_col()
         .items_center()
-        .px_4()
-        .font_weight(FontWeight(480.0))
-        .text_size(px(13.0))
-        .text_color(rgb(AURORA_TEXT_MUTED))
-        .child("No matching commands")
+        .gap_1()
+        .px_5()
+        .py(px(20.0))
+        .child(
+            div()
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(420.0))
+                .text_size(px(20.0))
+                .text_color(rgb(AURORA_BORDER_STRONG))
+                .child("⌕"),
+        )
+        .child(
+            div()
+                .font_weight(FontWeight(580.0))
+                .text_size(px(12.5))
+                .text_color(rgb(AURORA_TEXT_MUTED))
+                .child("No matching commands"),
+        )
+        .child(
+            div()
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(440.0))
+                .text_size(px(10.5))
+                .text_color(rgb(AURORA_OUTPUT_MUTED))
+                .child("try ‘scrape’, ‘ask’, or paste a URL"),
+        )
 }
 
 // Builds a row Stateful<Div>; caller chains .on_mouse_down/.on_hover for behavior.
@@ -398,6 +450,15 @@ fn render_action_row(
         .pr_3()
         .rounded_md()
         .cursor_pointer()
+        // 1px outline ring on the selected row, accent-colored. Pairs with
+        // the left accent bar so selection reads both as a glyph (the bar)
+        // and as a chrome treatment (the ring) — picker-style focus_visible.
+        .border_1()
+        .border_color(rgb(if is_selected {
+            AURORA_ACCENT_PRIMARY
+        } else {
+            0x00000000
+        }))
         .bg(rgb(base_bg))
         .hover(move |el| el.bg(rgb(hover_bg)))
         .active(|el| el.bg(rgb(AURORA_PRESSED_BG)))
