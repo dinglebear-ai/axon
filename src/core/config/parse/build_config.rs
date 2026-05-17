@@ -60,19 +60,19 @@ pub(super) fn into_config_with_sources(
     let toml = load_toml_config()?;
 
     // Resolve --collection with priority CLI > env > TOML > "axon".
-    // Two layers detect explicit CLI input:
-    //   1. `collection_was_explicit` from clap's value_source — catches the case
-    //      where a user passes `--collection axon` (same string as the default).
-    //   2. `global.collection != "axon"` sentinel — catches non-default values
-    //      when the caller went through the simpler `into_config()` entry that
-    //      doesn't thread value_source.
+    // `collection_was_explicit` (from clap's value_source) is the single
+    // source of truth for "the user passed --collection on the CLI". The old
+    // sentinel `global.collection != "axon"` also caught env-sourced non-default
+    // values, causing them to bypass read_env trimming/filtering — that
+    // could surface avoidable collection-name validation failures for values
+    // like `AXON_COLLECTION=" axon "` (trailing whitespace).
     // Validate the final resolved name regardless of source: it gets
     // interpolated into Qdrant URL paths via format!() with no
     // percent-encoding (CWE-22 — bd axon_rust-d71.6 / H2).
     // Use read_env (trims + filters empty) so a stray `AXON_COLLECTION=""`
     // or `AXON_COLLECTION="   "` falls through to TOML / default rather
     // than failing collection-name validation with an empty name.
-    let cli_explicit = collection_was_explicit || global.collection != "axon";
+    let cli_explicit = collection_was_explicit;
     let collection = if cli_explicit {
         global.collection.clone()
     } else {

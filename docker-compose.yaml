@@ -47,6 +47,13 @@ services:
       # ENV, so we must re-override here.
       AXON_HOME: /home/axon/.axon
       AXON_DATA_DIR: /home/axon/.axon
+      # Pin service URLs to container-internal DNS so the axon container always
+      # reaches its siblings regardless of what host-side URLs are in ~/.axon/.env.
+      # Without these overrides the container would inherit whatever loopback or
+      # external addresses the host ~/.axon/.env uses and fail to connect.
+      QDRANT_URL: http://axon-qdrant:6333
+      TEI_URL: http://axon-tei:80
+      AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
       # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
       # set it for host CLI commands, but the server container must not inherit
       # it or container-local maintenance commands will route back through HTTP.
