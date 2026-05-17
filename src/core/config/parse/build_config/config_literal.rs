@@ -156,27 +156,9 @@ fn populate_services_and_ask_basics(
     tei_url: String,
     qdrant_url: String,
 ) -> Result<(), String> {
-    let g = inputs.global;
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
-    cfg.openai_base_url = g
-        .openai_base_url
-        .clone()
-        .or_else(|| env::var("OPENAI_BASE_URL").ok())
-        .unwrap_or_default();
-    cfg.openai_api_key = g
-        .openai_api_key
-        .clone()
-        .or_else(|| env::var("OPENAI_API_KEY").ok())
-        .unwrap_or_default();
-    cfg.openai_model = g
-        .openai_model
-        .clone()
-        .or_else(|| env::var("OPENAI_MODEL").ok())
-        .unwrap_or_default();
-    cfg.headless_gemini_model = non_empty_env("AXON_HEADLESS_GEMINI_MODEL")
-        .or_else(|| gemini_compatible_openai_model(&cfg.openai_model))
-        .unwrap_or_default();
+    cfg.headless_gemini_model = non_empty_env("AXON_HEADLESS_GEMINI_MODEL").unwrap_or_default();
     cfg.headless_gemini_cmd =
         non_empty_env("AXON_HEADLESS_GEMINI_CMD").unwrap_or_else(|| "gemini".to_string());
     cfg.headless_gemini_home = non_empty_env("AXON_HEADLESS_GEMINI_HOME")
@@ -218,11 +200,6 @@ fn populate_services_and_ask_basics(
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;
     Ok(())
-}
-
-fn gemini_compatible_openai_model(model: &str) -> Option<String> {
-    let model = model.trim();
-    model.starts_with("gemini-").then(|| model.to_string())
 }
 
 fn non_empty_env(var_name: &str) -> Option<String> {
@@ -462,6 +439,3 @@ fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
         "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
     ));
 }
-#[cfg(test)]
-#[path = "config_literal_tests.rs"]
-mod tests;

@@ -18,7 +18,11 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if !cfg.quiet && !cfg.json_output {
         log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
-        println!("  {} {}", muted("provider=tavily model="), cfg.openai_model);
+        println!(
+            "  {} {}",
+            muted("provider=tavily model="),
+            cfg.headless_gemini_model
+        );
         println!();
     }
 

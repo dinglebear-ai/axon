@@ -240,18 +240,6 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::core::config) qdrant_url: Option<String>,
 
-    /// OpenAI-compatible API base URL (overrides OPENAI_BASE_URL)
-    #[arg(global = true, long)]
-    pub(in crate::core::config) openai_base_url: Option<String>,
-
-    /// OpenAI API key (overrides OPENAI_API_KEY)
-    #[arg(global = true, long)]
-    pub(in crate::core::config) openai_api_key: Option<String>,
-
-    /// Compatibility LLM model name. Gemini headless only reuses gemini-* values.
-    #[arg(global = true, long)]
-    pub(in crate::core::config) openai_model: Option<String>,
-
     /// Seconds before a running job is considered stale by the watchdog
     #[arg(
         global = true,

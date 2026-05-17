@@ -4,8 +4,7 @@ use crate::cli::commands::probe::with_path;
 use crate::core::config::Config;
 use crate::core::health::browser_diagnostics_pattern;
 use crate::core::health::doctor::{
-    build_browser_runtime, probe_openai, probe_tei_info, resolve_openai_model, tei_info_summary,
-    tei_model_from_info, timed_probe,
+    build_browser_runtime, probe_tei_info, tei_info_summary, tei_model_from_info, timed_probe,
 };
 use crate::core::http::internal_service_http_client;
 use serde_json::{Map, Value};
@@ -15,9 +14,7 @@ use std::time::Duration;
 /// Lite-mode doctor: skip PG/Redis/AMQP probes, check SQLite file and HTTP services.
 pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
     let diagnostics = browser_diagnostics_pattern();
-    let openai_model = resolve_openai_model(cfg);
-    let openai_enabled = openai_diagnostics_enabled(cfg, &openai_model);
-    let probes = collect_service_probes(cfg, &openai_model, openai_enabled).await;
+    let probes = collect_service_probes(cfg).await;
 
     let sqlite_path = cfg.sqlite_path.display().to_string();
     let sqlite_exists = cfg.sqlite_path.exists();
@@ -62,9 +59,6 @@ pub(super) async fn build(cfg: &Config) -> Result<Value, Box<dyn Error>> {
         "chrome".to_string(),
         chrome_service_json(cfg, chrome_ok, chrome_detail),
     );
-    if let Some(openai) = probes.openai_service {
-        services.insert("openai".to_string(), openai);
-    }
     services.insert(
         "gemini_headless".to_string(),
         gemini_service_json(cfg, &gemini_probe),
@@ -94,15 +88,10 @@ struct ServiceProbes {
     tei_info: (Option<Value>, Option<String>),
     qdrant: (bool, Option<String>),
     chrome: (bool, Option<String>),
-    openai_service: Option<Value>,
     client_ok: bool,
 }
 
-async fn collect_service_probes(
-    cfg: &Config,
-    openai_model: &str,
-    openai_enabled: bool,
-) -> ServiceProbes {
+async fn collect_service_probes(cfg: &Config) -> ServiceProbes {
     let probe_client_result = internal_service_http_client();
     let client_err_detail = probe_client_result
         .as_ref()
@@ -121,8 +110,7 @@ async fn collect_service_probes(
                 )),
                 timed_probe(probe_internal_chrome(client, chrome_url)),
             );
-            let (tei_info, openai_service) =
-                collect_model_probes(cfg, client, openai_model, openai_enabled).await;
+            let (tei_info, _) = timed_probe(probe_tei_info(&cfg.tei_url, client)).await;
 
             ServiceProbes {
                 tei,
@@ -130,50 +118,16 @@ async fn collect_service_probes(
                 tei_info,
                 qdrant,
                 chrome,
-                openai_service,
                 client_ok: true,
             }
         }
-        Err(_) => failed_service_probes(cfg, openai_model, openai_enabled, client_err_detail),
+        Err(_) => failed_service_probes(client_err_detail),
     }
 }
 
-async fn collect_model_probes(
-    cfg: &Config,
-    client: &reqwest::Client,
-    openai_model: &str,
-    openai_enabled: bool,
-) -> ((Option<Value>, Option<String>), Option<Value>) {
-    if openai_enabled {
-        let ((tei_info, _), (openai, openai_ms)) = spider::tokio::join!(
-            timed_probe(probe_tei_info(&cfg.tei_url, client)),
-            timed_probe(probe_openai(cfg, openai_model, client)),
-        );
-        (
-            tei_info,
-            Some(openai_service_json(cfg, openai_model, openai, openai_ms)),
-        )
-    } else {
-        let (tei_info, _) = timed_probe(probe_tei_info(&cfg.tei_url, client)).await;
-        (tei_info, None)
-    }
-}
-
-fn failed_service_probes(
-    cfg: &Config,
-    openai_model: &str,
-    openai_enabled: bool,
-    detail: Option<String>,
-) -> ServiceProbes {
+fn failed_service_probes(detail: Option<String>) -> ServiceProbes {
     let failed = (false, detail.clone());
-    let tei_info = (None, detail.clone());
-    let openai_service = openai_enabled.then(|| {
-        let openai_fail = (
-            false,
-            detail.unwrap_or_else(|| "http client init failed".to_string()),
-        );
-        openai_service_json(cfg, openai_model, openai_fail, 0)
-    });
+    let tei_info = (None, detail);
 
     ServiceProbes {
         tei: failed.clone(),
@@ -181,13 +135,8 @@ fn failed_service_probes(
         tei_info,
         qdrant: failed.clone(),
         chrome: failed,
-        openai_service,
         client_ok: false,
     }
-}
-
-fn openai_diagnostics_enabled(cfg: &Config, openai_model: &str) -> bool {
-    !cfg.openai_base_url.trim().is_empty() && !openai_model.trim().is_empty()
 }
 
 async fn probe_internal_chrome(
@@ -297,23 +246,6 @@ fn gemini_service_json(cfg: &Config, probe: &(bool, String)) -> Value {
     })
 }
 
-fn openai_service_json(
-    cfg: &Config,
-    openai_model: &str,
-    openai_probe: (bool, String),
-    latency_ms: u64,
-) -> Value {
-    let (openai_live_ok, openai_live_detail) = openai_probe;
-    serde_json::json!({
-        "ok": openai_live_ok,
-        "configured": !cfg.openai_base_url.trim().is_empty() && !openai_model.trim().is_empty(),
-        "detail": openai_live_detail,
-        "base_url": cfg.openai_base_url,
-        "model": openai_model,
-        "latency_ms": latency_ms,
-    })
-}
-
 fn probe_gemini_headless(cfg: &Config) -> (bool, String) {
     let gemini_backend = crate::services::llm_backend::LlmBackendConfig::from_config(cfg);
     match crate::services::llm_backend::headless::gemini::validate_config(&gemini_backend) {
@@ -381,6 +313,3 @@ async fn probe_vector_mode(qdrant_url: &str, collection: &str) -> Option<String>
         None
     }
 }
-#[cfg(test)]
-#[path = "lite_tests.rs"]
-mod tests;

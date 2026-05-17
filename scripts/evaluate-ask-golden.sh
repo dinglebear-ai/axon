@@ -39,7 +39,7 @@ fi
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
 
-JUDGE_MODEL="${JUDGE_MODEL:-${OPENAI_MODEL:-}}"
+JUDGE_MODEL="${JUDGE_MODEL:-${AXON_HEADLESS_GEMINI_MODEL:-}}"
 
 while IFS= read -r row; do
   id=$(jq -r '.id' <<<"$row")

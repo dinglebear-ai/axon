@@ -151,9 +151,6 @@ All flags are `--global` (usable with any subcommand).
 |------|------|---------|----------|
 | `--qdrant-url <url>` | string | `QDRANT_URL` | `http://127.0.0.1:53333` |
 | `--tei-url <url>` | string | `TEI_URL` | *(empty)* |
-| `--openai-base-url <url>` | string | `OPENAI_BASE_URL` | *(empty)* |
-| `--openai-api-key <key>` | string | `OPENAI_API_KEY` | *(empty)* |
-| `--openai-model <name>` | string | `OPENAI_MODEL` | *(empty)* |
 
 ## Architecture
 
@@ -285,13 +282,6 @@ AXON_HEADLESS_GEMINI_HOME=
 AXON_HEADLESS_GEMINI_MODEL=
 AXON_LLM_COMPLETION_CONCURRENCY=4
 AXON_LLM_COMPLETION_TIMEOUT_SECS=300
-# OpenAI-compatible LLM endpoint for the `extract` pipeline.
-# Read by src/services/extract.rs and src/jobs/lite/workers/runners/extract.rs.
-# Ask/evaluate streaming uses Gemini headless (`AXON_HEADLESS_GEMINI_*`);
-# `OPENAI_MODEL` is only reused there when it starts with `gemini-`.
-OPENAI_BASE_URL=http://YOUR_LLM_HOST/v1
-OPENAI_API_KEY=your-key-or-empty
-OPENAI_MODEL=your-model-name
 
 # CDP endpoint for headless_browser (axon-chrome management API)
 AXON_CHROME_REMOTE_URL=http://axon-chrome:6000
@@ -373,8 +363,7 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
 ### Gemini headless completion path
-`ask`, `evaluate`, `suggest`, extract fallback, `debug`, and research synthesis run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`).
-`AXON_HEADLESS_GEMINI_MODEL` is the Gemini model override knob. `OPENAI_MODEL` remains as a compatibility setting, but only `gemini-*` values are reused by Gemini-backed calls.
+All LLM operations — `ask`, `evaluate`, `suggest`, `extract` (deterministic + LLM fallback), `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 — `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

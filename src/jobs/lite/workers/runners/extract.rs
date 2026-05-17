@@ -53,9 +53,6 @@ pub async fn run_extract_job_lite(
             start_url: url.clone(),
             prompt: effective_cfg.query.clone().unwrap_or_default(),
             limit: effective_cfg.max_pages,
-            openai_base_url: effective_cfg.openai_base_url.clone(),
-            openai_api_key: effective_cfg.openai_api_key.clone(),
-            openai_model: effective_cfg.openai_model.clone(),
             llm_backend: crate::services::llm_backend::LlmBackendConfig::from_config(
                 &effective_cfg,
             ),
