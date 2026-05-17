@@ -289,6 +289,29 @@ fn parse_ask_list_sessions_with_query_rejected() {
 }
 
 #[test]
+fn parse_ask_list_sessions_with_query_flag_rejected() {
+    let err = super::build_config::into_config(ask_cli(&[
+        "--query",
+        "stray-via-flag",
+        "--list-sessions",
+    ]))
+    .expect_err("list-sessions + --query must fail");
+    assert!(err.contains("--list-sessions"));
+}
+
+#[test]
+fn parse_ask_resume_conflicts_with_new_session() {
+    let result = try_ask_cli(&["--resume", "rust-thread", "--new-session", "q"]);
+    assert!(result.is_err(), "--resume + --new-session should error");
+}
+
+#[test]
+fn parse_ask_resume_conflicts_with_reset_session() {
+    let result = try_ask_cli(&["--resume", "rust-thread", "--reset-session", "q"]);
+    assert!(result.is_err(), "--resume + --reset-session should error");
+}
+
+#[test]
 fn parse_ask_list_sessions_alone_is_ok() {
     let cfg =
         super::build_config::into_config(ask_cli(&["--list-sessions"])).expect("list-sessions");

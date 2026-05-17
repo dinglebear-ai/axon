@@ -341,7 +341,11 @@ pub(super) struct AskArgs {
     #[arg(long = "list-sessions", action = ArgAction::SetTrue)]
     pub(super) list_sessions: bool,
     /// Resume a named ask session (shorthand for `--follow-up --session NAME`).
-    #[arg(long = "resume", value_name = "NAME")]
+    #[arg(
+        long = "resume",
+        value_name = "NAME",
+        conflicts_with_all = ["new_session", "reset_session", "session"],
+    )]
     pub(super) resume: Option<String>,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
