@@ -15,6 +15,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -108,8 +110,8 @@ pub(crate) fn restore_from_latest_at(
 
     let session_name = read_latest_session_name(&dir)?;
     let session_path = dir.join(format!("{session_name}.jsonl"));
-    let content = match std::fs::read_to_string(&session_path) {
-        Ok(c) => c,
+    let file = match File::open(&session_path) {
+        Ok(f) => f,
         Err(err) => {
             tracing::debug!(
                 target = "palette::conversation",
@@ -121,13 +123,31 @@ pub(crate) fn restore_from_latest_at(
         }
     };
 
+    // Stream the file line-by-line rather than loading it all into memory.
+    // Each line is parsed into `TurnHeader`, which only captures `created_at` —
+    // user/assistant text is dropped as soon as the line buffer is reused, so
+    // conversation content never accumulates in palette memory.
+    let reader = BufReader::new(file);
     let mut turn_count: u32 = 0;
     let mut last_created_at: Option<DateTime<Utc>> = None;
-    for (idx, line) in content.lines().enumerate() {
+    for (idx, line) in reader.lines().enumerate() {
+        let line = match line {
+            Ok(l) => l,
+            Err(err) => {
+                tracing::debug!(
+                    target = "palette::conversation",
+                    path = %session_path.display(),
+                    line = idx + 1,
+                    error = %err,
+                    "I/O error reading ask-session line; stopping at last good turn"
+                );
+                break;
+            }
+        };
         if line.trim().is_empty() {
             continue;
         }
-        match serde_json::from_str::<TurnHeader>(line) {
+        match serde_json::from_str::<TurnHeader>(&line) {
             Ok(header) => {
                 turn_count = turn_count.saturating_add(1);
                 last_created_at = Some(header.created_at);
@@ -144,10 +164,10 @@ pub(crate) fn restore_from_latest_at(
         }
     }
 
+    // `last_created_at` is `Some` iff at least one turn parsed successfully, so
+    // it also gates `turn_count >= 1`. No separate `turn_count == 0` check is
+    // needed.
     let last_created_at = last_created_at?;
-    if turn_count == 0 {
-        return None;
-    }
 
     // Gate staleness in wall-clock space (robust to system-clock skew between
     // the CLI write and the palette read).
@@ -167,9 +187,7 @@ pub(crate) fn restore_from_latest_at(
 
     // Reconstruct the monotonic `Instant` so the in-memory idle-timeout check
     // continues to work the same way for restored and fresh conversations.
-    let last_turn_at = now_instant
-        .checked_sub(elapsed_wall)
-        .unwrap_or(now_instant);
+    let last_turn_at = now_instant.checked_sub(elapsed_wall).unwrap_or(now_instant);
 
     Some(AskConversation::from_persisted(turn_count, last_turn_at))
 }
