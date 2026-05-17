@@ -5,13 +5,12 @@ use gpui::{
 
 use crate::ClearOutput;
 use crate::actions::{ArgMode, CommandAction};
-use crate::markdown::render_markdown;
-use crate::output::{CommandOutput, OutputKind, OutputSection};
+use crate::output::{CommandOutput, OutputKind};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
     AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG,
-    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_PRESSED_BG,
-    AURORA_ROW_HOVER_BG, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
+    AURORA_PANEL_STRONG, AURORA_PRESSED_BG, AURORA_ROW_HOVER_BG, AURORA_TEXT_MUTED,
+    AURORA_TEXT_PRIMARY,
 };
 
 pub(crate) fn render_prompt_row(
@@ -25,30 +24,40 @@ pub(crate) fn render_prompt_row(
         .flex_row()
         .items_center()
         .gap_3()
-        .h(px(48.0))
-        .px_4()
+        .h(px(52.0))
+        .px_5()
         .border_b_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
         .child(status_dot)
         .child(
             div()
                 .font_family(AURORA_FONT_DISPLAY)
-                .font_weight(FontWeight(760.0))
-                .text_size(px(15.0))
+                .font_weight(FontWeight(780.0))
+                .text_size(px(16.0))
                 .text_color(rgb(AURORA_TEXT_PRIMARY))
                 .child("axon"),
+        )
+        // Thin vertical separator between the brand mark and the input area —
+        // gives the eye a place to break so "axon" reads as a label, not as
+        // part of whatever the user is typing.
+        .child(
+            div()
+                .w(px(1.0))
+                .h(px(18.0))
+                .bg(rgb(AURORA_BORDER_DEFAULT))
+                .flex_shrink_0(),
         )
         .when_some(locked_command, |el, action| {
             el.child(
                 div()
                     .px_2()
-                    .py_1()
-                    .rounded_sm()
+                    .py(px(3.0))
+                    .rounded_md()
                     .bg(rgb(AURORA_NAV_BG))
                     .border_1()
-                    .border_color(rgb(AURORA_BORDER_STRONG))
+                    .border_color(rgb(AURORA_ACCENT_STRONG))
                     .font_family(AURORA_FONT_MONO)
-                    .font_weight(FontWeight(650.0))
+                    .font_weight(FontWeight(680.0))
                     .text_size(px(11.0))
                     .text_color(rgb(AURORA_ACCENT_STRONG))
                     .child(action.subcommand),
@@ -57,92 +66,41 @@ pub(crate) fn render_prompt_row(
         .child(
             div()
                 .flex_1()
-                .font_weight(FontWeight(480.0))
-                .text_size(px(14.0))
-                .text_color(if query_is_empty {
-                    rgb(AURORA_TEXT_MUTED)
-                } else {
-                    rgb(AURORA_TEXT_PRIMARY)
-                })
-                .child(prompt),
-        )
-}
-
-
-pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
-    let empty = output.stdout.is_none() && output.stderr.is_none();
-    let title_accent = output.kind.accent_color();
-    div()
-        .flex()
-        .flex_col()
-        .gap_3()
-        .px_4()
-        .py_3()
-        .child(
-            div()
                 .flex()
-                .flex_col()
-                .gap_1()
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .size(px(7.0))
-                                .rounded_full()
-                                .flex_shrink_0()
-                                .bg(rgb(title_accent)),
-                        )
-                        .child(
-                            div()
-                                .font_weight(FontWeight(680.0))
-                                .text_size(px(13.0))
-                                .text_color(rgb(AURORA_TEXT_PRIMARY))
-                                .child(SharedString::from(output.title)),
-                        ),
-                )
+                .flex_row()
+                .items_center()
+                .gap_2()
+                // Accent caret prefix — replaces the inline "> " text that
+                // used to live inside the SharedString. Always visible so the
+                // input has a stable shape even when the query is empty.
                 .child(
                     div()
                         .font_family(AURORA_FONT_MONO)
+                        .font_weight(FontWeight(700.0))
+                        .text_size(px(14.0))
+                        .text_color(rgb(if query_is_empty {
+                            AURORA_BORDER_STRONG
+                        } else {
+                            AURORA_ACCENT_PRIMARY
+                        }))
+                        .child("›"),
+                )
+                .child(
+                    div()
+                        .flex_1()
                         .font_weight(FontWeight(500.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(AURORA_OUTPUT_MUTED))
-                        .child(SharedString::from(output.subtitle)),
+                        .text_size(px(14.5))
+                        .text_color(if query_is_empty {
+                            rgb(AURORA_TEXT_MUTED)
+                        } else {
+                            rgb(AURORA_TEXT_PRIMARY)
+                        })
+                        .child(prompt),
                 ),
         )
-        .when(empty, |el| {
-            el.child(
-                div()
-                    .px_3()
-                    .py_3()
-                    .rounded_sm()
-                    .border_1()
-                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                    .bg(rgb(AURORA_CONTROL_SURFACE))
-                    .font_weight(FontWeight(480.0))
-                    .text_size(px(12.0))
-                    .text_color(rgb(AURORA_TEXT_MUTED))
-                    .child(if output.kind == OutputKind::Running {
-                        "Waiting for axon to return output."
-                    } else {
-                        "No stdout or stderr was emitted."
-                    }),
-            )
-        })
-        .when_some(output.stdout, |el, section| {
-            el.child(render_output_section(
-                section,
-                OutputKind::Success,
-                output.use_markdown,
-            ))
-        })
-        .when_some(output.stderr, |el, section| {
-            el.child(render_output_section(section, OutputKind::Error, false))
-        })
 }
+
+
 
 pub(crate) fn render_palette_footer(
     action: CommandAction,
@@ -177,27 +135,33 @@ pub(crate) fn render_palette_footer(
         .flex_row()
         .items_center()
         .gap_3()
-        .px_4()
-        .py_2()
+        .px_5()
+        .py(px(10.0))
         .border_t_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
         .bg(rgb(AURORA_CONTROL_SURFACE))
         .child(
+            // Status pip with a soft accent ring — gives the dot weight
+            // without making it loud.
             div()
-                .size(px(7.0))
+                .size(px(8.0))
                 .rounded_full()
                 .flex_shrink_0()
+                .border_1()
+                .border_color(rgb(AURORA_BORDER_STRONG))
                 .bg(rgb(accent)),
         )
         .child(
             div()
                 .px_2()
-                .py_1()
-                .rounded_sm()
+                .py(px(2.0))
+                .rounded_md()
                 .bg(rgb(AURORA_NAV_BG))
+                .border_1()
+                .border_color(rgb(accent))
                 .font_family(AURORA_FONT_MONO)
-                .font_weight(FontWeight(650.0))
-                .text_size(px(11.0))
+                .font_weight(FontWeight(680.0))
+                .text_size(px(10.5))
                 .text_color(rgb(accent))
                 .child(label),
         )
@@ -209,8 +173,8 @@ pub(crate) fn render_palette_footer(
                 .gap_px()
                 .child(
                     div()
-                        .font_weight(FontWeight(620.0))
-                        .text_size(px(12.0))
+                        .font_weight(FontWeight(640.0))
+                        .text_size(px(12.5))
                         .text_color(rgb(AURORA_TEXT_PRIMARY))
                         .child(SharedString::from(title.to_string())),
                 )
@@ -223,18 +187,26 @@ pub(crate) fn render_palette_footer(
                         .child(SharedString::from(detail.to_string())),
                 ),
         )
-        // Dismiss button — only shown when there's output to clear.
+        // Dismiss affordance — shown only when there's output to clear.
+        // Hover gives it accent-color so it reads as "this does something".
         .when(has_output, |el| {
             el.child(
                 div()
+                    .id("palette-footer-clear")
                     .cursor_pointer()
                     .px_2()
-                    .py_1()
-                    .rounded_sm()
+                    .py(px(3.0))
+                    .rounded_md()
+                    .border_1()
+                    .border_color(rgb(AURORA_BORDER_DEFAULT))
                     .font_family(AURORA_FONT_MONO)
-                    .font_weight(FontWeight(560.0))
+                    .font_weight(FontWeight(600.0))
                     .text_size(px(11.0))
                     .text_color(rgb(AURORA_TEXT_MUTED))
+                    .hover(|el| {
+                        el.text_color(rgb(AURORA_TEXT_PRIMARY))
+                            .border_color(rgb(AURORA_BORDER_STRONG))
+                    })
                     .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
                         window.dispatch_action(Box::new(ClearOutput), cx);
                     })
@@ -245,90 +217,47 @@ pub(crate) fn render_palette_footer(
 
 // ── private helpers ───────────────────────────────────────────────────────────
 
-fn render_output_section(
-    section: OutputSection,
-    kind: OutputKind,
-    use_markdown: bool,
-) -> impl IntoElement {
-    let accent = kind.accent_color();
-    let text = section.text.clone();
-
-    div()
-        .flex()
-        .flex_col()
-        .rounded_sm()
-        .border_1()
-        .border_color(rgb(AURORA_BORDER_DEFAULT))
-        .bg(rgb(AURORA_CONTROL_SURFACE))
-        // section header
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .px_3()
-                .py_2()
-                .border_b_1()
-                .border_color(rgb(AURORA_BORDER_DEFAULT))
-                .child(
-                    div()
-                        .font_family(AURORA_FONT_MONO)
-                        .font_weight(FontWeight(650.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(accent))
-                        .child(section.label),
-                )
-                .child(
-                    div()
-                        .font_family(AURORA_FONT_MONO)
-                        .font_weight(FontWeight(480.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(AURORA_OUTPUT_MUTED))
-                        .child(SharedString::from(format!("{} lines", section.line_count))),
-                ),
-        )
-        // section body — markdown or raw monospace
-        .child(
-            div()
-                .px_3()
-                .py_3()
-                .when(use_markdown, |el| el.child(render_markdown(&text)))
-                .when(!use_markdown, |el| {
-                    el.flex()
-                        .flex_col()
-                        .children(text.lines().take(220).map(|line| {
-                            let display = if line.is_empty() {
-                                SharedString::from(" ")
-                            } else {
-                                SharedString::from(line.to_string())
-                            };
-                            div()
-                                .w_full()
-                                .font_family(AURORA_FONT_MONO)
-                                .font_weight(FontWeight(480.0))
-                                .text_size(px(12.0))
-                                .line_height(px(20.0))
-                                .text_color(rgb(AURORA_OUTPUT_TEXT))
-                                .child(display)
-                        }))
-                }),
-        )
+// Resize the palette window to hug content. 6px deadband stops render→resize loops.
+pub(crate) fn reflow_palette_window(
+    last_height: &mut f32,
+    rows: usize,
+    footer: bool,
+    output: bool,
+    window: &mut Window,
+) {
+    let mut target = 40.0 + 2.0 + 48.0; // outer p_5 + border + prompt row
+    if rows > 0 {
+        target += 8.0 + (rows as f32) * 36.0;
+    }
+    if footer {
+        target += 56.0;
+    }
+    if output {
+        target += 320.0;
+    }
+    if (target - *last_height).abs() > 6.0 {
+        let current = window.bounds().size;
+        window.resize(gpui::size(current.width, px(target)));
+        *last_height = target;
+    }
 }
 
-/// Render the full action list (or empty-state row) with per-row click
-/// handlers. `make_on_click` is invoked once per row to produce its listener
-/// — typically `|i| cx.listener(move |this, _, w, cx| this.click_action(i, w, cx))`.
-pub(crate) fn render_action_list<F, L>(
+// Action list with per-row click + hover. Hover updates `selected_index`
+// so keyboard and mouse share one source of truth — no "two highlighted
+// rows" problem.
+pub(crate) fn render_action_list<F, L, H, R>(
     actions: Vec<CommandAction>,
     selected: usize,
     running_subcommand: Option<&'static str>,
     hide_list: bool,
     mut make_on_click: F,
+    mut make_on_hover: H,
 ) -> impl IntoElement
 where
     F: FnMut(usize) -> L,
     L: Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    H: FnMut(usize) -> R,
+    R: Fn(&bool, &mut Window, &mut App) + 'static,
 {
     let is_empty = actions.is_empty();
     let rows: Vec<AnyElement> = actions
@@ -338,6 +267,7 @@ where
             let is_running = running_subcommand == Some(action.subcommand);
             render_action_row(action, i, i == selected, is_running)
                 .on_mouse_down(MouseButton::Left, make_on_click(i))
+                .on_hover(make_on_hover(i))
                 .into_any_element()
         })
         .collect();
@@ -361,10 +291,7 @@ fn render_empty_row() -> impl IntoElement {
         .child("No matching commands")
 }
 
-/// Build an interactive action row. The caller is expected to chain
-/// `.on_mouse_down(MouseButton::Left, cx.listener(...))` to wire up clicks —
-/// hover/active/cursor visual feedback is already applied here so every row
-/// reacts to the pointer even without an active selection.
+// Builds a row Stateful<Div>; caller chains .on_mouse_down/.on_hover for behavior.
 fn render_action_row(
     action: CommandAction,
     index: usize,
@@ -399,40 +326,73 @@ fn render_action_row(
         AURORA_ROW_HOVER_BG
     };
 
+    // Left-edge accent bar (Spotlight/Raycast pattern): a thin vertical strip
+    // that lights up on the selected row. Eliminates the ambiguity between
+    // "background-tinted row" and "actually focused row" at a glance.
+    let accent_bar = div()
+        .w(px(3.0))
+        .h(px(20.0))
+        .rounded_full()
+        .flex_shrink_0()
+        .bg(rgb(if is_selected {
+            AURORA_ACCENT_PRIMARY
+        } else {
+            0x00000000
+        }));
+
     div()
         .id(("axon-action-row", index))
-        .h(px(36.0))
+        .h(px(38.0))
         .flex()
         .flex_row()
         .items_center()
         .justify_between()
+        .gap_3()
         .mx_1()
-        .px_3()
-        .rounded_sm()
+        .pl_2()
+        .pr_3()
+        .rounded_md()
         .cursor_pointer()
         .bg(rgb(base_bg))
         .hover(move |el| el.bg(rgb(hover_bg)))
         .active(|el| el.bg(rgb(AURORA_PRESSED_BG)))
         .child(
             div()
-                .font_weight(if is_selected {
-                    FontWeight(620.0)
-                } else {
-                    FontWeight(480.0)
-                })
-                .text_size(px(13.0))
-                .text_color(if is_selected {
-                    rgb(AURORA_TEXT_PRIMARY)
-                } else {
-                    rgb(AURORA_TEXT_MUTED)
-                })
-                .child(SharedString::from(action.label)),
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_3()
+                .child(accent_bar)
+                .child(
+                    div()
+                        .font_weight(if is_selected {
+                            FontWeight(640.0)
+                        } else {
+                            FontWeight(500.0)
+                        })
+                        .text_size(px(13.0))
+                        .text_color(if is_selected {
+                            rgb(AURORA_TEXT_PRIMARY)
+                        } else {
+                            rgb(AURORA_TEXT_MUTED)
+                        })
+                        .child(SharedString::from(action.label)),
+                ),
         )
         .child(
+            // Pill-style meta badge: soft border + bg gives the keyword an
+            // identifiable shape that reads as "input affordance" without
+            // shouting. Replaces the previous bare-text label.
             div()
+                .px_2()
+                .py(px(2.0))
+                .rounded_sm()
+                .border_1()
+                .border_color(rgb(AURORA_BORDER_DEFAULT))
+                .bg(rgb(AURORA_NAV_BG))
                 .font_family(AURORA_FONT_MONO)
-                .font_weight(FontWeight(560.0))
-                .text_size(px(11.0))
+                .font_weight(FontWeight(580.0))
+                .text_size(px(10.0))
                 .text_color(rgb(meta_color))
                 .child(meta),
         )

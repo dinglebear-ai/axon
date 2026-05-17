@@ -1,15 +1,11 @@
 use std::process::{Command, Output};
 
-/// Spawn `axon` without flashing a console window on Windows. On Unix this
-/// is just `Command::new("axon")` — the flag is a no-op outside Windows.
+// Spawn `axon` without flashing a cmd.exe window on Windows (CREATE_NO_WINDOW).
 fn axon_command() -> Command {
     let cmd = Command::new("axon");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW = 0x08000000 — prevents the child from getting its
-        // own console; otherwise GPUI's non-console parent flashes a cmd.exe
-        // window per subprocess (every health check + every command run).
         let mut cmd = cmd;
         cmd.creation_flags(0x08000000);
         return cmd;
@@ -29,8 +25,9 @@ use crate::actions::{
 };
 use crate::output::{CommandOutput, OutputKind};
 use crate::render::{
-    render_action_list, render_output_body, render_palette_footer, render_prompt_row,
+    reflow_palette_window, render_action_list, render_palette_footer, render_prompt_row,
 };
+use crate::render_output::render_output_body;
 use crate::theme::{
     AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
     AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
@@ -69,6 +66,8 @@ pub(crate) struct Palette {
     /// completions only apply when their captured id still matches the latest,
     /// so a slower older probe can't overwrite a newer result.
     health_check_id: u64,
+    // Last height we asked window.resize() for; reflow uses a deadband.
+    last_window_height: f32,
 }
 
 struct RunningCommand {
@@ -100,6 +99,7 @@ impl Palette {
             locked_command: None,
             connection: ConnectionState::Unknown,
             health_check_id: 0,
+            last_window_height: 108.0, // matches main.rs initial window size
         };
         palette.spawn_health_check(cx);
         palette
@@ -285,9 +285,20 @@ impl Palette {
         cx.notify();
     }
 
-    fn click_action(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.selected = idx;
-        self.submit(&Submit, window, cx);
+    fn build_status_dot(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id("status-dot")
+            .size(px(8.0))
+            .rounded_full()
+            .flex_shrink_0()
+            .cursor_pointer()
+            .bg(rgb(self.connection.dot_color()))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+                    this.spawn_health_check(cx);
+                }),
+            )
     }
 
     fn move_down(&mut self, _: &MoveDown, _w: &mut Window, cx: &mut Context<Self>) {
@@ -370,7 +381,7 @@ impl Focusable for Palette {
 }
 
 impl Render for Palette {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let actions = self.matches();
         let selected = self.selected;
         let selected_action = actions.get(selected).copied();
@@ -378,6 +389,14 @@ impl Render for Palette {
         let command_output = self.command_output.clone();
         let locked = self.locked_command;
         let hide_list = self.query.is_empty() || locked.is_some();
+
+        reflow_palette_window(
+            &mut self.last_window_height,
+            if hide_list { 0 } else { actions.len() },
+            selected_action.is_some(),
+            command_output.as_ref().is_some_and(|o| o.has_body()),
+            window,
+        );
 
         let prompt: SharedString = if self.query.is_empty() {
             if let Some(action) = locked {
@@ -391,24 +410,11 @@ impl Render for Palette {
                 SharedString::from("type a command or URL")
             }
         } else {
-            SharedString::from(format!("> {}", self.query))
+            SharedString::from(self.query.clone())
         };
         let query_is_empty = self.query.is_empty();
 
-        let connection = self.connection;
-        let status_dot = div()
-            .id("status-dot")
-            .size(px(8.0))
-            .rounded_full()
-            .flex_shrink_0()
-            .cursor_pointer()
-            .bg(rgb(connection.dot_color()))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
-                    this.spawn_health_check(cx);
-                }),
-            );
+        let status_dot = self.build_status_dot(cx);
 
         div()
             .key_context("Palette")
@@ -435,11 +441,11 @@ impl Render for Palette {
                     .flex()
                     .flex_col()
                     .overflow_hidden()
-                    .rounded_md()
+                    .rounded_lg()
                     .bg(rgb(AURORA_PANEL_STRONG))
                     .border_1()
                     .border_color(rgb(AURORA_BORDER_STRONG))
-                    .shadow_lg()
+                    .shadow_xl()
                     .child(render_prompt_row(
                         query_is_empty,
                         locked,
@@ -453,7 +459,16 @@ impl Render for Palette {
                         hide_list,
                         |i| {
                             cx.listener(move |this, _: &MouseDownEvent, window, cx| {
-                                this.click_action(i, window, cx);
+                                this.selected = i;
+                                this.submit(&Submit, window, cx);
+                            })
+                        },
+                        |i| {
+                            cx.listener(move |this, hovered: &bool, _, cx| {
+                                if *hovered && this.selected != i {
+                                    this.selected = i;
+                                    cx.notify();
+                                }
                             })
                         },
                     ))
