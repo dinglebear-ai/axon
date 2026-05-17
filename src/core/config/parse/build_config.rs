@@ -44,7 +44,7 @@ pub(super) fn into_config_with_sources(
     // intentionally not checked for these subcommands.
     if matches!(
         dispatched.command,
-        CommandKind::Completions | CommandKind::Setup
+        CommandKind::Completions | CommandKind::Setup | CommandKind::Config
     ) {
         return Ok(Config {
             command: dispatched.command,

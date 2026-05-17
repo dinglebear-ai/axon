@@ -1,4 +1,5 @@
 pub mod action_api;
+pub mod config;
 pub mod context;
 pub mod crawl;
 pub mod crawl_sync;
