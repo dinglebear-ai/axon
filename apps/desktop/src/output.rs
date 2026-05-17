@@ -228,12 +228,15 @@ fn consume_until_string_terminator(chars: &mut std::iter::Peekable<std::str::Cha
             return;
         }
         if ch == '\x1b' {
-            // ST = ESC '\\'. Consume the trailing '\\' if present; if not,
-            // treat the ESC as a terminator on its own (malformed input).
+            // ST = ESC '\\'. Only a well-formed ST terminates the
+            // sequence. A bare ESC inside a string-type payload is
+            // malformed input; swallow it and keep stripping rather
+            // than leaking the remainder of the payload to output.
             if chars.peek() == Some(&'\\') {
                 chars.next();
+                return;
             }
-            return;
+            continue;
         }
     }
 }
