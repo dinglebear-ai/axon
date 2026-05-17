@@ -68,6 +68,10 @@ pub(crate) struct Palette {
     health_check_id: u64,
     // Last height we asked window.resize() for; reflow uses a deadband.
     last_window_height: f32,
+    // Most recently submitted action — kept so the footer + hint chips stay
+    // visible after submit clears the query (otherwise the user loses the
+    // ↵/esc affordances right when they'd want to act on the output).
+    last_action: Option<CommandAction>,
 }
 
 struct RunningCommand {
@@ -100,6 +104,7 @@ impl Palette {
             connection: ConnectionState::Unknown,
             health_check_id: 0,
             last_window_height: 108.0, // matches main.rs initial window size
+            last_action: None,
         };
         palette.spawn_health_check(cx);
         palette
@@ -244,6 +249,7 @@ impl Palette {
             subcommand: action.subcommand,
         });
         self.command_output = Some(CommandOutput::running(&command_line, action));
+        self.last_action = Some(action);
 
         let task = cx.background_spawn(async move {
             let mut cmd = axon_command();
@@ -384,7 +390,10 @@ impl Render for Palette {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let actions = self.matches();
         let selected = self.selected;
-        let selected_action = actions.get(selected).copied();
+        // Footer needs *some* action to render its title/example. Prefer the
+        // currently-highlighted match; fall back to the last-run action so the
+        // footer (and its ↵/esc hint chips) survive across submit/output.
+        let selected_action = actions.get(selected).copied().or(self.last_action);
         let running_subcommand = self.running.as_ref().map(|running| running.subcommand);
         let command_output = self.command_output.clone();
         let locked = self.locked_command;
