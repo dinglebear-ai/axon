@@ -66,6 +66,10 @@ pub(crate) fn one_shot_progress(elapsed: Duration, duration: Duration) -> f32 {
 /// Used by the window-resize lerp where we want fixed-step movement, not
 /// time-based easing (the tick frequency is the control variable).
 pub(crate) fn step_toward(current: f32, target: f32, step: f32) -> f32 {
+    let step = step.abs();
+    if step == 0.0 {
+        return target;
+    }
     if (target - current).abs() <= step {
         return target;
     }

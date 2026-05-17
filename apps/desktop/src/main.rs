@@ -89,7 +89,7 @@ fn main() -> Result<()> {
 
         // Launch height is the prompt-only minimum from `layout::MIN_WINDOW_HEIGHT`.
         // The window then grows on demand as the user types, runs commands,
-        // and produces output. See `Palette::tick_window_resize`.
+        // and produces output. See `Palette::sync_window_height`.
         let bounds = Bounds::centered(
             None,
             size(px(720.0), px(crate::layout::MIN_WINDOW_HEIGHT)),
