@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use gpui::{
-    FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, div,
-    prelude::*, px, rgb,
+    Animation, AnimationExt, ElementId, FontWeight, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px, rgb,
 };
 
 use crate::ClearOutput;
@@ -13,6 +15,7 @@ use crate::theme::{
     AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
     AURORA_TEXT_PRIMARY,
 };
+use crate::ui::RunningCommand;
 
 pub(crate) fn render_prompt_row(
     query_is_empty: bool,
@@ -94,6 +97,7 @@ pub(crate) fn render_action_rows(
 pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
     let empty = output.stdout.is_none() && output.stderr.is_none();
     let title_accent = output.kind.accent_color();
+    let is_running = output.kind == OutputKind::Running;
     div()
         .flex()
         .flex_col()
@@ -111,13 +115,12 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
                         .flex_row()
                         .items_center()
                         .gap_2()
-                        .child(
-                            div()
-                                .size(px(7.0))
-                                .rounded_full()
-                                .flex_shrink_0()
-                                .bg(rgb(title_accent)),
-                        )
+                        .child(pulsing_dot(
+                            "output-title-dot",
+                            title_accent,
+                            px(7.0),
+                            is_running,
+                        ))
                         .child(
                             div()
                                 .font_weight(FontWeight(680.0))
@@ -144,14 +147,29 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
                     .border_1()
                     .border_color(rgb(AURORA_BORDER_DEFAULT))
                     .bg(rgb(AURORA_CONTROL_SURFACE))
-                    .font_weight(FontWeight(480.0))
-                    .text_size(px(12.0))
-                    .text_color(rgb(AURORA_TEXT_MUTED))
-                    .child(if output.kind == OutputKind::Running {
-                        "Waiting for axon to return output."
-                    } else {
-                        "No stdout or stderr was emitted."
-                    }),
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap_2()
+                    .when(is_running, |el| {
+                        el.child(pulsing_dot(
+                            "output-body-dot",
+                            AURORA_ACCENT_PRIMARY,
+                            px(6.0),
+                            true,
+                        ))
+                    })
+                    .child(
+                        div()
+                            .font_weight(FontWeight(480.0))
+                            .text_size(px(12.0))
+                            .text_color(rgb(AURORA_TEXT_MUTED))
+                            .child(if is_running {
+                                "Working — waiting for axon to return output."
+                            } else {
+                                "No stdout or stderr was emitted."
+                            }),
+                    ),
             )
         })
         .when_some(output.stdout, |el, section| {
@@ -169,8 +187,9 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
 pub(crate) fn render_palette_footer(
     action: CommandAction,
     output: Option<&CommandOutput>,
-    is_running: bool,
+    running: Option<&RunningCommand>,
 ) -> impl IntoElement {
+    let is_running = running.is_some();
     let status = output.map(|o| o.kind).unwrap_or(OutputKind::Warning);
     let accent = if is_running {
         OutputKind::Running.accent_color()
@@ -186,13 +205,18 @@ pub(crate) fn render_palette_footer(
     } else {
         "enter"
     };
-    let title = output
-        .map(|o| o.title.as_str())
+    let elapsed_label = running.map(|r| r.elapsed_label());
+    // Use the live "Running <label>" string while a command is in flight so the
+    // footer reads as a status, not as the action's static description.
+    let running_title = running.map(|r| format!("Running {}…", r.label));
+    let title = running_title
+        .as_deref()
+        .or_else(|| output.map(|o| o.title.as_str()))
         .unwrap_or(action.description);
     let detail = output
         .map(|o| o.subtitle.as_str())
         .unwrap_or(action.example);
-    let has_output = output.is_some();
+    let has_output = output.is_some() && !is_running;
 
     div()
         .flex()
@@ -204,24 +228,41 @@ pub(crate) fn render_palette_footer(
         .border_t_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
         .bg(rgb(AURORA_CONTROL_SURFACE))
+        .child(pulsing_dot(
+            "footer-status-dot",
+            accent,
+            px(7.0),
+            is_running,
+        ))
         .child(
             div()
-                .size(px(7.0))
-                .rounded_full()
-                .flex_shrink_0()
-                .bg(rgb(accent)),
-        )
-        .child(
-            div()
-                .px_2()
-                .py_1()
-                .rounded_sm()
-                .bg(rgb(AURORA_NAV_BG))
-                .font_family(AURORA_FONT_MONO)
-                .font_weight(FontWeight(650.0))
-                .text_size(px(11.0))
-                .text_color(rgb(accent))
-                .child(label),
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .px_2()
+                        .py_1()
+                        .rounded_sm()
+                        .bg(rgb(AURORA_NAV_BG))
+                        .font_family(AURORA_FONT_MONO)
+                        .font_weight(FontWeight(650.0))
+                        .text_size(px(11.0))
+                        .text_color(rgb(accent))
+                        .child(label),
+                )
+                .when_some(elapsed_label, |el, elapsed| {
+                    el.child(
+                        div()
+                            .min_w(px(48.0))
+                            .font_family(AURORA_FONT_MONO)
+                            .font_weight(FontWeight(560.0))
+                            .text_size(px(11.0))
+                            .text_color(rgb(AURORA_TEXT_MUTED))
+                            .child(SharedString::from(elapsed)),
+                    )
+                }),
         )
         .child(
             div()
@@ -274,6 +315,7 @@ fn render_output_section(
 ) -> impl IntoElement {
     let accent = kind.accent_color();
     let text = section.text.clone();
+    let rendered_lines = section.rendered_lines.clone();
 
     div()
         .flex()
@@ -317,14 +359,13 @@ fn render_output_section(
                 .py_3()
                 .when(use_markdown, |el| el.child(render_markdown(&text)))
                 .when(!use_markdown, |el| {
+                    // `rendered_lines` is pre-computed at section
+                    // construction time; the `SharedString` clones below
+                    // are cheap (Arc bumps), so this renders without
+                    // per-frame `String` allocations.
                     el.flex()
                         .flex_col()
-                        .children(text.lines().take(220).map(|line| {
-                            let display = if line.is_empty() {
-                                SharedString::from(" ")
-                            } else {
-                                SharedString::from(line.to_string())
-                            };
+                        .children(rendered_lines.iter().map(|line| {
                             div()
                                 .w_full()
                                 .font_family(AURORA_FONT_MONO)
@@ -332,10 +373,39 @@ fn render_output_section(
                                 .text_size(px(12.0))
                                 .line_height(px(20.0))
                                 .text_color(rgb(AURORA_OUTPUT_TEXT))
-                                .child(display)
+                                .child(line.clone())
                         }))
                 }),
         )
+}
+
+/// A small circular dot. When `animate` is true the dot pulses its opacity
+/// between 0.35 and 1.0 — the user's "the app is alive and waiting on
+/// something" signal. `id` must be unique across all pulsing dots that may be
+/// rendered simultaneously (GPUI keys animation state by `ElementId`).
+fn pulsing_dot(
+    id: impl Into<ElementId>,
+    color: u32,
+    size: gpui::Pixels,
+    animate: bool,
+) -> gpui::AnyElement {
+    let base = div()
+        .size(size)
+        .rounded_full()
+        .flex_shrink_0()
+        .bg(rgb(color));
+    if animate {
+        base.with_animation(
+            id,
+            Animation::new(Duration::from_millis(1100))
+                .repeat()
+                .with_easing(pulsating_between(0.35, 1.0)),
+            |el, delta| el.opacity(delta),
+        )
+        .into_any_element()
+    } else {
+        base.into_any_element()
+    }
 }
 
 fn render_empty_row() -> impl IntoElement {

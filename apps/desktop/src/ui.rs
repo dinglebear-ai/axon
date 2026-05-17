@@ -1,4 +1,5 @@
 use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 
 /// Spawn `axon` without flashing a console window on Windows. On Unix this
 /// is just `Command::new("axon")` — the flag is a no-op outside Windows.
@@ -37,6 +38,10 @@ use crate::theme::{
 };
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
+#[cfg(test)]
+#[path = "ui_tests.rs"]
+mod tests;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
     Unknown,
@@ -71,9 +76,36 @@ pub(crate) struct Palette {
     health_check_id: u64,
 }
 
-struct RunningCommand {
+pub(crate) struct RunningCommand {
     id: u64,
-    subcommand: &'static str,
+    pub(crate) subcommand: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) started_at: Instant,
+}
+
+impl RunningCommand {
+    pub(crate) fn elapsed_label(&self) -> String {
+        format_elapsed(self.started_at.elapsed())
+    }
+}
+
+/// Format a `Duration` as a short human-readable label: `"0.4s"`, `"12s"`,
+/// `"1m 03s"`. Used by the running indicator so the user can see at a glance
+/// that time is passing.
+pub(crate) fn format_elapsed(elapsed: Duration) -> String {
+    let secs = elapsed.as_secs();
+    if secs < 1 {
+        // Sub-second: show one decimal so the indicator visibly moves
+        // immediately after submit.
+        let tenths = elapsed.subsec_millis() / 100;
+        return format!("0.{tenths}s");
+    }
+    if secs < 60 {
+        return format!("{secs}s");
+    }
+    let mins = secs / 60;
+    let rem = secs % 60;
+    format!("{mins}m {rem:02}s")
 }
 
 struct CommandResult {
@@ -139,6 +171,35 @@ impl Palette {
                 };
                 cx.notify();
             });
+        })
+        .detach();
+    }
+
+    /// Force a re-render every ~250ms while `run_id` is the active running
+    /// command. The pulsing-dot animation already re-paints on its own (GPUI
+    /// drives that via `request_animation_frame`), but the elapsed-time label
+    /// is computed inside `render()` and only refreshes on `cx.notify()`.
+    fn spawn_running_tick(&self, run_id: u64, cx: &mut Context<Self>) {
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                executor.timer(Duration::from_millis(250)).await;
+                let still_running = this
+                    .update(cx, |this, cx| {
+                        let active = this
+                            .running
+                            .as_ref()
+                            .is_some_and(|running| running.id == run_id);
+                        if active {
+                            cx.notify();
+                        }
+                        active
+                    })
+                    .unwrap_or(false);
+                if !still_running {
+                    break;
+                }
+            }
         })
         .detach();
     }
@@ -242,8 +303,11 @@ impl Palette {
         self.running = Some(RunningCommand {
             id: run_id,
             subcommand: action.subcommand,
+            label: action.label,
+            started_at: Instant::now(),
         });
         self.command_output = Some(CommandOutput::running(&command_line, action));
+        self.spawn_running_tick(run_id, cx);
 
         let task = cx.background_spawn(async move {
             let mut cmd = axon_command();
@@ -391,6 +455,15 @@ impl Render for Palette {
         let query_is_empty = self.query.is_empty();
 
         let connection = self.connection;
+        // The status dot is intentionally non-animated. An earlier revision
+        // pulsed it while a health check was in flight, but the auto-spawned
+        // launch-time probe combined with a repeating animation kept GPUI
+        // re-rendering the view every frame on slower compositors and could
+        // starve key-event dispatch — the user-visible symptom was a window
+        // that wouldn't accept input. Color alone is now the indicator:
+        // grey while `Checking`, green/red once the probe returns. The
+        // footer/output pulsing dots (which only render once a command is
+        // selected or running) are unaffected.
         let status_dot = div()
             .id("status-dot")
             .size(px(8.0))
@@ -403,7 +476,8 @@ impl Render for Palette {
                 cx.listener(|this, _: &MouseDownEvent, _window, cx| {
                     this.spawn_health_check(cx);
                 }),
-            );
+            )
+            .into_any_element();
 
         div()
             .key_context("Palette")
@@ -451,7 +525,7 @@ impl Render for Palette {
                         el.child(render_palette_footer(
                             action,
                             command_output.as_ref(),
-                            self.running.is_some(),
+                            self.running.as_ref(),
                         ))
                     })
                     .when_some(command_output.clone(), |el, output| {
