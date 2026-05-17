@@ -216,20 +216,6 @@ pub struct Config {
     /// Base URL of the Qdrant vector store. Env: `QDRANT_URL`. Flag: `--qdrant-url`.
     pub qdrant_url: String,
 
-    /// Legacy OpenAI-compatible API base URL (e.g. `http://ollama:11434/v1`).
-    /// Kept for compatibility and transitional commands; Gemini headless paths do not require it.
-    /// Env: `OPENAI_BASE_URL`.
-    pub openai_base_url: String,
-
-    /// Legacy API key for OpenAI-compatible LLM endpoints.
-    /// Kept for compatibility and transitional commands; Gemini headless paths do not require it.
-    /// Env: `OPENAI_API_KEY`. **Secret.**
-    pub openai_api_key: String,
-
-    /// Gemini model override for headless LLM synthesis.
-    /// Retained as `OPENAI_MODEL` for backward compatibility.
-    pub openai_model: String,
-
     /// Gemini-specific model override for headless LLM synthesis.
     /// Env: `AXON_HEADLESS_GEMINI_MODEL`.
     pub headless_gemini_model: String,

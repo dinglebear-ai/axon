@@ -76,9 +76,9 @@ Generated: 2026-05-15 from source-derived inventory.
 | `AXON_LLM_COMPLETION_CONCURRENCY` | keep-env | both | — | no | runtime.rs |
 | `AXON_LLM_COMPLETION_TIMEOUT_SECS` | keep-env | both | — | no | runtime.rs |
 | `AXON_HEADLESS_GEMINI_HOME` | trusted-bootstrap | both | — | no | advanced.rs |
-| `OPENAI_MODEL` | compat-shim | both | — | no | runtime.rs (WarnEnvOverride) |
-| `OPENAI_BASE_URL` | compat-shim | both | — | no | runtime.rs (WarnAndIgnore) |
-| `OPENAI_API_KEY` | compat-shim | both | — | **yes** | runtime.rs (WarnAndIgnore) |
+| `OPENAI_MODEL` | delete | not-runtime | — | no | migration.rs (DeleteOnMigration, removed in 3.0.0) |
+| `OPENAI_BASE_URL` | delete | not-runtime | — | no | migration.rs (DeleteOnMigration, removed in 3.0.0) |
+| `OPENAI_API_KEY` | delete | not-runtime | — | **yes** | migration.rs (DeleteOnMigration, removed in 3.0.0) |
 
 ### Trusted Operator Bootstrap
 
@@ -267,7 +267,7 @@ Keys in live env but not in .env.example (stale or operator-specific):
 - `AXON_WEB_ALLOWED_ORIGINS` — in advanced.rs registry; add to .env.example
 - `AXON_WEB_API_TOKEN` — secret; registered in runtime.rs; add to .env.example if the sample should advertise web API auth
 - `CHROME_URL` — stale alias; delete from live .env
-- `OPENAI_API_KEY` / `OPENAI_BASE_URL` — compat-shim; in registry as WarnAndIgnore
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `OPENAI_MODEL` — removed in 3.0.0; registered as `Delete`/`DeleteOnMigration` in migration.rs so `axon setup repair --migrate-env` strips them
 - `TEI_MAX_BATCH_REQUESTS`, `TEI_MAX_BATCH_TOKENS`, `TEI_MAX_CONCURRENT_REQUESTS` — compose-env server args; already in registry
 - `TEI_TOKENIZATION_WORKERS` — observed live compose-env server arg; not yet registered
 
@@ -299,11 +299,14 @@ Keys in .env.example but not in live env (user hasn't set them):
 
 ### Scope Note (ztqd.4)
 
-Deprecation warnings for `CompatibilityShim` vars (`OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`) fire during `axon setup` env migration, not on every CLI invocation. The build_config/ path that runs at every startup is excluded from the allowed file ownership for this bead. If every-invocation coverage is needed, a follow-up bead should wire `env_registry::warn_compatibility_shims()` from within `into_config_with_sources()` in `build_config.rs`.
+`OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` were removed in 3.0.0 and are now in `migration.rs` as `Delete`/`DeleteOnMigration`. `axon setup repair --migrate-env` strips them from existing `~/.axon/.env` files. No active runtime path reads them anymore.
 
 ### Keys Intentionally Dropped from .env.example (ztqd.4)
 
-The following KeepEnv/CompatibilityShim keys were in the old `.env.example` but are omitted from the new minimal target. They remain valid and work when set — they are just not shown in the example template:
+The following keys were in the old `.env.example` but are omitted from the new minimal target. They fall into two groups:
+
+- **`keep-env` / `compose-env` / `trusted-bootstrap`** — still valid and honored at runtime when set; just not shown in the example template to keep the default minimal.
+- **`delete`** — removed from the runtime entirely. Setting them has no effect; `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`. The rows are listed here only to document that they were intentionally dropped (not accidentally forgotten).
 
 | Key | Class | Reason omitted |
 |-----|-------|---------------|
@@ -315,6 +318,6 @@ The following KeepEnv/CompatibilityShim keys were in the old `.env.example` but 
 | `GOOGLE_API_KEY` | keep-env | Optional alternate Google credential path |
 | `GOOGLE_APPLICATION_CREDENTIALS` | trusted-bootstrap | Service account path; not typical setup |
 | `TEI_SERVER_MAX_CLIENT_BATCH_SIZE` | compose-env | TEI tuning; advanced use only |
-| `OPENAI_MODEL` | compat-shim | Deprecated; WarnEnvOverride |
-| `OPENAI_BASE_URL` | compat-shim | Deprecated; WarnAndIgnore |
-| `OPENAI_API_KEY` | compat-shim | Deprecated; WarnAndIgnore |
+| `OPENAI_MODEL` | delete | Removed in 3.0.0; `axon setup repair --migrate-env` scrubs it |
+| `OPENAI_BASE_URL` | delete | Removed in 3.0.0; `axon setup repair --migrate-env` scrubs it |
+| `OPENAI_API_KEY` | delete | Removed in 3.0.0; `axon setup repair --migrate-env` scrubs it |

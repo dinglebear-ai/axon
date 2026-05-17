@@ -360,39 +360,39 @@ reason = "Hugging Face token for TEI model pulls."
 
 [[env]]
 key = "OPENAI_MODEL"
-classification = "compatibility-shim"
-runtime_placement = "both"
-surfaces = ["src", "docs"]
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env", "scripts"]
 secret = false
 url_or_path = false
-container_allowed = true
+container_allowed = false
 toml_destination = ""
-compatibility = "gemini-model-fallback"
-reason = "Temporary compatibility: gemini-* values still seed Gemini model override."
+compatibility = "delete-on-migration"
+reason = "Removed from the axon runtime in 3.0.0; LLM operations now run through AXON_HEADLESS_GEMINI_*. `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` (e.g. `scripts/searxng-research`, `scripts/time-query-gen`) that talk to an OpenAI-compatible endpoint independently of axon's runtime config."
 
 [[env]]
 key = "OPENAI_BASE_URL"
-classification = "compatibility-shim"
-runtime_placement = "both"
-surfaces = ["src", "docs"]
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env", "scripts"]
 secret = false
 url_or_path = true
-container_allowed = true
+container_allowed = false
 toml_destination = ""
-compatibility = "warn-and-ignore"
-reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
+compatibility = "delete-on-migration"
+reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
 
 [[env]]
 key = "OPENAI_API_KEY"
-classification = "compatibility-shim"
-runtime_placement = "both"
-surfaces = ["src", "docs"]
+classification = "delete"
+runtime_placement = "not-runtime"
+surfaces = ["docs", "live-env", "scripts"]
 secret = true
 url_or_path = false
-container_allowed = true
+container_allowed = false
 toml_destination = ""
-compatibility = "warn-and-ignore"
-reason = "Temporary compatibility for existing OpenAI-compatible runtime fields while Gemini headless remains canonical."
+compatibility = "delete-on-migration"
+reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
 
 [[env]]
 key = "AXON_HEADLESS_GEMINI_CMD"

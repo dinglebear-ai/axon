@@ -14,7 +14,6 @@ pub struct ExtractionMetrics {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
-    pub estimated_cost_usd: f64,
     pub llm_fallback_failures: usize,
 }
 
@@ -279,12 +278,10 @@ pub(crate) struct FallbackResponse {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
-    pub estimated_cost_usd: f64,
 }
 
 pub(crate) async fn extract_items_fallback(
     _client: &reqwest::Client,
-    openai_model: &str,
     llm_backend: llm_backend::LlmBackendConfig,
     prompt: &str,
     page_url: &str,
@@ -300,17 +297,10 @@ pub(crate) async fn extract_items_fallback(
          Output the bare JSON object starting with `{{` and nothing before or after it."
     ));
     request.backend = llm_backend;
-    if !request
-        .backend
-        .gemini_model
-        .as_deref()
-        .unwrap_or_default()
-        .trim()
-        .is_empty()
+    if let Some(model) = request.backend.gemini_model.clone()
+        && !model.trim().is_empty()
     {
-        request.model = request.backend.gemini_model.clone();
-    } else if openai_model.trim().starts_with("gemini-") {
-        request = request.model(openai_model.to_string());
+        request.model = Some(model);
     }
     let response = llm_backend::complete_text(request)
         .await
@@ -350,7 +340,6 @@ pub(crate) async fn extract_items_fallback(
         prompt_tokens,
         completion_tokens,
         total_tokens,
-        estimated_cost_usd: estimate_llm_cost_usd(openai_model, prompt_tokens, completion_tokens),
     })
 }
 
@@ -387,34 +376,6 @@ fn strip_llm_fallback_envelope(raw: &str) -> &str {
     trimmed
 }
 
-pub(crate) fn estimate_llm_cost_usd(
-    model: &str,
-    prompt_tokens: u64,
-    completion_tokens: u64,
-) -> f64 {
-    // Pricing map is best-effort and intended for operational visibility.
-    //
-    // ORDERING CONTRACT: More-specific model names MUST appear before their
-    // prefixes. We use `contains()` matching, so "gpt-4o-mini" must be checked
-    // before "gpt-4o" (which is a substring), and "gpt-4.1-mini" before
-    // "gpt-4.1". Adding a new model? Insert it ABOVE any broader pattern that
-    // would match it as a substring.
-    let model_lc = model.to_ascii_lowercase();
-    let (input_per_million, output_per_million) = if model_lc.contains("gpt-4o-mini") {
-        (0.15_f64, 0.60_f64)
-    } else if model_lc.contains("gpt-4o") {
-        (2.50_f64, 10.00_f64)
-    } else if model_lc.contains("gpt-4.1-mini") {
-        (0.40_f64, 1.60_f64)
-    } else if model_lc.contains("gpt-4.1") {
-        (2.00_f64, 8.00_f64)
-    } else {
-        (0.0_f64, 0.0_f64)
-    };
-
-    ((prompt_tokens as f64 / 1_000_000.0) * input_per_million)
-        + ((completion_tokens as f64 / 1_000_000.0) * output_per_million)
-}
 #[cfg(test)]
 #[path = "deterministic_tests.rs"]
 mod tests;

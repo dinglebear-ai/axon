@@ -216,7 +216,6 @@ Recommendations:
 
 - `github_token`
 - `reddit_client_id`, `reddit_client_secret`
-- `openai_api_key`
 - `tavily_api_key`
 - `custom_headers` — values redacted, header names preserved as `"Name: [REDACTED]"`; malformed entries become `"[MALFORMED]"`
 

@@ -110,10 +110,8 @@ fn non_trivial_answer_requires_minimum_citation_count() {
 }
 
 #[test]
-fn validate_ask_llm_config_accepts_gemini_without_openai_settings() {
-    let mut cfg = Config::test_default();
-    cfg.openai_base_url.clear();
-    cfg.openai_model.clear();
+fn validate_ask_llm_config_accepts_default_gemini_config() {
+    let cfg = Config::test_default();
 
     let result = validate_ask_llm_config(&cfg);
 

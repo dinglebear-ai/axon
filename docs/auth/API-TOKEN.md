@@ -139,7 +139,6 @@ to disambiguate them from Axon-issued auth secrets above.
 | Variable | Provider | Used by |
 |----------|----------|---------|
 | Gemini CLI auth / `AXON_HEADLESS_GEMINI_CMD` | Gemini headless synthesis | `ask`, `evaluate`, `suggest`, extract LLM fallback, debug, research synthesis |
-| `OPENAI_API_KEY` | OpenAI-compatible LLM endpoint | Compatibility path only when an OpenAI-compatible endpoint is explicitly configured |
 | `TAVILY_API_KEY` | Tavily search API | `search`, `research` |
 | `GITHUB_TOKEN` | GitHub | Optional — raises rate limits on `ingest` GitHub targets |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Reddit OAuth app | Required for `ingest` Reddit targets |

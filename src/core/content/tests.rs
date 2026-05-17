@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::content::deterministic::{DeterministicExtractionEngine, estimate_llm_cost_usd};
+use crate::core::content::deterministic::DeterministicExtractionEngine;
 use spider_transformations::transformation::content::SelectorConfiguration;
 
 // ── Regression guard: build_transform_config() safety rails ─────────────────
@@ -230,18 +230,6 @@ fn test_default_engine_dedups_identical_json_ld_items() {
     let engine = DeterministicExtractionEngine::with_default_parsers();
     let page = engine.extract("https://example.com", html);
     assert_eq!(page.items.len(), 1);
-}
-
-#[test]
-fn test_estimate_llm_cost_usd_zero_for_unknown_model() {
-    let cost = estimate_llm_cost_usd("unknown-model", 10_000, 1_000);
-    assert_eq!(cost, 0.0);
-}
-
-#[test]
-fn test_estimate_llm_cost_usd_known_model() {
-    let cost = estimate_llm_cost_usd("gpt-4o-mini", 100_000, 20_000);
-    assert!(cost > 0.0);
 }
 
 // --- OpenGraphParser tests ---

@@ -202,7 +202,6 @@ struct ExtractAggregation {
     prompt_tokens: u64,
     completion_tokens: u64,
     total_tokens: u64,
-    estimated_cost_usd: f64,
     parser_hits: serde_json::Map<String, serde_json::Value>,
     total_items: usize,
 }
@@ -244,7 +243,6 @@ async fn execute_extract_runs(
             "prompt_tokens": run.metrics.prompt_tokens,
             "completion_tokens": run.metrics.completion_tokens,
             "total_tokens": run.metrics.total_tokens,
-            "estimated_cost_usd": run.metrics.estimated_cost_usd,
             "parser_hits": run.parser_hits,
             "total_items": run.results.len(),
         }));
@@ -263,7 +261,6 @@ fn accumulate_run(agg: &mut ExtractAggregation, run: &crate::core::content::Extr
     agg.prompt_tokens += run.metrics.prompt_tokens;
     agg.completion_tokens += run.metrics.completion_tokens;
     agg.total_tokens += run.metrics.total_tokens;
-    agg.estimated_cost_usd += run.metrics.estimated_cost_usd;
     for (name, count) in &run.parser_hits {
         let current = agg
             .parser_hits
@@ -281,9 +278,6 @@ fn build_extract_web_config(cfg: &Config, url: String, prompt: &str) -> ExtractW
         start_url: url,
         prompt: prompt.to_string(),
         limit: cfg.max_pages,
-        openai_base_url: cfg.openai_base_url.clone(),
-        openai_api_key: cfg.openai_api_key.clone(),
-        openai_model: cfg.openai_model.clone(),
         llm_backend: crate::services::llm_backend::LlmBackendConfig::from_config(cfg),
         custom_headers: cfg.custom_headers.clone(),
         render_mode: cfg.render_mode,
@@ -309,7 +303,7 @@ fn build_extract_summary(
     Ok(serde_json::json!({
         "urls": urls,
         "prompt": prompt,
-        "model": cfg.openai_model,
+        "model": cfg.headless_gemini_model,
         "pages_visited": agg.pages_visited,
         "pages_with_data": agg.pages_with_data,
         "deterministic_pages": agg.deterministic_pages,
@@ -318,7 +312,6 @@ fn build_extract_summary(
         "prompt_tokens": agg.prompt_tokens,
         "completion_tokens": agg.completion_tokens,
         "total_tokens": agg.total_tokens,
-        "estimated_cost_usd": agg.estimated_cost_usd,
         "parser_hits": agg.parser_hits,
         "total_items": agg.total_items,
         "runs": agg.runs,
