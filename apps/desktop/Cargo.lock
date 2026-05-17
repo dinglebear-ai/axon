@@ -482,12 +482,16 @@ version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
+ "chrono",
  "global-hotkey",
  "gpui",
  "gpui_linux",
  "gpui_windows",
  "open",
  "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
