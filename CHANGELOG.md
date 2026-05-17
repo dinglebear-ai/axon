@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-05-17
+
+### Changed
+
+- **release**: Re-version PR #100's feat-level work as `2.5.0` to comply with the repo policy that `feat`-prefixed changes bump the minor (not patch). The original `2.4.0` bump was correct for the feature commit, but subsequent review-fix patch bumps (`2.4.1`, `2.4.2`) shipped under the same feature PR — per policy, the rolled-up release tag for this PR is a minor. Supersedes `2.4.2`. (PR #100 review feedback)
+
 ## [2.4.2] - 2026-05-17
 
 ### Fixed

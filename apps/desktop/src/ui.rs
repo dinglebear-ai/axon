@@ -19,7 +19,9 @@ fn axon_command() -> Command {
     cmd
 }
 
-use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, Size, Window, prelude::*, px};
+use gpui::{
+    App, Context, FocusHandle, Focusable, ScrollHandle, SharedString, Size, Window, prelude::*, px,
+};
 
 use crate::actions::{
     ACTIONS, ArgMode, CommandAction, action_invoked_by, action_matches, build_axon_args,
