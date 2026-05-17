@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-05-17
+
 ### Added
 
 - palette: cross-restart persistence for the in-memory ask conversation. On startup the palette reads `~/.axon/ask-sessions/latest` and the pointed-to JSONL; if the last turn is within the 30-minute idle window, the live conversation (turn count + last-turn timestamp) is restored so reopening the palette picks up the existing `--follow-up` chain instead of starting fresh. Only turn timestamps are deserialized — prompt/answer content never enters palette memory. Stale, missing, corrupt, or path-traversal-y session pointers fall back to a fresh state without crashing.
