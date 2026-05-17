@@ -109,6 +109,12 @@ pub(super) enum ConfigSubcommand {
     Get {
         /// UPPER_SNAKE for .env, dotted lowercase for config.toml
         key: String,
+        /// Force read from .env regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        env: bool,
+        /// Force read from config.toml regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        toml: bool,
         /// Reveal secret values instead of showing `***`
         #[arg(long, action = ArgAction::SetTrue)]
         reveal: bool,

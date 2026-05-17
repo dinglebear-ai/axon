@@ -149,8 +149,11 @@ fn run_get(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .positional
         .get(1)
         .ok_or("axon config get <key>: missing key")?;
-    let reveal = cfg.positional.iter().any(|v| v == "--reveal");
-    let target = detect_target(key, false, false)?;
+    let flags = cfg.positional.iter().skip(2);
+    let force_env = flags.clone().any(|v| v == "--env");
+    let force_toml = flags.clone().any(|v| v == "--toml");
+    let reveal = flags.clone().any(|v| v == "--reveal");
+    let target = detect_target(key, force_env, force_toml)?;
 
     let (raw_value, source) = match target {
         Target::Env => {
@@ -198,8 +201,9 @@ fn run_set(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .positional
         .get(2)
         .ok_or("axon config set <key> <value>: missing value")?;
-    let force_env = cfg.positional.iter().any(|v| v == "--env");
-    let force_toml = cfg.positional.iter().any(|v| v == "--toml");
+    let flags = cfg.positional.iter().skip(3);
+    let force_env = flags.clone().any(|v| v == "--env");
+    let force_toml = flags.clone().any(|v| v == "--toml");
     let target = detect_target(key, force_env, force_toml)?;
 
     let path = write_target(target, key, value)?;
@@ -231,8 +235,9 @@ fn run_unset(cfg: &Config) -> Result<(), Box<dyn Error>> {
         .positional
         .get(1)
         .ok_or("axon config unset <key>: missing key")?;
-    let force_env = cfg.positional.iter().any(|v| v == "--env");
-    let force_toml = cfg.positional.iter().any(|v| v == "--toml");
+    let flags = cfg.positional.iter().skip(2);
+    let force_env = flags.clone().any(|v| v == "--env");
+    let force_toml = flags.clone().any(|v| v == "--toml");
     let target = detect_target(key, force_env, force_toml)?;
 
     let (path, removed) = match target {
@@ -304,7 +309,8 @@ fn detect_target(key: &str, force_env: bool, force_toml: bool) -> Result<Target,
     if force_toml {
         return Ok(Target::Toml);
     }
-    let looks_env = key.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+    let first = key.chars().next();
+    let looks_env = first.is_some_and(|c| c == '_' || c.is_ascii_alphabetic())
         && key
             .chars()
             .all(|c| c == '_' || c.is_ascii_uppercase() || c.is_ascii_digit())
@@ -330,10 +336,11 @@ struct ListFlags {
 }
 
 fn parse_list_flags(positional: &[String]) -> ListFlags {
+    let mut flags = positional.iter().skip(1);
     ListFlags {
-        env: positional.iter().any(|v| v == "--env"),
-        toml: positional.iter().any(|v| v == "--toml"),
-        reveal: positional.iter().any(|v| v == "--reveal"),
+        env: flags.clone().any(|v| v == "--env"),
+        toml: flags.clone().any(|v| v == "--toml"),
+        reveal: flags.any(|v| v == "--reveal"),
     }
 }
 
@@ -358,3 +365,7 @@ fn path_display(path: Option<&PathBuf>) -> String {
         None => "<HOME unset>".to_string(),
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;
