@@ -187,6 +187,19 @@ pub(crate) fn render_palette_footer(
                         .child(SharedString::from(detail.to_string())),
                 ),
         )
+        // Keybinding hints — Spotlight/Raycast pattern. Small ghosted chips
+        // pointing at the shortcuts that work right here. Two slots: the
+        // primary action (Enter / clear) and an Esc fallback.
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .flex_shrink_0()
+                .child(keybinding_chip("↵", if has_output { "again" } else { "run" }))
+                .child(keybinding_chip("esc", "dismiss")),
+        )
         // Dismiss affordance — shown only when there's output to clear.
         // Hover gives it accent-color so it reads as "this does something".
         .when(has_output, |el| {
@@ -216,6 +229,38 @@ pub(crate) fn render_palette_footer(
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────
+
+// Spotlight-style keybinding chip: ghosted box with the key glyph + tiny label.
+fn keybinding_chip(key: &'static str, label: &'static str) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .min_w(px(20.0))
+                .px_1()
+                .py(px(1.0))
+                .rounded_sm()
+                .border_1()
+                .border_color(rgb(AURORA_BORDER_STRONG))
+                .bg(rgb(AURORA_NAV_BG))
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(620.0))
+                .text_size(px(10.0))
+                .text_color(rgb(AURORA_TEXT_MUTED))
+                .child(key),
+        )
+        .child(
+            div()
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(480.0))
+                .text_size(px(10.0))
+                .text_color(rgb(AURORA_TEXT_MUTED))
+                .child(label),
+        )
+}
 
 // Resize the palette window to hug content. 6px deadband stops render→resize loops.
 pub(crate) fn reflow_palette_window(

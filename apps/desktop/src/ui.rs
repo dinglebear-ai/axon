@@ -29,8 +29,8 @@ use crate::render::{
 };
 use crate::render_output::render_output_body;
 use crate::theme::{
-    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
-    AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
+    AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS,
+    AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
 };
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
@@ -444,8 +444,16 @@ impl Render for Palette {
                     .rounded_lg()
                     .bg(rgb(AURORA_PANEL_STRONG))
                     .border_1()
-                    .border_color(rgb(AURORA_BORDER_STRONG))
-                    .shadow_xl()
+                    // Border subtly brightens to the accent color while the
+                    // user is typing — same idea as a focus ring on the
+                    // active input, but at the panel level so it reads as
+                    // "the palette is listening".
+                    .border_color(rgb(if query_is_empty {
+                        AURORA_BORDER_STRONG
+                    } else {
+                        AURORA_ACCENT_STRONG
+                    }))
+                    .shadow_2xl()
                     .child(render_prompt_row(
                         query_is_empty,
                         locked,
