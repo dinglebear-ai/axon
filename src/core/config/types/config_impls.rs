@@ -96,6 +96,8 @@ impl Default for Config {
             ask_session: None,
             ask_follow_up_context: None,
             ask_reset_session: false,
+            ask_new_session: false,
+            ask_list_sessions: false,
             ask_graph: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             ask_max_context_chars: 300_000,
@@ -347,6 +349,8 @@ impl fmt::Debug for Config {
                 &self.ask_follow_up_context.as_ref().map(|_| "[REDACTED]"),
             )
             .field("ask_reset_session", &self.ask_reset_session)
+            .field("ask_new_session", &self.ask_new_session)
+            .field("ask_list_sessions", &self.ask_list_sessions)
             .field("ask_graph", &self.ask_graph)
             .field("evaluate_responses_mode", &self.evaluate_responses_mode)
             .field("ask_max_context_chars", &self.ask_max_context_chars)

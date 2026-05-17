@@ -23,6 +23,18 @@ pub(crate) struct AskTurn {
     pub assistant: String,
 }
 
+/// Summary of a single local ask session for `--list-sessions`.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct SessionMeta {
+    pub name: String,
+    pub turn_count: usize,
+    /// Last-modified time as a unix timestamp (seconds). May be `None` if the
+    /// filesystem doesn't expose modification times.
+    pub last_used_unix: Option<i64>,
+    /// True for the session pointed to by the `latest` file.
+    pub is_latest: bool,
+}
+
 #[cfg(test)]
 pub(crate) fn selected_session_name(cfg: &Config) -> String {
     resolve_selected_session_name(cfg).unwrap_or_else(|_| DEFAULT_SESSION.to_string())
@@ -53,6 +65,69 @@ pub(crate) fn update_latest_session(cfg: &Config) -> Result<(), Box<dyn Error>> 
     let path = latest_session_path();
     write_atomic(&path, format!("{session}\n").as_bytes())?;
     Ok(())
+}
+
+/// Generate a fresh auto-named session name based on the current UTC time.
+/// Format: `auto-YYYY-MM-DD-HHMMSS`. The format passes `sanitize_session_name()`.
+pub(crate) fn new_session_name() -> String {
+    Utc::now().format("auto-%Y-%m-%d-%H%M%S").to_string()
+}
+
+/// Enumerate all local ask sessions, sorted by last-modified descending.
+/// The `latest` pointer file is excluded; sessions without a readable modified
+/// time fall to the bottom of the list.
+pub(crate) fn list_sessions() -> Result<Vec<SessionMeta>, Box<dyn Error>> {
+    let dir = sessions_dir();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(format!("failed to read sessions dir {}: {err}", dir.display()).into());
+        }
+    };
+
+    let latest = read_latest_session_name();
+    let mut out: Vec<SessionMeta> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        // Skip the `latest` pointer and any temp files written by `write_atomic`.
+        if file_name == LATEST_SESSION_FILE || file_name.starts_with('.') {
+            continue;
+        }
+        let Some(stem) = file_name.strip_suffix(".jsonl") else {
+            continue;
+        };
+        if sanitize_session_name(stem).is_err() {
+            continue;
+        }
+
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let turn_count = parse_session_lines(&path, &content).len();
+        let last_used_unix = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64);
+        let is_latest = latest.as_deref() == Some(stem);
+        out.push(SessionMeta {
+            name: stem.to_string(),
+            turn_count,
+            last_used_unix,
+            is_latest,
+        });
+    }
+
+    out.sort_by(|a, b| {
+        b.last_used_unix
+            .cmp(&a.last_used_unix)
+            .then(a.name.cmp(&b.name))
+    });
+    Ok(out)
 }
 
 pub(crate) fn reset_session(cfg: &Config) -> Result<(), Box<dyn Error>> {
