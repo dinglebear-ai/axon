@@ -1,6 +1,6 @@
 use gpui::{
-    FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString, Styled, div,
-    prelude::*, px, rgb,
+    AnyElement, App, Div, FontWeight, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+    SharedString, Stateful, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use crate::ClearOutput;
@@ -10,8 +10,8 @@ use crate::output::{CommandOutput, OutputKind, OutputSection};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
     AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG,
-    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
-    AURORA_TEXT_PRIMARY,
+    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_PRESSED_BG,
+    AURORA_ROW_HOVER_BG, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 
 pub(crate) fn render_prompt_row(
@@ -68,28 +68,6 @@ pub(crate) fn render_prompt_row(
         )
 }
 
-pub(crate) fn render_action_rows(
-    actions: Vec<CommandAction>,
-    selected: usize,
-    running_subcommand: Option<&'static str>,
-    hide_list: bool,
-) -> impl IntoElement {
-    let is_empty = actions.is_empty();
-    div()
-        .flex()
-        .flex_col()
-        .py_1()
-        .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
-        .when(!is_empty, |el| {
-            el.children(actions.into_iter().enumerate().map(move |(i, action)| {
-                render_action_row(
-                    action,
-                    i == selected,
-                    running_subcommand == Some(action.subcommand),
-                )
-            }))
-        })
-}
 
 pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
     let empty = output.stdout.is_none() && output.stderr.is_none();
@@ -338,6 +316,39 @@ fn render_output_section(
         )
 }
 
+/// Render the full action list (or empty-state row) with per-row click
+/// handlers. `make_on_click` is invoked once per row to produce its listener
+/// — typically `|i| cx.listener(move |this, _, w, cx| this.click_action(i, w, cx))`.
+pub(crate) fn render_action_list<F, L>(
+    actions: Vec<CommandAction>,
+    selected: usize,
+    running_subcommand: Option<&'static str>,
+    hide_list: bool,
+    mut make_on_click: F,
+) -> impl IntoElement
+where
+    F: FnMut(usize) -> L,
+    L: Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+{
+    let is_empty = actions.is_empty();
+    let rows: Vec<AnyElement> = actions
+        .into_iter()
+        .enumerate()
+        .map(|(i, action)| {
+            let is_running = running_subcommand == Some(action.subcommand);
+            render_action_row(action, i, i == selected, is_running)
+                .on_mouse_down(MouseButton::Left, make_on_click(i))
+                .into_any_element()
+        })
+        .collect();
+    div()
+        .flex()
+        .flex_col()
+        .py_1()
+        .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
+        .when(!is_empty, |el| el.children(rows))
+}
+
 fn render_empty_row() -> impl IntoElement {
     div()
         .h(px(36.0))
@@ -350,11 +361,16 @@ fn render_empty_row() -> impl IntoElement {
         .child("No matching commands")
 }
 
+/// Build an interactive action row. The caller is expected to chain
+/// `.on_mouse_down(MouseButton::Left, cx.listener(...))` to wire up clicks —
+/// hover/active/cursor visual feedback is already applied here so every row
+/// reacts to the pointer even without an active selection.
 fn render_action_row(
     action: CommandAction,
+    index: usize,
     is_selected: bool,
     is_running: bool,
-) -> impl IntoElement {
+) -> Stateful<Div> {
     let meta = if is_running {
         "running"
     } else if action.arg_mode == ArgMode::None {
@@ -370,7 +386,21 @@ fn render_action_row(
         AURORA_ACCENT_STRONG
     };
 
+    let base_bg = if is_selected {
+        AURORA_HOVER_BG
+    } else {
+        AURORA_PANEL_STRONG
+    };
+    // Keep the selected row's highlight from being "dimmed" by a hover, while
+    // still giving plain rows a soft hover lift.
+    let hover_bg = if is_selected {
+        AURORA_HOVER_BG
+    } else {
+        AURORA_ROW_HOVER_BG
+    };
+
     div()
+        .id(("axon-action-row", index))
         .h(px(36.0))
         .flex()
         .flex_row()
@@ -379,11 +409,10 @@ fn render_action_row(
         .mx_1()
         .px_3()
         .rounded_sm()
-        .bg(if is_selected {
-            rgb(AURORA_HOVER_BG)
-        } else {
-            rgb(AURORA_PANEL_STRONG)
-        })
+        .cursor_pointer()
+        .bg(rgb(base_bg))
+        .hover(move |el| el.bg(rgb(hover_bg)))
+        .active(|el| el.bg(rgb(AURORA_PRESSED_BG)))
         .child(
             div()
                 .font_weight(if is_selected {
