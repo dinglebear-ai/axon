@@ -2,8 +2,14 @@ use super::*;
 
 #[test]
 fn detect_target_upper_snake_routes_to_env() {
-    assert_eq!(detect_target("QDRANT_URL", false, false).unwrap(), Target::Env);
-    assert_eq!(detect_target("GITHUB_TOKEN", false, false).unwrap(), Target::Env);
+    assert_eq!(
+        detect_target("QDRANT_URL", false, false).unwrap(),
+        Target::Env
+    );
+    assert_eq!(
+        detect_target("GITHUB_TOKEN", false, false).unwrap(),
+        Target::Env
+    );
     assert_eq!(
         detect_target("AXON_HEADLESS_GEMINI_MODEL", false, false).unwrap(),
         Target::Env
@@ -13,7 +19,10 @@ fn detect_target_upper_snake_routes_to_env() {
 #[test]
 fn detect_target_allows_underscore_prefixed_env_keys() {
     assert_eq!(detect_target("_MY_VAR", false, false).unwrap(), Target::Env);
-    assert_eq!(detect_target("__INTERNAL", false, false).unwrap(), Target::Env);
+    assert_eq!(
+        detect_target("__INTERNAL", false, false).unwrap(),
+        Target::Env
+    );
 }
 
 #[test]
