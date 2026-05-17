@@ -149,9 +149,10 @@ fn strip_ansi(text: &str) -> String {
         if c == '\x1b' {
             if chars.peek() == Some(&'[') {
                 chars.next(); // consume '['
-                // consume until final byte: an ASCII letter
+                // Consume until ANSI final byte: 0x40–0x7E (includes letters
+                // AND punctuation such as `~`, `|`, `@`, etc.).
                 for ch in chars.by_ref() {
-                    if ch.is_ascii_alphabetic() {
+                    if ('\x40'..='\x7e').contains(&ch) {
                         break;
                     }
                 }
