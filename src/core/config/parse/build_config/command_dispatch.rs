@@ -287,8 +287,19 @@ fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {
                 out.positional.push("--reveal".to_string());
             }
         }
-        Some(ConfigSubcommand::Get { key, reveal }) => {
+        Some(ConfigSubcommand::Get {
+            key,
+            env,
+            toml,
+            reveal,
+        }) => {
             out.positional = vec!["get".to_string(), key];
+            if env {
+                out.positional.push("--env".to_string());
+            }
+            if toml {
+                out.positional.push("--toml".to_string());
+            }
             if reveal {
                 out.positional.push("--reveal".to_string());
             }
