@@ -157,14 +157,16 @@ RUNTIME_ENV_VARS: list = [
     ("AXON_HEADLESS_GEMINI_CMD", "path to Gemini CLI (default: `gemini`)"),
     ("AXON_HEADLESS_GEMINI_MODEL", "Gemini model override (optional)"),
     "TAVILY_API_KEY",
+    # OPENAI_* still actively read by the extract pipeline (OpenAI-compatible
+    # LLM endpoint). They are NOT deprecated — they are required for extract.
+    ("OPENAI_BASE_URL", "OpenAI-compatible LLM base URL (extract pipeline)"),
+    ("OPENAI_API_KEY", "API key for the extract LLM endpoint"),
+    ("OPENAI_MODEL", "Model name for the extract LLM endpoint"),
 ]
 
-# Compatibility shims — still read at startup but no longer drive behavior.
-RUNTIME_ENV_VARS_DEPRECATED: list[str] = [
-    "OPENAI_BASE_URL",
-    "OPENAI_API_KEY",
-    "OPENAI_MODEL",
-]
+# Compatibility shims — still read at startup but only emit a warning; the
+# feature they once controlled has been removed or replaced.
+RUNTIME_ENV_VARS_DEPRECATED: list[str] = []
 
 MCP_TRANSPORT_ENV_VARS: list[str] = [
     "AXON_MCP_HTTP_HOST",
