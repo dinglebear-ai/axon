@@ -41,11 +41,8 @@ services:
       - path: ${AXON_HOME:-${HOME}/.axon}/.env
         required: false
     environment:
-      # Container-internal service DNS (overrides host-side values from ~/.axon/.env).
-      QDRANT_URL: http://axon-qdrant:6333
-      TEI_URL: http://axon-tei:80
-      AXON_CHROME_REMOTE_URL: http://axon-chrome:6000
-      AXON_MCP_HTTP_PORT: "8001"
+      # Host-bleed guard: container user is `axon` — override host AXON_HOME.
+      AXON_HOME: /home/axon/.axon
       # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
       # set it for host CLI commands, but the server container must not inherit
       # it or container-local maintenance commands will route back through HTTP.
