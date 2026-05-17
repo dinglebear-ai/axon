@@ -83,7 +83,7 @@ impl CommandOutput {
         } else {
             format!("{} failed", command_title(subcommand))
         };
-        let subtitle = format!("{command_line} · {}", output.status);
+        let subtitle = format!("{command_line} · {}", format_exit_status(&output.status));
         let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
 
         Self {
@@ -163,6 +163,45 @@ fn strip_ansi(text: &str) -> String {
         }
     }
     out
+}
+
+/// Render an `ExitStatus` as a short human-readable string.
+///
+/// Replaces `std`'s `"exit status: 58"` / `"signal: 9 (SIGKILL)"` (and on some
+/// platforms a raw hex code) with `"exit 58"` / `"killed by SIGKILL"` / `"ok"`.
+fn format_exit_status(status: &std::process::ExitStatus) -> String {
+    if status.success() {
+        return "ok".to_string();
+    }
+    if let Some(code) = status.code() {
+        return format!("exit {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            let name = signal_name(sig).unwrap_or("signal");
+            return format!("killed by {name} ({sig})");
+        }
+    }
+    // Fallback for non-Unix or unknown termination.
+    format!("{status}")
+}
+
+#[cfg(unix)]
+fn signal_name(sig: i32) -> Option<&'static str> {
+    match sig {
+        1 => Some("SIGHUP"),
+        2 => Some("SIGINT"),
+        3 => Some("SIGQUIT"),
+        6 => Some("SIGABRT"),
+        9 => Some("SIGKILL"),
+        11 => Some("SIGSEGV"),
+        13 => Some("SIGPIPE"),
+        14 => Some("SIGALRM"),
+        15 => Some("SIGTERM"),
+        _ => None,
+    }
 }
 
 fn command_title(subcommand: &str) -> &'static str {

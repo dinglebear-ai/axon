@@ -1,5 +1,23 @@
 use std::process::{Command, Output};
 
+/// Spawn `axon` without flashing a console window on Windows. On Unix this
+/// is just `Command::new("axon")` — the flag is a no-op outside Windows.
+fn axon_command() -> Command {
+    let cmd = Command::new("axon");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW = 0x08000000 — prevents the child from getting its
+        // own console; otherwise GPUI's non-console parent flashes a cmd.exe
+        // window per subprocess (every health check + every command run).
+        let mut cmd = cmd;
+        cmd.creation_flags(0x08000000);
+        return cmd;
+    }
+    #[cfg(not(windows))]
+    cmd
+}
+
 use gpui::{
     App, Context, FocusHandle, Focusable, IntoElement, MouseButton, MouseDownEvent, ParentElement,
     Render, ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
@@ -94,7 +112,7 @@ impl Palette {
         cx.notify();
 
         let task = cx.background_spawn(async move {
-            let ok = Command::new("axon")
+            let ok = axon_command()
                 .args(["doctor", "--json"])
                 .output()
                 .map(|o| {
@@ -228,7 +246,7 @@ impl Palette {
         self.command_output = Some(CommandOutput::running(&command_line, action));
 
         let task = cx.background_spawn(async move {
-            let mut cmd = Command::new("axon");
+            let mut cmd = axon_command();
             cmd.args(&args);
             let result = cmd.output().map_err(|error| error.to_string());
             CommandResult {
