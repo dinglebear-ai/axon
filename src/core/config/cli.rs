@@ -80,6 +80,66 @@ pub(super) enum CliCommand {
     Mcp(McpArgs),
     /// Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search)
     Migrate(MigrateArgs),
+    /// Read or write entries in ~/.axon/.env and ~/.axon/config.toml
+    Config(ConfigArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+pub(super) struct ConfigArgs {
+    #[command(subcommand)]
+    pub(super) action: Option<ConfigSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ConfigSubcommand {
+    /// List every entry from .env and config.toml (secrets redacted)
+    List {
+        /// Restrict listing to .env entries
+        #[arg(long, action = ArgAction::SetTrue)]
+        env: bool,
+        /// Restrict listing to config.toml entries
+        #[arg(long, action = ArgAction::SetTrue)]
+        toml: bool,
+        /// Reveal secret values instead of showing `***`
+        #[arg(long, action = ArgAction::SetTrue)]
+        reveal: bool,
+    },
+    /// Print a single value (auto-detects file by key shape)
+    Get {
+        /// UPPER_SNAKE for .env, dotted lowercase for config.toml
+        key: String,
+        /// Force read from .env regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        env: bool,
+        /// Force read from config.toml regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        toml: bool,
+        /// Reveal secret values instead of showing `***`
+        #[arg(long, action = ArgAction::SetTrue)]
+        reveal: bool,
+    },
+    /// Write a value. Auto-detects file: UPPER_SNAKE → .env, dotted lowercase → config.toml
+    Set {
+        key: String,
+        value: String,
+        /// Force write to .env regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        env: bool,
+        /// Force write to config.toml regardless of key shape
+        #[arg(long, action = ArgAction::SetTrue)]
+        toml: bool,
+    },
+    /// Remove a value from .env or config.toml
+    Unset {
+        key: String,
+        #[arg(long, action = ArgAction::SetTrue)]
+        env: bool,
+        #[arg(long, action = ArgAction::SetTrue)]
+        toml: bool,
+    },
+    /// Print resolved paths to .env and config.toml
+    Path,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-05-17
+
+### Fixed
+
+- cli(config): `axon config get` now accepts `--env` / `--toml` overrides, matching `set`/`unset`. Previously, keys written with a forced target that didn't match the auto-detect heuristic (e.g. lowercase keys forced into `.env`) were unreadable via `get`.
+- cli(config): `set`/`unset`/`get` flag-scan is now scoped to positional args **after** the value, so a literal value of `--env` or `--toml` (e.g. `axon config set MY_KEY -- --toml`) is no longer misinterpreted as a target flag.
+- cli(config): underscore-prefixed env keys (`_MY_VAR`) are now recognized by auto-detection, matching what `set_env_entry` already accepts on the write path.
+
+## [2.3.0] - 2026-05-17
+
+### Added
+
+- cli: new top-level `axon config` command for reading/writing entries in `~/.axon/.env` and `~/.axon/config.toml`. Subcommands: `list [--env|--toml] [--reveal]`, `get <key> [--reveal]`, `set <key> <value> [--env|--toml]`, `unset <key> [--env|--toml]`, `path`. Auto-routes by key shape (UPPER_SNAKE → `.env`, dotted lowercase → `config.toml`); secrets are redacted by default and revealed only with `--reveal`. File-IO logic lives in `src/services/config.rs`; the CLI handler in `src/cli/commands/config.rs` is a thin router. Atomic write with 0o600 permissions; respects `AXON_ENV_FILE` and `AXON_CONFIG_PATH` overrides.
+
 ## [2.2.2] - 2026-05-16
 
 ### Fixed

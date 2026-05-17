@@ -42,6 +42,7 @@ PREFIXES = (
 
 IGNORED_TOKENS = {
     "AXON_RUST",  # issue id prefix in docs/tests
+    "REDDIT_UA",  # Rust const (User-Agent string), not an env var; lives in src/extract/verticals/reddit.rs
 }
 
 VALID_CLASSIFICATIONS = {

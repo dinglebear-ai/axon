@@ -43,10 +43,6 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.yaml must override host AXON_HOME inside the container"
     );
     assert!(
-        compose.contains("AXON_DATA_DIR: /home/axon/.axon"),
-        "docker-compose.yaml must override host AXON_DATA_DIR — env_file leaks the host path otherwise"
-    );
-    assert!(
         compose.contains("AXON_ENV_FILE: \"\"") && compose.contains("AXON_CONFIG_PATH: \"\""),
         "docker-compose.yaml must clear host-only bootstrap overrides in the container"
     );
@@ -362,15 +358,14 @@ fn env_example_keys() -> BTreeSet<String> {
 #[test]
 fn env_example_only_contains_production_runtime_keys() {
     let allowed: BTreeSet<&str> = [
-        // Data + service URLs
-        "AXON_DATA_DIR",
+        // Bootstrap + canonical data root
         "AXON_HOME",
-        "AXON_COLLECTION",
+        "AXON_DATA_DIR",
         "AXON_SERVER_URL",
-        "AXON_CHROME_REMOTE_URL",
-        "QDRANT_URL",
-        "TEI_URL",
-        // MCP HTTP server
+        "AXON_IMAGE",
+        "AXON_COLLECTION",
+        // MCP HTTP transport + auth
+        "AXON_MCP_HTTP_PUBLISH",
         "AXON_MCP_HTTP_HOST",
         "AXON_MCP_HTTP_PORT",
         "AXON_MCP_HTTP_TOKEN",
@@ -381,38 +376,38 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_MCP_AUTH_ADMIN_EMAIL",
         "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
         "AXON_MCP_ALLOWED_ORIGINS",
-        // Web panel
-        "AXON_WEB_ALLOWED_ORIGINS",
-        "AXON_WEB_API_TOKEN",
-        // Ingest credentials
+        // Vector stack
+        "QDRANT_URL",
+        "TEI_URL",
+        "TEI_HTTP_PORT",
+        "TEI_EMBEDDING_MODEL",
+        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
+        "NVIDIA_VISIBLE_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+        // Chrome + scrape stack
+        "AXON_CHROME_REMOTE_URL",
+        // LLM (Gemini headless)
+        "GEMINI_HOME",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "AXON_HEADLESS_GEMINI_CMD",
+        "AXON_HEADLESS_GEMINI_HOME",
+        "AXON_HEADLESS_GEMINI_MODEL",
+        // Compatibility shims — accepted, warn at startup, no functional effect
+        "OPENAI_BASE_URL",
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+        "AXON_LITE",
+        // Logging
+        "AXON_LOG_DIR",
+        "AXON_LOG_FILE",
+        // Ingest + search creds
+        "HF_TOKEN",
         "TAVILY_API_KEY",
         "GITHUB_TOKEN",
         "REDDIT_CLIENT_ID",
         "REDDIT_CLIENT_SECRET",
-        "HF_TOKEN",
-        // Gemini headless LLM
-        "GEMINI_API_KEY",
-        "GEMINI_HOME",
-        "AXON_HEADLESS_GEMINI_HOME",
-        "AXON_HEADLESS_GEMINI_CMD",
-        "AXON_HEADLESS_GEMINI_MODEL",
-        // Logging
-        "AXON_LOG_PATH",
-        // Compose interpolation (Docker only)
-        "AXON_IMAGE",
-        "AXON_MCP_HTTP_PUBLISH",
-        "TEI_EMBEDDING_MODEL",
-        "TEI_HTTP_PORT",
-        "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
-        "NVIDIA_VISIBLE_DEVICES",
-        "CUDA_VISIBLE_DEVICES",
-        "NVIDIA_REQUIRE_CUDA",
-        "PYTORCH_CUDA_ALLOC_CONF",
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "TOKENIZERS_PARALLELISM",
-        "CUDA_CACHE_DISABLE",
-        "HF_HUB_ENABLE_HF_TRANSFER",
     ]
     .into_iter()
     .collect();

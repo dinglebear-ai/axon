@@ -104,7 +104,7 @@ fn read_env_pairs(path: &Path) -> io::Result<BTreeMap<String, String>> {
     parse_env_pairs_from_str(&raw)
 }
 
-pub(super) fn parse_env_pairs_from_str(raw: &str) -> io::Result<BTreeMap<String, String>> {
+pub(crate) fn parse_env_pairs_from_str(raw: &str) -> io::Result<BTreeMap<String, String>> {
     let mut values = BTreeMap::new();
     for item in dotenvy::from_read_iter(raw.as_bytes()) {
         let (key, value) = item.map_err(|err| {
