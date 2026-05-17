@@ -1223,6 +1223,18 @@ compatibility = "advanced"
 reason = "URL/path/bootstrap override; env is allowed when supplied by the operator or runtime wrapper."
 
 [[env]]
+key = "AXON_LOG_PATH"
+classification = "trusted-operator-bootstrap"
+runtime_placement = "host-only"
+surfaces = ["src", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Full path to the active log file; env is allowed when supplied by the operator or runtime wrapper."
+
+[[env]]
 key = "AXON_LOG_FULL_QUERIES"
 classification = "keep-env"
 runtime_placement = "both"
