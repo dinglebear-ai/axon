@@ -94,9 +94,12 @@ fn main() -> Result<()> {
             .open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // Native OS chrome so the user can drag, minimize, and
+                    // close. The previous `appears_transparent: true` hid all
+                    // window controls on Linux/Windows — Esc could dismiss
+                    // but there was no other way out of the window.
                     titlebar: Some(TitlebarOptions {
-                        title: None,
-                        appears_transparent: true,
+                        title: Some("axon palette".into()),
                         ..Default::default()
                     }),
                     ..Default::default()
