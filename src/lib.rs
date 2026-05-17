@@ -12,10 +12,11 @@ pub mod vector;
 pub mod web;
 
 use self::cli::commands::{
-    run_ask, run_completions, run_crawl, run_debug, run_dedupe, run_doctor, run_domains, run_embed,
-    run_evaluate, run_extract, run_ingest, run_map, run_mcp, run_migrate, run_query, run_research,
-    run_retrieve, run_scrape, run_screenshot, run_search, run_serve, run_sessions, run_setup,
-    run_sources, run_stats, run_status, run_suggest, run_train, run_watch, start_url_from_cfg,
+    run_ask, run_completions, run_config, run_crawl, run_debug, run_dedupe, run_doctor,
+    run_domains, run_embed, run_evaluate, run_extract, run_ingest, run_map, run_mcp, run_migrate,
+    run_query, run_research, run_retrieve, run_scrape, run_screenshot, run_search, run_serve,
+    run_sessions, run_setup, run_sources, run_stats, run_status, run_suggest, run_train,
+    run_watch, start_url_from_cfg,
 };
 use self::core::config::{CommandKind, Config, parse_args};
 use self::core::logging::{init_tracing, log_done, log_info, log_warn};
@@ -69,6 +70,7 @@ async fn run_once(
         CommandKind::Serve => run_serve(cfg).await?,
         CommandKind::Setup => run_setup(cfg).await?,
         CommandKind::Migrate => run_migrate(cfg).await?,
+        CommandKind::Config => run_config(cfg).await?,
     }
     Ok(())
 }

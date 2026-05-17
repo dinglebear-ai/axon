@@ -5,7 +5,8 @@
 //! shim small and the 28-arm match arm in its own module. No behavior change.
 
 use super::super::super::cli::{
-    CliCommand, IngestArgs, ServeArgs, ServeSubcommand, SessionsArgs, SetupArgs, SetupSubcommand,
+    CliCommand, ConfigArgs, ConfigSubcommand, IngestArgs, ServeArgs, ServeSubcommand, SessionsArgs,
+    SetupArgs, SetupSubcommand,
 };
 use super::super::super::types::{
     CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
@@ -211,6 +212,7 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.command = CommandKind::Migrate;
             out.positional = vec![args.from, args.to];
         }
+        CliCommand::Config(args) => apply_config(&mut out, args),
     }
     out
 }
@@ -266,6 +268,55 @@ fn apply_serve(out: &mut DispatchOutput, args: ServeArgs) {
             out.mcp_transport_default = McpTransport::Both;
             out.command = CommandKind::Serve;
         }
+    }
+}
+
+fn apply_config(out: &mut DispatchOutput, args: ConfigArgs) {
+    out.command = CommandKind::Config;
+    match args.action {
+        None => out.positional = vec!["list".to_string()],
+        Some(ConfigSubcommand::List { env, toml, reveal }) => {
+            out.positional = vec!["list".to_string()];
+            if env {
+                out.positional.push("--env".to_string());
+            }
+            if toml {
+                out.positional.push("--toml".to_string());
+            }
+            if reveal {
+                out.positional.push("--reveal".to_string());
+            }
+        }
+        Some(ConfigSubcommand::Get { key, reveal }) => {
+            out.positional = vec!["get".to_string(), key];
+            if reveal {
+                out.positional.push("--reveal".to_string());
+            }
+        }
+        Some(ConfigSubcommand::Set {
+            key,
+            value,
+            env,
+            toml,
+        }) => {
+            out.positional = vec!["set".to_string(), key, value];
+            if env {
+                out.positional.push("--env".to_string());
+            }
+            if toml {
+                out.positional.push("--toml".to_string());
+            }
+        }
+        Some(ConfigSubcommand::Unset { key, env, toml }) => {
+            out.positional = vec!["unset".to_string(), key];
+            if env {
+                out.positional.push("--env".to_string());
+            }
+            if toml {
+                out.positional.push("--toml".to_string());
+            }
+        }
+        Some(ConfigSubcommand::Path) => out.positional = vec!["path".to_string()],
     }
 }
 
