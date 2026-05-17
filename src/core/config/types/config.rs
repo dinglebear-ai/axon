@@ -274,6 +274,12 @@ pub struct Config {
     /// Clear the selected local ask session before running. Flag: `ask --reset-session`.
     pub ask_reset_session: bool,
 
+    /// Force a fresh ask session, overwriting any existing one. Flag: `ask --new-session`.
+    pub ask_new_session: bool,
+
+    /// List all local ask sessions and exit without running a query. Flag: `ask --list-sessions`.
+    pub ask_list_sessions: bool,
+
     /// Legacy internal graph toggle. Production request surfaces keep this disabled.
     pub ask_graph: bool,
 

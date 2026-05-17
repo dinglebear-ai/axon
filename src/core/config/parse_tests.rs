@@ -213,6 +213,97 @@ fn parse_retrieve_max_points_into_config() {
     assert_eq!(cfg.retrieve_max_points, Some(25));
 }
 
+// --- ask session-management flag tests ---
+
+fn ask_cli(extra: &[&str]) -> super::Cli {
+    let mut argv: Vec<&str> = vec![
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "ask",
+    ];
+    argv.extend_from_slice(extra);
+    super::Cli::parse_from(argv)
+}
+
+fn try_ask_cli(extra: &[&str]) -> Result<super::Cli, clap::Error> {
+    let mut argv: Vec<&str> = vec![
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "ask",
+    ];
+    argv.extend_from_slice(extra);
+    super::Cli::try_parse_from(argv)
+}
+
+#[test]
+fn parse_ask_continue_alias_is_equivalent_to_follow_up() {
+    let cfg_a =
+        super::build_config::into_config(ask_cli(&["--follow-up", "q"])).expect("follow-up");
+    let cfg_b = super::build_config::into_config(ask_cli(&["--continue", "q"])).expect("continue");
+    let cfg_c = super::build_config::into_config(ask_cli(&["-c", "q"])).expect("-c");
+    assert!(cfg_a.ask_follow_up);
+    assert!(cfg_b.ask_follow_up);
+    assert!(cfg_c.ask_follow_up);
+}
+
+#[test]
+fn parse_ask_resume_is_alias_for_follow_up_plus_session() {
+    let cfg = super::build_config::into_config(ask_cli(&["--resume", "rust-thread", "q"]))
+        .expect("resume");
+    assert!(cfg.ask_follow_up);
+    assert_eq!(cfg.ask_session.as_deref(), Some("rust-thread"));
+}
+
+#[test]
+fn parse_ask_new_session_conflicts_with_follow_up() {
+    let result = try_ask_cli(&["--new-session", "--follow-up", "q"]);
+    assert!(result.is_err(), "--new-session + --follow-up should error");
+}
+
+#[test]
+fn parse_ask_resume_conflicts_with_session() {
+    let result = try_ask_cli(&["--resume", "a", "--session", "b", "q"]);
+    assert!(result.is_err(), "--resume + --session should error");
+}
+
+#[test]
+fn parse_ask_reset_session_conflicts_with_new_session() {
+    let result = try_ask_cli(&["--new-session", "--reset-session", "q"]);
+    assert!(
+        result.is_err(),
+        "--new-session + --reset-session should error"
+    );
+}
+
+#[test]
+fn parse_ask_list_sessions_with_query_rejected() {
+    let err = super::build_config::into_config(ask_cli(&["--list-sessions", "stray-query"]))
+        .expect_err("list-sessions + query must fail");
+    assert!(err.contains("--list-sessions"));
+}
+
+#[test]
+fn parse_ask_list_sessions_alone_is_ok() {
+    let cfg =
+        super::build_config::into_config(ask_cli(&["--list-sessions"])).expect("list-sessions");
+    assert!(matches!(cfg.command, CommandKind::Ask));
+    assert!(cfg.ask_list_sessions);
+}
+
+#[test]
+fn parse_ask_new_session_records_flag() {
+    let cfg = super::build_config::into_config(ask_cli(&["--new-session", "--session", "x", "q"]))
+        .expect("new-session");
+    assert!(cfg.ask_new_session);
+    assert_eq!(cfg.ask_session.as_deref(), Some("x"));
+}
+
 // --- is_docker_service_host tests ---
 
 #[test]

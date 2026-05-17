@@ -11,14 +11,12 @@ use std::error::Error;
 mod followup;
 
 pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
-    let active_session = followup::resolve_selected_session_name(cfg)?;
-    let mut session_cfg = cfg.clone();
-    session_cfg.ask_session = Some(active_session.clone());
-
-    if session_cfg.ask_reset_session {
-        followup::reset_session(&session_cfg)?;
+    if cfg.ask_list_sessions {
+        return run_list_sessions(cfg);
     }
+
+    let query = resolve_input_text(cfg).ok_or("ask requires a question")?;
+    let (session_cfg, active_session) = prepare_ask_session(cfg)?;
     let effective_query = if session_cfg.ask_follow_up {
         followup::follow_up_query(&session_cfg, &query)?.unwrap_or_else(|| query.clone())
     } else {
@@ -130,6 +128,112 @@ pub async fn run_ask(cfg: &Config) -> Result<(), Box<dyn Error>> {
     record_successful_turn(&session_cfg, &query, &result);
 
     Ok(())
+}
+
+/// Resolve the target ask session, wipe history if `--new-session` or
+/// `--reset-session` requested, and return the prepared session config.
+fn prepare_ask_session(cfg: &Config) -> Result<(Config, String), Box<dyn Error>> {
+    // `--new-session`: pick an explicit `--session NAME` or auto-generate one,
+    // delete any prior history, and treat this as a fresh thread (no follow-up
+    // context). clap enforces exclusivity with `--follow-up`, `--resume`, and
+    // `--reset-session`.
+    let new_session_name = cfg.ask_new_session.then(|| {
+        cfg.ask_session
+            .clone()
+            .unwrap_or_else(followup::new_session_name)
+    });
+
+    let active_session = match new_session_name.as_ref() {
+        Some(name) => name.clone(),
+        None => followup::resolve_selected_session_name(cfg)?,
+    };
+    let mut session_cfg = cfg.clone();
+    session_cfg.ask_session = Some(active_session.clone());
+
+    if new_session_name.is_some() {
+        followup::reset_session(&session_cfg)?;
+        session_cfg.ask_follow_up = false;
+    } else if session_cfg.ask_reset_session {
+        followup::reset_session(&session_cfg)?;
+    }
+    Ok((session_cfg, active_session))
+}
+
+fn run_list_sessions(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    let sessions = followup::list_sessions()?;
+
+    if cfg.json_output {
+        let payload: Vec<serde_json::Value> = sessions
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "name": s.name,
+                    "turn_count": s.turn_count,
+                    "last_used_unix": s.last_used_unix,
+                    "is_latest": s.is_latest,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+        return Ok(());
+    }
+
+    if sessions.is_empty() {
+        println!("{} no local ask sessions yet", muted("Sessions:"));
+        println!(
+            "  {} run `axon ask \"...\"` to create one (saved to ~/.axon/ask-sessions/)",
+            muted("Hint:")
+        );
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().timestamp();
+    println!(
+        "{:<32}  {:>5}  {:<32}  LATEST",
+        "NAME", "TURNS", "LAST USED"
+    );
+    for s in &sessions {
+        let last = match s.last_used_unix {
+            Some(ts) => {
+                let abs = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let rel = format_relative_secs(now.saturating_sub(ts));
+                if rel.is_empty() {
+                    abs
+                } else {
+                    format!("{abs} ({rel})")
+                }
+            }
+            None => "-".to_string(),
+        };
+        let star = if s.is_latest { "*" } else { "" };
+        println!(
+            "{:<32}  {:>5}  {:<32}  {}",
+            s.name, s.turn_count, last, star
+        );
+    }
+    Ok(())
+}
+
+fn format_relative_secs(secs: i64) -> String {
+    if secs < 0 {
+        return String::new();
+    }
+    let secs = secs as u64;
+    if secs < 60 {
+        return format!("{secs}s ago");
+    }
+    let minutes = secs / 60;
+    if minutes < 60 {
+        return format!("{minutes}m ago");
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        return format!("{hours}h ago");
+    }
+    let days = hours / 24;
+    format!("{days}d ago")
 }
 
 fn record_successful_turn(cfg: &Config, query: &str, result: &AskResult) {
