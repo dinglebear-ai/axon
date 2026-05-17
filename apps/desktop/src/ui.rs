@@ -30,7 +30,7 @@ use crate::render::{
 use crate::render_output::render_output_body;
 use crate::theme::{
     AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS,
-    AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
+    AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_MEDIUM, AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
 };
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
@@ -442,12 +442,13 @@ impl Render for Palette {
                     .flex_col()
                     .overflow_hidden()
                     .rounded_lg()
-                    .bg(rgb(AURORA_PANEL_STRONG))
+                    // Top-to-bottom gradient gives depth; border accents when typing.
+                    .bg(gpui::linear_gradient(
+                        180.0,
+                        gpui::linear_color_stop(rgb(AURORA_PANEL_STRONG), 0.0),
+                        gpui::linear_color_stop(rgb(AURORA_PANEL_MEDIUM), 1.0),
+                    ))
                     .border_1()
-                    // Border subtly brightens to the accent color while the
-                    // user is typing — same idea as a focus ring on the
-                    // active input, but at the panel level so it reads as
-                    // "the palette is listening".
                     .border_color(rgb(if query_is_empty {
                         AURORA_BORDER_STRONG
                     } else {
@@ -465,20 +466,16 @@ impl Render for Palette {
                         selected,
                         running_subcommand,
                         hide_list,
-                        |i| {
-                            cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                        |i| cx.listener(move |this, _: &MouseDownEvent, w, cx| {
+                            this.selected = i;
+                            this.submit(&Submit, w, cx);
+                        }),
+                        |i| cx.listener(move |this, hovered: &bool, _, cx| {
+                            if *hovered && this.selected != i {
                                 this.selected = i;
-                                this.submit(&Submit, window, cx);
-                            })
-                        },
-                        |i| {
-                            cx.listener(move |this, hovered: &bool, _, cx| {
-                                if *hovered && this.selected != i {
-                                    this.selected = i;
-                                    cx.notify();
-                                }
-                            })
-                        },
+                                cx.notify();
+                            }
+                        }),
                     ))
                     .when_some(selected_action, |el, action| {
                         el.child(render_palette_footer(
