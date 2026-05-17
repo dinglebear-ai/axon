@@ -1,17 +1,36 @@
 use crate::core::config::Config;
-use crate::core::logging::log_warn;
+use crate::core::logging::{log_info, log_warn};
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::llm_backend::{self, CompletionRequest};
-use crate::services::types::{ResearchResult, SearchOptions};
+use crate::services::types::{
+    ResearchExtraction, ResearchHit, ResearchPayload, ResearchResult, ResearchTiming,
+    ResearchUsage, SearchOptions, SummarySource,
+};
 use spider_agent::{TimeRange, TokenUsage};
 use std::error::Error;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+/// Maximum number of Tavily attempts (1 initial + 2 retries) before surfacing the error.
+const TAVILY_MAX_ATTEMPTS: u32 = 3;
+/// Base backoff between Tavily retries; doubles on each subsequent failure.
+const TAVILY_BACKOFF_BASE: Duration = Duration::from_millis(750);
+/// Fallback summary includes at most this many extractions.
+const FALLBACK_MAX_EXTRACTIONS: usize = 3;
+/// Fallback summary truncates each snippet at this many characters.
+const FALLBACK_SNIPPET_CHARS: usize = 180;
 
 /// Execute a Tavily AI research query with LLM synthesis.
 ///
-/// Validates config, runs a Tavily search, extracts content snippets, and
-/// synthesizes a summary via the configured LLM endpoint. Returns the full
-/// research payload as a JSON value.
+/// Validates config, runs a Tavily search (with bounded retry on transient
+/// failures), and synthesizes a summary via the configured LLM endpoint.
+/// Returns the fully typed [`ResearchPayload`].
+///
+/// The `summary_source` field on the returned payload distinguishes an
+/// LLM-produced summary (`Llm`) from a deterministic fallback substituted
+/// after a synthesis error (`Fallback`), and from the empty case where no
+/// extractions were available (`None`).
 pub async fn research_payload(
     cfg: &Config,
     query: &str,
@@ -19,14 +38,14 @@ pub async fn research_payload(
     offset: usize,
     time_range: Option<TimeRange>,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<serde_json::Value, Box<dyn Error>> {
+) -> Result<ResearchPayload, Box<dyn Error>> {
     use spider_agent::{Agent, SearchOptions as SpiderSearchOptions};
     use std::time::Instant;
 
     let started = Instant::now();
-    if cfg.tavily_api_key.is_empty() {
-        return Err("research requires TAVILY_API_KEY — set it in .env".into());
-    }
+    super::ensure_tavily_configured(cfg, "research")?;
+    super::enforce_pagination_window(limit, offset)?;
+
     let agent = Agent::builder()
         .with_search_tavily(&cfg.tavily_api_key)
         .build()?;
@@ -39,11 +58,13 @@ pub async fn research_payload(
         },
     )
     .await;
-    let mut search_options = SpiderSearchOptions::new().with_limit((limit + offset).clamp(1, 100));
+
+    let mut search_options = SpiderSearchOptions::new().with_limit((limit + offset).max(1));
     if let Some(tr) = time_range {
         search_options = search_options.with_time_range(tr);
     }
-    let search_results = agent.search_with_options(query, search_options).await?;
+
+    let search_results = tavily_search_with_retry(&agent, query, search_options).await?;
 
     // Use Tavily's content excerpts directly — skip redundant fetch+extract.
     let page = search_results
@@ -52,16 +73,22 @@ pub async fn research_payload(
         .skip(offset)
         .take(limit)
         .collect::<Vec<_>>();
-    let extractions: Vec<serde_json::Value> = page
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "url": r.url,
-                "title": r.title,
-                "extracted": r.snippet.as_deref().unwrap_or(""),
-            })
-        })
-        .collect();
+
+    let mut search_results_typed: Vec<ResearchHit> = Vec::with_capacity(page.len());
+    let mut extractions: Vec<ResearchExtraction> = Vec::with_capacity(page.len());
+    for r in &page {
+        search_results_typed.push(ResearchHit {
+            position: r.position,
+            title: r.title.clone(),
+            url: r.url.clone(),
+            snippet: r.snippet.clone(),
+        });
+        extractions.push(ResearchExtraction {
+            url: r.url.clone(),
+            title: r.title.clone(),
+            extracted: r.snippet.clone().unwrap_or_default(),
+        });
+    }
 
     emit(
         &tx,
@@ -71,36 +98,26 @@ pub async fn research_payload(
         },
     )
     .await;
-    let (summary, usage) = synthesize(query, &extractions, cfg, tx.clone()).await;
 
-    let search_results_json = page
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "position": r.position,
-                "title": r.title,
-                "url": r.url,
-                "snippet": r.snippet,
-            })
-        })
-        .collect::<Vec<_>>();
+    let (summary, summary_source, usage) = synthesize(query, &extractions, cfg, tx.clone()).await;
 
-    Ok(serde_json::json!({
-        "query": query,
-        "limit": limit,
-        "offset": offset,
-        "search_results": search_results_json,
-        "extractions": extractions,
-        "summary": summary,
-        "usage": {
-            "prompt_tokens": usage.prompt_tokens,
-            "completion_tokens": usage.completion_tokens,
-            "total_tokens": usage.total_tokens,
+    Ok(ResearchPayload {
+        query: query.to_string(),
+        limit,
+        offset,
+        search_results: search_results_typed,
+        extractions,
+        summary,
+        summary_source,
+        usage: ResearchUsage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
         },
-        "timing_ms": {
-            "total": started.elapsed().as_millis(),
+        timing_ms: ResearchTiming {
+            total: started.elapsed().as_millis(),
         },
-    }))
+    })
 }
 
 /// Run a Tavily AI research query with LLM synthesis and return a typed [`ResearchResult`].
@@ -136,19 +153,52 @@ pub async fn research(
     )
     .await;
 
-    Ok(super::map_research_payload(payload))
+    Ok(ResearchResult { payload })
+}
+
+// ── search retry ─────────────────────────────────────────────────────────────
+
+async fn tavily_search_with_retry(
+    agent: &spider_agent::Agent,
+    query: &str,
+    options: spider_agent::SearchOptions,
+) -> Result<spider_agent::SearchResults, Box<dyn Error>> {
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=TAVILY_MAX_ATTEMPTS {
+        match agent.search_with_options(query, options.clone()).await {
+            Ok(results) => return Ok(results),
+            Err(e) => {
+                let err_text = e.to_string();
+                if attempt == TAVILY_MAX_ATTEMPTS {
+                    last_err = Some(format!(
+                        "tavily search failed after {attempt} attempts: {err_text}"
+                    ));
+                    break;
+                }
+                let backoff = TAVILY_BACKOFF_BASE * 2u32.pow(attempt - 1);
+                log_info(&format!(
+                    "tavily search attempt={attempt} failed ({err_text}); retrying in {}ms",
+                    backoff.as_millis()
+                ));
+                tokio::time::sleep(backoff).await;
+            }
+        }
+    }
+    Err(last_err
+        .unwrap_or_else(|| "tavily search failed".to_string())
+        .into())
 }
 
 // ── synthesis internals ───────────────────────────────────────────────────────
 
 async fn synthesize(
     query: &str,
-    extractions: &[serde_json::Value],
+    extractions: &[ResearchExtraction],
     cfg: &Config,
     tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> (Option<String>, TokenUsage) {
+) -> (Option<String>, SummarySource, TokenUsage) {
     if extractions.is_empty() {
-        return (None, TokenUsage::default());
+        return (None, SummarySource::None, TokenUsage::default());
     }
     let context = build_synthesis_context(extractions);
     let mut req = CompletionRequest::new(format!(
@@ -163,11 +213,15 @@ async fn synthesize(
     }
     let completion = llm_backend::complete_streaming(req, delta_handler(tx)).await;
     match completion {
-        Ok(response) => parse_response(response),
+        Ok(response) => {
+            let (summary, usage) = parse_response(response);
+            (summary, SummarySource::Llm, usage)
+        }
         Err(e) => {
             log_warn(&format!("synthesis failed: {e}"));
             (
                 Some(fallback_summary(query, extractions)),
+                SummarySource::Fallback,
                 TokenUsage::default(),
             )
         }
@@ -177,19 +231,25 @@ async fn synthesize(
 fn delta_handler(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> impl FnMut(&str) -> Result<(), Box<dyn Error + Send + Sync>> + Send {
+    // Warn at most once per session about dropped deltas — backpressure
+    // would otherwise flood logs with one warning per dropped token.
+    static WARNED_ONCE: AtomicBool = AtomicBool::new(false);
     move |delta| {
         if let Some(ref sender) = tx
             && let Err(e) = sender.try_send(ServiceEvent::SynthesisDelta {
                 text: delta.to_string(),
             })
+            && !WARNED_ONCE.swap(true, Ordering::Relaxed)
         {
-            log_warn(&format!("synthesis_delta dropped: {e}"));
+            log_warn(&format!(
+                "synthesis_delta dropped (subsequent drops suppressed): {e}"
+            ));
         }
         Ok(())
     }
 }
 
-fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {
+fn build_synthesis_context(extractions: &[ResearchExtraction]) -> String {
     use std::fmt::Write as _;
     let mut context = String::new();
     for (i, e) in extractions.iter().enumerate() {
@@ -197,12 +257,31 @@ fn build_synthesis_context(extractions: &[serde_json::Value]) -> String {
             context,
             "\n\n<untrusted_source index=\"{}\" url=\"{}\" title=\"{}\">\n{}\n</untrusted_source>",
             i + 1,
-            e["url"].as_str().unwrap_or(""),
-            e["title"].as_str().unwrap_or(""),
-            e["extracted"].as_str().unwrap_or(""),
+            escape_xml_attr(&e.url),
+            escape_xml_attr(&e.title),
+            e.extracted,
         );
     }
     context
+}
+
+/// Escape XML attribute special characters so titles/URLs cannot break
+/// the `<untrusted_source attr="…">` tag boundary the synthesis prompt
+/// relies on for sandbox framing.
+pub(super) fn escape_xml_attr(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' => out.push_str("&amp;"),
+            '\n' | '\r' | '\t' => out.push(' '),
+            c if (c as u32) < 0x20 => {} // strip other control chars
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn parse_response(response: llm_backend::CompletionResponse) -> (Option<String>, TokenUsage) {
@@ -224,16 +303,19 @@ fn parse_response(response: llm_backend::CompletionResponse) -> (Option<String>,
     (Some(summary), usage)
 }
 
-fn fallback_summary(query: &str, extractions: &[serde_json::Value]) -> String {
+fn fallback_summary(query: &str, extractions: &[ResearchExtraction]) -> String {
     let mut out = format!("Fallback summary for query '{query}':");
-    for extraction in extractions.iter().take(3) {
-        let title = extraction["title"].as_str().unwrap_or("untitled");
-        let snippet = extraction["extracted"]
-            .as_str()
-            .unwrap_or("")
+    for extraction in extractions.iter().take(FALLBACK_MAX_EXTRACTIONS) {
+        let title = if extraction.title.is_empty() {
+            "untitled"
+        } else {
+            extraction.title.as_str()
+        };
+        let snippet = extraction
+            .extracted
             .trim()
             .chars()
-            .take(180)
+            .take(FALLBACK_SNIPPET_CHARS)
             .collect::<String>();
         if snippet.is_empty() {
             out.push_str(&format!("\n- {title}"));

@@ -5,13 +5,39 @@ use crate::core::logging::{log_done, log_info, log_warn};
 use crate::core::ui::{muted, primary, print_phase};
 use crate::services::events::ServiceEvent;
 use crate::services::search as search_service;
-use crate::services::types::SearchOptions as ServiceSearchOptions;
+use crate::services::types::{
+    ResearchExtraction, ResearchPayload, SearchOptions as ServiceSearchOptions, SummarySource,
+};
 use std::error::Error;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
+/// Channel buffer for streaming synthesis tokens to the CLI consumer task.
+/// Sized to comfortably outlast typical Gemini delta bursts (low hundreds
+/// of tokens per second) without blocking the emitter.
+const RESEARCH_EVENT_CHANNEL: usize = 256;
+
+/// Maximum time we wait for the streaming-progress consumer task to drain
+/// after the underlying research call has resolved. If exceeded, we log a
+/// warning and detach — see [`run_research`] for the rationale.
+const RESEARCH_CONSUMER_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Max characters of the extraction snippet shown in the human-readable
+/// preview. UTF-8 char-safe truncation.
+const RESEARCH_PREVIEW_CHARS: usize = 200;
+
+/// Entry point for `axon research <query>`.
+///
+/// Validates the query is non-empty, sets up an mpsc channel to stream
+/// synthesis-delta tokens and phase markers to stderr (for the human
+/// renderer; suppressed under `--json`), and delegates to the service
+/// layer. The service layer is the canonical place where Tavily/Gemini
+/// prereqs are enforced, so this handler does not duplicate that check.
+///
+/// `--research-depth` (when set) overrides `--limit` as the number of
+/// sources to incorporate into synthesis. The flag has no effect when
+/// unset; callers default to `cfg.search_limit`.
 pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    validate_research_prereqs(cfg)?;
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("research requires a query (positional or --query)"))?;
 
@@ -30,7 +56,7 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     // Event channel for phase markers (ServiceEvent::Log "phase:searching" etc.)
     // and streaming synthesis output (ServiceEvent::SynthesisDelta per token chunk).
-    let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(256);
+    let (event_tx, mut event_rx) = mpsc::channel::<ServiceEvent>(RESEARCH_EVENT_CHANNEL);
     let show_progress = !cfg.json_output;
     let mut consumer = tokio::spawn(async move {
         let mut in_synthesis = false;
@@ -65,26 +91,34 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
     });
 
+    // `--research-depth` reinterprets `--limit` for the research command:
+    // it is the number of sources the LLM synthesizes over. Falls back to
+    // the shared search limit when unset.
+    let limit = cfg.research_depth.unwrap_or(cfg.search_limit);
     let opts = ServiceSearchOptions {
-        limit: cfg.search_limit,
+        limit,
         offset: 0,
         time_range: parse_service_time_range(cfg.search_time_range.as_deref()),
     };
-    let payload = search_service::research(cfg, &query, opts, Some(event_tx))
-        .await
-        .map(|r| r.payload);
+    let result = search_service::research(cfg, &query, opts, Some(event_tx)).await;
 
-    match tokio::time::timeout(std::time::Duration::from_secs(5), &mut consumer).await {
-        Ok(_) => {}
-        Err(_) => {
-            // Abort the spawned task so it does not linger on event_rx after
-            // run_research returns. Without abort(), the task continues running
-            // detached and can write to stderr after the command exits.
-            consumer.abort();
-            log_warn("research synthesis consumer timed out after 5s");
-        }
+    // Drain the consumer with a bounded timeout. The mpsc sender held by
+    // the service call is dropped when the call returns, so the consumer
+    // naturally exits on the next `recv()` returning None. If something
+    // pathological is holding the consumer (e.g. a slow stderr writer),
+    // we warn and abort so it cannot keep writing after the command exits.
+    if tokio::time::timeout(RESEARCH_CONSUMER_DRAIN_TIMEOUT, &mut consumer)
+        .await
+        .is_err()
+    {
+        consumer.abort();
+        log_warn(&format!(
+            "research synthesis consumer timed out after {}s draining stderr",
+            RESEARCH_CONSUMER_DRAIN_TIMEOUT.as_secs()
+        ));
     }
-    let payload = payload?;
+
+    let payload = result?.payload;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -96,83 +130,76 @@ pub async fn run_research(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn validate_research_prereqs(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    if cfg.tavily_api_key.is_empty() {
-        return Err(anyhow::anyhow!(
-            "research requires TAVILY_API_KEY — set it in .env (run 'axon doctor' to check service connectivity)"
-        )
-        .into());
-    }
-    Ok(())
-}
-
+/// Render the human-readable research summary to stdout.
 fn print_human_research_output(
-    payload: &serde_json::Value,
+    payload: &ResearchPayload,
     total_ms: u128,
 ) -> Result<(), Box<dyn Error>> {
-    let search_results = payload["search_results"].as_array();
-    let extractions = payload["extractions"].as_array();
-
     println!(
         "{} {}",
         primary("Search Results:"),
-        search_results.map_or(0, Vec::len)
+        payload.search_results.len()
     );
     println!();
     println!(
         "{} {}",
         primary("Pages Extracted:"),
-        extractions.map_or(0, Vec::len)
+        payload.extractions.len()
     );
     println!();
 
-    if let Some(extractions) = extractions {
-        for (i, extraction) in extractions.iter().enumerate() {
-            print_extraction_preview(i, extraction)?;
-        }
+    for (i, extraction) in payload.extractions.iter().enumerate() {
+        print_extraction_preview(i, extraction);
     }
 
-    if let Some(summary) = payload["summary"].as_str() {
-        println!("{}", primary("=== Summary ==="));
+    if let Some(summary) = payload.summary.as_deref() {
+        match payload.summary_source {
+            SummarySource::Fallback => println!(
+                "{} {}",
+                primary("=== Summary ==="),
+                muted("(fallback — LLM synthesis unavailable)")
+            ),
+            _ => println!("{}", primary("=== Summary ===")),
+        }
         println!("{summary}");
         println!();
     }
 
-    let total_tokens = payload["usage"]["total_tokens"].as_u64().unwrap_or(0);
-    if total_tokens > 0 {
+    if payload.usage.total_tokens > 0 {
         println!(
             "  {} prompt={} completion={} total={}",
             muted("tokens"),
-            payload["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
-            payload["usage"]["completion_tokens"].as_u64().unwrap_or(0),
-            total_tokens
+            payload.usage.prompt_tokens,
+            payload.usage.completion_tokens,
+            payload.usage.total_tokens
         );
     }
-    println!("  {} total={}ms", muted("timing"), total_ms);
+    println!("  {} total={total_ms}ms", muted("timing"));
     Ok(())
 }
 
-fn print_extraction_preview(
-    i: usize,
-    extraction: &serde_json::Value,
-) -> Result<(), Box<dyn Error>> {
-    let title = extraction["title"].as_str().unwrap_or("");
-    let url = extraction["url"].as_str().unwrap_or("");
+/// Print one extraction's preview (index, title, URL, truncated snippet).
+fn print_extraction_preview(i: usize, extraction: &ResearchExtraction) {
+    let title = if extraction.title.is_empty() {
+        "(untitled)"
+    } else {
+        extraction.title.as_str()
+    };
     println!("{}. {}", i + 1, primary(title));
-    println!("   {}", muted(url));
+    println!("   {}", muted(&extraction.url));
 
-    let preview: String = serde_json::to_string(&extraction["extracted"])?
+    let preview: String = extraction
+        .extracted
         .chars()
-        .take(200)
+        .take(RESEARCH_PREVIEW_CHARS)
         .collect();
-    let preview = preview.trim();
-    if preview.is_empty() || preview == "null" || preview == "{}" {
+    let trimmed = preview.trim();
+    if trimmed.is_empty() {
         println!("   {}", muted("(no data extracted)"));
     } else {
-        println!("   {preview}");
+        println!("   {trimmed}");
     }
     println!();
-    Ok(())
 }
 
 #[cfg(test)]

@@ -165,13 +165,21 @@ fn smoke_map_search_results_wraps_items() {
 
 #[test]
 fn smoke_map_research_payload_wraps_value() {
-    let payload = serde_json::json!({
-        "query": "rust async patterns",
-        "summary": "Rust uses async/await",
-        "search_results": []
-    });
+    use axon::services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
+    let payload = ResearchPayload {
+        query: "rust async patterns".to_string(),
+        limit: 10,
+        offset: 0,
+        search_results: vec![],
+        extractions: vec![],
+        summary: Some("Rust uses async/await".to_string()),
+        summary_source: SummarySource::Llm,
+        usage: ResearchUsage::default(),
+        timing_ms: ResearchTiming { total: 0 },
+    };
     let result: ResearchResult = map_research_payload(payload.clone());
-    assert_eq!(result.payload["query"], "rust async patterns");
+    assert_eq!(result.payload.query, "rust async patterns");
+    assert_eq!(result.payload, payload);
 }
 
 // ── services::crawl ───────────────────────────────────────────────────────────
