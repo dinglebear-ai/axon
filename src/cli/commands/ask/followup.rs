@@ -94,8 +94,10 @@ pub(crate) fn list_sessions() -> Result<Vec<SessionMeta>, Box<dyn Error>> {
         let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        // Skip the `latest` pointer and any temp files written by `write_atomic`.
-        if file_name == LATEST_SESSION_FILE || file_name.starts_with('.') {
+        // Skip the `latest` pointer file. Temp files written by `write_atomic`
+        // are filtered out by the `.jsonl` suffix check below (they are named
+        // `.<file>.tmp-<pid>-<ns>` with no `.jsonl` suffix).
+        if file_name == LATEST_SESSION_FILE {
             continue;
         }
         let Some(stem) = file_name.strip_suffix(".jsonl") else {

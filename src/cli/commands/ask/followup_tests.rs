@@ -234,12 +234,20 @@ fn list_sessions_orders_by_modified_desc_and_marks_latest() {
     std::fs::write(dir.join("readme.txt"), "not a session").ok();
     // Bad name should also be filtered.
     std::fs::write(dir.join("bad name.jsonl"), "").ok();
+    // A session whose name starts with '.' is valid per `sanitize_session_name`
+    // and must NOT be hidden (the previous dotfile filter was too broad).
+    let cfg_dot = Config {
+        ask_session: Some(".team".to_string()),
+        ..Default::default()
+    };
+    append_turn(&cfg_dot, "q-.team", "a-.team").expect("append");
 
     let sessions = list_sessions().expect("list");
     let names: Vec<_> = sessions.iter().map(|s| s.name.as_str()).collect();
     assert!(names.contains(&"alpha"));
     assert!(names.contains(&"beta"));
     assert!(names.contains(&"gamma"));
+    assert!(names.contains(&".team"));
     assert!(!names.contains(&"bad name"));
     let beta = sessions.iter().find(|s| s.name == "beta").unwrap();
     assert!(beta.is_latest);
