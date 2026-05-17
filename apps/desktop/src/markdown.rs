@@ -334,7 +334,13 @@ fn render_span(span: Span) -> impl IntoElement {
             .on_mouse_down(
                 MouseButton::Left,
                 move |_: &MouseDownEvent, _window, _cx| {
-                    let _ = open::that(&url_clone);
+                    // Only dispatch http/https URLs — arbitrary URI schemes
+                    // (vscode://, file://, ssh://, etc.) are blocked to prevent
+                    // attacker-controlled ingested content from invoking
+                    // registered URI handlers.
+                    if url_clone.starts_with("https://") || url_clone.starts_with("http://") {
+                        let _ = open::that(&url_clone);
+                    }
                 },
             )
             .child(SharedString::from(url))
