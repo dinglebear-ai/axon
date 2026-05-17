@@ -363,7 +363,7 @@ The default mode. Runs an HTTP crawl first; if >60% of pages are thin (<200 char
 When Chrome feature is compiled in, `crawl()` expects a Chrome instance. `crawl_raw()` is pure HTTP and always works. `engine.rs` calls `crawl_raw()` for `RenderMode::Http` and `crawl()` for Chrome/AutoSwitch.
 
 ### Gemini headless completion path
-All LLM operations — `ask`, `evaluate`, `suggest`, `extract` (deterministic + LLM fallback), `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 — `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`.
+All LLM operations — `ask`, `evaluate`, `suggest`, `extract` LLM fallback, `debug`, and `research` synthesis — run through the Gemini CLI headless path (`AXON_HEADLESS_GEMINI_CMD`). Deterministic and vertical extractors in `src/extract/` and `src/core/content/deterministic.rs` run pure Rust without LLM calls; Gemini is invoked only when deterministic extraction yields nothing (the LLM fallback path). `AXON_HEADLESS_GEMINI_MODEL` is the model override knob. The legacy `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL` env vars and the `--openai-*` CLI flags were removed in 3.0.0 — `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`.
 
 ### TEI batch size / 413 handling
 `tei_embed()` in `vector/ops/tei.rs` auto-splits batches on HTTP 413 (Payload Too Large). Set `TEI_MAX_CLIENT_BATCH_SIZE` env var to control default chunk size (default: 64, max: 128).

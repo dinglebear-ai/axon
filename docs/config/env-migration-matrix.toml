@@ -362,37 +362,37 @@ reason = "Hugging Face token for TEI model pulls."
 key = "OPENAI_MODEL"
 classification = "delete"
 runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
+surfaces = ["docs", "live-env", "scripts"]
 secret = false
 url_or_path = false
 container_allowed = false
 toml_destination = ""
 compatibility = "delete-on-migration"
-reason = "Removed in 3.0.0. All LLM operations now run through AXON_HEADLESS_GEMINI_*; `axon setup repair --migrate-env` scrubs this key."
+reason = "Removed from the axon runtime in 3.0.0; LLM operations now run through AXON_HEADLESS_GEMINI_*. `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` (e.g. `scripts/searxng-research`, `scripts/time-query-gen`) that talk to an OpenAI-compatible endpoint independently of axon's runtime config."
 
 [[env]]
 key = "OPENAI_BASE_URL"
 classification = "delete"
 runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
+surfaces = ["docs", "live-env", "scripts"]
 secret = false
 url_or_path = true
 container_allowed = false
 toml_destination = ""
 compatibility = "delete-on-migration"
-reason = "Removed in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key."
+reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
 
 [[env]]
 key = "OPENAI_API_KEY"
 classification = "delete"
 runtime_placement = "not-runtime"
-surfaces = ["docs", "live-env"]
+surfaces = ["docs", "live-env", "scripts"]
 secret = true
 url_or_path = false
 container_allowed = false
 toml_destination = ""
 compatibility = "delete-on-migration"
-reason = "Removed in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key."
+reason = "Removed from the axon runtime in 3.0.0 along with the OpenAI client path; `axon setup repair --migrate-env` scrubs this key. Still referenced by standalone helper scripts under `scripts/` that hit an OpenAI-compatible endpoint independently of axon's runtime."
 
 [[env]]
 key = "AXON_HEADLESS_GEMINI_CMD"
