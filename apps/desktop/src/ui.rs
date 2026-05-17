@@ -296,12 +296,13 @@ impl Palette {
             return;
         }
 
-        // Idle-timeout sweep: drop stale conversation before this ask runs.
-        // Checked on submit (not render) so we avoid continuous redraws.
-        if action.subcommand == "ask"
-            && self
-                .ask_conversation
-                .is_some_and(|c| c.is_stale(Instant::now()))
+        // Idle-timeout sweep: drop stale conversation before any submit runs.
+        // Checked on submit (not render) so we avoid continuous redraws. Runs on
+        // every submit — not gated to `ask` — so a non-ask command after a long
+        // idle still clears the stale conversation state.
+        if self
+            .ask_conversation
+            .is_some_and(|c| c.is_stale(Instant::now()))
         {
             self.ask_conversation = None;
         }

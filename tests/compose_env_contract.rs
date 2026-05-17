@@ -392,11 +392,10 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_HEADLESS_GEMINI_CMD",
         "AXON_HEADLESS_GEMINI_HOME",
         "AXON_HEADLESS_GEMINI_MODEL",
-        // Compatibility shims — accepted, warn at startup, no functional effect
+        // OpenAI-compatible LLM endpoint for the extract pipeline (canonical runtime config).
         "OPENAI_BASE_URL",
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
-        "AXON_LITE",
         // Logging
         "AXON_LOG_PATH",
         // Ingest + search creds

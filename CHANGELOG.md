@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-05-17
+
+### Fixed
+
+- **palette/ui**: Stale-conversation idle-timeout sweep now runs on every submit instead of only `ask` submits, so non-ask commands after a long idle still clear the stale conversation state. (PR #100 review feedback)
+- **.env.example**: Removed `AXON_LITE=` template entry. The migration matrix classifies the key as `delete-on-migration`; runtime still accepts it as a backward-compat no-op, but it has no place in an env template. Aligns env-template with migration policy. (PR #100 review feedback)
+- **docs/config/env-migration-matrix.toml**: Added `env-template` to `AXON_LOG_PATH` surfaces so migration metadata reflects that the key is present in `.env.example`. (PR #100 review feedback)
+
 ## [2.4.1] - 2026-05-17
 
 ### Fixed
