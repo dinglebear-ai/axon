@@ -312,6 +312,10 @@ fn write_private_file_atomic(path: &Path, contents: &str) -> io::Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        // Persist the rename's directory-entry update so a crash between
+        // rename and the next fsync can't lose the new file or revert to the
+        // old contents.
+        std::fs::File::open(parent)?.sync_all()?;
     }
     Ok(())
 }
