@@ -175,7 +175,13 @@ fn parse(input: &str) -> Vec<Block> {
                 }
             }
             Event::HardBreak => {
-                flush_spans(&mut blocks, &mut spans, in_item, &list_stack);
+                if in_item {
+                    // Inside a list item a hard break is just whitespace — don't
+                    // flush to a new block, which would emit a duplicate bullet.
+                    spans.push(make_span(" ".into(), false, false, false));
+                } else {
+                    flush_spans(&mut blocks, &mut spans, false, &list_stack);
+                }
             }
             Event::Rule => {
                 blocks.push(Block::Rule);
@@ -361,8 +367,11 @@ fn render_span(span: Span) -> impl IntoElement {
                     .rounded_sm()
                     .px_1()
             })
-            .text_size(px(13.0))
-            .text_color(rgb(AURORA_OUTPUT_TEXT))
+            // Set size/color only for non-code spans so the code branch's
+            // text_size(11) isn't overridden by an unconditional 13px below it.
+            .when(!span.code, |el| {
+                el.text_size(px(13.0)).text_color(rgb(AURORA_OUTPUT_TEXT))
+            })
             .child(SharedString::from(span.text))
             .into_any_element()
     }
