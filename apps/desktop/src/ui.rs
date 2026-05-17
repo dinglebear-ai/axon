@@ -29,7 +29,7 @@ use crate::actions::{
 };
 use crate::output::{CommandOutput, OutputKind};
 use crate::render::{
-    render_action_rows, render_output_body, render_palette_footer, render_prompt_row,
+    render_action_list, render_output_body, render_palette_footer, render_prompt_row,
 };
 use crate::theme::{
     AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
@@ -285,6 +285,11 @@ impl Palette {
         cx.notify();
     }
 
+    fn click_action(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.selected = idx;
+        self.submit(&Submit, window, cx);
+    }
+
     fn move_down(&mut self, _: &MoveDown, _w: &mut Window, cx: &mut Context<Self>) {
         let n = self.matches().len();
         if n > 0 {
@@ -441,11 +446,16 @@ impl Render for Palette {
                         prompt,
                         status_dot,
                     ))
-                    .child(render_action_rows(
+                    .child(render_action_list(
                         actions,
                         selected,
                         running_subcommand,
                         hide_list,
+                        |i| {
+                            cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                                this.click_action(i, window, cx);
+                            })
+                        },
                     ))
                     .when_some(selected_action, |el, action| {
                         el.child(render_palette_footer(
