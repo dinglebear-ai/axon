@@ -3,6 +3,7 @@ use gpui::{
     prelude::*, px, rgb,
 };
 
+use crate::ClearOutput;
 use crate::actions::{ArgMode, CommandAction};
 use crate::markdown::render_markdown;
 use crate::output::{CommandOutput, OutputKind, OutputSection};
@@ -12,7 +13,6 @@ use crate::theme::{
     AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
     AURORA_TEXT_PRIMARY,
 };
-use crate::ClearOutput;
 
 pub(crate) fn render_prompt_row(
     query_is_empty: bool,
@@ -82,7 +82,11 @@ pub(crate) fn render_action_rows(
         .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
         .when(!is_empty, |el| {
             el.children(actions.into_iter().enumerate().map(move |(i, action)| {
-                render_action_row(action, i == selected, running_subcommand == Some(action.subcommand))
+                render_action_row(
+                    action,
+                    i == selected,
+                    running_subcommand == Some(action.subcommand),
+                )
             }))
         })
 }
@@ -136,7 +140,11 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
             )
         })
         .when_some(output.stdout, |el, section| {
-            el.child(render_output_section(section, OutputKind::Success, output.use_markdown))
+            el.child(render_output_section(
+                section,
+                OutputKind::Success,
+                output.use_markdown,
+            ))
         })
         .when_some(output.stderr, |el, section| {
             el.child(render_output_section(section, OutputKind::Error, false))
@@ -163,8 +171,12 @@ pub(crate) fn render_palette_footer(
     } else {
         "enter"
     };
-    let title = output.map(|o| o.title.as_str()).unwrap_or(action.description);
-    let detail = output.map(|o| o.subtitle.as_str()).unwrap_or(action.example);
+    let title = output
+        .map(|o| o.title.as_str())
+        .unwrap_or(action.description);
+    let detail = output
+        .map(|o| o.subtitle.as_str())
+        .unwrap_or(action.example);
     let has_output = output.is_some();
 
     div()
@@ -177,7 +189,13 @@ pub(crate) fn render_palette_footer(
         .border_t_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
         .bg(rgb(AURORA_CONTROL_SURFACE))
-        .child(div().size(px(7.0)).rounded_full().flex_shrink_0().bg(rgb(accent)))
+        .child(
+            div()
+                .size(px(7.0))
+                .rounded_full()
+                .flex_shrink_0()
+                .bg(rgb(accent)),
+        )
         .child(
             div()
                 .px_2()
@@ -340,10 +358,18 @@ fn render_action_row(
         .mx_1()
         .px_3()
         .rounded_sm()
-        .bg(if is_selected { rgb(AURORA_HOVER_BG) } else { rgb(AURORA_PANEL_STRONG) })
+        .bg(if is_selected {
+            rgb(AURORA_HOVER_BG)
+        } else {
+            rgb(AURORA_PANEL_STRONG)
+        })
         .child(
             div()
-                .font_weight(if is_selected { FontWeight(620.0) } else { FontWeight(480.0) })
+                .font_weight(if is_selected {
+                    FontWeight(620.0)
+                } else {
+                    FontWeight(480.0)
+                })
                 .text_size(px(13.0))
                 .text_color(if is_selected {
                     rgb(AURORA_TEXT_PRIMARY)

@@ -14,8 +14,8 @@ use crate::render::{
     render_action_rows, render_output_body, render_palette_footer, render_prompt_row,
 };
 use crate::theme::{
-    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG,
-    AURORA_TEXT_PRIMARY, AURORA_FONT_SANS,
+    AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
+    AURORA_PANEL_STRONG, AURORA_TEXT_PRIMARY,
 };
 use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
@@ -358,7 +358,11 @@ impl Render for Palette {
 
         let prompt: SharedString = if self.query.is_empty() {
             if let Some(action) = locked {
-                let hint = action.example.splitn(2, ' ').nth(1).unwrap_or(action.example);
+                let hint = action
+                    .example
+                    .splitn(2, ' ')
+                    .nth(1)
+                    .unwrap_or(action.example);
                 SharedString::from(hint.to_string())
             } else {
                 SharedString::from("type a command or URL")
@@ -413,8 +417,18 @@ impl Render for Palette {
                     .border_1()
                     .border_color(rgb(AURORA_BORDER_STRONG))
                     .shadow_lg()
-                    .child(render_prompt_row(query_is_empty, locked, prompt, status_dot))
-                    .child(render_action_rows(actions, selected, running_subcommand, hide_list))
+                    .child(render_prompt_row(
+                        query_is_empty,
+                        locked,
+                        prompt,
+                        status_dot,
+                    ))
+                    .child(render_action_rows(
+                        actions,
+                        selected,
+                        running_subcommand,
+                        hide_list,
+                    ))
                     .when_some(selected_action, |el, action| {
                         el.child(render_palette_footer(
                             action,

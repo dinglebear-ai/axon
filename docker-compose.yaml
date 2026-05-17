@@ -41,8 +41,12 @@ services:
       - path: ${AXON_HOME:-${HOME}/.axon}/.env
         required: false
     environment:
-      # Host-bleed guard: container user is `axon` — override host AXON_HOME.
+      # Host-bleed guards: container user is `axon` — override host paths.
+      # The shared ~/.axon/.env has these set to the host's $HOME, which
+      # doesn't exist inside the container. env_file values override Dockerfile
+      # ENV, so we must re-override here.
       AXON_HOME: /home/axon/.axon
+      AXON_DATA_DIR: /home/axon/.axon
       # AXON_SERVER_URL is a client-side switch. The shared ~/.axon/.env may
       # set it for host CLI commands, but the server container must not inherit
       # it or container-local maintenance commands will route back through HTTP.
