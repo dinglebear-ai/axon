@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **palette**: Minimal-on-launch window sizing. The palette now opens at the height of the prompt input row only (~91px including chrome) instead of the previous fixed 560px and grows content-driven as the user types, runs a command, or sees output. Hysteresis: clearing the query collapses the action list but keeps the most recent output card; dismissing the output card collapses fully. `apps/desktop` bumped to 0.3.0.
+- palette: auto-continue `axon ask` conversations. The first `ask` of a session shells out plain; every subsequent `ask` while the conversation is "live" prepends `--follow-up` so the CLI threads it onto the same session. State is in-memory only (no cross-restart persistence). Conversations idle-time out after 30 minutes of inactivity, matching the ACP session cache TTL.
+- palette: new "Reset ask conversation" action (aliases `reset-ask`, `new-chat`, `fresh-ask`) that clears the live conversation without shelling out. Surfaces a transient "Conversation reset" notice so the next ask starts fresh.
+- palette: footer hint slot showing `· conversation: N turn(s)` when a follow-up chain is active. Layout space is always reserved so the hint's appearance does not shift surrounding footer elements.
 
 ### Changed
 
