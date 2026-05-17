@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "actions_tests.rs"]
+mod tests;
+
 #[derive(Clone, Copy)]
 pub(crate) struct CommandAction {
     pub(crate) label: &'static str,
@@ -109,17 +113,34 @@ pub(crate) fn action_invoked_by(action: CommandAction, token: &str) -> bool {
 }
 
 pub(crate) fn action_matches(action: CommandAction, input: &str) -> bool {
-    let needle = input.trim().to_lowercase();
+    let needle = input.trim();
     if needle.is_empty() {
         return true;
     }
 
-    action.subcommand.contains(&needle)
-        || action.label.to_lowercase().contains(&needle)
+    contains_ignore_ascii_case(action.subcommand, needle)
+        || contains_ignore_ascii_case(action.label, needle)
         || action
             .aliases
             .iter()
-            .any(|alias| alias.contains(needle.as_str()))
+            .any(|alias| contains_ignore_ascii_case(alias, needle))
+}
+
+/// Case-insensitive (ASCII) substring search. Avoids the per-call
+/// `String` allocation that `to_lowercase()` would introduce — this runs
+/// on the palette render hot path for every action, every frame the
+/// search field is dirty. All ACTIONS labels/aliases are ASCII.
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let hay = haystack.as_bytes();
+    let ndl = needle.as_bytes();
+    if ndl.len() > hay.len() {
+        return false;
+    }
+    hay.windows(ndl.len())
+        .any(|window| window.eq_ignore_ascii_case(ndl))
 }
 
 pub(crate) fn looks_like_url(input: &str) -> bool {

@@ -160,11 +160,9 @@ Server reads existing Axon stack vars:
 - `AXON_HEADLESS_GEMINI_CMD` — path to Gemini CLI (default: `gemini`)
 - `AXON_HEADLESS_GEMINI_MODEL` — Gemini model override (optional)
 - `TAVILY_API_KEY`
-
-> **Deprecated (compat shims — emit a warning at startup if set):**
-> `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` — still read at startup as compatibility shims;
-> setting them emits a startup warning. LLM synthesis runs through
-> the Gemini headless path exclusively.
+- `OPENAI_BASE_URL` — OpenAI-compatible LLM base URL (extract pipeline)
+- `OPENAI_API_KEY` — API key for the extract LLM endpoint
+- `OPENAI_MODEL` — Model name for the extract LLM endpoint
 
 MCP transport env vars:
 - `AXON_MCP_HTTP_HOST`

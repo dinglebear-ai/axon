@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-05-17
+
+### Fixed
+
+- **palette/output**: `consume_until_string_terminator` no longer treats a bare `ESC` as a String Terminator. Malformed OSC/DCS/APC payloads that contain a bare ESC (without a following `\`) would previously exit the strip loop early and leak the remaining payload bytes to rendered output. The ESC is now swallowed and stripping continues until a proper BEL or ESC `\` terminator is seen.
+- **.env.example**: Removed `GOOGLE_API_KEY` / `GOOGLE_APPLICATION_CREDENTIALS` (both are scrubbed by the Gemini subprocess env allowlist — setting them has no effect). Reverted the logging keys from the unimplemented `AXON_LOG_DIR`/`AXON_LOG_FILE` pair back to the actually-honored `AXON_LOG_PATH`.
+
+## [2.3.2] - 2026-05-17
+
+### Fixed
+
+- **palette**: Drop the repeating `pulsating_between` animation on the launch-time health-check status dot. The auto-spawned `axon doctor --json` probe combined with `Animation::new(...).repeat()` could keep GPUI re-rendering every frame on slower compositors and starve key-event dispatch, producing the user-visible "window opens but won't accept typing" freeze. The dot now changes color only (grey/checking → green/connected → red/disconnected). The footer and output-card pulsing dots, which only render once a command is selected or running, are unaffected.
+
 ## [2.3.1] - 2026-05-17
 
 ### Fixed
