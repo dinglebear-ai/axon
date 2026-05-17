@@ -6,5 +6,5 @@ pub(super) fn serde_json_error(message: String) -> serde_json::Error {
 }
 
 pub(super) fn running_in_container() -> bool {
-    std::env::var("AXON_IN_CONTAINER").is_ok_and(|value| value.trim() == "1")
+    crate::core::config::parse::docker::running_in_container()
 }
