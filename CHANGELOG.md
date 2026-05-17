@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **palette**: Minimal-on-launch window sizing. The palette now opens at the height of the prompt input row only (~91px including chrome) instead of the previous fixed 560px and grows content-driven as the user types, runs a command, or sees output. Hysteresis: clearing the query collapses the action list but keeps the most recent output card; dismissing the output card collapses fully. `apps/desktop` bumped to 0.3.0.
+
+### Changed
+
+- **palette**: `apps/desktop/src/ui.rs` refactored — `Render for Palette` impl moved to a `ui_render.rs` sidecar declared via `#[path]` to keep `ui.rs` under the 500-line monolith cap. New modules `apps/desktop/src/anim.rs` (shared easing/lerp helpers) and `apps/desktop/src/layout.rs` (pure height compute, no side effects).
+
+### Fixed
+
+- **palette**: ANSI stripper terminator discipline — DCS/APC/PM/SOS now terminate only on ST (`ESC \`), not BEL. Per ECMA-48, only OSC accepts BEL as a shortcut terminator; embedded BEL bytes inside DCS/APC/PM/SOS payloads are content and must not short-circuit stripping. (PR #101 review.)
+- **palette**: `step_toward(current, target, 0.0)` now returns `current` instead of `target`. A zero step means "no movement this tick" — the previous behaviour caused an unintended instant jump. (PR #101 review.) `apps/desktop` bumped to 0.3.1.
+
 ## [2.3.3] - 2026-05-17
 
 ### Fixed

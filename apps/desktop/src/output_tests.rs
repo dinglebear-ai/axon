@@ -93,3 +93,40 @@ fn strip_ansi_handles_unicode_around_escapes() {
     let input = "café\x1b[1m → \x1b[0mok ✓";
     assert_eq!(strip_ansi(input), "café → ok ✓");
 }
+
+#[test]
+fn strip_ansi_dcs_does_not_terminate_on_bel() {
+    // Per ECMA-48, DCS terminates ONLY on ST (ESC \). An embedded BEL is
+    // payload data, not a terminator, and must NOT short-circuit stripping.
+    // If BEL were (incorrectly) treated as a DCS terminator, the trailing
+    // "after\x1b\\post" would survive as "afterpost" — we'd see "preafterpost".
+    let input = "pre\x1bPq#0;2;0;0;0\x07after\x1b\\post";
+    assert_eq!(strip_ansi(input), "prepost");
+}
+
+#[test]
+fn strip_ansi_apc_does_not_terminate_on_bel() {
+    // APC payload may contain BEL bytes; only ST terminates.
+    let input = "pre\x1b_cmd\x07with\x07bels\x1b\\post";
+    assert_eq!(strip_ansi(input), "prepost");
+}
+
+#[test]
+fn strip_ansi_pm_does_not_terminate_on_bel() {
+    let input = "pre\x1b^private\x07message\x1b\\post";
+    assert_eq!(strip_ansi(input), "prepost");
+}
+
+#[test]
+fn strip_ansi_sos_does_not_terminate_on_bel() {
+    let input = "pre\x1bXstring\x07with\x07bels\x1b\\post";
+    assert_eq!(strip_ansi(input), "prepost");
+}
+
+#[test]
+fn strip_ansi_osc_still_terminates_on_bel() {
+    // Regression guard: OSC must KEEP its BEL-terminator behaviour
+    // (xterm legacy convention) even though DCS/APC/PM/SOS reject BEL.
+    let input = "pre\x1b]0;title\x07keep";
+    assert_eq!(strip_ansi(input), "prekeep");
+}
