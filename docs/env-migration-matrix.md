@@ -303,7 +303,10 @@ Keys in .env.example but not in live env (user hasn't set them):
 
 ### Keys Intentionally Dropped from .env.example (ztqd.4)
 
-The following KeepEnv/CompatibilityShim keys were in the old `.env.example` but are omitted from the new minimal target. They remain valid and work when set — they are just not shown in the example template:
+The following keys were in the old `.env.example` but are omitted from the new minimal target. They fall into two groups:
+
+- **`keep-env` / `compose-env` / `trusted-bootstrap`** — still valid and honored at runtime when set; just not shown in the example template to keep the default minimal.
+- **`delete`** — removed from the runtime entirely. Setting them has no effect; `axon setup repair --migrate-env` scrubs them from existing `~/.axon/.env`. The rows are listed here only to document that they were intentionally dropped (not accidentally forgotten).
 
 | Key | Class | Reason omitted |
 |-----|-------|---------------|
