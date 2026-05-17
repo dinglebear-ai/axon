@@ -11,6 +11,7 @@ mod actions;
 mod markdown;
 mod output;
 mod render;
+mod render_output;
 mod theme;
 mod ui;
 
@@ -85,7 +86,10 @@ fn main() -> Result<()> {
             KeyBinding::new("tab", TabComplete, Some("Palette")),
         ]);
 
-        let bounds = Bounds::centered(None, size(px(720.0), px(560.0)), cx);
+        // Start compact: just the prompt row. The palette grows itself via
+        // window.resize() as the user types and result rows / footer / output
+        // become visible. See Palette::reflow_window in ui.rs.
+        let bounds = Bounds::centered(None, size(px(720.0), px(108.0)), cx);
         let window = cx
             .open_window(
                 WindowOptions {
