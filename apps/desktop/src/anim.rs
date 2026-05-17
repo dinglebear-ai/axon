@@ -68,7 +68,9 @@ pub(crate) fn one_shot_progress(elapsed: Duration, duration: Duration) -> f32 {
 pub(crate) fn step_toward(current: f32, target: f32, step: f32) -> f32 {
     let step = step.abs();
     if step == 0.0 {
-        return target;
+        // Zero step means "no movement this tick" — keep the current value.
+        // Returning `target` would cause an unintended instant jump.
+        return current;
     }
     if (target - current).abs() <= step {
         return target;

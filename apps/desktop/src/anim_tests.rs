@@ -67,3 +67,13 @@ fn step_toward_does_not_overshoot() {
 fn step_toward_already_there_is_idempotent() {
     assert_eq!(step_toward(5.0, 5.0, 3.0), 5.0);
 }
+
+#[test]
+fn step_toward_zero_step_keeps_current_value() {
+    // A zero step means "no movement this tick"; the function must return
+    // the current value, NOT snap to target. Returning target would cause
+    // an unintended instant jump for callers using step==0 to pause motion.
+    assert_eq!(step_toward(0.5, 1.0, 0.0), 0.5);
+    assert_eq!(step_toward(7.0, 2.0, 0.0), 7.0);
+    assert_eq!(step_toward(-3.0, 100.0, 0.0), -3.0);
+}
