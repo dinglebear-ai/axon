@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-05-16
+
+### Fixed
+- `AXON_COLLECTION` env var now correctly wins over TOML default when the user passes `--collection axon` explicitly (was comparing the value to the sentinel literal instead of checking clap's value source)
+- Desktop palette: commands now pass `--local` to force in-process execution, fixing connection failures when `AXON_SERVER_URL` is set
+- Desktop palette: ANSI escape codes stripped from stderr output before display
+
+### Added
+- Desktop palette: markdown rendering for `scrape`, `ask`, and `research` stdout via `pulldown-cmark`
+- Desktop palette: clickable hyperlinks in markdown output open in the system browser (`xdg-open` / `cmd /c start`)
+- Desktop palette: Tab key locks a command (badge mode), Backspace from empty argument unlocks
+- Desktop palette: connection status dot with click-to-reconnect
+- Desktop palette: "clear ✕" dismiss button for command output
+- Desktop palette: Aurora design system token alignment across typography and spacing
+
 ## [2.2.1] - 2026-05-16
 
 ### Removed

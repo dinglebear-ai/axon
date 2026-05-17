@@ -24,12 +24,13 @@ use super::toml_config::load_toml_config;
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn into_config(cli: Cli) -> Result<Config, String> {
-    into_config_with_sources(cli, false)
+    into_config_with_sources(cli, false, false)
 }
 
 pub(super) fn into_config_with_sources(
     cli: Cli,
     output_dir_was_explicit: bool,
+    collection_was_explicit: bool,
 ) -> Result<Config, String> {
     let mut global = cli.global;
     let fetch_retries_was_set = global.fetch_retries.is_some();
@@ -59,13 +60,17 @@ pub(super) fn into_config_with_sources(
     let toml = load_toml_config()?;
 
     // Resolve --collection with priority CLI > env > TOML > "axon".
+    // Use clap's value_source (passed in as `collection_was_explicit`) instead
+    // of a literal sentinel comparison: a user passing `--collection axon`
+    // explicitly on the CLI must still win over env/TOML, not fall through
+    // because the explicit value happens to equal the default.
     // Validate the final resolved name regardless of source: it gets
     // interpolated into Qdrant URL paths via format!() with no
     // percent-encoding (CWE-22 — bd axon_rust-d71.6 / H2).
     // Use read_env (trims + filters empty) so a stray `AXON_COLLECTION=""`
     // or `AXON_COLLECTION="   "` falls through to TOML / default rather
     // than failing collection-name validation with an empty name.
-    let collection = if global.collection != "axon" {
+    let collection = if collection_was_explicit {
         global.collection.clone()
     } else {
         read_env("AXON_COLLECTION")

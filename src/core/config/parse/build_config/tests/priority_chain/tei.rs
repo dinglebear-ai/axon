@@ -18,7 +18,7 @@ fn toml_tei_max_retries_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_MAX_RETRIES");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -50,7 +50,7 @@ fn env_wins_over_toml_for_tei_max_retries() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("TEI_MAX_RETRIES", "8");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -82,7 +82,7 @@ fn toml_tei_max_retries_clamps_out_of_range() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_MAX_RETRIES");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -114,7 +114,7 @@ fn toml_tei_request_timeout_ms_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_REQUEST_TIMEOUT_MS");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -146,7 +146,7 @@ fn env_wins_over_toml_for_tei_request_timeout_ms() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("TEI_REQUEST_TIMEOUT_MS", "60000");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -179,7 +179,7 @@ fn toml_tei_request_timeout_ms_clamps_out_of_range() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_REQUEST_TIMEOUT_MS");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -211,7 +211,7 @@ fn toml_tei_max_client_batch_size_wins_over_default() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_MAX_CLIENT_BATCH_SIZE");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -240,7 +240,7 @@ fn toml_tei_request_timeout_ms_clamps_upper_bound() {
     with_env_saved(&["AXON_CONFIG_PATH", "TEI_REQUEST_TIMEOUT_MS"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_REQUEST_TIMEOUT_MS");
-        got = into_config(cli_with_services(&["status"]))
+        got = into_config_via_args(&["status"])
             .unwrap()
             .tei_request_timeout_ms;
     });
@@ -260,7 +260,7 @@ fn toml_tei_max_client_batch_size_clamps_lower_bound() {
         || unsafe {
             env::set_var("AXON_CONFIG_PATH", f.path());
             env::remove_var("TEI_MAX_CLIENT_BATCH_SIZE");
-            got = into_config(cli_with_services(&["status"]))
+            got = into_config_via_args(&["status"])
                 .unwrap()
                 .tei_max_client_batch_size;
         },
@@ -279,9 +279,7 @@ fn env_out_of_range_tei_max_retries_shadows_toml_and_clamps() {
     with_env_saved(&["AXON_CONFIG_PATH", "TEI_MAX_RETRIES"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("TEI_MAX_RETRIES", "999");
-        got = into_config(cli_with_services(&["status"]))
-            .unwrap()
-            .tei_max_retries;
+        got = into_config_via_args(&["status"]).unwrap().tei_max_retries;
     });
     assert_eq!(got, 20, "parsed env values win even when clamped");
 }
@@ -300,7 +298,7 @@ fn env_wins_over_toml_for_tei_max_client_batch_size() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::set_var("TEI_MAX_CLIENT_BATCH_SIZE", "32");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),
@@ -332,7 +330,7 @@ fn toml_tei_max_client_batch_size_clamps_out_of_range() {
         env::set_var("AXON_CONFIG_PATH", f.path());
         env::remove_var("TEI_MAX_CLIENT_BATCH_SIZE");
     }
-    let cfg = into_config(cli_with_services(&["status"]));
+    let cfg = into_config_via_args(&["status"]);
     unsafe {
         match saved {
             Some(v) => env::set_var("AXON_CONFIG_PATH", v),

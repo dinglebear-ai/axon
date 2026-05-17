@@ -30,8 +30,14 @@ pub fn parse_args() -> Config {
     let matches = Cli::command().get_matches();
     let output_dir_was_explicit =
         matches.value_source("output_dir") == Some(ValueSource::CommandLine);
+    let collection_was_explicit =
+        matches.value_source("collection") == Some(ValueSource::CommandLine);
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
-    match build_config::into_config_with_sources(cli, output_dir_was_explicit) {
+    match build_config::into_config_with_sources(
+        cli,
+        output_dir_was_explicit,
+        collection_was_explicit,
+    ) {
         Ok(cfg) => cfg,
         Err(msg) => {
             report_error(&msg);

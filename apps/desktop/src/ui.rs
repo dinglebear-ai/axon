@@ -17,7 +17,7 @@ use crate::theme::{
     AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_NAV_BG, AURORA_PAGE_BG, AURORA_PANEL_STRONG,
     AURORA_TEXT_PRIMARY, AURORA_FONT_SANS,
 };
-use crate::{MoveDown, MoveUp, Submit, TabComplete};
+use crate::{ClearOutput, MoveDown, MoveUp, Submit, TabComplete};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConnectionState {
@@ -47,6 +47,10 @@ pub(crate) struct Palette {
     output_scroll: ScrollHandle,
     locked_command: Option<CommandAction>,
     connection: ConnectionState,
+    /// Monotonic id for in-flight health checks. Each spawn increments this;
+    /// completions only apply when their captured id still matches the latest,
+    /// so a slower older probe can't overwrite a newer result.
+    health_check_id: u64,
 }
 
 struct RunningCommand {
@@ -77,12 +81,15 @@ impl Palette {
             output_scroll: ScrollHandle::new(),
             locked_command: None,
             connection: ConnectionState::Unknown,
+            health_check_id: 0,
         };
         palette.spawn_health_check(cx);
         palette
     }
 
     fn spawn_health_check(&mut self, cx: &mut Context<Self>) {
+        self.health_check_id = self.health_check_id.wrapping_add(1);
+        let my_id = self.health_check_id;
         self.connection = ConnectionState::Checking;
         cx.notify();
 
@@ -102,6 +109,11 @@ impl Palette {
         cx.spawn(async move |this, cx| {
             let result = task.await;
             let _ = this.update(cx, |this, cx| {
+                // Ignore stale completions — a newer probe has been spawned and
+                // its result is authoritative.
+                if this.health_check_id != my_id {
+                    return;
+                }
                 this.connection = if result.ok {
                     ConnectionState::Connected
                 } else {
@@ -135,6 +147,11 @@ impl Palette {
             .collect()
     }
 
+    fn clear_output(&mut self, _: &ClearOutput, _window: &mut Window, cx: &mut Context<Self>) {
+        self.command_output = None;
+        cx.notify();
+    }
+
     fn tab_complete(&mut self, _: &TabComplete, _window: &mut Window, cx: &mut Context<Self>) {
         if self.locked_command.is_some() {
             return;
@@ -142,13 +159,15 @@ impl Palette {
         let actions = self.matches();
         if let Some(action) = actions.get(self.selected).copied() {
             self.locked_command = Some(action);
-            // Strip the command token from the query if the user typed it exactly,
-            // leaving behind only the argument portion they may have typed.
+            // Strip the command token from the query if the user typed it exactly
+            // OR if the head matches a fuzzy prefix the palette used to surface
+            // this action — otherwise a fragment like "scra" would stay in
+            // self.query and leak into argv when the locked command is submitted.
             let input = self.query.trim();
             let mut parts = input.splitn(2, char::is_whitespace);
             let head = parts.next().unwrap_or("");
             let tail = parts.next().map(str::trim).unwrap_or("");
-            if action_invoked_by(action, head) {
+            if action_invoked_by(action, head) || action_matches(action, head) {
                 self.query = tail.to_string();
             }
             self.selected = 0;
@@ -371,6 +390,7 @@ impl Render for Palette {
             .on_action(cx.listener(Self::move_down))
             .on_action(cx.listener(Self::move_up))
             .on_action(cx.listener(Self::tab_complete))
+            .on_action(cx.listener(Self::clear_output))
             .on_key_down(cx.listener(Self::on_key))
             .flex()
             .flex_col()
