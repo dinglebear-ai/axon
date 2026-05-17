@@ -389,8 +389,6 @@ fn env_example_only_contains_production_runtime_keys() {
         // LLM (Gemini headless)
         "GEMINI_HOME",
         "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "GOOGLE_APPLICATION_CREDENTIALS",
         "AXON_HEADLESS_GEMINI_CMD",
         "AXON_HEADLESS_GEMINI_HOME",
         "AXON_HEADLESS_GEMINI_MODEL",
@@ -400,8 +398,7 @@ fn env_example_only_contains_production_runtime_keys() {
         "OPENAI_MODEL",
         "AXON_LITE",
         // Logging
-        "AXON_LOG_DIR",
-        "AXON_LOG_FILE",
+        "AXON_LOG_PATH",
         // Ingest + search creds
         "HF_TOKEN",
         "TAVILY_API_KEY",
