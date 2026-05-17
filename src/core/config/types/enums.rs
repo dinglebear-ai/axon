@@ -32,6 +32,7 @@ pub enum CommandKind {
     Serve,
     Setup,
     Migrate,
+    Config,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +82,7 @@ impl CommandKind {
             Self::Serve => "serve",
             Self::Setup => "setup",
             Self::Migrate => "migrate",
+            Self::Config => "config",
         }
     }
 }

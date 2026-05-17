@@ -13,7 +13,7 @@
 //! trait enforcement.
 //!
 //! ## Module layout
-//! ```
+//! ```text
 //! src/extract.rs         — this file (public API)
 //! src/extract/
 //!   context.rs           — VerticalContext (narrowed ServiceContext view)

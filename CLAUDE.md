@@ -70,6 +70,7 @@ MCP docs:
 | `completions <shell>` | Emit shell completion scripts | No |
 | `watch <sub>` | Scheduled task management. SQLite-backed implementations: `create`, `list`, `run-now`, `history`. Schema-defined but not yet implemented: `get`, `update`, `pause`, `resume`, `delete`, `artifacts`. | Depends |
 | `migrate --from <src> --to <dst>` | Copy all points from an unnamed-vector collection to a new named-mode collection (dense + bm42 sparse), enabling RRF hybrid search. No re-embedding needed. | No |
+| `config <sub>` | Read/write entries in `~/.axon/.env` and `~/.axon/config.toml`. Subcommands: `list`, `get`, `set`, `unset`, `path`. Auto-routes by key shape (UPPER_SNAKE → .env, dotted lowercase → config.toml) with `--env`/`--toml` overrides. Secrets are redacted by default; pass `--reveal` to show them. | No |
 
 ### Job Subcommands (for crawl / extract / embed / ingest / sessions)
 
