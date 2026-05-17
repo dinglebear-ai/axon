@@ -6,26 +6,6 @@ use tokio::sync::mpsc::UnboundedSender;
 
 const BASELINE_SYSTEM_PROMPT: &str = "You are a knowledgeable technical assistant. Answer the following question accurately and thoroughly, drawing on your full training knowledge. Where you are uncertain or your knowledge may be outdated, say so explicitly rather than presenting uncertain information as fact. For technical questions, be specific: include exact values, function names, and configuration details where you know them.";
 
-/// Build a POST request to the OpenAI-compatible chat completions endpoint with
-/// optional bearer auth. Retained for legacy command paths outside ask/evaluate.
-#[expect(
-    dead_code,
-    reason = "legacy command paths outside ask/evaluate still import this helper"
-)]
-pub(super) fn build_openai_chat_request(
-    client: &reqwest::Client,
-    cfg: &Config,
-) -> reqwest::RequestBuilder {
-    let mut req = client.post(format!(
-        "{}/chat/completions",
-        cfg.openai_base_url.trim_end_matches('/')
-    ));
-    if !cfg.openai_api_key.trim().is_empty() {
-        req = req.bearer_auth(&cfg.openai_api_key);
-    }
-    req
-}
-
 /// Context for LLM judge comparison between RAG and baseline answers.
 pub(crate) struct JudgeContext<'a> {
     pub query: &'a str,

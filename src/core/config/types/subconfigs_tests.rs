@@ -4,7 +4,6 @@ use super::*;
 fn service_urls_default_is_empty() {
     let s = ServiceUrls::default();
     assert!(s.pg_url.is_empty());
-    assert!(s.openai_api_key.is_empty());
     assert!(s.tavily_api_key.is_empty());
 }
 
@@ -14,22 +13,17 @@ fn service_urls_debug_redacts_secrets() {
         pg_url: "postgresql://user:password@host/db".to_string(),
         redis_url: "redis://:secret@host:6379".to_string(),
         amqp_url: "amqp://user:pass@host/%2f".to_string(),
-        openai_api_key: "sk-supersecret".to_string(),
         tavily_api_key: "tvly-supersecret".to_string(),
         qdrant_url: "http://localhost:6333".to_string(),
         tei_url: "http://localhost:8080".to_string(),
-        openai_base_url: "http://localhost:11434/v1".to_string(),
-        openai_model: "llama3".to_string(),
     };
     let dbg = format!("{s:?}");
     assert!(!dbg.contains("password"), "pg_url password leaked");
     assert!(!dbg.contains("secret@"), "redis_url secret leaked");
-    assert!(!dbg.contains("sk-supersecret"), "openai_api_key leaked");
     assert!(!dbg.contains("tvly-supersecret"), "tavily_api_key leaked");
     assert!(dbg.contains("[REDACTED]"), "no [REDACTED] marker");
     // Non-secret fields must be visible.
     assert!(dbg.contains("http://localhost:6333"), "qdrant_url missing");
-    assert!(dbg.contains("llama3"), "openai_model missing");
 }
 
 #[test]

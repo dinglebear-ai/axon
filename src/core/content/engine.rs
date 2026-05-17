@@ -25,9 +25,6 @@ pub struct ExtractWebConfig {
     pub start_url: String,
     pub prompt: String,
     pub limit: u32,
-    pub openai_base_url: String,
-    pub openai_api_key: String,
-    pub openai_model: String,
     pub llm_backend: crate::services::llm_backend::LlmBackendConfig,
     /// Custom HTTP headers in `"Key: Value"` format, passed through to spider.
     pub custom_headers: Vec<String>,
@@ -50,7 +47,6 @@ pub struct ExtractWebConfig {
 }
 
 struct FallbackConfig {
-    model: String,
     llm_backend: crate::services::llm_backend::LlmBackendConfig,
     prompt_text: String,
     has_fallback: bool,
@@ -91,7 +87,6 @@ fn queue_fallback_extraction(
     page_url: String,
     html: String,
 ) {
-    let model_c = cfg.model.clone();
     let llm_backend_c = cfg.llm_backend.clone();
     let prompt_c = cfg.prompt_text.clone();
     fallback_tasks.spawn(async move {
@@ -114,16 +109,9 @@ fn queue_fallback_extraction(
                 return (page_url, Err("fallback limiter closed".to_string()));
             }
         };
-        let res = extract_items_fallback(
-            &client,
-            &model_c,
-            llm_backend_c,
-            &prompt_c,
-            &page_url,
-            &markdown,
-        )
-        .await
-        .map_err(|e| e.to_string());
+        let res = extract_items_fallback(&client, llm_backend_c, &prompt_c, &page_url, &markdown)
+            .await
+            .map_err(|e| e.to_string());
         (page_url, res)
     });
 }
@@ -209,7 +197,6 @@ fn drain_fallback_result(
             metrics.prompt_tokens += fallback.prompt_tokens;
             metrics.completion_tokens += fallback.completion_tokens;
             metrics.total_tokens += fallback.total_tokens;
-            metrics.estimated_cost_usd += fallback.estimated_cost_usd;
             if fallback.items.is_empty() {
                 log_warn(&format!("fallback extraction produced no items for {url}"));
             } else {
@@ -281,7 +268,6 @@ async fn run_single_url_extract(
         let markdown = to_markdown(&html, None);
         match extract_items_fallback(
             &client,
-            &cfg.model,
             cfg.llm_backend.clone(),
             &cfg.prompt_text,
             url,
@@ -293,7 +279,6 @@ async fn run_single_url_extract(
                 metrics.prompt_tokens += fallback.prompt_tokens;
                 metrics.completion_tokens += fallback.completion_tokens;
                 metrics.total_tokens += fallback.total_tokens;
-                metrics.estimated_cost_usd += fallback.estimated_cost_usd;
                 if !fallback.items.is_empty() {
                     pages_with_data += 1;
                     all_results.extend(fallback.items);
@@ -329,7 +314,6 @@ pub async fn run_extract_with_engine(
     let start_url = wcfg.start_url.clone();
 
     let fallback_cfg = FallbackConfig {
-        model: wcfg.openai_model.clone(),
         llm_backend: wcfg.llm_backend.clone(),
         prompt_text: wcfg.prompt.clone(),
         has_fallback,

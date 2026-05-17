@@ -85,7 +85,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | Vector Store | `collection` (default "axon"), `embed` (default true), `search_limit` (default 10) |
 | Output | `output_dir` (`.cache/axon-rust/output`), `output_path`, `json_output`, `format: ScrapeFormat` |
 | Performance | `performance_profile`, `batch_concurrency` (default 16), `wait` (default false), `yes` (default false) |
-| Service URLs | `qdrant_url`, `tei_url`, `openai_base_url`, `openai_api_key`, `openai_model`, `tavily_api_key` |
+| Service URLs | `qdrant_url`, `tei_url`, `tavily_api_key` |
 | RAG/Ask tuning | `ask_max_context_chars` (300k), `ask_candidate_limit` (250), `ask_chunk_limit` (20), `ask_full_docs` (6), `ask_min_relevance_score` (0.45) — all clamped |
 | Ingest credentials | `github_token`, `reddit_client_id`, `reddit_client_secret` |
 | Auto-switch | `auto_switch_thin_ratio` (0.60), `auto_switch_min_pages` (10) |
@@ -94,7 +94,7 @@ The central state object. Populated once by `into_config()` and passed as `&Conf
 | HTTP server | `mcp_http_host` / `mcp_http_port` (default `127.0.0.1:8001`) |
 | Job runtime | SQLite-backed in-process jobs; `AXON_LITE=1` / `--lite` are compatibility no-ops. `sqlite_path: PathBuf` defaults to `$AXON_DATA_DIR/jobs.db` → `~/.axon/jobs.db`. `axon_data_base_dir()` defaults to `~/.axon` — flat layout, no nested `axon/` subdir |
 
-**Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `openai_api_key`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `src/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
+**Debug redacts secrets:** `Config`'s `fmt::Debug` redacts credential fields (`github_token`, `reddit_client_id`, `reddit_client_secret`, `tavily_api_key`) with `[REDACTED]`. Sub-configs in `src/core/config/types/subconfigs.rs` redact their own legacy `pg_url`/`redis_url`/`amqp_url` fields independently.
 
 ## CommandKind Enum (`config/types/enums.rs`)
 

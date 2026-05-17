@@ -37,7 +37,10 @@ All global flags apply. Key flags:
 | `--limit <n>` | `10` | Maximum Tavily results processed. |
 | `--search-time-range <range>` | — | Filter Tavily results by time range: `day`, `week`, `month`, `year`. |
 | `--research-depth <n>` | — | Crawl depth limit for the research pass. |
-| `--openai-model <name>` | env/default | Override Gemini model name. |
+
+The Gemini model used for synthesis is controlled by the
+`AXON_HEADLESS_GEMINI_MODEL` env var (see [`docs/CONFIG.md`](../CONFIG.md)).
+The legacy `--openai-model` flag and `OPENAI_*` env vars were removed in 3.0.0.
 
 ## Examples
 
@@ -48,8 +51,9 @@ axon research "Rust async cancellation patterns"
 # Use --query and limit
 axon research --query "Qdrant HNSW tuning" --limit 5
 
-# Override Gemini model
-axon research "Spider.rs rendering tradeoffs" --openai-model gemini-3.1-pro-preview
+# Override the Gemini model via env var
+AXON_HEADLESS_GEMINI_MODEL=gemini-3.1-pro-preview \
+  axon research "Spider.rs rendering tradeoffs"
 ```
 
 ## Pipeline

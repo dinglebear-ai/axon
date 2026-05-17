@@ -78,8 +78,6 @@ fn suggestion_focus_includes_weak_dimensions() {
 #[test]
 fn evaluate_query_accepts_gemini_config() {
     let mut cfg = Config::test_default();
-    cfg.openai_base_url.clear();
-    cfg.openai_model.clear();
     cfg.query = Some("How does Gemini validation work?".to_string());
 
     let query = evaluate_query(&cfg).expect("Gemini config should pass");

@@ -49,9 +49,12 @@ All global flags apply. Key flags:
 | `--max-pages <n>` | `0` | Passed to extract web runner as crawl/page limit. |
 | `--output-dir <dir>` | `.cache/axon-rust/output` | Base path for extract artifacts. |
 | `--output <path>` | — | Summary JSON output path (sync mode). |
-| `--openai-base-url <url>` | env/default | LLM endpoint base URL for fallback extraction. |
-| `--openai-model <name>` | env/default | LLM model used for fallback/synthesis. |
 | `--json` | `false` | JSON output for enqueue/status and sync summary. |
+
+LLM fallback extraction runs through the Gemini headless backend. Configure the
+model with `AXON_HEADLESS_GEMINI_MODEL` and the binary with
+`AXON_HEADLESS_GEMINI_CMD` — see [`docs/CONFIG.md`](../CONFIG.md). The legacy
+`--openai-*` flags and `OPENAI_*` env vars were removed in 3.0.0.
 
 ## Examples
 

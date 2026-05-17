@@ -267,13 +267,14 @@ fn migration_rejects_shadowed_axon_env_file() {
 #[allow(unsafe_code)]
 #[test]
 fn migration_output_covers_all_buckets_in_detail_summary() {
-    // Exercises every classification bucket in a single migration call:
+    // Exercises every still-active classification bucket in a single migration call:
     //   retained_env         — TAVILY_API_KEY (keep-env)
     //   compose_env          — AXON_MCP_HTTP_PUBLISH (compose-env)
     //   moved_toml           — TEI_MAX_CLIENT_BATCH_SIZE (move-toml)
-    //   deleted              — AXON_AMQP_URL (delete — legacy AMQP)
-    //   compatibility_shims  — OPENAI_MODEL (compat-shim, WarnEnvOverride)
+    //   deleted              — AXON_AMQP_URL + OPENAI_MODEL (delete-on-migration)
     //   preserved_unclassified_retained — UNKNOWN_CUSTOM_KEY (not in registry)
+    // No active env keys are classified as `CompatibilityShim` after the 3.0.0
+    // OpenAI removal, so the `compatibility_shims` bucket is asserted to be 0.
     let _guard = ENV_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let env_path = dir.path().join(".env");
@@ -315,12 +316,12 @@ fn migration_output_covers_all_buckets_in_detail_summary() {
         "detail missing moved_toml bucket: {detail}"
     );
     assert!(
-        detail.contains("deleted=1"),
-        "detail missing deleted bucket: {detail}"
+        detail.contains("deleted=2"),
+        "detail missing deleted bucket (AMQP + OPENAI_MODEL): {detail}"
     );
     assert!(
-        detail.contains("compatibility_shims=1"),
-        "detail missing compatibility_shims bucket: {detail}"
+        detail.contains("compatibility_shims=0"),
+        "no env keys should classify as compatibility_shims after 3.0.0 OpenAI removal: {detail}"
     );
     assert!(
         detail.contains("preserved_unclassified_retained=1"),
