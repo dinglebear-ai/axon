@@ -2457,3 +2457,15 @@ container_allowed = false
 toml_destination = ""
 compatibility = "canonical"
 reason = "Script-internal variable set by scripts/axon to track the resolved env file path. Not read by the Rust binary."
+
+[[env]]
+key = "AXON_VERTICAL"
+classification = "keep-env"
+runtime_placement = "host-only"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "CLI shortcut env var read by `axon scrape` to force a specific vertical extractor by name (e.g. AXON_VERTICAL=amazon). One-shot operator override; not threaded through Config."
