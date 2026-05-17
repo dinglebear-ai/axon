@@ -6,7 +6,7 @@
 //! same as the previous flat literal.
 
 use super::super::super::cli::GlobalArgs;
-use super::super::super::types::{ClientMode, Config};
+use super::super::super::types::{ClientMode, CommandKind, Config};
 use super::super::docker::normalize_local_service_url;
 use super::super::helpers::{
     env_port, parse_csv_env, parse_origin_allowlist, resolve_mcp_transport, validate_custom_headers,
@@ -198,6 +198,22 @@ fn populate_services_and_ask_basics(
     cfg.ask_session = inputs.dispatched.ask_session.clone();
     cfg.ask_follow_up_context = None;
     cfg.ask_reset_session = inputs.dispatched.ask_reset_session;
+    cfg.ask_new_session = inputs.dispatched.ask_new_session;
+    cfg.ask_list_sessions = inputs.dispatched.ask_list_sessions;
+    if cfg.ask_list_sessions && matches!(cfg.command, CommandKind::Ask) {
+        let has_query_flag = inputs
+            .global
+            .query
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|q| !q.is_empty());
+        if !inputs.dispatched.positional.is_empty() || has_query_flag {
+            return Err(
+                "--list-sessions cannot be combined with a query argument; run it on its own"
+                    .into(),
+            );
+        }
+    }
     cfg.ask_graph = false;
     cfg.evaluate_responses_mode = inputs.dispatched.evaluate_responses_mode;
     cfg.evaluate_retrieval_ab = inputs.dispatched.evaluate_retrieval_ab;

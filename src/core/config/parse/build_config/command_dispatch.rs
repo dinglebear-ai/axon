@@ -33,6 +33,8 @@ pub(super) struct DispatchOutput {
     pub ask_follow_up: bool,
     pub ask_session: Option<String>,
     pub ask_reset_session: bool,
+    pub ask_new_session: bool,
+    pub ask_list_sessions: bool,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -67,6 +69,8 @@ impl DispatchOutput {
             ask_follow_up: false,
             ask_session: None,
             ask_reset_session: false,
+            ask_new_session: false,
+            ask_list_sessions: false,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -160,9 +164,16 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Ask(args) => {
             out.ask_explain = args.explain;
             out.ask_stream = !args.no_stream && !args.explain;
-            out.ask_follow_up = args.follow_up;
-            out.ask_session = args.session;
+            // `--resume NAME` is a thin alias for `--follow-up --session NAME`.
+            let (follow_up, session) = match args.resume {
+                Some(name) => (true, Some(name)),
+                None => (args.follow_up, args.session),
+            };
+            out.ask_follow_up = follow_up;
+            out.ask_session = session;
             out.ask_reset_session = args.reset_session;
+            out.ask_new_session = args.new_session;
+            out.ask_list_sessions = args.list_sessions;
             out.ask_diagnostics = args.diagnostics || args.explain;
             set_simple(&mut out, CommandKind::Ask, args.value);
         }

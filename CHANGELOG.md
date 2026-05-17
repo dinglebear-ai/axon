@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-05-17
+
+### Added
+
+- ask: four new session-management flags complement the existing `--follow-up`/`--session`/`--reset-session` surface:
+  - `--new-session` — force a fresh thread for an explicit or auto-generated session name (auto names use `auto-YYYY-MM-DD-HHMMSS`). Wipes prior turns and runs without follow-up context. Mutually exclusive with `--follow-up`, `--reset-session`, and `--resume` (clap-enforced).
+  - `--list-sessions` — print all local ask sessions (name, turn count, last-modified absolute + relative, and a `*` for `latest`). Sorted by last-modified descending. Pair with `--json` for a machine-readable array. Cannot be combined with a query argument.
+  - `--resume <NAME>` — shorthand for `--follow-up --session <NAME>`. Mutually exclusive with `--session` (redundant) and `--new-session`.
+  - `--continue` / `-c` — clap aliases for `--follow-up`, more discoverable for "keep going" usage.
+- ask: `~/.axon/ask-sessions/` is now enumerable via `axon ask --list-sessions` without spinning up retrieval or the LLM; the renderer skips `latest`, `.tmp-*` temp files, and any non-`.jsonl` entries.
+
+### Fixed
+
+- ask (PR #103 review): `--resume` now has a clap-enforced conflict with `--new-session`, `--reset-session`, and `--session` so contradictory invocations are rejected at parse time instead of silently reinterpreting `<name>` as a reset target.
+- ask (PR #103 review): `--list-sessions` validation also rejects the global `--query` flag, matching the documented "no query argument" contract. Previously `axon ask --list-sessions --query "..."` parsed and silently ignored the query.
+- ask (PR #103 review): `--list-sessions` no longer hides session files whose names start with `.` (e.g. `.team.jsonl`). The previous dotfile filter was too broad; temp files written by `write_atomic` are still filtered by the `.jsonl` suffix check.
+
+### Documentation
+
+- docs/commands/ask.md: documented the seven session-related flags together, added a "Session Lifecycle" table covering each flag's effect on session selection, history loading, and wipes, plus runnable examples for the new combinations.
+
 ## [2.6.0] - 2026-05-17
 
 ### Added

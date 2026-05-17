@@ -315,14 +315,38 @@ pub(super) struct AskArgs {
     #[arg(long = "no-stream", action = ArgAction::SetTrue)]
     pub(super) no_stream: bool,
     /// Treat this question as a follow-up to recent turns in the ask session.
-    #[arg(long = "follow-up", action = ArgAction::SetTrue)]
+    /// `--continue` is accepted as an alias and `-c` is the short form.
+    #[arg(
+        long = "follow-up",
+        alias = "continue",
+        short = 'c',
+        action = ArgAction::SetTrue,
+        conflicts_with_all = ["new_session", "resume"],
+    )]
     pub(super) follow_up: bool,
     /// Name of the local ask session used for follow-up context.
-    #[arg(long = "session", value_name = "NAME")]
+    #[arg(long = "session", value_name = "NAME", conflicts_with = "resume")]
     pub(super) session: Option<String>,
     /// Clear the selected ask session before running this question.
-    #[arg(long = "reset-session", action = ArgAction::SetTrue)]
+    #[arg(
+        long = "reset-session",
+        action = ArgAction::SetTrue,
+        conflicts_with = "new_session",
+    )]
     pub(super) reset_session: bool,
+    /// Force a fresh ask session, overwriting any selected one (mutually exclusive with --follow-up).
+    #[arg(long = "new-session", action = ArgAction::SetTrue)]
+    pub(super) new_session: bool,
+    /// List local ask sessions and exit. Cannot be combined with a query argument.
+    #[arg(long = "list-sessions", action = ArgAction::SetTrue)]
+    pub(super) list_sessions: bool,
+    /// Resume a named ask session (shorthand for `--follow-up --session NAME`).
+    #[arg(
+        long = "resume",
+        value_name = "NAME",
+        conflicts_with_all = ["new_session", "reset_session", "session"],
+    )]
+    pub(super) resume: Option<String>,
     #[arg(value_name = "TEXT")]
     pub(super) value: Vec<String>,
 }
