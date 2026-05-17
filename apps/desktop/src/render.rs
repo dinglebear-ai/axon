@@ -10,15 +10,16 @@ use crate::ClearOutput;
 use crate::actions::{ArgMode, CommandAction};
 use crate::output::{CommandOutput, OutputKind};
 use crate::theme::{
-    AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
-    AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG,
-    AURORA_OUTPUT_MUTED, AURORA_PANEL_STRONG, AURORA_PRESSED_BG, AURORA_ROW_HOVER_BG,
-    AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
+    AURORA_ACCENT_PINK, AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT,
+    AURORA_BORDER_STRONG, AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO,
+    AURORA_HOVER_BG, AURORA_NAV_BG, AURORA_OUTPUT_MUTED, AURORA_PANEL_STRONG, AURORA_PRESSED_BG,
+    AURORA_ROW_HOVER_BG, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 
 pub(crate) fn render_prompt_row(
     query_is_empty: bool,
     locked_command: Option<CommandAction>,
+    conversation_turns: Option<usize>,
     prompt: SharedString,
     status_dot: impl IntoElement,
 ) -> impl IntoElement {
@@ -64,6 +65,25 @@ pub(crate) fn render_prompt_row(
                     .text_size(px(11.0))
                     .text_color(rgb(AURORA_ACCENT_STRONG))
                     .child(action.subcommand),
+            )
+        })
+        // Conversation indicator: appears once a follow-up session is live.
+        // The "↪" glyph + turn count tells the user the next submit will
+        // continue the prior `ask` rather than start fresh.
+        .when_some(conversation_turns, |el, n| {
+            el.child(
+                div()
+                    .px_2()
+                    .py(px(3.0))
+                    .rounded_md()
+                    .bg(rgb(AURORA_NAV_BG))
+                    .border_1()
+                    .border_color(rgb(AURORA_ACCENT_PINK))
+                    .font_family(AURORA_FONT_MONO)
+                    .font_weight(FontWeight(680.0))
+                    .text_size(px(11.0))
+                    .text_color(rgb(AURORA_ACCENT_PINK))
+                    .child(SharedString::from(format!("↪ {n}"))),
             )
         })
         .child(
