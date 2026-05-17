@@ -1,11 +1,27 @@
-use std::sync::LazyLock;
-
 use spider::url::Url;
 
 use crate::core::logging::log_warn;
 
-/// Cached Docker detection -- avoids hitting the filesystem on every call.
-static IN_DOCKER: LazyLock<bool> = LazyLock::new(|| std::path::Path::new("/.dockerenv").exists());
+/// Returns `true` when the process is running inside a container.
+///
+/// Checks in priority order:
+/// 1. `AXON_IN_CONTAINER` env var set to a truthy value (`1`, `true`, `TRUE`,
+///    `yes`, `YES`) — testable without touching the filesystem; bake this into
+///    your Dockerfile via `ENV AXON_IN_CONTAINER=1`.
+/// 2. `/.dockerenv` — present in every Docker container.
+/// 3. `/run/.containerenv` — present in Podman rootless containers.
+///
+/// The env-var check is re-evaluated on every call (no caching) so that tests
+/// can safely set/unset `AXON_IN_CONTAINER` without fighting a stale
+/// `LazyLock`.  The filesystem checks are microsecond-level `stat()` calls
+/// and are only reached when the env var is unset.
+pub(crate) fn running_in_container() -> bool {
+    if let Ok(value) = std::env::var("AXON_IN_CONTAINER") {
+        return matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES");
+    }
+    std::path::Path::new("/.dockerenv").exists()
+        || std::path::Path::new("/run/.containerenv").exists()
+}
 
 /// Mapping from Docker-internal service hostnames to their host-side addresses.
 ///
@@ -29,7 +45,7 @@ pub(crate) fn is_docker_service_host(host: &str) -> bool {
 }
 
 pub(crate) fn normalize_local_service_url(url: String) -> String {
-    if *IN_DOCKER {
+    if running_in_container() {
         return url;
     }
 
@@ -59,3 +75,7 @@ pub(crate) fn normalize_local_service_url(url: String) -> String {
     }
     url
 }
+
+#[cfg(test)]
+#[path = "docker_tests.rs"]
+mod tests;
