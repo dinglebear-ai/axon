@@ -1,8 +1,8 @@
 # axon ask
-Last Modified: 2026-03-03
+Last Modified: 2026-05-17
 
-Version: 1.0.0
-Last Updated: 20:30:18 | 03/03/2026 EST
+Version: 1.1.0
+Last Updated: 2026-05-17
 
 RAG-powered Q&A. Retrieves relevant chunks from the local Qdrant knowledge base, reranks them by relevance, builds a context window, and calls the configured LLM to generate a grounded answer.
 
@@ -43,9 +43,12 @@ All global flags apply. Key flags:
 | `--explain` | `false` | Emit a per-candidate ranking/context trace. Implies diagnostics and skips LLM synthesis; use with `--json` for the full payload. |
 | `--stream` | `true` | Stream answer tokens as they arrive for interactive use. Uses the in-process ask path; JSON and explain output remain buffered. |
 | `--no-stream` | `false` | Disable answer streaming and render only the final response. |
-| `--follow-up` | `false` | Include recent turns from the selected local ask session as conversation context. |
+| `--follow-up` / `--continue` / `-c` | `false` | Include recent turns from the selected local ask session as conversation context. `--continue` and `-c` are aliases. |
 | `--session <name>` | latest | Local ask session name used for saved turns and follow-up context. If omitted, Axon uses the most recently successful ask session, falling back to `default`. |
-| `--reset-session` | `false` | Clear the selected ask session before running this question. |
+| `--reset-session` | `false` | Clear the selected ask session before running this question. Mutually exclusive with `--new-session`. |
+| `--new-session` | `false` | Force a fresh ask session, deleting prior turns for the selected (or auto-generated) session name and running without follow-up context. Mutually exclusive with `--follow-up` and `--reset-session`. |
+| `--resume <name>` | — | Resume a named ask session. Shorthand for `--follow-up --session <name>`. Mutually exclusive with `--session` and `--new-session`. |
+| `--list-sessions` | `false` | Print all local ask sessions (name, turn count, last used, latest marker) and exit. Cannot be combined with a query argument; pair with `--json` for machine-readable output. |
 | `--json` | `false` | Machine-readable JSON output. |
 
 Note: `ask` runs synchronously and does not support `--wait`.
@@ -72,10 +75,27 @@ axon ask "how does the ask pipeline choose sources?" --no-stream
 
 # Continue from recent ask turns in the default local session
 axon ask --follow-up "can you show a concrete example?"
+axon ask --continue "can you show a concrete example?"   # alias
+axon ask -c "can you show a concrete example?"           # short form
+
+# Resume a specific named session (alias for --follow-up --session NAME)
+axon ask --resume rust-tests "how would that look in this repo?"
 
 # Use a named local session and clear it when changing topics
 axon ask --session rust-tests --reset-session "what is the test sidecar pattern?"
 axon ask --session rust-tests --follow-up "how would that look in this repo?"
+
+# Start a fresh session (auto-named) for a brand-new line of questioning
+axon ask --new-session "what is the architecture of axon's ask pipeline?"
+
+# Overwrite a named session with a fresh thread
+axon ask --new-session --session experiments "let's start over on this topic"
+
+# List local ask sessions (human-readable)
+axon ask --list-sessions
+
+# List sessions as JSON for scripts
+axon ask --list-sessions --json
 
 # Explain ranking/context decisions without calling the LLM
 axon ask "claude marketplace plugins" --explain --json
@@ -99,6 +119,44 @@ AXON_SERVER_URL=http://127.0.0.1:8001 axon ask --no-stream "what changed in serv
 8. Call Gemini headless with context + question
 9. Apply response-quality gates (citations + policy checks)
 10. Print the normalized answer
+
+## Session Lifecycle
+
+The seven session-related flags interact as follows:
+
+| Flag | Selects which session? | Loads prior turns? | Wipes existing turns? | Exits without running query? |
+|------|------------------------|--------------------|-----------------------|------------------------------|
+| (none) | `latest` pointer, falling back to `default` | No | No | No |
+| `--session <NAME>` | `<NAME>` | No | No | No |
+| `--follow-up` (alias `--continue`, short `-c`) | from `--session` or `latest` | Yes | No | No |
+| `--resume <NAME>` | `<NAME>` | Yes | No | No |
+| `--reset-session` | from `--session` or `latest` | No (after wipe) | Yes (selected session) | No |
+| `--new-session` | from `--session` or auto-`auto-YYYY-MM-DD-HHMMSS` | No | Yes (selected/new) | No |
+| `--list-sessions` | — | — | — | Yes |
+
+Mutually exclusive combinations (clap enforces at parse time):
+
+- `--new-session` ⨯ `--follow-up` / `--continue` / `-c`
+- `--new-session` ⨯ `--reset-session`
+- `--new-session` ⨯ `--resume`
+- `--resume` ⨯ `--session` (redundant)
+- `--list-sessions` + any positional query argument is rejected at runtime.
+
+Typical workflows:
+
+```bash
+# Pick up where I left off
+axon ask --continue "what was the second option you mentioned?"
+
+# Switch threads
+axon ask --resume rust-tests "back to the test sidecar conversation"
+
+# Start completely fresh, keep an auto-named history
+axon ask --new-session "let's look at a different topic"
+
+# See all my threads
+axon ask --list-sessions
+```
 
 ## Follow-Up Sessions
 

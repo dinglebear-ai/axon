@@ -1,4 +1,5 @@
 use super::{AskTurn, append_turn, bounded, follow_up_context_source, follow_up_query};
+use super::{list_sessions, new_session_name};
 use super::{resolve_selected_session_name, selected_session_name, update_latest_session};
 use super::{sanitize_session_name, sessions_dir, xml_text};
 use crate::core::config::Config;
@@ -191,6 +192,86 @@ fn append_turn_prunes_session_file_to_recent_bound() {
     assert_eq!(lines.len(), 100);
     assert!(!content.contains("question 0"));
     assert!(content.contains("question 104"));
+
+    match saved {
+        Some(value) => unsafe { std::env::set_var("AXON_DATA_DIR", value) },
+        None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+    }
+}
+
+#[test]
+fn new_session_name_is_sanitizable() {
+    let name = new_session_name();
+    assert!(name.starts_with("auto-"));
+    sanitize_session_name(&name).expect("auto-generated name must pass sanitizer");
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn list_sessions_orders_by_modified_desc_and_marks_latest() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let saved = std::env::var("AXON_DATA_DIR").ok();
+    unsafe { std::env::set_var("AXON_DATA_DIR", tmp.path()) };
+
+    // Populate three sessions, one turn each, then write `latest` for "beta".
+    for name in ["alpha", "beta", "gamma"] {
+        let cfg = Config {
+            ask_session: Some(name.to_string()),
+            ..Default::default()
+        };
+        append_turn(&cfg, &format!("q-{name}"), &format!("a-{name}")).expect("append");
+    }
+    let cfg_beta = Config {
+        ask_session: Some("beta".to_string()),
+        ..Default::default()
+    };
+    update_latest_session(&cfg_beta).expect("latest");
+
+    // Drop a `.tmp-` file and a non-jsonl entry to make sure we filter them out.
+    let dir = sessions_dir();
+    std::fs::write(dir.join(".alpha.jsonl.tmp-1"), "junk").ok();
+    std::fs::write(dir.join("readme.txt"), "not a session").ok();
+    // Bad name should also be filtered.
+    std::fs::write(dir.join("bad name.jsonl"), "").ok();
+    // A session whose name starts with '.' is valid per `sanitize_session_name`
+    // and must NOT be hidden (the previous dotfile filter was too broad).
+    let cfg_dot = Config {
+        ask_session: Some(".team".to_string()),
+        ..Default::default()
+    };
+    append_turn(&cfg_dot, "q-.team", "a-.team").expect("append");
+
+    let sessions = list_sessions().expect("list");
+    let names: Vec<_> = sessions.iter().map(|s| s.name.as_str()).collect();
+    assert!(names.contains(&"alpha"));
+    assert!(names.contains(&"beta"));
+    assert!(names.contains(&"gamma"));
+    assert!(names.contains(&".team"));
+    assert!(!names.contains(&"bad name"));
+    let beta = sessions.iter().find(|s| s.name == "beta").unwrap();
+    assert!(beta.is_latest);
+    assert_eq!(beta.turn_count, 1);
+    let alpha = sessions.iter().find(|s| s.name == "alpha").unwrap();
+    assert!(!alpha.is_latest);
+
+    match saved {
+        Some(value) => unsafe { std::env::set_var("AXON_DATA_DIR", value) },
+        None => unsafe { std::env::remove_var("AXON_DATA_DIR") },
+    }
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn list_sessions_returns_empty_when_dir_missing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let saved = std::env::var("AXON_DATA_DIR").ok();
+    unsafe { std::env::set_var("AXON_DATA_DIR", tmp.path()) };
+
+    // Don't create the ask-sessions/ subdir at all.
+    let sessions = list_sessions().expect("list");
+    assert!(sessions.is_empty());
 
     match saved {
         Some(value) => unsafe { std::env::set_var("AXON_DATA_DIR", value) },
