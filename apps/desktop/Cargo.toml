@@ -24,12 +24,18 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 async-channel = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 global-hotkey = "0.7"
 open = "5"
 pulldown-cmark = { version = "0.10", default-features = false }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "5f5dd7ae301dd265e5020fd65cd20769a81d0d5b" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 # We depend on the platform backends directly rather than the gpui_platform
 # convenience crate because gpui_platform transitively pulls in gpui_web,

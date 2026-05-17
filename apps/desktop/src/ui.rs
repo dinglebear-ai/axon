@@ -27,7 +27,7 @@ use crate::actions::{
     ACTIONS, ArgMode, CommandAction, action_invoked_by, action_matches, build_axon_args,
     display_command_line, looks_like_url,
 };
-use crate::conversation::{AskConversation, inject_follow_up};
+use crate::conversation::{AskConversation, inject_follow_up, restore_from_latest};
 use crate::layout::{HeightSnapshot, MIN_WINDOW_HEIGHT};
 use crate::output::{CommandOutput, OutputKind};
 use crate::theme::AURORA_BORDER_STRONG;
@@ -134,6 +134,12 @@ struct HealthResult {
 
 impl Palette {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
+        // Restore any live `axon ask` conversation from the CLI's session
+        // file so reopening the palette picks up where the user left off
+        // (within the idle window). Sync local-file read — small JSONL, no
+        // need to defer to a background task. See `conversation::restore_from_latest`.
+        let ask_conversation = std::env::home_dir().and_then(|home| restore_from_latest(&home));
+
         let mut palette = Self {
             query: String::new(),
             selected: 0,
@@ -146,7 +152,7 @@ impl Palette {
             connection: ConnectionState::Unknown,
             health_check_id: 0,
             current_window_height: None,
-            ask_conversation: None,
+            ask_conversation,
         };
         palette.spawn_health_check(cx);
         palette
