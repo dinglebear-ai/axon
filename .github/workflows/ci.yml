@@ -290,6 +290,11 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    env:
+      # Match the 8 MiB runtime thread stack from main.rs — deep scrape/extract
+      # async chains overflow the 2 MiB rustc-test-harness default
+      # (jobs::watch_lite::tests::lite_watch_run_now_records_completed_run).
+      RUST_MIN_STACK: "8388608"
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
