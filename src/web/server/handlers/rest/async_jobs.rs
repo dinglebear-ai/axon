@@ -87,6 +87,11 @@ pub(crate) async fn v1_crawl_status(
         Err(err) => return map_service_error(&*err),
     };
     match crawl_svc::crawl_status(&ctx, job_id).await {
+        // Unlike embed/extract/ingest, services::crawl::crawl_status returns
+        // a non-Option result that wraps a null payload when the underlying
+        // job is missing. Convert that null to a 404 so the REST surface is
+        // consistent with the other job kinds.
+        Ok(result) if result.payload.is_null() => not_found("crawl", job_id),
         Ok(result) => Json(result.payload).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

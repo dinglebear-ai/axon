@@ -118,6 +118,11 @@ pub(crate) async fn v1_map(State(state): State<RestState>, Json(req): Json<MapBo
     }
 }
 
+/// Wire shape: `{ "results": [...] }`. `SearchResult.results` is a flat
+/// `Vec<serde_json::Value>` and would serialize as a bare JSON array; the
+/// wrapper object keeps the response future-extensible with metadata fields.
+/// `/v1/research` differs intentionally — it returns the synthesized payload
+/// (an object with citations/summary) directly.
 pub(crate) async fn v1_search(
     State(state): State<RestState>,
     Json(req): Json<SearchBody>,
