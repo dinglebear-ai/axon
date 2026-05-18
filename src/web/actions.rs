@@ -160,13 +160,22 @@ fn static_token_matches(headers: &HeaderMap) -> bool {
     let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
+        .and_then(bearer_token)
         .is_some_and(|token| token == expected);
     let api_key = headers
         .get("x-api-key")
         .and_then(|value| value.to_str().ok())
         .is_some_and(|token| token == expected);
     bearer || api_key
+}
+
+fn bearer_token(value: &str) -> Option<&str> {
+    let (scheme, token) = value.split_once(' ')?;
+    if scheme.eq_ignore_ascii_case("Bearer") {
+        Some(token.trim())
+    } else {
+        None
+    }
 }
 
 fn request_id_from_value(value: &Value) -> Option<String> {

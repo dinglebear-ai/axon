@@ -213,6 +213,15 @@ fn classify_upstream_timeout() {
 }
 
 #[test]
+fn classify_rate_limit_uses_sanitized_message() {
+    let e = Boom("upstream 429: account specific limit details".to_string());
+    let err = HttpError::from_error(&e);
+    assert_eq!(err.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(err.kind(), "rate_limited");
+    assert_eq!(err.message(), "rate limited");
+}
+
+#[test]
 fn classify_internal_default() {
     let e = Boom("something went sideways".to_string());
     let err = HttpError::from_error(&e);

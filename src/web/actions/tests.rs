@@ -213,6 +213,31 @@ async fn actions_rejects_missing_and_invalid_auth_as_json() {
 
 #[tokio::test]
 #[serial]
+async fn actions_accepts_case_insensitive_bearer_static_token() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .header("authorization", "bearer secret")
+        .json(&serde_json::json!({
+            "request_id": "auth-case-1",
+            "action": { "action": "status" }
+        }))
+        .send()
+        .await
+        .expect("case-insensitive bearer request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["request_id"], "auth-case-1");
+    assert_eq!(body["ok"], true);
+}
+
+#[tokio::test]
+#[serial]
 async fn actions_unknown_action_returns_json_error() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;

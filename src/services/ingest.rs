@@ -39,22 +39,31 @@ pub fn source_from_mcp_request(
     req: &crate::mcp::schema::IngestRequest,
     cfg: &Config,
 ) -> Result<IngestSource, String> {
+    use crate::mcp::schema::IngestSourceType;
+
     let source_type = req
         .source_type
         .clone()
         .ok_or_else(|| "source_type is required for ingest.start".to_string())?;
     match source_type {
-        crate::mcp::schema::IngestSourceType::Github => Ok(IngestSource::Github {
-            repo: required_ingest_target(req, "target repo")?,
-            include_source: req.include_source.unwrap_or(cfg.github_include_source),
-        }),
-        crate::mcp::schema::IngestSourceType::Reddit => Ok(IngestSource::Reddit {
-            target: required_ingest_target(req, "target")?,
-        }),
-        crate::mcp::schema::IngestSourceType::Youtube => Ok(IngestSource::Youtube {
-            target: required_ingest_target(req, "target")?,
-        }),
-        crate::mcp::schema::IngestSourceType::Sessions => {
+        IngestSourceType::Github => {
+            let repo = validate_github_ingest_target(&required_ingest_target(req, "target repo")?)?;
+            Ok(IngestSource::Github {
+                repo,
+                include_source: req.include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
+        IngestSourceType::Reddit => {
+            let target = required_ingest_target(req, "target")?;
+            validate_reddit_ingest_target(&target)?;
+            Ok(IngestSource::Reddit { target })
+        }
+        IngestSourceType::Youtube => {
+            let target = required_ingest_target(req, "target")?;
+            validate_youtube_ingest_target(&target)?;
+            Ok(IngestSource::Youtube { target })
+        }
+        IngestSourceType::Sessions => {
             let sessions =
                 req.sessions
                     .clone()
@@ -72,6 +81,47 @@ pub fn source_from_mcp_request(
             })
         }
     }
+}
+
+fn validate_github_ingest_target(target: &str) -> Result<String, String> {
+    let (owner, repo) = ingest::github::parse_github_repo(target).ok_or_else(|| {
+        "invalid GitHub target; expected owner/repo or github.com/owner/repo".to_string()
+    })?;
+    Ok(format!("{owner}/{repo}"))
+}
+
+fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
+    match ingest::reddit::classify_target(target).map_err(|err| err.to_string())? {
+        ingest::reddit::RedditTarget::Subreddit(name) => {
+            let len = name.len();
+            let valid = (3..=21).contains(&len)
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid {
+                Ok(())
+            } else {
+                Err(
+                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'"
+                        .to_string(),
+                )
+            }
+        }
+        ingest::reddit::RedditTarget::Thread(url) => {
+            if url.starts_with("/r/") && url.contains("/comments/") {
+                Ok(())
+            } else {
+                Err(
+                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink"
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
+fn validate_youtube_ingest_target(target: &str) -> Result<(), String> {
+    ingest::youtube::classify_youtube_target(target)
+        .map(|_| ())
+        .map_err(|err| format!("invalid YouTube target: {err}"))
 }
 
 fn required_ingest_target(
