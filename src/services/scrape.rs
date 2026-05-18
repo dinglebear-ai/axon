@@ -174,9 +174,18 @@ pub async fn scrape_batch(
         ready.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
     }
 
-    let mut results = Vec::with_capacity(ready.len());
-    for url in ready {
-        results.push(scrape(cfg, &url, tx.clone()).await?);
+    let scraped = stream::iter(ready)
+        .map(|url| {
+            let tx = tx.clone();
+            async move { scrape(cfg, &url, tx).await.map_err(|err| err.to_string()) }
+        })
+        .buffer_unordered(10)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut results = Vec::with_capacity(scraped.len());
+    for item in scraped {
+        results.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
     }
     Ok(results)
 }

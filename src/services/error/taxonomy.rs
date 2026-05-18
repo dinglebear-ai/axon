@@ -334,67 +334,13 @@ impl StdError for ServiceTaxonomyError {}
 /// is present.
 pub fn taxonomy_from_error(err: &(dyn StdError + 'static)) -> Option<ServiceTaxonomyError> {
     let mut cursor = Some(err);
-    let mut message = String::new();
     while let Some(current) = cursor {
         if let Some(tax) = current.downcast_ref::<ServiceTaxonomyError>() {
             return Some(tax.clone());
         }
-        message.push_str(&current.to_string());
-        message.push('\n');
         cursor = current.source();
     }
-
-    let lc = message.to_lowercase();
-    if contains_any(&lc, &["429", "rate limit", "rate-limited"]) {
-        return Some(ServiceTaxonomyError::RateLimited {
-            service: classify_operational_service(&lc),
-            retry_after: None,
-        });
-    }
-    if contains_any(&lc, &["timed out", "timeout"]) {
-        return Some(ServiceTaxonomyError::Timeout {
-            operation: classify_operational_service(&lc),
-        });
-    }
-    if contains_any(
-        &lc,
-        &[
-            "qdrant",
-            "tei",
-            "chrome",
-            "tavily",
-            "connection refused",
-            "dns",
-            "502",
-            "503",
-            "upstream",
-        ],
-    ) {
-        return Some(ServiceTaxonomyError::UpstreamUnavailable {
-            service: classify_operational_service(&lc),
-        });
-    }
     None
-}
-
-fn contains_any(message: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| message.contains(needle))
-}
-
-fn classify_operational_service(message: &str) -> &'static str {
-    if message.contains("qdrant") {
-        "qdrant"
-    } else if message.contains("tei") || message.contains("embedding") {
-        "tei"
-    } else if message.contains("chrome") || message.contains("cdp") {
-        "chrome"
-    } else if message.contains("tavily") {
-        "tavily"
-    } else if message.contains("dns") {
-        "dns"
-    } else {
-        "upstream"
-    }
 }
 
 #[cfg(test)]

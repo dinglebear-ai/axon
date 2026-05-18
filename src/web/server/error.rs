@@ -143,7 +143,26 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
         cursor = current.source();
     }
     let lc = message.to_lowercase();
-    if lc.contains("query is required")
+    if contains_any(&lc, &["429", "rate limit", "rate-limited"]) {
+        (StatusCode::TOO_MANY_REQUESTS, "rate_limited")
+    } else if contains_any(&lc, &["timed out", "timeout"]) {
+        (StatusCode::GATEWAY_TIMEOUT, "timeout")
+    } else if contains_any(
+        &lc,
+        &[
+            "qdrant",
+            "tei",
+            "chrome",
+            "tavily",
+            "connection refused",
+            "dns",
+            "502",
+            "503",
+            "upstream",
+        ],
+    ) {
+        (StatusCode::BAD_GATEWAY, "upstream_unavailable")
+    } else if lc.contains("query is required")
         || lc.contains("invalid collection")
         || lc.contains("invalid query")
         || lc.contains("missing required")
@@ -152,4 +171,8 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, "internal")
     }
+}
+
+fn contains_any(message: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| message.contains(needle))
 }

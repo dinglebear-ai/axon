@@ -13,7 +13,9 @@ pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
         log_info(&format!("command=evaluate query_len={}", question.len()));
     }
 
-    let result = query_service::evaluate(cfg, &question).await?;
+    let result = query_service::evaluate(cfg, &question)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
