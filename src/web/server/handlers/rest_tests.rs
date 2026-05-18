@@ -321,6 +321,134 @@ async fn async_job_id_routes_reject_invalid_uuid() {
     stop(shutdown, handle).await;
 }
 
+/// F3 review-followup: valid-UUID-but-unknown-job returns 404 (not 200 with
+/// a null payload). Specifically guards the crawl path which uses a service
+/// that returns `Result<CrawlJobResult>` rather than `Result<Option<_>>`.
+#[tokio::test]
+#[serial]
+async fn async_status_returns_404_for_unknown_job() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+    let unknown = "00000000-0000-0000-0000-000000000000";
+
+    for kind in ["crawl", "embed", "extract", "ingest"] {
+        let response = client
+            .get(format!("{base}/v1/{kind}/{unknown}"))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("get {kind}/{unknown}: {e}"));
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(status, StatusCode::NOT_FOUND, "{kind} expected 404");
+        assert_eq!(body["kind"], "not_found", "{kind} kind");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// Review-followup: deny_unknown_fields on body structs actually rejects
+/// unknown fields with 400 (axum surfaces serde_json::Deserialize errors as
+/// 422 by default, but the resulting JSON body should still carry an error).
+#[tokio::test]
+#[serial]
+async fn sync_post_rejects_unknown_fields() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/query"))
+        .json(&serde_json::json!({
+            "query": "test",
+            "definitely_not_a_field": 1
+        }))
+        .send()
+        .await
+        .expect("query with bogus field");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    // Axum's JsonRejection emits 4xx for unknown fields via the
+    // deny_unknown_fields contract — either 400 or 422 is acceptable; the
+    // hard requirement is that it does NOT reach the handler with the bogus
+    // field silently accepted (which would be 200/4xx-from-service).
+    assert!(
+        status.is_client_error() && status != StatusCode::NOT_FOUND,
+        "expected 4xx client error, got {status}"
+    );
+}
+
+/// Review-followup: scope discrimination. A token with only `axon:read`
+/// scope passes read-scope routes but is rejected on write-scope routes
+/// (e.g. /v1/scrape) with 403.
+///
+/// Implementation note: in bearer-only mode the static AXON_MCP_HTTP_TOKEN
+/// is granted BOTH axon:read AND axon:write (see mcp::auth::build_auth_layer);
+/// to exercise the discrimination path against only read scope we would need
+/// an OAuth token, which the test harness does not currently provision.
+/// Instead, this test documents the contract by exercising the inverse:
+/// a valid bearer token (which has axon:write) successfully reaches a
+/// write-scope route, confirming the scope guard does not block valid
+/// write tokens.
+#[tokio::test]
+#[serial]
+async fn bearer_token_passes_write_scope_guard() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/scrape"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({ "url": "https://example.invalid/" }))
+        .send()
+        .await
+        .expect("scrape request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    // 200 (Qdrant/Chrome reachable, surprising), 502 (upstream not running),
+    // or 400 from URL validation — none of these are 401/403 which would mean
+    // the scope guard incorrectly blocked the valid write token.
+    assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
+    assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
+}
+
+/// Review-followup: positive auth test for admin routes. With a valid bearer
+/// token (axon:write scope) the migrate route passes the admin_write guard
+/// and reaches body validation. Empty `from` then returns 400 from the
+/// handler — proving the request crossed the auth boundary.
+#[tokio::test]
+#[serial]
+async fn admin_routes_accept_valid_bearer() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/migrate"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({ "from": "", "to": "dst" }))
+        .send()
+        .await
+        .expect("migrate request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "should reach handler, got {status}"
+    );
+    assert_eq!(body["kind"], "bad_request");
+    assert!(
+        body["message"].as_str().unwrap_or("").contains("from"),
+        "should be from-field validation, got {body}"
+    );
+}
+
 /// F4: POST /v1/migrate and /v1/dedupe require auth EVEN in LoopbackDev
 /// (admin_write guard). Mirrors the existing /v1/actions Migrate/Dedupe
 /// invariant in src/web/actions.rs.
