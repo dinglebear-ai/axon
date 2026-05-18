@@ -51,6 +51,11 @@ impl HttpError {
         self.kind
     }
 
+    #[cfg(test)]
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+
     pub(crate) fn from_error(err: &(dyn Error + 'static)) -> Self {
         Self::from_error_with_diagnostics(err, false)
     }
@@ -182,6 +187,7 @@ fn response_message(status: StatusCode, err: &(dyn Error + 'static)) -> String {
         StatusCode::INTERNAL_SERVER_ERROR => "internal server error".to_string(),
         StatusCode::BAD_GATEWAY => "upstream service unavailable".to_string(),
         StatusCode::GATEWAY_TIMEOUT => "upstream request timed out".to_string(),
+        StatusCode::TOO_MANY_REQUESTS => "rate limited".to_string(),
         _ => err.to_string(),
     }
 }

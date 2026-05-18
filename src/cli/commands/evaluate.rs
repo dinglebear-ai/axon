@@ -5,6 +5,7 @@ use crate::core::logging::log_info;
 use crate::core::ui::{muted, primary};
 use crate::services::query as query_service;
 use std::error::Error;
+use std::fmt;
 
 /// CLI shim for the evaluate command.
 pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
@@ -15,7 +16,7 @@ pub async fn run_evaluate(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
     let result = query_service::evaluate(cfg, &question)
         .await
-        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+        .map_err(|err| -> Box<dyn Error> { Box::new(EvaluateCliError(err)) })?;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -225,6 +226,21 @@ fn parse_first_number(line: &str, label: &str) -> Option<f64> {
         }
     }
     number.parse::<f64>().ok()
+}
+
+#[derive(Debug)]
+struct EvaluateCliError(Box<dyn Error + Send + Sync>);
+
+impl fmt::Display for EvaluateCliError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Error for EvaluateCliError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.0.as_ref())
+    }
 }
 
 #[cfg(test)]
