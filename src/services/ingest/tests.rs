@@ -2,6 +2,7 @@ use super::*;
 use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::jobs::lite::config_snapshot::decode_ingest_job_config;
+use crate::mcp::schema::{IngestRequest, IngestSourceType};
 use crate::services::context::ServiceContext;
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::{ExecutionMode, StartDisposition};
@@ -12,6 +13,14 @@ use uuid::Uuid;
 
 struct CaptureRuntime {
     payloads: Mutex<Vec<JobPayload>>,
+}
+
+fn ingest_req(source_type: IngestSourceType, target: &str) -> IngestRequest {
+    IngestRequest {
+        source_type: Some(source_type),
+        target: Some(target.to_string()),
+        ..Default::default()
+    }
 }
 
 #[async_trait]
@@ -81,6 +90,63 @@ impl ServiceJobRuntime for CaptureRuntime {
     async fn count_jobs(&self, _kind: JobKind) -> Result<i64, Box<dyn Error + Send + Sync>> {
         Ok(0)
     }
+}
+
+#[test]
+fn source_from_mcp_request_normalizes_github_url() {
+    let cfg = Config::test_default();
+    let source = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Github,
+            "https://github.com/rust-lang/rust/issues/123",
+        ),
+        &cfg,
+    )
+    .expect("github url target");
+
+    assert!(matches!(
+        source,
+        IngestSource::Github {
+            repo,
+            include_source,
+        } if repo == "rust-lang/rust" && include_source == cfg.github_include_source
+    ));
+}
+
+#[test]
+fn source_from_mcp_request_rejects_invalid_github_target() {
+    let cfg = Config::test_default();
+    let err = source_from_mcp_request(&ingest_req(IngestSourceType::Github, "not-a-target"), &cfg)
+        .expect_err("invalid github target");
+
+    assert!(err.contains("invalid GitHub target"));
+}
+
+#[test]
+fn source_from_mcp_request_rejects_wrong_source_target_pair() {
+    let cfg = Config::test_default();
+    let err = source_from_mcp_request(
+        &ingest_req(IngestSourceType::Reddit, "https://example.com/not/reddit"),
+        &cfg,
+    )
+    .expect_err("invalid reddit target");
+
+    assert!(err.contains("Reddit") || err.contains("reddit"));
+}
+
+#[test]
+fn source_from_mcp_request_rejects_invalid_youtube_target() {
+    let cfg = Config::test_default();
+    let err = source_from_mcp_request(
+        &ingest_req(
+            IngestSourceType::Youtube,
+            "https://example.com/watch?v=nope",
+        ),
+        &cfg,
+    )
+    .expect_err("invalid youtube target");
+
+    assert!(err.contains("YouTube"));
 }
 
 #[tokio::test]

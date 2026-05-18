@@ -1,9 +1,21 @@
+#[path = "handlers/admin.rs"]
+pub mod admin;
 #[path = "handlers/ask.rs"]
 pub mod ask;
+#[path = "handlers/async_jobs.rs"]
+pub mod async_jobs;
 #[path = "handlers/auth.rs"]
 pub mod auth;
 #[path = "handlers/config.rs"]
 pub mod config;
+#[path = "handlers/discovery.rs"]
+pub mod discovery;
+#[path = "handlers/exploration.rs"]
+pub mod exploration;
+#[path = "handlers/jobs.rs"]
+pub mod jobs;
+#[path = "handlers/rag.rs"]
+pub mod rag;
 #[path = "handlers/setup.rs"]
 pub mod setup;
 
