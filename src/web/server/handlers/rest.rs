@@ -15,6 +15,10 @@ pub(crate) mod error;
 pub(crate) mod read_only;
 #[path = "rest/state.rs"]
 pub(crate) mod state;
+#[path = "rest/sync_post.rs"]
+pub(crate) mod sync_post;
+#[path = "rest/types.rs"]
+pub(crate) mod types;
 
 use crate::core::config::Config;
 use crate::mcp::auth::{
@@ -22,15 +26,26 @@ use crate::mcp::auth::{
     oauth_resource_url,
 };
 use crate::services::context::ServiceContext;
-use axum::{Router, middleware, routing::get};
+use axum::{
+    Router, middleware,
+    routing::{MethodRouter, get, post},
+};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 use self::auth::{ScopeGuard, enforce_scope, jsonize_auth_error};
 use self::state::RestState;
 
-/// Build the REST `/v1/*` sub-router and merge it with `actions::router`'s
-/// auth layer so the same `/v1` namespace shares one auth boundary.
+/// Wrap a [`MethodRouter`] with a scope-guard middleware bound to a single
+/// [`ScopeGuard`]. Used so route declarations stay one-line per route.
+fn guarded(method: MethodRouter<RestState>, guard: ScopeGuard) -> MethodRouter<RestState> {
+    method.layer(middleware::from_fn(move |req, next| {
+        enforce_scope(guard, req, next)
+    }))
+}
+
+/// Build the REST `/v1/*` sub-router. The same auth layer covers every route
+/// in this family; per-route scope checks run after it.
 pub(crate) fn router(
     cfg: Arc<Config>,
     service_context: Arc<OnceCell<Arc<ServiceContext>>>,
@@ -38,39 +53,30 @@ pub(crate) fn router(
 ) -> Router {
     let state = RestState::new(Arc::clone(&cfg), service_context, &auth_policy);
 
-    let read_guard = ScopeGuard::read(state.auth_required);
+    let read = ScopeGuard::read(state.auth_required);
+    let write = ScopeGuard::write(state.auth_required);
 
     let rest = Router::new()
-        .route(
-            "/v1/sources",
-            get(read_only::v1_sources).layer(middleware::from_fn(move |req, next| {
-                enforce_scope(read_guard, req, next)
-            })),
-        )
-        .route(
-            "/v1/domains",
-            get(read_only::v1_domains).layer(middleware::from_fn(move |req, next| {
-                enforce_scope(read_guard, req, next)
-            })),
-        )
-        .route(
-            "/v1/stats",
-            get(read_only::v1_stats).layer(middleware::from_fn(move |req, next| {
-                enforce_scope(read_guard, req, next)
-            })),
-        )
-        .route(
-            "/v1/doctor",
-            get(read_only::v1_doctor).layer(middleware::from_fn(move |req, next| {
-                enforce_scope(read_guard, req, next)
-            })),
-        )
-        .route(
-            "/v1/status",
-            get(read_only::v1_status).layer(middleware::from_fn(move |req, next| {
-                enforce_scope(read_guard, req, next)
-            })),
-        )
+        // Family 1 — read-only GET
+        .route("/v1/sources", guarded(get(read_only::v1_sources), read))
+        .route("/v1/domains", guarded(get(read_only::v1_domains), read))
+        .route("/v1/stats", guarded(get(read_only::v1_stats), read))
+        .route("/v1/doctor", guarded(get(read_only::v1_doctor), read))
+        .route("/v1/status", guarded(get(read_only::v1_status), read))
+        // Family 2 — sync POST (read scope: query/retrieve/map; write scope: rest)
+        .route("/v1/query", guarded(post(sync_post::v1_query), read))
+        .route("/v1/retrieve", guarded(post(sync_post::v1_retrieve), read))
+        .route("/v1/map", guarded(post(sync_post::v1_map), read))
+        // NOTE: /v1/evaluate intentionally NOT exposed here. `services::query::evaluate`
+        // returns `Box<dyn Error>` (non-Send) and its internals hold non-Send values
+        // across `.await` points (see vector/ops/commands/evaluate/streaming.rs).
+        // Wiring a multi-thread axum handler against it requires Send-ifying the
+        // entire evaluate error chain — tracked separately. Callers can still hit
+        // the evaluate action via POST /v1/actions { action: { action: "evaluate", ... } }.
+        .route("/v1/suggest", guarded(post(sync_post::v1_suggest), write))
+        .route("/v1/search", guarded(post(sync_post::v1_search), write))
+        .route("/v1/research", guarded(post(sync_post::v1_research), write))
+        .route("/v1/scrape", guarded(post(sync_post::v1_scrape), write))
         .with_state(state);
 
     if let Some(layer) = build_auth_layer(

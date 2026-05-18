@@ -188,6 +188,70 @@ async fn bearer_only_read_routes_require_auth() {
     assert_eq!(body["kind"], "unauthorized");
 }
 
+/// F2 sync POST routes return 400 when the required string field is empty
+/// or missing (LoopbackDev avoids the auth layer so we exercise the body
+/// validation path only).
+#[tokio::test]
+#[serial]
+async fn sync_post_routes_reject_empty_required_fields() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    // (path, body) — each body omits/empties the required field.
+    let cases = [
+        ("/v1/query", serde_json::json!({ "query": "" })),
+        ("/v1/retrieve", serde_json::json!({ "url": "" })),
+        ("/v1/map", serde_json::json!({ "url": "" })),
+        ("/v1/search", serde_json::json!({ "query": "  " })),
+        ("/v1/research", serde_json::json!({ "query": "" })),
+        ("/v1/scrape", serde_json::json!({ "url": "" })),
+    ];
+
+    for (path, body) in cases {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
+        assert_eq!(body["kind"], "bad_request", "{path} kind");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// F2 search/research time_range parsing rejects invalid values.
+#[tokio::test]
+#[serial]
+async fn sync_post_search_rejects_invalid_time_range() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/search"))
+        .json(&serde_json::json!({ "query": "test", "time_range": "decade" }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("time_range"),
+        "expected time_range error, got {body}"
+    );
+}
+
 #[tokio::test]
 #[serial]
 async fn bearer_token_grants_read_access() {
