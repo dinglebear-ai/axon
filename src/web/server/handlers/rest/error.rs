@@ -60,10 +60,25 @@ pub(crate) fn classify_service_error(err: &(dyn Error + 'static)) -> (StatusCode
     }
 
     // Narrow client-input-shape markers — anything the service layer raises
-    // about the request body itself (URL list, URL syntax). Service-side
-    // config/validation errors ("must be set", "is required for") fall
-    // through to internal so they show up in 5xx monitoring.
-    if lc.contains("no urls provided") || lc.contains("invalid url") {
+    // about the shape of the request body itself (URL list, URL syntax,
+    // cursor pagination token). Service-side config/validation errors
+    // ("must be set", "is required for") fall through to internal so they
+    // show up in 5xx monitoring instead of being silently downgraded to 4xx.
+    //
+    // Keep this list narrow and additive: every marker added here is a
+    // commitment that the service layer will only emit it for genuine
+    // client-input failures, never for upstream or config issues.
+    let client_input_markers = [
+        "no urls provided",
+        "invalid url",
+        "invalid scrape url",
+        "invalid retrieve cursor",
+        "invalid cursor",
+        "invalid request",
+        "malformed url",
+        "unsupported scheme",
+    ];
+    if client_input_markers.iter().any(|m| lc.contains(m)) {
         return (StatusCode::BAD_REQUEST, "bad_request");
     }
 
