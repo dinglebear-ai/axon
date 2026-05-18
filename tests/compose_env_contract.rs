@@ -376,9 +376,6 @@ fn env_example_only_contains_production_runtime_keys() {
         "AXON_MCP_AUTH_ADMIN_EMAIL",
         "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
         "AXON_MCP_ALLOWED_ORIGINS",
-        // Web panel
-        "AXON_WEB_ALLOWED_ORIGINS",
-        "AXON_WEB_API_TOKEN",
         // Vector stack
         "QDRANT_URL",
         "TEI_URL",
@@ -387,13 +384,6 @@ fn env_example_only_contains_production_runtime_keys() {
         "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
         "NVIDIA_VISIBLE_DEVICES",
         "CUDA_VISIBLE_DEVICES",
-        "NVIDIA_REQUIRE_CUDA",
-        "CUDA_CACHE_DISABLE",
-        "PYTORCH_CUDA_ALLOC_CONF",
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "TOKENIZERS_PARALLELISM",
-        "HF_HUB_ENABLE_HF_TRANSFER",
         // Chrome + scrape stack
         "AXON_CHROME_REMOTE_URL",
         // LLM (Gemini headless)

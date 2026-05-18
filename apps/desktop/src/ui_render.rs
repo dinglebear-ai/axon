@@ -3,14 +3,14 @@
 //! remains a child of `ui`, retaining access to `Palette`'s private items.
 
 use gpui::{
-    Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render, SharedString, Styled,
-    Window, div, prelude::*, px, rgb,
+    AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render,
+    SharedString, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use super::Palette;
 use crate::layout::compute_desired_height;
 use crate::render::{
-    render_action_rows, render_output_body, render_palette_footer, render_prompt_row,
+    render_action_rows_interactive, render_output_body, render_palette_footer, render_prompt_row,
 };
 use crate::theme::{
     AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_FONT_SANS, AURORA_NAV_BG, AURORA_PAGE_BG,
@@ -50,30 +50,7 @@ impl Render for Palette {
         };
         let query_is_empty = self.query.is_empty();
 
-        let connection = self.connection;
-        // The status dot is intentionally non-animated. An earlier revision
-        // pulsed it while a health check was in flight, but the auto-spawned
-        // launch-time probe combined with a repeating animation kept GPUI
-        // re-rendering the view every frame on slower compositors and could
-        // starve key-event dispatch — the user-visible symptom was a window
-        // that wouldn't accept input. Color alone is now the indicator:
-        // grey while `Checking`, green/red once the probe returns. The
-        // footer/output pulsing dots (which only render once a command is
-        // selected or running) are unaffected.
-        let status_dot = div()
-            .id("status-dot")
-            .size(px(8.0))
-            .rounded_full()
-            .flex_shrink_0()
-            .cursor_pointer()
-            .bg(rgb(connection.dot_color()))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _window, cx| {
-                    this.spawn_health_check(cx);
-                }),
-            )
-            .into_any_element();
+        let status_dot = render_status_dot(self.connection, cx);
 
         div()
             .key_context("Palette")
@@ -111,11 +88,25 @@ impl Render for Palette {
                         prompt,
                         status_dot,
                     ))
-                    .child(render_action_rows(
+                    .child(render_action_rows_interactive(
                         actions,
                         selected,
                         running_subcommand,
                         hide_list,
+                        |i| {
+                            cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                                this.selected = i;
+                                this.submit(&crate::Submit, window, cx);
+                            })
+                        },
+                        |i| {
+                            cx.listener(move |this, hovered: &bool, _window, cx| {
+                                if *hovered && this.selected != i {
+                                    this.selected = i;
+                                    cx.notify();
+                                }
+                            })
+                        },
                     ))
                     .when_some(selected_action, |el, action| {
                         el.child(render_palette_footer(
@@ -146,4 +137,23 @@ impl Render for Palette {
                     }),
             )
     }
+}
+
+fn render_status_dot(connection: super::ConnectionState, cx: &mut Context<Palette>) -> AnyElement {
+    // Intentionally non-animated. A launch-time pulsing health dot previously
+    // kept slower compositors repainting every frame and could starve key input.
+    div()
+        .id("status-dot")
+        .size(px(8.0))
+        .rounded_full()
+        .flex_shrink_0()
+        .cursor_pointer()
+        .bg(rgb(connection.dot_color()))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseDownEvent, _window, cx| {
+                this.spawn_health_check(cx);
+            }),
+        )
+        .into_any_element()
 }

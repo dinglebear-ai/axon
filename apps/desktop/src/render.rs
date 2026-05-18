@@ -1,19 +1,21 @@
 use std::time::Duration;
 
+mod action_rows;
+pub(crate) use action_rows::render_action_rows_interactive;
+
 use gpui::{
     Animation, AnimationExt, ElementId, FontWeight, IntoElement, MouseButton, MouseDownEvent,
     ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px, rgb,
 };
 
 use crate::ClearOutput;
-use crate::actions::{ArgMode, CommandAction};
+use crate::actions::CommandAction;
 use crate::markdown::render_markdown;
 use crate::output::{CommandOutput, OutputKind, OutputSection};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
-    AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG,
-    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_PANEL_STRONG, AURORA_TEXT_MUTED,
-    AURORA_TEXT_PRIMARY,
+    AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_NAV_BG,
+    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 use crate::ui::RunningCommand;
 
@@ -69,29 +71,6 @@ pub(crate) fn render_prompt_row(
                 })
                 .child(prompt),
         )
-}
-
-pub(crate) fn render_action_rows(
-    actions: Vec<CommandAction>,
-    selected: usize,
-    running_subcommand: Option<&'static str>,
-    hide_list: bool,
-) -> impl IntoElement {
-    let is_empty = actions.is_empty();
-    div()
-        .flex()
-        .flex_col()
-        .py_1()
-        .when(is_empty && !hide_list, |el| el.child(render_empty_row()))
-        .when(!is_empty, |el| {
-            el.children(actions.into_iter().enumerate().map(move |(i, action)| {
-                render_action_row(
-                    action,
-                    i == selected,
-                    running_subcommand == Some(action.subcommand),
-                )
-            }))
-        })
 }
 
 pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
@@ -420,75 +399,4 @@ fn pulsing_dot(
     } else {
         base.into_any_element()
     }
-}
-
-fn render_empty_row() -> impl IntoElement {
-    div()
-        .h(px(36.0))
-        .flex()
-        .items_center()
-        .px_4()
-        .font_weight(FontWeight(480.0))
-        .text_size(px(13.0))
-        .text_color(rgb(AURORA_TEXT_MUTED))
-        .child("No matching commands")
-}
-
-fn render_action_row(
-    action: CommandAction,
-    is_selected: bool,
-    is_running: bool,
-) -> impl IntoElement {
-    let meta = if is_running {
-        "running"
-    } else if action.arg_mode == ArgMode::None {
-        action.subcommand
-    } else {
-        "argument"
-    };
-    let meta_color = if is_running {
-        AURORA_ACCENT_PRIMARY
-    } else if action.arg_mode == ArgMode::None {
-        AURORA_TEXT_MUTED
-    } else {
-        AURORA_ACCENT_STRONG
-    };
-
-    div()
-        .h(px(36.0))
-        .flex()
-        .flex_row()
-        .items_center()
-        .justify_between()
-        .mx_1()
-        .px_3()
-        .rounded_sm()
-        .bg(if is_selected {
-            rgb(AURORA_HOVER_BG)
-        } else {
-            rgb(AURORA_PANEL_STRONG)
-        })
-        .child(
-            div()
-                .font_weight(if is_selected {
-                    FontWeight(620.0)
-                } else {
-                    FontWeight(480.0)
-                })
-                .text_size(px(13.0))
-                .text_color(if is_selected {
-                    rgb(AURORA_TEXT_PRIMARY)
-                } else {
-                    rgb(AURORA_TEXT_MUTED)
-                })
-                .child(SharedString::from(action.label)),
-        )
-        .child(
-            div()
-                .font_family(AURORA_FONT_MONO)
-                .font_weight(FontWeight(560.0))
-                .text_size(px(11.0))
-                .text_color(rgb(meta_color))
-                .child(meta),
-        )
 }

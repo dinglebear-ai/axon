@@ -17,6 +17,8 @@ pub(crate) struct AuroraTokens {
     pub panel_medium: u32,
     pub control_surface: u32,
     pub hover_bg: u32,
+    pub row_hover_bg: u32,
+    pub pressed_bg: u32,
     // Borders
     pub border_default: u32,
     pub border_strong: u32,
@@ -47,6 +49,8 @@ pub(crate) const AURORA: AuroraTokens = AuroraTokens {
     panel_medium: 0x102330,
     control_surface: 0x0c1a24,
     hover_bg: 0x17364b,
+    row_hover_bg: 0x14283a,
+    pressed_bg: 0x1f4763,
     border_default: 0x1d3d4e,
     border_strong: 0x24536c,
     text_primary: 0xe6f4fb,
@@ -72,6 +76,8 @@ pub(crate) const AURORA_PANEL_STRONG: u32 = AURORA.panel_strong;
 pub(crate) const AURORA_PANEL_MEDIUM: u32 = AURORA.panel_medium;
 pub(crate) const AURORA_CONTROL_SURFACE: u32 = AURORA.control_surface;
 pub(crate) const AURORA_HOVER_BG: u32 = AURORA.hover_bg;
+pub(crate) const AURORA_ROW_HOVER_BG: u32 = AURORA.row_hover_bg;
+pub(crate) const AURORA_PRESSED_BG: u32 = AURORA.pressed_bg;
 pub(crate) const AURORA_BORDER_DEFAULT: u32 = AURORA.border_default;
 pub(crate) const AURORA_BORDER_STRONG: u32 = AURORA.border_strong;
 pub(crate) const AURORA_TEXT_PRIMARY: u32 = AURORA.text_primary;
