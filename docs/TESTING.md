@@ -155,6 +155,14 @@ is no checked-in TypeScript test suite under `apps/web` today.
 
 Use `cd apps/web && npm run build` when changing panel assets.
 
+### Desktop palette screenshots
+
+Use [`docs/DESKTOP-PALETTE-TESTING.md`](/home/jmagar/workspace/axon_rust/docs/DESKTOP-PALETTE-TESTING.md)
+when validating the Windows `axon-palette.exe` operation output. It documents
+the PowerShell capture harness in
+[`scripts/capture-palette-operations.ps1`](/home/jmagar/workspace/axon_rust/scripts/capture-palette-operations.ps1)
+and the current screenshot review checklist.
+
 ## Test-Only Security Escape Hatches
 
 Several tests deliberately use narrow exceptions that must not be copied into
