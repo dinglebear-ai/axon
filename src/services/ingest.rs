@@ -35,6 +35,60 @@ pub fn map_ingest_job_result(payload: serde_json::Value) -> IngestJobResult {
     IngestJobResult { payload }
 }
 
+pub fn source_from_mcp_request(
+    req: &crate::mcp::schema::IngestRequest,
+    cfg: &Config,
+) -> Result<IngestSource, String> {
+    let source_type = req
+        .source_type
+        .clone()
+        .ok_or_else(|| "source_type is required for ingest.start".to_string())?;
+    match source_type {
+        crate::mcp::schema::IngestSourceType::Github => Ok(IngestSource::Github {
+            repo: required_ingest_target(req, "target repo")?,
+            include_source: req.include_source.unwrap_or(cfg.github_include_source),
+        }),
+        crate::mcp::schema::IngestSourceType::Reddit => Ok(IngestSource::Reddit {
+            target: required_ingest_target(req, "target")?,
+        }),
+        crate::mcp::schema::IngestSourceType::Youtube => Ok(IngestSource::Youtube {
+            target: required_ingest_target(req, "target")?,
+        }),
+        crate::mcp::schema::IngestSourceType::Sessions => {
+            let sessions =
+                req.sessions
+                    .clone()
+                    .unwrap_or(crate::mcp::schema::SessionsIngestOptions {
+                        claude: None,
+                        codex: None,
+                        gemini: None,
+                        project: None,
+                    });
+            Ok(IngestSource::Sessions {
+                sessions_claude: sessions.claude.unwrap_or(false),
+                sessions_codex: sessions.codex.unwrap_or(false),
+                sessions_gemini: sessions.gemini.unwrap_or(false),
+                sessions_project: sessions.project,
+            })
+        }
+    }
+}
+
+fn required_ingest_target(
+    req: &crate::mcp::schema::IngestRequest,
+    field: &'static str,
+) -> Result<String, String> {
+    let Some(value) = req
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Err(format!("{field} is required"));
+    };
+    Ok(value.to_string())
+}
+
 // --- Service lifecycle wrappers ---
 
 pub async fn ingest_start(

@@ -11,6 +11,7 @@ Axon exposes traditional REST routes under `/v1`. `POST /v1/actions` remains for
 
 Read routes:
 
+- `GET /v1/capabilities`
 - `GET /v1/sources?limit=100&offset=0`
 - `GET /v1/domains?limit=100&offset=0`
 - `GET /v1/stats`

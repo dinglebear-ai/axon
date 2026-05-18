@@ -1,4 +1,4 @@
-use crate::mcp::auth::AuthPolicy;
+use crate::mcp::auth::{AuthPolicy, configured_mcp_http_token};
 use crate::services::action_api::{dispatch_action, required_scope};
 use crate::services::context::ServiceContext;
 use crate::services::types::{
@@ -7,7 +7,7 @@ use crate::services::types::{
 use axum::{
     Extension, Json, Router,
     extract::{DefaultBodyLimit, State, rejection::JsonRejection},
-    http::{HeaderName, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -34,25 +34,29 @@ impl ActionState {
 
 pub(crate) fn router(service_context: Arc<ServiceContext>, auth_policy: AuthPolicy) -> Router {
     let state = ActionState::new(service_context, auth_policy.clone());
-    let actions = Router::new()
+    Router::new()
         .route(
             "/v1/actions",
             post(v1_actions).layer(DefaultBodyLimit::max(ACTIONS_BODY_LIMIT)),
         )
-        .with_state(state);
-
-    Router::new()
-        .route("/v1/capabilities", get(v1_capabilities))
-        .merge(actions)
+        .with_state(state)
 }
 
-async fn v1_capabilities() -> Json<ServerInfo> {
+pub(crate) fn capabilities_router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    Router::new().route("/v1/capabilities", get(v1_capabilities))
+}
+
+pub(crate) async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::current())
 }
 
 async fn v1_actions(
     State(state): State<ActionState>,
     auth: Option<Extension<AuthContext>>,
+    headers: HeaderMap,
     payload: Result<Json<Value>, JsonRejection>,
 ) -> Response {
     let request_id = payload
@@ -91,6 +95,7 @@ async fn v1_actions(
     if let Err((status, err)) = authorize_action(
         &state,
         auth.as_ref().map(|Extension(ctx)| ctx),
+        &headers,
         &request.action,
     ) {
         return deprecated_response(json_error(status, Some(request.request_id), err));
@@ -110,6 +115,7 @@ async fn v1_actions(
 fn authorize_action(
     state: &ActionState,
     auth: Option<&AuthContext>,
+    headers: &HeaderMap,
     action: &crate::mcp::schema::AxonRequest,
 ) -> Result<(), (StatusCode, ClientActionError)> {
     let force_auth = matches!(
@@ -117,6 +123,9 @@ fn authorize_action(
         crate::mcp::schema::AxonRequest::Dedupe(_) | crate::mcp::schema::AxonRequest::Migrate(_)
     );
     if !state.auth_required && !force_auth {
+        return Ok(());
+    }
+    if static_token_matches(headers) {
         return Ok(());
     }
     let Some(auth) = auth else {
@@ -142,6 +151,22 @@ fn authorize_action(
             ),
         ))
     }
+}
+
+fn static_token_matches(headers: &HeaderMap) -> bool {
+    let Some(expected) = configured_mcp_http_token() else {
+        return false;
+    };
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|token| token == expected);
+    let api_key = headers
+        .get("x-api-key")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|token| token == expected);
+    bearer || api_key
 }
 
 fn request_id_from_value(value: &Value) -> Option<String> {

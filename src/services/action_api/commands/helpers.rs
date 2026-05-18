@@ -1,7 +1,5 @@
 use crate::core::config::{Config, ConfigOverrides, RenderMode, ScrapeFormat};
-use crate::mcp::schema::{
-    CrawlRequest, IngestRequest, IngestSourceType, McpRenderMode, McpScrapeFormat,
-};
+use crate::mcp::schema::{CrawlRequest, IngestRequest, McpRenderMode, McpScrapeFormat};
 use crate::services::ingest as ingest_svc;
 use crate::services::types::ClientActionError;
 
@@ -9,54 +7,8 @@ pub(super) fn parse_ingest_source(
     req: &IngestRequest,
     cfg: &Config,
 ) -> Result<ingest_svc::IngestSource, ClientActionError> {
-    let source_type = req.source_type.clone().ok_or_else(|| {
-        ClientActionError::new(
-            "invalid_request",
-            "source_type is required for ingest.start",
-            false,
-            None,
-        )
-    })?;
-    match source_type {
-        IngestSourceType::Github => {
-            let repo = req.target.clone().ok_or_else(|| {
-                ClientActionError::new("invalid_request", "target repo is required", false, None)
-            })?;
-            Ok(ingest_svc::IngestSource::Github {
-                repo,
-                include_source: req.include_source.unwrap_or(cfg.github_include_source),
-            })
-        }
-        IngestSourceType::Reddit => {
-            let target = req.target.clone().ok_or_else(|| {
-                ClientActionError::new("invalid_request", "target is required", false, None)
-            })?;
-            Ok(ingest_svc::IngestSource::Reddit { target })
-        }
-        IngestSourceType::Youtube => {
-            let target = req.target.clone().ok_or_else(|| {
-                ClientActionError::new("invalid_request", "target is required", false, None)
-            })?;
-            Ok(ingest_svc::IngestSource::Youtube { target })
-        }
-        IngestSourceType::Sessions => {
-            let sessions =
-                req.sessions
-                    .clone()
-                    .unwrap_or(crate::mcp::schema::SessionsIngestOptions {
-                        claude: None,
-                        codex: None,
-                        gemini: None,
-                        project: None,
-                    });
-            Ok(ingest_svc::IngestSource::Sessions {
-                sessions_claude: sessions.claude.unwrap_or(false),
-                sessions_codex: sessions.codex.unwrap_or(false),
-                sessions_gemini: sessions.gemini.unwrap_or(false),
-                sessions_project: sessions.project,
-            })
-        }
-    }
+    ingest_svc::source_from_mcp_request(req, cfg)
+        .map_err(|message| ClientActionError::new("invalid_request", message, false, None))
 }
 
 pub(super) fn apply_crawl_overrides(cfg: &Config, req: &CrawlRequest) -> Config {

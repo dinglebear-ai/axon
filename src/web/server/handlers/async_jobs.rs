@@ -41,21 +41,7 @@ pub(crate) struct ExtractStartRequest {
     max_pages: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct IngestStartRequest {
-    source_type: String,
-    target: Option<String>,
-    include_source: Option<bool>,
-    sessions: Option<SessionsOptions>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct SessionsOptions {
-    claude: Option<bool>,
-    codex: Option<bool>,
-    gemini: Option<bool>,
-    project: Option<String>,
-}
+type IngestStartRequest = crate::mcp::schema::IngestRequest;
 
 #[derive(Debug, Serialize)]
 struct AcceptedJob {
@@ -213,40 +199,5 @@ fn ingest_source(
     req: IngestStartRequest,
     cfg: &Config,
 ) -> Result<services::ingest::IngestSource, HttpError> {
-    match req.source_type.trim().to_ascii_lowercase().as_str() {
-        "github" => Ok(services::ingest::IngestSource::Github {
-            repo: required_target(req.target, "target repo")?,
-            include_source: req.include_source.unwrap_or(cfg.github_include_source),
-        }),
-        "reddit" => Ok(services::ingest::IngestSource::Reddit {
-            target: required_target(req.target, "target")?,
-        }),
-        "youtube" => Ok(services::ingest::IngestSource::Youtube {
-            target: required_target(req.target, "target")?,
-        }),
-        "sessions" => {
-            let sessions = req.sessions.unwrap_or_default();
-            Ok(services::ingest::IngestSource::Sessions {
-                sessions_claude: sessions.claude.unwrap_or(false),
-                sessions_codex: sessions.codex.unwrap_or(false),
-                sessions_gemini: sessions.gemini.unwrap_or(false),
-                sessions_project: sessions.project,
-            })
-        }
-        _ => Err(HttpError::bad_request(
-            "source_type must be one of: github, reddit, youtube, sessions",
-        )),
-    }
-}
-
-fn required_target(value: Option<String>, field: &'static str) -> Result<String, HttpError> {
-    let Some(value) = value else {
-        return Err(HttpError::bad_request(format!("{field} is required")));
-    };
-    let value = value.trim();
-    if value.is_empty() {
-        Err(HttpError::bad_request(format!("{field} is required")))
-    } else {
-        Ok(value.to_string())
-    }
+    services::ingest::source_from_mcp_request(&req, cfg).map_err(HttpError::bad_request)
 }
