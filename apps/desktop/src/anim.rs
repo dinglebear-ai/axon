@@ -18,16 +18,6 @@ use std::time::Duration;
 /// setting); flip locally to test.
 pub(crate) const REDUCE_MOTION: bool = false;
 
-/// Resize tick interval for the window-height lerp. ~60 FPS is overkill for
-/// a window resize; 16ms keeps the motion smooth without flooding the GPUI
-/// runloop with notifications.
-pub(crate) const RESIZE_TICK_MS: u64 = 16;
-
-/// How close `current_height` has to get to `target_height` before the
-/// resize tick self-terminates and snaps to the target. Under one pixel is
-/// indistinguishable from "done" on any DPI.
-pub(crate) const RESIZE_SNAP_EPSILON: f32 = 0.75;
-
 /// Linear interpolation between `from` and `to` at progress `t` (clamped to
 /// `[0.0, 1.0]`).
 pub(crate) fn lerp_f32(from: f32, to: f32, t: f32) -> f32 {
