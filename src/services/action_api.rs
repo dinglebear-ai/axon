@@ -54,21 +54,23 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             IngestSubaction::Status | IngestSubaction::List => Some("axon:read"),
             _ => Some("axon:write"),
         },
+        // Read-only ops that never trigger external processes or side-effects.
         AxonRequest::Query(_)
         | AxonRequest::Retrieve(_)
         | AxonRequest::Search(_)
         | AxonRequest::Map(_)
-        | AxonRequest::Evaluate(_)
-        | AxonRequest::Suggest(_)
         | AxonRequest::Doctor(_)
         | AxonRequest::Domains(_)
         | AxonRequest::Sources(_)
         | AxonRequest::Stats(_)
         | AxonRequest::Help(_)
         | AxonRequest::Artifacts(_)
-        | AxonRequest::Research(_)
-        | AxonRequest::Ask(_)
         | AxonRequest::Debug(_) => Some("axon:read"),
+        // These trigger Gemini headless completions (external process, API quota) — write scope.
+        AxonRequest::Ask(_)
+        | AxonRequest::Evaluate(_)
+        | AxonRequest::Suggest(_)
+        | AxonRequest::Research(_) => Some("axon:write"),
         AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) => Some("axon:write"),
         AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
@@ -82,7 +84,9 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
-        _ => None,
+        // Secure default: any unrecognised action variant requires write scope.
+        // Using None here would bypass auth entirely via the authorize_action None-check.
+        _ => Some("axon:write"),
     }
 }
 

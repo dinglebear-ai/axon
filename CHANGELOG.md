@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-05-18
+
+### BREAKING CHANGES
+
+- **Auth scope: `ask`, `evaluate`, `suggest`, `research` promoted from `axon:read` to `axon:write`.**
+  These actions trigger Gemini headless completions (external process, API quota consumption) and
+  must not be reachable with read-only tokens. If you have automations or integrations using
+  `axon:read` tokens to call these actions via the HTTP API, re-issue those tokens with
+  `axon:write` scope.
+
+### Security
+
+- **F1 — `required_scope` catch-all hardened.** The wildcard arm in `required_scope()` previously
+  returned `None`, which caused `authorize_action` to return `Ok(())` and bypass auth entirely for
+  any unrecognised `AxonRequest` variant. It now returns `Some("axon:write")` as a secure default.
+- **F5 — Migrate and Dedupe unconditionally require auth.** `action:migrate` and `action:dedupe`
+  are now auth-gated regardless of `LoopbackDev` mode. A server with no token configured
+  (development loopback) can no longer trigger these destructive operations without a credential.
+
 ## [3.0.0] - 2026-05-17
 
 ### BREAKING CHANGES
