@@ -7,6 +7,8 @@
 //! `/v1/actions` is kept for back-compat (see deprecation header in
 //! `crate::web::actions`); these routes are the path forward.
 
+#[path = "rest/admin.rs"]
+pub(crate) mod admin;
 #[path = "rest/async_jobs.rs"]
 pub(crate) mod async_jobs;
 #[path = "rest/auth.rs"]
@@ -129,6 +131,29 @@ pub(crate) fn router(
         .route(
             "/v1/ingest/{id}/cancel",
             guarded(post(async_jobs::v1_ingest_cancel), write),
+        )
+        // Family 4 — admin / destructive. migrate + dedupe unconditionally
+        // require auth (admin_write guard) even in LoopbackDev. Watch CRUD uses
+        // standard read/write guards.
+        .route(
+            "/v1/migrate",
+            guarded(post(admin::v1_migrate), ScopeGuard::admin_write()),
+        )
+        .route(
+            "/v1/dedupe",
+            guarded(post(admin::v1_dedupe), ScopeGuard::admin_write()),
+        )
+        // /v1/watch GET (list) is read-only; v1_watch_create is exposed as
+        // POST /v1/watch/create so the two scope guards don't share a layer.
+        .route("/v1/watch", guarded(get(admin::v1_watch_list), read))
+        .route(
+            "/v1/watch/create",
+            guarded(post(admin::v1_watch_create), write),
+        )
+        .route("/v1/watch/{id}", guarded(get(admin::v1_watch_get), read))
+        .route(
+            "/v1/watch/{id}/run",
+            guarded(post(admin::v1_watch_run_now), write),
         )
         .with_state(state);
 

@@ -314,7 +314,7 @@ async fn get_watch_run_with_pool(
 pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, Box<dyn Error>> {
     let pool = open_config_pool(cfg).await?;
     let run = create_watch_run_with_pool(&pool, watch.id, None).await?;
-    let outcome: Result<(), Box<dyn Error>> = match watch.task_type.as_str() {
+    let outcome: Result<(), Box<dyn Error + Send + Sync>> = match watch.task_type.as_str() {
         "refresh" => {
             let urls = watch
                 .task_payload
@@ -366,17 +366,25 @@ pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, B
         other => Err(format!("unsupported watch task_type in lite mode: {other}").into()),
     };
 
-    if let Err(err) = outcome {
+    // Consume the non-Send `Box<dyn StdError>` immediately into a String so
+    // the subsequent await never sees the box and the future stays
+    // `Send`-safe for the multi-thread axum runtime used by
+    // `/v1/watch/{id}/run`.
+    let outcome_err: Option<String> = match outcome {
+        Ok(()) => None,
+        Err(err) => Some(err.to_string()),
+    };
+    if let Some(err_text) = outcome_err {
         let _ = finish_watch_run_with_pool(
             &pool,
             watch.id,
             run.id,
             WATCH_RUN_STATUS_FAILED,
             None,
-            Some(&err.to_string()),
+            Some(&err_text),
         )
         .await?;
-        return Err(err);
+        return Err(err_text.into());
     }
 
     Ok(get_watch_run_with_pool(&pool, run.id).await?.unwrap_or(run))
