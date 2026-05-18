@@ -31,6 +31,9 @@ cargo test --locked --manifest-path apps/desktop/Cargo.toml
 
 The dedicated desktop CI workflow runs this command before release builds on both Linux and Windows.
 
+For Windows operation screenshot testing, use
+[`docs/DESKTOP-PALETTE-TESTING.md`](/home/jmagar/workspace/axon_rust/docs/DESKTOP-PALETTE-TESTING.md).
+
 ## Run
 
 ```bash
