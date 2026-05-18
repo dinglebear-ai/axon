@@ -1,5 +1,5 @@
-use super::server::{AppState, authorized};
-use crate::services::{action_api::dispatch_action, context::ServiceContext};
+use super::server::{AppState, HttpError, authorized};
+use crate::core::config::{Config, ConfigOverrides, RenderMode};
 use axum::{
     Json,
     extract::State,
@@ -20,7 +20,7 @@ pub(super) struct FirstAskRequest {
 }
 
 pub(super) async fn first_run_crawl(
-    State((state, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
+    State((state, cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
     Json(req): Json<FirstCrawlRequest>,
 ) -> impl IntoResponse {
@@ -32,34 +32,37 @@ pub(super) async fn first_run_crawl(
         Ok(url) => url,
         Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
     };
-    let ctx = match panel_service_context(&state, cfg).await {
-        Ok(ctx) => ctx,
-        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
-    };
-    let action = crate::mcp::schema::AxonRequest::Crawl(crate::mcp::schema::CrawlRequest {
-        subaction: Some(crate::mcp::schema::CrawlSubaction::Start),
-        urls: Some(vec![url.to_string()]),
-        job_id: None,
-        limit: None,
-        offset: None,
-        response_mode: Some(crate::mcp::schema::ResponseMode::Inline),
+    let cfg = cfg.apply_overrides(&ConfigOverrides {
         max_pages: Some(10),
         max_depth: Some(1),
         include_subdomains: Some(false),
         respect_robots: Some(false),
         discover_sitemaps: Some(false),
-        sitemap_since_days: None,
-        render_mode: Some(crate::mcp::schema::McpRenderMode::AutoSwitch),
-        delay_ms: None,
+        render_mode: Some(RenderMode::AutoSwitch),
+        ..ConfigOverrides::default()
     });
-    match dispatch_action(&ctx, action).await {
-        Ok(result) => Json(result).into_response(),
-        Err(err) => (StatusCode::BAD_GATEWAY, err.message).into_response(),
+    match crate::services::crawl::crawl_start_with_context(
+        &cfg,
+        &[url.to_string()],
+        &state.service_context,
+        None,
+    )
+    .await
+    {
+        Ok(outcome) => Json(serde_json::json!({
+            "job_ids": outcome.result.job_ids,
+            "output_dir": outcome.result.output_dir,
+            "predicted_paths": outcome.result.predicted_paths,
+            "predicted_artifact_handles": outcome.result.predicted_artifact_handles,
+            "jobs": outcome.result.jobs,
+        }))
+        .into_response(),
+        Err(err) => HttpError::from_box(err).into_response(),
     }
 }
 
 pub(super) async fn first_run_ask(
-    State((state, cfg)): State<(AppState, Arc<crate::core::config::Config>)>,
+    State((state, cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
     Json(req): Json<FirstAskRequest>,
 ) -> impl IntoResponse {
@@ -71,37 +74,10 @@ pub(super) async fn first_run_ask(
         Ok(query) => query,
         Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
     };
-    let ctx = match panel_service_context(&state, cfg).await {
-        Ok(ctx) => ctx,
-        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
-    };
-    let action = crate::mcp::schema::AxonRequest::Ask(crate::mcp::schema::AskRequest {
-        query: Some(query.to_string()),
-        graph: None,
-        diagnostics: Some(false),
-        explain: None,
-        collection: None,
-        since: None,
-        before: None,
-        hybrid_search: None,
-        response_mode: Some(crate::mcp::schema::ResponseMode::Inline),
-    });
-    match dispatch_action(&ctx, action).await {
+    match crate::services::query::ask(&cfg, query, None).await {
         Ok(result) => Json(result).into_response(),
-        Err(err) => (StatusCode::BAD_GATEWAY, err.message).into_response(),
+        Err(err) => HttpError::from_box(err).into_response(),
     }
-}
-
-async fn panel_service_context(
-    state: &AppState,
-    cfg: Arc<crate::core::config::Config>,
-) -> Result<Arc<ServiceContext>, String> {
-    state
-        .service_context
-        .get_or_try_init(|| async { ServiceContext::new_with_workers(cfg).await.map(Arc::new) })
-        .await
-        .map(Arc::clone)
-        .map_err(|err| format!("failed to initialize service context: {err}"))
 }
 
 fn validate_first_run_url(url: &str) -> Result<&str, &'static str> {

@@ -358,12 +358,15 @@ impl AxonMcpServer {
             .await
             .map_err(|e| logged_internal_error(&format!("research '{query}'"), e.as_ref()))?;
 
+        let payload_json = serde_json::to_value(&result.payload)
+            .map_err(|e| internal_error(format!("research payload serialization failed: {e}")))?;
+
         respond_with_mode(
             "research",
             "research",
             response_mode,
             &format!("research-{}", slugify(&query, 56)),
-            result.payload,
+            payload_json,
             InlineHint::Fields(&["summary"]),
         )
         .await

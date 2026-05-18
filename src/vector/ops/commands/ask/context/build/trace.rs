@@ -371,5 +371,5 @@ fn insertion_mode_for_context_tier(tier: &str) -> Option<AskExplainInsertionMode
 }
 
 #[cfg(test)]
-#[path = "trace/tests.rs"]
+#[path = "trace_tests.rs"]
 mod tests;

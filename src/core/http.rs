@@ -16,6 +16,7 @@ mod normalize;
 mod proptest_tests;
 mod ssrf;
 #[cfg(test)]
+#[path = "http_tests.rs"]
 mod tests;
 
 // Re-export the full public API so downstream `use crate::core::http::*` continues to work.

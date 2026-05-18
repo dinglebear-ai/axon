@@ -1,4 +1,6 @@
-use std::process::Output;
+use std::io::{self, Read};
+use std::process::{Command, ExitStatus, Stdio};
+use std::thread;
 
 use gpui::SharedString;
 
@@ -7,11 +9,13 @@ use gpui::SharedString;
 mod tests;
 
 use crate::actions::{ACTIONS, CommandAction};
+use crate::markdown::MarkdownDocument;
 use crate::theme::{
     AURORA_ACCENT_PINK, AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_WARNING,
 };
 
 const OUTPUT_LIMIT: usize = 12_000;
+const TRUNCATED_MESSAGE: &str = "\n... output truncated ...";
 /// Maximum number of lines rendered for a raw (non-markdown) output
 /// section. Mirrors the `take(MAX_RENDER_LINES)` cap in `render.rs`.
 pub(crate) const MAX_RENDER_LINES: usize = 220;
@@ -24,6 +28,7 @@ pub(crate) struct CommandOutput {
     pub(crate) stdout: Option<OutputSection>,
     pub(crate) stderr: Option<OutputSection>,
     pub(crate) use_markdown: bool,
+    pub(crate) compact_stdout: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,13 +44,16 @@ pub(crate) struct OutputSection {
     pub(crate) label: &'static str,
     pub(crate) text: String,
     pub(crate) line_count: usize,
-    /// Pre-computed `SharedString` per visible line, capped at
-    /// `MAX_RENDER_LINES`. Built once when the section is created and
-    /// cloned cheaply (`Arc`-backed) on every render frame — avoids the
-    /// ~220 allocations/frame the raw renderer used to incur.
-    /// Only populated for raw (non-markdown) sections; markdown sections
-    /// render directly from `text`.
+    /// Pre-computed visible raw lines, capped at `MAX_RENDER_LINES`, so render
+    /// frames can clone cheap `SharedString`s instead of reallocating lines.
     pub(crate) rendered_lines: Vec<SharedString>,
+    pub(crate) markdown: Option<MarkdownDocument>,
+}
+
+pub(crate) struct BoundedProcessOutput {
+    pub(crate) status: ExitStatus,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
 }
 
 impl CommandOutput {
@@ -57,6 +65,7 @@ impl CommandOutput {
             stdout: None,
             stderr: None,
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
@@ -72,6 +81,7 @@ impl CommandOutput {
             stdout: None,
             stderr: None,
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
@@ -83,24 +93,42 @@ impl CommandOutput {
             stdout: None,
             stderr: Some(OutputSection::new("spawn error", error)),
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
-    pub(crate) fn from_process(command_line: &str, subcommand: &str, output: Output) -> Self {
-        let stdout = OutputSection::from_bytes("stdout", &output.stdout);
-        let stderr = OutputSection::from_bytes("stderr", &output.stderr);
-        let kind = if output.status.success() {
+    pub(crate) fn from_process(
+        command_line: &str,
+        subcommand: &str,
+        output: BoundedProcessOutput,
+    ) -> Self {
+        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let stdout = OutputSection::from_bytes_for_command(
+            "stdout",
+            subcommand,
+            &output.stdout,
+            use_markdown,
+        );
+        let success = output.status.success();
+        let stderr = OutputSection::from_bytes("stderr", &output.stderr).map(|section| {
+            if success {
+                section
+            } else {
+                section.with_text(actionable_error_text(&section.text), false)
+            }
+        });
+        let kind = if success {
             OutputKind::Success
         } else {
             OutputKind::Error
         };
-        let title = if output.status.success() {
+        let title = if success {
             format!("{} completed", command_title(subcommand))
         } else {
             format!("{} failed", command_title(subcommand))
         };
         let subtitle = format!("{command_line} · {}", format_exit_status(&output.status));
-        let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let compact_stdout = success && stderr.is_none();
 
         Self {
             kind,
@@ -109,6 +137,7 @@ impl CommandOutput {
             stdout,
             stderr,
             use_markdown,
+            compact_stdout,
         }
     }
 
@@ -118,6 +147,26 @@ impl CommandOutput {
 }
 
 impl OutputSection {
+    fn from_bytes_for_command(
+        label: &'static str,
+        subcommand: &str,
+        bytes: &[u8],
+        use_markdown: bool,
+    ) -> Option<Self> {
+        Self::from_bytes(label, bytes).map(|section| {
+            let section = if subcommand == "map" {
+                section.with_text(map_url_listing(&section.text), use_markdown)
+            } else {
+                section
+            };
+            if use_markdown {
+                section.with_markdown()
+            } else {
+                section
+            }
+        })
+    }
+
     fn from_bytes(label: &'static str, bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;
@@ -127,8 +176,20 @@ impl OutputSection {
     }
 
     fn new(label: &'static str, text: impl Into<String>) -> Self {
-        let text = truncate_output(text.into());
+        Self::build(label, truncate_output(text.into()), false)
+    }
+
+    fn with_text(&self, text: impl Into<String>, use_markdown: bool) -> Self {
+        Self::build(self.label, truncate_output(text.into()), use_markdown)
+    }
+
+    fn with_markdown(&self) -> Self {
+        Self::build(self.label, self.text.clone(), true)
+    }
+
+    fn build(label: &'static str, text: String, use_markdown: bool) -> Self {
         let line_count = text.lines().count().max(1);
+        let markdown = use_markdown.then(|| MarkdownDocument::parse(&text));
         let rendered_lines = text
             .lines()
             .take(MAX_RENDER_LINES)
@@ -145,7 +206,146 @@ impl OutputSection {
             text,
             line_count,
             rendered_lines,
+            markdown,
         }
+    }
+}
+
+pub(crate) fn run_command_bounded(mut command: Command) -> io::Result<BoundedProcessOutput> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("child stdout was not piped"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("child stderr was not piped"))?;
+
+    let stdout_reader = thread::spawn(move || read_bounded(stdout));
+    let stderr_reader = thread::spawn(move || read_bounded(stderr));
+    let status = child.wait()?;
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| io::Error::other("stdout reader panicked"))??;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| io::Error::other("stderr reader panicked"))??;
+
+    Ok(BoundedProcessOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn read_bounded(mut reader: impl Read) -> io::Result<Vec<u8>> {
+    let mut buffer = BoundedByteBuffer::new(OUTPUT_LIMIT);
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.push(&chunk[..read]);
+    }
+    Ok(buffer.into_bytes())
+}
+
+struct BoundedByteBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+    truncated: bool,
+}
+
+impl BoundedByteBuffer {
+    fn new(limit: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(limit.min(8192)),
+            limit,
+            truncated: false,
+        }
+    }
+
+    fn push(&mut self, chunk: &[u8]) {
+        let remaining = self.limit.saturating_sub(self.bytes.len());
+        if self.bytes.len() < self.limit {
+            self.bytes
+                .extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+        }
+        if chunk.len() > remaining {
+            self.truncated = true;
+        }
+    }
+
+    fn into_bytes(mut self) -> Vec<u8> {
+        if !self.truncated {
+            return self.bytes;
+        }
+
+        let boundary = valid_utf8_boundary(&self.bytes);
+        self.bytes.truncate(boundary);
+        self.bytes.extend_from_slice(TRUNCATED_MESSAGE.as_bytes());
+        self.bytes
+    }
+}
+
+fn valid_utf8_boundary(bytes: &[u8]) -> usize {
+    match std::str::from_utf8(bytes) {
+        Ok(_) => bytes.len(),
+        Err(error) => error.valid_up_to(),
+    }
+}
+
+fn map_url_listing(text: &str) -> String {
+    let urls: Vec<&str> = text
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            trimmed
+                .strip_prefix('•')
+                .or_else(|| trimmed.strip_prefix("- "))
+                .map(str::trim)
+                .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+        })
+        .collect();
+
+    if urls.is_empty() {
+        text.to_string()
+    } else {
+        urls.join("\n")
+    }
+}
+
+fn actionable_error_text(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if let Some(index) = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("Error:"))
+    {
+        return lines[index..].join("\n");
+    }
+
+    let non_log_lines: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !(trimmed.contains(" WARN ")
+                || trimmed.contains(" INFO ")
+                || trimmed.contains(" DEBUG ")
+                || trimmed.contains(" TRACE "))
+        })
+        .collect();
+
+    if non_log_lines.is_empty() {
+        text.to_string()
+    } else {
+        non_log_lines.join("\n")
     }
 }
 
@@ -169,23 +369,8 @@ impl OutputKind {
     }
 }
 
-/// Strip ANSI / VT escape sequences.
-///
-/// Covers:
-/// - **CSI** (`ESC [` … final byte in `0x40..=0x7E`) — colour/format codes.
-/// - **OSC** (`ESC ]` … terminated by `BEL` (`0x07`) or `ST` (`ESC \`)) —
-///   title-setting and similar OS commands. Per ECMA-48 / xterm convention,
-///   OSC accepts BEL as a shortcut terminator for legacy compatibility.
-/// - **DCS** (`ESC P` … terminated by `ST` only) — device control strings.
-/// - **APC** (`ESC _` … terminated by `ST` only) — application program commands.
-/// - **PM**  (`ESC ^` … terminated by `ST` only) — privacy messages.
-/// - **SOS** (`ESC X` … terminated by `ST` only) — start of string.
-///
-/// Per ECMA-48, DCS/APC/PM/SOS are NOT terminated by BEL — only OSC accepts
-/// BEL as a terminator (xterm legacy convention). Embedded BEL bytes inside
-/// DCS/APC/PM/SOS payloads must be passed through as content.
-///
-/// Anything malformed (lone `ESC`, EOF mid-sequence) is silently dropped.
+/// Strip ANSI / VT escape sequences. CSI, OSC, DCS, APC, PM, and SOS are
+/// covered; malformed sequences are silently dropped.
 fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -215,9 +400,7 @@ fn strip_ansi(text: &str) -> String {
                 consume_until_string_terminator(&mut chars, /* allow_bel = */ true);
             }
             'P' | '_' | '^' | 'X' => {
-                // DCS / APC / PM / SOS — terminate ONLY on ST (ESC \).
-                // Embedded BEL bytes are part of the payload and must not
-                // short-circuit the sequence (ECMA-48 §8.3).
+                // DCS/APC/PM/SOS terminate only on ST; embedded BEL is payload.
                 chars.next();
                 consume_until_string_terminator(&mut chars, /* allow_bel = */ false);
             }
@@ -231,13 +414,7 @@ fn strip_ansi(text: &str) -> String {
     out
 }
 
-/// Consume characters until a String Terminator is seen.
-///
-/// The terminator itself is consumed. EOF mid-sequence is silently accepted.
-///
-/// `allow_bel = true` accepts `BEL` (`0x07`) as a shortcut terminator (OSC
-/// convention); `false` treats BEL as ordinary payload and waits for the
-/// canonical ST = `ESC \` (DCS/APC/PM/SOS semantics).
+/// Consume until ST (`ESC \`), optionally accepting BEL for OSC.
 fn consume_until_string_terminator(
     chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
     allow_bel: bool,

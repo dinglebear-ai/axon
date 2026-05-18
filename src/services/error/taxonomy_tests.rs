@@ -88,6 +88,24 @@ fn taxonomy_codes_match_locked_contract() {
             "ladder_exhausted",
             false,
         ),
+        (
+            ServiceTaxonomyError::UpstreamUnavailable { service: "qdrant" },
+            "upstream_unavailable",
+            true,
+        ),
+        (
+            ServiceTaxonomyError::Timeout { operation: "tei" },
+            "timeout",
+            true,
+        ),
+        (
+            ServiceTaxonomyError::RateLimited {
+                service: "tavily",
+                retry_after: None,
+            },
+            "rate_limited",
+            true,
+        ),
     ];
 
     for (err, code, retriable) in cases {
@@ -174,6 +192,15 @@ fn taxonomy_downcast_works_through_boxed_error_chain() {
     let recovered = taxonomy_from_error(err.as_ref()).expect("downcast");
     assert_eq!(recovered.mcp_code(), "vertical_auth_missing");
     assert!(!recovered.retriable());
+}
+
+#[test]
+fn taxonomy_ignores_untyped_operational_errors() {
+    let err: Box<dyn StdError + 'static> = Box::new(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "TEI request timed out",
+    ));
+    assert!(taxonomy_from_error(err.as_ref()).is_none());
 }
 
 #[test]

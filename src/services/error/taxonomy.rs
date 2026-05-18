@@ -102,6 +102,17 @@ pub enum ServiceTaxonomyError {
     /// the largest payload any step produced — useful for diagnostics when a
     /// page legitimately has very little content vs. being blocked.
     LadderExhausted { final_word_count: usize },
+    /// Operational upstream dependency is unavailable (Qdrant, TEI, Chrome,
+    /// Tavily, or another network dependency). Caller may retry with backoff.
+    UpstreamUnavailable { service: &'static str },
+    /// Operation timed out before a usable response was produced.
+    Timeout { operation: &'static str },
+    /// Generic non-vertical rate limit. `retry_after` is the upstream
+    /// `Retry-After` hint if any.
+    RateLimited {
+        service: &'static str,
+        retry_after: Option<Duration>,
+    },
 }
 
 impl ServiceTaxonomyError {
@@ -119,6 +130,9 @@ impl ServiceTaxonomyError {
             Self::VerticalBlockedAntibot { .. } => "vertical_blocked_antibot",
             Self::StructuredDataMalformed { .. } => "structured_data_malformed",
             Self::LadderExhausted { .. } => "ladder_exhausted",
+            Self::UpstreamUnavailable { .. } => "upstream_unavailable",
+            Self::Timeout { .. } => "timeout",
+            Self::RateLimited { .. } => "rate_limited",
         }
     }
 
@@ -130,6 +144,9 @@ impl ServiceTaxonomyError {
             Self::VerticalRateLimited { .. } => true,
             Self::VerticalTargetUnavailable { .. } => true,
             Self::VerticalBlockedAntibot { .. } => true,
+            Self::UpstreamUnavailable { .. } | Self::Timeout { .. } | Self::RateLimited { .. } => {
+                true
+            }
             Self::VerticalAuthMissing { .. }
             | Self::VerticalAuthInvalid { .. }
             | Self::VerticalUnsupportedUrl { .. }
@@ -154,6 +171,8 @@ impl ServiceTaxonomyError {
             | Self::VerticalBlockedAntibot { vertical, .. } => vertical,
             Self::StructuredDataMalformed { source, .. } => source,
             Self::LadderExhausted { .. } => "extractor_ladder",
+            Self::UpstreamUnavailable { service } | Self::RateLimited { service, .. } => service,
+            Self::Timeout { operation } => operation,
         }
     }
 
@@ -199,6 +218,19 @@ impl ServiceTaxonomyError {
             }),
             Self::LadderExhausted { final_word_count } => json!({
                 "final_word_count": final_word_count,
+            }),
+            Self::UpstreamUnavailable { service } => json!({
+                "service": service,
+            }),
+            Self::Timeout { operation } => json!({
+                "operation": operation,
+            }),
+            Self::RateLimited {
+                service,
+                retry_after,
+            } => json!({
+                "service": service,
+                "retry_after_secs": retry_after.map(|d| d.as_secs()),
             }),
         }
     }
@@ -275,6 +307,20 @@ impl Display for ServiceTaxonomyError {
                     "extractor ladder exhausted (final_word_count={final_word_count})"
                 )
             }
+            Self::UpstreamUnavailable { service } => {
+                write!(f, "{service} upstream unavailable")
+            }
+            Self::Timeout { operation } => write!(f, "{operation} timed out"),
+            Self::RateLimited {
+                service,
+                retry_after,
+            } => {
+                write!(f, "{service} rate-limited")?;
+                if let Some(d) = retry_after {
+                    write!(f, " (retry_after={}s)", d.as_secs())?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -286,13 +332,11 @@ impl StdError for ServiceTaxonomyError {}
 /// taxonomy errors into the structured `{ error: { code, retriable, ... } }`
 /// envelope; falls back to `internal_error` mapping when no taxonomy variant
 /// is present.
-pub fn taxonomy_from_error<'a>(
-    err: &'a (dyn StdError + 'static),
-) -> Option<&'a ServiceTaxonomyError> {
+pub fn taxonomy_from_error(err: &(dyn StdError + 'static)) -> Option<ServiceTaxonomyError> {
     let mut cursor = Some(err);
     while let Some(current) = cursor {
         if let Some(tax) = current.downcast_ref::<ServiceTaxonomyError>() {
-            return Some(tax);
+            return Some(tax.clone());
         }
         cursor = current.source();
     }

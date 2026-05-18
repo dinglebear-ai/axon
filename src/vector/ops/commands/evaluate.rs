@@ -5,7 +5,6 @@ mod streaming;
 use crate::core::config::Config;
 use crate::core::http::http_client;
 use crate::core::logging::log_warn;
-use std::error::Error;
 use std::time::Instant;
 
 use super::ask::{AskContext, build_ask_context, normalize_ask_answer};
@@ -81,11 +80,11 @@ struct EvalAnswers<'a> {
 ///
 /// Forces `json_output = true` internally so the non-streaming path is used,
 /// then builds the JSON payload via `build_evaluate_json()` and returns it.
-pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
+pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, String> {
     let mut derived = cfg.clone();
     derived.json_output = true;
     let query = evaluate_query(&derived)?;
-    let client = http_client()?;
+    let client = http_client().map_err(|err| err.to_string())?;
     let eval_started = Instant::now();
     let ctx = build_evaluate_ask_context(&derived, &query).await?;
     let rag_future = run_rag_answer(&derived, client, &query, &ctx.context);
@@ -190,17 +189,16 @@ pub async fn evaluate_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn
     ))
 }
 
-fn evaluate_query(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    super::ask::validate_ask_llm_config(cfg)?;
-    super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".into())
+fn evaluate_query(cfg: &Config) -> Result<String, String> {
+    super::ask::validate_ask_llm_config(cfg).map_err(|err| err.to_string())?;
+    super::resolve_query_text(cfg).ok_or_else(|| "evaluate requires a question".to_string())
 }
 
-async fn build_evaluate_ask_context(
-    cfg: &Config,
-    query: &str,
-) -> Result<AskContext, Box<dyn Error>> {
+async fn build_evaluate_ask_context(cfg: &Config, query: &str) -> Result<AskContext, String> {
     let mut timing = disabled_ask_timing();
-    Ok(build_ask_context(cfg, query, &mut timing).await?)
+    build_ask_context(cfg, query, &mut timing)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 /// `evaluate` uses its own `EvaluateTiming` shape; ask sub-stage timings are

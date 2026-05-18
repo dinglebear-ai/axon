@@ -109,7 +109,7 @@ npm-debug.log*
 package-lock.json
 
 # ── Repo-specific ────────────────────────────────────────────────────────────
-output/
+/output/
 tmp/
 tmp_manifest*.jsonl
 container/.env

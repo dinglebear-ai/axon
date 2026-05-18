@@ -35,6 +35,110 @@ pub fn map_ingest_job_result(payload: serde_json::Value) -> IngestJobResult {
     IngestJobResult { payload }
 }
 
+pub fn source_from_mcp_request(
+    req: &crate::mcp::schema::IngestRequest,
+    cfg: &Config,
+) -> Result<IngestSource, String> {
+    use crate::mcp::schema::IngestSourceType;
+
+    let source_type = req
+        .source_type
+        .clone()
+        .ok_or_else(|| "source_type is required for ingest.start".to_string())?;
+    match source_type {
+        IngestSourceType::Github => {
+            let repo = validate_github_ingest_target(&required_ingest_target(req, "target repo")?)?;
+            Ok(IngestSource::Github {
+                repo,
+                include_source: req.include_source.unwrap_or(cfg.github_include_source),
+            })
+        }
+        IngestSourceType::Reddit => {
+            let target = required_ingest_target(req, "target")?;
+            validate_reddit_ingest_target(&target)?;
+            Ok(IngestSource::Reddit { target })
+        }
+        IngestSourceType::Youtube => {
+            let target = required_ingest_target(req, "target")?;
+            validate_youtube_ingest_target(&target)?;
+            Ok(IngestSource::Youtube { target })
+        }
+        IngestSourceType::Sessions => {
+            let sessions =
+                req.sessions
+                    .clone()
+                    .unwrap_or(crate::mcp::schema::SessionsIngestOptions {
+                        claude: None,
+                        codex: None,
+                        gemini: None,
+                        project: None,
+                    });
+            Ok(IngestSource::Sessions {
+                sessions_claude: sessions.claude.unwrap_or(false),
+                sessions_codex: sessions.codex.unwrap_or(false),
+                sessions_gemini: sessions.gemini.unwrap_or(false),
+                sessions_project: sessions.project,
+            })
+        }
+    }
+}
+
+fn validate_github_ingest_target(target: &str) -> Result<String, String> {
+    let (owner, repo) = ingest::github::parse_github_repo(target).ok_or_else(|| {
+        "invalid GitHub target; expected owner/repo or github.com/owner/repo".to_string()
+    })?;
+    Ok(format!("{owner}/{repo}"))
+}
+
+fn validate_reddit_ingest_target(target: &str) -> Result<(), String> {
+    match ingest::reddit::classify_target(target).map_err(|err| err.to_string())? {
+        ingest::reddit::RedditTarget::Subreddit(name) => {
+            let len = name.len();
+            let valid = (3..=21).contains(&len)
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if valid {
+                Ok(())
+            } else {
+                Err(
+                    "invalid subreddit target; expected 3-21 ASCII letters, digits, or '_'"
+                        .to_string(),
+                )
+            }
+        }
+        ingest::reddit::RedditTarget::Thread(url) => {
+            if url.starts_with("/r/") && url.contains("/comments/") {
+                Ok(())
+            } else {
+                Err(
+                    "invalid Reddit thread target; expected reddit.com comments URL or canonical /r/... permalink"
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
+fn validate_youtube_ingest_target(target: &str) -> Result<(), String> {
+    ingest::youtube::classify_youtube_target(target)
+        .map(|_| ())
+        .map_err(|err| format!("invalid YouTube target: {err}"))
+}
+
+fn required_ingest_target(
+    req: &crate::mcp::schema::IngestRequest,
+    field: &'static str,
+) -> Result<String, String> {
+    let Some(value) = req
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return Err(format!("{field} is required"));
+    };
+    Ok(value.to_string())
+}
+
 // --- Service lifecycle wrappers ---
 
 pub async fn ingest_start(
@@ -389,4 +493,5 @@ pub async fn ingest_sessions_with_progress(
 }
 
 #[cfg(test)]
+#[path = "ingest_tests.rs"]
 mod tests;

@@ -41,7 +41,7 @@ pub struct MapOptions {
 
 // ── System / discovery results ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourcesResult {
     pub count: usize,
     pub limit: usize,
@@ -55,48 +55,48 @@ pub struct SourcesResult {
     pub schema_version_breakdown: Option<std::collections::BTreeMap<u32, usize>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DomainFacet {
     pub domain: String,
     pub vectors: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DomainsResult {
     pub domains: Vec<DomainFacet>,
     pub limit: usize,
     pub offset: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DetailedDomainFacet {
     pub domain: String,
     pub vectors: usize,
     pub urls: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DetailedDomainsResult {
     pub domains: Vec<DetailedDomainFacet>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatsResult {
     pub payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DoctorResult {
     pub payload: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DebugResult {
     pub payload: serde_json::Value,
 }
 
 /// True DB-level job counts across all job types.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StatusTotals {
     pub crawl: i64,
     pub extract: i64,
@@ -104,7 +104,7 @@ pub struct StatusTotals {
     pub ingest: i64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatusResult {
     pub payload: serde_json::Value,
     pub text: String,
@@ -279,7 +279,7 @@ impl ServiceJob {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DedupeResult {
     pub completed: bool,
     pub duplicate_groups: usize,
@@ -832,14 +832,68 @@ pub struct MapResult {
     pub urls: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SearchResult {
     pub results: Vec<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Origin of the synthesized summary returned by `research`.
+///
+/// `Llm` means the LLM produced the summary; `Fallback` means synthesis
+/// failed and a deterministic snippet-based summary was substituted;
+/// `None` means no extractions were available to summarize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SummarySource {
+    Llm,
+    Fallback,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchHit {
+    pub position: usize,
+    pub title: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchExtraction {
+    pub url: String,
+    pub title: String,
+    pub extracted: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ResearchUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchTiming {
+    pub total: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResearchPayload {
+    pub query: String,
+    pub limit: usize,
+    pub offset: usize,
+    pub search_results: Vec<ResearchHit>,
+    pub extractions: Vec<ResearchExtraction>,
+    pub summary: Option<String>,
+    pub summary_source: SummarySource,
+    pub usage: ResearchUsage,
+    pub timing_ms: ResearchTiming,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResearchResult {
-    pub payload: serde_json::Value,
+    pub payload: ResearchPayload,
 }
 
 // ── Lifecycle: crawl / embed / extract ───────────────────────────────────────
@@ -862,7 +916,7 @@ pub struct CrawlStartResult {
     pub jobs: Vec<CrawlStartJob>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CrawlJobResult {
     pub payload: serde_json::Value,
     pub output_files: Option<Vec<String>>,
@@ -888,7 +942,7 @@ pub struct EmbedStartResult {
     pub job_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmbedJobResult {
     pub payload: serde_json::Value,
 }
@@ -898,7 +952,7 @@ pub struct ExtractStartResult {
     pub job_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExtractJobResult {
     pub payload: serde_json::Value,
 }
@@ -924,7 +978,7 @@ pub struct MigrateResult {
 
 // ── Ingest / screenshot ──────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IngestResult {
     pub payload: serde_json::Value,
 }
@@ -934,7 +988,7 @@ pub struct IngestStartResult {
     pub job_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IngestJobResult {
     pub payload: serde_json::Value,
 }

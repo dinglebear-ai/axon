@@ -1,7 +1,10 @@
 use super::*;
 use crate::core::config::Config;
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
-use crate::mcp::schema::{CrawlRequest, CrawlSubaction, StatusRequest};
+use crate::mcp::schema::{
+    AskRequest, CrawlRequest, CrawlSubaction, DedupeRequest, ElicitDemoRequest, EvaluateRequest,
+    MigrateRequest, QueryRequest, ResearchRequest, StatusRequest, SuggestRequest,
+};
 use crate::services::runtime::ServiceJobRuntime;
 use crate::services::types::ServiceJob;
 use async_trait::async_trait;
@@ -137,11 +140,6 @@ async fn services_action_api_dispatches_crawl_list_lifecycle() {
 // These directly verify the scope assignments that authorize_action depends on.
 // Changing a scope here requires updating the breaking-change section of CHANGELOG.md.
 
-use crate::mcp::schema::{
-    AskRequest, DedupeRequest, ElicitDemoRequest, EvaluateRequest, MigrateRequest, QueryRequest,
-    ResearchRequest, SuggestRequest,
-};
-
 fn req_ask() -> AxonRequest {
     AxonRequest::Ask(AskRequest {
         query: Some("test?".into()),
@@ -263,4 +261,60 @@ fn required_scope_elicit_demo_is_write() {
 fn required_scope_read_only_ops_are_read() {
     // Regression: query and similar read-only ops must stay at axon:read.
     assert_eq!(required_scope(&req_query()), Some("axon:read"));
+}
+#[test]
+fn required_scope_uses_secure_defaults_and_promotes_llm_actions() {
+    assert_eq!(
+        required_scope(&AxonRequest::Ask(AskRequest {
+            query: Some("q".into()),
+            graph: None,
+            diagnostics: None,
+            explain: None,
+            collection: None,
+            since: None,
+            before: None,
+            hybrid_search: None,
+            response_mode: None,
+        })),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&AxonRequest::Research(ResearchRequest {
+            query: Some("q".into()),
+            limit: None,
+            offset: None,
+            search_time_range: None,
+            response_mode: None,
+        })),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&AxonRequest::Evaluate(EvaluateRequest {
+            query: Some("q".into()),
+            diagnostics: None,
+            retrieval_ab: None,
+            collection: None,
+            since: None,
+            before: None,
+            hybrid_search: None,
+            response_mode: None,
+        })),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&AxonRequest::Suggest(SuggestRequest {
+            focus: None,
+            limit: None,
+            collection: None,
+            response_mode: None,
+        })),
+        Some("axon:write")
+    );
+    assert_eq!(
+        required_scope(&AxonRequest::Dedupe(DedupeRequest {
+            collection: None,
+            response_mode: None,
+        })),
+        Some("axon:write")
+    );
 }
