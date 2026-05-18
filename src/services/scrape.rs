@@ -5,9 +5,13 @@ use crate::crawl::scrape::{build_scrape_website, fetch_single_page, select_outpu
 use crate::extract::{VerticalContext, dispatch_by_url};
 use crate::services::events::ServiceEvent;
 use crate::services::types::{ArtifactHandle, DocumentBackend, ScrapeResult};
+use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+pub const MAX_SCRAPE_BATCH_URLS: usize = 50;
 
 /// Map a raw JSON payload into a [`ScrapeResult`].
 ///
@@ -56,9 +60,15 @@ pub async fn scrape(
     _tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
-    crate::core::http::validate_url(&normalized).map_err(|e| -> Box<dyn Error> {
-        format!("invalid scrape url {normalized}: {e}").into()
-    })?;
+    tokio::time::timeout(
+        Duration::from_millis(2000),
+        crate::core::http::validate_url_with_dns(&normalized),
+    )
+    .await
+    .map_err(|_| -> Box<dyn Error> {
+        format!("invalid scrape url {normalized}: DNS validation timed out").into()
+    })?
+    .map_err(|e| -> Box<dyn Error> { format!("invalid scrape url {normalized}: {e}").into() })?;
 
     // Vertical-extractor fast path: if a registered extractor claims this URL,
     // use it instead of the generic HTTP scrape. Falls through on None (no match)
@@ -121,6 +131,54 @@ pub async fn scrape(
         )
     });
     Ok(result)
+}
+
+/// Scrape a bounded batch of URLs. The cap lives in the service layer so CLI,
+/// MCP, and REST callers share the same protection.
+#[must_use = "scrape_batch returns a Result that should be handled"]
+pub async fn scrape_batch(
+    cfg: &Config,
+    urls: &[String],
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<Vec<ScrapeResult>, Box<dyn Error>> {
+    if urls.is_empty() {
+        return Err("at least one url is required".into());
+    }
+    if urls.len() > MAX_SCRAPE_BATCH_URLS {
+        return Err(
+            format!("scrape accepts at most {MAX_SCRAPE_BATCH_URLS} urls per request").into(),
+        );
+    }
+
+    let normalized: Vec<String> = urls
+        .iter()
+        .map(|url| normalize_url(url).into_owned())
+        .collect();
+    let validated = stream::iter(normalized)
+        .map(|url| async move {
+            tokio::time::timeout(
+                Duration::from_millis(2000),
+                crate::core::http::validate_url_with_dns(&url),
+            )
+            .await
+            .map_err(|_| format!("invalid scrape url {url}: DNS validation timed out"))?
+            .map_err(|e| format!("invalid scrape url {url}: {e}"))?;
+            Ok::<String, String>(url)
+        })
+        .buffer_unordered(10)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut ready = Vec::with_capacity(validated.len());
+    for item in validated {
+        ready.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
+    }
+
+    let mut results = Vec::with_capacity(ready.len());
+    for url in ready {
+        results.push(scrape(cfg, &url, tx.clone()).await?);
+    }
+    Ok(results)
 }
 
 #[cfg(test)]

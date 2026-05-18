@@ -3,6 +3,8 @@ use axum::Router;
 use std::sync::Arc;
 
 // Module declarations
+#[path = "server/error.rs"]
+mod error;
 #[path = "server/handlers.rs"]
 mod handlers;
 #[path = "server/routing.rs"]
@@ -22,7 +24,7 @@ pub(super) use utils::authorized;
 pub(crate) fn router(
     cfg: Arc<crate::core::config::Config>,
     panel: Arc<PanelRuntimeState>,
-    service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
+    service_context: Arc<ServiceContext>,
     auth_policy: crate::mcp::auth::AuthPolicy,
 ) -> Router {
     routing::router(cfg, panel, service_context, auth_policy)
@@ -33,6 +35,6 @@ pub(crate) fn router(
 mod tests;
 
 #[cfg(test)]
-use handlers::ask::classify_ask_error;
+use error::HttpError;
 #[cfg(test)]
-use routing::ask_router;
+use routing::{ScopeRequirement, ask_router, protect_routes};

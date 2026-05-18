@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use serial_test::serial;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::{OnceCell, oneshot};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
@@ -113,15 +113,12 @@ impl ServiceJobRuntime for EmptyRuntime {
 async fn spawn_test_server(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
-    let cfg = Arc::new(crate::core::config::Config::default());
-    let cell = Arc::new(OnceCell::new());
     let ctx = Arc::new(ServiceContext::from_runtime(
-        cfg.clone(),
+        Arc::new(crate::core::config::Config::default()),
         Arc::new(EmptyRuntime),
     ));
-    assert!(cell.set(ctx).is_ok());
 
-    let app = router(cfg, cell, auth_policy);
+    let app = router(ctx, auth_policy);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind test listener");
@@ -260,11 +257,51 @@ async fn actions_dispatches_status_through_service_context() {
         .await
         .expect("status action request");
     let status = response.status();
+    let deprecation = response
+        .headers()
+        .get("deprecation")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
+    let sunset = response
+        .headers()
+        .get("sunset")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
     let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(deprecation.as_deref(), Some("true"));
+    assert_eq!(sunset.as_deref(), Some("Tue, 01 Sep 2026 00:00:00 GMT"));
     assert_eq!(body["request_id"], "status-1");
     assert_eq!(body["ok"], true);
     assert_eq!(body["result"]["totals"]["crawl"], 0);
+}
+
+#[tokio::test]
+#[serial]
+async fn loopback_dev_still_requires_auth_for_destructive_actions() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .json(&serde_json::json!({
+            "request_id": "migrate-1",
+            "action": {
+                "action": "migrate",
+                "from": "old_collection",
+                "to": "new_collection"
+            }
+        }))
+        .send()
+        .await
+        .expect("migrate action request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["request_id"], "migrate-1");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["kind"], "unauthorized");
 }

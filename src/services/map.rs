@@ -1,9 +1,9 @@
 use crate::core::config::Config;
-use crate::core::http::validate_url;
 use crate::crawl::engine::map_with_sitemap;
 use crate::services::events::{LogLevel, ServiceEvent, emit};
 use crate::services::types::{MapOptions, MapResult};
 use std::error::Error;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Discover all URLs for a site starting at `url`.
@@ -18,7 +18,15 @@ pub async fn discover(
     opts: MapOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<MapResult, Box<dyn Error>> {
-    validate_url(url)?;
+    tokio::time::timeout(
+        Duration::from_millis(2000),
+        crate::core::http::validate_url_with_dns(url),
+    )
+    .await
+    .map_err(|_| -> Box<dyn Error> {
+        format!("invalid map url {url}: DNS validation timed out").into()
+    })?
+    .map_err(|e| -> Box<dyn Error> { format!("invalid map url {url}: {e}").into() })?;
 
     emit(
         &tx,
@@ -34,16 +42,17 @@ pub async fn discover(
     // Record the pre-pagination total before consuming the iterator.
     let total = result.urls.len() as u64;
 
-    // Apply pagination: skip `offset` entries, then take up to `limit` (0 = all).
+    let limit = if opts.limit == 0 {
+        usize::MAX
+    } else {
+        opts.limit
+    };
+
     let urls: Vec<String> = result
         .urls
         .into_iter()
         .skip(opts.offset)
-        .take(if opts.limit == 0 {
-            usize::MAX
-        } else {
-            opts.limit
-        })
+        .take(limit)
         .collect();
 
     let mapped_count = urls.len() as u64;
