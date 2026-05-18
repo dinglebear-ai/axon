@@ -63,3 +63,27 @@ pub(crate) struct SearchBody {
     #[serde(default)]
     pub time_range: Option<String>,
 }
+
+// ── Family 3 — async job submission bodies ────────────────────────────────
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CrawlSubmitBody {
+    pub urls: Vec<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EmbedSubmitBody {
+    pub input: String,
+    #[serde(default)]
+    pub source_type: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtractSubmitBody {
+    pub urls: Vec<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+}
