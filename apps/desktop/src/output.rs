@@ -24,6 +24,7 @@ pub(crate) struct CommandOutput {
     pub(crate) stdout: Option<OutputSection>,
     pub(crate) stderr: Option<OutputSection>,
     pub(crate) use_markdown: bool,
+    pub(crate) compact_stdout: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,7 @@ impl CommandOutput {
             stdout: None,
             stderr: None,
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
@@ -72,6 +74,7 @@ impl CommandOutput {
             stdout: None,
             stderr: None,
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
@@ -83,11 +86,12 @@ impl CommandOutput {
             stdout: None,
             stderr: Some(OutputSection::new("spawn error", error)),
             use_markdown: false,
+            compact_stdout: false,
         }
     }
 
     pub(crate) fn from_process(command_line: &str, subcommand: &str, output: Output) -> Self {
-        let stdout = OutputSection::from_bytes("stdout", &output.stdout);
+        let stdout = OutputSection::from_bytes_for_command("stdout", subcommand, &output.stdout);
         let stderr = OutputSection::from_bytes("stderr", &output.stderr);
         let kind = if output.status.success() {
             OutputKind::Success
@@ -101,6 +105,7 @@ impl CommandOutput {
         };
         let subtitle = format!("{command_line} · {}", format_exit_status(&output.status));
         let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
+        let compact_stdout = output.status.success() && stderr.is_none();
 
         Self {
             kind,
@@ -109,6 +114,7 @@ impl CommandOutput {
             stdout,
             stderr,
             use_markdown,
+            compact_stdout,
         }
     }
 
@@ -118,6 +124,16 @@ impl CommandOutput {
 }
 
 impl OutputSection {
+    fn from_bytes_for_command(label: &'static str, subcommand: &str, bytes: &[u8]) -> Option<Self> {
+        Self::from_bytes(label, bytes).map(|section| {
+            if subcommand == "map" {
+                section.with_text(map_url_listing(&section.text))
+            } else {
+                section
+            }
+        })
+    }
+
     fn from_bytes(label: &'static str, bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;
@@ -127,7 +143,14 @@ impl OutputSection {
     }
 
     fn new(label: &'static str, text: impl Into<String>) -> Self {
-        let text = truncate_output(text.into());
+        Self::build(label, truncate_output(text.into()))
+    }
+
+    fn with_text(&self, text: impl Into<String>) -> Self {
+        Self::build(self.label, truncate_output(text.into()))
+    }
+
+    fn build(label: &'static str, text: String) -> Self {
         let line_count = text.lines().count().max(1);
         let rendered_lines = text
             .lines()
@@ -146,6 +169,26 @@ impl OutputSection {
             line_count,
             rendered_lines,
         }
+    }
+}
+
+fn map_url_listing(text: &str) -> String {
+    let urls: Vec<&str> = text
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            trimmed
+                .strip_prefix('•')
+                .or_else(|| trimmed.strip_prefix("- "))
+                .map(str::trim)
+                .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+        })
+        .collect();
+
+    if urls.is_empty() {
+        text.to_string()
+    } else {
+        urls.join("\n")
     }
 }
 

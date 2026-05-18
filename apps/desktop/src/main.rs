@@ -25,8 +25,8 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
 };
 use gpui::{
-    App, Application, Bounds, Focusable, KeyBinding, TitlebarOptions, WindowBounds, WindowOptions,
-    actions, prelude::*, px, size,
+    App, Application, Bounds, Focusable, KeyBinding, TitlebarOptions, WindowBounds, WindowKind,
+    WindowOptions, actions, prelude::*, px, size,
 };
 
 use crate::theme::register_bundled_fonts;
@@ -101,10 +101,16 @@ fn main() -> Result<()> {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: None,
-                        appears_transparent: true,
+                        title: Some("Axon Palette".into()),
+                        appears_transparent: false,
                         ..Default::default()
                     }),
+                    focus: true,
+                    show: true,
+                    is_movable: true,
+                    is_resizable: true,
+                    kind: WindowKind::Normal,
+                    window_min_size: Some(size(px(560.0), px(crate::layout::MIN_WINDOW_HEIGHT))),
                     ..Default::default()
                 },
                 |window, cx| {
