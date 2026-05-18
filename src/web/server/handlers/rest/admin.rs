@@ -58,6 +58,15 @@ pub(crate) async fn v1_migrate(
             "to is required".into(),
         );
     }
+    if req.from == req.to {
+        // Guard against a self-migration triggering a destructive long-running
+        // operation on the live collection.
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "from and to must be different collections".into(),
+        );
+    }
     let mut req_cfg = (*state.cfg).clone();
     // services::migrate::migrate() reads from cfg.positional[0] / [1]
     req_cfg.positional = vec![req.from.clone(), req.to.clone()];
@@ -112,10 +121,38 @@ pub(crate) async fn v1_watch_list(
     }
 }
 
+const MIN_WATCH_INTERVAL_SECS: i64 = 30;
+const MAX_WATCH_INTERVAL_SECS: i64 = 7 * 24 * 60 * 60; // 7 days
+
 pub(crate) async fn v1_watch_create(
     State(state): State<RestState>,
     Json(input): Json<WatchDefCreate>,
 ) -> Response {
+    if input.name.trim().is_empty() {
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "name is required".into(),
+        );
+    }
+    if input.task_type.trim().is_empty() {
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "task_type is required".into(),
+        );
+    }
+    if input.every_seconds < MIN_WATCH_INTERVAL_SECS
+        || input.every_seconds > MAX_WATCH_INTERVAL_SECS
+    {
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            format!(
+                "every_seconds must be between {MIN_WATCH_INTERVAL_SECS} and {MAX_WATCH_INTERVAL_SECS}"
+            ),
+        );
+    }
     match watch_svc::create_watch_def(state.cfg.as_ref(), &input).await {
         Ok(def) => (StatusCode::CREATED, Json(def)).into_response(),
         Err(err) => map_service_error(err.as_ref()),

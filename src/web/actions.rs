@@ -89,10 +89,19 @@ pub(crate) fn router(
     } else {
         actions
     };
+    // Stamp Deprecation + Link on EVERY /v1/actions response, including
+    // auth-layer 401/403s. Applied as the outermost middleware so it runs
+    // after the auth layer has produced its response.
+    let actions = actions.layer(middleware::from_fn(stamp_deprecation_headers));
 
     Router::new()
         .route("/v1/capabilities", get(v1_capabilities))
         .merge(actions)
+}
+
+async fn stamp_deprecation_headers(request: Request<Body>, next: Next) -> Response {
+    let response = next.run(request).await;
+    with_deprecation_headers(response)
 }
 
 async fn v1_capabilities() -> Json<ServerInfo> {
@@ -105,20 +114,31 @@ async fn v1_capabilities() -> Json<ServerInfo> {
 /// omitted until the removal date is set; once it is, add a `Sunset:
 /// <HTTP-date>` header alongside this constant.
 const DEPRECATION_HEADER_VALUE: &str = "true";
-const LINK_HEADER_VALUE: &str =
-    "</v1/sources>; rel=\"successor-version\", </v1/query>; rel=\"successor-version\"";
+// RFC 8288: multiple Link values comma-separated. /v1/capabilities is the
+// machine-readable entry point for discovering the full successor surface;
+// the explicit per-resource alternates here give curl-driven clients enough
+// to find their direct replacement without parsing capabilities.
+const LINK_HEADER_VALUE: &str = "</v1/capabilities>; rel=\"alternate\"; type=\"application/json\", \
+</v1/sources>; rel=\"successor-version\", \
+</v1/query>; rel=\"successor-version\", \
+</v1/crawl>; rel=\"successor-version\", \
+</v1/embed>; rel=\"successor-version\", \
+</v1/ingest>; rel=\"successor-version\", \
+</v1/extract>; rel=\"successor-version\", \
+</v1/migrate>; rel=\"successor-version\"";
 
 fn with_deprecation_headers(mut response: Response) -> Response {
     let headers = response.headers_mut();
+    // HeaderValue::from_static is const-time validated against valid header
+    // bytes — no fallible .parse() here, and no .expect() on the hot path of
+    // every /v1/actions response.
     headers.insert(
         "deprecation",
-        DEPRECATION_HEADER_VALUE
-            .parse()
-            .expect("static deprecation"),
+        axum::http::HeaderValue::from_static(DEPRECATION_HEADER_VALUE),
     );
     headers.insert(
         "link",
-        LINK_HEADER_VALUE.parse().expect("static link header"),
+        axum::http::HeaderValue::from_static(LINK_HEADER_VALUE),
     );
     response
 }
@@ -128,15 +148,9 @@ async fn v1_actions(
     auth: Option<Extension<AuthContext>>,
     payload: Result<Json<Value>, JsonRejection>,
 ) -> Response {
-    let response = v1_actions_inner(state, auth, payload).await;
-    with_deprecation_headers(response)
-}
-
-async fn v1_actions_inner(
-    state: ActionState,
-    auth: Option<Extension<AuthContext>>,
-    payload: Result<Json<Value>, JsonRejection>,
-) -> Response {
+    // Deprecation + Link headers are stamped by the outer
+    // `stamp_deprecation_headers` middleware (see `router` above) so they
+    // also cover auth-layer 401/403s. No need to re-apply here.
     let request_id = payload
         .as_ref()
         .ok()
