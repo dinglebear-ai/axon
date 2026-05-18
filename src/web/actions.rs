@@ -215,5 +215,5 @@ fn deprecated_response(mut response: Response) -> Response {
 }
 
 #[cfg(test)]
-#[path = "actions/tests.rs"]
+#[path = "actions_tests.rs"]
 mod tests;

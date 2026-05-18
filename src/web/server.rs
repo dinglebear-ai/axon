@@ -32,7 +32,7 @@ pub(crate) fn router(
 }
 
 #[cfg(test)]
-#[path = "server/tests.rs"]
+#[path = "server_tests.rs"]
 mod tests;
 
 #[cfg(test)]

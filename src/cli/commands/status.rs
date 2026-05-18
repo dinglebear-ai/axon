@@ -416,5 +416,5 @@ fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "status/tests.rs"]
+#[path = "status_tests.rs"]
 mod tests;

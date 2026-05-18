@@ -495,4 +495,5 @@ fn is_well_formed_suggest_url(url: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "query_tests.rs"]
 mod tests;

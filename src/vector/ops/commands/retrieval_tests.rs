@@ -6,7 +6,7 @@ use crate::vector::ops::qdrant::{QdrantPayload, QdrantSearchHit};
 use serde_json::Value;
 use std::collections::HashSet;
 
-#[path = "product_authority_tests.rs"]
+#[path = "retrieval/product_authority_tests.rs"]
 mod product_authority_tests;
 
 fn make_candidate(url: &str, chunk: &str, score: f64) -> RetrievedCandidate {

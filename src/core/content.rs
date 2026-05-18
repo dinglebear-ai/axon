@@ -7,6 +7,7 @@ pub(crate) mod markdown;
 mod url_parsing;
 
 #[cfg(test)]
+#[path = "content_tests.rs"]
 mod tests;
 
 pub use deterministic::{
