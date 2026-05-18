@@ -43,9 +43,9 @@ const CARD_BORDER_V: f32 = 2.0;
 /// bottom border.
 const PROMPT_ROW: f32 = 49.0;
 
-/// Single action row (`h(px(36.0))`) plus 4px breathing room from the
+/// Single action row (`h(px(38.0))`) plus 4px breathing room from the
 /// row container's `py_1()`.
-const ACTION_ROW: f32 = 36.0;
+const ACTION_ROW: f32 = 38.0;
 
 /// Vertical padding around the action list container (`py_1()` = 4px top +
 /// 4px bottom).

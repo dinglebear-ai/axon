@@ -237,6 +237,14 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_LOG_PATH",
+        TrustedOperatorBootstrap,
+        HostOnly,
+        None,
+        Advanced,
+        false,
+    ),
+    spec(
         "GOOGLE_API_KEY",
         Delete,
         NotRuntime,
