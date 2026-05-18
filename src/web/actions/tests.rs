@@ -269,6 +269,39 @@ async fn actions_dispatches_status_through_service_context() {
     assert_eq!(body["result"]["totals"]["crawl"], 0);
 }
 
+/// F5 of epic 2qva: every /v1/actions response advertises Deprecation +
+/// Link headers pointing callers at the dedicated /v1/{resource} routes.
+#[tokio::test]
+#[serial]
+async fn actions_response_carries_deprecation_headers() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .json(&serde_json::json!({
+            "request_id": "deprecation-1",
+            "action": { "action": "status" }
+        }))
+        .send()
+        .await
+        .expect("status action request");
+    let deprecation = response
+        .headers()
+        .get("deprecation")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let link = response
+        .headers()
+        .get("link")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    stop(shutdown, handle).await;
+    assert_eq!(deprecation.as_deref(), Some("true"));
+    let link = link.expect("link header present");
+    assert!(link.contains("successor-version"), "link={link}");
+}
+
 #[tokio::test]
 #[serial]
 async fn migrate_requires_auth_even_in_loopback_dev_mode() {

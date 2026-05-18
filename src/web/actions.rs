@@ -99,8 +99,41 @@ async fn v1_capabilities() -> Json<ServerInfo> {
     Json(ServerInfo::current())
 }
 
+/// Stable deprecation marker — every `/v1/actions` response carries it. The
+/// dedicated per-resource routes under `/v1/{resource}` are the replacement
+/// (see `src/web/server/handlers/rest.rs`). RFC 8594 `Sunset` is intentionally
+/// omitted until the removal date is set; once it is, add a `Sunset:
+/// <HTTP-date>` header alongside this constant.
+const DEPRECATION_HEADER_VALUE: &str = "true";
+const LINK_HEADER_VALUE: &str =
+    "</v1/sources>; rel=\"successor-version\", </v1/query>; rel=\"successor-version\"";
+
+fn with_deprecation_headers(mut response: Response) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(
+        "deprecation",
+        DEPRECATION_HEADER_VALUE
+            .parse()
+            .expect("static deprecation"),
+    );
+    headers.insert(
+        "link",
+        LINK_HEADER_VALUE.parse().expect("static link header"),
+    );
+    response
+}
+
 async fn v1_actions(
     State(state): State<ActionState>,
+    auth: Option<Extension<AuthContext>>,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    let response = v1_actions_inner(state, auth, payload).await;
+    with_deprecation_headers(response)
+}
+
+async fn v1_actions_inner(
+    state: ActionState,
     auth: Option<Extension<AuthContext>>,
     payload: Result<Json<Value>, JsonRejection>,
 ) -> Response {
