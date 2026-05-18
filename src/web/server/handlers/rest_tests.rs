@@ -733,13 +733,16 @@ async fn watch_get_unknown_uuid_route_is_mounted() {
     let status = response.status();
 
     stop(shutdown, handle).await;
-    // 404 = route mounted, UUID not found in SQLite
-    // 500/502 = route mounted, SQLite unavailable in test env
-    // 405 would mean the route is not registered — that would be a bug.
-    assert_ne!(
-        status,
-        StatusCode::METHOD_NOT_ALLOWED,
-        "GET /v1/watch/{{uuid}} should be registered (got {status})"
+    // 404 = route mounted, UUID not found in SQLite (correct result)
+    // 500 / 502 = route mounted, SQLite unavailable in test env (acceptable)
+    // 405 = route NOT registered — definite bug
+    // 401/403 = auth guard fired unexpectedly — also a bug in LoopbackDev
+    assert!(
+        matches!(
+            status,
+            StatusCode::NOT_FOUND | StatusCode::INTERNAL_SERVER_ERROR | StatusCode::BAD_GATEWAY
+        ),
+        "GET /v1/watch/{{uuid}} should return 404/500/502, got {status}"
     );
 }
 

@@ -1,9 +1,12 @@
 //! Family 2: synchronous POST routes with typed bodies.
 //!
 //! One handler per resource:
-//!   - POST /v1/query, /v1/retrieve, /v1/map         — read scope
-//!   - POST /v1/evaluate, /v1/suggest, /v1/search,
-//!     /v1/research, /v1/scrape                       — write scope
+//!   - POST /v1/query, /v1/retrieve, /v1/map    — read scope
+//!   - POST /v1/suggest, /v1/search,
+//!     /v1/research, /v1/scrape                 — write scope
+//!
+//! NOTE: `/v1/evaluate` is intentionally absent — `services::query::evaluate`
+//! holds non-`Send` errors across `.await` points; see the comment in rest.rs.
 //!
 //! Each handler validates input, calls the matching `services::*` function,
 //! and serializes the typed result as JSON. Errors flow through
