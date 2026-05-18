@@ -294,7 +294,7 @@ fn url_path_portion(url: &str) -> &str {
 }
 
 #[cfg(test)]
-#[path = "url_utils_proptest.rs"]
+#[path = "url_utils_proptest_tests.rs"]
 mod url_utils_proptest;
 
 #[cfg(test)]

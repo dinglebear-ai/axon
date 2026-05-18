@@ -6,6 +6,9 @@
 //!
 //! Test BODIES are unchanged from the previous flat layout.
 
+#[path = "priority_chain/ask.rs"]
 mod ask;
+#[path = "priority_chain/tei.rs"]
 mod tei;
+#[path = "priority_chain/workers_search.rs"]
 mod workers_search;

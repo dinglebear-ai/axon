@@ -1,3 +1,8 @@
+//! Legacy REST route module — superseded by main's per-family handler files
+//! (discovery.rs, exploration.rs, async_jobs.rs, admin.rs, rag.rs).
+//! Retained for the test suite: rest_tests.rs calls rest::router() directly
+//! to exercise auth and scope-guard middleware without a full server.
+#![allow(dead_code, unused_imports)]
 //! Dedicated per-resource REST routes (`/v1/{resource}`) introduced in v4.x.
 //!
 //! Replaces the generic `POST /v1/actions` envelope dispatcher with one route

@@ -1,4 +1,5 @@
 use super::*;
+use crate::services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
 use serde_json::json;
 
 #[test]
@@ -32,9 +33,19 @@ fn map_search_results_nonempty() {
 }
 
 #[test]
-fn map_research_payload_stores_value() {
-    let value = json!({"answer": "42", "sources": []});
-    assert_eq!(map_research_payload(value.clone()).payload, value);
+fn map_research_payload_wraps_payload() {
+    let payload = ResearchPayload {
+        query: "q".to_string(),
+        limit: 1,
+        offset: 0,
+        search_results: vec![],
+        extractions: vec![],
+        summary: Some("s".to_string()),
+        summary_source: SummarySource::Llm,
+        usage: ResearchUsage::default(),
+        timing_ms: ResearchTiming { total: 0 },
+    };
+    assert_eq!(map_research_payload(payload.clone()).payload, payload);
 }
 
 #[test]
@@ -49,6 +60,73 @@ fn query_log_summary_redacts_token_like_substrings() {
     assert!(summary.contains(REDACTED_TOKEN));
     assert!(!summary.contains("sk-testsecret1234567890"));
     assert!(!summary.contains("github_pat_1234567890abcdef"));
+}
+
+#[test]
+fn redact_handles_kv_style_tokens() {
+    // `?key=sk-…` was a known gap in the previous implementation: outer-trim
+    // alone kept the prefix glued to `key=` and missed redaction.
+    let cfg = Config::default();
+    let summary = query_log_summary("debug request ?api_key=sk-livekey1234567890abc done", &cfg);
+    assert!(
+        summary.contains(REDACTED_TOKEN),
+        "expected redaction: {summary}"
+    );
+    assert!(!summary.contains("sk-livekey1234567890abc"));
+}
+
+#[test]
+fn redact_recognizes_aws_and_jwt_shapes() {
+    let cfg = Config::default();
+    let aws = query_log_summary("AKIAIOSFODNN7EXAMPLE configured", &cfg);
+    assert!(
+        aws.contains(REDACTED_TOKEN),
+        "expected AWS redaction: {aws}"
+    );
+    let jwt = query_log_summary("Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig", &cfg);
+    assert!(
+        jwt.contains(REDACTED_TOKEN),
+        "expected JWT redaction: {jwt}"
+    );
+}
+
+#[test]
+fn enforce_pagination_window_accepts_within_cap() {
+    assert!(enforce_pagination_window(10, 0).is_ok());
+    assert!(enforce_pagination_window(50, 50).is_ok());
+    assert!(enforce_pagination_window(100, 0).is_ok());
+}
+
+#[test]
+fn enforce_pagination_window_rejects_past_cap() {
+    let err = enforce_pagination_window(60, 50).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("search window too large"), "got: {msg}");
+    assert!(msg.contains("110"));
+    assert!(msg.contains("100"));
+}
+
+#[test]
+fn enforce_pagination_window_saturates_overflow() {
+    // limit + offset overflow should still be rejected, not panic.
+    assert!(enforce_pagination_window(usize::MAX, 1).is_err());
+}
+
+#[test]
+fn ensure_tavily_configured_passes_with_key() {
+    let cfg = Config {
+        tavily_api_key: "tvly-key".to_string(),
+        ..Config::default()
+    };
+    assert!(ensure_tavily_configured(&cfg, "research").is_ok());
+}
+
+#[test]
+fn ensure_tavily_configured_rejects_empty_key() {
+    let cfg = Config::default();
+    let err = ensure_tavily_configured(&cfg, "research").unwrap_err();
+    assert!(err.to_string().contains("TAVILY_API_KEY"));
+    assert!(err.to_string().contains("research"));
 }
 
 #[tokio::test]

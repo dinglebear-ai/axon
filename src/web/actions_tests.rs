@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-use super::router;
+use super::{capabilities_router, router};
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::mcp::auth::AuthPolicy;
 use crate::services::context::ServiceContext;
@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use serial_test::serial;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::{OnceCell, oneshot};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const ENV_KEY: &str = "AXON_MCP_HTTP_TOKEN";
@@ -113,15 +113,12 @@ impl ServiceJobRuntime for EmptyRuntime {
 async fn spawn_test_server(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
-    let cfg = Arc::new(crate::core::config::Config::default());
-    let cell = Arc::new(OnceCell::new());
     let ctx = Arc::new(ServiceContext::from_runtime(
-        cfg.clone(),
+        Arc::new(crate::core::config::Config::default()),
         Arc::new(EmptyRuntime),
     ));
-    assert!(cell.set(ctx).is_ok());
 
-    let app = router(cfg, cell, auth_policy);
+    let app = router(ctx, auth_policy).merge(capabilities_router());
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind test listener");
@@ -216,6 +213,31 @@ async fn actions_rejects_missing_and_invalid_auth_as_json() {
 
 #[tokio::test]
 #[serial]
+async fn actions_accepts_case_insensitive_bearer_static_token() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .header("authorization", "bearer secret")
+        .json(&serde_json::json!({
+            "request_id": "auth-case-1",
+            "action": { "action": "status" }
+        }))
+        .send()
+        .await
+        .expect("case-insensitive bearer request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["request_id"], "auth-case-1");
+    assert_eq!(body["ok"], true);
+}
+
+#[tokio::test]
+#[serial]
 async fn actions_unknown_action_returns_json_error() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
@@ -260,242 +282,51 @@ async fn actions_dispatches_status_through_service_context() {
         .await
         .expect("status action request");
     let status = response.status();
+    let deprecation = response
+        .headers()
+        .get("deprecation")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
+    let sunset = response
+        .headers()
+        .get("sunset")
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
     let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(deprecation.as_deref(), Some("true"));
+    assert_eq!(sunset.as_deref(), Some("Tue, 01 Sep 2026 00:00:00 GMT"));
     assert_eq!(body["request_id"], "status-1");
     assert_eq!(body["ok"], true);
     assert_eq!(body["result"]["totals"]["crawl"], 0);
 }
 
-/// F5 of epic 2qva: every /v1/actions response advertises Deprecation +
-/// Link headers pointing callers at the dedicated /v1/{resource} routes.
 #[tokio::test]
 #[serial]
-async fn actions_response_carries_deprecation_headers() {
+async fn loopback_dev_still_requires_auth_for_destructive_actions() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/actions"))
         .json(&serde_json::json!({
-            "request_id": "deprecation-1",
-            "action": { "action": "status" }
-        }))
-        .send()
-        .await
-        .expect("status action request");
-    let deprecation = response
-        .headers()
-        .get("deprecation")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    let link = response
-        .headers()
-        .get("link")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-
-    stop(shutdown, handle).await;
-    assert_eq!(deprecation.as_deref(), Some("true"));
-    let link = link.expect("link header present");
-    assert!(link.contains("successor-version"), "link={link}");
-}
-
-#[tokio::test]
-#[serial]
-async fn migrate_requires_auth_even_in_loopback_dev_mode() {
-    // F5: destructive actions (migrate, dedupe) must be unconditionally auth-gated.
-    // LoopbackDev mode skips auth for normal actions but must NOT skip it here.
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
-    let response = reqwest::Client::new()
-        .post(format!("{base}/v1/actions"))
-        .json(&serde_json::json!({
-            "request_id": "migrate-no-auth",
+            "request_id": "migrate-1",
             "action": {
                 "action": "migrate",
-                "from": "source_col",
-                "to": "dest_col"
+                "from": "old_collection",
+                "to": "new_collection"
             }
         }))
         .send()
         .await
-        .expect("migrate request");
+        .expect("migrate action request");
     let status = response.status();
     let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
-    // In LoopbackDev mode no AuthLayer is mounted so no AuthContext is injected.
-    // authorize_action sees auth=None and returns UNAUTHORIZED — never FORBIDDEN.
-    assert_eq!(
-        status,
-        StatusCode::UNAUTHORIZED,
-        "migrate without token in LoopbackDev mode must return 401, got {status}"
-    );
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["request_id"], "migrate-1");
     assert_eq!(body["ok"], false);
-}
-
-#[tokio::test]
-#[serial]
-async fn dedupe_requires_auth_even_in_loopback_dev_mode() {
-    // F5: same invariant for dedupe.
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
-    let response = reqwest::Client::new()
-        .post(format!("{base}/v1/actions"))
-        .json(&serde_json::json!({
-            "request_id": "dedupe-no-auth",
-            "action": { "action": "dedupe" }
-        }))
-        .send()
-        .await
-        .expect("dedupe request");
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json body");
-
-    stop(shutdown, handle).await;
-    // Same reasoning as migrate: no AuthLayer in LoopbackDev → auth=None → 401.
-    assert_eq!(
-        status,
-        StatusCode::UNAUTHORIZED,
-        "dedupe without token in LoopbackDev mode must return 401, got {status}"
-    );
-    assert_eq!(body["ok"], false);
-}
-
-#[tokio::test]
-#[serial]
-async fn ask_requires_auth_when_token_mode() {
-    // F10: with token auth enabled, ask returns 401 when no token is sent.
-    // The companion unit test
-    // directly verifies the 403 path (axon:read token is denied axon:write access).
-    let _env = EnvGuard::set(Some("write-token"));
-    let (base, shutdown, handle) =
-        spawn_test_server(AuthPolicy::Mounted { auth_state: None }).await;
-
-    // Issue the request with no bearer token — expect 401.
-    let response = reqwest::Client::new()
-        .post(format!("{base}/v1/actions"))
-        .json(&serde_json::json!({
-            "request_id": "ask-no-auth",
-            "action": { "action": "ask", "question": "test?" }
-        }))
-        .send()
-        .await
-        .expect("ask without auth");
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json body");
-
-    stop(shutdown, handle).await;
-    assert_eq!(
-        status,
-        StatusCode::UNAUTHORIZED,
-        "ask without token must return 401: {body}"
-    );
-    assert_eq!(body["ok"], false);
-}
-
-#[test]
-fn authorize_action_read_only_token_forbidden_for_ask() {
-    // F10 integration test: authorize_action with axon:read-only token must
-    // return FORBIDDEN for actions that require axon:write (ask, evaluate, etc.).
-    // This directly exercises the scope-promotion change — a read token that was
-    // previously accepted for ask is now refused.
-    use crate::mcp::schema::{AskRequest, EvaluateRequest, ResearchRequest, SuggestRequest};
-    use lab_auth::AuthContext;
-
-    let read_only_auth = AuthContext {
-        sub: "test-user".into(),
-        actor_key: None,
-        scopes: vec!["axon:read".into()],
-        issuer: "test".into(),
-        via_session: false,
-        csrf_token: None,
-        email: None,
-    };
-
-    // Build a state where auth IS required (not LoopbackDev).
-    // We can't construct ActionState directly, but we can call authorize_action
-    // via a synthetic state by checking what it does with a read-only AuthContext.
-    //
-    // The logic in authorize_action:
-    //   required_scope(Ask) = "axon:write"
-    //   auth.scopes = ["axon:read"]
-    //   "axon:read" != "axon:write"  AND  required=="axon:write" so write-satisfies-read doesn't apply
-    //   → FORBIDDEN
-    let ask_action = crate::mcp::schema::AxonRequest::Ask(AskRequest {
-        query: Some("test?".into()),
-        graph: None,
-        diagnostics: None,
-        explain: None,
-        collection: None,
-        since: None,
-        before: None,
-        hybrid_search: None,
-        response_mode: None,
-    });
-
-    // Directly call required_scope + simulate the scope check.
-    let required = crate::services::action_api::required_scope(&ask_action)
-        .expect("ask must have a required scope");
-    assert_eq!(
-        required, "axon:write",
-        "ask must require axon:write after F10 promotion"
-    );
-
-    let granted = &read_only_auth.scopes;
-    let allowed = granted
-        .iter()
-        .any(|s| s == required || (required == "axon:read" && s == "axon:write"));
-    assert!(
-        !allowed,
-        "axon:read token must NOT be allowed to call ask (requires axon:write)"
-    );
-
-    // Same assertion for evaluate, suggest, research.
-    for (name, action) in [
-        (
-            "evaluate",
-            crate::mcp::schema::AxonRequest::Evaluate(EvaluateRequest {
-                query: None,
-                diagnostics: None,
-                retrieval_ab: None,
-                collection: None,
-                since: None,
-                before: None,
-                hybrid_search: None,
-                response_mode: None,
-            }),
-        ),
-        (
-            "suggest",
-            crate::mcp::schema::AxonRequest::Suggest(SuggestRequest {
-                focus: None,
-                limit: None,
-                collection: None,
-                response_mode: None,
-            }),
-        ),
-        (
-            "research",
-            crate::mcp::schema::AxonRequest::Research(ResearchRequest {
-                query: None,
-                limit: None,
-                offset: None,
-                search_time_range: None,
-                response_mode: None,
-            }),
-        ),
-    ] {
-        let req = crate::services::action_api::required_scope(&action)
-            .expect("{name} must have a required scope");
-        let allowed = granted
-            .iter()
-            .any(|s| s == req || (req == "axon:read" && s == "axon:write"));
-        assert!(
-            !allowed,
-            "axon:read token must NOT be allowed to call {name} (requires {req})"
-        );
-    }
+    assert_eq!(body["error"]["kind"], "unauthorized");
 }

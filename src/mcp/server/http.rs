@@ -36,7 +36,11 @@ pub async fn run_unified_server(
     let web_router = crate::web::router(
         Arc::clone(&cfg_arc),
         panel,
-        Arc::clone(&service_context),
+        Arc::clone(
+            service_context
+                .get()
+                .ok_or("serve: service context missing after eager initialization")?,
+        ),
         auth_policy.clone(),
     );
     let app = mcp_http_router(cfg, host, port, auth_policy, service_context)

@@ -12,7 +12,7 @@ pub(crate) struct PanelRuntimeState {
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) panel: Arc<PanelRuntimeState>,
-    pub(crate) service_context: Arc<tokio::sync::OnceCell<Arc<ServiceContext>>>,
+    pub(crate) service_context: Arc<ServiceContext>,
 }
 
 impl PanelRuntimeState {

@@ -70,6 +70,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are now auth-gated regardless of `LoopbackDev` mode. A server with no token configured
   (development loopback) can no longer trigger these destructive operations without a credential.
 
+## [3.0.1] - 2026-05-18
+
+### Changed
+
+- **HTTP API auth**: Promoted `ask`, `research`, `evaluate`, `suggest`, and
+  `debug` action scopes from `axon:read` to `axon:write` because they can
+  trigger Gemini completions or other cost-bearing side effects. Existing
+  read-only tokens must be re-issued with `axon:write` before calling these
+  actions through `/v1/actions` or the dedicated REST API.
+- **palette/ci**: desktop CI now runs the `apps/desktop` unit test suite on
+  Linux and Windows before producing release binaries.
+- **palette/docs**: added dedicated desktop build, run, platform, hotkey,
+  binary-resolution, smoke-test, and markdown-link behavior documentation.
+
+### Security
+
+- **HTTP API auth**: Unknown action variants now fail closed to `axon:write`
+  instead of falling through to unauthenticated dispatch, and `migrate` /
+  `dedupe` require auth even in loopback development mode.
+- **SSRF**: `scrape` and `map` service entry points now use DNS-aware URL
+  validation with a two-second fail-closed timeout before handing URLs to
+  Spider-backed fetch paths.
+
 ## [3.0.0] - 2026-05-17
 
 ### BREAKING CHANGES
@@ -166,15 +189,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - palette: auto-continue `axon ask` conversations. The first `ask` of a session shells out plain; every subsequent `ask` while the conversation is "live" prepends `--follow-up` so the CLI threads it onto the same session. State is in-memory only (no cross-restart persistence). Conversations idle-time out after 30 minutes of inactivity, matching the ACP session cache TTL.
 - palette: new "Reset ask conversation" action (aliases `reset-ask`, `new-chat`, `fresh-ask`) that clears the live conversation without shelling out. Surfaces a transient "Conversation reset" notice so the next ask starts fresh.
 - palette: footer hint slot showing `· conversation: N turn(s)` when a follow-up chain is active. Layout space is always reserved so the hint's appearance does not shift surrounding footer elements.
+- research: `--research-depth <N>` is now wired into the synthesis pipeline. When set, it overrides `--limit` as the number of Tavily sources synthesized over; falls back to `--limit` (default 10) when unset. Capped at 100 together with `--offset`.
+- research: typed `ResearchPayload` replaces the untyped `serde_json::Value` payload at the service boundary. Adds `summary_source: "llm" | "fallback" | "none"` so callers can distinguish an LLM-produced summary from the deterministic fallback substituted on synthesis failure, and from the no-extractions case.
+- research/search: bounded Tavily retry (3 attempts, 750ms exponential backoff) on transient provider failures, matching the resilience pattern used by `tei_embed`.
+- research/search: pagination window enforcement — `limit + offset > 100` is now rejected at the service boundary with a clear error, instead of silently returning a truncated page.
+- research/search: extended secret-redaction heuristic in log previews (AWS, JWT, Slack, Stripe, Google API keys, Tavily). Splits on `=`/`&`/`;`/`?`/`,` so `?key=sk-…` query-string forms are caught.
+- research: XML-attribute escaping (`"`, `<`, `>`, `&`, control chars) on URLs and titles inside the synthesis prompt's `<untrusted_source>` framing, hardening prompt-injection defenses.
 
 ### Changed
 
 - **palette**: `apps/desktop/src/ui.rs` refactored — `Render for Palette` impl moved to a `ui_render.rs` sidecar declared via `#[path]` to keep `ui.rs` under the 500-line monolith cap. New modules `apps/desktop/src/anim.rs` (shared easing/lerp helpers) and `apps/desktop/src/layout.rs` (pure height compute, no side effects).
+- research: human-readable summary now labels fallback summaries explicitly (`=== Summary === (fallback — LLM synthesis unavailable)`).
+- research: extraction preview no longer JSON-encodes the snippet (was showing `"\nescaped\n"`); now takes the raw text and char-truncates to 200.
+- research: query validation runs before Tavily prereq check so a user with neither set gets the cheaper error first.
+- research: synthesis-delta drop warnings rate-limited to one per session (was one per dropped token).
+- research: consumer-drain timeout raised from 5s to 10s, with a clearer warning message.
+- research/search: `map_research_payload` accepts a typed `ResearchPayload` (was `serde_json::Value`). MCP handler serializes the payload to JSON at the wire boundary.
+
+### Removed
+
+- research: `pub use synthesis::research_payload` re-export (only `research` is consumed by external callers). `research_payload` remains accessible inside the synthesis module.
+- research: duplicate Tavily prereq check in the CLI handler (`validate_research_prereqs`). The service layer remains the single source of truth.
 
 ### Fixed
 
 - **palette**: ANSI stripper terminator discipline — DCS/APC/PM/SOS now terminate only on ST (`ESC \`), not BEL. Per ECMA-48, only OSC accepts BEL as a shortcut terminator; embedded BEL bytes inside DCS/APC/PM/SOS payloads are content and must not short-circuit stripping. (PR #101 review.)
 - **palette**: `step_toward(current, target, 0.0)` now returns `current` instead of `target`. A zero step means "no movement this tick" — the previous behaviour caused an unintended instant jump. (PR #101 review.) `apps/desktop` bumped to 0.3.1.
+- research: misleading test name `test_run_research_allows_gemini_without_adapter` → `test_run_research_does_not_require_openai_model`.
 
 ## [2.3.3] - 2026-05-17
 

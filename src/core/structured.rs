@@ -28,6 +28,7 @@ mod next_app;
 mod next_data;
 mod sveltekit;
 #[cfg(test)]
+#[path = "structured_tests.rs"]
 mod tests;
 
 pub use data_island::{DEFAULT_MAX_CHUNKS as DATA_ISLAND_DEFAULT_MAX_CHUNKS, extract_data_islands};

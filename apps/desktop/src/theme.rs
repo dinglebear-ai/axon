@@ -73,7 +73,6 @@ pub(crate) const AURORA: AuroraTokens = AuroraTokens {
 pub(crate) const AURORA_PAGE_BG: u32 = AURORA.page_bg;
 pub(crate) const AURORA_NAV_BG: u32 = AURORA.nav_bg;
 pub(crate) const AURORA_PANEL_STRONG: u32 = AURORA.panel_strong;
-pub(crate) const AURORA_PANEL_MEDIUM: u32 = AURORA.panel_medium;
 pub(crate) const AURORA_CONTROL_SURFACE: u32 = AURORA.control_surface;
 pub(crate) const AURORA_HOVER_BG: u32 = AURORA.hover_bg;
 pub(crate) const AURORA_ROW_HOVER_BG: u32 = AURORA.row_hover_bg;
@@ -87,9 +86,6 @@ pub(crate) const AURORA_ACCENT_STRONG: u32 = AURORA.accent_strong;
 pub(crate) const AURORA_ACCENT_PINK: u32 = AURORA.accent_pink;
 pub(crate) const AURORA_OUTPUT_TEXT: u32 = AURORA.output_text;
 pub(crate) const AURORA_OUTPUT_MUTED: u32 = AURORA.output_muted;
-pub(crate) const AURORA_SUCCESS: u32 = AURORA.success;
-pub(crate) const AURORA_WARN: u32 = AURORA.warn;
-pub(crate) const AURORA_ERROR: u32 = AURORA.error;
 pub(crate) const AURORA_WARNING: u32 = AURORA.warn;
 
 pub(crate) const AURORA_FONT_DISPLAY: &str = AURORA.font_display;

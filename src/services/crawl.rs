@@ -378,4 +378,5 @@ async fn wait_for_crawl_embed_dependency(
 }
 
 #[cfg(test)]
+#[path = "crawl_tests.rs"]
 mod tests;

@@ -7,7 +7,9 @@
 //! Shared fixtures (`ENV_LOCK`, `cli_with_services`, `with_env_saved`) live here so
 //! both submodules can reference them via `super::*`.
 
+#[path = "build_config/tests/env_required.rs"]
 mod env_required;
+#[path = "build_config/tests/priority_chain.rs"]
 mod priority_chain;
 
 pub(super) use super::{into_config, into_config_with_sources};

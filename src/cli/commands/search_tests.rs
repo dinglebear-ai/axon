@@ -59,3 +59,19 @@ async fn run_search_rejects_empty_tavily_key() {
         "expected TAVILY_API_KEY error, got: {err}"
     );
 }
+
+#[test]
+fn summarize_snippet_collapses_whitespace_and_truncates() {
+    let snippet = format!("first\n\nsecond\t{}", "word ".repeat(80));
+    let got = summarize_snippet(&snippet);
+
+    assert!(!got.contains('\n'));
+    assert!(!got.contains('\t'));
+    assert!(got.len() <= HUMAN_SNIPPET_LIMIT + 3);
+    assert!(got.ends_with("..."));
+}
+
+#[test]
+fn summarize_snippet_keeps_short_text() {
+    assert_eq!(summarize_snippet("short\nsnippet"), "short snippet");
+}

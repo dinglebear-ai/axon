@@ -205,4 +205,5 @@ pub fn check_cleartext_token_allowed(url: &reqwest::Url) -> Result<(), ServerCli
 }
 
 #[cfg(test)]
+#[path = "client_tests.rs"]
 mod tests;

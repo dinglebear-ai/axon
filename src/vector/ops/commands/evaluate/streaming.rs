@@ -28,21 +28,22 @@ pub(super) async fn run_rag_answer(
     client: &reqwest::Client,
     query: &str,
     context: &str,
-) -> Result<(String, u128), Box<dyn Error>> {
+) -> Result<(String, u128), String> {
     let started = Instant::now();
-    let answer = match ask_llm_streaming(cfg, client, query, context, !cfg.json_output).await {
-        Ok(v) => v,
-        Err(message) => {
-            log_warn(&format!(
-                "rag streaming failed, falling back to non-streaming: {message}"
-            ));
-            let fallback = ask_llm_non_streaming(cfg, client, query, context).await?;
-            if !cfg.json_output {
-                print!("{fallback}");
-            }
-            fallback
-        }
+    let stream_error = match ask_llm_streaming(cfg, client, query, context, !cfg.json_output).await
+    {
+        Ok(answer) => return Ok((answer, started.elapsed().as_millis())),
+        Err(err) => err.to_string(),
     };
+    log_warn(&format!(
+        "rag streaming failed, falling back to non-streaming: {stream_error}"
+    ));
+    let answer = ask_llm_non_streaming(cfg, client, query, context)
+        .await
+        .map_err(|err| err.to_string())?;
+    if !cfg.json_output {
+        print!("{answer}");
+    }
     Ok((answer, started.elapsed().as_millis()))
 }
 
@@ -50,30 +51,29 @@ pub(super) async fn run_baseline_answer(
     cfg: &Config,
     client: &reqwest::Client,
     query: &str,
-) -> Result<(String, u128), Box<dyn Error>> {
+) -> Result<(String, u128), String> {
     let started = Instant::now();
-    let answer = match baseline_llm_streaming(cfg, client, query, !cfg.json_output).await {
-        Ok(v) => v,
-        Err(message) => {
-            log_warn(&format!(
-                "baseline streaming failed, falling back to non-streaming: {message}"
-            ));
-            match baseline_llm_non_streaming(cfg, client, query).await {
-                Ok(fallback) => {
-                    if !cfg.json_output {
-                        print!("{fallback}");
-                    }
-                    fallback
-                }
-                Err(e2) => {
-                    log_warn(&format!(
-                        "evaluate: both streaming and non-streaming baseline failed: {e2}"
-                    ));
-                    String::from(
-                        "(baseline unavailable — both streaming and non-streaming LLM calls failed)",
-                    )
-                }
+    let stream_error = match baseline_llm_streaming(cfg, client, query, !cfg.json_output).await {
+        Ok(answer) => return Ok((answer, started.elapsed().as_millis())),
+        Err(err) => err.to_string(),
+    };
+    log_warn(&format!(
+        "baseline streaming failed, falling back to non-streaming: {stream_error}"
+    ));
+    let answer = match baseline_llm_non_streaming(cfg, client, query).await {
+        Ok(fallback) => {
+            if !cfg.json_output {
+                print!("{fallback}");
             }
+            fallback
+        }
+        Err(e2) => {
+            log_warn(&format!(
+                "evaluate: both streaming and non-streaming baseline failed: {e2}"
+            ));
+            String::from(
+                "(baseline unavailable — both streaming and non-streaming LLM calls failed)",
+            )
         }
     };
     Ok((answer, started.elapsed().as_millis()))
@@ -87,28 +87,25 @@ pub(super) async fn run_analysis(
     let started = Instant::now();
     let print_tokens =
         !cfg.json_output && cfg.evaluate_responses_mode != EvaluateResponsesMode::Events;
-    let answer = match judge_llm_streaming(cfg, client, judge_ctx, print_tokens).await {
-        Ok(v) => v,
-        Err(e) => {
-            log_warn(&format!(
-                "judge streaming failed, falling back to non-streaming: {e}"
-            ));
-            match judge_llm_non_streaming(cfg, client, judge_ctx).await {
-                Ok(fallback) => {
-                    if !cfg.json_output {
-                        print!("{fallback}");
-                    }
-                    fallback
-                }
-                Err(e2) => {
-                    log_warn(&format!(
-                        "evaluate: both streaming and non-streaming judge failed: {e2}"
-                    ));
-                    String::from(
-                        "(judge unavailable — both streaming and non-streaming LLM calls failed)",
-                    )
-                }
+    let stream_error = match judge_llm_streaming(cfg, client, judge_ctx, print_tokens).await {
+        Ok(answer) => return (answer, started.elapsed().as_millis()),
+        Err(err) => err.to_string(),
+    };
+    log_warn(&format!(
+        "judge streaming failed, falling back to non-streaming: {stream_error}"
+    ));
+    let answer = match judge_llm_non_streaming(cfg, client, judge_ctx).await {
+        Ok(fallback) => {
+            if !cfg.json_output {
+                print!("{fallback}");
             }
+            fallback
+        }
+        Err(e2) => {
+            log_warn(&format!(
+                "evaluate: both streaming and non-streaming judge failed: {e2}"
+            ));
+            String::from("(judge unavailable — both streaming and non-streaming LLM calls failed)")
         }
     };
     (answer, started.elapsed().as_millis())

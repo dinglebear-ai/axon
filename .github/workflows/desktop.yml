@@ -17,6 +17,9 @@ env:
   CARGO_TERM_COLOR: always
   # apps/desktop is its own workspace (see apps/desktop/Cargo.toml).
   CARGO_MANIFEST_PATH: apps/desktop/Cargo.toml
+  WINDOWS_PORTABLE_RUSTFLAGS: >-
+    -C target-cpu=x86-64
+    -C target-feature=-avx512f,-avx512vl,-avx512bw,-avx512dq,-avx512cd,-avx512ifma,-avx512vbmi,-avx512vbmi2,-avx512vnni,-avx512bitalg,-avx512vpopcntdq
 
 jobs:
   build-linux:
@@ -41,6 +44,9 @@ jobs:
             libwayland-dev libssl-dev libfontconfig1-dev \
             libxcb-randr0-dev libxcb-xkb-dev libxcb-cursor-dev libxcb-shape0-dev \
             libxcb-xfixes0-dev libxcb-keysyms1-dev libxcb-image0-dev
+
+      - name: cargo test
+        run: cargo test --locked --manifest-path apps/desktop/Cargo.toml
 
       - name: cargo build --release
         run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
@@ -69,8 +75,28 @@ jobs:
           workspaces: apps/desktop
           shared-key: axon-palette-windows
 
+      - name: Show Windows Rust CPU flags
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          rustc -vV
+          "RUSTFLAGS=$env:RUSTFLAGS"
+          rustc --print cfg | Select-String 'target_feature'
+          cargo config get build.rustflags --merged
+          if ($LASTEXITCODE -ne 0) { "build.rustflags not set" }
+          exit 0
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
+
+      - name: cargo test
+        run: cargo test --locked --manifest-path apps/desktop/Cargo.toml
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
+
       - name: cargo build --release
         run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v5

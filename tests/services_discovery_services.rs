@@ -189,45 +189,63 @@ fn maps_single_search_result() {
 // research service — map_research_payload
 // ---------------------------------------------------------------------------
 
+fn sample_research_payload() -> axon::services::types::ResearchPayload {
+    use axon::services::types::{ResearchPayload, ResearchTiming, ResearchUsage, SummarySource};
+    ResearchPayload {
+        query: "rust async patterns".to_string(),
+        limit: 5,
+        offset: 0,
+        search_results: vec![],
+        extractions: vec![],
+        summary: Some("A comprehensive summary.".to_string()),
+        summary_source: SummarySource::Llm,
+        usage: ResearchUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+        },
+        timing_ms: ResearchTiming { total: 1200 },
+    }
+}
+
 #[test]
 fn maps_research_payload_to_research_result() {
-    let payload = serde_json::json!({
-        "query": "rust async patterns",
-        "limit": 5,
-        "offset": 0,
-        "search_results": [],
-        "extractions": [],
-        "summary": "A comprehensive summary.",
-        "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
-        "timing_ms": {"total": 1200},
-    });
+    let payload = sample_research_payload();
     let result = map_research_payload(payload.clone());
     assert_eq!(result.payload, payload);
 }
 
 #[test]
 fn maps_research_payload_preserves_summary() {
-    let payload = serde_json::json!({
-        "query": "test",
-        "summary": "The summary goes here.",
-    });
-    let result = map_research_payload(payload.clone());
-    assert_eq!(result.payload["summary"], "The summary goes here.");
+    let mut payload = sample_research_payload();
+    payload.summary = Some("The summary goes here.".to_string());
+    let result = map_research_payload(payload);
+    assert_eq!(
+        result.payload.summary.as_deref(),
+        Some("The summary goes here.")
+    );
 }
 
 #[test]
 fn maps_research_payload_with_null_summary() {
-    let payload = serde_json::json!({
-        "query": "test",
-        "summary": null,
-    });
-    let result = map_research_payload(payload.clone());
-    assert!(result.payload["summary"].is_null());
+    use axon::services::types::SummarySource;
+    let mut payload = sample_research_payload();
+    payload.summary = None;
+    payload.summary_source = SummarySource::None;
+    let result = map_research_payload(payload);
+    assert!(result.payload.summary.is_none());
+    assert!(matches!(result.payload.summary_source, SummarySource::None));
 }
 
 #[test]
-fn maps_research_payload_wraps_json_value_verbatim() {
-    let payload = serde_json::json!({"anything": [1, 2, 3]});
-    let result = map_research_payload(payload.clone());
-    assert_eq!(result.payload, payload);
+fn research_payload_summary_source_distinguishes_fallback() {
+    use axon::services::types::SummarySource;
+    let mut payload = sample_research_payload();
+    payload.summary = Some("snippet-based fallback".to_string());
+    payload.summary_source = SummarySource::Fallback;
+    let result = map_research_payload(payload);
+    assert!(matches!(
+        result.payload.summary_source,
+        SummarySource::Fallback
+    ));
 }

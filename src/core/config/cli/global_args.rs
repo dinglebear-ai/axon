@@ -327,7 +327,9 @@ pub(in crate::core::config) struct GlobalArgs {
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = false)]
     pub(in crate::core::config) chrome_screenshot: bool,
 
-    /// Research crawl depth limit for the research command
+    /// Number of sources to synthesize over for the research command.
+    /// Overrides --limit when set; falls back to --limit (default 10) when unset.
+    /// Capped together with --offset at 100 (Tavily window).
     #[arg(global = true, long)]
     pub(in crate::core::config) research_depth: Option<usize>,
 

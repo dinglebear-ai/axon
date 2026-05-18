@@ -445,5 +445,5 @@ pub fn query_wants_low_signal_sources(query_tokens: &[String], raw_query: &str) 
 }
 
 #[cfg(test)]
-#[path = "ranking_test.rs"]
-mod tests; // tests live in ranking_test.rs (excluded from monolith line-count)
+#[path = "ranking_tests.rs"]
+mod tests; // tests live in ranking_tests.rs (excluded from monolith line-count)
