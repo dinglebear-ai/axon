@@ -136,9 +136,16 @@ async fn start_crawl(
 }
 
 /// Guard embed input against path traversal and symlinks — mirrors MCP's
-/// `validate_mcp_embed_input_with_roots` so both surfaces apply the same rules.
-fn validate_embed_path(input: &str) -> Result<(), HttpError> {
-    let input = input.trim();
+/// `validate_mcp_embed_input_with_roots`. Runs blocking I/O in a spawn_blocking
+/// task so the async handler does not block the tokio executor.
+async fn validate_embed_path(input: &str) -> Result<(), HttpError> {
+    let input = input.trim().to_string();
+    tokio::task::spawn_blocking(move || validate_embed_path_sync(&input))
+        .await
+        .map_err(|e| HttpError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string()))?
+}
+
+fn validate_embed_path_sync(input: &str) -> Result<(), HttpError> {
     if input.starts_with("http://") || input.starts_with("https://") {
         return crate::core::http::validate_url(input)
             .map_err(|e| HttpError::bad_request(e.to_string().as_str()));
@@ -200,7 +207,7 @@ async fn start_embed(
     Json(req): Json<EmbedStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
     let input = super::rag::required_text(&req.input, "input")?;
-    validate_embed_path(input)?;
+    validate_embed_path(input).await?;
     let outcome =
         services::embed::embed_start_with_context(&cfg, input, &state.service_context, None, None)
             .await
