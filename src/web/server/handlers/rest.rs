@@ -1,15 +1,11 @@
-//! Legacy REST route module — superseded by main's per-family handler files
-//! (discovery.rs, exploration.rs, async_jobs.rs, admin.rs, rag.rs).
-//! Retained for the test suite: rest_tests.rs calls rest::router() directly
-//! to exercise auth and scope-guard middleware without a full server.
+//! REST route module — provides the scope-guard middleware infrastructure
+//! (ScopeGuard, enforce_scope, jsonize_auth_error) and a test-facing router.
+//!
+//! The per-resource HTTP routes are wired in main's canonical handler files
+//! (discovery.rs, exploration.rs, async_jobs.rs, admin.rs, rag.rs). This
+//! module is retained for the test suite: rest_tests.rs calls rest::router()
+//! directly to exercise scope-guard middleware without a full server.
 #![allow(dead_code, unused_imports)]
-//! Dedicated per-resource REST routes (`/v1/{resource}`) introduced in v4.x.
-//!
-//! Replaces the generic `POST /v1/actions` envelope dispatcher with one route
-//! per surface using standard HTTP semantics — GET for read-only, POST for
-//! mutations, POST + GET for async jobs.
-//!
-//! `/v1/actions` is kept for back-compat (see deprecation header in
 //! `crate::web::actions`); these routes are the path forward.
 
 #[path = "rest/admin.rs"]

@@ -166,7 +166,10 @@ async fn block_loopback_destructive_request(
 
 fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if *method == Method::POST
-        && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
+        && (path == "/v1/dedupe"
+            || path == "/v1/migrate"
+            || path == "/v1/watch"
+            || path.starts_with("/v1/watch/"))
     {
         return true;
     }

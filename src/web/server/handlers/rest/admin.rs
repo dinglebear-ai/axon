@@ -209,7 +209,11 @@ pub(crate) async fn v1_watch_create(
         );
     }
     // Guard against storage abuse via oversized payloads.
-    if input.task_payload.to_string().len() > MAX_TASK_PAYLOAD_BYTES {
+    if serde_json::to_string(&input.task_payload)
+        .map(|s| s.len())
+        .unwrap_or(usize::MAX)
+        > MAX_TASK_PAYLOAD_BYTES
+    {
         return rest_error(
             StatusCode::BAD_REQUEST,
             "bad_request",
