@@ -176,7 +176,17 @@ pub(crate) async fn v1_watch_create(
             "name is required".into(),
         );
     }
-    if !SUPPORTED_TASK_TYPES.contains(&input.task_type.trim()) {
+    // Reject leading/trailing whitespace — the stored task_type would fail
+    // to match SUPPORTED_TASK_TYPES at execution time since run_watch_now
+    // compares verbatim. Reject here so callers get a clear error immediately.
+    if input.task_type != input.task_type.trim() {
+        return rest_error(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "task_type must not have leading or trailing whitespace".into(),
+        );
+    }
+    if !SUPPORTED_TASK_TYPES.contains(&input.task_type.as_str()) {
         return rest_error(
             StatusCode::BAD_REQUEST,
             "bad_request",
@@ -206,18 +216,45 @@ pub(crate) async fn v1_watch_create(
             format!("task_payload exceeds {MAX_TASK_PAYLOAD_BYTES} byte limit"),
         );
     }
-    // For "refresh" tasks, validate the embedded URLs at create time so the
+    // For "refresh" tasks, task_payload.urls must be a non-empty string array
+    // and all URLs must pass SSRF validation. Validate at create time so the
     // watch definition is rejected immediately rather than failing silently
     // on every scheduled run.
-    if input.task_type.trim() == "refresh" {
-        for url_val in input
+    if input.task_type.as_str() == "refresh" {
+        let urls = input
             .task_payload
             .get("urls")
             .and_then(|v| v.as_array())
-            .into_iter()
-            .flatten()
-        {
-            let url = url_val.as_str().unwrap_or("");
+            .ok_or_else(|| {
+                rest_error(
+                    StatusCode::BAD_REQUEST,
+                    "bad_request",
+                    "task_payload.urls is required for refresh tasks and must be an array".into(),
+                )
+            });
+        let urls = match urls {
+            Ok(u) => u,
+            Err(r) => return r,
+        };
+        if urls.is_empty() {
+            return rest_error(
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                "task_payload.urls must not be empty for refresh tasks".into(),
+            );
+        }
+        for url_val in urls {
+            let url = url_val.as_str().ok_or_else(|| {
+                rest_error(
+                    StatusCode::BAD_REQUEST,
+                    "bad_request",
+                    "task_payload.urls entries must be strings".into(),
+                )
+            });
+            let url = match url {
+                Ok(u) => u,
+                Err(r) => return r,
+            };
             if let Err(e) = crate::core::http::validate_url(url) {
                 return rest_error(
                     StatusCode::BAD_REQUEST,

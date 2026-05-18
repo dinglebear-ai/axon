@@ -144,11 +144,14 @@ pub(crate) async fn v1_crawl_cancel(
 
 // ── embed ────────────────────────────────────────────────────────────────
 
-/// Validate an embed `input` string the same way the MCP handler does:
+/// Validate an embed `input` string with full parity to the MCP handler:
 /// - http(s) URL → SSRF check via `validate_url`
-/// - Local path that EXISTS on disk → only allow if `AXON_MCP_EMBED_ALLOWED_ROOTS` is set
-///   and the path is under one of the configured roots
-/// - Non-existent path (e.g. a directory that will be created) → pass through
+/// - Non-existent path → pass through (service validates further)
+/// - Existing local path → must be under AXON_MCP_EMBED_ALLOWED_ROOTS,
+///   must not be a symlink, must not contain dotfile components
+///
+/// This mirrors `validate_mcp_embed_input_with_roots` in
+/// `src/mcp/server/common.rs` so both surfaces apply identical guards.
 fn validate_embed_input(input: &str) -> Result<(), String> {
     let input = input.trim();
     if input.starts_with("http://") || input.starts_with("https://") {
@@ -156,18 +159,22 @@ fn validate_embed_input(input: &str) -> Result<(), String> {
     }
     let path = std::path::Path::new(input);
     if !path.exists() {
-        // Non-existent path — service will validate further during execution.
         return Ok(());
     }
-    // Local path exists — require an explicit allowlist to prevent reading
-    // arbitrary files from the server filesystem.
-    let allowed_roots: Vec<String> = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
+    // Reject symlinks before canonicalization (canonicalize follows them).
+    if std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err("local embed path must not be a symlink".into());
+    }
+    let allowed_roots: Vec<std::path::PathBuf> = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
         .ok()
         .map(|raw| {
             raw.split(',')
                 .filter_map(|p| {
                     let t = p.trim();
-                    (!t.is_empty()).then(|| t.to_string())
+                    (!t.is_empty()).then(|| std::path::PathBuf::from(t))
                 })
                 .collect()
         })
@@ -178,15 +185,24 @@ fn validate_embed_input(input: &str) -> Result<(), String> {
         );
     }
     let canonical = std::fs::canonicalize(path).map_err(|e| format!("invalid embed path: {e}"))?;
-    let allowed = allowed_roots.iter().any(|root| {
-        std::fs::canonicalize(root)
-            .map(|root| canonical.starts_with(&root))
-            .unwrap_or(false)
-    });
-    if !allowed {
-        return Err(format!(
-            "local embed path must be under one of AXON_MCP_EMBED_ALLOWED_ROOTS; got: {input}"
-        ));
+    let root = allowed_roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .find(|root| canonical.starts_with(root))
+        .ok_or_else(|| {
+            format!(
+                "local embed path must be under one of AXON_MCP_EMBED_ALLOWED_ROOTS; got: {input}"
+            )
+        })?;
+    // Reject dotfile components (e.g. ~/.ssh, .env) — same check as MCP.
+    let relative = canonical
+        .strip_prefix(&root)
+        .map_err(|_| "local embed path is outside the allowed root".to_string())?;
+    for component in relative.components() {
+        let name = component.as_os_str().to_string_lossy();
+        if name.starts_with('.') {
+            return Err("local embed path must not include dotfiles".into());
+        }
     }
     Ok(())
 }
