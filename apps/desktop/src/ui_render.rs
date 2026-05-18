@@ -4,11 +4,12 @@
 
 use gpui::{
     AnyElement, Context, IntoElement, MouseButton, MouseDownEvent, ParentElement, Render,
-    SharedString, Styled, Window, div, prelude::*, px, rgb,
+    ScrollHandle, SharedString, Styled, Window, div, prelude::*, px, rgb,
 };
 
 use super::Palette;
 use crate::layout::compute_desired_height;
+use crate::output::CommandOutput;
 use crate::render::{
     render_action_rows_interactive, render_output_body, render_palette_footer, render_prompt_row,
 };
@@ -25,7 +26,8 @@ impl Render for Palette {
         let running_subcommand = self.running.as_ref().map(|running| running.subcommand);
         let command_output = self.command_output.clone();
         let locked = self.locked_command;
-        let hide_list = self.query.is_empty() || locked.is_some();
+        let action_menu_open = self.action_menu_open;
+        let hide_list = !action_menu_open && (self.query.is_empty() || locked.is_some());
 
         // Drive the content-driven window resize. This runs every render
         // pass but `sync_window_height` is idempotent — it only calls
@@ -60,6 +62,8 @@ impl Render for Palette {
             .on_action(cx.listener(Palette::move_up))
             .on_action(cx.listener(Palette::tab_complete))
             .on_action(cx.listener(Palette::clear_output))
+            .on_action(cx.listener(Palette::toggle_action_menu))
+            .on_action(cx.listener(Palette::toggle_errors))
             .on_key_down(cx.listener(Palette::on_key))
             .flex()
             .flex_col()
@@ -86,6 +90,9 @@ impl Render for Palette {
                         query_is_empty,
                         locked,
                         prompt,
+                        self.focus.is_focused(window),
+                        self.focus.clone(),
+                        action_menu_open,
                         status_dot,
                     ))
                     .child(render_action_rows_interactive(
@@ -96,7 +103,13 @@ impl Render for Palette {
                         |i| {
                             cx.listener(move |this, _: &MouseDownEvent, window, cx| {
                                 this.selected = i;
-                                this.submit(&crate::Submit, window, cx);
+                                if this.action_menu_open {
+                                    if let Some(action) = this.matches().get(i).copied() {
+                                        this.select_action_mode(action, false, cx);
+                                    }
+                                } else {
+                                    this.submit(&crate::Submit, window, cx);
+                                }
                             })
                         },
                         |i| {
@@ -116,25 +129,16 @@ impl Render for Palette {
                             self.conversation_hint(),
                         ))
                     })
-                    .when_some(command_output.clone(), |el, output| {
-                        if output.has_body() {
-                            el.child(
-                                div()
-                                    .id("palette-output")
-                                    .max_h(px(320.0))
-                                    .overflow_scroll()
-                                    .scrollbar_width(px(12.0))
-                                    .track_scroll(&self.output_scroll)
-                                    .block_mouse_except_scroll()
-                                    .border_t_1()
-                                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                                    .bg(rgb(AURORA_NAV_BG))
-                                    .child(render_output_body(output)),
-                            )
-                        } else {
-                            el
-                        }
-                    }),
+                    .when_some(
+                        command_output.clone().filter(|o| o.has_body()),
+                        |el, output| {
+                            el.child(render_output_panel(
+                                output,
+                                self.errors_open,
+                                &self.output_scroll,
+                            ))
+                        },
+                    ),
             )
     }
 }
@@ -156,4 +160,22 @@ fn render_status_dot(connection: super::ConnectionState, cx: &mut Context<Palett
             }),
         )
         .into_any_element()
+}
+
+fn render_output_panel(
+    output: CommandOutput,
+    errors_open: bool,
+    output_scroll: &ScrollHandle,
+) -> impl IntoElement {
+    div()
+        .id("palette-output")
+        .max_h(px(320.0))
+        .overflow_scroll()
+        .scrollbar_width(px(12.0))
+        .track_scroll(output_scroll)
+        .block_mouse_except_scroll()
+        .border_t_1()
+        .border_color(rgb(AURORA_BORDER_DEFAULT))
+        .bg(rgb(AURORA_NAV_BG))
+        .child(render_output_body(output, errors_open))
 }
