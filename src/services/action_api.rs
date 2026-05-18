@@ -58,17 +58,17 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Retrieve(_)
         | AxonRequest::Search(_)
         | AxonRequest::Map(_)
-        | AxonRequest::Evaluate(_)
-        | AxonRequest::Suggest(_)
         | AxonRequest::Doctor(_)
         | AxonRequest::Domains(_)
         | AxonRequest::Sources(_)
         | AxonRequest::Stats(_)
         | AxonRequest::Help(_)
-        | AxonRequest::Artifacts(_)
+        | AxonRequest::Artifacts(_) => Some("axon:read"),
+        AxonRequest::Evaluate(_)
+        | AxonRequest::Suggest(_)
         | AxonRequest::Research(_)
         | AxonRequest::Ask(_)
-        | AxonRequest::Debug(_) => Some("axon:read"),
+        | AxonRequest::Debug(_) => Some("axon:write"),
         AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) => Some("axon:write"),
         AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
@@ -82,7 +82,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
-        _ => None,
+        _ => Some("axon:write"),
     }
 }
 

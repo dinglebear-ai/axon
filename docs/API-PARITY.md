@@ -32,27 +32,27 @@ Status meanings:
 | `ask` | `services::query::ask` | `ask` | `POST /v1/ask` = Implemented; `POST /v1/actions` `ask` = Missing | Dedicated legacy API exists. Generic action API returns `unsupported_action`. Streaming/SSE is not exposed as a stable `/v1` route. |
 | `crawl` | `services::crawl::{crawl_start_with_context,crawl_status,crawl_list,crawl_cancel,crawl_cleanup,crawl_clear,crawl_recover}` | `crawl.start`, `crawl.status`, `crawl.cancel`, `crawl.list`, `crawl.cleanup`, `crawl.clear`, `crawl.recover` | `POST /v1/actions` = Implemented for listed subactions | CLI-only `crawl worker`, `crawl errors`, `crawl audit`, and `crawl diff` are not in MCP or HTTP. Worker is local process control; errors are folded into status output. |
 | `debug` | `services::debug::debug_report` | no dedicated action | Missing | Requires API shape decision for diagnostics payload and whether LLM troubleshooting output is artifact-first. |
-| `dedupe` | `services::system::dedupe` | no dedicated action | Missing | Mutating vector maintenance command. Needs request/response schema and auth scope decision. |
-| `doctor` | `services::system::doctor` | `doctor` | Missing | MCP supports it; `/v1/actions` does not dispatch it yet. |
-| `domains` | `services::system::{domains,detailed_domains}` | `domains` | Missing | MCP supports domain facets; `/v1/actions` does not dispatch it yet. |
+| `dedupe` | `services::system::dedupe` | no dedicated action | `POST /v1/dedupe` = Implemented | Mutating vector maintenance command; migrate remains CLI-only. |
+| `doctor` | `services::system::doctor` | `doctor` | `GET /v1/doctor` = Implemented | Returns full diagnostics to authenticated callers; boolean probes use healthz/readyz. |
+| `domains` | `services::system::{domains,detailed_domains}` | `domains` | `GET /v1/domains` = Implemented | HTTP exposes the domain facets service path. |
 | `embed` | `services::embed::{embed_start_with_context,embed_status,embed_list,embed_cancel,embed_cleanup,embed_clear,embed_recover}` | `embed.start`, `embed.status`, `embed.cancel`, `embed.list`, `embed.cleanup`, `embed.clear`, `embed.recover` | `POST /v1/actions` = Implemented for listed subactions | CLI-only `embed worker` is local process control and excluded from remote parity. |
-| `evaluate` | `services::query::evaluate` | `evaluate` | Missing | MCP supports evaluation, including diagnostics/retrieval A/B flags. HTTP needs typed action dispatch and error contract. |
+| `evaluate` | `services::query::evaluate` | `evaluate` | `POST /v1/evaluate` = Implemented | Uses typed result and shared HttpError envelope. |
 | `extract` | `services::extract::{extract_start_with_context,extract_status,extract_list,extract_cancel,extract_cleanup,extract_clear,extract_recover}` | `extract.start`, `extract.status`, `extract.cancel`, `extract.list`, `extract.cleanup`, `extract.clear`, `extract.recover` | `POST /v1/actions` = Implemented for listed subactions | CLI-only `extract worker` is local process control and excluded from remote parity. |
 | `ingest` | `services::ingest::{ingest_start_with_context,ingest_status,ingest_list,ingest_cancel,ingest_cleanup,ingest_clear,ingest_recover}` | `ingest.start`, `ingest.status`, `ingest.cancel`, `ingest.list`, `ingest.cleanup`, `ingest.clear`, `ingest.recover` | `POST /v1/actions` = Implemented for listed subactions | Covers GitHub, Reddit, YouTube, and sessions through `source_type`. CLI-only `ingest worker` is local process control. |
-| `map` | `services::map::discover` | `map` | Missing | MCP supports map discovery. HTTP needs direct action dispatch and pagination schema. |
+| `map` | `services::map::discover` | `map` | `POST /v1/map` = Implemented | Uses typed body with url, limit, and offset. |
 | `migrate` | `services::migrate::migrate` | no dedicated action | Missing | One-time collection migration is not exposed remotely. Needs safety checks and likely write/admin auth. |
-| `query` | `services::query::query` | `query` | Missing | MCP supports query. HTTP has no generic action dispatcher for it. |
-| `research` | `services::search::synthesis::research` | `research` | Missing | MCP supports research. HTTP needs response-mode and streaming/artifact policy. |
-| `retrieve` | `services::query::retrieve` | `retrieve` | Missing | MCP supports paged document reads. HTTP has no `/v1/retrieve` or action dispatcher yet. |
-| `scrape` | `services::scrape::scrape` | `scrape` | `POST /v1/actions` = Implemented | Server-mode writes under server-owned output paths and returns artifact metadata. |
+| `query` | `services::query::query` | `query` | `POST /v1/query` = Implemented | Uses the typed query service result. |
+| `research` | `services::search::synthesis::research` | `research` | `POST /v1/research` = Implemented | HTTP applies a 35-second server-side timeout. Streaming remains deferred. |
+| `retrieve` | `services::query::retrieve` | `retrieve` | `POST /v1/retrieve` = Implemented | Supports max_points, cursor, and token_budget. |
+| `scrape` | `services::scrape::scrape_batch` | `scrape` | `POST /v1/scrape` = Implemented; `POST /v1/actions` = Deprecated | Service-layer cap rejects more than 50 URLs before fetch. |
 | `screenshot` | `services::screenshot::screenshot_capture` | `screenshot` | `POST /v1/actions` = Implemented | Returns screenshot metadata/artifact path. |
-| `search` | `services::search_crawl::search_and_crawl` for CLI/MCP handler path; `services::search::search` for side-effect-free search helpers | `search` | Missing | MCP handler currently uses `search_and_crawl`, matching CLI auto-crawl behavior. Docs should keep this explicit because older MCP docs described search as side-effect-free. |
+| `search` | `services::search_crawl::search_and_crawl` for CLI/MCP handler path; `services::search::search` for side-effect-free search helpers | `search` | `POST /v1/search` = Implemented | HTTP intentionally follows CLI/MCP auto-crawl behavior. |
 | `sessions` | `services::ingest::ingest_sessions*` via `services::ingest::ingest_start_with_context` | `ingest.start` with `source_type: "sessions"` | `POST /v1/actions` = Implemented through `ingest.start` | CLI command maps to ingest action rather than a separate MCP action. |
-| `sources` | `services::system::sources` | `sources` | Missing | MCP supports it; `/v1/actions` does not dispatch it yet. |
-| `stats` | `services::system::stats` | `stats` | Missing | MCP supports it; `/v1/actions` does not dispatch it yet. |
-| `status` | `services::system::full_status` | `status` | `POST /v1/actions` = Implemented | Also backs client/server `axon status --server-url ...`. |
-| `suggest` | `services::query::suggest` | `suggest` | Missing | MCP supports it; `/v1/actions` does not dispatch it yet. |
-| `watch` | `services::watch::{create_watch_def,list_watch_defs,run_watch_now,list_watch_runs}` | no dedicated action | Missing | CLI implements `create`, `list`, `run-now`, and `history`; other watch subcommands parse but are not implemented. Needs full schema before HTTP. |
+| `sources` | `services::system::sources` | `sources` | `GET /v1/sources` = Implemented | HTTP exposes the same service path. |
+| `stats` | `services::system::stats` | `stats` | `GET /v1/stats` = Implemented | HTTP exposes the same service path. |
+| `status` | `services::system::full_status` | `status` | `GET /v1/status` = Implemented; `POST /v1/actions` = Deprecated | Also backs client/server `axon status --server-url ...`. |
+| `suggest` | `services::query::suggest` | `suggest` | `POST /v1/suggest` = Implemented | HTTP exposes the same service path. |
+| `watch` | `services::watch::{create_watch_def,list_watch_defs,run_watch_now,list_watch_runs}` | no dedicated action | `GET /v1/watch`, `POST /v1/watch`, `POST /v1/watch/{id}/run` = Implemented | HTTP exposes create, list, and run-now only; other parsed CLI subcommands remain unimplemented. |
 | `completions` | CLI generator only | no action | Deferred | Shell completion generation is local developer tooling. |
 | `mcp` | MCP server startup | no action | Deferred | Starts the MCP transport itself; not a remote API operation. |
 | `serve` | HTTP server startup | no action | Deferred | Starts this server; not a route. |

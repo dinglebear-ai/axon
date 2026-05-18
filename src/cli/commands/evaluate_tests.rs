@@ -41,3 +41,11 @@ fn side_by_side_rows_include_both_answers() {
     assert!(rows[1].contains("def"));
     assert!(rows[1].contains("xyz"));
 }
+
+#[test]
+fn evaluate_cli_error_preserves_source_chain() {
+    let source: Box<dyn Error + Send + Sync> = std::io::Error::other("service failed").into();
+    let err = EvaluateCliError(source);
+    assert_eq!(err.to_string(), "service failed");
+    assert!(err.source().is_some());
+}

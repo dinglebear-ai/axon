@@ -1,4 +1,6 @@
-use super::parse_map_result;
+use super::{discover, parse_map_result};
+use crate::core::config::Config;
+use crate::services::types::MapOptions;
 use serde_json::json;
 
 // ── parse_map_result ──────────────────────────────────────────────────────
@@ -152,4 +154,28 @@ fn parse_map_result_round_trips_via_serde() {
     let v = serde_json::to_value(&original).unwrap();
     let parsed = parse_map_result(v).unwrap();
     assert_eq!(original, parsed);
+}
+
+#[tokio::test]
+async fn discover_rejects_private_ip_before_mapping() {
+    let err = discover(
+        &Config::default(),
+        "http://127.0.0.1/admin",
+        MapOptions {
+            limit: 0,
+            offset: 0,
+        },
+        None,
+    )
+    .await
+    .expect_err("private URL should be rejected");
+
+    assert!(
+        err.to_string().contains("invalid map url"),
+        "error should identify map URL validation, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("blocked"),
+        "error should preserve SSRF blocker reason, got: {err}"
+    );
 }

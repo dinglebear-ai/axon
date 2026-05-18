@@ -67,14 +67,16 @@ fn parity_doc_marks_representative_current_http_statuses() {
     assert!(ask.contains("Missing"), "{ask}");
 
     let status = row_for_cli("status").expect("status row");
-    assert!(status.contains("`POST /v1/actions`"), "{status}");
+    assert!(status.contains("`GET /v1/status`"), "{status}");
     assert!(status.contains("Implemented"), "{status}");
 
     let query = row_for_cli("query").expect("query row");
-    assert!(query.contains("Missing"), "{query}");
+    assert!(query.contains("`POST /v1/query`"), "{query}");
+    assert!(query.contains("Implemented"), "{query}");
 
     let retrieve = row_for_cli("retrieve").expect("retrieve row");
-    assert!(retrieve.contains("Missing"), "{retrieve}");
+    assert!(retrieve.contains("`POST /v1/retrieve`"), "{retrieve}");
+    assert!(retrieve.contains("Implemented"), "{retrieve}");
 
     let completions = row_for_cli("completions").expect("completions row");
     assert!(completions.contains("Deferred"), "{completions}");
