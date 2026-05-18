@@ -178,3 +178,56 @@ failed to connect to service";
 
     assert_eq!(actionable_error_text(input), "failed to connect to service");
 }
+
+#[test]
+fn truncate_output_preserves_multibyte_boundary() {
+    let input = format!("{}étail", "a".repeat(OUTPUT_LIMIT - 1));
+
+    let output = truncate_output(input);
+
+    assert!(output.ends_with(TRUNCATED_MESSAGE));
+    assert!(!output.contains('\u{fffd}'));
+    assert_eq!(
+        output.trim_end_matches(TRUNCATED_MESSAGE),
+        "a".repeat(OUTPUT_LIMIT - 1)
+    );
+}
+
+#[test]
+fn bounded_buffer_does_not_mark_exact_limit_as_truncated() {
+    let mut buffer = BoundedByteBuffer::new(4);
+
+    buffer.push(b"abcd");
+
+    assert_eq!(buffer.into_bytes(), b"abcd");
+}
+
+#[test]
+fn bounded_buffer_truncates_oversized_output_at_utf8_boundary() {
+    let mut buffer = BoundedByteBuffer::new(4);
+
+    buffer.push("abcétail".as_bytes());
+    let output = String::from_utf8(buffer.into_bytes()).expect("valid utf8");
+
+    assert_eq!(output, format!("abc{TRUNCATED_MESSAGE}"));
+    assert!(!output.contains('\u{fffd}'));
+}
+
+#[test]
+fn output_section_precomputes_markdown_for_markdown_commands() {
+    let section =
+        OutputSection::from_bytes_for_command("stdout", "ask", b"# Title\n\nBody", true).unwrap();
+
+    let markdown = section.markdown.as_ref().expect("cached markdown");
+
+    assert_eq!(markdown.block_count(), 2);
+}
+
+#[test]
+fn output_section_keeps_raw_command_without_markdown_cache() {
+    let section =
+        OutputSection::from_bytes_for_command("stdout", "query", b"# not markdown", false).unwrap();
+
+    assert!(section.markdown.is_none());
+    assert_eq!(section.rendered_lines.len(), 1);
+}
