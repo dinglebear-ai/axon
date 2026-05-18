@@ -2,11 +2,13 @@
 //!
 //! The palette auto-continues `axon ask` conversations: the first ask starts a
 //! conversation, every subsequent ask while the conversation is "live" prepends
-//! `--follow-up` to the shell-out. Conversations are in-memory only — they
-//! survive across other (non-ask) actions but not across palette restarts.
+//! `--follow-up` to the shell-out. Conversations are restored across palette
+//! restarts when the latest CLI ask session is still inside the idle window;
+//! only turn timestamps are parsed, never prompt or answer text.
 //!
 //! Lifecycle:
-//! - Created on the first **successful** `axon ask`
+//! - Restored on startup from `~/.axon/ask-sessions/latest` when fresh
+//! - Created on the first **successful** `axon ask` when nothing is restored
 //! - Bumped on each subsequent successful `axon ask`
 //! - NOT modified on failed asks (so a transient CLI error doesn't reset the
 //!   user's chain)
