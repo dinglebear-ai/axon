@@ -456,5 +456,5 @@ pub async fn ingest_github(
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[path = "github/tests.rs"]
+#[path = "github_tests.rs"]
 mod tests;

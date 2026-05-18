@@ -23,7 +23,7 @@ crawl/
 │   ├── thin_refetch.rs    # Re-fetch thin pages with Chrome
 │   ├── cdp_render.rs      # Chrome DevTools Protocol render path
 │   ├── url_utils.rs       # `is_junk_discovered_url`, `derive_auto_whitelist_pattern`, helpers
-│   ├── url_utils_proptest.rs
+│   ├── url_utils_proptest_tests.rs
 │   ├── waf.rs             # WAF/firewall detection helpers
 │   ├── dir_ops.rs         # Output directory helpers
 │   └── tests.rs

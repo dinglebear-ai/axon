@@ -11,6 +11,7 @@ mod config_literal;
 mod post_init;
 
 #[cfg(test)]
+#[path = "build_config_tests.rs"]
 pub(in crate::core::config::parse) mod tests;
 
 use super::super::cli::{Cli, DEFAULT_OUTPUT_DIR};

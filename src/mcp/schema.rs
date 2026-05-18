@@ -585,5 +585,5 @@ pub fn parse_axon_request(raw: Map<String, Value>) -> Result<AxonRequest, String
 }
 
 #[cfg(test)]
-#[path = "schema/tests.rs"]
+#[path = "schema_tests.rs"]
 mod tests;

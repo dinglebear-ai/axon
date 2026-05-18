@@ -249,5 +249,5 @@ fn extract_key_fields(payload: &serde_json::Value, fields: &[&'static str]) -> s
 }
 
 #[cfg(test)]
-#[path = "respond/tests.rs"]
+#[path = "respond_tests.rs"]
 mod tests;

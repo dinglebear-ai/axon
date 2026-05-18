@@ -79,7 +79,7 @@ pub fn url_lookup_candidates(target: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-#[path = "input_proptest.rs"]
+#[path = "input_proptest_tests.rs"]
 mod input_proptest;
 
 #[cfg(test)]

@@ -493,4 +493,5 @@ pub async fn ingest_sessions_with_progress(
 }
 
 #[cfg(test)]
+#[path = "ingest_tests.rs"]
 mod tests;

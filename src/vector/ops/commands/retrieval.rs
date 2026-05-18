@@ -337,5 +337,5 @@ fn host_from_url(url: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "retrieval/tests.rs"]
+#[path = "retrieval_tests.rs"]
 mod tests;

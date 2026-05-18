@@ -222,4 +222,5 @@ fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
 }
 
 #[cfg(test)]
+#[path = "search_crawl_tests.rs"]
 pub(crate) mod tests;
