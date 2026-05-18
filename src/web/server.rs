@@ -17,6 +17,7 @@ mod types;
 mod utils;
 
 // Re-export public types and state
+pub(super) use error::HttpError;
 pub(super) use state::AppState;
 pub(crate) use state::PanelRuntimeState;
 pub(super) use utils::authorized;
@@ -34,7 +35,5 @@ pub(crate) fn router(
 #[path = "server/tests.rs"]
 mod tests;
 
-#[cfg(test)]
-use error::HttpError;
 #[cfg(test)]
 use routing::{ScopeRequirement, ask_router, protect_routes};

@@ -150,12 +150,13 @@ pub async fn scrape_batch(
         );
     }
 
-    let normalized: Vec<String> = urls
+    let normalized: Vec<(usize, String)> = urls
         .iter()
-        .map(|url| normalize_url(url).into_owned())
+        .enumerate()
+        .map(|(idx, url)| (idx, normalize_url(url).into_owned()))
         .collect();
     let validated = stream::iter(normalized)
-        .map(|url| async move {
+        .map(|(idx, url)| async move {
             tokio::time::timeout(
                 Duration::from_millis(2000),
                 crate::core::http::validate_url_with_dns(&url),
@@ -163,7 +164,7 @@ pub async fn scrape_batch(
             .await
             .map_err(|_| format!("invalid scrape url {url}: DNS validation timed out"))?
             .map_err(|e| format!("invalid scrape url {url}: {e}"))?;
-            Ok::<String, String>(url)
+            Ok::<(usize, String), String>((idx, url))
         })
         .buffer_unordered(10)
         .collect::<Vec<_>>()
@@ -173,20 +174,31 @@ pub async fn scrape_batch(
     for item in validated {
         ready.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
     }
+    ready.sort_by_key(|(idx, _)| *idx);
 
     let scraped = stream::iter(ready)
-        .map(|url| {
+        .map(|(idx, url)| {
             let tx = tx.clone();
-            async move { scrape(cfg, &url, tx).await.map_err(|err| err.to_string()) }
+            async move {
+                scrape(cfg, &url, tx)
+                    .await
+                    .map(|result| (idx, result))
+                    .map_err(|err| err.to_string())
+            }
         })
         .buffer_unordered(10)
         .collect::<Vec<_>>()
         .await;
 
-    let mut results = Vec::with_capacity(scraped.len());
+    let mut indexed_results = Vec::with_capacity(scraped.len());
     for item in scraped {
-        results.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
+        indexed_results.push(item.map_err(|message| -> Box<dyn Error> { message.into() })?);
     }
+    indexed_results.sort_by_key(|(idx, _)| *idx);
+    let results = indexed_results
+        .into_iter()
+        .map(|(_, result)| result)
+        .collect();
     Ok(results)
 }
 

@@ -1,6 +1,6 @@
 #![allow(unsafe_code)]
 
-use super::router;
+use super::{capabilities_router, router};
 use crate::jobs::backend::{BackendResult, JobKind, JobPayload};
 use crate::mcp::auth::AuthPolicy;
 use crate::services::context::ServiceContext;
@@ -118,7 +118,7 @@ async fn spawn_test_server(
         Arc::new(EmptyRuntime),
     ));
 
-    let app = router(ctx, auth_policy);
+    let app = router(ctx, auth_policy).merge(capabilities_router());
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
         .expect("bind test listener");

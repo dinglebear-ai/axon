@@ -32,15 +32,16 @@ pub(super) fn router(
     let ask_router = ask_router::<(AppState, Arc<Config>)>(Arc::clone(&cfg));
     let rest_body_limit = DefaultBodyLimit::max(128 * 1024);
     let read_routes = Router::new()
+        .merge(super::super::actions::capabilities_router())
         .route("/v1/sources", get(handlers::discovery::sources))
         .route("/v1/domains", get(handlers::discovery::domains))
         .route("/v1/stats", get(handlers::discovery::stats))
         .route("/v1/status", get(handlers::discovery::status))
-        .route("/v1/doctor", get(handlers::discovery::doctor));
+        .route("/v1/doctor", get(handlers::discovery::doctor))
+        .route("/v1/query", post(handlers::rag::query))
+        .route("/v1/retrieve", post(handlers::rag::retrieve));
     let write_routes = Router::new()
         .merge(ask_router)
-        .route("/v1/query", post(handlers::rag::query))
-        .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/evaluate", post(handlers::rag::evaluate))
         .route("/v1/suggest", post(handlers::rag::suggest))
         .route("/v1/scrape", post(handlers::exploration::scrape))
@@ -100,11 +101,7 @@ pub(super) fn router(
         .fallback(super::super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));
     let v1_actions = super::super::actions::router(service_context, auth_policy.clone());
-    panel_router.merge(protect_routes(
-        v1_actions,
-        &auth_policy,
-        ScopeRequirement::Authenticated,
-    ))
+    panel_router.merge(v1_actions)
 }
 
 pub(crate) fn ask_router<S>(cfg: Arc<Config>) -> Router<S>
@@ -119,7 +116,6 @@ where
 
 #[derive(Clone, Copy)]
 pub(super) enum ScopeRequirement {
-    Authenticated,
     Read,
     Write,
 }
@@ -145,7 +141,6 @@ where
         };
     };
     let router = match scope {
-        ScopeRequirement::Authenticated => router,
         ScopeRequirement::Read => router.route_layer(middleware::from_fn(require_read_scope)),
         ScopeRequirement::Write => router.route_layer(middleware::from_fn(require_write_scope)),
     };

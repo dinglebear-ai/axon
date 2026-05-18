@@ -78,7 +78,7 @@ impl HttpError {
         Self {
             status,
             kind,
-            message: err.to_string(),
+            message: response_message(status, err),
             diagnostics,
         }
     }
@@ -175,4 +175,12 @@ fn status_and_kind_from_message(err: &(dyn Error + 'static)) -> (StatusCode, &'s
 
 fn contains_any(message: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| message.contains(needle))
+}
+
+fn response_message(status: StatusCode, err: &(dyn Error + 'static)) -> String {
+    if status == StatusCode::INTERNAL_SERVER_ERROR {
+        "internal server error".to_string()
+    } else {
+        err.to_string()
+    }
 }

@@ -86,13 +86,13 @@ pub(crate) async fn run_watch(
         handle.block_on(async move {
             let Some(watch) = services::watch::get_watch_def(&cfg, id)
                 .await
-                .map_err(|err| err.to_string())?
+                .map_err(|err| RunWatchError::Service(err.to_string()))?
             else {
-                return Err(format!("watch not found: {id}"));
+                return Err(RunWatchError::NotFound(id));
             };
             services::watch::run_watch_now(&cfg, &watch)
                 .await
-                .map_err(|err| err.to_string())
+                .map_err(|err| RunWatchError::Service(err.to_string()))
         })
     })
     .await
@@ -103,11 +103,23 @@ pub(crate) async fn run_watch(
             format!("watch task failed: {err}"),
         )
     })?;
-    result.map(Json).map_err(|message| {
-        if message.starts_with("watch not found:") {
-            HttpError::new(StatusCode::NOT_FOUND, "not_found", message)
-        } else {
-            HttpError::from_error(&std::io::Error::other(message))
+    result.map(Json).map_err(RunWatchError::into_http_error)
+}
+
+enum RunWatchError {
+    NotFound(Uuid),
+    Service(String),
+}
+
+impl RunWatchError {
+    fn into_http_error(self) -> HttpError {
+        match self {
+            Self::NotFound(id) => HttpError::new(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                format!("watch not found: {id}"),
+            ),
+            Self::Service(message) => HttpError::from_error(&std::io::Error::other(message)),
         }
-    })
+    }
 }

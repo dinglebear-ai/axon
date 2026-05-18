@@ -4,6 +4,7 @@ use crate::services::types::{MapOptions, SearchOptions, ServiceTimeRange};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -122,7 +123,11 @@ fn request_urls(req: ScrapeRequest) -> Result<Vec<String>, HttpError> {
     if urls.is_empty() {
         return Err(HttpError::bad_request("url or urls is required"));
     }
-    Ok(urls)
+    let mut seen = HashSet::new();
+    Ok(urls
+        .into_iter()
+        .filter(|url| seen.insert(url.clone()))
+        .collect())
 }
 
 fn map_options(limit: Option<usize>, offset: Option<usize>) -> MapOptions {

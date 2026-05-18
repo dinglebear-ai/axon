@@ -1,4 +1,4 @@
-use super::server::{AppState, authorized};
+use super::server::{AppState, HttpError, authorized};
 use crate::core::config::{Config, ConfigOverrides, RenderMode};
 use axum::{
     Json,
@@ -57,7 +57,7 @@ pub(super) async fn first_run_crawl(
             "jobs": outcome.result.jobs,
         }))
         .into_response(),
-        Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+        Err(err) => HttpError::from_box(err).into_response(),
     }
 }
 
@@ -76,7 +76,7 @@ pub(super) async fn first_run_ask(
     };
     match crate::services::query::ask(&cfg, query, None).await {
         Ok(result) => Json(result).into_response(),
-        Err(err) => (StatusCode::BAD_GATEWAY, err.to_string()).into_response(),
+        Err(err) => HttpError::from_box(err).into_response(),
     }
 }
 

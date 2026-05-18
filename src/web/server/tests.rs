@@ -155,7 +155,7 @@ async fn spawn_full_test_server(
     auth_policy: AuthPolicy,
 ) -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
     let home = tempfile::tempdir().expect("temp home");
-    let _home_guard = EnvGuard::set_key("HOME", home.path().to_str());
+    let home_guard = EnvGuard::set_key("HOME", home.path().to_str());
     let panel = Arc::new(super::PanelRuntimeState::initialize("127.0.0.1", 0).expect("panel"));
     let cfg = Arc::new(crate::core::config::Config::default());
     let ctx = Arc::new(ServiceContext::from_runtime(
@@ -163,7 +163,6 @@ async fn spawn_full_test_server(
         Arc::new(EmptyRuntime),
     ));
     let app = super::router(cfg, panel, ctx, auth_policy);
-    drop(_home_guard);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -177,6 +176,7 @@ async fn spawn_full_test_server(
             })
             .await
             .expect("test server");
+        drop(home_guard);
         drop(home);
     });
 
@@ -259,8 +259,11 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
     let crawl_job = format!("/v1/crawl/{job_id}");
     let crawl_cancel = format!("/v1/crawl/{job_id}/cancel");
     let embed_job = format!("/v1/embed/{job_id}");
+    let embed_cancel = format!("/v1/embed/{job_id}/cancel");
     let extract_job = format!("/v1/extract/{job_id}");
+    let extract_cancel = format!("/v1/extract/{job_id}/cancel");
     let ingest_job = format!("/v1/ingest/{job_id}");
+    let ingest_cancel = format!("/v1/ingest/{job_id}/cancel");
     let watch_run = format!("/v1/watch/{job_id}/run");
     let routes = [
         ("GET", "/v1/capabilities"),
@@ -287,10 +290,22 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
         ("POST", "/v1/crawl/recover"),
         ("POST", "/v1/embed"),
         ("GET", embed_job.as_str()),
+        ("POST", embed_cancel.as_str()),
+        ("POST", "/v1/embed/cleanup"),
+        ("DELETE", "/v1/embed"),
+        ("POST", "/v1/embed/recover"),
         ("POST", "/v1/extract"),
         ("GET", extract_job.as_str()),
+        ("POST", extract_cancel.as_str()),
+        ("POST", "/v1/extract/cleanup"),
+        ("DELETE", "/v1/extract"),
+        ("POST", "/v1/extract/recover"),
         ("POST", "/v1/ingest"),
         ("GET", ingest_job.as_str()),
+        ("POST", ingest_cancel.as_str()),
+        ("POST", "/v1/ingest/cleanup"),
+        ("DELETE", "/v1/ingest"),
+        ("POST", "/v1/ingest/recover"),
         ("POST", "/v1/dedupe"),
         ("GET", "/v1/watch"),
         ("POST", "/v1/watch"),
@@ -302,9 +317,17 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
             "DELETE" => client.delete(format!("{base}{path}")).send().await,
             "GET" => client.get(format!("{base}{path}")).send().await,
             "POST" => {
+                let body = if path == "/v1/actions" {
+                    serde_json::json!({
+                        "request_id": "auth-test",
+                        "action": { "action": "status" }
+                    })
+                } else {
+                    serde_json::json!({})
+                };
                 client
                     .post(format!("{base}{path}"))
-                    .json(&serde_json::json!({}))
+                    .json(&body)
                     .send()
                     .await
             }
@@ -330,6 +353,9 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let job_id = Uuid::nil();
     let watch_run = format!("/v1/watch/{job_id}/run");
     let crawl_cancel = format!("/v1/crawl/{job_id}/cancel");
+    let embed_cancel = format!("/v1/embed/{job_id}/cancel");
+    let extract_cancel = format!("/v1/extract/{job_id}/cancel");
+    let ingest_cancel = format!("/v1/ingest/{job_id}/cancel");
     let routes = [
         ("POST", "/v1/dedupe"),
         ("POST", "/v1/watch"),
@@ -339,6 +365,21 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
         ("POST", "/v1/crawl/cleanup"),
         ("DELETE", "/v1/crawl"),
         ("POST", "/v1/crawl/recover"),
+        ("POST", "/v1/embed"),
+        ("POST", embed_cancel.as_str()),
+        ("POST", "/v1/embed/cleanup"),
+        ("DELETE", "/v1/embed"),
+        ("POST", "/v1/embed/recover"),
+        ("POST", "/v1/extract"),
+        ("POST", extract_cancel.as_str()),
+        ("POST", "/v1/extract/cleanup"),
+        ("DELETE", "/v1/extract"),
+        ("POST", "/v1/extract/recover"),
+        ("POST", "/v1/ingest"),
+        ("POST", ingest_cancel.as_str()),
+        ("POST", "/v1/ingest/cleanup"),
+        ("DELETE", "/v1/ingest"),
+        ("POST", "/v1/ingest/recover"),
     ];
 
     for (method, path) in routes {
