@@ -187,7 +187,15 @@ fn authorize_action(
     auth: Option<&AuthContext>,
     action: &crate::mcp::schema::AxonRequest,
 ) -> Result<(), (StatusCode, ClientActionError)> {
-    if !state.auth_required {
+    // Destructive / irreversible actions require a valid token unconditionally —
+    // they must NOT be reachable via LoopbackDev (no-token) mode regardless of
+    // the global auth_required flag.
+    let requires_unconditional_auth = matches!(
+        action,
+        crate::mcp::schema::AxonRequest::Migrate(_) | crate::mcp::schema::AxonRequest::Dedupe(_)
+    );
+
+    if !state.auth_required && !requires_unconditional_auth {
         return Ok(());
     }
     let Some(auth) = auth else {

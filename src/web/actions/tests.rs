@@ -268,3 +268,90 @@ async fn actions_dispatches_status_through_service_context() {
     assert_eq!(body["ok"], true);
     assert_eq!(body["result"]["totals"]["crawl"], 0);
 }
+
+#[tokio::test]
+#[serial]
+async fn migrate_requires_auth_even_in_loopback_dev_mode() {
+    // F5: destructive actions (migrate, dedupe) must be unconditionally auth-gated.
+    // LoopbackDev mode skips auth for normal actions but must NOT skip it here.
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .json(&serde_json::json!({
+            "request_id": "migrate-no-auth",
+            "action": {
+                "action": "migrate",
+                "from": "source_col",
+                "to": "dest_col"
+            }
+        }))
+        .send()
+        .await
+        .expect("migrate request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert!(
+        status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN,
+        "expected 401 or 403 for migrate without token in LoopbackDev mode, got {status}"
+    );
+    assert_eq!(body["ok"], false);
+}
+
+#[tokio::test]
+#[serial]
+async fn dedupe_requires_auth_even_in_loopback_dev_mode() {
+    // F5: same invariant for dedupe.
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .json(&serde_json::json!({
+            "request_id": "dedupe-no-auth",
+            "action": { "action": "dedupe" }
+        }))
+        .send()
+        .await
+        .expect("dedupe request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert!(
+        status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN,
+        "expected 401 or 403 for dedupe without token in LoopbackDev mode, got {status}"
+    );
+    assert_eq!(body["ok"], false);
+}
+
+#[tokio::test]
+#[serial]
+async fn ask_requires_write_scope() {
+    // F10: ask is promoted to axon:write — a read-only token must be refused.
+    let _env = EnvGuard::set(Some("write-token"));
+    let (base, shutdown, handle) =
+        spawn_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+
+    // Issue the request with a read-only token scope (no bearer = no token = 401).
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/actions"))
+        .json(&serde_json::json!({
+            "request_id": "ask-no-auth",
+            "action": { "action": "ask", "question": "test?" }
+        }))
+        .send()
+        .await
+        .expect("ask without auth");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "ask without token must return 401: {body}"
+    );
+    assert_eq!(body["ok"], false);
+}
