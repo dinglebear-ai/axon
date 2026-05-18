@@ -77,17 +77,19 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
     let empty = output.stdout.is_none() && output.stderr.is_none();
     let title_accent = output.kind.accent_color();
     let is_running = output.kind == OutputKind::Running;
+    let show_subtitle = is_running || output.kind == OutputKind::Error;
+    let compact_stdout = output.compact_stdout;
     div()
         .flex()
         .flex_col()
-        .gap_3()
+        .gap_2()
         .px_4()
-        .py_3()
+        .py_2()
         .child(
             div()
                 .flex()
                 .flex_col()
-                .gap_1()
+                .gap_px()
                 .child(
                     div()
                         .flex()
@@ -108,14 +110,16 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
                                 .child(SharedString::from(output.title)),
                         ),
                 )
-                .child(
-                    div()
-                        .font_family(AURORA_FONT_MONO)
-                        .font_weight(FontWeight(500.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(AURORA_OUTPUT_MUTED))
-                        .child(SharedString::from(output.subtitle)),
-                ),
+                .when(show_subtitle, |el| {
+                    el.child(
+                        div()
+                            .font_family(AURORA_FONT_MONO)
+                            .font_weight(FontWeight(500.0))
+                            .text_size(px(11.0))
+                            .text_color(rgb(AURORA_OUTPUT_MUTED))
+                            .child(SharedString::from(output.subtitle)),
+                    )
+                }),
         )
         .when(empty, |el| {
             el.child(
@@ -156,10 +160,16 @@ pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
                 section,
                 OutputKind::Success,
                 output.use_markdown,
+                compact_stdout,
             ))
         })
         .when_some(output.stderr, |el, section| {
-            el.child(render_output_section(section, OutputKind::Error, false))
+            el.child(render_output_section(
+                section,
+                OutputKind::Error,
+                false,
+                false,
+            ))
         })
 }
 
@@ -305,6 +315,7 @@ fn render_output_section(
     section: OutputSection,
     kind: OutputKind,
     use_markdown: bool,
+    compact: bool,
 ) -> impl IntoElement {
     let accent = kind.accent_color();
     let text = section.text.clone();
@@ -314,42 +325,46 @@ fn render_output_section(
         .flex()
         .flex_col()
         .rounded_sm()
-        .border_1()
-        .border_color(rgb(AURORA_BORDER_DEFAULT))
-        .bg(rgb(AURORA_CONTROL_SURFACE))
-        // section header
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .px_3()
-                .py_2()
-                .border_b_1()
+        .when(!compact, |el| {
+            el.border_1()
                 .border_color(rgb(AURORA_BORDER_DEFAULT))
-                .child(
-                    div()
-                        .font_family(AURORA_FONT_MONO)
-                        .font_weight(FontWeight(650.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(accent))
-                        .child(section.label),
-                )
-                .child(
-                    div()
-                        .font_family(AURORA_FONT_MONO)
-                        .font_weight(FontWeight(480.0))
-                        .text_size(px(11.0))
-                        .text_color(rgb(AURORA_OUTPUT_MUTED))
-                        .child(SharedString::from(format!("{} lines", section.line_count))),
-                ),
-        )
+                .bg(rgb(AURORA_CONTROL_SURFACE))
+        })
+        // section header
+        .when(!compact, |el| {
+            el.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .px_3()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(rgb(AURORA_BORDER_DEFAULT))
+                    .child(
+                        div()
+                            .font_family(AURORA_FONT_MONO)
+                            .font_weight(FontWeight(650.0))
+                            .text_size(px(11.0))
+                            .text_color(rgb(accent))
+                            .child(section.label),
+                    )
+                    .child(
+                        div()
+                            .font_family(AURORA_FONT_MONO)
+                            .font_weight(FontWeight(480.0))
+                            .text_size(px(11.0))
+                            .text_color(rgb(AURORA_OUTPUT_MUTED))
+                            .child(SharedString::from(format!("{} lines", section.line_count))),
+                    ),
+            )
+        })
         // section body — markdown or raw monospace
         .child(
             div()
                 .px_3()
-                .py_3()
+                .py_2()
                 .when(use_markdown, |el| el.child(render_markdown(&text)))
                 .when(!use_markdown, |el| {
                     // `rendered_lines` is pre-computed at section

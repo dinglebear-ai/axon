@@ -130,3 +130,29 @@ fn strip_ansi_osc_still_terminates_on_bel() {
     let input = "pre\x1b]0;title\x07keep";
     assert_eq!(strip_ansi(input), "prekeep");
 }
+
+#[test]
+fn map_url_listing_strips_cli_preamble() {
+    let input = "\
+◐ Mapping https://code.claude.com
+  Options:
+    maxDepth: 10
+    discoverSitemaps: true
+
+Map Results for https://code.claude.com
+Showing 2 (source: sitemap)
+
+  • https://code.claude.com/docs/en/agent-sdk/agent-loop
+  • https://code.claude.com/docs/en/agent-sdk/claude-code-features";
+
+    assert_eq!(
+        map_url_listing(input),
+        "https://code.claude.com/docs/en/agent-sdk/agent-loop\nhttps://code.claude.com/docs/en/agent-sdk/claude-code-features"
+    );
+}
+
+#[test]
+fn map_url_listing_keeps_non_map_output_when_no_urls_found() {
+    let input = "Map failed before producing URLs";
+    assert_eq!(map_url_listing(input), input);
+}
