@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **HTTP API auth**: Promoted `ask`, `research`, `evaluate`, `suggest`, and
+  `debug` action scopes from `axon:read` to `axon:write` because they can
+  trigger Gemini completions or other cost-bearing side effects. Existing
+  read-only tokens must be re-issued with `axon:write` before calling these
+  actions through `/v1/actions` or the dedicated REST API.
+
+### Security
+
+- **HTTP API auth**: Unknown action variants now fail closed to `axon:write`
+  instead of falling through to unauthenticated dispatch, and `migrate` /
+  `dedupe` require auth even in loopback development mode.
+- **SSRF**: `scrape` and `map` service entry points now use DNS-aware URL
+  validation with a two-second fail-closed timeout before handing URLs to
+  Spider-backed fetch paths.
+
 ## [3.0.0] - 2026-05-17
 
 ### BREAKING CHANGES

@@ -1,9 +1,8 @@
-use super::super::types::{AskErrorBody, AskRequestBody};
+use super::super::error::HttpError;
+use super::super::types::AskRequestBody;
 use crate::core::config::Config;
-use crate::services::error::diagnostics_from_error;
 use crate::services::query as query_svc;
-use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
-use std::error::Error;
+use axum::{Extension, Json, response::IntoResponse};
 use std::sync::Arc;
 
 /// Apply the per-request `ask_*` overrides from the body to a cloned `Config`.
@@ -71,39 +70,6 @@ fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
     }
 }
 
-/// Map a service error chain to (status, kind) using simple message-based
-/// heuristics over the chain. Falls back to 500/internal.
-pub(crate) fn classify_ask_error(err: &(dyn Error + 'static)) -> (StatusCode, &'static str) {
-    let mut buf = String::new();
-    let mut cur: Option<&(dyn Error + 'static)> = Some(err);
-    while let Some(e) = cur {
-        buf.push_str(&e.to_string());
-        buf.push('\n');
-        cur = e.source();
-    }
-    let lc = buf.to_lowercase();
-    if lc.contains("query is required")
-        || lc.contains("invalid collection")
-        || lc.contains("invalid query")
-        || lc.contains("missing required")
-    {
-        return (StatusCode::BAD_REQUEST, "bad_request");
-    }
-    if lc.contains("qdrant")
-        || lc.contains("tei")
-        || lc.contains("connection refused")
-        || lc.contains("upstream")
-        || lc.contains("timed out")
-        || lc.contains("timeout")
-        || lc.contains("dns")
-        || lc.contains("502")
-        || lc.contains("503")
-    {
-        return (StatusCode::BAD_GATEWAY, "upstream");
-    }
-    (StatusCode::INTERNAL_SERVER_ERROR, "internal")
-}
-
 pub async fn v1_ask(
     Extension(cfg): Extension<Arc<Config>>,
     Json(req): Json<AskRequestBody>,
@@ -111,37 +77,16 @@ pub async fn v1_ask(
     use super::super::types::ASK_QUERY_MAX_CHARS;
 
     if req.graph.unwrap_or(false) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(AskErrorBody {
-                kind: "bad_request",
-                message: "graph retrieval is not supported; omit graph or set graph to false"
-                    .to_string(),
-                diagnostics: None,
-            }),
+        return HttpError::bad_request(
+            "graph retrieval is not supported; omit graph or set graph to false",
         )
-            .into_response();
+        .into_response();
     }
     if req.query.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(AskErrorBody {
-                kind: "bad_request",
-                message: "query is required".to_string(),
-                diagnostics: None,
-            }),
-        )
-            .into_response();
+        return HttpError::bad_request("query is required").into_response();
     }
     if req.query.chars().count() > ASK_QUERY_MAX_CHARS {
-        return (
-            StatusCode::PAYLOAD_TOO_LARGE,
-            Json(AskErrorBody {
-                kind: "payload_too_large",
-                message: format!("query exceeds {ASK_QUERY_MAX_CHARS} chars"),
-                diagnostics: None,
-            }),
-        )
+        return HttpError::payload_too_large(format!("query exceeds {ASK_QUERY_MAX_CHARS} chars"))
             .into_response();
     }
 
@@ -152,21 +97,7 @@ pub async fn v1_ask(
     match query_svc::ask(&req_cfg, &req.query, None).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => {
-            let (status, kind) = classify_ask_error(err.as_ref());
-            let diagnostics = if want_diagnostics {
-                diagnostics_from_error(err.as_ref()).cloned()
-            } else {
-                None
-            };
-            (
-                status,
-                Json(AskErrorBody {
-                    kind,
-                    message: err.to_string(),
-                    diagnostics,
-                }),
-            )
-                .into_response()
+            HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics).into_response()
         }
     }
 }

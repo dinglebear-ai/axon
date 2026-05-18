@@ -96,11 +96,3 @@ pub(super) struct AskRequestBody {
     #[serde(default)]
     pub(super) ask_authoritative_boost: Option<f64>,
 }
-
-#[derive(Serialize)]
-pub(super) struct AskErrorBody {
-    pub(super) kind: &'static str,
-    pub(super) message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) diagnostics: Option<serde_json::Value>,
-}
