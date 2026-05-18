@@ -54,7 +54,7 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
             IngestSubaction::Status | IngestSubaction::List => Some("axon:read"),
             _ => Some("axon:write"),
         },
-        // Read-only ops that never trigger external processes or side-effects.
+        // Read-only ops: pure data reads, no external process, no side-effects.
         AxonRequest::Query(_)
         | AxonRequest::Retrieve(_)
         | AxonRequest::Search(_)
@@ -64,14 +64,21 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Sources(_)
         | AxonRequest::Stats(_)
         | AxonRequest::Help(_)
-        | AxonRequest::Artifacts(_)
-        | AxonRequest::Debug(_) => Some("axon:read"),
+        | AxonRequest::Artifacts(_) => Some("axon:read"),
         // These trigger Gemini headless completions (external process, API quota) — write scope.
+        // Note: Debug runs LLM-assisted troubleshooting (Gemini) so it belongs here, not above.
         AxonRequest::Ask(_)
         | AxonRequest::Evaluate(_)
         | AxonRequest::Suggest(_)
-        | AxonRequest::Research(_) => Some("axon:write"),
+        | AxonRequest::Research(_)
+        | AxonRequest::Debug(_) => Some("axon:write"),
+        // Destructive / admin operations. INVARIANT: these must never return None here — the
+        // authorize_action unconditional-auth guard for Migrate/Dedupe silently depends on
+        // required_scope returning Some(...) so the scope check runs after auth is confirmed.
         AxonRequest::Dedupe(_) | AxonRequest::Migrate(_) => Some("axon:write"),
+        // ElicitDemo is an MCP elicitation primitive. Explicit arm prevents it silently
+        // absorbing a future wildcard default change.
+        AxonRequest::ElicitDemo(_) => Some("axon:write"),
         AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
             WatchSubaction::List | WatchSubaction::Get | WatchSubaction::History => {
                 Some("axon:read")
@@ -84,9 +91,9 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         },
         AxonRequest::Scrape(_) | AxonRequest::Screenshot(_) => Some("axon:write"),
         AxonRequest::VerticalScrape(_) => Some("axon:write"),
-        // Secure default: any unrecognised action variant requires write scope.
-        // Using None here would bypass auth entirely via the authorize_action None-check.
-        _ => Some("axon:write"),
+        // NOTE: no wildcard arm — the match must be exhaustive.
+        // Adding a new AxonRequest variant without a required_scope arm is a compile error,
+        // which is the correct enforcement mechanism: scope assignment is opt-out, not opt-in.
     }
 }
 

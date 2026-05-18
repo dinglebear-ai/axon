@@ -132,3 +132,135 @@ async fn services_action_api_dispatches_crawl_list_lifecycle() {
     assert_eq!(result["offset"], 2);
     assert_eq!(result["jobs"], serde_json::json!([]));
 }
+
+// ── required_scope invariant tests ────────────────────────────────────────────
+// These directly verify the scope assignments that authorize_action depends on.
+// Changing a scope here requires updating the breaking-change section of CHANGELOG.md.
+
+use crate::mcp::schema::{
+    AskRequest, DedupeRequest, ElicitDemoRequest, EvaluateRequest, MigrateRequest, QueryRequest,
+    ResearchRequest, SuggestRequest,
+};
+
+fn req_ask() -> AxonRequest {
+    AxonRequest::Ask(AskRequest {
+        query: Some("test?".into()),
+        graph: None,
+        diagnostics: None,
+        explain: None,
+        collection: None,
+        since: None,
+        before: None,
+        hybrid_search: None,
+        response_mode: None,
+    })
+}
+
+fn req_research() -> AxonRequest {
+    AxonRequest::Research(ResearchRequest {
+        query: Some("test".into()),
+        limit: None,
+        offset: None,
+        search_time_range: None,
+        response_mode: None,
+    })
+}
+
+fn req_evaluate() -> AxonRequest {
+    AxonRequest::Evaluate(EvaluateRequest {
+        query: Some("test?".into()),
+        diagnostics: None,
+        retrieval_ab: None,
+        collection: None,
+        since: None,
+        before: None,
+        hybrid_search: None,
+        response_mode: None,
+    })
+}
+
+fn req_suggest() -> AxonRequest {
+    AxonRequest::Suggest(SuggestRequest {
+        focus: None,
+        limit: None,
+        collection: None,
+        response_mode: None,
+    })
+}
+
+fn req_migrate() -> AxonRequest {
+    AxonRequest::Migrate(MigrateRequest {
+        from: Some("src".into()),
+        to: Some("dst".into()),
+        response_mode: None,
+    })
+}
+
+fn req_dedupe() -> AxonRequest {
+    AxonRequest::Dedupe(DedupeRequest {
+        collection: None,
+        response_mode: None,
+    })
+}
+
+fn req_query() -> AxonRequest {
+    AxonRequest::Query(QueryRequest {
+        query: Some("test".into()),
+        limit: None,
+        offset: None,
+        collection: None,
+        since: None,
+        before: None,
+        hybrid_search: None,
+        response_mode: None,
+    })
+}
+
+#[test]
+fn required_scope_ask_evaluate_suggest_research_are_write() {
+    // F10: these trigger Gemini completions — must require axon:write.
+    for req in [req_ask(), req_evaluate(), req_suggest(), req_research()] {
+        assert_eq!(
+            required_scope(&req),
+            Some("axon:write"),
+            "expected axon:write for {:?}",
+            std::mem::discriminant(&req)
+        );
+    }
+}
+
+#[test]
+fn required_scope_migrate_dedupe_are_write() {
+    // F5 invariant: these must never return None — authorize_action's unconditional
+    // auth guard for Migrate/Dedupe depends on required_scope returning Some(...).
+    for req in [req_migrate(), req_dedupe()] {
+        let scope = required_scope(&req);
+        assert_eq!(
+            scope,
+            Some("axon:write"),
+            "Migrate/Dedupe must return Some(axon:write) — None would bypass scope check: {:?}",
+            std::mem::discriminant(&req)
+        );
+    }
+}
+
+#[test]
+fn required_scope_elicit_demo_is_write() {
+    // F1 / exhaustiveness: ElicitDemo is explicit in required_scope.
+    // With no wildcard arm, the compiler enforces scope assignment for every future variant.
+    let req = AxonRequest::ElicitDemo(ElicitDemoRequest {
+        message: None,
+        response_mode: None,
+    });
+    assert_eq!(
+        required_scope(&req),
+        Some("axon:write"),
+        "ElicitDemo must return Some, never None"
+    );
+}
+
+#[test]
+fn required_scope_read_only_ops_are_read() {
+    // Regression: query and similar read-only ops must stay at axon:read.
+    assert_eq!(required_scope(&req_query()), Some("axon:read"));
+}
