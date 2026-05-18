@@ -178,9 +178,10 @@ fn contains_any(message: &str, needles: &[&str]) -> bool {
 }
 
 fn response_message(status: StatusCode, err: &(dyn Error + 'static)) -> String {
-    if status == StatusCode::INTERNAL_SERVER_ERROR {
-        "internal server error".to_string()
-    } else {
-        err.to_string()
+    match status {
+        StatusCode::INTERNAL_SERVER_ERROR => "internal server error".to_string(),
+        StatusCode::BAD_GATEWAY => "upstream service unavailable".to_string(),
+        StatusCode::GATEWAY_TIMEOUT => "upstream request timed out".to_string(),
+        _ => err.to_string(),
     }
 }
