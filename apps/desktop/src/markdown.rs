@@ -10,6 +10,10 @@ use crate::theme::{
     AURORA_FONT_MONO, AURORA_OUTPUT_TEXT, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
 };
 
+#[cfg(test)]
+#[path = "markdown_tests.rs"]
+mod tests;
+
 // ── inline span ───────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -24,6 +28,7 @@ struct Span {
 
 // ── block types ───────────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 enum Block {
     Heading {
         level: HeadingLevel,
@@ -39,14 +44,32 @@ enum Block {
     Rule,
 }
 
-// ── public entry point ────────────────────────────────────────────────────────
+// ── public entry points ───────────────────────────────────────────────────────
 
-pub(crate) fn render_markdown(text: &str) -> impl IntoElement {
+#[derive(Clone)]
+pub(crate) struct MarkdownDocument {
+    blocks: Vec<Block>,
+}
+
+impl MarkdownDocument {
+    pub(crate) fn parse(input: &str) -> Self {
+        Self {
+            blocks: parse_blocks(input),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn block_count(&self) -> usize {
+        self.blocks.len()
+    }
+}
+
+pub(crate) fn render_markdown_doc(document: &MarkdownDocument) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_2()
-        .children(parse(text).into_iter().map(render_block))
+        .children(document.blocks.clone().into_iter().map(render_block))
 }
 
 // ── parser ────────────────────────────────────────────────────────────────────
@@ -61,7 +84,7 @@ fn make_span(text: String, bold: bool, italic: bool, code: bool) -> Span {
     }
 }
 
-fn parse(input: &str) -> Vec<Block> {
+fn parse_blocks(input: &str) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
     let mut spans: Vec<Span> = Vec::new();
     let mut bold = false;
