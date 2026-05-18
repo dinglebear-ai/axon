@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trigger Gemini completions or other cost-bearing side effects. Existing
   read-only tokens must be re-issued with `axon:write` before calling these
   actions through `/v1/actions` or the dedicated REST API.
+- **palette/ci**: desktop CI now runs the `apps/desktop` unit test suite on
+  Linux and Windows before producing release binaries.
+- **palette/docs**: added dedicated desktop build, run, platform, hotkey,
+  binary-resolution, smoke-test, and markdown-link behavior documentation.
 
 ### Security
 

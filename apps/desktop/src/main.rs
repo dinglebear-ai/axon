@@ -17,7 +17,7 @@ mod render;
 mod theme;
 mod ui;
 
-use std::thread;
+use std::{mem::ManuallyDrop, thread};
 
 use anyhow::Result;
 use global_hotkey::{
@@ -142,9 +142,11 @@ fn main() -> Result<()> {
         })
         .detach();
 
-        // Keep the GlobalHotKeyManager alive for the lifetime of the app.
-        // Without this, dropping the manager would unregister the hotkey.
-        std::mem::forget(manager);
+        // Keep the GlobalHotKeyManager alive for the lifetime of the process.
+        // The crate unregisters the hotkey on Drop, while GPUI does not expose
+        // a simple process-lifetime state slot here. This intentionally leaks
+        // one manager so Ctrl+Shift+Space remains registered until exit.
+        let _hotkey_manager = ManuallyDrop::new(manager);
     });
 
     Ok(())
