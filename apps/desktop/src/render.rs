@@ -1,28 +1,33 @@
 use std::time::Duration;
 
 mod action_rows;
+mod output_body;
 pub(crate) use action_rows::render_action_rows_interactive;
+pub(crate) use output_body::render_output_body;
 
 use gpui::{
-    Animation, AnimationExt, ElementId, FontWeight, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px, rgb,
+    Animation, AnimationExt, ElementId, FocusHandle, FontWeight, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement, SharedString, Styled, div, prelude::*, pulsating_between, px,
+    rgb,
 };
 
-use crate::ClearOutput;
 use crate::actions::CommandAction;
-use crate::markdown::render_markdown;
-use crate::output::{CommandOutput, OutputKind, OutputSection};
+use crate::output::{CommandOutput, OutputKind};
 use crate::theme::{
-    AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG,
-    AURORA_CONTROL_SURFACE, AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_NAV_BG,
-    AURORA_OUTPUT_MUTED, AURORA_OUTPUT_TEXT, AURORA_TEXT_MUTED, AURORA_TEXT_PRIMARY,
+    AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_BORDER_STRONG, AURORA_CONTROL_SURFACE,
+    AURORA_FONT_DISPLAY, AURORA_FONT_MONO, AURORA_HOVER_BG, AURORA_NAV_BG, AURORA_TEXT_MUTED,
+    AURORA_TEXT_PRIMARY,
 };
 use crate::ui::RunningCommand;
+use crate::{ClearOutput, Submit, ToggleActionMenu};
 
 pub(crate) fn render_prompt_row(
     query_is_empty: bool,
     locked_command: Option<CommandAction>,
     prompt: SharedString,
+    input_active: bool,
+    focus_handle: FocusHandle,
+    action_menu_open: bool,
     status_dot: impl IntoElement,
 ) -> impl IntoElement {
     div()
@@ -34,14 +39,30 @@ pub(crate) fn render_prompt_row(
         .px_4()
         .border_b_1()
         .border_color(rgb(AURORA_BORDER_DEFAULT))
+        .cursor_text()
+        .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, window, cx| {
+            window.focus(&focus_handle, cx);
+        })
         .child(status_dot)
         .child(
             div()
+                .cursor_pointer()
+                .rounded_sm()
+                .px_1()
+                .py_1()
+                .hover(|el| el.bg(rgb(AURORA_NAV_BG)))
+                .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
+                    window.dispatch_action(Box::new(ToggleActionMenu), cx);
+                })
                 .font_family(AURORA_FONT_DISPLAY)
                 .font_weight(FontWeight(760.0))
                 .text_size(px(15.0))
-                .text_color(rgb(AURORA_TEXT_PRIMARY))
-                .child("axon"),
+                .text_color(if action_menu_open {
+                    rgb(AURORA_ACCENT_STRONG)
+                } else {
+                    rgb(AURORA_TEXT_PRIMARY)
+                })
+                .child("axon ▾"),
         )
         .when_some(locked_command, |el, action| {
             el.child(
@@ -62,115 +83,58 @@ pub(crate) fn render_prompt_row(
         .child(
             div()
                 .flex_1()
-                .font_weight(FontWeight(480.0))
-                .text_size(px(14.0))
-                .text_color(if query_is_empty {
-                    rgb(AURORA_TEXT_MUTED)
-                } else {
-                    rgb(AURORA_TEXT_PRIMARY)
-                })
-                .child(prompt),
-        )
-}
-
-pub(crate) fn render_output_body(output: CommandOutput) -> impl IntoElement {
-    let empty = output.stdout.is_none() && output.stderr.is_none();
-    let title_accent = output.kind.accent_color();
-    let is_running = output.kind == OutputKind::Running;
-    let show_subtitle = is_running || output.kind == OutputKind::Error;
-    let compact_stdout = output.compact_stdout;
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .px_4()
-        .py_2()
-        .child(
-            div()
                 .flex()
-                .flex_col()
-                .gap_px()
+                .flex_row()
+                .items_center()
+                .gap_1()
                 .child(
                     div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_2()
-                        .child(pulsing_dot(
-                            "output-title-dot",
-                            title_accent,
-                            px(7.0),
-                            is_running,
-                        ))
-                        .child(
-                            div()
-                                .font_weight(FontWeight(680.0))
-                                .text_size(px(13.0))
-                                .text_color(rgb(AURORA_TEXT_PRIMARY))
-                                .child(SharedString::from(output.title)),
-                        ),
+                        .font_weight(FontWeight(480.0))
+                        .text_size(px(14.0))
+                        .text_color(if query_is_empty {
+                            rgb(AURORA_TEXT_MUTED)
+                        } else {
+                            rgb(AURORA_TEXT_PRIMARY)
+                        })
+                        .child(prompt),
                 )
-                .when(show_subtitle, |el| {
+                .when(input_active, |el| {
                     el.child(
                         div()
-                            .font_family(AURORA_FONT_MONO)
-                            .font_weight(FontWeight(500.0))
-                            .text_size(px(11.0))
-                            .text_color(rgb(AURORA_OUTPUT_MUTED))
-                            .child(SharedString::from(output.subtitle)),
+                            .id("prompt-caret")
+                            .w(px(1.5))
+                            .h(px(18.0))
+                            .rounded_sm()
+                            .bg(rgb(AURORA_ACCENT_STRONG))
+                            .with_animation(
+                                "prompt-caret-blink",
+                                Animation::new(Duration::from_millis(1000))
+                                    .repeat()
+                                    .with_easing(pulsating_between(0.12, 1.0)),
+                                |el, delta| el.opacity(delta),
+                            ),
                     )
                 }),
         )
-        .when(empty, |el| {
-            el.child(
-                div()
-                    .px_3()
-                    .py_3()
-                    .rounded_sm()
-                    .border_1()
-                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                    .bg(rgb(AURORA_CONTROL_SURFACE))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .when(is_running, |el| {
-                        el.child(pulsing_dot(
-                            "output-body-dot",
-                            AURORA_ACCENT_PRIMARY,
-                            px(6.0),
-                            true,
-                        ))
-                    })
-                    .child(
-                        div()
-                            .font_weight(FontWeight(480.0))
-                            .text_size(px(12.0))
-                            .text_color(rgb(AURORA_TEXT_MUTED))
-                            .child(if is_running {
-                                "Working — waiting for axon to return output."
-                            } else {
-                                "No stdout or stderr was emitted."
-                            }),
-                    ),
-            )
-        })
-        .when_some(output.stdout, |el, section| {
-            el.child(render_output_section(
-                section,
-                OutputKind::Success,
-                output.use_markdown,
-                compact_stdout,
-            ))
-        })
-        .when_some(output.stderr, |el, section| {
-            el.child(render_output_section(
-                section,
-                OutputKind::Error,
-                false,
-                false,
-            ))
-        })
+        .child(
+            div()
+                .cursor_pointer()
+                .rounded_sm()
+                .px_2()
+                .py_1()
+                .border_1()
+                .border_color(rgb(AURORA_BORDER_STRONG))
+                .bg(rgb(AURORA_NAV_BG))
+                .hover(|el| el.bg(rgb(AURORA_HOVER_BG)))
+                .font_family(AURORA_FONT_MONO)
+                .font_weight(FontWeight(700.0))
+                .text_size(px(12.0))
+                .text_color(rgb(AURORA_ACCENT_STRONG))
+                .on_mouse_down(MouseButton::Left, |_: &MouseDownEvent, window, cx| {
+                    window.dispatch_action(Box::new(Submit), cx);
+                })
+                .child("send"),
+        )
 }
 
 pub(crate) fn render_palette_footer(
@@ -310,82 +274,6 @@ pub(crate) fn render_palette_footer(
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────
-
-fn render_output_section(
-    section: OutputSection,
-    kind: OutputKind,
-    use_markdown: bool,
-    compact: bool,
-) -> impl IntoElement {
-    let accent = kind.accent_color();
-    let text = section.text.clone();
-    let rendered_lines = section.rendered_lines.clone();
-
-    div()
-        .flex()
-        .flex_col()
-        .rounded_sm()
-        .when(!compact, |el| {
-            el.border_1()
-                .border_color(rgb(AURORA_BORDER_DEFAULT))
-                .bg(rgb(AURORA_CONTROL_SURFACE))
-        })
-        // section header
-        .when(!compact, |el| {
-            el.child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(rgb(AURORA_BORDER_DEFAULT))
-                    .child(
-                        div()
-                            .font_family(AURORA_FONT_MONO)
-                            .font_weight(FontWeight(650.0))
-                            .text_size(px(11.0))
-                            .text_color(rgb(accent))
-                            .child(section.label),
-                    )
-                    .child(
-                        div()
-                            .font_family(AURORA_FONT_MONO)
-                            .font_weight(FontWeight(480.0))
-                            .text_size(px(11.0))
-                            .text_color(rgb(AURORA_OUTPUT_MUTED))
-                            .child(SharedString::from(format!("{} lines", section.line_count))),
-                    ),
-            )
-        })
-        // section body — markdown or raw monospace
-        .child(
-            div()
-                .px_3()
-                .py_2()
-                .when(use_markdown, |el| el.child(render_markdown(&text)))
-                .when(!use_markdown, |el| {
-                    // `rendered_lines` is pre-computed at section
-                    // construction time; the `SharedString` clones below
-                    // are cheap (Arc bumps), so this renders without
-                    // per-frame `String` allocations.
-                    el.flex()
-                        .flex_col()
-                        .children(rendered_lines.iter().map(|line| {
-                            div()
-                                .w_full()
-                                .font_family(AURORA_FONT_MONO)
-                                .font_weight(FontWeight(480.0))
-                                .text_size(px(12.0))
-                                .line_height(px(20.0))
-                                .text_color(rgb(AURORA_OUTPUT_TEXT))
-                                .child(line.clone())
-                        }))
-                }),
-        )
-}
 
 /// A small circular dot. When `animate` is true the dot pulses its opacity
 /// between 0.35 and 1.0 — the user's "the app is alive and waiting on

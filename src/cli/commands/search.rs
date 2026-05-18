@@ -9,6 +9,8 @@ use crate::services::types::SearchOptions as ServiceSearchOptions;
 use serde_json::Value;
 use std::error::Error;
 
+const HUMAN_SNIPPET_LIMIT: usize = 240;
+
 pub async fn run_search(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -110,10 +112,22 @@ fn print_search_results(query: &str, results: &[Value]) {
         println!("{}. {}", position, primary(title));
         println!("   {}", muted(url));
         if let Some(s) = result["snippet"].as_str() {
-            println!("   {s}");
+            println!("   {}", summarize_snippet(s));
         }
         println!();
     }
+}
+
+fn summarize_snippet(snippet: &str) -> String {
+    let compact = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.len() <= HUMAN_SNIPPET_LIMIT {
+        return compact;
+    }
+
+    let boundary = compact.floor_char_boundary(HUMAN_SNIPPET_LIMIT);
+    let mut truncated = compact[..boundary].trim_end().to_string();
+    truncated.push_str("...");
+    truncated
 }
 
 #[cfg(test)]

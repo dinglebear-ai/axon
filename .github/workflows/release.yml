@@ -16,6 +16,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  WINDOWS_PORTABLE_RUSTFLAGS: >-
+    -C target-cpu=x86-64
+    -C target-feature=-avx512f,-avx512vl,-avx512bw,-avx512dq,-avx512cd,-avx512ifma,-avx512vbmi,-avx512vbmi2,-avx512vnni,-avx512bitalg,-avx512vpopcntdq
 
 jobs:
   axon-linux:
@@ -124,8 +127,22 @@ jobs:
         with:
           workspaces: apps/desktop
           shared-key: release-palette-windows
+      - name: Show Windows Rust CPU flags
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          rustc -vV
+          "RUSTFLAGS=$env:RUSTFLAGS"
+          rustc --print cfg | Select-String 'target_feature'
+          cargo config get build.rustflags --merged
+          if ($LASTEXITCODE -ne 0) { "build.rustflags not set" }
+          exit 0
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
       - name: cargo build --release
         run: cargo build --release --locked --manifest-path apps/desktop/Cargo.toml
+        env:
+          RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
       - name: Package
         shell: pwsh
         run: |
