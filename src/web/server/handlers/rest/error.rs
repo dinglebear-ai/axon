@@ -85,6 +85,10 @@ pub(crate) fn classify_service_error(err: &(dyn Error + 'static)) -> (StatusCode
     (StatusCode::INTERNAL_SERVER_ERROR, "internal")
 }
 
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod tests;
+
 pub(crate) fn map_service_error(err: &(dyn Error + 'static)) -> Response {
     let (status, kind) = classify_service_error(err);
     rest_error(status, kind, err.to_string())

@@ -111,6 +111,10 @@ pub(crate) async fn jsonize_auth_error(request: Request, next: Next) -> Response
         return response;
     }
     if response.headers().contains_key(SCOPE_GUARD_HEADER) {
+        // Strip the internal marker before forwarding to the client — it is
+        // an implementation detail that should not be visible in API responses.
+        let mut response = response;
+        response.headers_mut().remove(SCOPE_GUARD_HEADER);
         return response;
     }
     let kind = if status == StatusCode::UNAUTHORIZED {

@@ -26,6 +26,7 @@ pub struct WatchDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WatchDefCreate {
     pub name: String,
     pub task_type: String,
