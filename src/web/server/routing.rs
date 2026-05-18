@@ -48,11 +48,18 @@ pub(super) fn router(
         .merge(ask_router)
         .fallback(super::super::static_assets::serve_static)
         .with_state((state, Arc::clone(&cfg)));
-    panel_router.merge(super::super::actions::router(
-        cfg,
-        service_context,
-        auth_policy,
-    ))
+    let rest_router = handlers::rest::router(
+        Arc::clone(&cfg),
+        Arc::clone(&service_context),
+        auth_policy.clone(),
+    );
+    panel_router
+        .merge(super::super::actions::router(
+            cfg,
+            service_context,
+            auth_policy,
+        ))
+        .merge(rest_router)
 }
 
 pub(crate) fn ask_router<S>(

@@ -4,6 +4,8 @@ pub mod ask;
 pub mod auth;
 #[path = "handlers/config.rs"]
 pub mod config;
+#[path = "handlers/rest.rs"]
+pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
 
