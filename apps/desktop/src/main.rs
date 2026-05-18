@@ -49,7 +49,15 @@ fn build_application() -> Application {
 
 actions!(
     palette,
-    [Submit, MoveDown, MoveUp, TabComplete, ClearOutput]
+    [
+        Submit,
+        MoveDown,
+        MoveUp,
+        TabComplete,
+        ClearOutput,
+        ToggleActionMenu,
+        ToggleErrors
+    ]
 );
 
 fn main() -> Result<()> {
@@ -86,6 +94,8 @@ fn main() -> Result<()> {
             KeyBinding::new("down", MoveDown, Some("Palette")),
             KeyBinding::new("up", MoveUp, Some("Palette")),
             KeyBinding::new("tab", TabComplete, Some("Palette")),
+            KeyBinding::new("ctrl+k", ToggleActionMenu, Some("Palette")),
+            KeyBinding::new("ctrl+e", ToggleErrors, Some("Palette")),
         ]);
 
         // Launch height is the prompt-only minimum from `layout::MIN_WINDOW_HEIGHT`.

@@ -92,20 +92,27 @@ impl CommandOutput {
 
     pub(crate) fn from_process(command_line: &str, subcommand: &str, output: Output) -> Self {
         let stdout = OutputSection::from_bytes_for_command("stdout", subcommand, &output.stdout);
-        let stderr = OutputSection::from_bytes("stderr", &output.stderr);
-        let kind = if output.status.success() {
+        let success = output.status.success();
+        let stderr = OutputSection::from_bytes("stderr", &output.stderr).map(|section| {
+            if success {
+                section
+            } else {
+                section.with_text(actionable_error_text(&section.text))
+            }
+        });
+        let kind = if success {
             OutputKind::Success
         } else {
             OutputKind::Error
         };
-        let title = if output.status.success() {
+        let title = if success {
             format!("{} completed", command_title(subcommand))
         } else {
             format!("{} failed", command_title(subcommand))
         };
         let subtitle = format!("{command_line} · {}", format_exit_status(&output.status));
         let use_markdown = matches!(subcommand, "scrape" | "ask" | "research");
-        let compact_stdout = output.status.success() && stderr.is_none();
+        let compact_stdout = success && stderr.is_none();
 
         Self {
             kind,
@@ -189,6 +196,34 @@ fn map_url_listing(text: &str) -> String {
         text.to_string()
     } else {
         urls.join("\n")
+    }
+}
+
+fn actionable_error_text(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if let Some(index) = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("Error:"))
+    {
+        return lines[index..].join("\n");
+    }
+
+    let non_log_lines: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !(trimmed.contains(" WARN ")
+                || trimmed.contains(" INFO ")
+                || trimmed.contains(" DEBUG ")
+                || trimmed.contains(" TRACE "))
+        })
+        .collect();
+
+    if non_log_lines.is_empty() {
+        text.to_string()
+    } else {
+        non_log_lines.join("\n")
     }
 }
 

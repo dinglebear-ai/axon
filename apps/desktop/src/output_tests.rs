@@ -156,3 +156,25 @@ fn map_url_listing_keeps_non_map_output_when_no_urls_found() {
     let input = "Map failed before producing URLs";
     assert_eq!(map_url_listing(input), input);
 }
+
+#[test]
+fn actionable_error_text_prefers_final_error_line() {
+    let input = "\
+02:50:24  WARN  tei_embed retry transport_error attempt=1/6
+02:50:27  WARN  tei_embed retry transport_error attempt=2/6
+Error: ServiceError { message: \"TEI unavailable\" }";
+
+    assert_eq!(
+        actionable_error_text(input),
+        "Error: ServiceError { message: \"TEI unavailable\" }"
+    );
+}
+
+#[test]
+fn actionable_error_text_drops_log_lines_when_no_error_prefix() {
+    let input = "\
+02:50:24  WARN  tei_embed retry transport_error
+failed to connect to service";
+
+    assert_eq!(actionable_error_text(input), "failed to connect to service");
+}
