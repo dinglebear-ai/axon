@@ -13,8 +13,26 @@
 //!     `src/web/actions.rs:authorize_action`.
 
 use super::error::rest_error;
-use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
+use axum::{
+    extract::Request,
+    http::{HeaderValue, StatusCode},
+    middleware::Next,
+    response::Response,
+};
 use lab_auth::AuthContext;
+
+/// Marker header attached to every scope-guard-rejected response. The outer
+/// [`jsonize_auth_error`] middleware uses it to distinguish our richer JSON
+/// envelopes (which carry the required scope name) from generic auth-layer
+/// 401/403s that need to be normalized.
+const SCOPE_GUARD_HEADER: &str = "x-axon-scope-guard";
+
+fn tag_scope_guard(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert(SCOPE_GUARD_HEADER, HeaderValue::from_static("1"));
+    response
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct ScopeGuard {
@@ -58,35 +76,47 @@ pub(crate) async fn enforce_scope(guard: ScopeGuard, request: Request, next: Nex
         return next.run(request).await;
     }
     let Some(auth) = request.extensions().get::<AuthContext>().cloned() else {
-        return rest_error(
+        return tag_scope_guard(rest_error(
             StatusCode::UNAUTHORIZED,
             "unauthorized",
             "unauthorized".into(),
-        );
+        ));
     };
     let allowed = auth.scopes.iter().any(|scope| {
         scope == guard.required_scope
             || (guard.required_scope == "axon:read" && scope == "axon:write")
     });
     if !allowed {
-        return rest_error(
+        return tag_scope_guard(rest_error(
             StatusCode::FORBIDDEN,
             "forbidden",
             format!("requires scope: {}", guard.required_scope),
-        );
+        ));
     }
     next.run(request).await
 }
 
-/// Map any 401/403 produced by the auth layer to our JSON error envelope.
+/// Map any 401/403 produced by the auth layer (lab-auth or scope-guard
+/// fallthrough) to our JSON error envelope.
+///
+/// Skips responses tagged with [`SCOPE_GUARD_HEADER`] — those are richer
+/// JSON bodies emitted by [`enforce_scope`] that already carry the required
+/// scope name and would lose that information if this generic normalizer
+/// overwrote them. lab-auth's responses do not carry the marker and are
+/// rewritten to the canonical `{ kind, message }` shape.
 pub(crate) async fn jsonize_auth_error(request: Request, next: Next) -> Response {
     let response = next.run(request).await;
     let status = response.status();
-    if status == StatusCode::UNAUTHORIZED {
-        return rest_error(status, "unauthorized", "unauthorized".into());
+    if status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN {
+        return response;
     }
-    if status == StatusCode::FORBIDDEN {
-        return rest_error(status, "forbidden", "forbidden".into());
+    if response.headers().contains_key(SCOPE_GUARD_HEADER) {
+        return response;
     }
-    response
+    let kind = if status == StatusCode::UNAUTHORIZED {
+        "unauthorized"
+    } else {
+        "forbidden"
+    };
+    rest_error(status, kind, kind.into())
 }
