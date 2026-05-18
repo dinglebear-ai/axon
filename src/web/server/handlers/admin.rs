@@ -126,7 +126,13 @@ pub(crate) async fn create_watch(
     if req.every_seconds < 1 {
         return Err(HttpError::bad_request("every_seconds must be >= 1"));
     }
-    if req.task_payload.to_string().len() > MAX_TASK_PAYLOAD_BYTES {
+    if req
+        .task_payload
+        .as_str()
+        .map_or_else(|| req.task_payload.to_string(), |s| s.to_string())
+        .len()
+        > MAX_TASK_PAYLOAD_BYTES
+    {
         return Err(HttpError::bad_request("task_payload exceeds 64 KiB limit"));
     }
     // Validate refresh task URLs at create time so the watch doesn't silently

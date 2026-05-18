@@ -834,7 +834,7 @@ async fn all_submit_routes_reject_unknown_fields() {
         ),
     ];
 
-    for (path, _method, body) in cases {
+    for (path, _, body) in cases {
         let response = client
             .post(format!("{base}{path}"))
             .json(body)
