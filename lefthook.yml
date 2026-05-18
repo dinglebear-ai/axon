@@ -7,6 +7,8 @@ pre-commit:
       run: cargo xtask check-env-staged
     claude-symlinks:
       run: cargo xtask check-claude-symlinks
+    broken-symlinks:
+      run: cargo xtask check-broken-symlinks
     mcp-http-only:
       glob: "**/*.rs"
       run: cargo xtask check-mcp-http
