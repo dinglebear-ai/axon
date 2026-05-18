@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-05-18
+
+### Added
+
+- **REST API: dedicated per-resource routes (`/v1/{resource}`).** Replaces the
+  generic `POST /v1/actions` envelope dispatcher with HTTP-native routes.
+  Implemented as Families 1–4 of epic `axon_rust-2qva`:
+  - **Family 1** — `GET /v1/{sources,domains,stats,doctor,status}` (read scope).
+  - **Family 2** — `POST /v1/{query,retrieve,suggest,map,search,research,scrape}`
+    (read scope for query/retrieve/map; write for the rest). `/v1/ask` already
+    existed and is kept. `/v1/evaluate` is intentionally NOT exposed yet — see
+    Known Limitations.
+  - **Family 3** — async jobs for crawl/embed/extract/ingest:
+    `POST /v1/{kind}` returns `202 Accepted` + `JobStartOutcome`; `GET
+    /v1/{kind}/{id}` returns the current status (or 404); `POST
+    /v1/{kind}/{id}/cancel` cancels the job.
+  - **Family 4** — admin/destructive: `POST /v1/migrate` and `POST /v1/dedupe`
+    (unconditional auth — required even in `LoopbackDev`, matching the
+    `/v1/actions` invariant); watch scheduler CRUD at `GET /v1/watch`, `POST
+    /v1/watch/create`, `GET /v1/watch/{id}`, `POST /v1/watch/{id}/run`.
+
+### Deprecated
+
+- **`POST /v1/actions` envelope.** Still functional and supported, but every
+  response now carries the `Deprecation: true` and `Link: …; rel="successor-version"`
+  headers per RFC 8594 guidance. New integrations should use the dedicated
+  `/v1/{resource}` routes added in this release. A removal date will be
+  announced before the next major bump.
+
+### Changed
+
+- `src/jobs/watch_lite.rs::run_watch_now` outcome error type narrowed from
+  `Box<dyn Error>` to `Box<dyn Error + Send + Sync>` so it can be invoked from
+  a multi-thread axum handler (`POST /v1/watch/{id}/run`).
+
+### Known Limitations
+
+- `POST /v1/evaluate` is not yet exposed via a dedicated REST route.
+  `services::query::evaluate` and the underlying `vector/ops/commands/evaluate`
+  pipeline hold non-`Send` `Box<dyn Error>` values across `.await` points, and
+  the multi-thread axum runtime requires `Send` handler futures. Tracked as a
+  separate follow-up bead. Callers can still reach evaluate via
+  `POST /v1/actions { "action": { "action": "evaluate", ... } }`.
+
 ## [4.0.0] - 2026-05-18
 
 ### BREAKING CHANGES
