@@ -252,6 +252,75 @@ async fn sync_post_search_rejects_invalid_time_range() {
     );
 }
 
+/// F3 async-job submit routes reject empty/missing required fields with 400
+/// in LoopbackDev mode (no auth layer involved).
+#[tokio::test]
+#[serial]
+async fn async_submit_routes_reject_empty_required_fields() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let cases = [
+        ("/v1/crawl", serde_json::json!({ "urls": [] })),
+        ("/v1/embed", serde_json::json!({ "input": "" })),
+        ("/v1/extract", serde_json::json!({ "urls": [] })),
+    ];
+    for (path, body) in cases {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
+        assert_eq!(body["kind"], "bad_request", "{path} kind");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// F3 GET / cancel routes reject non-UUID :id with 400.
+#[tokio::test]
+#[serial]
+async fn async_job_id_routes_reject_invalid_uuid() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    for path in [
+        "/v1/crawl/not-a-uuid",
+        "/v1/embed/not-a-uuid",
+        "/v1/extract/not-a-uuid",
+        "/v1/ingest/not-a-uuid",
+    ] {
+        let response = client
+            .get(format!("{base}{path}"))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("get {path}: {e}"));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+    }
+
+    for path in [
+        "/v1/crawl/not-a-uuid/cancel",
+        "/v1/embed/not-a-uuid/cancel",
+        "/v1/extract/not-a-uuid/cancel",
+        "/v1/ingest/not-a-uuid/cancel",
+    ] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("post {path}: {e}"));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+    }
+
+    stop(shutdown, handle).await;
+}
+
 #[tokio::test]
 #[serial]
 async fn bearer_token_grants_read_access() {

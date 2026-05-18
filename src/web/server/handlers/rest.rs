@@ -7,6 +7,8 @@
 //! `/v1/actions` is kept for back-compat (see deprecation header in
 //! `crate::web::actions`); these routes are the path forward.
 
+#[path = "rest/async_jobs.rs"]
+pub(crate) mod async_jobs;
 #[path = "rest/auth.rs"]
 pub(crate) mod auth;
 #[path = "rest/error.rs"]
@@ -77,6 +79,57 @@ pub(crate) fn router(
         .route("/v1/search", guarded(post(sync_post::v1_search), write))
         .route("/v1/research", guarded(post(sync_post::v1_research), write))
         .route("/v1/scrape", guarded(post(sync_post::v1_scrape), write))
+        // Family 3 — async jobs (POST submit + GET status; cancel via POST .../:id/cancel
+        // — DELETE is not used so the GET (read) and cancel (write) routes can carry
+        // distinct scope guards without sharing one MethodRouter layer.)
+        .route(
+            "/v1/crawl",
+            guarded(post(async_jobs::v1_crawl_submit), write),
+        )
+        .route(
+            "/v1/crawl/{id}",
+            guarded(get(async_jobs::v1_crawl_status), read),
+        )
+        .route(
+            "/v1/crawl/{id}/cancel",
+            guarded(post(async_jobs::v1_crawl_cancel), write),
+        )
+        .route(
+            "/v1/embed",
+            guarded(post(async_jobs::v1_embed_submit), write),
+        )
+        .route(
+            "/v1/embed/{id}",
+            guarded(get(async_jobs::v1_embed_status), read),
+        )
+        .route(
+            "/v1/embed/{id}/cancel",
+            guarded(post(async_jobs::v1_embed_cancel), write),
+        )
+        .route(
+            "/v1/extract",
+            guarded(post(async_jobs::v1_extract_submit), write),
+        )
+        .route(
+            "/v1/extract/{id}",
+            guarded(get(async_jobs::v1_extract_status), read),
+        )
+        .route(
+            "/v1/extract/{id}/cancel",
+            guarded(post(async_jobs::v1_extract_cancel), write),
+        )
+        .route(
+            "/v1/ingest",
+            guarded(post(async_jobs::v1_ingest_submit), write),
+        )
+        .route(
+            "/v1/ingest/{id}",
+            guarded(get(async_jobs::v1_ingest_status), read),
+        )
+        .route(
+            "/v1/ingest/{id}/cancel",
+            guarded(post(async_jobs::v1_ingest_cancel), write),
+        )
         .with_state(state);
 
     if let Some(layer) = build_auth_layer(
