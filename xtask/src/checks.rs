@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
+pub mod broken_symlinks;
 pub mod claude_symlinks;
 pub mod env_staged;
 pub mod mcp_http;
@@ -13,6 +14,7 @@ pub fn check(root: &Path) -> Result<()> {
     env_staged::check(root)?;
     unwraps::check(root)?;
     claude_symlinks::check(root)?;
+    broken_symlinks::check(root)?;
     println!("All checks passed.");
     Ok(())
 }

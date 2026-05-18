@@ -24,6 +24,8 @@ enum Command {
     CheckUnwraps,
     /// Verify AGENTS.md/GEMINI.md symlinks next to CLAUDE.md files.
     CheckClaudeSymlinks,
+    /// Fail if any symlink in the worktree points to a non-existent target.
+    CheckBrokenSymlinks,
 }
 
 fn main() -> Result<()> {
@@ -36,5 +38,6 @@ fn main() -> Result<()> {
         Command::CheckEnvStaged => checks::env_staged::check(&root),
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
+        Command::CheckBrokenSymlinks => checks::broken_symlinks::check(&root),
     }
 }
