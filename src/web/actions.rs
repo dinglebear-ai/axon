@@ -3,6 +3,7 @@ use crate::mcp::auth::{
     AuthPolicy, build_auth_layer, configured_mcp_http_token, normalize_api_key_header,
     oauth_resource_url,
 };
+use crate::mcp::schema::AxonRequest;
 use crate::services::action_api::{dispatch_action, required_scope};
 use crate::services::context::ServiceContext;
 use crate::services::types::{
@@ -185,15 +186,18 @@ async fn jsonize_auth_error(request: Request<Body>, next: Next) -> Response {
 fn authorize_action(
     state: &ActionState,
     auth: Option<&AuthContext>,
-    action: &crate::mcp::schema::AxonRequest,
+    action: &AxonRequest,
 ) -> Result<(), (StatusCode, ClientActionError)> {
     // Destructive / irreversible actions require a valid token unconditionally —
     // they must NOT be reachable via LoopbackDev (no-token) mode regardless of
     // the global auth_required flag.
-    let requires_unconditional_auth = matches!(
-        action,
-        crate::mcp::schema::AxonRequest::Migrate(_) | crate::mcp::schema::AxonRequest::Dedupe(_)
-    );
+    //
+    // INVARIANT: required_scope() in action_api.rs must return Some(...) for every
+    // action listed here. If it returned None the scope check below would fire
+    // return Ok(()) after auth is confirmed — reducing the guard to "any valid token,
+    // any scope". See action_api.rs for the matching invariant comment.
+    let requires_unconditional_auth =
+        matches!(action, AxonRequest::Migrate(_) | AxonRequest::Dedupe(_));
 
     if !state.auth_required && !requires_unconditional_auth {
         return Ok(());

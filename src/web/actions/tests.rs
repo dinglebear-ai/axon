@@ -293,9 +293,12 @@ async fn migrate_requires_auth_even_in_loopback_dev_mode() {
     let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
-    assert!(
-        status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN,
-        "expected 401 or 403 for migrate without token in LoopbackDev mode, got {status}"
+    // In LoopbackDev mode no AuthLayer is mounted so no AuthContext is injected.
+    // authorize_action sees auth=None and returns UNAUTHORIZED — never FORBIDDEN.
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "migrate without token in LoopbackDev mode must return 401, got {status}"
     );
     assert_eq!(body["ok"], false);
 }
@@ -319,9 +322,11 @@ async fn dedupe_requires_auth_even_in_loopback_dev_mode() {
     let body: serde_json::Value = response.json().await.expect("json body");
 
     stop(shutdown, handle).await;
-    assert!(
-        status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN,
-        "expected 401 or 403 for dedupe without token in LoopbackDev mode, got {status}"
+    // Same reasoning as migrate: no AuthLayer in LoopbackDev → auth=None → 401.
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "dedupe without token in LoopbackDev mode must return 401, got {status}"
     );
     assert_eq!(body["ok"], false);
 }
