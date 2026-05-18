@@ -101,7 +101,8 @@ pub(crate) async fn v1_crawl_submit(
         return missing_field("urls");
     }
     if let Err(reason) = validate_urls(&req.urls) {
-        return rest_error(StatusCode::UNPROCESSABLE_ENTITY, "invalid_url", reason);
+        // 400 BAD_REQUEST — invalid client input (SSRF-blocked URL).
+        return rest_error(StatusCode::BAD_REQUEST, "invalid_url", reason);
     }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
@@ -274,7 +275,7 @@ pub(crate) async fn v1_extract_submit(
         return missing_field("urls");
     }
     if let Err(reason) = validate_urls(&req.urls) {
-        return rest_error(StatusCode::UNPROCESSABLE_ENTITY, "invalid_url", reason);
+        return rest_error(StatusCode::BAD_REQUEST, "invalid_url", reason);
     }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
