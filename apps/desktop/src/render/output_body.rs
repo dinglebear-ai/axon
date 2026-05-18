@@ -5,7 +5,7 @@ use gpui::{
 
 use super::pulsing_dot;
 use crate::ToggleErrors;
-use crate::markdown::render_markdown;
+use crate::markdown::render_markdown_doc;
 use crate::output::{CommandOutput, OutputKind, OutputSection};
 use crate::theme::{
     AURORA_ACCENT_PRIMARY, AURORA_ACCENT_STRONG, AURORA_BORDER_DEFAULT, AURORA_CONTROL_SURFACE,
@@ -132,8 +132,8 @@ fn render_output_section(
     compact: bool,
 ) -> impl IntoElement {
     let accent = kind.accent_color();
-    let text = section.text.clone();
     let rendered_lines = section.rendered_lines.clone();
+    let markdown = section.markdown.clone();
 
     div()
         .flex()
@@ -177,7 +177,9 @@ fn render_output_section(
             div()
                 .px_3()
                 .py_2()
-                .when(use_markdown, |el| el.child(render_markdown(&text)))
+                .when_some(markdown.filter(|_| use_markdown), |el, markdown| {
+                    el.child(render_markdown_doc(&markdown))
+                })
                 .when(!use_markdown, |el| {
                     el.flex()
                         .flex_col()

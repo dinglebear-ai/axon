@@ -1,4 +1,3 @@
-use std::process::Output;
 use std::time::{Duration, Instant};
 
 use gpui::{Context, Window, prelude::*};
@@ -7,13 +6,13 @@ use super::{ConnectionState, Palette, RunningCommand, axon_command};
 use crate::Submit;
 use crate::actions::{ArgMode, build_axon_args, display_command_line};
 use crate::conversation::{AskConversation, inject_follow_up};
-use crate::output::{CommandOutput, OutputKind};
+use crate::output::{BoundedProcessOutput, CommandOutput, OutputKind, run_command_bounded};
 
 struct CommandResult {
     id: u64,
     subcommand: &'static str,
     command_line: String,
-    result: Result<Output, String>,
+    result: Result<BoundedProcessOutput, String>,
 }
 
 struct HealthResult {
@@ -28,9 +27,9 @@ impl Palette {
         cx.notify();
 
         let task = cx.background_spawn(async move {
-            let ok = axon_command()
-                .args(["doctor", "--json"])
-                .output()
+            let mut cmd = axon_command();
+            cmd.args(["doctor", "--json"]);
+            let ok = run_command_bounded(cmd)
                 .map(|o| {
                     let stdout = String::from_utf8_lossy(&o.stdout);
                     stdout.contains(r#""all_ok":true"#) || stdout.contains(r#""all_ok": true"#)
@@ -145,7 +144,7 @@ impl Palette {
         let task = cx.background_spawn(async move {
             let mut cmd = axon_command();
             cmd.args(&args);
-            let result = cmd.output().map_err(|error| error.to_string());
+            let result = run_command_bounded(cmd).map_err(|error| error.to_string());
             CommandResult {
                 id: run_id,
                 subcommand: action.subcommand,
