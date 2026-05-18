@@ -323,6 +323,65 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 
 #[tokio::test]
 #[serial]
+async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+    let job_id = Uuid::nil();
+    let watch_run = format!("/v1/watch/{job_id}/run");
+    let crawl_cancel = format!("/v1/crawl/{job_id}/cancel");
+    let routes = [
+        ("POST", "/v1/dedupe"),
+        ("POST", "/v1/watch"),
+        ("POST", watch_run.as_str()),
+        ("POST", "/v1/crawl"),
+        ("POST", crawl_cancel.as_str()),
+        ("POST", "/v1/crawl/cleanup"),
+        ("DELETE", "/v1/crawl"),
+        ("POST", "/v1/crawl/recover"),
+    ];
+
+    for (method, path) in routes {
+        let response = match method {
+            "DELETE" => client.delete(format!("{base}{path}")).send().await,
+            "POST" => {
+                client
+                    .post(format!("{base}{path}"))
+                    .json(&serde_json::json!({}))
+                    .send()
+                    .await
+            }
+            _ => unreachable!("unexpected test method"),
+        }
+        .unwrap_or_else(|err| panic!("{method} {path} failed: {err}"));
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} should reject missing auth in loopback dev"
+        );
+    }
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn loopback_dev_allows_non_destructive_write_routes_without_auth() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/ask"))
+        .json(&serde_json::json!({ "query": "" }))
+        .send()
+        .await
+        .expect("ask request");
+
+    stop(shutdown, handle).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+#[serial]
 async fn v1_ask_auth_layer_accepts_bearer_and_x_api_key() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =

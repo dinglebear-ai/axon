@@ -195,23 +195,12 @@ fn taxonomy_downcast_works_through_boxed_error_chain() {
 }
 
 #[test]
-fn taxonomy_classifies_operational_qdrant_failures() {
-    let err: Box<dyn StdError + 'static> =
-        Box::new(std::io::Error::other("qdrant: connection refused"));
-    let recovered = taxonomy_from_error(err.as_ref()).expect("operational taxonomy");
-    assert_eq!(recovered.mcp_code(), "upstream_unavailable");
-    assert_eq!(recovered.mcp_source(), "qdrant");
-}
-
-#[test]
-fn taxonomy_classifies_operational_timeouts() {
+fn taxonomy_ignores_untyped_operational_errors() {
     let err: Box<dyn StdError + 'static> = Box::new(std::io::Error::new(
         std::io::ErrorKind::TimedOut,
         "TEI request timed out",
     ));
-    let recovered = taxonomy_from_error(err.as_ref()).expect("timeout taxonomy");
-    assert_eq!(recovered.mcp_code(), "timeout");
-    assert_eq!(recovered.mcp_source(), "tei");
+    assert!(taxonomy_from_error(err.as_ref()).is_none());
 }
 
 #[test]

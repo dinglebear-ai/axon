@@ -11,7 +11,7 @@ use axum::{
     Extension, Router,
     body::Body,
     extract::DefaultBodyLimit,
-    http::{Request, StatusCode},
+    http::{Method, Request, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -137,7 +137,12 @@ where
         configured_mcp_http_token().map(Arc::from),
         oauth_resource_url(auth_policy),
     ) else {
-        return router;
+        return match (auth_policy, scope) {
+            (AuthPolicy::LoopbackDev, ScopeRequirement::Write) => {
+                router.route_layer(middleware::from_fn(block_loopback_destructive_request))
+            }
+            _ => router,
+        };
     };
     let router = match scope {
         ScopeRequirement::Authenticated => router,
@@ -147,6 +152,46 @@ where
     router
         .route_layer(layer)
         .route_layer(middleware::from_fn(normalize_api_key_header))
+}
+
+async fn block_loopback_destructive_request(
+    request: Request<Body>,
+    next: middleware::Next,
+) -> Response {
+    if is_loopback_destructive_request(request.method(), request.uri().path()) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            "destructive REST route requires configured auth",
+        )
+            .into_response();
+    }
+    next.run(request).await
+}
+
+fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
+    if *method == Method::POST
+        && (path == "/v1/dedupe" || path == "/v1/watch" || path.starts_with("/v1/watch/"))
+    {
+        return true;
+    }
+
+    for prefix in ["/v1/crawl", "/v1/embed", "/v1/extract", "/v1/ingest"] {
+        if path == prefix {
+            return *method == Method::POST || *method == Method::DELETE;
+        }
+        let Some(remainder) = path
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_prefix('/'))
+        else {
+            continue;
+        };
+        if *method == Method::POST
+            && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 async fn require_read_scope(

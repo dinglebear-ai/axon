@@ -418,20 +418,25 @@ pub async fn ask(
 ///
 /// Returns the full structured evaluate payload without printing to stdout.
 #[must_use = "evaluate returns a Result that should be handled"]
-pub async fn evaluate(cfg: &Config, question: &str) -> Result<EvaluateResult, Box<dyn Error>> {
+pub async fn evaluate(
+    cfg: &Config,
+    question: &str,
+) -> Result<EvaluateResult, Box<dyn Error + Send + Sync>> {
     let mut derived = cfg.clone();
     derived.query = Some(question.to_string());
     derived.positional = Vec::new();
-    let payload = evaluate_payload(&derived)
-        .await
-        .map_err(|e| -> Box<dyn Error> {
-            format!(
-                "evaluate failed for {}: {e}",
-                question.chars().take(80).collect::<String>()
-            )
-            .into()
-        })?;
+    let payload =
+        evaluate_payload(&derived)
+            .await
+            .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                format!(
+                    "evaluate failed for {}: {e}",
+                    question.chars().take(80).collect::<String>()
+                )
+                .into()
+            })?;
     map_evaluate_payload(payload)
+        .map_err(|err| -> Box<dyn Error + Send + Sync> { err.to_string().into() })
 }
 
 /// Suggest new URLs to crawl based on the current Qdrant index and an optional focus.

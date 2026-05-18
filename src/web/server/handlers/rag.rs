@@ -68,30 +68,11 @@ pub(crate) async fn evaluate(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<EvaluateRequest>,
 ) -> Result<Json<services::types::EvaluateResult>, HttpError> {
-    let question = required_text(&req.question, "question")?.to_string();
-    let handle = tokio::runtime::Handle::current();
-    let result = tokio::task::spawn_blocking(move || {
-        handle.block_on(async move {
-            services::query::evaluate(&cfg, &question)
-                .await
-                .map_err(|err| err.to_string())
-        })
-    })
-    .await
-    .map_err(|err| {
-        HttpError::new(
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            format!("evaluate task failed: {err}"),
-        )
-    })?;
-    result.map(Json).map_err(|message| {
-        HttpError::new(
-            axum::http::StatusCode::BAD_GATEWAY,
-            "upstream_unavailable",
-            message,
-        )
-    })
+    let question = required_text(&req.question, "question")?;
+    services::query::evaluate(&cfg, question)
+        .await
+        .map(Json)
+        .map_err(HttpError::from_box_send_sync)
 }
 
 pub(crate) async fn suggest(
