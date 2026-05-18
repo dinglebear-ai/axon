@@ -48,26 +48,19 @@ fn guarded(method: MethodRouter<RestState>, guard: ScopeGuard) -> MethodRouter<R
     }))
 }
 
-/// Build the REST `/v1/*` sub-router. The same auth layer covers every route
-/// in this family; per-route scope checks run after it.
-pub(crate) fn router(
-    cfg: Arc<Config>,
-    service_context: Arc<OnceCell<Arc<ServiceContext>>>,
-    auth_policy: AuthPolicy,
-) -> Router {
-    let state = RestState::new(Arc::clone(&cfg), service_context, &auth_policy);
+// ── Per-family route builders ────────────────────────────────────────────
 
-    let read = ScopeGuard::read(state.auth_required);
-    let write = ScopeGuard::write(state.auth_required);
-
-    let rest = Router::new()
-        // Family 1 — read-only GET
+fn family_1_read_only(read: ScopeGuard) -> Router<RestState> {
+    Router::new()
         .route("/v1/sources", guarded(get(read_only::v1_sources), read))
         .route("/v1/domains", guarded(get(read_only::v1_domains), read))
         .route("/v1/stats", guarded(get(read_only::v1_stats), read))
         .route("/v1/doctor", guarded(get(read_only::v1_doctor), read))
         .route("/v1/status", guarded(get(read_only::v1_status), read))
-        // Family 2 — sync POST (read scope: query/retrieve/map; write scope: rest)
+}
+
+fn family_2_sync_post(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
+    Router::new()
         .route("/v1/query", guarded(post(sync_post::v1_query), read))
         .route("/v1/retrieve", guarded(post(sync_post::v1_retrieve), read))
         .route("/v1/map", guarded(post(sync_post::v1_map), read))
@@ -75,15 +68,18 @@ pub(crate) fn router(
         // returns `Box<dyn Error>` (non-Send) and its internals hold non-Send values
         // across `.await` points (see vector/ops/commands/evaluate/streaming.rs).
         // Wiring a multi-thread axum handler against it requires Send-ifying the
-        // entire evaluate error chain — tracked separately. Callers can still hit
-        // the evaluate action via POST /v1/actions { action: { action: "evaluate", ... } }.
+        // entire evaluate error chain — tracked separately.
         .route("/v1/suggest", guarded(post(sync_post::v1_suggest), write))
         .route("/v1/search", guarded(post(sync_post::v1_search), write))
         .route("/v1/research", guarded(post(sync_post::v1_research), write))
         .route("/v1/scrape", guarded(post(sync_post::v1_scrape), write))
-        // Family 3 — async jobs (POST submit + GET status; cancel via POST .../:id/cancel
-        // — DELETE is not used so the GET (read) and cancel (write) routes can carry
-        // distinct scope guards without sharing one MethodRouter layer.)
+}
+
+/// Cancel is POST .../cancel rather than DELETE /{id} so the GET (read) and
+/// cancel (write) routes can carry distinct scope guards — axum 0.8
+/// `MethodRouter` layers apply across all methods on a single path.
+fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
+    Router::new()
         .route(
             "/v1/crawl",
             guarded(post(async_jobs::v1_crawl_submit), write),
@@ -132,9 +128,13 @@ pub(crate) fn router(
             "/v1/ingest/{id}/cancel",
             guarded(post(async_jobs::v1_ingest_cancel), write),
         )
-        // Family 4 — admin / destructive. migrate + dedupe unconditionally
-        // require auth (admin_write guard) even in LoopbackDev. Watch CRUD uses
-        // standard read/write guards.
+}
+
+/// migrate/dedupe carry `admin_write` (unconditional auth even in LoopbackDev).
+/// Watch list is read; watch create lives at /create so list and create can
+/// carry distinct scope guards.
+fn family_4_admin(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
+    Router::new()
         .route(
             "/v1/migrate",
             guarded(post(admin::v1_migrate), ScopeGuard::admin_write()),
@@ -143,8 +143,6 @@ pub(crate) fn router(
             "/v1/dedupe",
             guarded(post(admin::v1_dedupe), ScopeGuard::admin_write()),
         )
-        // /v1/watch GET (list) is read-only; v1_watch_create is exposed as
-        // POST /v1/watch/create so the two scope guards don't share a layer.
         .route("/v1/watch", guarded(get(admin::v1_watch_list), read))
         .route(
             "/v1/watch/create",
@@ -155,6 +153,26 @@ pub(crate) fn router(
             "/v1/watch/{id}/run",
             guarded(post(admin::v1_watch_run_now), write),
         )
+}
+
+// ── Public router ────────────────────────────────────────────────────────
+
+/// Build the REST `/v1/*` sub-router. The same auth layer covers every route;
+/// per-route scope checks run after it.
+pub(crate) fn router(
+    cfg: Arc<Config>,
+    service_context: Arc<OnceCell<Arc<ServiceContext>>>,
+    auth_policy: AuthPolicy,
+) -> Router {
+    let state = RestState::new(Arc::clone(&cfg), service_context, &auth_policy);
+    let read = ScopeGuard::read(state.auth_required);
+    let write = ScopeGuard::write(state.auth_required);
+
+    let rest = Router::new()
+        .merge(family_1_read_only(read))
+        .merge(family_2_sync_post(read, write))
+        .merge(family_3_async_jobs(read, write))
+        .merge(family_4_admin(read, write))
         .with_state(state);
 
     if let Some(layer) = build_auth_layer(

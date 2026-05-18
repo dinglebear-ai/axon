@@ -17,8 +17,8 @@
 use super::error::{map_service_error, rest_error};
 use super::state::RestState;
 use super::types::{CrawlSubmitBody, EmbedSubmitBody, ExtractSubmitBody};
-use crate::jobs::ingest::types::IngestSource;
 use crate::services::context::ServiceContext;
+use crate::services::ingest::IngestSource;
 use crate::services::{
     crawl as crawl_svc, embed as embed_svc, extract as extract_svc, ingest as ingest_svc,
 };
@@ -83,12 +83,25 @@ fn cancel_response(canceled: bool) -> Response {
 
 // ── crawl ────────────────────────────────────────────────────────────────
 
+/// Validate a slice of submitted URLs before enqueue. MCP applies this at
+/// submit time; the REST surface must match so private-IP URLs are rejected
+/// with a 400 rather than accepted (202) then silently failing in the worker.
+fn validate_urls(urls: &[String]) -> Result<(), String> {
+    for url in urls {
+        crate::core::http::validate_url(url).map_err(|e| format!("{url}: {e}"))?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn v1_crawl_submit(
     State(state): State<RestState>,
     Json(req): Json<CrawlSubmitBody>,
 ) -> Response {
     if req.urls.is_empty() {
         return missing_field("urls");
+    }
+    if let Err(reason) = validate_urls(&req.urls) {
+        return rest_error(StatusCode::UNPROCESSABLE_ENTITY, "invalid_url", reason);
     }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
@@ -109,12 +122,8 @@ pub(crate) async fn v1_crawl_status(
         Err(r) => return r,
     };
     match crawl_svc::crawl_status(&ctx, job_id).await {
-        // Unlike embed/extract/ingest, services::crawl::crawl_status returns
-        // a non-Option result that wraps a null payload when the underlying
-        // job is missing. Convert that null to a 404 so the REST surface is
-        // consistent with the other job kinds.
-        Ok(result) if result.payload.is_null() => not_found("crawl", job_id),
-        Ok(result) => Json(result.payload).into_response(),
+        Ok(Some(result)) => Json(result.payload).into_response(),
+        Ok(None) => not_found("crawl", job_id),
         Err(err) => map_service_error(err.as_ref()),
     }
 }
@@ -135,12 +144,62 @@ pub(crate) async fn v1_crawl_cancel(
 
 // ── embed ────────────────────────────────────────────────────────────────
 
+/// Validate an embed `input` string the same way the MCP handler does:
+/// - http(s) URL → SSRF check via `validate_url`
+/// - Local path that EXISTS on disk → only allow if `AXON_MCP_EMBED_ALLOWED_ROOTS` is set
+///   and the path is under one of the configured roots
+/// - Non-existent path (e.g. a directory that will be created) → pass through
+fn validate_embed_input(input: &str) -> Result<(), String> {
+    let input = input.trim();
+    if input.starts_with("http://") || input.starts_with("https://") {
+        return crate::core::http::validate_url(input).map_err(|e| e.to_string());
+    }
+    let path = std::path::Path::new(input);
+    if !path.exists() {
+        // Non-existent path — service will validate further during execution.
+        return Ok(());
+    }
+    // Local path exists — require an explicit allowlist to prevent reading
+    // arbitrary files from the server filesystem.
+    let allowed_roots: Vec<String> = std::env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|p| {
+                    let t = p.trim();
+                    (!t.is_empty()).then(|| t.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if allowed_roots.is_empty() {
+        return Err(
+            "local file embedding is disabled; set AXON_MCP_EMBED_ALLOWED_ROOTS to allow specific roots".into()
+        );
+    }
+    let canonical = std::fs::canonicalize(path).map_err(|e| format!("invalid embed path: {e}"))?;
+    let allowed = allowed_roots.iter().any(|root| {
+        std::fs::canonicalize(root)
+            .map(|root| canonical.starts_with(&root))
+            .unwrap_or(false)
+    });
+    if !allowed {
+        return Err(format!(
+            "local embed path must be under one of AXON_MCP_EMBED_ALLOWED_ROOTS; got: {input}"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn v1_embed_submit(
     State(state): State<RestState>,
     Json(req): Json<EmbedSubmitBody>,
 ) -> Response {
     if req.input.trim().is_empty() {
         return missing_field("input");
+    }
+    if let Err(reason) = validate_embed_input(&req.input) {
+        return rest_error(StatusCode::BAD_REQUEST, "bad_request", reason);
     }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,
@@ -197,6 +256,9 @@ pub(crate) async fn v1_extract_submit(
 ) -> Response {
     if req.urls.is_empty() {
         return missing_field("urls");
+    }
+    if let Err(reason) = validate_urls(&req.urls) {
+        return rest_error(StatusCode::UNPROCESSABLE_ENTITY, "invalid_url", reason);
     }
     let ctx = match ctx_only(&state).await {
         Ok(ctx) => ctx,

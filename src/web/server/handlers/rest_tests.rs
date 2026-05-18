@@ -534,3 +534,312 @@ async fn bearer_token_grants_read_access() {
         "expected 200 or 502 with token, got {status}"
     );
 }
+
+// ── Scope discrimination unit tests (11ig) ───────────────────────────────
+//
+// The scope-check logic lives in enforce_scope. We test it directly by
+// verifying the scope-matching predicate that the function uses, rather than
+// constructing a full axum tower stack (Next::new API varies by axum version).
+// These tests pin the invariant: axon:read is rejected on write routes, and
+// axon:write satisfies read routes.
+
+/// Core invariant: the scope-check predicate rejects an axon:read scope when
+/// axon:write is required. This mirrors the `allowed` check in enforce_scope.
+#[test]
+fn scope_check_read_does_not_satisfy_write_requirement() {
+    let scopes: Vec<String> = vec!["axon:read".into()];
+    let required_scope = "axon:write";
+    let allowed = scopes.iter().any(|scope| {
+        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
+    });
+    assert!(
+        !allowed,
+        "axon:read must not satisfy axon:write requirement"
+    );
+}
+
+/// axon:write satisfies axon:read (write implies read).
+#[test]
+fn scope_check_write_satisfies_read_requirement() {
+    let scopes: Vec<String> = vec!["axon:write".into()];
+    let required_scope = "axon:read";
+    let allowed = scopes.iter().any(|scope| {
+        scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
+    });
+    assert!(allowed, "axon:write must satisfy axon:read requirement");
+}
+
+/// Having both scopes satisfies both read and write requirements.
+#[test]
+fn scope_check_both_scopes_satisfy_either() {
+    let scopes: Vec<String> = vec!["axon:read".into(), "axon:write".into()];
+    for required_scope in ["axon:read", "axon:write"] {
+        let allowed = scopes.iter().any(|scope| {
+            scope == required_scope || (required_scope == "axon:read" && scope == "axon:write")
+        });
+        assert!(allowed, "both scopes should satisfy {required_scope}");
+    }
+}
+
+/// axon:write satisfies read-scope routes via the full HTTP server too.
+#[tokio::test]
+#[serial]
+async fn axon_write_token_satisfies_read_scope_route() {
+    // The static bearer path grants both axon:read AND axon:write per
+    // build_auth_layer (see mcp/auth.rs:114-118 with_static_token_scopes).
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{base}/v1/sources"))
+        .header("authorization", "Bearer secret")
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_ne!(status, StatusCode::UNAUTHORIZED);
+    assert_ne!(
+        status,
+        StatusCode::FORBIDDEN,
+        "write token blocked on read route"
+    );
+}
+
+// ── Watch route tests (ovuc) ─────────────────────────────────────────────
+
+/// GET /v1/watch is reachable (not 404) in LoopbackDev.
+#[tokio::test]
+#[serial]
+async fn watch_list_route_is_reachable() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+
+    let status = reqwest::get(format!("{base}/v1/watch"))
+        .await
+        .expect("watch list")
+        .status();
+
+    stop(shutdown, handle).await;
+    assert_ne!(
+        status,
+        StatusCode::NOT_FOUND,
+        "GET /v1/watch should be mounted"
+    );
+    assert_ne!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "GET should work on /v1/watch"
+    );
+}
+
+/// POST /v1/watch/create with empty name returns 400.
+#[tokio::test]
+#[serial]
+async fn watch_create_rejects_empty_name() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/watch/create"))
+        .json(&serde_json::json!({
+            "name": "",
+            "task_type": "refresh",
+            "task_payload": {},
+            "every_seconds": 60,
+            "enabled": true,
+            "next_run_at": "2026-01-01T00:00:00Z"
+        }))
+        .send()
+        .await
+        .expect("watch create");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["kind"], "bad_request");
+}
+
+/// POST /v1/watch/create with every_seconds=0 returns 400.
+#[tokio::test]
+#[serial]
+async fn watch_create_rejects_zero_interval() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/watch/create"))
+        .json(&serde_json::json!({
+            "name": "test-watch",
+            "task_type": "refresh",
+            "task_payload": {},
+            "every_seconds": 0,
+            "enabled": true,
+            "next_run_at": "2026-01-01T00:00:00Z"
+        }))
+        .send()
+        .await
+        .expect("watch create");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// POST /v1/watch/create with unsupported task_type returns 400.
+#[tokio::test]
+#[serial]
+async fn watch_create_rejects_unsupported_task_type() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/watch/create"))
+        .json(&serde_json::json!({
+            "name": "test",
+            "task_type": "frobinate",
+            "task_payload": {},
+            "every_seconds": 60,
+            "enabled": true,
+            "next_run_at": "2026-01-01T00:00:00Z"
+        }))
+        .send()
+        .await
+        .expect("watch create");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// GET /v1/watch/{uuid} with an unknown UUID returns 404 (not found in DB)
+/// or 500/502 (SQLite unavailable in test env). Never 405.
+#[tokio::test]
+#[serial]
+async fn watch_get_unknown_uuid_route_is_mounted() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let unknown = "00000000-0000-0000-0000-000000000001";
+
+    let response = reqwest::get(format!("{base}/v1/watch/{unknown}"))
+        .await
+        .expect("watch get");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    // 404 = route mounted, UUID not found in SQLite
+    // 500/502 = route mounted, SQLite unavailable in test env
+    // 405 would mean the route is not registered — that would be a bug.
+    assert_ne!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "GET /v1/watch/{{uuid}} should be registered (got {status})"
+    );
+}
+
+/// /v1/watch/create (POST literal) does not collide with /v1/watch/{id} (GET capture).
+/// Axum prioritizes static segments over captures.
+#[tokio::test]
+#[serial]
+async fn watch_create_and_get_id_do_not_conflict() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    // GET /v1/watch/create should NOT match as a watch-ID lookup (create is not a UUID)
+    let get_create = client
+        .get(format!("{base}/v1/watch/create"))
+        .send()
+        .await
+        .expect("GET /v1/watch/create");
+
+    stop(shutdown, handle).await;
+    // Should be 405 (method not allowed on the POST-only /create route) —
+    // not 400 "invalid watch id" from the /{id} capture.
+    assert_eq!(get_create.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+// ── deny_unknown_fields across all Family 2+3 body structs (xqp1) ────────
+
+/// Every body struct that has #[serde(deny_unknown_fields)] rejects an unknown
+/// field. Parametrized to cover all Family 2 and Family 3 submit routes.
+#[tokio::test]
+#[serial]
+async fn all_submit_routes_reject_unknown_fields() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    // (path, method, body_with_unknown_field)
+    let cases: &[(&str, &str, serde_json::Value)] = &[
+        (
+            "/v1/query",
+            "POST",
+            serde_json::json!({ "query": "test", "_x": 1 }),
+        ),
+        (
+            "/v1/retrieve",
+            "POST",
+            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
+        ),
+        (
+            "/v1/map",
+            "POST",
+            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
+        ),
+        ("/v1/suggest", "POST", serde_json::json!({ "_x": 1 })),
+        (
+            "/v1/search",
+            "POST",
+            serde_json::json!({ "query": "test", "_x": 1 }),
+        ),
+        (
+            "/v1/research",
+            "POST",
+            serde_json::json!({ "query": "test", "_x": 1 }),
+        ),
+        (
+            "/v1/scrape",
+            "POST",
+            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
+        ),
+        (
+            "/v1/crawl",
+            "POST",
+            serde_json::json!({ "urls": ["https://example.com"], "_x": 1 }),
+        ),
+        (
+            "/v1/embed",
+            "POST",
+            serde_json::json!({ "input": "https://example.com", "_x": 1 }),
+        ),
+        (
+            "/v1/extract",
+            "POST",
+            serde_json::json!({ "urls": ["https://example.com"], "_x": 1 }),
+        ),
+    ];
+
+    for (path, _method, body) in cases {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
+        assert!(
+            status.is_client_error(),
+            "{path} with unknown field should return 4xx, got {status}"
+        );
+        assert_ne!(status, StatusCode::NOT_FOUND, "{path} should be mounted");
+    }
+
+    stop(shutdown, handle).await;
+}

@@ -70,9 +70,13 @@ pub async fn dispatch_crawl(
             let result = crawl_svc::crawl_status(service_context, id)
                 .await
                 .map_err(internal_error)?;
+            let (payload, output_files) = match result {
+                Some(r) => (r.payload, r.output_files),
+                None => (serde_json::Value::Null, None),
+            };
             Ok(serde_json::json!({
-                "job": result.payload,
-                "output_files": result.output_files,
+                "job": payload,
+                "output_files": output_files,
             }))
         }
         CrawlSubaction::List => {

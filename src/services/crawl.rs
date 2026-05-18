@@ -275,13 +275,14 @@ pub async fn crawl_start_with_context(
 pub async fn crawl_status(
     service_context: &ServiceContext,
     job_id: Uuid,
-) -> Result<CrawlJobResult, Box<dyn Error>> {
+) -> Result<Option<CrawlJobResult>, Box<dyn Error>> {
     let job = job_service::job_status(service_context, JobKind::Crawl, job_id).await?;
+    let Some(job) = job else { return Ok(None) };
     let payload = serde_json::to_value(job)?;
-    Ok(map_crawl_job_result_with_root(
+    Ok(Some(map_crawl_job_result_with_root(
         payload,
         Some(&service_context.cfg.output_dir),
-    ))
+    )))
 }
 
 pub async fn crawl_list(
