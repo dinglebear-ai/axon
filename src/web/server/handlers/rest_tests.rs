@@ -600,11 +600,16 @@ async fn axon_write_token_satisfies_read_scope_route() {
     let status = response.status();
 
     stop(shutdown, handle).await;
-    assert_ne!(status, StatusCode::UNAUTHORIZED);
-    assert_ne!(
-        status,
-        StatusCode::FORBIDDEN,
-        "write token blocked on read route"
+    // The static bearer token (AXON_MCP_HTTP_TOKEN) grants both axon:read
+    // AND axon:write per mcp/auth.rs:114-118. Asserting it is NOT 401/403
+    // proves the scope guard did not block it. The route then calls a service
+    // that needs Qdrant — 200 when reachable, 502 when not, both are fine.
+    assert!(
+        matches!(
+            status,
+            StatusCode::OK | StatusCode::BAD_GATEWAY | StatusCode::INTERNAL_SERVER_ERROR
+        ),
+        "expected service response (200/502/500), not auth rejection; got {status}"
     );
 }
 
