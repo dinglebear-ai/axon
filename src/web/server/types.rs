@@ -51,7 +51,7 @@ pub(super) struct OpsResponse {
 }
 
 /// Per-invocation `Config` overrides accepted by `/v1/ask`.
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct AskRequestBody {
     pub(super) query: String,

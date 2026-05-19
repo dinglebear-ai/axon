@@ -7,6 +7,10 @@ use std::sync::Arc;
 mod error;
 #[path = "server/handlers.rs"]
 mod handlers;
+#[path = "server/openapi.rs"]
+mod openapi;
+#[path = "server/openapi_jobs.rs"]
+mod openapi_jobs;
 #[path = "server/routing.rs"]
 mod routing;
 #[path = "server/state.rs"]
