@@ -13,14 +13,14 @@ use uuid::Uuid;
 
 use super::super::error::HttpError;
 
-#[derive(Debug, Deserialize)]
-struct JobListQuery {
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub(crate) struct JobListQuery {
     limit: Option<i64>,
     offset: Option<i64>,
 }
 
 #[derive(Clone)]
-struct JobLifecycleState {
+pub(crate) struct JobLifecycleState {
     service_context: Arc<ServiceContext>,
     kind: JobKind,
 }
@@ -45,7 +45,14 @@ where
         .layer(Extension(state))
 }
 
-async fn list_jobs(
+#[utoipa::path(
+    get,
+    path = "/v1/crawl",
+    params(JobListQuery),
+    responses((status = 200, description = "Crawl jobs", body = serde_json::Value)),
+    tag = "jobs"
+)]
+pub(crate) async fn list_jobs(
     Extension(state): Extension<JobLifecycleState>,
     Query(query): Query<JobListQuery>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
@@ -61,7 +68,14 @@ async fn list_jobs(
     })))
 }
 
-async fn job_status(
+#[utoipa::path(
+    get,
+    path = "/v1/crawl/{id}",
+    params(("id" = uuid::Uuid, Path, description = "Crawl job ID")),
+    responses((status = 200, description = "Crawl job status", body = serde_json::Value), (status = 404, description = "Job not found", body = crate::web::server::error::ErrorBody)),
+    tag = "jobs"
+)]
+pub(crate) async fn job_status(
     Extension(state): Extension<JobLifecycleState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
@@ -78,7 +92,14 @@ async fn job_status(
     Ok(Json(json!({ "job": job })))
 }
 
-async fn cancel_job(
+#[utoipa::path(
+    post,
+    path = "/v1/crawl/{id}/cancel",
+    params(("id" = uuid::Uuid, Path, description = "Crawl job ID")),
+    responses((status = 200, description = "Crawl cancellation result", body = serde_json::Value)),
+    tag = "jobs"
+)]
+pub(crate) async fn cancel_job(
     Extension(state): Extension<JobLifecycleState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
@@ -91,7 +112,13 @@ async fn cancel_job(
     })))
 }
 
-async fn cleanup_jobs(
+#[utoipa::path(
+    post,
+    path = "/v1/crawl/cleanup",
+    responses((status = 200, description = "Crawl cleanup result", body = serde_json::Value)),
+    tag = "jobs"
+)]
+pub(crate) async fn cleanup_jobs(
     Extension(state): Extension<JobLifecycleState>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let deleted = services::jobs::cleanup_jobs(&state.service_context, state.kind)
@@ -100,7 +127,13 @@ async fn cleanup_jobs(
     Ok(Json(json!({ "deleted": deleted })))
 }
 
-async fn clear_jobs(
+#[utoipa::path(
+    delete,
+    path = "/v1/crawl",
+    responses((status = 200, description = "Crawl clear result", body = serde_json::Value)),
+    tag = "jobs"
+)]
+pub(crate) async fn clear_jobs(
     Extension(state): Extension<JobLifecycleState>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let deleted = services::jobs::clear_jobs(&state.service_context, state.kind)
@@ -109,7 +142,13 @@ async fn clear_jobs(
     Ok(Json(json!({ "deleted": deleted })))
 }
 
-async fn recover_jobs(
+#[utoipa::path(
+    post,
+    path = "/v1/crawl/recover",
+    responses((status = 200, description = "Crawl recovery result", body = serde_json::Value)),
+    tag = "jobs"
+)]
+pub(crate) async fn recover_jobs(
     Extension(state): Extension<JobLifecycleState>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let recovered = services::jobs::recover_jobs(&state.service_context, state.kind)

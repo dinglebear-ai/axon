@@ -16,7 +16,7 @@ use super::super::error::HttpError;
 use super::super::state::AppState;
 use super::jobs::job_lifecycle_router;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct CrawlStartRequest {
     urls: Vec<String>,
     max_pages: Option<u32>,
@@ -29,12 +29,12 @@ pub(crate) struct CrawlStartRequest {
     delay_ms: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct EmbedStartRequest {
     input: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct ExtractStartRequest {
     urls: Vec<String>,
     prompt: Option<String>,
@@ -43,8 +43,8 @@ pub(crate) struct ExtractStartRequest {
 
 type IngestStartRequest = crate::mcp::schema::IngestRequest;
 
-#[derive(Debug, Serialize)]
-struct AcceptedJob {
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct AcceptedJob {
     job_id: String,
     status: &'static str,
     status_url: String,
@@ -88,7 +88,18 @@ pub(crate) fn ingest_router(service_context: Arc<ServiceContext>) -> Router<WebS
         ))
 }
 
-async fn start_crawl(
+#[utoipa::path(
+    post,
+    path = "/v1/crawl",
+    request_body = CrawlStartRequest,
+    responses(
+        (status = 202, description = "Crawl job accepted", body = AcceptedJob),
+        (status = 400, description = "Invalid crawl request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream crawl service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "jobs"
+)]
+pub(crate) async fn start_crawl(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
     Json(req): Json<CrawlStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
@@ -124,7 +135,18 @@ async fn start_crawl(
     accepted_job("/v1/crawl", job_id)
 }
 
-async fn start_embed(
+#[utoipa::path(
+    post,
+    path = "/v1/embed",
+    request_body = EmbedStartRequest,
+    responses(
+        (status = 202, description = "Embed job accepted", body = AcceptedJob),
+        (status = 400, description = "Invalid embed request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream embedding service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "jobs"
+)]
+pub(crate) async fn start_embed(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
     Json(req): Json<EmbedStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
@@ -136,7 +158,18 @@ async fn start_embed(
     accepted_job("/v1/embed", outcome.result.job_id)
 }
 
-async fn start_extract(
+#[utoipa::path(
+    post,
+    path = "/v1/extract",
+    request_body = ExtractStartRequest,
+    responses(
+        (status = 202, description = "Extract job accepted", body = AcceptedJob),
+        (status = 400, description = "Invalid extract request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream extract service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "jobs"
+)]
+pub(crate) async fn start_extract(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
     Json(req): Json<ExtractStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
@@ -160,7 +193,18 @@ async fn start_extract(
     accepted_job("/v1/extract", outcome.result.job_id)
 }
 
-async fn start_ingest(
+#[utoipa::path(
+    post,
+    path = "/v1/ingest",
+    request_body = serde_json::Value,
+    responses(
+        (status = 202, description = "Ingest job accepted", body = AcceptedJob),
+        (status = 400, description = "Invalid ingest request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream ingest service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "jobs"
+)]
+pub(crate) async fn start_ingest(
     State((state, cfg)): State<(AppState, Arc<Config>)>,
     Json(req): Json<IngestStartRequest>,
 ) -> Result<impl IntoResponse, HttpError> {

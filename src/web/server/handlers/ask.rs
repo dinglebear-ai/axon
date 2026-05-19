@@ -70,6 +70,19 @@ fn apply_ask_overrides(req_cfg: &mut Config, req: &AskRequestBody) {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/ask",
+    request_body = AskRequestBody,
+    responses(
+        (status = 200, description = "RAG answer", body = serde_json::Value),
+        (status = 400, description = "Invalid ask request", body = crate::web::server::error::ErrorBody),
+        (status = 413, description = "Ask request exceeds limits", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector or LLM service unavailable", body = crate::web::server::error::ErrorBody),
+        (status = 504, description = "Upstream request timed out", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "rag"
+)]
 pub async fn v1_ask(
     Extension(cfg): Extension<Arc<Config>>,
     Json(req): Json<AskRequestBody>,

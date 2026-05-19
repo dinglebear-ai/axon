@@ -13,20 +13,20 @@ use super::rag::required_text;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct ScrapeRequest {
     url: Option<String>,
     urls: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct MapRequest {
     url: String,
     limit: Option<usize>,
     offset: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct SearchRequest {
     query: String,
     limit: Option<usize>,
@@ -34,7 +34,7 @@ pub(crate) struct SearchRequest {
     time_range: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct ResearchRequest {
     query: String,
     limit: Option<usize>,
@@ -42,6 +42,17 @@ pub(crate) struct ResearchRequest {
     time_range: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/scrape",
+    request_body = ScrapeRequest,
+    responses(
+        (status = 200, description = "Scraped document or batch scrape results", body = serde_json::Value),
+        (status = 400, description = "Invalid scrape request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream crawl or render service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
 pub(crate) async fn scrape(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<ScrapeRequest>,
@@ -63,6 +74,17 @@ pub(crate) async fn scrape(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/map",
+    request_body = MapRequest,
+    responses(
+        (status = 200, description = "Discovered URLs", body = serde_json::Value),
+        (status = 400, description = "Invalid map request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream crawl service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
 pub(crate) async fn map(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<MapRequest>,
@@ -74,6 +96,17 @@ pub(crate) async fn map(
         .map_err(HttpError::from_box)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/search",
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Search results and queued crawl jobs", body = serde_json::Value),
+        (status = 400, description = "Invalid search request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream search service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
 pub(crate) async fn search(
     State((state, cfg)): State<WebState>,
     Json(req): Json<SearchRequest>,
@@ -95,6 +128,17 @@ pub(crate) async fn search(
     })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/research",
+    request_body = ResearchRequest,
+    responses(
+        (status = 200, description = "Research synthesis", body = serde_json::Value),
+        (status = 400, description = "Invalid research request", body = crate::web::server::error::ErrorBody),
+        (status = 504, description = "Research request timed out", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "exploration"
+)]
 pub(crate) async fn research(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<ResearchRequest>,

@@ -15,12 +15,12 @@ use super::super::error::HttpError;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub(crate) struct WatchListQuery {
     limit: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct WatchCreateRequest {
     name: String,
     task_type: String,
@@ -30,6 +30,15 @@ pub(crate) struct WatchCreateRequest {
     next_run_at: Option<DateTime<Utc>>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/dedupe",
+    responses(
+        (status = 200, description = "Dedupe result", body = serde_json::Value),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
 pub(crate) async fn dedupe(
     State((_state, cfg)): State<WebState>,
 ) -> Result<Json<services::types::DedupeResult>, HttpError> {
@@ -39,6 +48,16 @@ pub(crate) async fn dedupe(
         .map_err(HttpError::from_box)
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/watch",
+    params(WatchListQuery),
+    responses(
+        (status = 200, description = "Watch definitions", body = serde_json::Value),
+        (status = 502, description = "Watch storage unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
 pub(crate) async fn list_watch(
     State((_state, cfg)): State<WebState>,
     Query(query): Query<WatchListQuery>,
@@ -50,6 +69,17 @@ pub(crate) async fn list_watch(
     Ok(Json(json!({ "watches": watches, "limit": limit })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/watch",
+    request_body = WatchCreateRequest,
+    responses(
+        (status = 200, description = "Created watch definition", body = serde_json::Value),
+        (status = 400, description = "Invalid watch request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Watch storage unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
 pub(crate) async fn create_watch(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<WatchCreateRequest>,
@@ -77,6 +107,17 @@ pub(crate) async fn create_watch(
         .map_err(HttpError::from_box)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/watch/{id}/run",
+    params(("id" = uuid::Uuid, Path, description = "Watch definition ID")),
+    responses(
+        (status = 200, description = "Watch run result", body = serde_json::Value),
+        (status = 404, description = "Watch not found", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Watch execution failed", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
 pub(crate) async fn run_watch(
     State((_state, cfg)): State<WebState>,
     Path(id): Path<Uuid>,

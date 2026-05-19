@@ -9,14 +9,14 @@ use super::super::error::HttpError;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct QueryRequest {
     query: String,
     limit: Option<usize>,
     offset: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct RetrieveRequest {
     url: String,
     max_points: Option<usize>,
@@ -24,16 +24,27 @@ pub(crate) struct RetrieveRequest {
     token_budget: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct EvaluateRequest {
     question: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(crate) struct SuggestRequest {
     focus: Option<String>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/query",
+    request_body = QueryRequest,
+    responses(
+        (status = 200, description = "Semantic query results", body = serde_json::Value),
+        (status = 400, description = "Invalid query request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "rag"
+)]
 pub(crate) async fn query(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<QueryRequest>,
@@ -45,6 +56,17 @@ pub(crate) async fn query(
         .map_err(HttpError::from_box)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/retrieve",
+    request_body = RetrieveRequest,
+    responses(
+        (status = 200, description = "Stored document chunks", body = serde_json::Value),
+        (status = 400, description = "Invalid retrieve request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream vector service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "rag"
+)]
 pub(crate) async fn retrieve(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<RetrieveRequest>,
@@ -64,6 +86,17 @@ pub(crate) async fn retrieve(
     .map_err(HttpError::from_box_send_sync)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/evaluate",
+    request_body = EvaluateRequest,
+    responses(
+        (status = 200, description = "Evaluation result", body = serde_json::Value),
+        (status = 400, description = "Invalid evaluation request", body = crate::web::server::error::ErrorBody),
+        (status = 502, description = "Upstream LLM or vector service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "rag"
+)]
 pub(crate) async fn evaluate(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<EvaluateRequest>,
@@ -75,6 +108,16 @@ pub(crate) async fn evaluate(
         .map_err(HttpError::from_box_send_sync)
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/suggest",
+    request_body = SuggestRequest,
+    responses(
+        (status = 200, description = "Suggested URLs to crawl", body = serde_json::Value),
+        (status = 502, description = "Upstream search or LLM service unavailable", body = crate::web::server::error::ErrorBody)
+    ),
+    tag = "rag"
+)]
 pub(crate) async fn suggest(
     State((_state, cfg)): State<WebState>,
     Json(req): Json<SuggestRequest>,
